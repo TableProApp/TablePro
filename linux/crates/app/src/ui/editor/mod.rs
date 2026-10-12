@@ -1,60 +1,57 @@
+//! The SQL editor tab. Each run goes through the tab's own editor
+//! session, one statement or `GO` batch at a time, and every statement
+//! gets a line in the results list.
+
+mod buffer_edit;
+mod editor_session_slot;
 mod format_plan;
-mod script_run;
+mod imp;
+mod result_item;
+mod result_widgets;
+mod results_pane;
+mod run_history;
+mod run_log;
+mod run_scope;
+mod script_runner;
+mod sidebar_policy;
 mod significant_tokens;
 mod statement_cursor;
+#[cfg(test)]
+mod tests;
+mod transaction_dirty;
 
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use relm4::adw::prelude::*;
-use relm4::gtk::glib;
-use relm4::prelude::*;
-use relm4::{adw, gtk};
+use gtk4::glib;
+use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use sourceview5::prelude::*;
-use tokio_util::sync::CancellationToken;
-
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::{QueryResult, RowLimit};
-use tablepro_session::ConnectionMetadata;
 use tablepro_session::runtime::{ProcessHold, Tasks};
-use tablepro_storage::query_history::{NewEntry, Outcome};
+use tokio_util::sync::CancellationToken;
 
-use self::script_run::{EditorSessionSlot, ScriptEnd, ScriptOptions};
-pub use self::script_run::{StatementOutcome, StatementOutcomeKind};
-use super::grid::{GridMsg, TabGridContext, build_column_view};
+use self::buffer_edit::{CursorAnchor, replace_all_undoable};
+use self::imp::RunningScript;
+use self::run_log::{RunEvent, RunLog};
+use self::run_scope::ScopedText;
+use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
+use super::grid::GridMsg;
 use crate::services::active_session::ActiveSession;
 
-pub struct SqlEditor {
-    settings: std::rc::Rc<tablepro_storage::AppSettings>,
-    history: Option<tablepro_storage::QueryHistory>,
-    tasks: Tasks,
-    session: ActiveSession,
-    hold: Rc<dyn ProcessHold>,
-    close_timeout: Duration,
-    /// This tab's own connection, which keeps its transaction and
-    /// temporary tables between runs.
-    editor_session: Arc<EditorSessionSlot>,
-    /// Hands the running script's end back to this tab. Aborted when the
-    /// tab goes, so nothing is delivered to a closed component.
-    run_delivery: Option<glib::JoinHandle<()>>,
-    source_view: sourceview5::View,
-    run_button: gtk::Button,
-    cancel_button: gtk::Button,
-    running_spinner: adw::Spinner,
-    results_holder: gtk::Box,
-    status: gtk::Label,
-    grid_sender: relm4::Sender<GridMsg>,
-    cancel_token: Option<CancellationToken>,
-    executing_sql: Option<String>,
-    executing_metadata: Option<ConnectionMetadata>,
-    executing_started_at: Option<SystemTime>,
+glib::wrapper! {
+    pub struct SqlEditor(ObjectSubclass<imp::SqlEditor>)
+        @extends adw::Bin, gtk4::Widget,
+        @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
 }
 
 pub struct SqlEditorInit {
-    pub schema_buffer: gtk::TextBuffer,
+    pub schema_buffer: gtk4::TextBuffer,
     pub initial_query: Option<String>,
-    pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
+    pub settings: Rc<tablepro_storage::AppSettings>,
     pub history: Option<tablepro_storage::QueryHistory>,
     pub tasks: Tasks,
     /// The window's session, which the tab opens its own connection
@@ -65,414 +62,103 @@ pub struct SqlEditorInit {
     pub close_timeout: Duration,
 }
 
-#[derive(Debug)]
-pub enum SqlEditorInput {
-    Run,
-    Cancel,
-    /// One outcome per statement in the script. Single-statement
-    /// scripts produce a Vec of len 1; multi-statement scripts a
-    /// Vec of len N. The editor decides the rendering (single grid
-    /// vs. sub-tabs) based on Vec length.
-    ShowOutcomes(Vec<StatementOutcome>),
-    ShowCancelled,
-    /// A statement ran past the configured timeout and the server
-    /// stopped it. Reads like a cancel, but history records why.
-    ShowTimedOut(u32),
-    ReplaceQuery(String),
-    /// Ctrl+Shift+F → reformat the buffer in place via sqlformat.
-    Format,
-    /// Ctrl+Shift+Return → run only the SQL statement under the
-    /// cursor. Falls back to a status hint when the cursor is in
-    /// whitespace or a leading comment with no statement around it.
-    RunAtCursor,
-    /// Load a `.sql` file into the buffer, so a migration or a script
-    /// kept on disk can be run without pasting it in.
-    OpenFile,
-    /// The file came back; `None` when it could not be read as text.
-    FileLoaded(Option<String>),
-    /// Ctrl+/ → toggle SQL line-comment for the selected lines (or
-    /// the cursor's line). Standard IDE shortcut.
-    ToggleLineComment,
-    /// Context-menu actions from a result grid.
-    Grid(GridMsg),
+pub(crate) struct EditorDeps {
+    settings: Rc<tablepro_storage::AppSettings>,
+    history: Option<tablepro_storage::QueryHistory>,
+    tasks: Tasks,
+    session: ActiveSession,
+    hold: Rc<dyn ProcessHold>,
+    close_timeout: Duration,
 }
 
-#[derive(Debug)]
-pub enum SqlEditorOutput {
-    RunStateChanged(bool),
-    QueryChanged(String),
-    CopyToClipboard(String),
-    ShowToast(String),
-    /// "Export Results…" from a result grid's context menu, with the
-    /// file-name stem derived from the statement that produced it.
-    ExportResults {
-        result: QueryResult,
-        name: String,
-    },
-}
-
-#[relm4::component(pub)]
-impl SimpleComponent for SqlEditor {
-    type Init = SqlEditorInit;
-    type Input = SqlEditorInput;
-    type Output = SqlEditorOutput;
-
-    view! {
-        adw::ToolbarView {
-            // Top bar: cursor + status pushed right by an empty
-            // spacer; Run on the trailing edge with Cancel beside it
-            // when a query is in flight. The decorative "SQL" label
-            // was removed — the tab title carries that context, and
-            // GNOME Builder / Text Editor don't label their editor
-            // areas by language either. Cancel is flat (not
-            // destructive-action) because cancelling a running query
-            // doesn't destroy data; .destructive-action is reserved
-            // for irreversible operations.
-            add_top_bar = &gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
-                set_margin_top: 8,
-                set_margin_bottom: 8,
-                set_margin_start: 8,
-                set_margin_end: 8,
-
-                gtk::Box {
-                    set_hexpand: true,
-                },
-
-                #[name = "cursor_info"]
-                gtk::Label {
-                    set_halign: gtk::Align::End,
-                    add_css_class: "dim-label",
-                    add_css_class: "monospace",
-                    set_margin_end: 8,
-                },
-
-                #[name = "running_spinner"]
-                adw::Spinner {
-                    set_visible: false,
-                    set_size_request: (20, 20),
-                },
-
-                #[name = "status"]
-                gtk::Label {
-                    set_halign: gtk::Align::End,
-                    add_css_class: "dim-label",
-                },
-
-                // Format had only a shortcut, and opening a file had
-                // nowhere to live. One menu gives both a place without
-                // crowding the bar that Run sits on.
-                gtk::MenuButton {
-                    set_icon_name: crate::ui::icons::VIEW_MORE,
-                    set_tooltip_text: Some(crate::i18n::gettext("Editor options").as_str()),
-                    add_css_class: "flat",
-                    set_menu_model: Some(&editor_menu()),
-                },
-
-                #[name = "cancel_button"]
-                gtk::Button {
-                    set_label: &crate::i18n::gettext("Cancel"),
-                    set_tooltip_text: Some(crate::i18n::gettext("Cancel running query (Esc)").as_str()),
-                    set_visible: false,
-                    add_css_class: "flat",
-                    connect_clicked => SqlEditorInput::Cancel,
-                },
-
-                #[name = "run_button"]
-                gtk::Button {
-                    set_label: &crate::i18n::gettext("Run"),
-                    set_tooltip_text: Some(crate::i18n::gettext("Run query (Ctrl+Return)").as_str()),
-                    add_css_class: "suggested-action",
-                    connect_clicked => SqlEditorInput::Run,
-                },
-            },
-
-            #[wrap(Some)]
-            set_content = &gtk::Paned {
-                set_orientation: gtk::Orientation::Vertical,
-                set_position: 280,
-                set_vexpand: true,
-                set_hexpand: true,
-
-                #[wrap(Some)]
-                set_start_child = &gtk::ScrolledWindow {
-                    set_min_content_height: 200,
-
-                    #[wrap(Some)]
-                    #[name = "source_view"]
-                    set_child = &sourceview5::View {
-                        set_show_line_numbers: true,
-                        set_monospace: true,
-                        set_auto_indent: true,
-                        set_highlight_current_line: true,
-                        set_tab_width: 4,
-                        set_top_margin: 8,
-                        set_bottom_margin: 8,
-                        set_left_margin: 8,
-                        set_right_margin: 8,
-                    },
-                },
-
-                #[wrap(Some)]
-                #[name = "results_holder"]
-                set_end_child = &gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                },
-            },
-        }
-    }
-
-    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        let widgets = view_output!();
-
-        let actions = relm4::gtk::gio::SimpleActionGroup::new();
-        let open_sender = sender.clone();
-        let open = relm4::gtk::gio::ActionEntry::builder("open-file")
-            .activate(move |_, _, _| open_sender.input(SqlEditorInput::OpenFile))
-            .build();
-        let format_sender = sender.clone();
-        let format = relm4::gtk::gio::ActionEntry::builder("format")
-            .activate(move |_, _, _| format_sender.input(SqlEditorInput::Format))
-            .build();
-        actions.add_action_entries([open, format]);
-        root.insert_action_group("editor", Some(&actions));
-
-        let lang_manager = sourceview5::LanguageManager::default();
-        let initial_text = init.initial_query.unwrap_or_else(|| "SELECT 1;".to_string());
-        if let Some(lang) = lang_manager.language("sql") {
-            let buffer = sourceview5::Buffer::with_language(&lang);
-            buffer.set_text(&initial_text);
-            widgets.source_view.set_buffer(Some(&buffer));
-        } else {
-            widgets.source_view.buffer().set_text(&initial_text);
-        }
-        widgets.source_view.add_css_class("sql-editor");
-        widgets.source_view.set_monospace(true);
-
-        let settings = init.settings.clone();
-        crate::ui::style_scheme_resolver::apply(&widgets.source_view, &settings.style_scheme());
-        let view_for_theme = widgets.source_view.clone();
-        let settings_for_theme = settings.clone();
-        adw::StyleManager::default().connect_dark_notify(move |_| {
-            crate::ui::style_scheme_resolver::apply(&view_for_theme, &settings_for_theme.style_scheme());
-        });
-        let view_for_scheme = widgets.source_view.clone();
-        settings.gio().connect_changed(
-            Some(tablepro_storage::settings::keys::STYLE_SCHEME),
-            move |settings, key| {
-                crate::ui::style_scheme_resolver::apply(&view_for_scheme, &settings.string(key));
-            },
-        );
-
-        crate::ui::editor_font_provider::apply(&settings);
-        let settings_for_font = settings.clone();
-        for key in [
-            tablepro_storage::settings::keys::USE_SYSTEM_FONT,
-            tablepro_storage::settings::keys::CUSTOM_FONT,
-        ] {
-            let settings_for_key = settings_for_font.clone();
-            settings.gio().connect_changed(Some(key), move |_, _| {
-                crate::ui::editor_font_provider::apply(&settings_for_key);
-            });
-        }
-
-        let provider = sourceview5::CompletionWords::new(Some("SQL"));
-        provider.register(&init.schema_buffer);
-        if let Ok(view_buffer) = widgets.source_view.buffer().downcast::<sourceview5::Buffer>() {
-            provider.register(&view_buffer);
-        }
-        let completion = widgets.source_view.completion();
-        completion.add_provider(&provider);
-
-        let cursor_info = widgets.cursor_info.clone();
-        let view_for_cursor = widgets.source_view.clone();
-        let update_cursor = move || {
-            let buffer = view_for_cursor.buffer();
-            let mark = buffer.get_insert();
-            let iter = buffer.iter_at_mark(&mark);
-            let line = iter.line() + 1;
-            let col = iter.line_offset() + 1;
-            cursor_info.set_label(&format!("Ln {line}, Col {col}"));
-        };
-        update_cursor();
-        widgets
-            .source_view
-            .buffer()
-            .connect_cursor_position_notify(move |_| update_cursor());
-
-        let view_for_change = widgets.source_view.clone();
-        let sender_for_change = sender.clone();
-        widgets.source_view.buffer().connect_changed(move |_| {
-            let buffer = view_for_change.buffer();
-            let (start, end) = buffer.bounds();
-            let text = buffer.text(&start, &end, false).to_string();
-            let _ = sender_for_change.output(SqlEditorOutput::QueryChanged(text));
-        });
-
-        let run_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(
-                gtk::gdk::Key::Return,
-                gtk::gdk::ModifierType::CONTROL_MASK,
-            ))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::Run);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        // Esc cancels a running query. The editor tab isn't a dialog
-        // so Esc is otherwise unbound, and keyboard parity with the
-        // Run shortcut matters most when the user is trying to stop
-        // a runaway query and shouldn't have to hunt the small flat
-        // Cancel button. The Cancel handler no-ops when nothing is
-        // running, so binding unconditionally is safe.
-        let cancel_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(
-                gtk::gdk::Key::Escape,
-                gtk::gdk::ModifierType::empty(),
-            ))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::Cancel);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        // Ctrl+Shift+F — reformat the buffer in place. Matches the
-        // standard IDE shortcut (DataGrip, IntelliJ, VS Code SQL
-        // extensions) so users don't have to relearn it. Lives on the
-        // source-view controller so it only fires when the editor has
-        // focus; window-scoped Ctrl+F is "Find in results".
-        let format_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(
-                gtk::gdk::Key::f,
-                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
-            ))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::Format);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        // Ctrl+Shift+Return — run only the statement under the
-        // cursor. Standard DataGrip / DBeaver behaviour for
-        // multi-statement scripts: the user keeps several queries in
-        // one buffer, parks the cursor on one, runs just that.
-        let run_at_cursor_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(
-                gtk::gdk::Key::Return,
-                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
-            ))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::RunAtCursor);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        // Ctrl+/ — toggle SQL line-comment for the selected lines.
-        // Standard IDE shortcut (VS Code, IntelliJ, Sublime, etc.)
-        // so users don't have to relearn it. Walks the selection,
-        // commenting all lines if any are uncommented, otherwise
-        // uncommenting all. Wrapped in begin/end_user_action so it's
-        // a single undo step regardless of how many lines toggle.
-        let toggle_comment_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(
-                gtk::gdk::Key::slash,
-                gtk::gdk::ModifierType::CONTROL_MASK,
-            ))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::ToggleLineComment);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        let controller = gtk::ShortcutController::new();
-        controller.add_shortcut(run_shortcut);
-        controller.add_shortcut(cancel_shortcut);
-        controller.add_shortcut(format_shortcut);
-        controller.add_shortcut(run_at_cursor_shortcut);
-        controller.add_shortcut(toggle_comment_shortcut);
-        widgets.source_view.add_controller(controller);
-
-        let drop_target = gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
-        let view_for_drop = widgets.source_view.clone();
-        drop_target.connect_drop(move |_, value, _, _| {
-            if let Ok(file) = value.get::<gtk::gio::File>()
-                && let Some(path) = file.path()
-                && let Ok(text) = std::fs::read_to_string(&path)
-            {
-                let buffer = view_for_drop.buffer();
-                let (start, end) = buffer.bounds();
-                let existing_empty = buffer.text(&start, &end, false).trim().is_empty();
-                if existing_empty {
-                    // Empty buffer: replace wholesale — most natural
-                    // for "open this SQL file in the editor".
-                    buffer.set_text(&text);
-                } else {
-                    // Non-empty buffer: insert at cursor. Replacing
-                    // would silently destroy whatever the user had
-                    // typed, which fails GNOME Builder / Text Editor
-                    // expectations for drag-and-drop. Insert is
-                    // additive and undoable via Ctrl+Z.
-                    buffer.insert_at_cursor(&text);
-                }
-                return true;
-            }
-            false
-        });
-        widgets.source_view.add_controller(drop_target);
-
-        let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
-        glib::spawn_future_local(grid_receiver.forward(sender.input_sender().clone(), SqlEditorInput::Grid));
-
-        let model = SqlEditor {
-            settings,
-            history: init.history.clone(),
-            tasks: init.tasks.clone(),
+impl SqlEditor {
+    pub fn new(init: SqlEditorInit) -> Self {
+        let editor: Self = glib::Object::new();
+        let imp = editor.imp();
+        let _ = imp.deps.set(EditorDeps {
+            settings: init.settings.clone(),
+            history: init.history,
+            tasks: init.tasks,
             session: init.session,
             hold: init.hold,
             close_timeout: init.close_timeout,
-            editor_session: Arc::new(EditorSessionSlot::new()),
-            run_delivery: None,
-            source_view: widgets.source_view.clone(),
-            run_button: widgets.run_button.clone(),
-            cancel_button: widgets.cancel_button.clone(),
-            running_spinner: widgets.running_spinner.clone(),
-            results_holder: widgets.results_holder.clone(),
-            status: widgets.status.clone(),
-            grid_sender,
-            cancel_token: None,
-            executing_sql: None,
-            executing_metadata: None,
-            executing_started_at: None,
+        });
+        let initial_text = init.initial_query.unwrap_or_else(|| "SELECT 1;".to_owned());
+        let buffer = match sourceview5::LanguageManager::default().language("sql") {
+            Some(language) => sourceview5::Buffer::with_language(&language),
+            None => sourceview5::Buffer::new(None),
         };
-        ComponentParts { model, widgets }
+        // The text the tab opens with is not an edit to take back.
+        buffer.set_text(&initial_text);
+        imp.source_view.set_buffer(Some(&buffer));
+        editor.connect_theme(&init.settings);
+        editor.connect_completion(&init.schema_buffer, &buffer);
+        editor.connect_buffer(&buffer);
+        editor.install_actions();
+        editor.install_shortcuts();
+        editor.install_drop_target();
+        editor.connect_buttons();
+        editor.connect_grid();
+        editor
     }
 
-    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
-        if let Some(token) = self.cancel_token.take() {
-            token.cancel();
+    /// The text buffer, so the draft writer can read the script once per
+    /// write rather than carrying a copy of it per keystroke.
+    pub fn buffer(&self) -> gtk4::TextBuffer {
+        self.imp().source_view.buffer()
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.imp().running.borrow().is_some()
+    }
+
+    /// Whether the tab's connection holds a transaction the user opened.
+    pub fn has_open_transaction(&self) -> bool {
+        self.imp().transaction_dirty.get()
+    }
+
+    /// Stop the running query. The results list says what ran before.
+    pub fn stop(&self) {
+        if let Some(running) = self.imp().running.borrow().as_ref() {
+            running.cancel.cancel();
         }
-        if let Some(delivery) = self.run_delivery.take() {
-            delivery.abort();
+    }
+
+    /// Put a query from history or a saved query in the buffer, as one
+    /// step Ctrl+Z takes back.
+    pub fn replace_query(&self, text: &str) {
+        let buffer = self.buffer();
+        if buffer_text(&buffer) == text {
+            return;
         }
-        let Some(editor) = self.editor_session.close() else {
+        replace_all_undoable(&buffer, text);
+        self.emit_by_name::<()>("undoable-toast", &[&crate::i18n::gettext("Query replaced")]);
+    }
+
+    /// Take back the last edit, for a toast's Undo button.
+    pub fn undo(&self) {
+        let buffer = self.buffer();
+        if buffer.can_undo() {
+            buffer.undo();
+        }
+    }
+
+    /// Close the tab's connection. The process is held until the close
+    /// ends, so quitting right after closing a tab does not cut it off.
+    pub fn shutdown(&self) {
+        let imp = self.imp();
+        if imp.shut_down.replace(true) {
+            return;
+        }
+        if let Some(running) = imp.running.take() {
+            running.cancel.cancel();
+            running.drain.abort();
+        }
+        let (Some(editor), Some(deps)) = (imp.slot.close(), imp.deps.get()) else {
             return;
         };
-        // The tab is gone but its connection is still open on the
-        // server; the hold keeps the process up until it is closed.
-        let hold = self.hold.acquire();
-        let closing = tablepro_session::close_editor_sessions(vec![editor], self.close_timeout, &self.tasks);
+        let hold = deps.hold.acquire();
+        let closing = tablepro_session::close_editor_sessions(vec![editor], deps.close_timeout, &deps.tasks);
         glib::spawn_future_local(async move {
             match closing.await {
                 Ok(reports) => tracing::debug!(?reports, "closed an editor tab's session"),
@@ -482,551 +168,616 @@ impl SimpleComponent for SqlEditor {
         });
     }
 
-    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
-        match msg {
-            SqlEditorInput::Run => {
-                let buffer = self.source_view.buffer();
-                let (start, end) = buffer.bounds();
-                let sql = buffer.text(&start, &end, false).to_string();
-                let trimmed = sql.trim().to_string();
-                if trimmed.is_empty() {
-                    self.status.set_label(&crate::i18n::gettext("empty query"));
-                    return;
-                }
-                self.execute_sql(trimmed, sender);
-            }
-
-            SqlEditorInput::ToggleLineComment => {
-                toggle_line_comment(&self.source_view.buffer());
-            }
-
-            SqlEditorInput::Grid(GridMsg::CopyToClipboard(text)) => {
-                let _ = sender.output(SqlEditorOutput::CopyToClipboard(text));
-            }
-            SqlEditorInput::Grid(GridMsg::ShowToast(text)) => {
-                let _ = sender.output(SqlEditorOutput::ShowToast(text));
-            }
-            SqlEditorInput::Grid(GridMsg::ExportResults(result)) => {
-                let buffer = self.source_view.buffer();
-                let (start, end) = buffer.bounds();
-                let name = export_name_for_query(&buffer.text(&start, &end, false));
-                let _ = sender.output(SqlEditorOutput::ExportResults { result, name });
-            }
-            SqlEditorInput::Grid(_) => {}
-
-            SqlEditorInput::RunAtCursor => {
-                // The user keeps several queries in one buffer and
-                // parks the cursor on one to run just that. The script
-                // plan decides where that statement starts and ends,
-                // so a dollar-quoted body or a `GO` batch is one
-                // statement rather than several.
-                let buffer = self.source_view.buffer();
-                let (start, end) = buffer.bounds();
-                let sql = buffer.text(&start, &end, false).to_string();
-                let grammar = self.grammar();
-                let plan = statement_cursor::plan_for(&sql, grammar);
-                let cursor_char = buffer.iter_at_mark(&buffer.get_insert()).offset().max(0) as usize;
-                let statement = statement_cursor::statement_bounds_at(&buffer, &plan, &sql, cursor_char)
-                    .map(|(from, to)| (buffer.text(&from, &to, false).to_string(), from, to))
-                    .filter(|(text, _, _)| !text.trim().is_empty());
-                let Some((text, from, to)) = statement else {
-                    self.status.set_label(&crate::i18n::gettext("No statement at cursor"));
-                    return;
-                };
-                // Selecting it says which of the queries in the buffer
-                // is the one that ran.
-                buffer.select_range(&from, &to);
-                self.execute_sql(text.trim().to_owned(), sender);
-            }
-
-            SqlEditorInput::OpenFile => {
-                let buffer = self.source_view.buffer();
-                let (start, end) = buffer.bounds();
-                let occupied = !buffer.text(&start, &end, false).trim().is_empty();
-                if occupied {
-                    // Loading replaces what is in the tab, and the tab
-                    // is where the user's unrun work lives.
-                    let dialog = adw::AlertDialog::new(
-                        Some(&crate::i18n::gettext("Replace the editor contents?")),
-                        Some(&crate::i18n::gettext(
-                            "The file is loaded into this tab, and what is written here now is replaced.",
-                        )),
-                    );
-                    dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
-                    dialog.add_response("replace", &crate::i18n::gettext("Replace"));
-                    dialog.set_default_response(Some("cancel"));
-                    dialog.set_close_response("cancel");
-                    let ask_sender = sender.clone();
-                    dialog.connect_response(None, move |dialog, response| {
-                        dialog.close();
-                        if response == "replace" {
-                            choose_sql_file(&ask_sender);
-                        }
-                    });
-                    dialog.present(Some(&self.source_view));
-                } else {
-                    choose_sql_file(&sender);
-                }
-            }
-
-            SqlEditorInput::FileLoaded(text) => match text {
-                Some(text) => {
-                    self.source_view.buffer().set_text(&text);
-                    self.status.set_label(&crate::i18n::gettext("File loaded"));
-                }
-                None => self
-                    .status
-                    .set_label(&crate::i18n::gettext("The file could not be read as text")),
-            },
-
-            SqlEditorInput::Cancel => {
-                if let Some(token) = self.cancel_token.take() {
-                    token.cancel();
-                }
-            }
-
-            SqlEditorInput::ShowOutcomes(outcomes) => {
-                self.run_delivery = None;
-                self.cancel_token = None;
-                self.run_button.set_sensitive(true);
-                self.cancel_button.set_visible(false);
-                self.running_spinner.set_visible(false);
-                let _ = sender.output(SqlEditorOutput::RunStateChanged(false));
-
-                let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
-                let n_total = outcomes.len();
-                let n_ok = outcomes
-                    .iter()
-                    .filter(|o| matches!(o.kind, StatementOutcomeKind::Rows(_)))
-                    .count();
-                let first_error = outcomes.iter().find_map(|o| match &o.kind {
-                    StatementOutcomeKind::Error(msg) => Some(msg.clone()),
-                    _ => None,
-                });
-
-                // History records the whole script as one entry.
-                // rows_affected aggregates across SELECT outcomes
-                // (NULL for scripts containing only DML).
-                let total_rows: i64 = outcomes
-                    .iter()
-                    .filter_map(|o| match &o.kind {
-                        StatementOutcomeKind::Rows(qr) => Some(
-                            o.rows_affected
-                                .map_or(qr.rows.len() as i64, |rows| i64::try_from(rows).unwrap_or(i64::MAX)),
-                        ),
-                        _ => None,
-                    })
-                    .sum();
-                let history_outcome = match &first_error {
-                    Some(msg) => Outcome::Error(msg.clone()),
-                    None => Outcome::Success,
-                };
-                let rows_for_history = if total_rows > 0 { Some(total_rows) } else { None };
-                self.record_history(total_ms as i64, rows_for_history, history_outcome);
-
-                self.status
-                    .set_label(&summary_label(n_total, n_ok, total_ms, first_error.is_some()));
-                clear_box(&self.results_holder);
-                render_outcomes(&self.results_holder, &outcomes, &self.grid_sender);
-            }
-
-            SqlEditorInput::ShowCancelled => {
-                self.run_delivery = None;
-                self.cancel_token = None;
-                self.run_button.set_sensitive(true);
-                self.cancel_button.set_visible(false);
-                self.running_spinner.set_visible(false);
-                let _ = sender.output(SqlEditorOutput::RunStateChanged(false));
-                let elapsed = self
-                    .executing_started_at
-                    .and_then(|t| SystemTime::now().duration_since(t).ok())
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0);
-                self.record_history(elapsed, None, Outcome::Cancelled);
-                self.status.set_label(&crate::i18n::gettext("cancelled"));
-                clear_box(&self.results_holder);
-                let cancelled_page = adw::StatusPage::builder()
-                    .title(crate::i18n::gettext("Query cancelled"))
-                    .description(crate::i18n::gettext("The running query was stopped."))
-                    .icon_name(crate::ui::icons::PROCESS_STOP)
-                    .vexpand(true)
-                    .build();
-                self.results_holder.append(&cancelled_page);
-            }
-
-            SqlEditorInput::ShowTimedOut(secs) => {
-                self.run_delivery = None;
-                self.cancel_token = None;
-                self.run_button.set_sensitive(true);
-                self.cancel_button.set_visible(false);
-                self.running_spinner.set_visible(false);
-                let _ = sender.output(SqlEditorOutput::RunStateChanged(false));
-                let elapsed = self
-                    .executing_started_at
-                    .and_then(|t| SystemTime::now().duration_since(t).ok())
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0);
-                let secs_str = secs.to_string();
-                let reason = crate::i18n::gettext_f(
-                    "Query exceeded the {n}s timeout configured in Preferences.",
-                    &[("n", &secs_str)],
-                );
-                self.record_history(elapsed, None, Outcome::Error(reason.clone()));
-                self.status.set_label(&crate::i18n::gettext("timed out"));
-                clear_box(&self.results_holder);
-                let page = adw::StatusPage::builder()
-                    .title(crate::i18n::gettext("Query timed out"))
-                    .description(&reason)
-                    .icon_name(crate::ui::icons::DIALOG_WARNING)
-                    .vexpand(true)
-                    .build();
-                self.results_holder.append(&page);
-            }
-
-            SqlEditorInput::ReplaceQuery(text) => {
-                self.source_view.buffer().set_text(&text);
-            }
-
-            SqlEditorInput::Format => {
-                // Formatting runs per statement so anything sqlformat
-                // would change the meaning of stays as the user typed
-                // it, and so the lines between statements survive.
-                // Empty buffers no-op: the formatter returns the same
-                // empty string but `set_text` would still bump the
-                // change marker.
-                let buffer = self.source_view.buffer();
-                let (start, end) = buffer.bounds();
-                let text = buffer.text(&start, &end, false).to_string();
-                if text.trim().is_empty() {
-                    return;
-                }
-                let grammar = self.grammar();
-                let settings = tablepro_core::sql_syntax::script::LexicalSettings::default_for(grammar);
-                let formatted = format_plan::format_script(&text, grammar, settings);
-                if formatted == text {
-                    return;
-                }
-                // The cursor lands at the start because every byte
-                // offset before it has moved; Ctrl+Z puts the old text
-                // back.
-                buffer.set_text(&formatted);
-            }
+    /// Run the selection, or the whole buffer when nothing is selected.
+    pub fn run(&self) {
+        let buffer = self.buffer();
+        let text = buffer_text(&buffer);
+        let selection = buffer.selection_bounds().map(|(start, end)| {
+            let start = usize::try_from(start.offset()).unwrap_or_default();
+            let end = usize::try_from(end.offset()).unwrap_or_default();
+            start..end
+        });
+        match run_scope::for_run(&text, selection) {
+            Some(scoped) => self.execute(scoped),
+            None => self.say(&crate::i18n::gettext("There is nothing to run.")),
         }
     }
-}
 
-impl SqlEditor {
+    /// Run the statement the cursor is in, selecting it so the user sees
+    /// which of the buffer's queries ran.
+    pub fn run_at_cursor(&self) {
+        let buffer = self.buffer();
+        let text = buffer_text(&buffer);
+        let plan = statement_cursor::plan_for(&text, self.grammar());
+        let cursor = usize::try_from(buffer.iter_at_mark(&buffer.get_insert()).offset()).unwrap_or_default();
+        let Some((scoped, range)) = run_scope::at_cursor(&text, &plan, cursor) else {
+            self.say(&crate::i18n::gettext("No statement at the cursor."));
+            return;
+        };
+        let start = buffer.iter_at_offset(i32::try_from(range.start).unwrap_or(i32::MAX));
+        let end = buffer.iter_at_offset(i32::try_from(range.end).unwrap_or(i32::MAX));
+        buffer.select_range(&start, &end);
+        self.execute(scoped);
+    }
+
+    /// Reformat the buffer per statement, as one undo step, keeping the
+    /// cursor near where it was.
+    pub fn format(&self) {
+        let buffer = self.buffer();
+        let text = buffer_text(&buffer);
+        if text.trim().is_empty() {
+            return;
+        }
+        let grammar = self.grammar();
+        let settings = tablepro_core::sql_syntax::script::LexicalSettings::default_for(grammar);
+        let formatted = format_plan::format_script(&text, grammar, settings);
+        if formatted == text {
+            return;
+        }
+        let anchor = CursorAnchor::capture(&buffer);
+        replace_all_undoable(&buffer, &formatted);
+        anchor.restore(&buffer);
+        self.imp().source_view.scroll_mark_onscreen(&buffer.get_insert());
+    }
+
+    /// Read a dropped or chosen file and put it in the buffer: the whole
+    /// buffer when it is empty, at the cursor otherwise.
+    pub async fn insert_file(&self, file: gio::File, replace: bool) {
+        let text = match load_text(&file).await {
+            Ok(text) => text,
+            Err(message) => {
+                self.emit_by_name::<()>("toast", &[&message]);
+                return;
+            }
+        };
+        let buffer = self.buffer();
+        if replace || buffer_text(&buffer).trim().is_empty() {
+            replace_all_undoable(&buffer, &text);
+        } else {
+            buffer.begin_user_action();
+            buffer.insert_at_cursor(&text);
+            buffer.end_user_action();
+        }
+    }
+
+    pub fn connect_run_state_changed<F: Fn(&Self, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "run-state-changed",
+            false,
+            glib::closure_local!(move |editor: &Self, running: bool| f(editor, running)),
+        )
+    }
+
+    pub fn connect_query_changed<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "query-changed",
+            false,
+            glib::closure_local!(move |editor: &Self, text: String| f(editor, text)),
+        )
+    }
+
+    pub fn connect_copy_to_clipboard<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "copy-to-clipboard",
+            false,
+            glib::closure_local!(move |editor: &Self, text: String| f(editor, text)),
+        )
+    }
+
+    pub fn connect_toast<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "toast",
+            false,
+            glib::closure_local!(move |editor: &Self, text: String| f(editor, text)),
+        )
+    }
+
+    /// A toast whose Undo button calls `undo`.
+    pub fn connect_undoable_toast<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "undoable-toast",
+            false,
+            glib::closure_local!(move |editor: &Self, text: String| f(editor, text)),
+        )
+    }
+
+    pub fn connect_export_results<F: Fn(&Self, QueryResult, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "export-results",
+            false,
+            glib::closure_local!(move |editor: &Self, payload: glib::BoxedAnyObject| {
+                let (result, name) = payload.borrow::<(QueryResult, String)>().clone();
+                f(editor, result, name);
+            }),
+        )
+    }
+
+    pub fn connect_transaction_changed<F: Fn(&Self, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "transaction-changed",
+            false,
+            glib::closure_local!(move |editor: &Self, open: bool| f(editor, open)),
+        )
+    }
+
+    fn deps(&self) -> Option<&EditorDeps> {
+        self.imp().deps.get()
+    }
+
     /// The SQL grammar of the server the editor is pointed at, which
     /// decides where statements begin and end. With no connection the
     /// split still has to work, and PostgreSQL's is the strictest.
     fn grammar(&self) -> SqlGrammar {
-        self.session
-            .get()
+        self.deps()
+            .and_then(|deps| deps.session.get())
             .and_then(|session| session.current_dialect())
             .map_or(SqlGrammar::PostgreSql, |dialect| dialect.grammar())
     }
 
-    /// The text buffer, so the draft writer can read the script once
-    /// per write rather than carrying a copy of it per keystroke.
-    pub fn buffer(&self) -> gtk::TextBuffer {
-        self.source_view.buffer()
-    }
-
-    /// Dispatch a pre-trimmed non-empty SQL string into the run path.
-    /// Both `Run` (whole buffer) and `RunAtCursor` (single statement
-    /// under cursor) funnel through here so the UI-state setup
-    /// (cancel token, spinner, status, history-recording context)
-    /// stays in one place and can't drift between the two callers.
-    fn execute_sql(&mut self, trimmed: String, sender: ComponentSender<Self>) {
-        let Some(session) = self.session.get() else {
-            self.status.set_label(&crate::i18n::gettext("no active connection"));
-            return;
-        };
-
-        if let Some(prev) = self.cancel_token.take() {
-            prev.cancel();
+    /// A one-line message where the run summary goes.
+    fn say(&self, message: &str) {
+        let results = &self.imp().results;
+        if !self.is_running() {
+            results.set_summary(message);
         }
-        let token = CancellationToken::new();
-        self.cancel_token = Some(token.clone());
-
-        self.run_button.set_sensitive(false);
-        self.cancel_button.set_visible(true);
-        self.running_spinner.set_visible(true);
-        self.status.set_label(&crate::i18n::gettext("Running…"));
-        clear_box(&self.results_holder);
-        let _ = sender.output(SqlEditorOutput::RunStateChanged(true));
-
-        self.executing_sql = Some(trimmed.clone());
-        self.executing_metadata = Some(session.metadata().clone());
-        self.executing_started_at = Some(SystemTime::now());
-
-        let statements = statement_cursor::script_statements(&trimmed, self.grammar());
-        let timeout = self.settings.query_timeout();
-        let timeout_secs = timeout.map_or(0, |duration| duration.as_secs() as u32);
-        let options = ScriptOptions {
-            statement_timeout: timeout,
-            row_limit: RowLimit::EDITOR_DEFAULT,
-            close_timeout: self.close_timeout,
-        };
-        let preview = script_run::sql_preview(&trimmed);
-        let running = script_run::run_script(session, self.editor_session.clone(), statements, options, token);
-        let delivery = crate::runtime::spawn_and_deliver(&self.tasks, running, move |ended| {
-            let message = match ended {
-                Ok(ScriptEnd::Outcomes(outcomes)) => SqlEditorInput::ShowOutcomes(outcomes),
-                Ok(ScriptEnd::Cancelled) => SqlEditorInput::ShowCancelled,
-                Ok(ScriptEnd::TimedOut) => SqlEditorInput::ShowTimedOut(timeout_secs),
-                Ok(ScriptEnd::Unavailable(error)) => SqlEditorInput::ShowOutcomes(vec![failed_outcome(preview, error)]),
-                Err(failure) => SqlEditorInput::ShowOutcomes(vec![failed_outcome(
-                    preview,
-                    crate::i18n::gettext_f(
-                        "The run stopped unexpectedly: {error}",
-                        &[("error", &failure.to_string())],
-                    ),
-                )]),
-            };
-            sender.input(message);
-        });
-        self.run_delivery = Some(delivery);
     }
 
-    fn record_history(&mut self, duration_ms: i64, rows_affected: Option<i64>, outcome: Outcome) {
-        let (Some(query), Some(metadata), Some(started_at)) = (
-            self.executing_sql.take(),
-            self.executing_metadata.take(),
-            self.executing_started_at.take(),
-        ) else {
+    fn execute(&self, scoped: ScopedText) {
+        let imp = self.imp();
+        if self.is_running() || imp.shut_down.get() {
+            return;
+        }
+        let Some(deps) = self.deps() else {
             return;
         };
-        let entry = NewEntry {
-            query,
-            driver_id: metadata.driver_id,
-            connection_id: metadata.id,
-            connection_name: metadata.name,
-            executed_at: started_at,
-            duration_ms: Some(duration_ms),
-            rows_affected,
-            outcome,
-        };
-        let Some(history) = self.history.clone() else {
+        let Some(session) = deps.session.get() else {
+            self.say(&crate::i18n::gettext("Connect to a database to run a query."));
             return;
         };
-        self.tasks.spawn_task(async move {
+        let buffer = self.buffer();
+        let base_line = usize::try_from(
+            buffer
+                .iter_at_offset(i32::try_from(scoped.base_char).unwrap_or(i32::MAX))
+                .line(),
+        )
+        .unwrap_or_default();
+        let (batches, policy, warnings) = plan_batches(&scoped, self.grammar(), base_line);
+        if batches.is_empty() {
+            self.say(&crate::i18n::gettext("There is nothing to run."));
+            return;
+        }
+        let previews = batches.iter().map(|batch| batch.preview.clone()).collect();
+        let run = ScriptRun {
+            batches,
+            policy,
+            statement_timeout: deps.settings.query_timeout(),
+            row_limit: RowLimit::EDITOR_DEFAULT,
+        };
+        let metadata = session.metadata().clone();
+        let started_at = SystemTime::now();
+        let cancel = CancellationToken::new();
+        let (events, mut received) = tokio::sync::mpsc::channel(8);
+        drop(deps.tasks.spawn_task(run_in_tab(
+            session,
+            imp.slot.clone(),
+            run,
+            deps.close_timeout,
+            cancel.clone(),
+            events,
+        )));
+
+        imp.results.clear();
+        imp.results.set_running(true);
+        imp.results.set_summary(&crate::i18n::gettext("Running…"));
+        imp.run_button.set_sensitive(false);
+        imp.stop_button.set_visible(true);
+        imp.log.replace(Some(RunLog::new(previews, warnings)));
+        self.show_new_entries(0);
+        self.emit_by_name::<()>("run-state-changed", &[&true]);
+
+        let weak = self.downgrade();
+        let query = scoped.text;
+        let drain = glib::spawn_future_local(async move {
+            while let Some(event) = received.recv().await {
+                let Some(editor) = weak.upgrade() else {
+                    return;
+                };
+                let finished = matches!(event, RunEvent::Finished);
+                editor.apply_event(event);
+                if finished {
+                    editor.finish_run(query, &metadata, started_at);
+                    return;
+                }
+            }
+            // The runner ended without saying so, which only a panic
+            // does; the list still has to end and the tab unlock.
+            if let Some(editor) = weak.upgrade() {
+                editor.apply_event(RunEvent::Finished);
+                editor.finish_run(query, &metadata, started_at);
+            }
+        });
+        imp.running.replace(Some(RunningScript { cancel, drain }));
+    }
+
+    fn apply_event(&self, event: RunEvent) {
+        let before = match self.imp().log.borrow_mut().as_mut() {
+            Some(log) => log.apply(event),
+            None => return,
+        };
+        self.show_new_entries(before);
+    }
+
+    /// Add the log's lines from `from` on to the results list.
+    fn show_new_entries(&self, from: usize) {
+        let imp = self.imp();
+        let Some(grid_sender) = imp.grid_sender.get() else {
+            return;
+        };
+        let log = imp.log.borrow();
+        let Some(log) = log.as_ref() else {
+            return;
+        };
+        for entry in log.entries().get(from..).unwrap_or_default() {
+            let weak = self.downgrade();
+            let widget = result_widgets::entry_widget(entry, grid_sender, move |position| {
+                if let Some(editor) = weak.upgrade() {
+                    editor.go_to_char(position);
+                }
+            });
+            imp.results.append(entry, &widget);
+        }
+    }
+
+    fn finish_run(&self, query: String, metadata: &tablepro_session::ConnectionMetadata, started_at: SystemTime) {
+        let imp = self.imp();
+        drop(imp.running.take());
+        imp.run_button.set_sensitive(true);
+        imp.stop_button.set_visible(false);
+        imp.results.set_running(false);
+        let (summary, label, dirty, first, entry) = {
+            let log = imp.log.borrow();
+            let Some(log) = log.as_ref() else {
+                return;
+            };
+            (
+                log.summary(),
+                transaction_dirty::transaction_label(log.transaction()),
+                transaction_dirty::transaction_dirty(log.lost(), log.transaction(), log.has_run()),
+                log.first_to_show(),
+                run_history::history_entry(query, metadata, started_at, log),
+            )
+        };
+        imp.results.set_summary(&summary);
+        imp.results.set_transaction(label.as_deref());
+        if let Some(first) = first.and_then(|first| u32::try_from(first).ok()) {
+            imp.results.select(first);
+        }
+        if imp.transaction_dirty.replace(dirty) != dirty {
+            self.emit_by_name::<()>("transaction-changed", &[&dirty]);
+        }
+        self.record_history(entry);
+        self.emit_by_name::<()>("run-state-changed", &[&false]);
+    }
+
+    fn record_history(&self, entry: tablepro_storage::query_history::NewEntry) {
+        let Some(deps) = self.deps() else {
+            return;
+        };
+        let Some(history) = deps.history.clone() else {
+            return;
+        };
+        drop(deps.tasks.spawn_task(async move {
             if let Err(error) = history.record(entry).await {
                 tracing::warn!(%error, "history record failed");
+            }
+        }));
+    }
+
+    /// Put the cursor where the server says a statement went wrong.
+    fn go_to_char(&self, position: usize) {
+        let imp = self.imp();
+        let buffer = self.buffer();
+        let iter = buffer.iter_at_offset(i32::try_from(position).unwrap_or(i32::MAX));
+        buffer.place_cursor(&iter);
+        imp.source_view.scroll_mark_onscreen(&buffer.get_insert());
+        imp.source_view.grab_focus();
+    }
+
+    fn connect_theme(&self, settings: &Rc<tablepro_storage::AppSettings>) {
+        let view = self.imp().source_view.get();
+        view.set_monospace(true);
+        crate::ui::style_scheme_resolver::apply(&view, &settings.style_scheme());
+        let view_for_theme = view.downgrade();
+        let settings_for_theme = settings.clone();
+        adw::StyleManager::default().connect_dark_notify(move |_| {
+            if let Some(view) = view_for_theme.upgrade() {
+                crate::ui::style_scheme_resolver::apply(&view, &settings_for_theme.style_scheme());
+            }
+        });
+        let view_for_scheme = view.downgrade();
+        settings.gio().connect_changed(
+            Some(tablepro_storage::settings::keys::STYLE_SCHEME),
+            move |settings, key| {
+                if let Some(view) = view_for_scheme.upgrade() {
+                    crate::ui::style_scheme_resolver::apply(&view, &settings.string(key));
+                }
+            },
+        );
+        crate::ui::editor_font_provider::apply(settings);
+        for key in [
+            tablepro_storage::settings::keys::USE_SYSTEM_FONT,
+            tablepro_storage::settings::keys::CUSTOM_FONT,
+        ] {
+            let settings_for_key = settings.clone();
+            settings.gio().connect_changed(Some(key), move |_, _| {
+                crate::ui::editor_font_provider::apply(&settings_for_key);
+            });
+        }
+    }
+
+    fn connect_completion(&self, schema_buffer: &gtk4::TextBuffer, buffer: &sourceview5::Buffer) {
+        let provider = sourceview5::CompletionWords::new(Some("SQL"));
+        provider.register(schema_buffer);
+        provider.register(buffer);
+        self.imp().source_view.completion().add_provider(&provider);
+    }
+
+    fn connect_buffer(&self, buffer: &sourceview5::Buffer) {
+        let imp = self.imp();
+        let cursor_info = imp.cursor_info.get();
+        let update_cursor = move |buffer: &sourceview5::Buffer| {
+            let iter = buffer.iter_at_mark(&buffer.get_insert());
+            cursor_info.set_label(&crate::i18n::gettext_f(
+                "Ln {line}, Col {column}",
+                &[
+                    ("line", &(iter.line() + 1).to_string()),
+                    ("column", &(iter.line_offset() + 1).to_string()),
+                ],
+            ));
+        };
+        update_cursor(buffer);
+        buffer.connect_cursor_position_notify(move |buffer| update_cursor(buffer));
+
+        let weak = self.downgrade();
+        buffer.connect_changed(move |buffer| {
+            if let Some(editor) = weak.upgrade() {
+                editor.emit_by_name::<()>("query-changed", &[&buffer_text(buffer)]);
+            }
+        });
+
+        let run_button = imp.run_button.get();
+        let update_label = move |buffer: &sourceview5::Buffer| {
+            if buffer.has_selection() {
+                run_button.set_label(&crate::i18n::gettext("Run Selection"));
+                run_button.set_tooltip_text(Some(&crate::i18n::gettext("Run the selected text (Ctrl+Return)")));
+            } else {
+                run_button.set_label(&crate::i18n::gettext("Run"));
+                run_button.set_tooltip_text(Some(&crate::i18n::gettext("Run the script (Ctrl+Return)")));
+            }
+        };
+        buffer.connect_has_selection_notify(move |buffer| update_label(buffer));
+    }
+
+    fn connect_buttons(&self) {
+        let imp = self.imp();
+        let weak = self.downgrade();
+        imp.run_button.connect_clicked(move |_| {
+            if let Some(editor) = weak.upgrade() {
+                editor.run();
+            }
+        });
+        let weak = self.downgrade();
+        imp.stop_button.connect_clicked(move |_| {
+            if let Some(editor) = weak.upgrade() {
+                editor.stop();
+            }
+        });
+        imp.menu_button.set_icon_name(crate::ui::icons::VIEW_MORE);
+    }
+
+    /// Context-menu actions from a result grid.
+    fn connect_grid(&self) {
+        let (sender, receiver) = relm4::channel::<GridMsg>();
+        let _ = self.imp().grid_sender.set(sender);
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            while let Some(message) = receiver.recv().await {
+                let Some(editor) = weak.upgrade() else {
+                    return;
+                };
+                match message {
+                    GridMsg::CopyToClipboard(text) => editor.emit_by_name::<()>("copy-to-clipboard", &[&text]),
+                    GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
+                    GridMsg::ExportResults(result) => {
+                        let name = export_name_for_query(&editor.selected_preview());
+                        let payload = glib::BoxedAnyObject::new((result, name));
+                        editor.emit_by_name::<()>("export-results", &[&payload]);
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+
+    /// The statement behind the result on screen, to name its export.
+    fn selected_preview(&self) -> String {
+        let imp = self.imp();
+        let index = imp.results.selected().unwrap_or(0) as usize;
+        imp.log
+            .borrow()
+            .as_ref()
+            .and_then(|log| log.entries().get(index).map(|entry| entry.preview.clone()))
+            .unwrap_or_default()
+    }
+
+    fn install_actions(&self) {
+        let actions = gio::SimpleActionGroup::new();
+        let weak = self.downgrade();
+        let open = gio::ActionEntry::builder("open-file")
+            .activate(move |_: &gio::SimpleActionGroup, _, _| {
+                if let Some(editor) = weak.upgrade() {
+                    editor.open_file();
+                }
+            })
+            .build();
+        let weak = self.downgrade();
+        let format = gio::ActionEntry::builder("format")
+            .activate(move |_: &gio::SimpleActionGroup, _, _| {
+                if let Some(editor) = weak.upgrade() {
+                    editor.format();
+                }
+            })
+            .build();
+        actions.add_action_entries([open, format]);
+        self.insert_action_group("editor", Some(&actions));
+    }
+
+    fn install_shortcuts(&self) {
+        let controller = gtk4::ShortcutController::new();
+        let shortcut = |key, modifiers, act: fn(&SqlEditor)| {
+            let weak = self.downgrade();
+            gtk4::Shortcut::builder()
+                .trigger(&gtk4::KeyvalTrigger::new(key, modifiers))
+                .action(&gtk4::CallbackAction::new(move |_, _| {
+                    if let Some(editor) = weak.upgrade() {
+                        act(&editor);
+                    }
+                    glib::Propagation::Stop
+                }))
+                .build()
+        };
+        let control = gtk4::gdk::ModifierType::CONTROL_MASK;
+        let control_shift = control | gtk4::gdk::ModifierType::SHIFT_MASK;
+        controller.add_shortcut(shortcut(gtk4::gdk::Key::Return, control, SqlEditor::run));
+        // Esc stops a running query; the editor is not a dialog, so Esc
+        // is otherwise free, and it is the key a user reaches for when a
+        // query runs away.
+        controller.add_shortcut(shortcut(
+            gtk4::gdk::Key::Escape,
+            gtk4::gdk::ModifierType::empty(),
+            SqlEditor::stop,
+        ));
+        controller.add_shortcut(shortcut(gtk4::gdk::Key::f, control_shift, SqlEditor::format));
+        controller.add_shortcut(shortcut(
+            gtk4::gdk::Key::Return,
+            control_shift,
+            SqlEditor::run_at_cursor,
+        ));
+        controller.add_shortcut(shortcut(gtk4::gdk::Key::slash, control, |editor| {
+            toggle_line_comment(&editor.buffer());
+        }));
+        self.imp().source_view.add_controller(controller);
+    }
+
+    fn install_drop_target(&self) {
+        let target = gtk4::DropTarget::new(gio::File::static_type(), gtk4::gdk::DragAction::COPY);
+        let weak = self.downgrade();
+        target.connect_drop(move |_, value, _, _| {
+            let (Ok(file), Some(editor)) = (value.get::<gio::File>(), weak.upgrade()) else {
+                return false;
+            };
+            // Adding to what is there keeps the user's work; Ctrl+Z
+            // takes the drop back.
+            glib::spawn_future_local(async move { editor.insert_file(file, false).await });
+            true
+        });
+        self.imp().source_view.add_controller(target);
+    }
+
+    fn open_file(&self) {
+        if buffer_text(&self.buffer()).trim().is_empty() {
+            self.choose_file();
+            return;
+        }
+        // Loading replaces what is in the tab, which is where the user's
+        // unrun work lives, so it asks first.
+        let dialog = adw::AlertDialog::new(
+            Some(&crate::i18n::gettext("Replace the Editor Contents?")),
+            Some(&crate::i18n::gettext(
+                "The file is loaded into this tab, and what is written here now is replaced. Undo brings it back.",
+            )),
+        );
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("replace", &crate::i18n::gettext("Replace"));
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let weak = self.downgrade();
+        dialog.connect_response(Some("replace"), move |_, _| {
+            if let Some(editor) = weak.upgrade() {
+                editor.choose_file();
+            }
+        });
+        dialog.present(Some(self));
+    }
+
+    fn choose_file(&self) {
+        let filter = gtk4::FileFilter::new();
+        filter.set_name(Some(&crate::i18n::gettext("SQL files")));
+        filter.add_suffix("sql");
+        filter.add_mime_type("application/sql");
+        let filters = gio::ListStore::new::<gtk4::FileFilter>();
+        filters.append(&filter);
+        let dialog = gtk4::FileDialog::builder()
+            .title(crate::i18n::gettext("Open SQL File"))
+            .modal(true)
+            .default_filter(&filter)
+            .filters(&filters)
+            .build();
+        let parent = self.root().and_downcast::<gtk4::Window>();
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            let Ok(file) = dialog.open_future(parent.as_ref()).await else {
+                return;
+            };
+            if let Some(editor) = weak.upgrade() {
+                editor.insert_file(file, true).await;
             }
         });
     }
 }
 
-fn clear_box(b: &gtk::Box) {
-    while let Some(child) = b.first_child() {
-        b.remove(&child);
-    }
+fn buffer_text(buffer: &impl IsA<gtk4::TextBuffer>) -> String {
+    let buffer = buffer.as_ref();
+    let (start, end) = buffer.bounds();
+    buffer.text(&start, &end, false).to_string()
 }
 
-/// A script that failed before any statement ran, shown the way a
-/// failing first statement is.
-fn failed_outcome(sql_preview: String, message: String) -> StatementOutcome {
-    StatementOutcome {
-        sql_preview,
-        elapsed_ms: 0,
-        rows_affected: None,
-        kind: StatementOutcomeKind::Error(message),
-    }
-}
+/// The most a file may be before the editor refuses it.
+///
+/// A dump can be gigabytes, and a text buffer holding one stops being
+/// an editor. Refusing is better than a window that will not paint.
+const MAX_SQL_FILE_BYTES: i64 = 8 * 1024 * 1024;
 
-/// Top-of-pane status string. Single-statement scripts show the
-/// classic "{n} rows in {ms} ms"; multi-statement scripts show
-/// "{ok}/{total} statements · {ms} ms" with a trailing error hint
-/// when applicable.
-fn summary_label(n_total: usize, n_ok: usize, total_ms: u128, has_error: bool) -> String {
-    if n_total == 1 {
-        let ms = total_ms.to_string();
-        if has_error {
-            crate::i18n::gettext_f("error in {ms} ms", &[("ms", &ms)])
-        } else {
-            crate::i18n::gettext_f("done in {ms} ms", &[("ms", &ms)])
-        }
-    } else {
-        let ok_s = n_ok.to_string();
-        let total_s = n_total.to_string();
-        let ms = total_ms.to_string();
-        let base = crate::i18n::gettext_f(
-            "{ok}/{total} statements · {ms} ms",
-            &[("ok", &ok_s), ("total", &total_s), ("ms", &ms)],
-        );
-        if has_error {
-            format!("{base} · {}", crate::i18n::gettext("error"))
-        } else {
-            base
-        }
+/// Read a file as text off the main thread, or say why it cannot be.
+async fn load_text(file: &gio::File) -> Result<String, String> {
+    let info = file
+        .query_info_future("standard::size", gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT)
+        .await;
+    if info.is_ok_and(|info| info.size() > MAX_SQL_FILE_BYTES) {
+        return Err(crate::i18n::gettext("That file is too large to open in the editor."));
     }
-}
-
-/// Mount one StatementOutcome into a parent box (for single-result
-/// renders) or as an `AdwViewStack` page (multi-result). Wraps grids
-/// in a ScrolledWindow so the result pane stays scroll-bounded.
-fn build_outcome_widget(o: &StatementOutcome, idx: usize, grid_sender: &relm4::Sender<GridMsg>) -> gtk::Widget {
-    match &o.kind {
-        StatementOutcomeKind::Rows(result) if !result.rows.is_empty() => {
-            let (column_view, _selection) = build_column_view(
-                result,
-                &[],
-                grid_sender.clone(),
-                false,
-                None,
-                None,
-                TabGridContext::default(),
-            );
-            let scrolled = gtk::ScrolledWindow::builder()
-                .child(&column_view)
-                .hexpand(true)
-                .vexpand(true)
-                .build();
-            scrolled.upcast()
-        }
-        StatementOutcomeKind::Rows(_) => {
-            let ms = o.elapsed_ms.to_string();
-            let description = match o.rows_affected {
-                Some(rows) => crate::i18n::ngettext_f(
-                    "{rows} row affected · {ms} ms",
-                    "{rows} rows affected · {ms} ms",
-                    u32::try_from(rows).unwrap_or(u32::MAX),
-                    &[("rows", &rows.to_string()), ("ms", &ms)],
-                ),
-                None => crate::i18n::gettext_f("No rows returned · {ms} ms", &[("ms", &ms)]),
-            };
-            adw::StatusPage::builder()
-                .title(crate::i18n::gettext_f(
-                    "Statement {n} executed",
-                    &[("n", &(idx + 1).to_string())],
-                ))
-                .description(description)
-                .icon_name(crate::ui::icons::SUCCESS)
-                .vexpand(true)
-                .build()
-                .upcast()
-        }
-        StatementOutcomeKind::Error(msg) => adw::StatusPage::builder()
-            .title(crate::i18n::gettext_f(
-                "Statement {n} failed",
-                &[("n", &(idx + 1).to_string())],
-            ))
-            .description(msg)
-            .icon_name(crate::ui::icons::DIALOG_ERROR)
-            .vexpand(true)
-            .build()
-            .upcast(),
-        StatementOutcomeKind::NotRun => adw::StatusPage::builder()
-            .title(crate::i18n::gettext_f(
-                "Statement {n} not run",
-                &[("n", &(idx + 1).to_string())],
-            ))
-            .description(crate::i18n::gettext("Skipped because an earlier statement failed."))
-            .icon_name(crate::ui::icons::MEDIA_PLAYBACK_STOP)
-            .vexpand(true)
-            .build()
-            .upcast(),
-    }
-}
-
-fn outcome_tab_label(idx: usize, o: &StatementOutcome) -> String {
-    match &o.kind {
-        StatementOutcomeKind::Rows(qr) => {
-            let n_str = qr.rows.len().to_string();
-            crate::i18n::gettext_f(
-                "Result {n} ({rows})",
-                &[("n", &(idx + 1).to_string()), ("rows", &n_str)],
-            )
-        }
-        StatementOutcomeKind::Error(_) => {
-            crate::i18n::gettext_f("Result {n} (error)", &[("n", &(idx + 1).to_string())])
-        }
-        StatementOutcomeKind::NotRun => {
-            crate::i18n::gettext_f("Result {n} (skipped)", &[("n", &(idx + 1).to_string())])
-        }
-    }
-}
-
-fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome], grid_sender: &relm4::Sender<GridMsg>) {
-    if outcomes.is_empty() {
-        let placeholder = adw::StatusPage::builder()
-            .title(crate::i18n::gettext("Empty query"))
-            .description(crate::i18n::gettext("Type a SQL statement and press Run."))
-            .icon_name(crate::ui::icons::TEXT_X_GENERIC)
-            .vexpand(true)
-            .build();
-        holder.append(&placeholder);
-        return;
-    }
-    if outcomes.len() == 1 {
-        let widget = build_outcome_widget(&outcomes[0], 0, grid_sender);
-        holder.append(&widget);
-        return;
-    }
-    // Multi-statement: nested AdwViewStack with a centred pill
-    // ViewSwitcher above. Mirrors the M-1 Table tab pattern (Data ↔
-    // Structure) so the visual vocabulary stays consistent across the
-    // app — same widget for "different views of the same execution".
-    let stack = adw::ViewStack::new();
-    for (idx, o) in outcomes.iter().enumerate() {
-        let widget = build_outcome_widget(o, idx, grid_sender);
-        let icon = match &o.kind {
-            StatementOutcomeKind::Rows(_) => crate::ui::icons::VIEW_GRID,
-            StatementOutcomeKind::Error(_) => crate::ui::icons::DIALOG_ERROR,
-            StatementOutcomeKind::NotRun => crate::ui::icons::STATEMENT_PENDING,
-        };
-        let page = stack.add_titled_with_icon(&widget, Some(&format!("r{idx}")), &outcome_tab_label(idx, o), icon);
-        if !o.sql_preview.is_empty() {
-            // Tooltip on the page widget itself surfaces the SQL
-            // preview when hovering the switcher pill.
-            widget.set_tooltip_text(Some(&o.sql_preview));
-            let _ = page;
-        }
-    }
-    let switcher = adw::ViewSwitcher::builder()
-        .stack(&stack)
-        .policy(adw::ViewSwitcherPolicy::Wide)
-        .build();
-    let switcher_holder = gtk::CenterBox::builder()
-        .margin_top(6)
-        .margin_bottom(6)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    switcher_holder.set_center_widget(Some(&switcher));
-    holder.append(&switcher_holder);
-    holder.append(&stack);
-    // First page is auto-selected; if the script had any errors,
-    // jump straight to the first failing statement so the user sees
-    // what broke without manual switching.
-    if let Some(err_idx) = outcomes
-        .iter()
-        .position(|o| matches!(o.kind, StatementOutcomeKind::Error(_)))
-    {
-        stack.set_visible_child_name(&format!("r{err_idx}"));
-    }
+    let (bytes, _) = file.load_contents_future().await.map_err(|error| {
+        tracing::warn!(%error, "could not read a file for the editor");
+        crate::i18n::gettext("That file could not be read.")
+    })?;
+    String::from_utf8(bytes.to_vec()).map_err(|_| crate::i18n::gettext("That file is not UTF-8 text."))
 }
 
 /// Toggle SQL line-comment (`-- `) for the lines in the buffer's
 /// current selection (or the cursor's line when nothing is selected).
 /// If every non-blank line in the range is already commented, strip
 /// the prefix; otherwise prepend `-- ` after each line's leading
-/// whitespace. Blank lines are skipped in both directions so the
-/// transform is reversible — toggling twice returns the original
-/// text. The whole edit is wrapped in begin/end_user_action so a
-/// single Ctrl+Z reverts it regardless of line count.
-fn toggle_line_comment(buffer: &gtk::TextBuffer) {
+/// whitespace. Blank lines are skipped in both directions so toggling
+/// twice returns the original text, and the whole edit is one undo step.
+fn toggle_line_comment(buffer: &gtk4::TextBuffer) {
     let (sel_start, sel_end) = buffer.selection_bounds().unwrap_or_else(|| {
         let i = buffer.iter_at_mark(&buffer.get_insert());
         (i, i)
     });
     let start_line = sel_start.line();
     let mut end_line = sel_end.line();
-    // Selection that ends at column 0 of the next line shouldn't
-    // include that empty trailing row — matches the behaviour of
-    // VS Code / Sublime where dragging-and-releasing at the line
-    // start doesn't comment the line you released on.
+    // A selection that ends at column 0 of the next line does not take
+    // that line in, as in other editors.
     if sel_end.line_offset() == 0 && end_line > start_line {
         end_line -= 1;
     }
@@ -1042,10 +793,6 @@ fn toggle_line_comment(buffer: &gtk::TextBuffer) {
         })
         .collect();
 
-    // Comment vs uncomment decision: if every non-blank line is
-    // already commented, this is an uncomment toggle; otherwise
-    // it's a comment toggle. Mixed selections (some commented, some
-    // not) all become commented — matches IDE convention.
     let all_commented = lines
         .iter()
         .filter(|l| !l.trim().is_empty())
@@ -1064,9 +811,6 @@ fn toggle_line_comment(buffer: &gtk::TextBuffer) {
         iter.forward_chars(leading_chars);
 
         if all_commented {
-            // Strip "-- " or "--" depending on what's there. The
-            // space is part of the canonical form we insert, so
-            // peel it off too when present.
             let trimmed = original.trim_start();
             let strip_chars: i32 = if trimmed.starts_with("-- ") {
                 3
@@ -1097,13 +841,13 @@ AND OR IS LIKE IN BETWEEN EXISTS ANY \
 COUNT SUM AVG MIN MAX CASE WHEN THEN ELSE END \
 TRUE FALSE ASC DESC RETURNING";
 
-pub fn build_schema_buffer() -> gtk::TextBuffer {
-    let buf = gtk::TextBuffer::new(None);
+pub fn build_schema_buffer() -> gtk4::TextBuffer {
+    let buf = gtk4::TextBuffer::new(None);
     buf.set_text(SQL_KEYWORDS);
     buf
 }
 
-pub fn update_schema_buffer(buffer: &gtk::TextBuffer, schema_words: &[String]) {
+pub fn update_schema_buffer(buffer: &gtk4::TextBuffer, schema_words: &[String]) {
     let mut text = String::from(SQL_KEYWORDS);
     for w in schema_words {
         text.push(' ');
@@ -1146,92 +890,4 @@ pub fn derive_tab_label(query: &str) -> String {
         return cleaned;
     }
     crate::i18n::gettext("Empty query")
-}
-
-/// The editor's own menu.
-fn editor_menu() -> relm4::gtk::gio::Menu {
-    let menu = relm4::gtk::gio::Menu::new();
-    menu.append(Some(&crate::i18n::gettext("Open SQL File…")), Some("editor.open-file"));
-    // Saving lives on the window, because a saved query is kept under
-    // the connection rather than under this tab.
-    menu.append(Some(&crate::i18n::gettext("Save Query…")), Some("win.save-query"));
-    menu.append(Some(&crate::i18n::gettext("Format")), Some("editor.format"));
-    menu
-}
-
-/// The most a file may be before the editor refuses it.
-///
-/// A dump can be gigabytes, and a text buffer holding one stops being
-/// an editor. Refusing is better than a window that will not paint.
-const MAX_SQL_FILE_BYTES: u64 = 8 * 1024 * 1024;
-
-/// Ask for a `.sql` file and read it off the main thread.
-fn choose_sql_file(sender: &ComponentSender<SqlEditor>) {
-    use relm4::gtk::gio;
-
-    let filter = gtk::FileFilter::new();
-    filter.set_name(Some(&crate::i18n::gettext("SQL files")));
-    filter.add_suffix("sql");
-    filter.add_mime_type("application/sql");
-    let filters = gio::ListStore::new::<gtk::FileFilter>();
-    filters.append(&filter);
-    let dialog = gtk::FileDialog::builder()
-        .title(crate::i18n::gettext("Open SQL File"))
-        .modal(true)
-        .default_filter(&filter)
-        .filters(&filters)
-        .build();
-
-    let sender = sender.clone();
-    dialog.open(gtk::Window::NONE, gio::Cancellable::NONE, move |outcome| {
-        let Ok(file) = outcome else { return };
-        let too_big = file
-            .query_info("standard::size", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-            .map(|info| info.size() as u64 > MAX_SQL_FILE_BYTES)
-            .unwrap_or(false);
-        if too_big {
-            sender.input(SqlEditorInput::FileLoaded(None));
-            return;
-        }
-        let sender = sender.clone();
-        glib::spawn_future_local(async move {
-            // gio reads off the main thread and hands the bytes back
-            // on it, so a file on a slow disk does not freeze the UI.
-            let loaded = file.load_contents_future().await;
-            let text = loaded
-                .ok()
-                .and_then(|(bytes, _)| String::from_utf8(bytes.to_vec()).ok());
-            sender.input(SqlEditorInput::FileLoaded(text));
-        });
-    });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{export_name_for_query, summary_label};
-
-    #[test]
-    fn export_name_slugs_the_statement() {
-        assert_eq!(export_name_for_query("SELECT * FROM users"), "select-from-users");
-        assert_eq!(export_name_for_query("  select id\nfrom t"), "select-id");
-    }
-
-    #[test]
-    fn export_name_falls_back_when_there_is_no_statement() {
-        assert_eq!(export_name_for_query("   \n  "), crate::i18n::gettext("query-results"));
-    }
-
-    #[test]
-    fn summary_label_single_statement_done() {
-        let s = summary_label(1, 1, 42, false);
-        assert!(s.contains("42"));
-        assert!(!s.contains("/"));
-    }
-
-    #[test]
-    fn summary_label_multi_statement_includes_counts() {
-        let s = summary_label(3, 2, 100, true);
-        assert!(s.contains("2/3"));
-        assert!(s.contains("100"));
-    }
 }

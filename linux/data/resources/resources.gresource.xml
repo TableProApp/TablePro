@@ -5,6 +5,8 @@
     <file compressed="true" preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sqlite-file-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/ssh-section.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/tls-section.ui</file>

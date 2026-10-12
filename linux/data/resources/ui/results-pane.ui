@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProResultsPane" parent="AdwBin">
+    <property name="child">
+      <object class="AdwBreakpointBin">
+        <property name="width-request">360</property>
+        <property name="height-request">180</property>
+        <child>
+          <object class="AdwBreakpoint">
+            <condition>max-width: 560sp</condition>
+            <setter object="split_view" property="collapsed">True</setter>
+          </object>
+        </child>
+        <property name="child">
+          <object class="AdwToolbarView">
+            <child type="top">
+              <object class="GtkBox">
+                <property name="spacing">8</property>
+                <property name="margin-top">6</property>
+                <property name="margin-bottom">6</property>
+                <property name="margin-start">6</property>
+                <property name="margin-end">6</property>
+                <child>
+                  <object class="GtkToggleButton" id="sidebar_toggle">
+                    <property name="tooltip-text" translatable="yes">Show results list</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">Show results list</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwSpinner" id="spinner">
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="summary_label">
+                    <property name="hexpand">true</property>
+                    <property name="xalign">0</property>
+                    <property name="ellipsize">end</property>
+                    <style>
+                      <class name="dim-label"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="transaction_label">
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="warning"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <property name="content">
+              <object class="AdwOverlaySplitView" id="split_view">
+                <property name="show-sidebar">false</property>
+                <property name="sidebar">
+                  <object class="GtkScrolledWindow">
+                    <property name="hscrollbar-policy">never</property>
+                    <property name="child">
+                      <object class="GtkListView" id="list_view">
+                        <style>
+                          <class name="navigation-sidebar"/>
+                        </style>
+                        <accessibility>
+                          <property name="label" translatable="yes">Results</property>
+                        </accessibility>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+                <property name="content">
+                  <object class="GtkStack" id="stack">
+                    <child>
+                      <object class="GtkStackPage">
+                        <property name="name">empty</property>
+                        <property name="child">
+                          <object class="AdwStatusPage">
+                            <property name="title" translatable="yes">No Results Yet</property>
+                            <property name="description" translatable="yes">Run a query to see what it returns.</property>
+                            <property name="icon-name">text-x-generic-symbolic</property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

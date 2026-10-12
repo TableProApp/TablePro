@@ -20,6 +20,7 @@ pub const PAN_DOWN: &str = "pan-down-symbolic";
 pub const PREFERENCES_SYSTEM: &str = "preferences-system-symbolic";
 pub const PROCESS_STOP: &str = "process-stop-symbolic";
 pub const STATEMENT_PENDING: &str = "statement-pending-symbolic";
+pub const SIDEBAR_SHOW: &str = "sidebar-show-symbolic";
 pub const SUCCESS: &str = "object-select-symbolic";
 pub const SYSTEM_SEARCH: &str = "system-search-symbolic";
 pub const TABLE_RELATION: &str = "table-relation-symbolic";
@@ -60,6 +61,7 @@ pub const ALL: &[&str] = &[
     PAN_DOWN,
     PREFERENCES_SYSTEM,
     PROCESS_STOP,
+    SIDEBAR_SHOW,
     STATEMENT_PENDING,
     SUCCESS,
     SYSTEM_SEARCH,

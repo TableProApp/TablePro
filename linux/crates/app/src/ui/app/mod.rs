@@ -209,7 +209,7 @@ pub(super) const CLOSED_TABS_CAPACITY: usize = 10;
 const WORKSPACE_PERSIST_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub struct EditorTabSlot {
-    pub controller: Controller<SqlEditor>,
+    pub editor: SqlEditor,
     pub page: adw::TabPage,
     /// The file this tab's text is written to. The text itself lives in
     /// the buffer, not here.

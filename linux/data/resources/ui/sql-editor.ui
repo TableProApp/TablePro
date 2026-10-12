@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <requires lib="gtksourceview" version="5.18"/>
+  <menu id="editor_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Open SQL File…</attribute>
+        <attribute name="action">editor.open-file</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Save Query…</attribute>
+        <attribute name="action">win.save-query</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Format</attribute>
+        <attribute name="action">editor.format</attribute>
+      </item>
+    </section>
+  </menu>
+  <template class="TableProSqlEditor" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="GtkBox">
+            <property name="spacing">8</property>
+            <property name="margin-top">8</property>
+            <property name="margin-bottom">8</property>
+            <property name="margin-start">8</property>
+            <property name="margin-end">8</property>
+            <child>
+              <object class="GtkLabel" id="cursor_info">
+                <property name="hexpand">true</property>
+                <property name="halign">end</property>
+                <property name="margin-end">8</property>
+                <style>
+                  <class name="dim-label"/>
+                  <class name="monospace"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuButton" id="menu_button">
+                <property name="tooltip-text" translatable="yes">Editor options</property>
+                <property name="menu-model">editor_menu</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <accessibility>
+                  <property name="label" translatable="yes">Editor options</property>
+                </accessibility>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton" id="stop_button">
+                <property name="label" translatable="yes">Stop</property>
+                <property name="tooltip-text" translatable="yes">Stop the running query (Esc)</property>
+                <property name="visible">false</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton" id="run_button">
+                <property name="label" translatable="yes">Run</property>
+                <property name="tooltip-text" translatable="yes">Run the script (Ctrl+Return)</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkPaned">
+            <property name="orientation">vertical</property>
+            <property name="position">280</property>
+            <property name="vexpand">true</property>
+            <property name="hexpand">true</property>
+            <property name="shrink-end-child">false</property>
+            <property name="start-child">
+              <object class="GtkScrolledWindow">
+                <property name="min-content-height">200</property>
+                <property name="child">
+                  <object class="GtkSourceView" id="source_view">
+                    <property name="show-line-numbers">true</property>
+                    <property name="monospace">true</property>
+                    <property name="auto-indent">true</property>
+                    <property name="highlight-current-line">true</property>
+                    <property name="tab-width">4</property>
+                    <property name="top-margin">8</property>
+                    <property name="bottom-margin">8</property>
+                    <property name="left-margin">8</property>
+                    <property name="right-margin">8</property>
+                    <style>
+                      <class name="sql-editor"/>
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">SQL editor</property>
+                    </accessibility>
+                  </object>
+                </property>
+              </object>
+            </property>
+            <property name="end-child">
+              <object class="TableProResultsPane" id="results"/>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>
