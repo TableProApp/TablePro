@@ -24,6 +24,7 @@ use crate::flavour::MySqlFlavour;
 pub struct MySqlDialect {
     major: u32,
     minor: u32,
+    patch: u32,
     flavour: MySqlFlavour,
 }
 
@@ -32,6 +33,7 @@ impl MySqlDialect {
         Self {
             major: server.major,
             minor: server.minor,
+            patch: server.patch,
             flavour,
         }
     }
@@ -40,8 +42,20 @@ impl MySqlDialect {
         self.flavour
     }
 
-    pub fn version(&self) -> (u32, u32) {
-        (self.major, self.minor)
+    pub fn version(&self) -> (u32, u32, u32) {
+        (self.major, self.minor, self.patch)
+    }
+
+    /// Whether this is MySQL at `version` or later. MariaDB numbers its
+    /// releases on its own line, so no MySQL version gate applies to it.
+    pub fn mysql_at_least(&self, version: (u32, u32, u32)) -> bool {
+        self.flavour == MySqlFlavour::MySql && self.version() >= version
+    }
+
+    /// Indexes on expressions, and the STATISTICS column naming them,
+    /// arrived in MySQL 8.0.13.
+    pub fn has_functional_key_parts(&self) -> bool {
+        self.mysql_at_least((8, 0, 13))
     }
 }
 
@@ -69,11 +83,10 @@ const fn ddl_capabilities(expression_index_keys: bool) -> DdlCapabilities {
     }
 }
 
-/// Functional key parts arrived in MySQL 8.0.13; MariaDB has none.
-static MYSQL_DDL: MySqlDdl = MySqlDdl {
+static FUNCTIONAL_KEY_DDL: MySqlDdl = MySqlDdl {
     capabilities: ddl_capabilities(true),
 };
-static MARIADB_DDL: MySqlDdl = MySqlDdl {
+static COLUMN_KEY_DDL: MySqlDdl = MySqlDdl {
     capabilities: ddl_capabilities(false),
 };
 
@@ -211,9 +224,9 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
-        Some(match self.flavour {
-            MySqlFlavour::MySql => &MYSQL_DDL,
-            MySqlFlavour::MariaDb => &MARIADB_DDL,
+        Some(match self.has_functional_key_parts() {
+            true => &FUNCTIONAL_KEY_DDL,
+            false => &COLUMN_KEY_DDL,
         })
     }
 
@@ -405,7 +418,49 @@ mod tests {
     use super::*;
 
     fn dialect(flavour: MySqlFlavour) -> MySqlDialect {
-        MySqlDialect::new(flavour, &ServerInfo::new(flavour.product(), "8.4.3", 8, 4))
+        MySqlDialect::new(flavour, &ServerInfo::new(flavour.product(), "8.4.3", 8, 4, 3))
+    }
+
+    #[test]
+    fn renames_quote_with_backticks() {
+        let dialect = dialect(MySqlFlavour::MySql);
+
+        assert_eq!(
+            tablepro_core::sql_ddl::build_rename_table("mysql", &dialect, None, "old", "new`t").unwrap(),
+            "ALTER TABLE `old` RENAME TO `new``t`"
+        );
+        assert_eq!(
+            tablepro_core::sql_ddl::build_rename_column("mysql", &dialect, None, "t", "old", "new").unwrap(),
+            "ALTER TABLE `t` RENAME COLUMN `old` TO `new`"
+        );
+    }
+
+    #[test]
+    fn functional_key_parts_are_gated_on_mysql_8_0_13() {
+        let mysql = |patch| {
+            MySqlDialect::new(
+                MySqlFlavour::MySql,
+                &ServerInfo::new("MySQL", format!("8.0.{patch}"), 8, 0, patch),
+            )
+        };
+        let expression_keys = |dialect: MySqlDialect| {
+            dialect
+                .ddl()
+                .is_some_and(|ddl| ddl.capabilities().expression_index_keys)
+        };
+
+        assert!(!expression_keys(mysql(12)));
+        assert!(expression_keys(mysql(13)));
+        assert!(!mysql(20).mysql_at_least((8, 0, 21)));
+        assert!(mysql(21).mysql_at_least((8, 0, 21)));
+        assert!(
+            !MySqlDialect::new(
+                MySqlFlavour::MariaDb,
+                &ServerInfo::new("MariaDB", "11.4.5-MariaDB", 11, 4, 5)
+            )
+            .mysql_at_least((8, 0, 13)),
+            "MariaDB's version is not on MySQL's line"
+        );
     }
 
     fn column(kind: ColumnKind) -> ColumnInfo {

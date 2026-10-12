@@ -159,8 +159,8 @@ pub(crate) async fn fetch_columns(
         .collect())
 }
 
-/// MySQL 8 names a functional key part in EXPRESSION; MariaDB has no
-/// such column, and no functional key parts.
+/// MySQL 8.0.13 and later name a functional key part in EXPRESSION;
+/// MariaDB has no such column, and no functional key parts.
 const MYSQL_INDEXES_SQL: &str = "\
 SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, EXPRESSION
 FROM information_schema.STATISTICS
@@ -178,9 +178,9 @@ pub(crate) async fn fetch_indexes(
     table: &TableRef,
 ) -> Result<Vec<IndexInfo>, DriverError> {
     let flavour = dialect.flavour();
-    let sql = match (flavour, dialect.version()) {
-        (MySqlFlavour::MySql, (major, _)) if major >= 8 => MYSQL_INDEXES_SQL,
-        _ => MARIADB_INDEXES_SQL,
+    let sql = match dialect.has_functional_key_parts() {
+        true => MYSQL_INDEXES_SQL,
+        false => MARIADB_INDEXES_SQL,
     };
     let rows = catalog_rows(connection, flavour, sql, "STATISTICS", &table_binds(table)).await?;
     let mut indexes: Vec<IndexInfo> = Vec::new();
@@ -375,7 +375,7 @@ async fn engine_attributes(
     table: &TableRef,
 ) -> Vec<(String, String)> {
     let flavour = dialect.flavour();
-    if flavour != MySqlFlavour::MySql || dialect.version().0 < 8 {
+    if !dialect.mysql_at_least((8, 0, 21)) {
         return Vec::new();
     }
     let rows = match catalog_rows(

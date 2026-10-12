@@ -70,8 +70,15 @@ pub fn options_over(
 
 /// A server that takes plaintext logins, which every test but the TLS
 /// ones uses.
+/// The password user may create triggers and routines, so a test
+/// needs root only for what only root may do.
 pub async fn start(flavour: MysqlFlavour) -> MysqlFixture {
-    start_with(MysqlOptions::new(flavour).allowing_plaintext()).await
+    start_with(
+        MysqlOptions::new(flavour)
+            .allowing_plaintext()
+            .trusting_function_creators(),
+    )
+    .await
 }
 
 pub async fn start_with(options: MysqlOptions) -> MysqlFixture {

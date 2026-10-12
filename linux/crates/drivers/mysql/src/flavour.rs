@@ -25,16 +25,16 @@ impl MySqlFlavour {
         }
     }
 
-    /// What the server reported, with its major and minor version read
-    /// from the leading `major.minor`.
+    /// What the server reported, with its version read from the leading
+    /// `major.minor.patch`.
     pub fn server_info(self, version: &str) -> ServerInfo {
         let mut parts = version
             .split(|character: char| !character.is_ascii_digit())
             .filter(|part| !part.is_empty())
             .map(|part| part.parse::<u32>().unwrap_or(0));
-        let major = parts.next().unwrap_or(0);
-        let minor = parts.next().unwrap_or(0);
-        ServerInfo::new(self.product(), version, major, minor)
+        let mut next = || parts.next().unwrap_or(0);
+        let (major, minor, patch) = (next(), next(), next());
+        ServerInfo::new(self.product(), version, major, minor, patch)
     }
 }
 
@@ -50,8 +50,14 @@ mod tests {
         assert_eq!(MySqlFlavour::detect("8.0.40-0ubuntu0.24.04.1"), MySqlFlavour::MySql);
 
         let info = MySqlFlavour::MariaDb.server_info("11.4.5-MariaDB-ubu2404");
-        assert_eq!((info.product.as_str(), info.major, info.minor), ("MariaDB", 11, 4));
-        let info = MySqlFlavour::MySql.server_info("8.4.3");
-        assert_eq!((info.product.as_str(), info.major, info.minor), ("MySQL", 8, 4));
+        assert_eq!(
+            (info.product.as_str(), info.major, info.minor, info.patch),
+            ("MariaDB", 11, 4, 5)
+        );
+        let info = MySqlFlavour::MySql.server_info("8.0.40-0ubuntu0.24.04.1");
+        assert_eq!(
+            (info.product.as_str(), info.major, info.minor, info.patch),
+            ("MySQL", 8, 0, 40)
+        );
     }
 }

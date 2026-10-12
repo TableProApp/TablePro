@@ -4,8 +4,8 @@ use testcontainers_modules::postgres::Postgres;
 
 use crate::container_file::with_files;
 use crate::{
-    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, HbaMode, PkiFile, PostgresVersion, TestNetwork,
-    TestPki,
+    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, HbaMode, PkiAlgorithm, PkiFile, PostgresVersion,
+    TestNetwork, TestPki,
 };
 
 const DATABASE: &str = "tablepro";
@@ -32,23 +32,31 @@ impl PostgresFixture {
     pub const NETWORK_ROLE: &'static str = "postgres";
 
     pub async fn start(hba: HbaMode) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::default(), None).await
+        Self::launch(hba, PostgresVersion::default(), None, PkiAlgorithm::default()).await
     }
 
     pub async fn start_in(hba: HbaMode, network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::default(), Some(network)).await
+        Self::launch(hba, PostgresVersion::default(), Some(network), PkiAlgorithm::default()).await
     }
 
     pub async fn start_version(version: PostgresVersion, hba: HbaMode) -> Result<Self, FixtureError> {
-        Self::launch(hba, version, None).await
+        Self::launch(hba, version, None, PkiAlgorithm::default()).await
+    }
+
+    /// A server whose whole PKI is of one key type, for the channel
+    /// binding cases: the server hashes its certificate by the
+    /// algorithm that signed it.
+    pub async fn start_with_pki(hba: HbaMode, algorithm: PkiAlgorithm) -> Result<Self, FixtureError> {
+        Self::launch(hba, PostgresVersion::default(), None, algorithm).await
     }
 
     async fn launch(
         hba: HbaMode,
         version: PostgresVersion,
         network: Option<&TestNetwork>,
+        algorithm: PkiAlgorithm,
     ) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate()?;
+        let pki = TestPki::generate_with(algorithm)?;
         let password = FixtureCredentials::generate_password();
         let image = version.image();
         let mut request = Postgres::default()

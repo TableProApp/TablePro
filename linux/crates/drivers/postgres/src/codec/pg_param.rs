@@ -58,10 +58,8 @@ pub(crate) fn wire_type(param: &BoundParam) -> Type {
         ParamType::Float64 => Type::FLOAT8,
         ParamType::Text | ParamType::ServerText(_) => Type::TEXT,
         ParamType::FixedText => Type::BPCHAR,
-        ParamType::Bytes => match param.value() {
-            Value::Bits(_) => Type::VARBIT,
-            _ => Type::BYTEA,
-        },
+        ParamType::Bytes => Type::BYTEA,
+        ParamType::Bits => Type::VARBIT,
         ParamType::Uuid => Type::UUID,
         ParamType::Json => Type::JSON,
         ParamType::JsonBinary => Type::JSONB,
@@ -115,8 +113,9 @@ fn encode(param: &BoundParam, out: &mut BytesMut) -> Result<IsNull, EncodeError>
         (ParamType::Text | ParamType::FixedText | ParamType::ServerText(_), Value::Text(text)) => {
             wire::text_to_sql(text, out)
         }
+        (ParamType::ServerText(_), Value::Other(other)) => wire::text_to_sql(&other.text, out),
         (ParamType::Bytes, Value::Bytes(bytes)) => wire::bytea_to_sql(bytes, out),
-        (ParamType::Bytes, Value::Bits(bits)) => varbit(bits, out)?,
+        (ParamType::Bits, Value::Bits(bits)) => varbit(bits, out)?,
         (ParamType::Uuid, Value::Uuid(uuid)) => wire::uuid_to_sql(*uuid.as_bytes(), out),
         (ParamType::Json, Value::Json(json)) => wire::text_to_sql(json.as_str(), out),
         (ParamType::JsonBinary, Value::Json(json)) => {
@@ -255,7 +254,7 @@ mod tests {
 
     #[test]
     fn bits_go_as_varbit_and_server_text_as_text() {
-        let bits = bound(Value::Bits(BitString::from_u64(0b101, 3)), ParamType::Bytes);
+        let bits = bound(Value::Bits(BitString::from_u64(0b101, 3)), ParamType::Bits);
         let (_, out) = encoded(&bits);
         assert_eq!(wire_type(&bits), Type::VARBIT);
         assert_eq!(&out[..], &[0, 0, 0, 3, 0b1010_0000]);
@@ -266,6 +265,16 @@ mod tests {
         );
         assert_eq!(wire_type(&mood), Type::TEXT);
         assert_eq!(&encoded(&mood).1[..], b"happy");
+
+        let address = bound(
+            Value::Other(Box::new(tablepro_core::value::OtherValue {
+                type_name: "inet".to_owned(),
+                text: "10.0.0.1/32".to_owned(),
+            })),
+            ParamType::ServerText(SqlTypeExpr::from_catalog_text("inet")),
+        );
+        assert_eq!(wire_type(&address), Type::TEXT);
+        assert_eq!(&encoded(&address).1[..], b"10.0.0.1/32");
     }
 
     #[test]

@@ -148,6 +148,31 @@ mod tests {
     }
 
     #[test]
+    fn a_wrapped_statement_keeps_every_marker_with_its_parameter() {
+        let dialect = TestDialect::exact().with_markers(TestMarkers::Positional);
+        let (a, b) = (int(), text());
+        let mut builder = StatementBuilder::new();
+        builder.push_sql("SELECT * FROM t WHERE a = ");
+        builder
+            .push_value(&dialect, Value::Int(1), BindTarget::Column(&a))
+            .expect("bind a");
+        builder.push_sql(" AND b = ");
+        builder
+            .push_value(&dialect, Value::Text("x".to_owned()), BindTarget::Column(&b))
+            .expect("bind b");
+        let statement = builder.finish();
+        let params = statement.params().to_vec();
+
+        let explained = statement.wrapped("EXPLAIN (FORMAT JSON) ", "");
+
+        assert_eq!(
+            explained.sql(),
+            "EXPLAIN (FORMAT JSON) SELECT * FROM t WHERE a = ? AND b = ?"
+        );
+        assert_eq!(explained.params(), params.as_slice());
+    }
+
+    #[test]
     fn the_dialect_sees_the_count_already_bound() {
         let dialect = TestDialect::exact();
         let a = int();

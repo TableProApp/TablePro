@@ -383,7 +383,7 @@ impl Connection for PgConnection {
             batch: batch.clone(),
             settings: self.settings,
             ledger: ledger.clone(),
-            legacy_txid: !self.server.at_least(13, 0),
+            legacy_txid: !self.server.at_least(13, 0, 0),
         };
         let work_stop = stop.clone();
         let outcome = self

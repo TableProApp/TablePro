@@ -17,6 +17,13 @@ use tablepro_core::value::{Temporal, Value};
 use crate::catalog::SqlServerType;
 use crate::ddl::MSSQL_DDL;
 
+/// A string literal in the national character set. Without the `N`, the
+/// server reads the text in the database's code page and loses every
+/// character outside it.
+pub(crate) fn national_literal(text: &str) -> String {
+    format!("N'{}'", text.replace('\'', "''"))
+}
+
 /// How SQL Server spells SQL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MssqlDialect {
@@ -52,21 +59,15 @@ impl SqlDialect for MssqlDialect {
 
     fn placeholder(&self, ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {
         let marker = format!("@P{}", ordinal + 1);
-        let (value, param_type) = match target {
-            BindTarget::Pattern => (value, ParamType::Text),
+        let param_type = match target {
+            BindTarget::Pattern => ParamType::Text,
             BindTarget::EngineRowId(_) => {
                 return Err(BindError::Unrepresentable {
                     expected: "a SQL Server column",
                     found: "another engine's row address",
                 });
             }
-            BindTarget::Column(column) => (value, param_type_for(column)?),
-        };
-        // A value only the server could name travels as the text it was
-        // read as, and the cast turns it back into the column's type.
-        let value = match (&param_type, value) {
-            (ParamType::ServerText(_), Value::Other(other)) => Value::Text(other.text),
-            (_, value) => value,
+            BindTarget::Column(column) => param_type_for(column)?,
         };
         let sql = match &param_type {
             ParamType::ServerText(cast) => format!("CAST({marker} AS {cast})"),
@@ -76,7 +77,6 @@ impl SqlDialect for MssqlDialect {
     }
 
     fn literal(&self, value: &Value, column: &ColumnType) -> Result<String, LiteralError> {
-        let quoted = |text: &str| format!("N'{}'", text.replace('\'', "''"));
         match value {
             Value::Null => Ok("NULL".to_owned()),
             // BIT takes 0 or 1; there is no boolean literal.
@@ -89,9 +89,9 @@ impl SqlDialect for MssqlDialect {
             // float rather than reading back as the integer 2.
             Value::Float32(real) if real.is_finite() => Ok(format!("{:?}", f64::from(*real))),
             Value::Float64(real) if real.is_finite() => Ok(format!("{real:?}")),
-            Value::Text(text) => Ok(quoted(text)),
-            Value::Json(json) => Ok(quoted(json.as_str())),
-            Value::Other(other) => Ok(quoted(&other.text)),
+            Value::Text(text) => Ok(national_literal(text)),
+            Value::Json(json) => Ok(national_literal(json.as_str())),
+            Value::Other(other) => Ok(national_literal(&other.text)),
             Value::Bytes(bytes) => Ok(format!("0x{}", tablepro_core::hex::encode_lower(bytes))),
             Value::Uuid(uuid) => Ok(format!("'{uuid}'")),
             // ISO 8601 with the `T` reads the same under every language

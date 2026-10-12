@@ -11,6 +11,7 @@ pub mod read_only;
 pub mod row_guards;
 pub mod row_limit;
 pub mod statement_timeout;
+pub mod streaming;
 pub mod suite_flags;
 pub mod tls;
 pub mod type_fallback;

@@ -192,6 +192,6 @@ async fn the_server_info_names_the_library() {
     let info = connection.server_info();
 
     assert_eq!(info.product, "SQLite");
-    assert!(info.at_least(3, 37), "{info:?}");
+    assert!(info.at_least(3, 37, 0), "{info:?}");
     connection.close().await.unwrap();
 }

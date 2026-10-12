@@ -197,7 +197,7 @@ async fn fetch_table_definition_lists_inbound_foreign_keys() {
 async fn objects_and_estimates_are_listed() {
     for flavour in FLAVOURS {
         let fixture = start(flavour).await;
-        let connection = crate::support::connect_root(&fixture).await;
+        let connection = connect(&fixture, false).await;
         setup(
             connection.as_ref(),
             &[

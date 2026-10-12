@@ -93,10 +93,6 @@ impl SqlDialect for PgDialect {
             BindTarget::EngineRowId(part) => row_id_binding(part, &value)?,
             BindTarget::Column(column) => column_binding(column)?,
         };
-        let value = match &binding.param_type {
-            ParamType::ServerText(_) => as_server_text(value),
-            _ => value,
-        };
         let param = BoundParam::new(value, binding.param_type)?;
         let sql = match binding.cast {
             Some(cast) => format!("{marker}::{cast}"),
@@ -283,7 +279,7 @@ fn column_binding(column: &ColumnInfo) -> Result<Binding, BindError> {
         ColumnKind::Uuid => Binding::plain(ParamType::Uuid),
         ColumnKind::Json { binary: false } => Binding::plain(ParamType::Json),
         ColumnKind::Json { binary: true } => Binding::plain(ParamType::JsonBinary),
-        ColumnKind::BitString { .. } => Binding::server_text(SqlTypeExpr::from_catalog_text(BIT_CAST)),
+        ColumnKind::BitString { .. } => Binding::cast(ParamType::Bits, SqlTypeExpr::from_catalog_text(BIT_CAST)),
         // A type only the server names binds as text cast to the type the
         // catalogue gave: guessing from the display name could pick the
         // wrong one.
@@ -308,17 +304,6 @@ fn integer_param_type(kind: IntegerKind) -> ParamType {
         (IntegerWidth::W64 | IntegerWidth::W128 | IntegerWidth::W256, true) | (IntegerWidth::W32, false) => {
             ParamType::Int64
         }
-    }
-}
-
-/// A value bound as the server's text. A network address or a bit
-/// string the grid read back is carried as its own value, and it is that
-/// value's text the server parses.
-fn as_server_text(value: Value) -> Value {
-    match value {
-        Value::Other(other) => Value::Text(other.text),
-        Value::Bits(bits) => Value::Text(bits.to_string()),
-        other => other,
     }
 }
 
@@ -375,7 +360,7 @@ mod tests {
     use super::*;
 
     fn dialect() -> PgDialect {
-        PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0))
+        PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
     }
 
     fn column(kind: ColumnKind, catalog: Option<&str>) -> ColumnInfo {
@@ -551,8 +536,8 @@ mod tests {
         .expect("an address");
         assert_eq!(placeholder.sql, "$1::inet");
         assert_eq!(
-            placeholder.param.map(|param| param.value().clone()),
-            Some(Value::Text("10.0.0.1".to_owned()))
+            placeholder.param.as_ref().map(BoundParam::param_type),
+            Some(&ParamType::ServerText(SqlTypeExpr::from_catalog_text("inet")))
         );
 
         let bits = column(
@@ -565,6 +550,10 @@ mod tests {
         let placeholder =
             bind(0, Value::Bits(tablepro_core::value::BitString::from_u64(5, 8)), &bits).expect("a bit string");
         assert_eq!(placeholder.sql, "$1::varbit", "a cast to bit truncates to one bit");
+        assert_eq!(
+            placeholder.param.as_ref().map(BoundParam::param_type),
+            Some(&ParamType::Bits)
+        );
     }
 
     #[test]

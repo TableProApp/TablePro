@@ -2,7 +2,8 @@
 //! INDEX, ADD / DROP FOREIGN KEY across MySQL + Postgres + SQLite.
 //!
 //! Pure SQL-string construction; no async, no I/O. Keyed by
-//! `driver_id` until the per-engine DDL dialects replace it. All
+//! `driver_id` until the per-engine DDL dialects replace it; renames
+//! and default drops already come from the engine's `DdlDialect`. All
 //! identifier quoting goes through the engine dialect's quoting; type
 //! names interpolate raw because they're a syntax category, not a
 //! string-literal category — the worst case is a driver syntax error,
@@ -14,11 +15,11 @@
 
 use thiserror::Error;
 
-use crate::column::{ColumnInfo, ColumnType};
-use crate::ddl::ReferentialAction;
-use crate::dialect::quote_ident;
+use crate::column::ColumnType;
+use crate::ddl::{ColumnDefinition, DdlDialect, ReferentialAction};
+use crate::dialect::{SqlDialect, quote_ident};
 use crate::foreign_key_info::ForeignKeyInfo;
-use crate::meta::{IndexInfo, IndexKey};
+use crate::meta::{IndexInfo, IndexKey, TableRef};
 
 #[derive(Debug, Error)]
 pub enum BuildDdlError {
@@ -149,11 +150,11 @@ fn validate_fk_action(driver_id: &str, action: ReferentialAction) -> Result<&'st
 }
 
 /// User-edited column draft. Carries both the original (loaded from
-/// `fetch_columns`) and the in-flight edit. `original` is `None` for
-/// newly-added columns.
+/// `fetch_table_definition`) and the in-flight edit. `original` is
+/// `None` for newly-added columns.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DraftColumn {
-    pub original: Option<ColumnInfo>,
+    pub original: Option<ColumnDefinition>,
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
@@ -189,10 +190,11 @@ fn declared_type(column_type: &ColumnType) -> &str {
 }
 
 impl DraftColumn {
-    /// Build a `DraftColumn` from a `ColumnInfo` returned by
-    /// `fetch_columns` so the user starts with the live state and
-    /// edits diff against `original`.
-    pub fn from_info(info: ColumnInfo) -> Self {
+    /// Build a `DraftColumn` from a column of the table definition, so
+    /// the user starts with the live state and edits diff against
+    /// `original`.
+    pub fn from_definition(definition: ColumnDefinition) -> Self {
+        let info = &definition.info;
         let data_type = declared_type(&info.column_type).to_owned();
         let nullable = info.nullable;
         let primary_key = info.primary_key;
@@ -201,7 +203,7 @@ impl DraftColumn {
         let name = info.name.clone();
         let comment = info.comment.clone();
         Self {
-            original: Some(info),
+            original: Some(definition),
             name,
             data_type,
             nullable,
@@ -224,7 +226,7 @@ impl DraftColumn {
     pub fn renamed(&self) -> bool {
         match &self.original {
             None => false,
-            Some(orig) => orig.name != self.name && !self.name.trim().is_empty(),
+            Some(orig) => orig.name() != self.name && !self.name.trim().is_empty(),
         }
     }
 
@@ -234,6 +236,7 @@ impl DraftColumn {
         match &self.original {
             None => true,
             Some(orig) => {
+                let orig = &orig.info;
                 declared_type(&orig.column_type) != self.data_type
                     || orig.nullable != self.nullable
                     || orig.primary_key != self.primary_key
@@ -319,6 +322,21 @@ pub enum StructureOp {
     },
 }
 
+/// The engine's DDL spelling, which the renames and default drops are
+/// written in.
+fn ddl_of<'a>(driver_id: &str, dialect: &'a dyn SqlDialect) -> Result<&'a dyn DdlDialect, BuildDdlError> {
+    dialect
+        .ddl()
+        .ok_or_else(|| BuildDdlError::UnsupportedDriver(driver_id.to_owned()))
+}
+
+/// The table a builder names, trimmed the way `qualified_table` trims
+/// it.
+fn table_ref(schema: Option<&str>, table: &str) -> TableRef {
+    let schema = schema.map(str::trim).filter(|schema| !schema.is_empty());
+    TableRef::new(schema.map(str::to_owned), table.trim())
+}
+
 fn qualified_table(driver_id: &str, schema: Option<&str>, table: &str) -> String {
     // Trim leading / trailing whitespace before quoting so a user
     // who typed `" users "` doesn't end up with a literally
@@ -354,25 +372,6 @@ fn sql_literal_for(driver_id: &str, value: &str) -> String {
 /// description that happens to be the empty string.
 fn comment_value(comment: Option<&str>) -> Option<&str> {
     comment.filter(|text| !text.is_empty())
-}
-
-/// Drop the default constraint bound to `column`, if any. SQL Server
-/// generates the constraint name, and `DROP CONSTRAINT` does not accept
-/// a variable, so the name is resolved from `sys.default_constraints`
-/// and applied through `EXEC`. Emitted as one batch because the
-/// variable does not outlive it.
-fn mssql_drop_default_constraint(driver_id: &str, schema: Option<&str>, table: &str, column: &str) -> String {
-    let qualified = qualified_table(driver_id, schema, table);
-    let table_literal = sql_literal(&qualified);
-    let column_literal = sql_literal(column.trim());
-    format!(
-        "DECLARE @default_constraint sysname = (\
-SELECT dc.name FROM sys.default_constraints dc \
-JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id \
-WHERE dc.parent_object_id = OBJECT_ID('{table_literal}') AND c.name = '{column_literal}'); \
-IF @default_constraint IS NOT NULL \
-EXEC('ALTER TABLE {table_literal} DROP CONSTRAINT [' + @default_constraint + ']')"
-    )
 }
 
 /// SQL Server keeps a column description in an extended property named
@@ -422,7 +421,7 @@ fn build_column_comment(driver_id: &str, schema: Option<&str>, table: &str, colu
     let had_comment = column
         .original
         .as_ref()
-        .and_then(|original| comment_value(original.comment.as_deref()))
+        .and_then(|original| comment_value(original.info.comment.as_deref()))
         .is_some();
     if comment.is_none() && !had_comment {
         return None;
@@ -457,7 +456,7 @@ fn comment_changed(column: &DraftColumn) -> bool {
     let original = column
         .original
         .as_ref()
-        .and_then(|original| comment_value(original.comment.as_deref()));
+        .and_then(|original| comment_value(original.info.comment.as_deref()));
     original != comment_value(column.comment.as_deref())
 }
 
@@ -671,24 +670,14 @@ pub fn build_drop_table(
 
 pub fn build_rename_table(
     driver_id: &str,
+    dialect: &dyn SqlDialect,
     schema: Option<&str>,
     old_name: &str,
     new_name: &str,
 ) -> Result<String, BuildDdlError> {
     validate_table(old_name)?;
     validate_table(new_name)?;
-    if driver_id == "mssql" {
-        // sp_rename's arguments are SQL string literals, not
-        // identifiers, and the bare @newname isn't quoted at all.
-        let old_qualified = sql_literal(&qualified_table(driver_id, schema, old_name));
-        let new_bare = sql_literal(new_name.trim());
-        return Ok(format!("EXEC sp_rename '{}', '{}'", old_qualified, new_bare));
-    }
-    Ok(format!(
-        "ALTER TABLE {} RENAME TO {}",
-        qualified_table(driver_id, schema, old_name),
-        quote_ident(driver_id, new_name)
-    ))
+    Ok(ddl_of(driver_id, dialect)?.rename_table(dialect, &table_ref(schema, old_name), new_name.trim()))
 }
 
 /// Add one column. Returns more than one statement where the engine
@@ -744,6 +733,7 @@ pub fn build_drop_column(
 
 pub fn build_rename_column(
     driver_id: &str,
+    dialect: &dyn SqlDialect,
     schema: Option<&str>,
     table: &str,
     old_name: &str,
@@ -752,22 +742,7 @@ pub fn build_rename_column(
     validate_table(table)?;
     validate_column_name(old_name)?;
     validate_column_name(new_name)?;
-    if driver_id == "mssql" {
-        // Same string-literal escaping requirement as build_rename_table.
-        let object_name = sql_literal(&format!(
-            "{}.{}",
-            qualified_table(driver_id, schema, table),
-            quote_ident(driver_id, old_name)
-        ));
-        let new_bare = sql_literal(new_name.trim());
-        return Ok(format!("EXEC sp_rename '{}', '{}', 'COLUMN'", object_name, new_bare));
-    }
-    Ok(format!(
-        "ALTER TABLE {} RENAME COLUMN {} TO {}",
-        qualified_table(driver_id, schema, table),
-        quote_ident(driver_id, old_name),
-        quote_ident(driver_id, new_name)
-    ))
+    Ok(ddl_of(driver_id, dialect)?.rename_column(dialect, &table_ref(schema, table), old_name, new_name))
 }
 
 /// Apply column type / nullable / default changes. Returns one or
@@ -784,6 +759,7 @@ pub fn build_rename_column(
 /// - **SQLite**: not supported; returns `SqliteNotSupported`.
 pub fn build_alter_column(
     driver_id: &str,
+    dialect: &dyn SqlDialect,
     schema: Option<&str>,
     table: &str,
     column: &DraftColumn,
@@ -791,6 +767,19 @@ pub fn build_alter_column(
     validate_table(table)?;
     validate_column_name(&column.name)?;
     let qualified = qualified_table(driver_id, schema, table);
+    let original = column.original.as_ref();
+    let type_changed = original
+        .map(|o| declared_type(&o.info.column_type) != column.data_type)
+        .unwrap_or(true);
+    let nullable_changed = original.map(|o| o.info.nullable != column.nullable).unwrap_or(false);
+    let default_changed = original
+        .map(|o| default_text(&o.info.default).as_deref() != column.default_value.as_deref())
+        .unwrap_or(column.default_value.is_some());
+    // Only an existing column has a default to drop.
+    let drop_default = || -> Result<Option<String>, BuildDdlError> {
+        let ddl = ddl_of(driver_id, dialect)?;
+        Ok(original.and_then(|o| ddl.drop_column_default(dialect, &table_ref(schema, table), &column.name, o)))
+    };
     match driver_id {
         "mysql" => {
             // MySQL's MODIFY COLUMN replaces the whole column
@@ -810,14 +799,6 @@ pub fn build_alter_column(
             // returned only the first changed attribute (type wins
             // over nullable wins over default), silently losing the
             // user's other edits when more than one attribute moved.
-            let original = column.original.as_ref();
-            let type_changed = original
-                .map(|o| declared_type(&o.column_type) != column.data_type)
-                .unwrap_or(true);
-            let nullable_changed = original.map(|o| o.nullable != column.nullable).unwrap_or(false);
-            let default_changed = original
-                .map(|o| default_text(&o.default).as_deref() != column.default_value.as_deref())
-                .unwrap_or(column.default_value.is_some());
             let mut stmts: Vec<String> = Vec::new();
             if type_changed {
                 validate_safe_type(&column.data_type)?;
@@ -846,19 +827,15 @@ pub fn build_alter_column(
                 });
             }
             if default_changed {
-                stmts.push(match validated_default(column.default_value.as_deref())? {
-                    Some(default) => format!(
+                match validated_default(column.default_value.as_deref())? {
+                    Some(default) => stmts.push(format!(
                         "ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {}",
                         qualified,
                         quote_ident(driver_id, &column.name),
                         default
-                    ),
-                    None => format!(
-                        "ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT",
-                        qualified,
-                        quote_ident(driver_id, &column.name)
-                    ),
-                });
+                    )),
+                    None => stmts.extend(drop_default()?),
+                }
             }
             if comment_changed(column) {
                 stmts.extend(build_column_comment(driver_id, schema, table, column));
@@ -871,15 +848,14 @@ pub fn build_alter_column(
             Ok(stmts)
         }
         "mssql" => {
-            let original = column.original.as_ref();
-            let type_changed = original
-                .map(|o| declared_type(&o.column_type) != column.data_type)
-                .unwrap_or(true);
-            let nullable_changed = original.map(|o| o.nullable != column.nullable).unwrap_or(false);
-            let default_changed = original
-                .map(|o| default_text(&o.default).as_deref() != column.default_value.as_deref())
-                .unwrap_or(column.default_value.is_some());
             let mut stmts: Vec<String> = Vec::new();
+            // A default is a separate named constraint here, not a
+            // column attribute, so changing one is drop-then-add. The
+            // drop goes first: a column bound to a default cannot change
+            // type.
+            if default_changed {
+                stmts.extend(drop_default()?);
+            }
             // ALTER COLUMN carries type and nullability together: T-SQL
             // reads an omitted NULL / NOT NULL as NULL, so a type-only
             // change has to restate the nullability or it would silently
@@ -895,20 +871,13 @@ pub fn build_alter_column(
                     nullability
                 ));
             }
-            if default_changed {
-                // A default is a separate named constraint here, not a
-                // column attribute, so changing one is drop-then-add.
-                // The existing constraint's name is generated by the
-                // server, so the drop resolves it from the catalog.
-                stmts.push(mssql_drop_default_constraint(driver_id, schema, table, &column.name));
-                if let Some(default) = validated_default(column.default_value.as_deref())? {
-                    stmts.push(format!(
-                        "ALTER TABLE {} ADD DEFAULT ({}) FOR {}",
-                        qualified,
-                        default,
-                        quote_ident(driver_id, &column.name)
-                    ));
-                }
+            if default_changed && let Some(default) = validated_default(column.default_value.as_deref())? {
+                stmts.push(format!(
+                    "ALTER TABLE {} ADD DEFAULT ({}) FOR {}",
+                    qualified,
+                    default,
+                    quote_ident(driver_id, &column.name)
+                ));
             }
             if comment_changed(column) {
                 stmts.extend(build_column_comment(driver_id, schema, table, column));
@@ -1103,7 +1072,7 @@ pub fn build_drop_foreign_key(
 /// truth, ops are derived at materialize time.
 ///
 /// Identity rules:
-/// - Columns matched by `DraftColumn.original.name`. Newly-added
+/// - Columns matched by `DraftColumn.original`'s name. Newly-added
 ///   columns (`original = None`) emit `AddColumn`. Originals with no
 ///   matching draft emit `DropColumn`. Drafts whose attributes
 ///   differ from `original` emit `AlterColumn`.
@@ -1118,7 +1087,7 @@ pub fn diff_to_ops(
     schema: Option<&str>,
     original_table: &str,
     current_table: &str,
-    original_columns: &[ColumnInfo],
+    original_columns: &[ColumnDefinition],
     current_columns: &[DraftColumn],
     original_indexes: &[IndexInfo],
     current_indexes: &[IndexInfo],
@@ -1175,12 +1144,12 @@ pub fn diff_to_ops(
     for orig in original_columns {
         let still_present = current_columns
             .iter()
-            .any(|c| c.original.as_ref().map(|o| o.name == orig.name).unwrap_or(false));
+            .any(|c| c.original.as_ref().is_some_and(|o| o.name() == orig.name()));
         if !still_present {
             ops.push(StructureOp::DropColumn {
                 schema: schema_owned.clone(),
                 table: table.clone(),
-                column_name: orig.name.clone(),
+                column_name: orig.name().to_owned(),
             });
         }
     }
@@ -1193,7 +1162,7 @@ pub fn diff_to_ops(
             ops.push(StructureOp::RenameColumn {
                 schema: schema_owned.clone(),
                 table: table.clone(),
-                old_name: orig.name.clone(),
+                old_name: orig.name().to_owned(),
                 new_name: col.name.clone(),
             });
         }
@@ -1259,7 +1228,11 @@ pub fn diff_to_ops(
 /// keeps the diff side pure and the SQL side driver-aware.
 ///
 /// `New`-mode `CreateTable` short-circuits the phased pipeline.
-pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<String>, BuildDdlError> {
+pub fn materialize_ops(
+    ops: &[StructureOp],
+    driver_id: &str,
+    dialect: &dyn SqlDialect,
+) -> Result<Vec<String>, BuildDdlError> {
     if let Some(StructureOp::CreateTable {
         schema,
         table,
@@ -1281,7 +1254,13 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
             new_name,
         } = op
         {
-            out.push(build_rename_table(driver_id, schema.as_deref(), old_name, new_name)?);
+            out.push(build_rename_table(
+                driver_id,
+                dialect,
+                schema.as_deref(),
+                old_name,
+                new_name,
+            )?);
         }
     }
     for op in ops {
@@ -1319,6 +1298,7 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
         {
             out.push(build_rename_column(
                 driver_id,
+                dialect,
                 schema.as_deref(),
                 table,
                 old_name,
@@ -1328,7 +1308,7 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
     }
     for op in ops {
         if let StructureOp::AlterColumn { schema, table, column } = op {
-            match build_alter_column(driver_id, schema.as_deref(), table, column) {
+            match build_alter_column(driver_id, dialect, schema.as_deref(), table, column) {
                 Ok(stmts) => out.extend(stmts),
                 Err(BuildDdlError::NoChange) => {}
                 Err(e) => return Err(e),
@@ -1356,7 +1336,19 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
 
 #[cfg(test)]
 mod tests {
-    use crate::column::{CatalogType, ColumnKind, ReadForm, SqlTypeExpr, TextLength};
+    use crate::column::{CatalogType, ColumnInfo, ColumnKind, ReadForm, SqlTypeExpr, TextLength};
+    use crate::ddl::ColumnAttributes;
+    use crate::dialect::TestDialect;
+
+    /// The ANSI dialect: renames and default drops take the standard
+    /// spelling. Each engine's own spelling is tested in its crate.
+    fn ansi() -> TestDialect {
+        TestDialect::exact()
+    }
+
+    fn defined(info: ColumnInfo) -> ColumnDefinition {
+        ColumnDefinition::new(info, ColumnAttributes::default())
+    }
 
     /// A column type carrying only the server's spelling, which is all
     /// the DDL builder reads.
@@ -1421,7 +1413,7 @@ mod tests {
     fn edited_with_comment(original_name: &str, ty: &str, comment: &str) -> DraftColumn {
         let mut col = edited(original_name, ty);
         if let Some(original) = col.original.as_mut() {
-            original.comment = Some(comment.into());
+            original.info.comment = Some(comment.into());
         }
         col.comment = Some(comment.into());
         col
@@ -1431,7 +1423,7 @@ mod tests {
     /// loaded column.
     fn edited(original_name: &str, ty: &str) -> DraftColumn {
         DraftColumn {
-            original: Some(ColumnInfo {
+            original: Some(defined(ColumnInfo {
                 name: original_name.into(),
                 column_type: test_column_type(ty),
                 nullable: true,
@@ -1440,7 +1432,7 @@ mod tests {
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
                 comment: None,
-            }),
+            })),
             name: original_name.into(),
             data_type: ty.into(),
             nullable: true,
@@ -1476,8 +1468,8 @@ mod tests {
         draft.name = "new_name".into();
         let ops = diff_to_ops(None, "t", "t", &[], &[draft], &[], &[], &[], &[]);
 
-        for driver in ["postgres", "mysql", "sqlite"] {
-            let sql = materialize_ops(&ops, driver).expect("the rename builds");
+        for driver in ["postgres", "mysql", "sqlite", "mssql"] {
+            let sql = materialize_ops(&ops, driver, &ansi()).expect("the rename builds");
             assert_eq!(sql.len(), 1, "{driver} emitted {sql:?}");
             assert!(
                 sql[0].contains("RENAME COLUMN") && sql[0].contains("new_name"),
@@ -1485,9 +1477,6 @@ mod tests {
                 sql[0]
             );
         }
-
-        let mssql = materialize_ops(&ops, "mssql").expect("the rename builds");
-        assert!(mssql[0].starts_with("EXEC sp_rename"), "{:?}", mssql[0]);
     }
 
     #[test]
@@ -1499,7 +1488,7 @@ mod tests {
         draft.data_type = "varchar(20)".into();
 
         let ops = diff_to_ops(None, "t", "t", &[], &[draft], &[], &[], &[], &[]);
-        let sql = materialize_ops(&ops, "postgres").expect("the change builds");
+        let sql = materialize_ops(&ops, "postgres", &ansi()).expect("the change builds");
 
         let rename = sql.iter().position(|s| s.contains("RENAME COLUMN"));
         let alter = sql.iter().position(|s| s.contains("TYPE varchar(20)"));
@@ -1700,40 +1689,22 @@ mod tests {
     }
 
     #[test]
-    fn rename_table_each_driver() {
+    fn rename_table_goes_through_the_engine_ddl() {
         assert_eq!(
-            build_rename_table("postgres", None, "old", "new").unwrap(),
-            "ALTER TABLE \"old\" RENAME TO \"new\""
-        );
-        assert_eq!(
-            build_rename_table("mysql", None, "old", "new").unwrap(),
-            "ALTER TABLE `old` RENAME TO `new`"
-        );
-        assert_eq!(
-            build_rename_table("sqlite", None, "old", "new").unwrap(),
-            "ALTER TABLE \"old\" RENAME TO \"new\""
+            build_rename_table("postgres", &ansi(), Some(" app "), " old ", "new").unwrap(),
+            "ALTER TABLE \"app\".\"old\" RENAME TO \"new\""
         );
     }
 
     #[test]
-    fn rename_table_mssql() {
-        assert_eq!(
-            build_rename_table("mssql", None, "old", "new").unwrap(),
-            "EXEC sp_rename '[old]', 'new'"
-        );
-        assert_eq!(
-            build_rename_table("mssql", Some("dbo"), "old", "new").unwrap(),
-            "EXEC sp_rename '[dbo].[old]', 'new'"
-        );
-    }
+    fn an_engine_without_ddl_renames_nothing() {
+        let no_ddl = TestDialect::exact().without_ddl();
 
-    #[test]
-    fn rename_table_mssql_escapes_embedded_quote() {
-        // sp_rename's arguments are SQL string literals; an embedded
-        // `'` in a name must be doubled or it would close the literal
-        // early and splice the remainder in as a second statement.
-        let sql = build_rename_table("mssql", None, "o'brien", "new'table").unwrap();
-        assert_eq!(sql, "EXEC sp_rename '[o''brien]', 'new''table'");
+        assert!(matches!(
+            build_rename_table("postgres", &no_ddl, None, "old", "new"),
+            Err(BuildDdlError::UnsupportedDriver(_))
+        ));
+        assert!(build_rename_table("postgres", &ansi(), None, " ", "new").is_err());
     }
 
     #[test]
@@ -1795,39 +1766,17 @@ mod tests {
     }
 
     #[test]
-    fn rename_column_each_driver() {
+    fn rename_column_goes_through_the_engine_ddl() {
         assert_eq!(
-            build_rename_column("postgres", None, "t", "old", "new").unwrap(),
+            build_rename_column("postgres", &ansi(), None, "t", "old", "new").unwrap(),
             "ALTER TABLE \"t\" RENAME COLUMN \"old\" TO \"new\""
         );
-        assert_eq!(
-            build_rename_column("mysql", None, "t", "old", "new").unwrap(),
-            "ALTER TABLE `t` RENAME COLUMN `old` TO `new`"
-        );
-    }
-
-    #[test]
-    fn rename_column_mssql() {
-        assert_eq!(
-            build_rename_column("mssql", None, "t", "old", "new").unwrap(),
-            "EXEC sp_rename '[t].[old]', 'new', 'COLUMN'"
-        );
-        assert_eq!(
-            build_rename_column("mssql", Some("dbo"), "t", "old", "new").unwrap(),
-            "EXEC sp_rename '[dbo].[t].[old]', 'new', 'COLUMN'"
-        );
-    }
-
-    #[test]
-    fn rename_column_mssql_escapes_embedded_quote() {
-        let sql = build_rename_column("mssql", None, "t", "o'brien", "new'name").unwrap();
-        assert_eq!(sql, "EXEC sp_rename '[t].[o''brien]', 'new''name', 'COLUMN'");
     }
 
     #[test]
     fn alter_column_postgres_type_change() {
         let col = DraftColumn {
-            original: Some(ColumnInfo {
+            original: Some(defined(ColumnInfo {
                 name: "x".into(),
                 column_type: test_column_type("integer"),
                 nullable: true,
@@ -1836,7 +1785,7 @@ mod tests {
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
                 comment: None,
-            }),
+            })),
             name: "x".into(),
             data_type: "bigint".into(),
             nullable: true,
@@ -1845,7 +1794,7 @@ mod tests {
             default_value: None,
             comment: None,
         };
-        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        let stmts = build_alter_column("postgres", &ansi(), None, "t", &col).unwrap();
         let joined = stmts.join("\n");
         assert!(joined.contains("TYPE bigint"));
         assert!(joined.contains("USING \"x\"::bigint"));
@@ -1854,7 +1803,7 @@ mod tests {
     #[test]
     fn alter_column_postgres_nullable_change() {
         let col = DraftColumn {
-            original: Some(ColumnInfo {
+            original: Some(defined(ColumnInfo {
                 name: "x".into(),
                 column_type: test_column_type("text"),
                 nullable: true,
@@ -1863,7 +1812,7 @@ mod tests {
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
                 comment: None,
-            }),
+            })),
             name: "x".into(),
             data_type: "text".into(),
             nullable: false,
@@ -1872,14 +1821,14 @@ mod tests {
             default_value: None,
             comment: None,
         };
-        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        let stmts = build_alter_column("postgres", &ansi(), None, "t", &col).unwrap();
         assert!(stmts.iter().any(|s| s.contains("SET NOT NULL")));
     }
 
     #[test]
     fn alter_column_postgres_default_change() {
         let col = DraftColumn {
-            original: Some(ColumnInfo {
+            original: Some(defined(ColumnInfo {
                 name: "x".into(),
                 column_type: test_column_type("text"),
                 nullable: true,
@@ -1888,7 +1837,7 @@ mod tests {
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
                 comment: None,
-            }),
+            })),
             name: "x".into(),
             data_type: "text".into(),
             nullable: true,
@@ -1897,14 +1846,31 @@ mod tests {
             default_value: Some("'pending'".into()),
             comment: None,
         };
-        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        let stmts = build_alter_column("postgres", &ansi(), None, "t", &col).unwrap();
         assert!(stmts.iter().any(|s| s.contains("SET DEFAULT 'pending'")));
+    }
+
+    #[test]
+    fn clearing_a_default_drops_it_by_the_column_s_new_name() {
+        let mut col = edited("old_name", "text");
+        if let Some(original) = col.original.as_mut() {
+            original.info.default =
+                crate::column::ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text("now()"));
+        }
+        col.name = "new_name".into();
+
+        let stmts = build_alter_column("postgres", &ansi(), None, "t", &col).unwrap();
+
+        assert_eq!(
+            stmts,
+            vec!["ALTER TABLE \"t\" ALTER COLUMN \"new_name\" DROP DEFAULT".to_owned()]
+        );
     }
 
     #[test]
     fn alter_column_mysql_modify_full_def() {
         let col = nn(def(dc("status", "VARCHAR(64)"), "'open'"));
-        let stmts = build_alter_column("mysql", None, "t", &col).unwrap();
+        let stmts = build_alter_column("mysql", &ansi(), None, "t", &col).unwrap();
         assert_eq!(stmts.len(), 1);
         assert_eq!(
             stmts[0],
@@ -1915,7 +1881,7 @@ mod tests {
     #[test]
     fn alter_column_postgres_emits_three_statements_when_all_change() {
         let col = DraftColumn {
-            original: Some(ColumnInfo {
+            original: Some(defined(ColumnInfo {
                 name: "x".into(),
                 column_type: test_column_type("integer"),
                 nullable: true,
@@ -1924,7 +1890,7 @@ mod tests {
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
                 comment: None,
-            }),
+            })),
             name: "x".into(),
             data_type: "bigint".into(),
             nullable: false,
@@ -1933,7 +1899,7 @@ mod tests {
             default_value: Some("'fallback'".into()),
             comment: None,
         };
-        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        let stmts = build_alter_column("postgres", &ansi(), None, "t", &col).unwrap();
         // Type, nullable AND default all changed — all three must
         // emit. Previously the early-return cascade lost the latter
         // two.
@@ -1946,14 +1912,14 @@ mod tests {
     #[test]
     fn alter_column_sqlite_rejected() {
         let col = dc("x", "TEXT");
-        let err = build_alter_column("sqlite", None, "t", &col).unwrap_err();
+        let err = build_alter_column("sqlite", &ansi(), None, "t", &col).unwrap_err();
         assert!(matches!(err, BuildDdlError::SqliteNotSupported(_)));
     }
 
     #[test]
     fn alter_column_mssql_type_and_nullable_change() {
         let col = DraftColumn {
-            original: Some(ColumnInfo {
+            original: Some(defined(ColumnInfo {
                 name: "x".into(),
                 column_type: test_column_type("int"),
                 nullable: true,
@@ -1962,7 +1928,7 @@ mod tests {
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
                 comment: None,
-            }),
+            })),
             name: "x".into(),
             data_type: "int".into(),
             nullable: false,
@@ -1971,102 +1937,15 @@ mod tests {
             default_value: None,
             comment: None,
         };
-        let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
+        let stmts = build_alter_column("mssql", &ansi(), None, "t", &col).unwrap();
         assert_eq!(stmts.len(), 1);
         assert_eq!(stmts[0], "ALTER TABLE [t] ALTER COLUMN [x] int NOT NULL");
     }
 
     #[test]
-    fn alter_column_mssql_default_only_replaces_the_constraint() {
-        let col = DraftColumn {
-            original: Some(ColumnInfo {
-                name: "x".into(),
-                column_type: test_column_type("text"),
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                default: crate::column::ColumnDefault::None,
-                is_generated: false,
-                comment: None,
-            }),
-            name: "x".into(),
-            data_type: "text".into(),
-            nullable: true,
-            primary_key: false,
-            auto_increment: false,
-            default_value: Some("'pending'".into()),
-            comment: None,
-        };
-        let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
-        assert_eq!(stmts.len(), 2);
-        assert!(!stmts[0].contains("ALTER COLUMN"));
-        assert!(stmts[0].contains("sys.default_constraints"));
-        assert!(stmts[0].contains("OBJECT_ID('[t]')"));
-        assert!(stmts[0].contains("c.name = 'x'"));
-        assert_eq!(stmts[1], "ALTER TABLE [t] ADD DEFAULT ('pending') FOR [x]");
-    }
-
-    #[test]
-    fn alter_column_mssql_clearing_a_default_only_drops() {
-        let col = DraftColumn {
-            original: Some(ColumnInfo {
-                name: "x".into(),
-                column_type: test_column_type("text"),
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                default: crate::column::ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text(
-                    "'pending'",
-                )),
-                is_generated: false,
-                comment: None,
-            }),
-            name: "x".into(),
-            data_type: "text".into(),
-            nullable: true,
-            primary_key: false,
-            auto_increment: false,
-            default_value: None,
-            comment: None,
-        };
-        let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
-        assert_eq!(stmts.len(), 1);
-        assert!(stmts[0].contains("DROP CONSTRAINT"));
-        assert!(!stmts[0].contains("ADD DEFAULT"));
-    }
-
-    #[test]
-    fn alter_column_mssql_applies_default_alongside_type_change() {
-        let col = DraftColumn {
-            original: Some(ColumnInfo {
-                name: "x".into(),
-                column_type: test_column_type("int"),
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                default: crate::column::ColumnDefault::None,
-                is_generated: false,
-                comment: None,
-            }),
-            name: "x".into(),
-            data_type: "bigint".into(),
-            nullable: true,
-            primary_key: false,
-            auto_increment: false,
-            default_value: Some("0".into()),
-            comment: None,
-        };
-        let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
-        assert_eq!(stmts.len(), 3);
-        assert_eq!(stmts[0], "ALTER TABLE [t] ALTER COLUMN [x] bigint NULL");
-        assert!(stmts[1].contains("DROP CONSTRAINT"));
-        assert_eq!(stmts[2], "ALTER TABLE [t] ADD DEFAULT (0) FOR [x]");
-    }
-
-    #[test]
     fn alter_column_mssql_unchanged_is_no_change() {
         let col = DraftColumn {
-            original: Some(ColumnInfo {
+            original: Some(defined(ColumnInfo {
                 name: "x".into(),
                 column_type: test_column_type("int"),
                 nullable: true,
@@ -2075,7 +1954,7 @@ mod tests {
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
                 comment: None,
-            }),
+            })),
             name: "x".into(),
             data_type: "int".into(),
             nullable: true,
@@ -2084,34 +1963,8 @@ mod tests {
             default_value: None,
             comment: None,
         };
-        let err = build_alter_column("mssql", None, "t", &col).unwrap_err();
+        let err = build_alter_column("mssql", &ansi(), None, "t", &col).unwrap_err();
         assert!(matches!(err, BuildDdlError::NoChange));
-    }
-
-    #[test]
-    fn alter_column_mssql_drop_default_escapes_literals() {
-        let col = DraftColumn {
-            original: Some(ColumnInfo {
-                name: "o'brien".into(),
-                column_type: test_column_type("int"),
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                default: crate::column::ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text("0")),
-                is_generated: false,
-                comment: None,
-            }),
-            name: "o'brien".into(),
-            data_type: "int".into(),
-            nullable: true,
-            primary_key: false,
-            auto_increment: false,
-            default_value: None,
-            comment: None,
-        };
-        let stmts = build_alter_column("mssql", Some("s'x"), "t'q", &col).unwrap();
-        assert!(stmts[0].contains("OBJECT_ID('[s''x].[t''q]')"));
-        assert!(stmts[0].contains("c.name = 'o''brien'"));
     }
 
     #[test]
@@ -2405,7 +2258,7 @@ mod tests {
     #[test]
     fn alter_column_postgres_rejects_injection_in_type() {
         let col = DraftColumn {
-            original: Some(ColumnInfo {
+            original: Some(defined(ColumnInfo {
                 name: "x".into(),
                 column_type: test_column_type("integer"),
                 nullable: true,
@@ -2414,7 +2267,7 @@ mod tests {
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
                 comment: None,
-            }),
+            })),
             name: "x".into(),
             data_type: "bigint; DROP TABLE u; --".into(),
             nullable: true,
@@ -2423,7 +2276,7 @@ mod tests {
             default_value: None,
             comment: None,
         };
-        let err = build_alter_column("postgres", None, "t", &col).unwrap_err();
+        let err = build_alter_column("postgres", &ansi(), None, "t", &col).unwrap_err();
         assert!(matches!(err, BuildDdlError::UnsafeType(_)), "got {err:?}");
     }
 
@@ -2436,56 +2289,11 @@ mod tests {
     }
 
     #[test]
-    fn materialize_ops_mssql_orders_rename_alter_then_add() {
-        let ops = vec![
-            StructureOp::RenameTable {
-                schema: None,
-                old_name: "old_t".into(),
-                new_name: "new_t".into(),
-            },
-            StructureOp::AlterColumn {
-                schema: None,
-                table: "new_t".into(),
-                column: DraftColumn {
-                    original: Some(ColumnInfo {
-                        name: "x".into(),
-                        column_type: test_column_type("text"),
-                        nullable: true,
-                        primary_key: false,
-                        is_auto_increment: false,
-                        default: crate::column::ColumnDefault::None,
-                        is_generated: false,
-                        comment: None,
-                    }),
-                    name: "x".into(),
-                    data_type: "text".into(),
-                    nullable: true,
-                    primary_key: false,
-                    auto_increment: false,
-                    default_value: Some("'x'".into()),
-                    comment: None,
-                },
-            },
-            StructureOp::AddColumn {
-                schema: None,
-                table: "new_t".into(),
-                column: nn(dc("flag", "BIT")),
-            },
-        ];
-        let stmts = materialize_ops(&ops, "mssql").unwrap();
-        assert_eq!(stmts.len(), 4);
-        assert_eq!(stmts[0], "EXEC sp_rename '[old_t]', 'new_t'");
-        assert!(stmts[1].contains("DROP CONSTRAINT"));
-        assert_eq!(stmts[2], "ALTER TABLE [new_t] ADD DEFAULT ('x') FOR [x]");
-        assert_eq!(stmts[3], "ALTER TABLE [new_t] ADD [flag] BIT NOT NULL");
-    }
-
-    #[test]
     fn postgres_writes_a_column_comment_as_its_own_statement() {
         let mut col = edited("email", "text");
         col.comment = Some("primary contact".into());
 
-        let stmts = build_alter_column("postgres", Some("public"), "users", &col).unwrap();
+        let stmts = build_alter_column("postgres", &ansi(), Some("public"), "users", &col).unwrap();
 
         assert_eq!(
             stmts,
@@ -2498,7 +2306,7 @@ mod tests {
         let mut col = edited_with_comment("email", "text", "primary contact");
         col.comment = None;
 
-        let stmts = build_alter_column("postgres", None, "users", &col).unwrap();
+        let stmts = build_alter_column("postgres", &ansi(), None, "users", &col).unwrap();
 
         assert_eq!(stmts, vec!["COMMENT ON COLUMN \"users\".\"email\" IS NULL".to_owned()]);
     }
@@ -2510,7 +2318,7 @@ mod tests {
 
         assert!(!col.differs_beyond_name());
         assert!(matches!(
-            build_alter_column("postgres", None, "users", &col),
+            build_alter_column("postgres", &ansi(), None, "users", &col),
             Err(BuildDdlError::NoChange)
         ));
     }
@@ -2520,7 +2328,7 @@ mod tests {
         let col = edited_with_comment("email", "text", "primary contact");
 
         assert!(matches!(
-            build_alter_column("postgres", None, "users", &col),
+            build_alter_column("postgres", &ansi(), None, "users", &col),
             Err(BuildDdlError::NoChange)
         ));
     }
@@ -2529,7 +2337,7 @@ mod tests {
     fn mysql_carries_the_comment_on_the_column_definition() {
         let col = commented(nn(dc("email", "VARCHAR(255)")), "primary contact");
 
-        let stmts = build_alter_column("mysql", None, "users", &col).unwrap();
+        let stmts = build_alter_column("mysql", &ansi(), None, "users", &col).unwrap();
 
         assert_eq!(
             stmts,
@@ -2544,7 +2352,7 @@ mod tests {
         let mut col = edited_with_comment("email", "text", "primary contact");
         col.nullable = false;
 
-        let stmts = build_alter_column("mysql", None, "users", &col).unwrap();
+        let stmts = build_alter_column("mysql", &ansi(), None, "users", &col).unwrap();
 
         assert!(stmts[0].ends_with("COMMENT 'primary contact'"));
     }
@@ -2556,7 +2364,7 @@ mod tests {
         // the statement into the literal.
         let col = commented(dc("path", "TEXT"), "ends with a backslash \\");
 
-        let stmts = build_alter_column("mysql", None, "t", &col).unwrap();
+        let stmts = build_alter_column("mysql", &ansi(), None, "t", &col).unwrap();
 
         assert!(stmts[0].ends_with("COMMENT 'ends with a backslash \\\\'"));
     }
@@ -2565,7 +2373,7 @@ mod tests {
     fn a_quote_in_a_comment_is_doubled() {
         let col = commented(dc("note", "text"), "o'brien");
 
-        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        let stmts = build_alter_column("postgres", &ansi(), None, "t", &col).unwrap();
 
         assert!(stmts.iter().any(|sql| sql.contains("IS 'o''brien'")));
     }
@@ -2604,7 +2412,7 @@ mod tests {
     fn mssql_adds_a_description_the_column_did_not_have() {
         let col = commented(edited("email", "nvarchar(255)"), "primary contact");
 
-        let stmts = build_alter_column("mssql", Some("dbo"), "users", &col).unwrap();
+        let stmts = build_alter_column("mssql", &ansi(), Some("dbo"), "users", &col).unwrap();
 
         assert_eq!(stmts.len(), 1);
         assert!(stmts[0].contains("DECLARE @comment_schema sysname = N'dbo';"));
@@ -2618,7 +2426,7 @@ mod tests {
         let mut col = edited_with_comment("email", "nvarchar(255)", "old text");
         col.comment = Some("new text".into());
 
-        let stmts = build_alter_column("mssql", None, "users", &col).unwrap();
+        let stmts = build_alter_column("mssql", &ansi(), None, "users", &col).unwrap();
 
         assert!(stmts[0].contains("DECLARE @comment_schema sysname = SCHEMA_NAME();"));
         assert!(stmts[0].contains("EXEC sp_updateextendedproperty"));
@@ -2630,7 +2438,7 @@ mod tests {
         let mut col = edited_with_comment("email", "nvarchar(255)", "old text");
         col.comment = None;
 
-        let stmts = build_alter_column("mssql", None, "users", &col).unwrap();
+        let stmts = build_alter_column("mssql", &ansi(), None, "users", &col).unwrap();
 
         assert!(stmts[0].contains("EXEC sp_dropextendedproperty @name = N'MS_Description'"));
         assert!(!stmts[0].contains("@value"));

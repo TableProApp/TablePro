@@ -20,6 +20,9 @@ pub enum ParamType {
     /// CHAR and friends: text the server pads to a fixed width.
     FixedText,
     Bytes,
+    /// A string of bits, which an engine with a bit-string type sends in
+    /// its own encoding rather than as bytes.
+    Bits,
     Uuid,
     Json,
     JsonBinary,
@@ -30,7 +33,8 @@ pub enum ParamType {
     TimestampTz,
     Interval,
     /// A type only the server names, bound as text and cast on the way
-    /// in. Enums, ranges, composites and geometry arrive here.
+    /// in. Enums, ranges, composites and geometry arrive here, as text
+    /// the user typed or as the server's own text read back.
     ServerText(SqlTypeExpr),
 }
 
@@ -56,7 +60,9 @@ impl ParamType {
                     Value::Decimal(_) | Value::Int(_) | Value::UInt(_) | Value::WideInt(_)
                 )
                 | (Self::Text | Self::FixedText | Self::ServerText(_), Value::Text(_))
-                | (Self::Bytes, Value::Bytes(_) | Value::Bits(_))
+                | (Self::ServerText(_), Value::Other(_))
+                | (Self::Bytes, Value::Bytes(_))
+                | (Self::Bits, Value::Bits(_))
                 | (Self::Uuid, Value::Uuid(_))
                 | (Self::Json | Self::JsonBinary, Value::Json(_))
                 | (Self::Date, Value::Date(_))
@@ -81,6 +87,7 @@ impl ParamType {
             Self::Text => "Text",
             Self::FixedText => "FixedText",
             Self::Bytes => "Bytes",
+            Self::Bits => "Bits",
             Self::Uuid => "Uuid",
             Self::Json => "Json",
             Self::JsonBinary => "JsonBinary",
@@ -99,7 +106,7 @@ impl ParamType {
 mod tests {
     use super::*;
 
-    const EVERY_TYPE: [ParamType; 20] = [
+    const EVERY_TYPE: [ParamType; 21] = [
         ParamType::Bool,
         ParamType::Int16,
         ParamType::Int32,
@@ -111,6 +118,7 @@ mod tests {
         ParamType::Text,
         ParamType::FixedText,
         ParamType::Bytes,
+        ParamType::Bits,
         ParamType::Uuid,
         ParamType::Json,
         ParamType::JsonBinary,
@@ -142,6 +150,31 @@ mod tests {
             !ParamType::Timestamp.accepts(&Value::Date(crate::value::Temporal::Finite(
                 chrono::NaiveDate::from_ymd_opt(2024, 1, 1).expect("a date")
             )))
+        );
+    }
+
+    #[test]
+    fn bits_and_bytes_are_bound_apart() {
+        let bits = Value::Bits(crate::value::BitString::from_u64(0b101, 3));
+
+        assert!(ParamType::Bits.accepts(&bits));
+        assert!(!ParamType::Bytes.accepts(&bits), "bits went out as bytes");
+        assert!(!ParamType::Bits.accepts(&Value::Bytes(vec![5])));
+    }
+
+    #[test]
+    fn a_server_type_takes_its_own_text_back() {
+        let server = ParamType::ServerText(SqlTypeExpr::from_catalog_text("inet"));
+        let read_back = Value::Other(Box::new(crate::value::OtherValue {
+            type_name: "inet".to_owned(),
+            text: "10.0.0.1/32".to_owned(),
+        }));
+
+        assert!(server.accepts(&read_back));
+        assert!(server.accepts(&Value::Text("10.0.0.1".to_owned())));
+        assert!(
+            !ParamType::Text.accepts(&read_back),
+            "only a server type parses the server's own text"
         );
     }
 

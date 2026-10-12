@@ -63,17 +63,18 @@ pub(crate) async fn server_info(link: &mut MssqlLink) -> Result<ServerInfo, Driv
         None => None,
     }
     .ok_or_else(|| DriverError::Protocol("the server did not report ProductVersion".to_owned()))?;
-    let (major, minor) = split_version(&version)
+    let (major, minor, build) = split_version(&version)
         .ok_or_else(|| DriverError::Protocol(format!("the server reported version {version}")))?;
-    Ok(ServerInfo::new("SQL Server", version, major, minor))
+    Ok(ServerInfo::new("SQL Server", version, major, minor, build))
 }
 
 /// `ProductVersion` reads `16.0.4135.4`: major, minor, build, revision.
-fn split_version(version: &str) -> Option<(u32, u32)> {
+fn split_version(version: &str) -> Option<(u32, u32, u32)> {
     let mut parts = version.trim().split('.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next().map_or(Some(0), |minor| minor.parse().ok())?;
-    Some((major, minor))
+    let build = parts.next().map_or(Some(0), |build| build.parse().ok())?;
+    Some((major, minor, build))
 }
 
 #[cfg(test)]
@@ -81,10 +82,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn product_versions_split_into_major_and_minor() {
-        assert_eq!(split_version("16.0.4135.4"), Some((16, 0)));
-        assert_eq!(split_version("15.0.2000.5"), Some((15, 0)));
-        assert_eq!(split_version("12"), Some((12, 0)));
+    fn product_versions_split_into_major_minor_and_build() {
+        assert_eq!(split_version("16.0.4135.4"), Some((16, 0, 4135)));
+        assert_eq!(split_version("15.0.2000.5"), Some((15, 0, 2000)));
+        assert_eq!(split_version("12"), Some((12, 0, 0)));
         assert_eq!(split_version("Microsoft"), None);
         assert_eq!(split_version(""), None);
     }

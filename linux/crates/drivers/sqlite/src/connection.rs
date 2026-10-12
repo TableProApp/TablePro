@@ -82,7 +82,13 @@ impl SqliteConnection {
                 return Err(error);
             }
         };
-        let server_info = ServerInfo::new("SQLite", version.to_string(), version.major, version.minor);
+        let server_info = ServerInfo::new(
+            "SQLite",
+            version.to_string(),
+            version.major,
+            version.minor,
+            version.patch,
+        );
         Ok(Self {
             pool,
             path,

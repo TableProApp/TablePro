@@ -106,6 +106,12 @@ pub enum DriverError {
     #[error("{} is not a database file", .path.display())]
     NotADatabase { path: PathBuf },
 
+    /// The file system refused for a reason other than permission, such
+    /// as a full disk or a read-only mount. The kind is kept rather than
+    /// the error, so the variant stays comparable and cloneable.
+    #[error("could not write {}: {kind}", .path.display())]
+    FileIo { path: PathBuf, kind: std::io::ErrorKind },
+
     #[error("the server has no room for another connection")]
     Busy,
 
@@ -143,9 +149,10 @@ impl DriverError {
             | Self::RowGuardFailed { .. }
             | Self::CommitOutcomeUnknown { .. }
             | Self::PartiallyApplied { .. } => ErrorCategory::WriteOutcome,
-            Self::FileNotFound { .. } | Self::FileAccessDenied { .. } | Self::NotADatabase { .. } => {
-                ErrorCategory::File
-            }
+            Self::FileNotFound { .. }
+            | Self::FileAccessDenied { .. }
+            | Self::NotADatabase { .. }
+            | Self::FileIo { .. } => ErrorCategory::File,
             Self::Busy | Self::EditorSessionBusy => ErrorCategory::Busy,
             Self::Config(_) | Self::Unsupported { .. } => ErrorCategory::Configuration,
             Self::GuardUnsupported { .. } | Self::Decode { .. } | Self::Protocol(_) => ErrorCategory::Internal,
@@ -182,6 +189,21 @@ mod tests {
     #[test]
     fn a_driver_error_crosses_threads() {
         assert_send_sync_error::<DriverError>();
+    }
+
+    #[test]
+    fn a_full_disk_is_a_file_problem_that_names_its_cause() {
+        let full = DriverError::FileIo {
+            path: PathBuf::from("/data/app.sqlite3"),
+            kind: std::io::ErrorKind::StorageFull,
+        };
+
+        assert_eq!(full.category(), ErrorCategory::File);
+        assert!(full.to_string().contains("/data/app.sqlite3"), "{full}");
+        assert!(
+            full.to_string().contains(&std::io::ErrorKind::StorageFull.to_string()),
+            "{full}"
+        );
     }
 
     #[test]

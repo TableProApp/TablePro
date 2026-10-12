@@ -109,6 +109,9 @@ pub(crate) fn encode(param: &BoundParam) -> Result<ColumnData<'static>, DriverEr
             feature: "a time with an offset",
         }),
         ParamType::Interval => Err(DriverError::Unsupported { feature: "an interval" }),
+        ParamType::Bits => Err(DriverError::Unsupported {
+            feature: "a bit string",
+        }),
     }
 }
 
@@ -122,7 +125,7 @@ fn typed_null(param_type: &ParamType) -> ColumnData<'static> {
         ParamType::UInt64 | ParamType::Decimal => ColumnData::Numeric(None),
         ParamType::Float32 => ColumnData::F32(None),
         ParamType::Float64 => ColumnData::F64(None),
-        ParamType::Bytes => ColumnData::Binary(None),
+        ParamType::Bytes | ParamType::Bits => ColumnData::Binary(None),
         ParamType::Uuid => ColumnData::Guid(None),
         ParamType::Date => ColumnData::Date(None),
         ParamType::Time => ColumnData::Time(None),

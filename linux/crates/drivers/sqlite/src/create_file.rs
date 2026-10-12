@@ -70,7 +70,8 @@ fn file_error(kind: ErrorKind, path: &Path) -> DriverError {
     match kind {
         ErrorKind::NotFound => DriverError::FileNotFound { path },
         ErrorKind::IsADirectory => DriverError::NotADatabase { path },
-        _ => DriverError::FileAccessDenied { path },
+        ErrorKind::PermissionDenied => DriverError::FileAccessDenied { path },
+        kind => DriverError::FileIo { path, kind },
     }
 }
 
@@ -96,6 +97,30 @@ mod tests {
             .map(|entry| entry.unwrap().file_name())
             .collect();
         assert_eq!(leftovers, [std::ffi::OsString::from("data.sqlite3")]);
+    }
+
+    #[test]
+    fn only_a_refused_permission_is_access_denied() {
+        let path = PathBuf::from("/data/app.sqlite3");
+
+        assert_eq!(
+            file_error(ErrorKind::PermissionDenied, &path),
+            DriverError::FileAccessDenied { path: path.clone() }
+        );
+        assert_eq!(
+            file_error(ErrorKind::StorageFull, &path),
+            DriverError::FileIo {
+                path: path.clone(),
+                kind: ErrorKind::StorageFull
+            }
+        );
+        assert_eq!(
+            file_error(ErrorKind::ReadOnlyFilesystem, &path),
+            DriverError::FileIo {
+                path,
+                kind: ErrorKind::ReadOnlyFilesystem
+            }
+        );
     }
 
     #[test]

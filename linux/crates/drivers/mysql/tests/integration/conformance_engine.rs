@@ -101,12 +101,17 @@ impl<S: Server> ConformanceEngine for MySqlEngine<S> {
     }
 
     /// A LIMIT of its own, so `sql_select_limit` does not cut it and the
-    /// editor reads past its row limit.
+    /// editor reads past its row limit. Both servers stop a recursive CTE
+    /// after 1,000 rounds by default, so MySQL raises the bound for the
+    /// statement and MariaDB reads its sequence engine instead.
     fn row_source_sql(&self, rows: u64) -> String {
-        format!(
-            "WITH RECURSIVE source (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM source WHERE n < {rows}) \
-             SELECT n FROM source LIMIT {rows}"
-        )
+        match S::FLAVOUR {
+            MysqlFlavour::Mysql => format!(
+                "WITH RECURSIVE source (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM source WHERE n < {rows}) \
+                 SELECT /*+ SET_VAR(cte_max_recursion_depth = {rows}) */ n FROM source LIMIT {rows}"
+            ),
+            MysqlFlavour::Mariadb => format!("SELECT seq AS n FROM seq_1_to_{rows} LIMIT {rows}"),
+        }
     }
 }
 

@@ -96,9 +96,9 @@ impl ClickHouseEndpoint {
             }
             Ok(Ok(identity)) => identity,
         };
-        let (major, minor) = version_numbers(&identity.version);
+        let (major, minor, patch) = version_numbers(&identity.version);
         Ok((
-            ServerInfo::new("ClickHouse", identity.version, major, minor),
+            ServerInfo::new("ClickHouse", identity.version, major, minor, patch),
             identity.database,
         ))
     }
@@ -136,9 +136,10 @@ struct Identity {
 }
 
 /// `24.8.4.13` is major 24, minor 8.
-fn version_numbers(version: &str) -> (u32, u32) {
+fn version_numbers(version: &str) -> (u32, u32, u32) {
     let mut parts = version.split('.').map(|part| part.parse::<u32>().unwrap_or(0));
-    (parts.next().unwrap_or(0), parts.next().unwrap_or(0))
+    let mut next = || parts.next().unwrap_or(0);
+    (next(), next(), next())
 }
 
 #[cfg(test)]
@@ -146,9 +147,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_version_splits_into_major_and_minor() {
-        assert_eq!(version_numbers("24.8.4.13"), (24, 8));
-        assert_eq!(version_numbers("25.10.1.1"), (25, 10));
-        assert_eq!(version_numbers("not a version"), (0, 0));
+    fn a_version_splits_into_major_minor_and_patch() {
+        assert_eq!(version_numbers("24.8.4.13"), (24, 8, 4));
+        assert_eq!(version_numbers("25.10.1.1"), (25, 10, 1));
+        assert_eq!(version_numbers("not a version"), (0, 0, 0));
     }
 }

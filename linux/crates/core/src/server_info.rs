@@ -9,22 +9,26 @@ pub struct ServerInfo {
     pub version: String,
     pub major: u32,
     pub minor: u32,
+    /// The third number, which MySQL ships features in (8.0.13, 8.0.21).
+    /// Zero for an engine whose version has no third number.
+    pub patch: u32,
 }
 
 impl ServerInfo {
-    pub fn new(product: impl Into<String>, version: impl Into<String>, major: u32, minor: u32) -> Self {
+    pub fn new(product: impl Into<String>, version: impl Into<String>, major: u32, minor: u32, patch: u32) -> Self {
         Self {
             product: product.into(),
             version: version.into(),
             major,
             minor,
+            patch,
         }
     }
 
     /// Whether the server is at least this version, for a feature that
     /// arrived in one.
-    pub fn at_least(&self, major: u32, minor: u32) -> bool {
-        (self.major, self.minor) >= (major, minor)
+    pub fn at_least(&self, major: u32, minor: u32, patch: u32) -> bool {
+        (self.major, self.minor, self.patch) >= (major, minor, patch)
     }
 }
 
@@ -34,11 +38,20 @@ mod tests {
 
     #[test]
     fn a_version_gate_compares_minor_versions_too() {
-        let server = ServerInfo::new("PostgreSQL", "16.2", 16, 2);
+        let server = ServerInfo::new("PostgreSQL", "16.2", 16, 2, 0);
 
-        assert!(server.at_least(13, 0));
-        assert!(server.at_least(16, 2));
-        assert!(!server.at_least(16, 3));
-        assert!(!server.at_least(17, 0));
+        assert!(server.at_least(13, 0, 0));
+        assert!(server.at_least(16, 2, 0));
+        assert!(!server.at_least(16, 3, 0));
+        assert!(!server.at_least(17, 0, 0));
+    }
+
+    #[test]
+    fn a_version_gate_compares_patch_versions_too() {
+        let server = ServerInfo::new("MySQL", "8.0.20", 8, 0, 20);
+
+        assert!(server.at_least(8, 0, 13));
+        assert!(!server.at_least(8, 0, 21));
+        assert!(server.at_least(5, 7, 44), "a newer minor outranks any patch");
     }
 }

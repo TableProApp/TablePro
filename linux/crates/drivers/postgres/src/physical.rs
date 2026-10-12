@@ -156,10 +156,11 @@ pub(crate) async fn server_info(client: &Client) -> Result<ServerInfo, DriverErr
         ));
     };
     let (major, minor) = split_version_number(number);
-    Ok(ServerInfo::new("PostgreSQL", version, major, minor))
+    Ok(ServerInfo::new("PostgreSQL", version, major, minor, 0))
 }
 
-/// `server_version_num` is major * 10000 + minor from PostgreSQL 10 on.
+/// `server_version_num` is major * 10000 + minor from PostgreSQL 10 on,
+/// which is two numbers: there is no patch to read.
 fn split_version_number(number: u32) -> (u32, u32) {
     (number / 10_000, number % 10_000)
 }

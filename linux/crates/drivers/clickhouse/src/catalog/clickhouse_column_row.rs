@@ -1,5 +1,7 @@
-use tablepro_core::column::{ColumnDefault, ColumnInfo, SqlExpression};
+use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnType, SqlExpression};
 use tablepro_core::ddl::{ColumnAttributes, ColumnKeyRoles, GeneratedColumn, GeneratedStorage, UnmodeledAttribute};
+use tablepro_core::edit::parse_literal_text;
+use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 use tablepro_core::{DriverError, Value};
 
 use crate::clickhouse_type::ClickHouseType;
@@ -47,9 +49,7 @@ impl ClickHouseColumnRow {
     pub(crate) fn info(&self) -> ColumnInfo {
         let parsed = ClickHouseType::parse(&self.type_text);
         let default = match self.default_kind.as_str() {
-            "DEFAULT" if !self.default_expression.is_empty() => {
-                ColumnDefault::Expression(SqlExpression::from_catalog_text(self.default_expression.as_str()))
-            }
+            "DEFAULT" => classify_default(&self.default_expression, &parsed.column_type),
             _ => ColumnDefault::None,
         };
         ColumnInfo {
@@ -95,6 +95,30 @@ impl ClickHouseColumnRow {
     }
 }
 
+/// A DEFAULT as a value the insert path can bind where it is a literal,
+/// and as the server's expression otherwise.
+fn classify_default(text: &str, column_type: &ColumnType) -> ColumnDefault {
+    let text = text.trim();
+    if text.is_empty() {
+        return ColumnDefault::None;
+    }
+    let expression = || ColumnDefault::Expression(SqlExpression::from_catalog_text(text));
+    let Ok(parsed) = parse_expression(SqlGrammar::ClickHouse, text, MAX_EXPRESSION_LEN) else {
+        return expression();
+    };
+    let literal_text = match parsed.literal {
+        None => return expression(),
+        Some(LiteralToken::Null) => return ColumnDefault::None,
+        Some(LiteralToken::Text(text)) => text,
+        Some(LiteralToken::Number(number)) => number.to_string(),
+        Some(LiteralToken::Boolean(flag)) => flag.to_string(),
+    };
+    match parse_literal_text(&literal_text, column_type) {
+        Ok(Value::Null) | Err(_) => expression(),
+        Ok(value) => ColumnDefault::Literal(value),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tablepro_core::column::{ColumnKind, TextLength};
@@ -115,6 +139,24 @@ mod tests {
     }
 
     #[test]
+    fn classify_default_table() {
+        let default = |type_text: &str, expression: &str| row("c", type_text, "DEFAULT", expression).info().default;
+
+        assert_eq!(default("UInt8", "42"), ColumnDefault::Literal(Value::Int(42)));
+        assert_eq!(default("Int32", "-1"), ColumnDefault::Literal(Value::Int(-1)));
+        assert_eq!(
+            default("String", "'it\\'s'"),
+            ColumnDefault::Literal(Value::Text("it's".to_owned()))
+        );
+        assert_eq!(
+            default("DateTime", "now()"),
+            ColumnDefault::Expression(SqlExpression::from_catalog_text("now()"))
+        );
+        assert_eq!(default("Nullable(String)", "NULL"), ColumnDefault::None);
+        assert_eq!(default("String", ""), ColumnDefault::None);
+    }
+
+    #[test]
     fn defaults_and_generated_columns_follow_default_kind() {
         let plain = row("note", "Nullable(String)", "DEFAULT", "'x'").info();
         assert!(plain.nullable);
@@ -124,10 +166,7 @@ mod tests {
                 length: TextLength::Unbounded
             }
         );
-        assert_eq!(
-            plain.default,
-            ColumnDefault::Expression(SqlExpression::from_catalog_text("'x'"))
-        );
+        assert_eq!(plain.default, ColumnDefault::Literal(Value::Text("x".to_owned())));
         assert!(!plain.is_generated);
         assert_eq!(plain.comment, None);
 

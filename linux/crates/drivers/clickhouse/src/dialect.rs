@@ -121,10 +121,6 @@ impl SqlDialect for ClickHouseDialect {
             }
             BindTarget::Column(column) => (column_param_type(column, &value)?, bind_type(column)?),
         };
-        let value = match param_type {
-            ParamType::ServerText(_) => as_server_text(value),
-            _ => value,
-        };
         let param = BoundParam::new(value, param_type)?;
         Ok(Placeholder::bound(
             format!("{{{}:{type_sql}}}", param_name(ordinal)),
@@ -306,15 +302,6 @@ fn column_param_type(column: &ColumnInfo, value: &Value) -> Result<ParamType, Bi
     })
 }
 
-/// A value the server parses from its own text. An address or a
-/// composite the grid read back is carried as that text.
-fn as_server_text(value: Value) -> Value {
-    match value {
-        Value::Other(other) => Value::Text(other.text),
-        other => other,
-    }
-}
-
 fn literal(value: &Value) -> Result<String, LiteralError> {
     Ok(match value {
         Value::Null => "NULL".to_owned(),
@@ -396,7 +383,7 @@ mod tests {
     use super::*;
 
     fn dialect() -> ClickHouseDialect {
-        ClickHouseDialect::new(&ServerInfo::new("ClickHouse", "25.8.1.1", 25, 8))
+        ClickHouseDialect::new(&ServerInfo::new("ClickHouse", "25.8.1.1", 25, 8, 1))
     }
 
     fn column(type_text: &str) -> ColumnInfo {

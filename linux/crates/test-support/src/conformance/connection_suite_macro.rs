@@ -185,6 +185,11 @@ macro_rules! connection_conformance_suite {
             close_is_idempotent,
             $crate::conformance::cases::close::close_is_idempotent::<$engine>
         }
+        $crate::__conformance_case! {
+            $docker,
+            stream_read_streams_every_row_in_bounded_batches,
+            $crate::conformance::cases::streaming::stream_read_streams_every_row_in_bounded_batches::<$engine>
+        }
         $crate::__conformance_endpoint_cases! { $endpoint, $docker, $engine }
         $crate::__conformance_pool_case! { $pool, $endpoint, $docker, $engine }
         $crate::__conformance_editor_case! { $editor, $docker, $engine }

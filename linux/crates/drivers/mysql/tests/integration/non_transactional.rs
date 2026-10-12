@@ -196,7 +196,7 @@ async fn aria_table_uses_statement_by_statement() {
 async fn innodb_trigger_into_myisam_rollback_warning_1196_partially_applied() {
     for flavour in FLAVOURS {
         let fixture = start(flavour).await;
-        let connection = crate::support::connect_root(&fixture).await;
+        let connection = connect(&fixture, false).await;
         setup(
             connection.as_ref(),
             &[

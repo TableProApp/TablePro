@@ -43,7 +43,7 @@ pub struct ConnectionScript {
 impl Default for ConnectionScript {
     fn default() -> Self {
         Self {
-            server_info: ServerInfo::new("Fake", "1.0", 1, 0),
+            server_info: ServerInfo::new("Fake", "1.0", 1, 0, 0),
             dialect: Arc::new(FakeDialect),
             read_only: false,
             close: CloseBehaviour::Immediate,

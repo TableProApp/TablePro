@@ -140,9 +140,7 @@ async fn two_result_set_script_two_started() {
 async fn create_trigger_and_procedure_in_session() {
     for flavour in FLAVOURS {
         let fixture = start(flavour).await;
-        // MySQL's binary log is on, so a trigger or routine needs a login
-        // trusted to create one.
-        let connection = connect_root(&fixture).await;
+        let connection = connect(&fixture, false).await;
         let editor = session(connection.as_ref()).await;
 
         run_ok(

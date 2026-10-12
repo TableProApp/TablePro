@@ -87,6 +87,9 @@ impl MysqlFixture {
         if options.require_secure_transport {
             arguments.push("--require-secure-transport=ON".to_owned());
         }
+        if options.trust_function_creators {
+            arguments.push("--log-bin-trust-function-creators=ON".to_owned());
+        }
         arguments.extend(options.server_arguments.iter().cloned());
         arguments
     }
@@ -201,6 +204,17 @@ mod tests {
         );
         assert!(!script.contains("REQUIRE SSL"));
         assert!(script.contains("REQUIRE X509"));
+    }
+
+    #[test]
+    fn only_a_trusting_server_lets_the_password_user_create_routines() {
+        let trusting = "--log-bin-trust-function-creators=ON".to_owned();
+
+        assert!(!MysqlFixture::server_arguments(&MysqlOptions::new(MysqlFlavour::Mysql)).contains(&trusting));
+        assert!(
+            MysqlFixture::server_arguments(&MysqlOptions::new(MysqlFlavour::Mariadb).trusting_function_creators())
+                .contains(&trusting)
+        );
     }
 
     #[test]
