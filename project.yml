@@ -247,12 +247,6 @@ targets:
       - target: MarkdownExport
         embed: true
         copy: { destination: plugins }
-      - target: HTMLExport
-        embed: true
-        copy: { destination: plugins }
-      - target: XMLExport
-        embed: true
-        copy: { destination: plugins }
       - target: XLSXImport
         embed: true
         copy: { destination: plugins }
@@ -575,7 +569,6 @@ targets:
       - Plugins/TypesenseDriverPlugin/TypesenseQueryBuilder.swift
       - Plugins/TypesenseDriverPlugin/TypesenseSchema.swift
       - Plugins/TypesenseDriverPlugin/TypesenseStatementGenerator.swift
-      - Plugins/HTMLExportPlugin/HTMLExportModels.swift
       - Plugins/JSONExportPlugin/JSONExportModels.swift
       - Plugins/MarkdownExportPlugin/MarkdownExportModels.swift
       - Plugins/ParquetExportPlugin/ParquetExportModels.swift
@@ -881,7 +874,6 @@ targets:
       - Plugins/XLSXExportPlugin/XLSXWriter.swift
       - Plugins/XLSXImportPlugin/XLSXImportOptions.swift
       - Plugins/XLSXImportPlugin/XLSXSheetParser.swift
-      - Plugins/XMLExportPlugin/XMLExportModels.swift
       - Plugins/SnowflakeDriverPlugin/PluginCellValueBox.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeBindingEncoder.swift
@@ -1126,15 +1118,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MarkdownExportPlugin
 
-  HTMLExport:
-    templates: [DriverPlugin]
-    templateAttributes:
-      folder: HTMLExportPlugin
-      principalClass: HTMLExportPlugin
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.HTMLExportPlugin
-
   XLSXImport:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1146,15 +1129,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXImportPlugin
-
-  XMLExport:
-    templates: [DriverPlugin]
-    templateAttributes:
-      folder: XMLExportPlugin
-      principalClass: XMLExportPlugin
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XMLExportPlugin
 
   ParquetExport:
     templates: [DriverPlugin]
@@ -1665,12 +1639,10 @@ aggregateTargets:
       - OracleDriver
       - PostgreSQLDriver
       - RedisDriver
-      - HTMLExport
       - MarkdownExport
       - ParquetExport
       - SQLExport
       - XLSXImport
-      - XMLExport
       - SQLImport
       - SQLiteDriver
       - SnowflakeDriverPlugin

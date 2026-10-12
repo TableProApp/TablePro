@@ -187,18 +187,6 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/sap-hana"
     },
-    "html": {
-      "target": "HTMLExport",
-      "bundleName": "HTMLExport",
-      "bundleId": "com.TablePro.HTMLExportPlugin",
-      "bundled": true,
-      "displayName": "HTML Export",
-      "summary": "Export data as an HTML table",
-      "databaseTypeIds": null,
-      "icon": "chevron.left.forwardslash.chevron.right",
-      "category": "export-format",
-      "homepage": "https://docs.tablepro.app/features/import-export"
-    },
     "kafka": {
       "target": "KafkaDriverPlugin",
       "bundleName": "KafkaDriverPlugin",
@@ -466,18 +454,6 @@
       "databaseTypeIds": null,
       "icon": "tablecells",
       "category": "import-format",
-      "homepage": "https://docs.tablepro.app/features/import-export"
-    },
-    "xml": {
-      "target": "XMLExport",
-      "bundleName": "XMLExport",
-      "bundleId": "com.TablePro.XMLExportPlugin",
-      "bundled": true,
-      "displayName": "XML Export",
-      "summary": "Export data as XML",
-      "databaseTypeIds": null,
-      "icon": "doc.badge.gearshape",
-      "category": "export-format",
       "homepage": "https://docs.tablepro.app/features/import-export"
     }
   }

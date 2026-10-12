@@ -23893,16 +23893,6 @@
         }
       }
     },
-    "An HTML table. Open in a browser or paste into a page." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Une table HTML. Ouvrez-la dans un navigateur ou collez-la dans une page."
-          }
-        }
-      }
-    },
     "An identity column keeps its value, but its sequence is recreated under a new name because the old table still holds the original name when the new one is created." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -123196,16 +123186,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Un bastion, plusieurs connexions. Toute modification du serveur ou de ses identifiants s’applique à chaque connexion qui passe par son tunnel."
-          }
-        }
-      }
-    },
-    "One element per row. Use where a parser expects XML." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Un élément par ligne. À utiliser lorsqu’un analyseur attend du XML."
           }
         }
       }
