@@ -16,9 +16,11 @@ apps/linux/app/src/ui/app/init_window.rs
 apps/linux/app/src/ui/app/init_workspace.rs
 apps/linux/app/src/ui/app/mod.rs
 apps/linux/app/src/ui/app/organization.rs
+apps/linux/app/src/ui/app/referenced_row.rs
 apps/linux/app/src/ui/app/row_ops.rs
 apps/linux/app/src/ui/app/session_teardown.rs
 apps/linux/app/src/ui/app/shortcuts.rs
+apps/linux/app/src/ui/app/sidebar_state.rs
 apps/linux/app/src/ui/app/status_pages.rs
 apps/linux/app/src/ui/app/structure.rs
 apps/linux/app/src/ui/app/workspace_chrome.rs
@@ -27,6 +29,8 @@ apps/linux/app/src/ui/app/workspace_tabs.rs
 apps/linux/app/src/ui/browse_tab/chrome.rs
 apps/linux/app/src/ui/browse_tab/grid_render.rs
 apps/linux/app/src/ui/browse_tab/mod.rs
+apps/linux/app/src/ui/browse_tab/paste.rs
+apps/linux/app/src/ui/browse_tab/reference.rs
 apps/linux/app/src/ui/browse_tab/row_ops.rs
 apps/linux/app/src/ui/browse_tab/selection/stats.rs
 apps/linux/app/src/ui/browse_tab/selection.rs
@@ -36,6 +40,7 @@ apps/linux/app/src/ui/connect_dialog/browse.rs
 apps/linux/app/src/ui/connect_dialog/form.rs
 apps/linux/app/src/ui/connect_dialog/mod.rs
 apps/linux/app/src/ui/connect_dialog/prefill.rs
+apps/linux/app/src/ui/connect_dialog/socket_endpoint.rs
 apps/linux/app/src/ui/connection_bundle/export.rs
 apps/linux/app/src/ui/connection_bundle/import.rs
 apps/linux/app/src/ui/connection_bundle/mod.rs
@@ -53,14 +58,18 @@ apps/linux/app/src/ui/editor/session_mode.rs
 apps/linux/app/src/ui/editor/statement_cursor.rs
 apps/linux/app/src/ui/error_text.rs
 apps/linux/app/src/ui/explain_dialog.rs
+apps/linux/app/src/ui/explain_tree.rs
 apps/linux/app/src/ui/export_dialog/file.rs
 apps/linux/app/src/ui/export_dialog.rs
+apps/linux/app/src/ui/filter_presets.rs
 apps/linux/app/src/ui/filter_strip.rs
+apps/linux/app/src/ui/grid/choice_editor.rs
 apps/linux/app/src/ui/grid/column_jump.rs
 apps/linux/app/src/ui/grid/column_visibility.rs
 apps/linux/app/src/ui/grid/context_menu.rs
 apps/linux/app/src/ui/grid/display.rs
 apps/linux/app/src/ui/grid/editing.rs
+apps/linux/app/src/ui/grid/local_filter.rs
 apps/linux/app/src/ui/grid/row_find.rs
 apps/linux/app/src/ui/grid/value_viewer.rs
 apps/linux/app/src/ui/history_dialog.rs

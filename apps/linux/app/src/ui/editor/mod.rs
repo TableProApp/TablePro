@@ -736,8 +736,7 @@ impl SimpleComponent for SqlEditor {
                     .map(|duration| duration.as_millis() as i64)
                     .unwrap_or(0);
                 let secs_str = secs.to_string();
-                let reason =
-                    crate::tr!("Query exceeded the {n}s timeout configured in Preferences.").replace("{n}", &secs_str);
+                let reason = crate::tr!("Query exceeded the {n}s query timeout.").replace("{n}", &secs_str);
                 self.record_history(context, elapsed, None, Outcome::Error(reason.clone()));
                 if !terminal.replace_ui {
                     return;
