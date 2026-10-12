@@ -12,15 +12,25 @@ path = "src/lib.rs"
 [dependencies]
 tablepro-core = { path = "../../core" }
 async-trait.workspace = true
-chrono.workspace = true
 futures.workspace = true
+# One direct call, sqlite3_get_autocommit, until sqlx exposes the
+# transaction state of a connection. The range follows sqlx-sqlite's own,
+# because only one libsqlite3-sys can be linked.
+libsqlite3-sys.workspace = true
+sqlparser.workspace = true
 sqlx = { workspace = true, features = ["sqlite-unbundled"] }
-tokio.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
-libsqlite3-sys.workspace = true
+tablepro-test-support = { path = "../../test-support" }
+async-trait.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
