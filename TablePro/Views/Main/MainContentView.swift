@@ -239,7 +239,7 @@ struct MainContentView: View {
         case .documentEditor(let request):
             DocumentEditorSheet(request: request, databaseType: connection.type)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
-             .transferTables, .backupDatabase, .restoreDatabase, .serverSideExport:
+             .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
         case .maintenance(let operation, let tableName, let database, let schema):
             MaintenanceSheet(

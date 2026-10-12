@@ -105,14 +105,6 @@ extension MainWindowToolbar {
                         : "rectangle.bottomhalf.inset.filled"
                 }
             )
-        case Self.dashboard:
-            return menuOnlyItem(
-                id: itemIdentifier,
-                label: String(localized: "Dashboard"),
-                symbol: "gauge.with.dots.needle.33percent",
-                action: #selector(performShowDashboard(_:)),
-                description: String(localized: "Server Dashboard")
-            )
         case Self.history:
             return menuOnlyItem(
                 id: itemIdentifier,

@@ -117,7 +117,7 @@ struct MainWindowToolbarShortcutHintTests {
     @Test("An item with no shortcut keeps a plain tooltip and no key equivalent")
     func itemWithoutShortcutHasNoKeyEquivalent() {
         let owner = MainWindowToolbar()
-        let item = vend(MainWindowToolbar.dashboard, from: owner)
+        let item = vend(MainWindowToolbar.restorePreviousValues, from: owner)
         #expect(item?.menuFormRepresentation?.keyEquivalent == "")
         #expect(item?.toolTip?.isEmpty == false)
     }

@@ -590,10 +590,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             recoverySuggestion: info.recoverySuggestion,
             recoveryTitle: action.title,
             window: window
-        ) { [weak self] in
-            ConnectionRecoveryPerformer.perform(action, for: connection) {
-                self?.test()
-            }
+        ) {
+            ConnectionRecoveryPerformer.perform(action, for: connection)
         }
     }
 

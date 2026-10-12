@@ -17,7 +17,8 @@ extension DatabaseManager {
     func connectToSession(
         _ requestedConnection: DatabaseConnection,
         passwordOverride incomingPasswordOverride: String? = nil,
-        sshPasswordOverride: String? = nil
+        sshPasswordOverride: String? = nil,
+        trigger: ConnectTrigger = .request
     ) async throws {
         let connection = resolvedConnectionDefinition(for: requestedConnection)
 
@@ -46,6 +47,9 @@ extension DatabaseManager {
         lastActiveSessionId = connection.id
 
         do {
+            try await preConnectScriptConsent.authorize(connection, trigger: trigger)
+            /// The answer can take a minute, long enough for the person to cancel the attempt.
+            guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
             try await runPreConnectScriptIfNeeded(resolvedConnection, attempt: attempt)
         } catch {
             finalizeConnectionFailure(

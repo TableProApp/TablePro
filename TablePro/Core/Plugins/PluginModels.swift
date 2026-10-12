@@ -15,7 +15,6 @@ struct PluginEntry: Identifiable {
     var version: String
     let pluginDescription: String
     let capabilities: [PluginCapability]
-    var isEnabled: Bool
 
     let databaseTypeId: String?
     let additionalTypeIds: [String]
