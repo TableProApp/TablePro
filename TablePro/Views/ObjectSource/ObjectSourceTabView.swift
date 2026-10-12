@@ -13,22 +13,16 @@ import TableProPluginKit
 final class ObjectSourceLoader: ObservableObject {
     enum State {
         case loading
-        case loaded(source: String, attributes: [ObjectAttribute], enumLabels: [String])
+        case loaded(source: String, attributes: [ObjectAttribute])
         case failed(String)
     }
 
     private struct Fetched: Sendable {
         let source: String
         let attributes: [ObjectAttribute]
-        let enumLabels: [String]
-        let userType: UserDefinedTypeInfo?
     }
 
     @Published private(set) var state: State = .loading
-
-    /// The type as the server last described it, so an edit addresses the object on screen rather
-    /// than whatever the sidebar listed when the tab was opened.
-    @Published private(set) var userType: UserDefinedTypeInfo?
 
     private let connectionId: UUID
     private let objectRef: DatabaseObjectRef
@@ -45,17 +39,12 @@ final class ObjectSourceLoader: ObservableObject {
     }
 
     var source: String {
-        if case .loaded(let source, _, _) = state { return source }
+        if case .loaded(let source, _) = state { return source }
         return ""
     }
 
     var attributes: [ObjectAttribute] {
-        if case .loaded(_, let attributes, _) = state { return attributes }
-        return []
-    }
-
-    var enumLabels: [String] {
-        if case .loaded(_, _, let labels) = state { return labels }
+        if case .loaded(_, let attributes) = state { return attributes }
         return []
     }
 
@@ -65,8 +54,7 @@ final class ObjectSourceLoader: ObservableObject {
         if !isRefresh { state = .loading }
         do {
             let fetched = try await fetch()
-            userType = fetched.userType
-            state = .loaded(source: fetched.source, attributes: fetched.attributes, enumLabels: fetched.enumLabels)
+            state = .loaded(source: fetched.source, attributes: fetched.attributes)
         } catch is CancellationError {
         } catch {
             guard case .loaded = state, isRefresh else {
@@ -86,7 +74,7 @@ final class ObjectSourceLoader: ObservableObject {
 
     /// One round trip. Re-listing the schema to recover the attributes cost a full catalog scan
     /// per open and per reload, for values the sidebar's listing already carried into the ref. A
-    /// type is the exception: its labels are what the viewer edits, so they are read fresh.
+    /// type is the exception: its definition and attributes are read fresh.
     private func fetch() async throws -> Fetched {
         let scope = DatabaseScope(
             connectionId: connectionId,
@@ -100,13 +88,13 @@ final class ObjectSourceLoader: ObservableObject {
                     throw PluginObjectSourceError.unsupported(objectRef.name)
                 }
                 let source = try await driver.fetchRoutineDDL(routine)
-                return Fetched(source: source, attributes: objectRef.attributes, enumLabels: [], userType: nil)
+                return Fetched(source: source, attributes: objectRef.attributes)
             case .trigger:
                 guard let trigger = objectRef.trigger else {
                     throw PluginObjectSourceError.unsupported(objectRef.name)
                 }
                 let source = try await driver.fetchTriggerDDL(trigger)
-                return Fetched(source: source, attributes: objectRef.attributes, enumLabels: [], userType: nil)
+                return Fetched(source: source, attributes: objectRef.attributes)
             case .userType:
                 guard let type = objectRef.userType else {
                     throw PluginObjectSourceError.unsupported(objectRef.name)
@@ -115,26 +103,20 @@ final class ObjectSourceLoader: ObservableObject {
                 guard let source = fetched.definition, !source.isEmpty else {
                     throw PluginObjectSourceError.unsupported(objectRef.name)
                 }
-                return Fetched(
-                    source: source,
-                    attributes: fetched.attributes,
-                    enumLabels: fetched.enumLabels,
-                    userType: fetched
-                )
+                return Fetched(source: source, attributes: fetched.attributes)
             case .view, .materializedView:
                 let source = try await TableDDLComposer.fetchDDL(
                     for: objectRef.name,
                     using: driver,
                     includesDependencies: true
                 )
-                return Fetched(source: source, attributes: objectRef.attributes, enumLabels: [], userType: nil)
+                return Fetched(source: source, attributes: objectRef.attributes)
             }
         }
     }
 }
 
 struct ObjectSourceTabView: View {
-    @ObservedObject private var databaseManager = DatabaseManager.shared
     let connectionId: UUID
     let databaseType: DatabaseType
     let objectRef: DatabaseObjectRef
@@ -164,15 +146,6 @@ struct ObjectSourceTabView: View {
         .task { await loader.loadIfNeeded() }
     }
 
-    /// Only an enum has anything to edit in place: a label is appended or renamed with one
-    /// statement. Every other object stays read-only here and is edited in a query tab.
-    private var enumEditor: EnumLabelEditor? {
-        guard objectRef.kind == .userType, objectRef.typeKind == .enumeration,
-              let connection = databaseManager.session(for: connectionId)?.connection
-        else { return nil }
-        return EnumLabelEditor(connection: connection, objectRef: objectRef)
-    }
-
     private var header: some View {
         HStack(spacing: 8) {
             Image(systemName: objectRef.kindIconName)
@@ -189,11 +162,9 @@ struct ObjectSourceTabView: View {
                 .padding(.vertical, 2)
                 .background(Color(nsColor: .quaternaryLabelColor), in: Capsule())
             Spacer()
-            if enumEditor?.canEdit != true {
-                Text("Read Only")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("Read Only")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Button {
                 Task { await loader.load(isRefresh: true) }
             } label: {
@@ -227,31 +198,13 @@ struct ObjectSourceTabView: View {
             }
             .background(Color(nsColor: .textBackgroundColor))
         case .loaded:
-            VStack(spacing: 0) {
-                if let editor = enumEditor, let type = loader.userType {
-                    EnumLabelListView(
-                        labels: loader.enumLabels,
-                        canEdit: editor.canEdit,
-                        canRename: editor.canRename(type),
-                        onAdd: { label, placement in
-                            try await editor.add(label: label, placement: placement, to: type)
-                            await loader.load(isRefresh: true)
-                        },
-                        onRename: { oldLabel, newLabel in
-                            try await editor.rename(oldLabel, to: newLabel, in: type)
-                            await loader.load(isRefresh: true)
-                        }
-                    )
-                    Divider()
-                }
-                ObjectSourceView(
-                    source: loader.source,
-                    databaseType: databaseType,
-                    exportFileName: objectRef.suggestedFileName,
-                    attributes: loader.attributes,
-                    onOpenInEditor: { onOpenInEditor(loader.source) }
-                )
-            }
+            ObjectSourceView(
+                source: loader.source,
+                databaseType: databaseType,
+                exportFileName: objectRef.suggestedFileName,
+                attributes: loader.attributes,
+                onOpenInEditor: { onOpenInEditor(loader.source) }
+            )
         }
     }
 }

@@ -107,7 +107,8 @@ extension DatabaseAccessBridge {
             : .protectedWrite
         await forwardCancellation(cancellation, to: owner, on: connectionId)
 
-        let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
+        let manager = await databaseManager
+        let route = await MainActor.run { manager.executionRoute(for: scope) }
         let startLines = BatchErrorText.lines(of: batches.map(\.range.location), in: text)
         let startTime = CFAbsoluteTimeGetCurrent()
         let statementsRan = CatalogEvent.statementsRan(

@@ -67,6 +67,7 @@ internal enum ConnectionFailureClassifier {
     internal static func isUserCancelled(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         if case TabRouterError.userCancelled = error { return true }
+        if case PreConnectScriptConsentError.declined = error { return true }
         let nsError = error as NSError
         return nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError
     }

@@ -75,16 +75,6 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
         pruneIfNeeded()
     }
 
-    internal func records() -> [TableLoadPerformanceRecord] {
-        loadIfNeeded()
-        return Self.decodeRecords(in: Self.readFile(at: fileURL)).map(\.record)
-    }
-
-    /// Byte-for-byte stable for the same input, so an external report can diff two exports.
-    internal func exportJSON() -> Data {
-        (try? Self.makeEncoder(prettyPrinted: true).encode(records())) ?? Data()
-    }
-
     /// The first touch in a process reconciles the file against the retention rules, so a history
     /// left behind by a build that quit before pruning cannot grow past its caps.
     private func loadIfNeeded() {
@@ -197,7 +187,7 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
     }
 
     private static func encode(_ record: TableLoadPerformanceRecord) -> Data? {
-        guard var data = try? makeEncoder(prettyPrinted: false).encode(record) else {
+        guard var data = try? makeEncoder().encode(record) else {
             logger.error("Table load history record could not be encoded")
             return nil
         }
@@ -214,11 +204,9 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
         }
     }
 
-    internal static func makeEncoder(prettyPrinted: Bool) -> JSONEncoder {
+    internal static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = prettyPrinted
-            ? [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            : [.sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
             try container.encode(timestamps.format(date))

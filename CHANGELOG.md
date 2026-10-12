@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
+- Pre-connect script and SQLite extension prompts close as Cancel after 60 seconds without an answer.
+- Connections with a pre-connect script no longer reconnect a dropped tunnel on their own.
 - iCloud Sync watches the network and the iCloud account only while it is turned on.
 - tablepro command ships inside the app. Settings > General shows the Terminal line that links it; no administrator prompt.
 - MCP server runs only while Enable MCP Server is on in Settings > MCP. Clients and pairing no longer start it while it is off.
@@ -30,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
 - Fonts from the theme file.
+- Enum label editing and New Type… for PostgreSQL types. Run `ALTER TYPE` or `CREATE TYPE` in a query tab.
+- Server Dashboard for SQLite and DuckDB.
+- Dashboard button from Customize Toolbar. Open the Server Dashboard from the Database menu or Actions.
 - Loading plugins signed by other developers, and Trusted Plugin Developers in Settings > Plugins.
 - Browse tab and plugin download counts in Settings > Plugins.
 - On/off switch for each plugin in Settings > Plugins.
@@ -66,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Prompts from MCP clients, pairing and query links taking focus from other apps, and Return approving them.
+
+### Security
+
+- Pre-connect scripts running without a prompt when MCP, AppleScript, the AI assistant, Compare or Copy To opened the connection.
 
 ## [0.80.0] - 2026-10-11
 

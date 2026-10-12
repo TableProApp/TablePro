@@ -279,10 +279,6 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// listed, because its `identity` is the driver's own key for finding it again.
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
 
-    func createTypeTemplate(schema: String?) -> String?
-    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String?
-    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
-
     /// Fetch every trigger in the given schema, across all its tables.
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
 
@@ -832,16 +828,6 @@ extension DatabaseDriver {
             throw PluginObjectSourceError.unsupported(type.name)
         }
         return type
-    }
-
-    func createTypeTemplate(schema: String?) -> String? { nil }
-
-    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String? {
-        nil
-    }
-
-    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String? {
-        nil
     }
 
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
