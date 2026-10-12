@@ -17,50 +17,22 @@ internal enum ManagedPolicy: String, CaseIterable, Sendable {
     /// raised to this; a stronger choice is left alone, so the policy is a floor and never a ceiling.
     case minimumSafeModeLevel = "com.TablePro.policy.minimumSafeModeLevel"
 
-    /// Stops the MCP server from listening, so an AI client cannot reach the databases at all.
-    case mcpServerDisabled = "com.TablePro.policy.mcpServerDisabled"
-
-    /// Stops the in-app AI assistant, including inline suggestions.
-    case aiAssistantDisabled = "com.TablePro.policy.aiAssistantDisabled"
-
-    /// Stops plugins being installed, from the registry or from a file.
-    case pluginInstallDisabled = "com.TablePro.policy.pluginInstallDisabled"
-
     internal var key: String { rawValue }
 }
 
 internal protocol ManagedPolicyReading: Sendable {
-    /// True when a configuration profile supplies this key, so the UI for it must be disabled.
-    func isManaged(_ policy: ManagedPolicy) -> Bool
-    func bool(_ policy: ManagedPolicy) -> Bool
     func string(_ policy: ManagedPolicy) -> String?
 }
 
-/// Reads policy out of the standard preferences chain.
-///
-/// macOS already merges a configuration profile's values into `UserDefaults` at the highest
-/// priority, so reading a managed key needs no special path: the forced value simply wins. The one
-/// thing the normal API cannot tell you is *whether* a key was forced, which is what
-/// `CFPreferencesAppValueIsForced` is for. Its own header says callers "should use this function to
-/// determine whether or not to disable UI elements corresponding to those preference keys".
+/// Reads policy out of the standard preferences chain. macOS merges a configuration profile's
+/// values into `UserDefaults` at the highest priority, so the forced value simply wins.
 internal struct ManagedPolicyReader: ManagedPolicyReading, @unchecked Sendable {
     internal static let shared = ManagedPolicyReader()
 
     private let defaults: UserDefaults
-    private let applicationID: String
 
-    internal init(defaults: UserDefaults = .standard, applicationID: String = Bundle.main.bundleIdentifier ?? "") {
+    internal init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.applicationID = applicationID
-    }
-
-    internal func isManaged(_ policy: ManagedPolicy) -> Bool {
-        guard !applicationID.isEmpty else { return false }
-        return CFPreferencesAppValueIsForced(policy.key as CFString, applicationID as CFString)
-    }
-
-    internal func bool(_ policy: ManagedPolicy) -> Bool {
-        defaults.bool(forKey: policy.key)
     }
 
     internal func string(_ policy: ManagedPolicy) -> String? {

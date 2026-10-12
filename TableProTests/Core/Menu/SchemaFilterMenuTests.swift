@@ -11,7 +11,7 @@ import Testing
 struct SchemaFilterMenuTests {
     private func viewMenu() throws -> NSMenu {
         try #require(
-            MainMenuBuilder.build(keyboard: KeyboardSettings())
+            MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
                 .items
                 .first { $0.title == ViewMenuBuilder.title }?
                 .submenu

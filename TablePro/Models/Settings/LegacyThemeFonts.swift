@@ -30,8 +30,7 @@ internal enum LegacyThemeFonts {
     }
 
     private static func fonts(forThemeId id: String) -> Document.Fonts? {
-        let directories = [userThemesDirectory, userThemesDirectory.appendingPathComponent("Registry")]
-            + (Bundle.main.resourceURL.map { [$0] } ?? [])
+        let directories = [userThemesDirectory] + (Bundle.main.resourceURL.map { [$0] } ?? [])
 
         for directory in directories {
             let url = directory.appendingPathComponent("\(id).json", isDirectory: false)

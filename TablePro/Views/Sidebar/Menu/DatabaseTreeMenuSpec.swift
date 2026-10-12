@@ -53,15 +53,7 @@ internal enum DatabaseTreeMenuSpec {
                 DatabaseTreeMenuSection(newFolderItems(
                     kind: group.kind,
                     container: .container(database: database, schema: group.schema)
-                )),
-                DatabaseTreeMenuSection(
-                    createTypeItems(
-                        kind: group.kind,
-                        database: database,
-                        schema: group.schema,
-                        context: context
-                    )
-                )
+                ))
             ]
         case .hierarchicalSchemaSection(let schema):
             return hierarchicalSchemaSections(schema, context: context)
@@ -301,18 +293,6 @@ internal enum DatabaseTreeMenuSpec {
         ]
     }
 
-    /// Only the Types section offers it, and only where the engine can hand over a template. It is
-    /// omitted rather than disabled in read-only mode, the way New View is on the empty-area menu.
-    private static func createTypeItems(
-        kind: SidebarObjectKind,
-        database: String?,
-        schema: String?,
-        context: DatabaseTreeMenuContext
-    ) -> [DatabaseTreeMenuItem] {
-        guard kind == .type, context.canCreateType, !context.isReadOnly else { return [] }
-        return [.command(String(localized: "New Type…"), .createType(database: database, schema: schema))]
-    }
-
     private static func redisSections(_ node: RedisKeyNode) -> [DatabaseTreeMenuSection] {
         switch node {
         case .namespace(_, let fullPrefix, _, _):
@@ -344,10 +324,7 @@ internal enum DatabaseTreeMenuSpec {
         items.append(.command(String(localized: "Refresh"), .refreshObjectKind(kind)))
         return [
             DatabaseTreeMenuSection(items),
-            DatabaseTreeMenuSection(context.offersBrowsedFolders ? newFolderItems(kind: kind, container: .browsed) : []),
-            DatabaseTreeMenuSection(createTypeItems(
-                kind: kind, database: context.activeDatabase, schema: context.activeSchema, context: context
-            ))
+            DatabaseTreeMenuSection(context.offersBrowsedFolders ? newFolderItems(kind: kind, container: .browsed) : [])
         ]
     }
 

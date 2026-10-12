@@ -48,7 +48,10 @@ Check each one. If any fails, stop and say what is wrong.
 3. `swiftlint lint --strict` is clean. Fix findings first, in their own commit.
 4. If `Plugins/TableProPluginKit/` changed since the last tag, settle the ABI now (stage 3, PluginKit),
    because a breaking bump publishes plugins before the app tag.
-5. Warn, without blocking, when you are not on `main`, and report the last finished full-suite
+5. `scripts/export-cloudkit-schema.sh --check` passes. A field in the snapshot but not in Production
+   makes CloudKit reject every record that carries it, so the user deploys it in CloudKit Console
+   before the tag. It needs the cktool management token on this Mac.
+6. Warn, without blocking, when you are not on `main`, and report the last finished full-suite
    verdict on `main` with its commit. `main` is often red on merge skew; the tag's own run is the gate.
 
    ```bash
@@ -191,9 +194,10 @@ the same sitting as the tag.
   Conventional Commit of at most 72 characters.
 
 The tag runs `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and ZIP, Sparkle signatures,
-the GitHub Release with notes from `CHANGELOG.md`, then `appcast.xml`. The release is created as a
-draft holding every asset and published in one step, only when `lint`, `test`, `build` and
-`registry-readiness` pass. The job fails when the tag disagrees with `MARKETING_VERSION`.
+deltas from the previous five releases, the GitHub Release with notes from `CHANGELOG.md`, then
+`appcast.xml`. The release is created as a draft holding every asset and published in one step, only
+when `lint`, `test`, `build` and `registry-readiness` pass. The job fails when the tag disagrees with
+`MARKETING_VERSION`.
 
 A published release is immutable: its assets and its tag are locked. When a run fails:
 

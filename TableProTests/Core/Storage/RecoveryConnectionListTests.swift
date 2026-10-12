@@ -96,4 +96,11 @@ struct RecoveryConnectionListTests {
     func emptyCandidatesRestoreNothing() {
         #expect(RecoveryConnectionList.connectionIds(from: []).isEmpty)
     }
+
+    @Test("Quitting a client-launched session with nothing open keeps the last session")
+    func machineSessionWithNothingOpenKeepsTheList() {
+        #expect(!RecoveryConnectionList.shouldSaveOnQuit([], origin: .machine))
+        #expect(RecoveryConnectionList.shouldSaveOnQuit([UUID()], origin: .machine))
+        #expect(RecoveryConnectionList.shouldSaveOnQuit([], origin: .user))
+    }
 }

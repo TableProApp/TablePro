@@ -37,15 +37,10 @@ internal struct TypographySettings: Codable, Equatable, Sendable {
     internal init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let fallback = TypographySettings.default
-
-        editorFontFamily = try container.decodeIfPresent(String.self, forKey: .editorFontFamily)
-            ?? fallback.editorFontFamily
-        editorFontSize = try container.decodeIfPresent(Int.self, forKey: .editorFontSize)
-            ?? fallback.editorFontSize
-        dataGridFontFamily = try container.decodeIfPresent(String.self, forKey: .dataGridFontFamily)
-            ?? fallback.dataGridFontFamily
-        dataGridFontSize = try container.decodeIfPresent(Int.self, forKey: .dataGridFontSize)
-            ?? fallback.dataGridFontSize
+        editorFontFamily = container.decodeSetting(.editorFontFamily, default: fallback.editorFontFamily)
+        editorFontSize = container.decodeSetting(.editorFontSize, default: fallback.editorFontSize)
+        dataGridFontFamily = container.decodeSetting(.dataGridFontFamily, default: fallback.dataGridFontFamily)
+        dataGridFontSize = container.decodeSetting(.dataGridFontSize, default: fallback.dataGridFontSize)
     }
 
     internal var clampedEditorFontSize: Int {
