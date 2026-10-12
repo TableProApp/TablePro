@@ -2,15 +2,16 @@ use serde::{Deserialize, Serialize};
 use sqlparser::ast::{
     CopySource, CopyTarget, Cte, Delete, Expr, FromTable, FunctionArg, FunctionArgExpr, FunctionArguments,
     GrantObjects, Insert, ObjectName, Query, SelectItem, SetExpr, Statement, TableFactor, TableObject, UtilityOption,
-    Value,
 };
 use sqlparser::dialect::{Dialect, GenericDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect};
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer, Whitespace};
 
 use crate::admin_functions::is_administrative_function_name;
+use crate::constant_predicate::is_constant_true;
 use crate::effects::Effects;
 use crate::effects_classification::{merge_script_class, sql_effects_from_tokens, statement_effects, truncate_facts};
+use crate::explain_options::analyze_option_enabled;
 use crate::select_writes::select_writes;
 use crate::{blast_radius, sensitive_projection};
 
@@ -248,7 +249,7 @@ fn classify_statement_details(stmt: &Statement) -> StatementDetails {
             class: StatementClass::Update,
             tables: table_factor_names(&table.relation),
             has_where: selection.is_some(),
-            contains_unscoped_dml: selection.is_none(),
+            contains_unscoped_dml: selection.as_ref().is_none_or(is_constant_true),
         },
         Statement::Delete(delete) => classify_delete(delete),
         Statement::CreateTable(c) => StatementDetails {
@@ -404,29 +405,6 @@ fn classify_explain(analyze: bool, statement: &Statement, options: Option<&[Util
     }
 }
 
-fn analyze_option_enabled(options: &[UtilityOption]) -> bool {
-    options.iter().any(|option| {
-        option.name.value.eq_ignore_ascii_case("analyze") && !option.arg.as_ref().is_some_and(is_disabled_option_arg)
-    })
-}
-
-fn is_disabled_option_arg(arg: &Expr) -> bool {
-    match arg {
-        Expr::Value(value) => match &value.value {
-            Value::Boolean(flag) => !flag,
-            Value::Number(number, _) => number.parse::<f64>().is_ok_and(|n| n == 0.0),
-            Value::SingleQuotedString(text) | Value::DoubleQuotedString(text) => is_disabled_word(text),
-            _ => false,
-        },
-        Expr::Identifier(ident) => is_disabled_word(&ident.value),
-        _ => false,
-    }
-}
-
-fn is_disabled_word(text: &str) -> bool {
-    matches!(text.to_ascii_lowercase().as_str(), "false" | "off" | "0" | "no")
-}
-
 fn ddl_facts(tables: Vec<String>) -> StatementDetails {
     StatementDetails {
         effects: Effects::EMPTY,
@@ -462,7 +440,7 @@ fn classify_delete(delete: &Delete) -> StatementDetails {
         class: StatementClass::Delete,
         tables,
         has_where: delete.selection.is_some(),
-        contains_unscoped_dml: delete.selection.is_none(),
+        contains_unscoped_dml: delete.selection.as_ref().is_none_or(is_constant_true),
     }
 }
 

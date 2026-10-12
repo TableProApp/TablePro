@@ -55,13 +55,26 @@ const ADMINISTRATIVE_FUNCTIONS: &[&str] = &[
     "dblink_fetch",
     "dblink_send_query",
     "query_to_xml",
+    "query_to_xml_and_xmlschema",
+    "query_to_xmlschema",
+    "lo_creat",
+    "lo_from_bytea",
+    "lo_truncate",
+    "lo_truncate64",
+    "pg_notify",
     "pg_file_write",
     "pg_file_rename",
     "pg_file_unlink",
     "pg_stat_statements_reset",
 ];
 
+const ADMINISTRATIVE_FUNCTION_PREFIXES: &[&str] =
+    &["pg_ls_", "pg_logical_", "pg_replication_", "pg_stat_reset", "crosstab"];
+
 pub(crate) fn is_administrative_function_name(name: &str) -> bool {
     let lowered = name.to_ascii_lowercase();
     ADMINISTRATIVE_FUNCTIONS.contains(&lowered.as_str())
+        || ADMINISTRATIVE_FUNCTION_PREFIXES
+            .iter()
+            .any(|prefix| lowered.starts_with(prefix))
 }

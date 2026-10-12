@@ -16,4 +16,4 @@ crates/drivers/mysql/tests/support/value_contracts.rs 1201
 crates/drivers/postgres/tests/support/domain_contract_parts/array_functions.rs 1461
 crates/drivers/postgres/tests/support/domain_contract_parts/basic_domains.rs 1330
 crates/drivers/postgres/tests/support/enum_contract_parts/scalar_consumers.rs 1210
-crates/policy/src/classify.rs 1101
+crates/policy/src/classify.rs 1079

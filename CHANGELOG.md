@@ -129,6 +129,9 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- PostgreSQL `EXPLAIN (ANALYSE)` of a write is classified and gated like the write instead of as a read.
+- The `query_to_xml` family, `crosstab`, `pg_notify`, `pg_logical_*`, `pg_replication_*`, `pg_stat_reset*`, `pg_ls_*` and more large-object functions are administrative, so agents are denied and read-only connections refuse them.
+- A constant-true predicate (`WHERE true`, `WHERE 1`, `WHERE 1=1`, `WHERE 2 > 1`, `WHERE id = 1 OR true`) counts as unscoped DML. Predicates that depend on a column (`WHERE id = id`) are not evaluated and stay scoped.
 - Grid headers and Go to Referenced Row now pick up foreign keys that arrive after the first draw; before, the redraw reused the old headers and menu.
 - Go to Referenced Row on a column that belongs to several foreign keys offers the usable ones even when another key has a NULL value.
 - Picking a PostgreSQL enum label no longer fails when the enum's type name looks like a built-in type such as `date_format` or `timestamp_source`.
