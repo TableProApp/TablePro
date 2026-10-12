@@ -25,7 +25,7 @@ use context_menu::install_grid_context_menus;
 
 pub(crate) use display::preview_to_display_text;
 pub(crate) use display::value_to_full_edit_text;
-pub use display::{focused_cell_identity, set_null_display, value_to_display_text};
+pub use display::{focused_cell_identity, last_clicked_cell, set_null_display, value_to_display_text};
 pub(crate) use value_viewer::present as present_value_viewer;
 
 pub(crate) fn enter_cell_edit_mode(label: &crate::ui::cell_editor::CellEditor) {

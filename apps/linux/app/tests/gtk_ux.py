@@ -1,6 +1,8 @@
 import ctypes
 import json
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -173,6 +175,46 @@ def scenarios(ui):
             time.sleep(ui.POLL_SECONDS)
         assert stored_notes(database) == [(1, "gamma"), (2, "beta")], stored_notes(database)
         ui.wait_for_node(name="1 unsaved change", present=False)
+
+    def grid_paste_preserves_multiline_text_and_sibling_rows(database, base):
+        import sqlite3
+        with sqlite3.connect(database) as connection:
+            connection.executemany(
+                "INSERT INTO safety_items(id, note) VALUES (?, ?)", [(1, "alpha"), (2, "beta"), (3, "sibling")]
+            )
+        ui.invoke_named_action_within("safety_items", "Open safety_items")
+        click_cell("alpha")
+        clipboard_text = '"line1\nline2"\n"line3\r\nline4"'
+        clipboard_code = """import sys, gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Gdk', '4.0')
+from gi.repository import Gdk, GLib, Gtk
+Gtk.init()
+Gdk.Display.get_default().get_clipboard().set(sys.argv[1])
+GLib.MainLoop().run()
+"""
+        clipboard_owner = subprocess.Popen(
+            [sys.executable, "-c", clipboard_code, clipboard_text],
+            env=os.environ.copy(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            time.sleep(0.3)
+            assert clipboard_owner.poll() is None, clipboard_owner.stderr.read().decode()
+            ui.press_x11_key("v", ("Control_L",))
+            ui.wait_for_node(name="2 unsaved changes")
+            assert stored_notes(database) == [(1, "alpha"), (2, "beta"), (3, "sibling")]
+            ui.press_x11_key("s", ("Control_L",))
+            expected = [(1, "line1\nline2"), (2, "line3\r\nline4"), (3, "sibling")]
+            deadline = time.monotonic() + ui.WAIT_SECONDS
+            while time.monotonic() < deadline and stored_notes(database) != expected:
+                time.sleep(ui.POLL_SECONDS)
+            assert stored_notes(database) == expected, stored_notes(database)
+            ui.wait_for_node(name="2 unsaved changes", present=False)
+        finally:
+            clipboard_owner.terminate()
+            clipboard_owner.wait(timeout=ui.WAIT_SECONDS)
 
     def postgres_session_transaction_confirmation_cancels_or_rolls_back(database, base):
         ui.open_saved_connection(ui.POSTGRES_CONNECTION_NAME)
@@ -1218,6 +1260,7 @@ def scenarios(ui):
         columns_dialog_hides_a_column_and_keeps_the_last_one,
         ctrl_slash_toggles_a_comment_in_the_editor,
         browse_edit_cell_and_save_persists_to_the_database,
+        grid_paste_preserves_multiline_text_and_sibling_rows,
         test_connection_reports_success_in_the_dialog,
         test_connection_reports_failure_in_the_dialog,
         connect_dialog_cancel_stops_a_hanging_connection,

@@ -248,6 +248,40 @@ define_widget_slot!(PREEDIT_SLOT, PreeditKey, bool, "tp-preedit-active");
 define_widget_slot!(FULL_EDIT_TEXT_SLOT, FullEditTextKey, String, "tp-full-edit-text");
 define_widget_slot!(IS_NULL_SLOT, IsNullKey, bool, "tp-cell-is-null");
 
+struct ClickedCell {
+    widget: glib::WeakRef<gtk4::Widget>,
+    position: u32,
+    column: usize,
+    row_key: Vec<Value>,
+}
+
+thread_local! {
+    static LAST_CLICKED_CELL: std::cell::RefCell<Option<ClickedCell>> = const { std::cell::RefCell::new(None) };
+}
+
+pub(super) fn remember_clicked_cell(widget: &gtk4::Widget) {
+    let (Some(position), Some(column)) = (POSITION_SLOT.get(widget), COLUMN_SLOT.get(widget)) else {
+        return;
+    };
+    let clicked = ClickedCell {
+        widget: widget.downgrade(),
+        position,
+        column,
+        row_key: ROW_KEY_SLOT.cloned(widget).unwrap_or_default(),
+    };
+    LAST_CLICKED_CELL.with(|slot| *slot.borrow_mut() = Some(clicked));
+}
+
+pub fn last_clicked_cell(root: &impl IsA<gtk4::Widget>) -> Option<(u32, usize, Vec<Value>)> {
+    LAST_CLICKED_CELL.with(|slot| {
+        let slot = slot.borrow();
+        let clicked = slot.as_ref()?;
+        let widget = clicked.widget.upgrade()?;
+        (widget.is_mapped() && widget.is_ancestor(root))
+            .then(|| (clicked.position, clicked.column, clicked.row_key.clone()))
+    })
+}
+
 pub fn focused_cell_identity(widget: &impl IsA<gtk4::Widget>) -> Option<(u32, usize, Vec<Value>)> {
     let root = widget.root()?;
     let window = root.dynamic_cast::<gtk4::Window>().ok()?;

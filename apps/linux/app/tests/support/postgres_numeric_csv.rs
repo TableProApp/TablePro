@@ -125,8 +125,7 @@ async fn postgres_numeric_parser_outputs_round_trip_through_server() {
         .unwrap();
     let value = columns.iter().position(|column| column.name == "value").unwrap();
     let literal = r#"{"a  b"," c "}"#;
-    let normalized = normalize_single_line_input(literal);
-    let parsed = parse_input_for_driver(&normalized, Some(&columns[value]), "postgres").unwrap();
+    let parsed = parse_input_for_grid_cell(literal, Some(&columns[value]), "postgres", None).unwrap();
     let update = tablepro_core::sql_dialect::build_keyed_update(
         "postgres",
         None,

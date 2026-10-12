@@ -1,5 +1,6 @@
 use super::grid_render::column_layout_matches;
-use super::value_parse::parse_input_for_grid_cell;
+use super::paste::parse_clipboard_grid;
+use super::value_parse::parse_grid_cell_input;
 use super::{
     BrowsePageRequest, PageRequestTracker, RowCountRequestTracker, columns_for_browse_page, projection_for_loaded_page,
 };
@@ -50,23 +51,94 @@ fn an_empty_page_uses_full_schema_headers_without_a_sparse_row_map() {
 fn sqlite_grid_parses_unknown_numeric_affinity_values_without_losing_precision() {
     let enum_column = column("value", "ENUM", false);
     assert_eq!(
-        parse_input_for_grid_cell("queued", Some(&enum_column), "sqlite", None),
+        parse_grid_cell_input("queued", Some(&enum_column), "sqlite", None),
         Ok(Value::Text("queued".into()))
     );
     assert_eq!(
-        parse_input_for_grid_cell("3.5", Some(&enum_column), "sqlite", None),
+        parse_grid_cell_input("3.5", Some(&enum_column), "sqlite", None),
         Ok(Value::Decimal(rust_decimal::Decimal::new(35, 1)))
     );
     for unsafe_number in ["1e999", "1e-400", "0.123456789012345678901234567890123"] {
         assert!(
-            parse_input_for_grid_cell(unsafe_number, Some(&enum_column), "sqlite", None).is_err(),
+            parse_grid_cell_input(unsafe_number, Some(&enum_column), "sqlite", None).is_err(),
             "unsafe SQLite NUMERIC-affinity input must be refused: {unsafe_number}"
         );
     }
     assert_eq!(
-        parse_input_for_grid_cell("3.5", Some(&enum_column), "postgres", None),
+        parse_grid_cell_input("3.5", Some(&enum_column), "postgres", None),
         Ok(Value::Text("3.5".into()))
     );
+}
+
+#[test]
+fn grid_text_input_preserves_lf_and_crlf() {
+    let text_column = column("value", "text", false);
+    for clipboard in ["\"line1\nline2\"", "\"line1\r\nline2\""] {
+        let value = &parse_clipboard_grid(clipboard)[0][0];
+        assert_eq!(
+            parse_grid_cell_input(value, Some(&text_column), "postgres", None),
+            Ok(Value::Text(value.clone()))
+        );
+    }
+    assert!(parse_grid_cell_input("1\n2", Some(&column("count", "integer", false)), "postgres", None).is_err());
+}
+
+#[tokio::test]
+async fn grid_text_paste_stores_line_breaks_and_leaves_sibling_rows_unchanged() {
+    use tablepro_core::{ConnectOptions, DatabaseDriver, OperationControl};
+
+    let connection = drivers_sqlite::SqliteDriver
+        .connect(ConnectOptions {
+            database: ":memory:".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let control = OperationControl::with_timeout(std::time::Duration::from_secs(5));
+    connection
+        .execute_controlled(
+            "CREATE TABLE grid_text_paste (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+            &control,
+        )
+        .await
+        .unwrap();
+    connection
+        .execute_controlled(
+            "INSERT INTO grid_text_paste VALUES (1, 'before'), (2, 'sibling'), (3, 'before')",
+            &control,
+        )
+        .await
+        .unwrap();
+    let columns = connection
+        .fetch_columns_controlled(None, "grid_text_paste", &control)
+        .await
+        .unwrap();
+    let value_index = columns.iter().position(|column| column.name == "value").unwrap();
+    let pasted = parse_clipboard_grid("\"line1\nline2\"\n\"line3\r\nline4\"");
+    for (index, id) in [1, 3].into_iter().enumerate() {
+        let value = parse_grid_cell_input(&pasted[index][0], Some(&columns[value_index]), "sqlite", None).unwrap();
+        let update = tablepro_core::sql_dialect::build_keyed_update(
+            "sqlite",
+            None,
+            "grid_text_paste",
+            &columns,
+            &[(value_index, value)],
+            &[Value::Int(id)],
+        )
+        .unwrap();
+        connection
+            .execute_in_transaction_controlled(&[update], &control)
+            .await
+            .unwrap();
+    }
+    let result = connection
+        .query_controlled("SELECT id, value FROM grid_text_paste ORDER BY id", &control)
+        .await
+        .unwrap();
+    assert_eq!(result.rows[0][value_index], Value::Text("line1\nline2".into()));
+    assert_eq!(result.rows[1][value_index], Value::Text("sibling".into()));
+    assert_eq!(result.rows[2][value_index], Value::Text("line3\r\nline4".into()));
+    assert!(parse_grid_cell_input("1\n2", Some(&column("count", "integer", false)), "postgres", None).is_err());
 }
 
 #[test]

@@ -340,10 +340,12 @@ pub enum BrowseTabInput {
     Paste {
         row: u32,
         col: usize,
+        row_key: Vec<Value>,
     },
     PasteText {
         row: u32,
         col: usize,
+        row_key: Vec<Value>,
         text: String,
     },
     /// Ctrl+A: select every visible row.
@@ -737,22 +739,7 @@ impl SimpleComponent for BrowseTab {
                 glib::Propagation::Stop
             }))
             .build();
-        // Ctrl+V on the grid (focus not inside a text editor): show a
-        // toast explaining multi-row paste isn't supported. Cell-level
-        // paste (focus inside a CellEditor's GtkText) is consumed
-        // by the entry first, so this only fires for grid-level paste
-        // attempts.
-        let sender_for_paste = sender.clone();
-        let paste_shortcut = gtk::Shortcut::builder()
-            .trigger(&crate::ui::shortcut::parse("<Primary>v"))
-            .action(&gtk::CallbackAction::new(move |widget, _| {
-                match crate::ui::grid::focused_cell_identity(widget) {
-                    Some((row, col, _)) => sender_for_paste.input(BrowseTabInput::Paste { row, col }),
-                    None => sender_for_paste.input(BrowseTabInput::PasteNotSupported),
-                }
-                glib::Propagation::Stop
-            }))
-            .build();
+        let paste_shortcut = paste::paste_shortcut(sender.clone());
         // Ctrl+A: select every visible row. Standard "select all"
         // affordance — gives the user a quick path into bulk-delete
         // (which then triggers the M3 confirmation dialog when the
@@ -1175,8 +1162,13 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::CopySelectedRowsAsTsv => self.handle_copy_selected_rows_as_tsv(sender),
             BrowseTabInput::PasteNotSupported => self.handle_paste_not_supported(sender),
-            BrowseTabInput::Paste { row, col } => self.handle_paste(row, col, sender),
-            BrowseTabInput::PasteText { row, col, text } => self.handle_paste_text(row, col, &text, sender),
+            BrowseTabInput::Paste { row, col, row_key } => self.handle_paste(row, col, row_key, sender),
+            BrowseTabInput::PasteText {
+                row,
+                col,
+                row_key,
+                text,
+            } => self.handle_paste_text(row, col, &row_key, &text, sender),
             BrowseTabInput::SelectAllRows => self.handle_select_all_rows(),
             BrowseTabInput::GoToFirstRow => self.handle_go_to_first_row(),
             BrowseTabInput::GoToLastRow => self.handle_go_to_last_row(),

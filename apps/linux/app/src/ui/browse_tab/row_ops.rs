@@ -268,25 +268,10 @@ impl BrowseTab {
         // display. The tracker stays untouched so a single
         // bad keystroke can't sneak into the batch.
         //
-        // GtkText handles multi-line clipboard paste
-        // inconsistently across GTK builds — some embed
-        // literal newlines, some strip them silently.
-        // Collapse newlines / carriage returns to spaces
-        // here so a paste-induced multi-line value never
-        // reaches the SQL layer. JSON columns aren't
-        // normalised: they need real newlines.
-        let normalized = match self
-            .current_columns
-            .get(col_index)
-            .map(|c| classify_type(&c.data_type.to_ascii_lowercase()))
-        {
-            Some(TypeKind::Json) => new_value,
-            _ => normalize_single_line_input(&new_value),
-        };
         let col = self.current_columns.get(col_index);
         let row_obj = self.row_object_at(row_position);
         let current_value = row_obj.as_ref().map(|row| row.cell_value(col_index));
-        let new = match parse_input_for_grid_cell(&normalized, col, &self.driver_id, current_value.as_ref()) {
+        let new = match parse_grid_cell_input(&new_value, col, &self.driver_id, current_value.as_ref()) {
             Ok(v) => v,
             Err(message) => {
                 let _ = sender.output(BrowseTabOutput::ShowToast(message));

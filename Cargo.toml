@@ -95,6 +95,7 @@ exclusions = [
     "scripts/check-ci-jobs.py",
     "scripts/tests/test_ci_workflow.py",
     "scripts/tests/test_change_contracts.py",
+    "apps/linux/app/tests/**",
 ]
 
 [workspace.lints.clippy]

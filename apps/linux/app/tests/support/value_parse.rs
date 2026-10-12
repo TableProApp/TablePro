@@ -1,6 +1,6 @@
 use super::{
-    TypeKind, classify_type, normalize_single_line_input, parse_decimal_value, parse_input_for_column,
-    parse_input_for_driver, parse_input_for_grid_cell,
+    TypeKind, classify_type, parse_decimal_value, parse_input_for_column, parse_input_for_driver,
+    parse_input_for_grid_cell,
 };
 use tablepro_core::{ColumnInfo, Value, import::column_kind};
 
@@ -705,28 +705,16 @@ fn postgres_numeric_array_grid_literal_stays_text_for_the_shared_cast() {
 }
 
 #[test]
-fn normalize_single_line_leaves_plain_text_untouched() {
-    assert_eq!(normalize_single_line_input("hello world"), "hello world");
-}
-
-#[test]
-fn normalize_single_line_collapses_a_multiline_paste_into_one_line() {
-    assert_eq!(
-        normalize_single_line_input("first\nsecond\r\nthird"),
-        "first second  third"
-    );
-}
-
-#[test]
-fn normalize_single_line_preserves_other_whitespace_and_array_literals() {
+fn grid_input_preserves_other_whitespace_and_array_literals() {
     let text = "  padded  CHAR  ";
-    assert_eq!(normalize_single_line_input(text), text);
+    assert_eq!(
+        parse_input_for_grid_cell(text, Some(&col("text", true)), "postgres", None).unwrap(),
+        Value::Text(text.into())
+    );
 
     let literal = r#"{"a  b", " c "}"#;
-    let normalized = normalize_single_line_input(literal);
-    assert_eq!(normalized, literal);
     let column = col("text[]", true);
-    let parsed = parse_input_for_driver(&normalized, Some(&column), "postgres").unwrap();
+    let parsed = parse_input_for_grid_cell(literal, Some(&column), "postgres", None).unwrap();
     assert_eq!(parsed, Value::Text(literal.into()));
     let mut columns = vec![col("integer", false), column];
     columns[0].primary_key = true;
