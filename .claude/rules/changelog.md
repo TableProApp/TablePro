@@ -1,6 +1,7 @@
 ---
 paths:
   - "CHANGELOG.md"
+  - "linux/CHANGELOG.md"
 ---
 
 # CHANGELOG

@@ -37,7 +37,7 @@ dbus-run-session -- meson test -C _build --print-errorlogs
 
 Three suites: `unit` is `cargo test --workspace --exclude tablepro`, `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo` and `GTK_A11Y=test`,
-and `data` runs `desktop-file-validate` and `appstreamcli validate`.
+and `data` runs `desktop-file-validate`, `glib-compile-schemas --strict` and `appstreamcli validate`.
 Tests that need Docker or a Secret Service are ignored. Without a display
 (SSH, containers), prefix with xvfb the way the CI fast job does:
 

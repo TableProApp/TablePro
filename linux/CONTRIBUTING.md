@@ -1,6 +1,6 @@
 # Contributing to TablePro Linux
 
-This file governs the Linux subproject only. The repository-level [CLAUDE.md](../CLAUDE.md) covers cross-cutting rules (no comments in source, security first, root-cause fixes, etc.) — those apply here too.
+This file governs the Linux subproject only. [AGENTS.md](AGENTS.md) is the short guide to it, and the repository-level [AGENTS.md](../AGENTS.md) holds the rules every app shares: security first, root-cause fixes, tests define behavior and the writing style.
 
 ## Dev environment
 
@@ -64,7 +64,7 @@ CI sets `GTK_A11Y=test` for GTK tests. With `GTK_A11Y=none` GTK records no acces
 
 Conventions, beyond what `rustfmt` decides:
 
-- **No comments unless they explain a hidden constraint or invariant.** Code must be self-documenting through naming. Inherited from CLAUDE.md.
+- **Comments say why, never what.** A short comment belongs where the code would surprise a careful reader: a hidden constraint, an invariant, a platform quirk. Code is otherwise self-documenting through naming.
 - **No `unwrap()` or `expect()` in production paths.** Tests and `OnceLock::get_or_init` initialisers are the only acceptable callers.
 - **No `panic!`, `todo!`, `unimplemented!` in merged code.** Stub a real `Err` variant instead.
 - **One public type per module file** when the type's surface is non-trivial. Internal helpers stay private.
@@ -80,26 +80,30 @@ This is the most common substantive change. Follow [docs/adding-drivers.md](docs
 
 ## Commits
 
-Conventional Commits, single line, no body. Same rule as the macOS app:
+Conventional Commits, single line, at most 72 characters, same rule as the macOS app. The scope is `linux`, or `linux-<area>` for one area of the app:
 
 ```
-feat(drivers): add ClickHouse driver via clickhouse-arrow
-fix(app): debounce sidebar selection to avoid duplicate fetches
-refactor(core): split DatabaseDriver into Driver + Connection traits
-docs(adding-drivers): clarify TLS configuration step
+feat(linux-drivers): add ClickHouse driver via clickhouse-arrow
+fix(linux-sidebar): debounce selection to avoid duplicate fetches
+refactor(linux-core): split DatabaseDriver into Driver + Connection traits
+docs(linux): clarify the TLS step for a new driver
 ```
+
+## Changelog
+
+A user-visible change gets one fragment under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md), in the format the root `.claude/rules/changelog.md` describes. The repository-level `CHANGELOG.md` is the macOS release notes; a Linux change never goes there.
 
 ## Pull requests
 
-1. Branch from `main`. Branch name format: `feat/short-slug`, `fix/short-slug`, `refactor/short-slug`.
+1. Branch from `linux`, where this subproject lives until the first Linux release, and open the PR against `linux`. Branch name format: `feat/short-slug`, `fix/short-slug`, `refactor/short-slug`.
 2. PR title is the conventional commit message you intend to land.
-3. PR description has two sections: **Summary** (what and why, 2–4 bullets) and **Test plan** (checkbox list).
+3. The PR description follows the repository's `.github/pull_request_template.md`.
 4. Run the [fast-job commands](#fast-job-commands) locally before pushing.
 5. UI changes must include before / after screenshots in the PR description, taken at HiDPI on both light and dark themes.
 
 ## What does not belong here
 
-- Documentation for end users (installation, FAQ, screenshots for the marketing site) lives in the repository-level `docs/` Mintlify project.
+- Documentation for end users (installation, FAQ, screenshots) lives in the [TableProApp/docs](https://github.com/TableProApp/docs) repository.
 - Cross-platform decisions (release cadence, branding, pricing) are not made in this subproject.
 - macOS plugin work — that lives in `apps/macos/Plugins/` (post Phase B restructure) or the current `Plugins/` directory.
 
@@ -108,6 +112,6 @@ docs(adding-drivers): clarify TLS configuration step
 In rough order of impact:
 
 1. Read [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/decisions/](docs/decisions/). 20 minutes, fixes most "why is it shaped like this" questions.
-2. Pick an issue tagged `good-first-issue` or `driver:<engine>`.
+2. Pick an issue labelled `platform-linux`, or `good first issue` among those.
 3. If adding a driver, copy the most recently merged driver crate as a template. Do not copy the spike code.
 4. Open the PR small. We prefer five small PRs over one big one.
