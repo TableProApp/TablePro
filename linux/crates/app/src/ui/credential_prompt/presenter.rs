@@ -1,8 +1,12 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use adw::prelude::*;
 use libadwaita as adw;
 use tablepro_core::credentials::PromptReply;
+use tokio::sync::oneshot;
 
-use super::prompt_form::PromptForm;
+use super::prompt_form::{CANCEL, PromptForm};
 use super::prompter::{PendingPrompt, PromptQueue};
 
 /// Shows queued credential prompts over a window, one at a time.
@@ -27,7 +31,7 @@ impl CredentialPromptPresenter {
                 let answer = match parent.upgrade() {
                     Some(parent) => {
                         let form = PromptForm::build(&prompt);
-                        let response = form.dialog.clone().choose_future(Some(&parent)).await;
+                        let response = ask(&form.dialog, &parent).await;
                         form.reply(&response)
                     }
                     None => PromptReply::Cancelled,
@@ -38,6 +42,30 @@ impl CredentialPromptPresenter {
             }
         })
     }
+}
+
+/// Present the dialog and wait for the response it closes with.
+///
+/// The closed signal answers too, as a cancel: a dialog torn down with
+/// its window never sends a response, and the prompt must still end.
+/// `choose_future` is not used because its callback aborts the process
+/// when the dialog goes away without one.
+async fn ask(dialog: &adw::AlertDialog, parent: &gtk4::Widget) -> String {
+    let (sender, receiver) = oneshot::channel();
+    let sender = Rc::new(RefCell::new(Some(sender)));
+    let on_response = sender.clone();
+    dialog.connect_response(None, move |_, response| {
+        if let Some(sender) = on_response.borrow_mut().take() {
+            let _ = sender.send(response.to_owned());
+        }
+    });
+    dialog.connect_closed(move |_| {
+        if let Some(sender) = sender.borrow_mut().take() {
+            let _ = sender.send(CANCEL.to_owned());
+        }
+    });
+    dialog.present(Some(parent));
+    receiver.await.unwrap_or_else(|_| CANCEL.to_owned())
 }
 
 #[cfg(test)]
@@ -100,8 +128,39 @@ mod tests {
             open_alerts(&window).iter().any(|alert| alert.body().contains("second"))
         })
         .expect("the second prompt after the first closed");
-        presenter.abort();
+        for alert in open_alerts(&window) {
+            alert.close();
+        }
         crate::test_support::wait_until(Duration::from_secs(5), || answered.get() == 2).expect("both prompts answered");
+        presenter.abort();
         window.close();
+        crate::test_support::drain_main_context();
+    }
+
+    #[gtk4::test]
+    fn a_prompt_whose_dialog_is_forced_shut_is_cancelled() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = adw::Window::new();
+        window.present();
+        let (prompter, queue) = GtkCredentialPrompter::new();
+        let presenter = CredentialPromptPresenter::start(queue, &window);
+        let reply = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let asking = prompter.prompt(prompt("forced"));
+        let sink = reply.clone();
+        glib::spawn_future_local(async move {
+            *sink.borrow_mut() = Some(asking.await);
+        });
+
+        crate::test_support::wait_until(Duration::from_secs(5), || open_alerts(&window).len() == 1)
+            .expect("the prompt");
+        for alert in open_alerts(&window) {
+            alert.force_close();
+        }
+        crate::test_support::wait_until(Duration::from_secs(5), || reply.borrow().is_some()).expect("an answer");
+
+        assert!(matches!(reply.borrow_mut().take(), Some(PromptReply::Cancelled)));
+        presenter.abort();
+        window.close();
+        crate::test_support::drain_main_context();
     }
 }
