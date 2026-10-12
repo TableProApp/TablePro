@@ -129,6 +129,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- After a table changes (for example a column is added from the Structure tab or another client), `SELECT *` on PostgreSQL shows the new column instead of failing with "cached plan must not change result type" on every refresh.
 - PostgreSQL grid edits, inserts, key lookups and deletes now work for `inet`, `cidr`, `macaddr`, `interval`, `bit` and `varbit` values, which were sent as text and refused by the server, and for padded `char(n)` keys and `json` columns, which reported a false concurrent modification or could not be edited. `xml` and `tsvector` values can be inserted, but editing them still fails because the old value reads back as undecodable (#694).
 - PostgreSQL `EXPLAIN (ANALYSE)` of a write is classified and gated like the write instead of as a read.
 - The `query_to_xml` family, `crosstab`, `pg_notify`, `pg_logical_*`, `pg_replication_*`, `pg_stat_reset*`, `pg_ls_*` and more large-object functions are administrative, so agents are denied and read-only connections refuse them.

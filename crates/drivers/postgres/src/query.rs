@@ -129,7 +129,8 @@ fn is_stale_type_cache_error(error: &DriverError) -> bool {
             message,
             sqlstate: Some(sqlstate),
             ..
-        } if sqlstate == "XX000" && message.starts_with("cache lookup failed for type ")
+        } if (sqlstate == "XX000" && message.starts_with("cache lookup failed for type "))
+            || sqlstate == "0A000"
     )
 }
 
