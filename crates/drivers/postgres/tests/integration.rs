@@ -77,6 +77,9 @@ mod query_budget_contract;
 #[path = "support/value_contracts.rs"]
 mod value_contracts;
 
+#[path = "support/native_oracle_contract.rs"]
+mod native_oracle_contract;
+
 #[path = "support/enum_contract.rs"]
 mod enum_contract;
 
