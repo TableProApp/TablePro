@@ -1,4 +1,4 @@
-use tokio_util::sync::CancellationToken;
+use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 /// Whether the workspace's link to the server is still there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,9 +34,11 @@ impl LinkWatch {
         }
     }
 
-    /// Resolves once the link is gone.
-    pub async fn lost(&self) {
-        self.lost.cancelled().await;
+    /// Resolves once the link is gone. The future owns its share of
+    /// the watch, so a monitor can hold it without borrowing the
+    /// connection.
+    pub fn lost(&self) -> WaitForCancellationFutureOwned {
+        self.lost.clone().cancelled_owned()
     }
 }
 
@@ -54,6 +56,18 @@ mod tests {
 
         assert_eq!(elsewhere.state(), LinkState::Lost);
         elsewhere.lost().await;
+    }
+
+    #[tokio::test]
+    async fn mark_lost_resolves_lost_future() {
+        let watch = LinkWatch::new();
+        let lost = watch.lost();
+        let waiter = tokio::spawn(lost);
+
+        watch.mark_lost();
+        drop(watch);
+
+        assert!(waiter.await.is_ok(), "the lost future did not resolve");
     }
 
     #[test]

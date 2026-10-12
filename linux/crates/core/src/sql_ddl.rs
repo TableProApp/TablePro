@@ -15,7 +15,9 @@
 use thiserror::Error;
 
 use crate::column::{ColumnInfo, ColumnType};
-use crate::query::{ForeignKeyInfo, IndexInfo};
+use crate::ddl::ReferentialAction;
+use crate::foreign_key_info::ForeignKeyInfo;
+use crate::meta::{IndexInfo, IndexKey};
 use crate::sql_dialect::quote_ident;
 
 #[derive(Debug, Error)]
@@ -58,6 +60,9 @@ pub enum BuildDdlError {
 
     #[error("invalid foreign key action: {0}")]
     InvalidFkAction(String),
+
+    #[error("index {0} has an expression key or a predicate, which this builder cannot restate")]
+    UnrenderableIndex(String),
 }
 
 const MAX_TYPE_LEN: usize = 200;
@@ -114,32 +119,33 @@ fn validate_safe_default(s: &str) -> Result<(), BuildDdlError> {
     Ok(())
 }
 
-const FK_ACTIONS: &[&str] = &["NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"];
+const FK_ACTIONS: &[ReferentialAction] = &ReferentialAction::ALL;
 
 /// T-SQL's `ON DELETE` / `ON UPDATE` grammar has no `RESTRICT`; the
 /// engine spells that behaviour `NO ACTION`. Emitting `RESTRICT` is a
 /// syntax error, so it is not an option the UI may offer either.
-const FK_ACTIONS_MSSQL: &[&str] = &["NO ACTION", "CASCADE", "SET NULL", "SET DEFAULT"];
+const FK_ACTIONS_MSSQL: &[ReferentialAction] = &[
+    ReferentialAction::NoAction,
+    ReferentialAction::Cascade,
+    ReferentialAction::SetNull,
+    ReferentialAction::SetDefault,
+];
 
 /// Referential actions the engine accepts, in the order the UI should
 /// present them. The first entry is the SQL default.
-pub fn supported_fk_actions(driver_id: &str) -> &'static [&'static str] {
+pub fn supported_fk_actions(driver_id: &str) -> &'static [ReferentialAction] {
     match driver_id {
         "mssql" => FK_ACTIONS_MSSQL,
         _ => FK_ACTIONS,
     }
 }
 
-/// FK actions are a closed enum per dialect. Allow-list rather than
-/// escape; case-insensitive match against the canonical strings
-/// returned in upper case for emission.
-fn validate_fk_action(driver_id: &str, s: &str) -> Result<&'static str, BuildDdlError> {
-    let upper = s.trim().to_ascii_uppercase();
-    supported_fk_actions(driver_id)
-        .iter()
-        .copied()
-        .find(|canon| *canon == upper.as_str())
-        .ok_or_else(|| BuildDdlError::InvalidFkAction(s.into()))
+fn validate_fk_action(driver_id: &str, action: ReferentialAction) -> Result<&'static str, BuildDdlError> {
+    if supported_fk_actions(driver_id).contains(&action) {
+        Ok(action.as_sql())
+    } else {
+        Err(BuildDdlError::InvalidFkAction(action.as_sql().to_owned()))
+    }
 }
 
 /// User-edited column draft. Carries both the original (loaded from
@@ -956,11 +962,26 @@ pub fn build_create_index(
     if index.name.trim().is_empty() {
         return Err(BuildDdlError::EmptyIndexName);
     }
-    if index.columns.is_empty() {
+    if index.keys.is_empty() {
         return Err(BuildDdlError::NoColumns);
     }
+    // An expression key or a predicate is catalog text this builder
+    // would have to paste in unparsed, so it refuses rather than guess.
+    if index.predicate.is_some() {
+        return Err(BuildDdlError::UnrenderableIndex(index.name.clone()));
+    }
     let unique = if index.unique { "UNIQUE " } else { "" };
-    let cols: Vec<String> = index.columns.iter().map(|c| quote_ident(driver_id, c)).collect();
+    let cols = index
+        .keys
+        .iter()
+        .map(|key| match key {
+            IndexKey::Column { name, descending } => {
+                let direction = if *descending { " DESC" } else { "" };
+                Ok(format!("{}{direction}", quote_ident(driver_id, name)))
+            }
+            IndexKey::Expression { .. } => Err(BuildDdlError::UnrenderableIndex(index.name.clone())),
+        })
+        .collect::<Result<Vec<String>, BuildDdlError>>()?;
     let qualified = qualified_table(driver_id, schema, table);
     // MySQL does not accept schema prefix on the index name, and
     // CREATE INDEX scopes to the table by default. Postgres / SQLite
@@ -1035,12 +1056,12 @@ pub fn build_add_foreign_key(
         ref_table,
         ref_cols.join(", "),
     )];
-    if let Some(raw) = fk.on_delete.as_deref().filter(|a| !a.is_empty()) {
-        let action = validate_fk_action(driver_id, raw)?;
+    if let Some(action) = fk.on_delete {
+        let action = validate_fk_action(driver_id, action)?;
         clauses.push(format!("ON DELETE {action}"));
     }
-    if let Some(raw) = fk.on_update.as_deref().filter(|a| !a.is_empty()) {
-        let action = validate_fk_action(driver_id, raw)?;
+    if let Some(action) = fk.on_update {
+        let action = validate_fk_action(driver_id, action)?;
         clauses.push(format!("ON UPDATE {action}"));
     }
     Ok(clauses.join(" "))
@@ -1573,12 +1594,7 @@ mod tests {
     #[test]
     fn create_table_with_secondary_index() {
         let cols = vec![nn(pk(ai(dc("id", "integer")))), nn(dc("email", "text"))];
-        let idx = IndexInfo {
-            name: "users_email_idx".into(),
-            columns: vec!["email".into()],
-            unique: true,
-            primary: false,
-        };
+        let idx = index("users_email_idx", &["email"], true, false);
         let stmts = build_create_table("postgres", None, "users", &cols, &[idx], &[]).unwrap();
         assert_eq!(stmts.len(), 2);
         assert!(stmts[1].contains("CREATE UNIQUE INDEX"));
@@ -1588,12 +1604,7 @@ mod tests {
     #[test]
     fn create_table_skips_primary_index() {
         let cols = vec![nn(pk(ai(dc("id", "integer"))))];
-        let pk_idx = IndexInfo {
-            name: "users_pkey".into(),
-            columns: vec!["id".into()],
-            unique: true,
-            primary: true,
-        };
+        let pk_idx = index("users_pkey", &["id"], true, true);
         let stmts = build_create_table("postgres", None, "users", &cols, &[pk_idx], &[]).unwrap();
         assert_eq!(stmts.len(), 1, "primary index must not produce a separate CREATE INDEX");
     }
@@ -1607,7 +1618,7 @@ mod tests {
             ref_schema: None,
             ref_table: "users".into(),
             ref_columns: vec!["id".into()],
-            on_delete: Some("CASCADE".into()),
+            on_delete: Some(ReferentialAction::Cascade),
             on_update: None,
         };
         let stmts = build_create_table("postgres", None, "orders", &cols, &[], &[fk]).unwrap();
@@ -2134,14 +2145,58 @@ mod tests {
         assert!(matches!(err, BuildDdlError::UnsupportedDriver(_)));
     }
 
+    fn index(name: &str, columns: &[&str], unique: bool, primary: bool) -> IndexInfo {
+        IndexInfo {
+            name: name.to_owned(),
+            keys: columns
+                .iter()
+                .map(|column| IndexKey::Column {
+                    name: (*column).to_owned(),
+                    descending: false,
+                })
+                .collect(),
+            unique,
+            primary,
+            predicate: None,
+        }
+    }
+
+    #[test]
+    fn create_index_keeps_a_descending_key() {
+        let mut idx = index("recent_first", &["created_at"], false, false);
+        idx.keys = vec![IndexKey::Column {
+            name: "created_at".to_owned(),
+            descending: true,
+        }];
+
+        assert_eq!(
+            build_create_index("postgres", None, "events", &idx).unwrap(),
+            "CREATE INDEX \"recent_first\" ON \"events\" (\"created_at\" DESC)"
+        );
+    }
+
+    #[test]
+    fn create_index_refuses_what_it_would_paste_unparsed() {
+        let mut functional = index("by_lower_email", &[], true, false);
+        functional.keys = vec![IndexKey::Expression {
+            sql: "lower(email)".to_owned(),
+            descending: false,
+        }];
+        let mut partial = index("live_email", &["email"], true, false);
+        partial.predicate = Some("deleted_at IS NULL".to_owned());
+
+        for idx in [functional, partial] {
+            let err = build_create_index("postgres", None, "users", &idx).unwrap_err();
+            assert!(
+                matches!(&err, BuildDdlError::UnrenderableIndex(name) if *name == idx.name),
+                "got {err:?}"
+            );
+        }
+    }
+
     #[test]
     fn create_index_basic() {
-        let idx = IndexInfo {
-            name: "users_email_idx".into(),
-            columns: vec!["email".into()],
-            unique: true,
-            primary: false,
-        };
+        let idx = index("users_email_idx", &["email"], true, false);
         assert_eq!(
             build_create_index("postgres", None, "users", &idx).unwrap(),
             "CREATE UNIQUE INDEX \"users_email_idx\" ON \"users\" (\"email\")"
@@ -2150,36 +2205,21 @@ mod tests {
 
     #[test]
     fn create_index_compound_columns() {
-        let idx = IndexInfo {
-            name: "idx_a_b".into(),
-            columns: vec!["a".into(), "b".into()],
-            unique: false,
-            primary: false,
-        };
+        let idx = index("idx_a_b", &["a", "b"], false, false);
         let sql = build_create_index("mysql", None, "t", &idx).unwrap();
         assert_eq!(sql, "CREATE INDEX `idx_a_b` ON `t` (`a`, `b`)");
     }
 
     #[test]
     fn create_index_rejects_empty_name() {
-        let idx = IndexInfo {
-            name: "".into(),
-            columns: vec!["x".into()],
-            unique: false,
-            primary: false,
-        };
+        let idx = index("", &["x"], false, false);
         let err = build_create_index("postgres", None, "t", &idx).unwrap_err();
         assert!(matches!(err, BuildDdlError::EmptyIndexName));
     }
 
     #[test]
     fn create_index_mssql() {
-        let idx = IndexInfo {
-            name: "idx_a_b".into(),
-            columns: vec!["a".into(), "b".into()],
-            unique: true,
-            primary: false,
-        };
+        let idx = index("idx_a_b", &["a", "b"], true, false);
         let sql = build_create_index("mssql", None, "t", &idx).unwrap();
         assert_eq!(sql, "CREATE UNIQUE INDEX [idx_a_b] ON [t] ([a], [b])");
     }
@@ -2223,8 +2263,8 @@ mod tests {
             ref_schema: None,
             ref_table: "users".into(),
             ref_columns: vec!["id".into()],
-            on_delete: Some("CASCADE".into()),
-            on_update: Some("RESTRICT".into()),
+            on_delete: Some(ReferentialAction::Cascade),
+            on_update: Some(ReferentialAction::Restrict),
         }
     }
 
@@ -2258,7 +2298,7 @@ mod tests {
     #[test]
     fn add_foreign_key_mssql() {
         let mut fk = fk_basic();
-        fk.on_update = Some("NO ACTION".into());
+        fk.on_update = Some(ReferentialAction::NoAction);
         let sql = build_add_foreign_key("mssql", None, "orders", &fk).unwrap();
         assert!(sql.contains("ADD CONSTRAINT [fk_user]"));
         assert!(sql.contains("FOREIGN KEY ([user_id])"));
@@ -2274,8 +2314,8 @@ mod tests {
         // never offers it.
         let err = build_add_foreign_key("mssql", None, "orders", &fk_basic()).unwrap_err();
         assert!(matches!(err, BuildDdlError::InvalidFkAction(a) if a == "RESTRICT"));
-        assert!(!supported_fk_actions("mssql").contains(&"RESTRICT"));
-        assert!(supported_fk_actions("postgres").contains(&"RESTRICT"));
+        assert!(!supported_fk_actions("mssql").contains(&ReferentialAction::Restrict));
+        assert!(supported_fk_actions("postgres").contains(&ReferentialAction::Restrict));
     }
 
     #[test]
@@ -2321,24 +2361,6 @@ mod tests {
         let col = def(dc("x", "TEXT"), "'a'); DROP TABLE t; --");
         let err = build_add_column("postgres", None, "t", &col).unwrap_err();
         assert!(matches!(err, BuildDdlError::UnsafeDefault(_)), "got {err:?}");
-    }
-
-    #[test]
-    fn rejects_unknown_fk_action() {
-        let mut fk = fk_basic();
-        fk.on_delete = Some("DROP TABLE u; --".into());
-        let err = build_add_foreign_key("postgres", None, "t", &fk).unwrap_err();
-        assert!(matches!(err, BuildDdlError::InvalidFkAction(_)), "got {err:?}");
-    }
-
-    #[test]
-    fn fk_action_canonicalised_case_insensitive() {
-        let mut fk = fk_basic();
-        fk.on_delete = Some("cascade".into());
-        fk.on_update = Some("Set Null".into());
-        let sql = build_add_foreign_key("postgres", None, "t", &fk).unwrap();
-        assert!(sql.contains("ON DELETE CASCADE"));
-        assert!(sql.contains("ON UPDATE SET NULL"));
     }
 
     #[test]

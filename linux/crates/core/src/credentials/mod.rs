@@ -1,3 +1,4 @@
+mod connect_credentials;
 mod credential_interaction;
 mod credential_prompt;
 mod credential_prompter;
@@ -11,6 +12,7 @@ mod secret_lookup;
 mod secret_save;
 mod secret_vault;
 
+pub use connect_credentials::Credentials;
 pub use credential_interaction::CredentialInteraction;
 pub use credential_prompt::CredentialPrompt;
 pub use credential_prompter::CredentialPrompter;

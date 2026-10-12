@@ -1,4 +1,4 @@
-use crate::connection::AuthMode;
+use crate::auth_mode::AuthMode;
 use crate::meta::ObjectKind;
 use crate::tls_capabilities::TlsCapabilities;
 use crate::write_ledger::WriteAtomicity;

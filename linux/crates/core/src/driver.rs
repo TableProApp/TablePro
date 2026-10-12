@@ -1,49 +1,29 @@
-use async_trait::async_trait;
+use std::sync::Arc;
 
-use crate::connection::{ConnectOptions, Connection};
+use async_trait::async_trait;
+use tokio_util::sync::CancellationToken;
+
+use crate::capabilities::DriverCapabilities;
+use crate::connect_options::ConnectOptions;
+use crate::connection::Connection;
 use crate::error::DriverError;
 
+/// One database engine, before any connection to it exists.
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
     fn id(&self) -> &'static str;
+
     fn display_name(&self) -> &'static str;
-    fn default_port(&self) -> u16;
 
-    fn is_file_based(&self) -> bool {
-        false
-    }
+    /// What the engine can do, for the connect dialog and the save
+    /// paths to decide what to offer before a connection is open.
+    fn capabilities(&self) -> &'static DriverCapabilities;
 
-    /// Whether a multi-statement DDL batch can roll back as a unit, so
-    /// the structure editor's Save runs through
-    /// `Connection::execute_in_transaction` instead of statement by
-    /// statement. MySQL commits implicitly on every DDL statement: the
-    /// transaction would end after the first one and a later failure
-    /// would leave the earlier statements applied, which is worse than
-    /// not opening one at all.
-    fn ddl_is_transactional(&self) -> bool {
-        false
-    }
-
-    /// Whether `ExecResult::rows_affected` carries a real count for
-    /// UPDATE and DELETE. The inline-edit Save path reads a zero count
-    /// as an optimistic-concurrency conflict, so a driver that cannot
-    /// produce one must say so or every successful save reports a lost
-    /// update. ClickHouse applies both as asynchronous mutations and
-    /// returns no row count for either.
-    fn reports_rows_affected(&self) -> bool {
-        true
-    }
-
-    /// Whether this driver supports Windows integrated / Kerberos
-    /// authentication (`ConnectOptions::auth_mode == AuthMode::Kerberos`).
-    /// The connect dialog shows the auth-mode selector only for drivers
-    /// returning `true`, and while Kerberos is selected it hides the
-    /// username and password rows and sends empty credentials. Say
-    /// `true` only if `connect` maps `AuthMode::Kerberos` onto a real
-    /// integrated-auth path; `establish` refuses the mode otherwise.
-    fn supports_integrated_auth(&self) -> bool {
-        false
-    }
-
-    async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError>;
+    /// Open a connection. `cancel` aborts the connect itself, including a
+    /// login the server is slow to answer.
+    async fn connect(
+        &self,
+        options: ConnectOptions,
+        cancel: CancellationToken,
+    ) -> Result<Arc<dyn Connection>, DriverError>;
 }

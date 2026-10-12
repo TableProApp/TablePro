@@ -235,6 +235,199 @@ mod tests {
         }
     }
 
+    /// How far a write got before it was interrupted.
+    #[derive(Debug, Clone, Copy)]
+    enum Phase {
+        NothingSent,
+        FirstInFlight,
+        TwoConfirmed,
+        ThirdInFlight,
+        CommitSent,
+    }
+
+    impl Phase {
+        fn replay(self, ledger: &WriteLedger) {
+            if matches!(self, Phase::FirstInFlight) {
+                ledger.statement_sending(0);
+            }
+            if matches!(self, Phase::TwoConfirmed | Phase::ThirdInFlight | Phase::CommitSent) {
+                ledger.statement_sending(0);
+                ledger.statement_confirmed(0);
+                ledger.statement_sending(1);
+                ledger.statement_confirmed(1);
+            }
+            if matches!(self, Phase::ThirdInFlight) {
+                ledger.statement_sending(2);
+            }
+            if matches!(self, Phase::CommitSent) {
+                ledger.commit_sending(None);
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Outcome {
+        RolledBack {
+            at: usize,
+        },
+        Partial {
+            applied: usize,
+            at: usize,
+            failed: StatementOutcome,
+        },
+        Unknown {
+            token: Option<CommitToken>,
+        },
+    }
+
+    fn outcome_of(error: &DriverError) -> Option<Outcome> {
+        match error {
+            DriverError::RolledBack { statement_index, .. } => Some(Outcome::RolledBack { at: *statement_index }),
+            DriverError::PartiallyApplied {
+                applied,
+                statement_index,
+                failed_outcome,
+                ..
+            } => Some(Outcome::Partial {
+                applied: *applied,
+                at: *statement_index,
+                failed: *failed_outcome,
+            }),
+            DriverError::CommitOutcomeUnknown { token, .. } => Some(Outcome::Unknown { token: token.clone() }),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn outcome_table() {
+        use Outcome::{Partial, RolledBack, Unknown};
+        use Phase::*;
+        use StatementOutcome::{Failed, Unknown as InDoubt};
+        const TX: WriteAtomicity = WriteAtomicity::Transactional;
+        const STEP: WriteAtomicity = WriteAtomicity::StatementByStatement;
+        let fates = [
+            SessionFate::RolledBack,
+            SessionFate::Discarded,
+            SessionFate::RollbackIncomplete { executed: 2 },
+        ];
+        let partial = |applied, at, failed| Partial { applied, at, failed };
+        let unknown = |with_token: bool| Unknown {
+            token: with_token.then(token),
+        };
+
+        // One row per atomicity, phase and token, with the outcome for
+        // each fate in the order above. A statement-by-statement engine
+        // has no COMMIT, so it has no commit phase.
+        let table = [
+            (
+                TX,
+                NothingSent,
+                false,
+                [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
+            ),
+            (
+                TX,
+                NothingSent,
+                true,
+                [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
+            ),
+            (
+                TX,
+                FirstInFlight,
+                false,
+                [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
+            ),
+            (
+                TX,
+                FirstInFlight,
+                true,
+                [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
+            ),
+            (
+                TX,
+                TwoConfirmed,
+                false,
+                [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
+            ),
+            (
+                TX,
+                TwoConfirmed,
+                true,
+                [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
+            ),
+            (
+                TX,
+                ThirdInFlight,
+                false,
+                [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
+            ),
+            (
+                TX,
+                ThirdInFlight,
+                true,
+                [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
+            ),
+            (TX, CommitSent, false, [unknown(false), unknown(false), unknown(false)]),
+            (TX, CommitSent, true, [unknown(true), unknown(true), unknown(true)]),
+            (
+                STEP,
+                NothingSent,
+                false,
+                [RolledBack { at: 0 }, RolledBack { at: 0 }, RolledBack { at: 0 }],
+            ),
+            (
+                STEP,
+                NothingSent,
+                true,
+                [RolledBack { at: 0 }, RolledBack { at: 0 }, RolledBack { at: 0 }],
+            ),
+            (
+                STEP,
+                FirstInFlight,
+                false,
+                [unknown(false), unknown(false), unknown(false)],
+            ),
+            (STEP, FirstInFlight, true, [unknown(true), unknown(true), unknown(true)]),
+            (
+                STEP,
+                TwoConfirmed,
+                false,
+                [partial(2, 2, Failed), partial(2, 2, Failed), partial(2, 2, Failed)],
+            ),
+            (
+                STEP,
+                TwoConfirmed,
+                true,
+                [partial(2, 2, Failed), partial(2, 2, Failed), partial(2, 2, Failed)],
+            ),
+            (
+                STEP,
+                ThirdInFlight,
+                false,
+                [partial(2, 2, InDoubt), partial(2, 2, InDoubt), partial(2, 2, InDoubt)],
+            ),
+            (STEP, ThirdInFlight, true, [unknown(true), unknown(true), unknown(true)]),
+        ];
+
+        for (atomicity, phase, with_token, expected) in table {
+            for (fate, expected) in fates.iter().zip(expected) {
+                let ledger = WriteLedger::new(atomicity);
+                phase.replay(&ledger);
+                if with_token {
+                    ledger.attach_token(token());
+                }
+
+                let outcome = ledger.interrupted(lost(), fate.clone());
+
+                assert_eq!(
+                    outcome_of(&outcome),
+                    Some(expected),
+                    "{atomicity:?}, {phase:?}, token {with_token}, {fate:?}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn a_transaction_lost_before_the_commit_left_nothing_behind() {
         let ledger = WriteLedger::new(WriteAtomicity::Transactional);

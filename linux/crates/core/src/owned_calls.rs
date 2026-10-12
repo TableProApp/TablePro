@@ -383,18 +383,31 @@ mod tests {
 
     struct Engine {
         delivery: StopDelivery,
+        takes: Duration,
         sent: Arc<AtomicUsize>,
+        settled: Arc<AtomicUsize>,
     }
 
     impl Engine {
         fn new(delivery: StopDelivery) -> (Arc<Self>, Arc<AtomicUsize>) {
+            let (engine, sent, _settled) = Self::taking(delivery, Duration::ZERO);
+            (engine, sent)
+        }
+
+        /// An engine whose stop takes `takes` to be acknowledged, as a
+        /// cancel request on a second connection does.
+        fn taking(delivery: StopDelivery, takes: Duration) -> (Arc<Self>, Arc<AtomicUsize>, Arc<AtomicUsize>) {
             let sent = Arc::new(AtomicUsize::new(0));
+            let settled = Arc::new(AtomicUsize::new(0));
             (
                 Arc::new(Self {
                     delivery,
+                    takes,
                     sent: sent.clone(),
+                    settled: settled.clone(),
                 }),
                 sent,
+                settled,
             )
         }
     }
@@ -407,6 +420,10 @@ mod tests {
 
         async fn stop(&self) -> Result<(), DriverError> {
             self.sent.fetch_add(1, Ordering::SeqCst);
+            if !self.takes.is_zero() {
+                tokio::time::sleep(self.takes).await;
+            }
+            self.settled.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
 
@@ -424,6 +441,152 @@ mod tests {
 
     fn options(deadline: Option<Instant>, cancel: &CancellationToken) -> CallOptions {
         CallOptions::new(deadline, cancel.clone())
+    }
+
+    fn cancel_after(cancel: &CancellationToken, after: Duration) {
+        let trigger = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(after).await;
+            trigger.cancel();
+        });
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dropping_caller_future_still_calls_stop() {
+        let calls = OwnedCalls::new(Duration::from_secs(5));
+        let (connection, _abandon, _discarded) = Connection::new();
+        let (engine, sent) = Engine::new(StopDelivery::OutOfBand(StopScope::Statement));
+        let cancel = CancellationToken::new();
+
+        // The timeout polls the call once, so its work is running, and
+        // then drops it the way a closed tab drops its future.
+        let dropped = tokio::time::timeout(
+            Duration::from_millis(5),
+            calls.run_read::<_, _, u8, _, _>(
+                options(None, &cancel),
+                connection,
+                engine,
+                |resource, stop| async move {
+                    stop.requested().await;
+                    (resource, Err(cancelled_by_server()))
+                },
+            ),
+        )
+        .await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        assert!(dropped.is_err(), "the call finished before it could be dropped");
+        assert!(cancel.is_cancelled(), "dropping the caller did not cancel the call");
+        assert_eq!(
+            sent.load(Ordering::SeqCst),
+            1,
+            "the server was left running a call nobody waits for"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn connection_scope_waits_for_stop_before_release() {
+        let calls = OwnedCalls::new(Duration::from_secs(5));
+        let (connection, _abandon, discarded) = Connection::new();
+        let stop_takes = Duration::from_millis(200);
+        let (engine, _sent, settled) = Engine::taking(StopDelivery::OutOfBand(StopScope::Connection), stop_takes);
+        let cancel = CancellationToken::new();
+        cancel_after(&cancel, Duration::from_millis(10));
+        let started = Instant::now();
+
+        let answer = calls
+            .run_read::<_, _, u8, _, _>(
+                options(None, &cancel),
+                connection,
+                engine,
+                |resource, stop| async move {
+                    stop.requested().await;
+                    (resource, Err(cancelled_by_server()))
+                },
+            )
+            .await;
+
+        assert!(matches!(answer, Err(DriverError::Cancelled)), "got {answer:?}");
+        assert_eq!(
+            settled.load(Ordering::SeqCst),
+            1,
+            "the connection went back while a stop naming it was still out"
+        );
+        assert!(
+            started.elapsed() >= stop_takes,
+            "the call returned before its stop settled"
+        );
+        assert!(
+            !discarded.load(Ordering::SeqCst),
+            "a connection whose stop was acknowledged and settled was thrown away"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn statement_scope_releases_immediately() {
+        let calls = OwnedCalls::new(Duration::from_secs(5));
+        let (connection, _abandon, discarded) = Connection::new();
+        let stop_takes = Duration::from_millis(200);
+        let (engine, sent, _settled) = Engine::taking(StopDelivery::OutOfBand(StopScope::Statement), stop_takes);
+        let cancel = CancellationToken::new();
+        cancel_after(&cancel, Duration::from_millis(10));
+        let started = Instant::now();
+
+        let answer = calls
+            .run_read::<_, _, u8, _, _>(
+                options(None, &cancel),
+                connection,
+                engine,
+                |resource, stop| async move {
+                    stop.requested().await;
+                    (resource, Err(cancelled_by_server()))
+                },
+            )
+            .await;
+
+        assert!(matches!(answer, Err(DriverError::Cancelled)), "got {answer:?}");
+        assert_eq!(sent.load(Ordering::SeqCst), 1, "the engine's own stop was not sent");
+        assert!(
+            started.elapsed() < stop_takes,
+            "a stop that names only the statement held the connection back"
+        );
+        assert!(
+            !discarded.load(Ordering::SeqCst),
+            "a statement-scoped stop discarded the connection"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn in_band_delivery_cancels_stop_request_and_never_calls_stop() {
+        let calls = OwnedCalls::new(Duration::from_secs(5));
+        let (connection, _abandon, discarded) = Connection::new();
+        let (engine, sent) = Engine::new(StopDelivery::InBand);
+        let cancel = CancellationToken::new();
+        cancel_after(&cancel, Duration::from_millis(10));
+
+        let answer = calls
+            .run_read(
+                options(None, &cancel),
+                connection,
+                engine,
+                |resource, stop| async move {
+                    stop.requested().await;
+                    (resource, Ok(stop.reason()))
+                },
+            )
+            .await;
+
+        assert_eq!(
+            answer.ok().flatten(),
+            Some(StopReason::Cancelled),
+            "the work never saw why it was stopped"
+        );
+        assert_eq!(
+            sent.load(Ordering::SeqCst),
+            0,
+            "an in-band engine was sent an out-of-band stop"
+        );
+        assert!(!discarded.load(Ordering::SeqCst));
     }
 
     #[tokio::test]

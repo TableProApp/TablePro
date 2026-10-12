@@ -1,141 +1,125 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
+use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
+use crate::call_options::CallOptions;
 use crate::column::ColumnInfo;
+use crate::commit::{CommitResolution, CommitToken};
+use crate::ddl::TableDefinition;
+use crate::dialect::SqlDialect;
+use crate::editor_session::{EditorSession, EditorSessionOptions};
 use crate::error::DriverError;
-use crate::query::{ExecResult, ForeignKeyInfo, IndexInfo, TableInfo};
+use crate::foreign_key_info::ForeignKeyInfo;
+use crate::link_watch::LinkState;
+use crate::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use crate::query_result::QueryResult;
-use crate::value::Value;
+use crate::read_statement::ReadStatement;
+use crate::result_sink::ResultSink;
+use crate::row_limit::RowLimit;
+use crate::server_info::ServerInfo;
+use crate::statement::Statement;
+use crate::stream_summary::StreamSummary;
+use crate::write_batch::WriteBatch;
+use crate::write_report::WriteReport;
 
-/// How a driver authenticates to the database. Most drivers only
-/// support [`AuthMode::Password`]; the SQL Server driver also supports
-/// [`AuthMode::Kerberos`] (Windows integrated auth) using the current
-/// user's Kerberos ticket cache obtained via `kinit`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AuthMode {
-    #[default]
-    Password,
-    /// Windows integrated authentication over Kerberos (GSSAPI), using
-    /// the ambient ticket cache. `username`/`password` are ignored.
-    Kerberos,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConnectOptions {
-    pub host: String,
-    pub port: u16,
-    pub database: String,
-    pub username: String,
-    pub password: SecretString,
-    pub use_tls: bool,
-    pub auth_mode: AuthMode,
-    /// Set only when `host`/`port` were replaced by a tunnel's local
-    /// forward. `None` means the socket already points at the service.
-    pub service_endpoint: Option<(String, u16)>,
-}
-
-impl ConnectOptions {
-    /// Host and port the service answers to, which is `host`/`port`
-    /// unless a tunnel replaced them.
-    pub fn service_address(&self) -> (&str, u16) {
-        self.service_endpoint
-            .as_ref()
-            .map_or((self.host.as_str(), self.port), |(host, port)| (host.as_str(), *port))
-    }
-}
-
-impl Default for ConnectOptions {
-    fn default() -> Self {
-        Self {
-            host: "localhost".to_string(),
-            port: 0,
-            database: String::new(),
-            username: String::new(),
-            password: SecretString::new(String::new().into()),
-            use_tls: false,
-            auth_mode: AuthMode::Password,
-            service_endpoint: None,
-        }
-    }
-}
-
+/// A workspace's link to one server: the pool behind the sidebar, the
+/// grid and every save.
+///
+/// Each call runs on a task the connection owns, not on the caller's
+/// future, so dropping the caller cancels the call instead of leaving
+/// the server working for nobody (`OwnedCalls`). A call returns within
+/// its deadline plus the liveness policy's cancel grace.
 #[async_trait]
 pub trait Connection: Send + Sync {
-    async fn list_tables(&self) -> Result<Vec<TableInfo>, DriverError>;
-    async fn fetch_columns(&self, schema: Option<&str>, table: &str) -> Result<Vec<ColumnInfo>, DriverError>;
-    async fn fetch_rows(
-        &self,
-        schema: Option<&str>,
-        table: &str,
-        offset: u64,
-        limit: u64,
-    ) -> Result<QueryResult, DriverError>;
-    async fn query(&self, sql: &str) -> Result<QueryResult, DriverError>;
-    /// Parameterised SELECT. Bound `Value`s are passed through to the
-    /// driver's prepare/bind path (sqlx::query::bind for the built-in
-    /// drivers). Default impl delegates to `query` when params is
-    /// empty, so legacy callers compile unchanged; drivers that
-    /// support real parameter binding override.
-    async fn query_params(&self, sql: &str, params: &[Value]) -> Result<QueryResult, DriverError> {
-        if params.is_empty() {
-            self.query(sql).await
-        } else {
-            Err(DriverError::Unsupported {
-                feature: "parameterised queries",
-            })
-        }
-    }
-    async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError>;
-    async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError>;
-    /// Run a sequence of parameterised statements inside a single
-    /// database transaction. Rolls back automatically if any
-    /// statement errors; returns `DriverError::Transaction` with the
-    /// failing statement's index. Returns one `rows_affected` value
-    /// per successful statement, in order. Used by the inline-edit
-    /// changeset Save flow so all pending row inserts / updates /
-    /// deletes commit atomically.
-    async fn execute_in_transaction(&self, statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError>;
-    /// Indexes defined on `table`. Implementations may include the
-    /// implicit primary-key index with `primary = true` so the UI can
-    /// render it as read-only. Default returns empty so existing
-    /// drivers compile before they're filled in.
-    async fn fetch_indexes(&self, _schema: Option<&str>, _table: &str) -> Result<Vec<IndexInfo>, DriverError> {
-        Ok(Vec::new())
-    }
-    /// Foreign-key constraints declared on `table`. Default returns
-    /// empty for the same reason as `fetch_indexes`.
+    fn server_info(&self) -> &ServerInfo;
+
+    /// Built from the server version at connect, so generated SQL
+    /// matches what this server accepts.
+    fn dialect(&self) -> Arc<dyn SqlDialect>;
+
+    fn read_only(&self) -> bool;
+
+    fn link_state(&self) -> LinkState;
+
+    /// Resolves once the link is lost, for a monitor that waits on it
+    /// without holding the connection busy.
+    fn lost(&self) -> WaitForCancellationFutureOwned;
+
+    /// Whether the server answers. Never waits for a pool slot: a busy
+    /// pool is not a dead server, so with every slot taken the probe
+    /// opens a connection of its own.
+    async fn probe(&self, options: CallOptions) -> Result<(), DriverError>;
+
+    async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError>;
+
+    async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError>;
+
+    async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError>;
+
+    async fn fetch_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>, DriverError>;
+
     async fn fetch_foreign_keys(
         &self,
-        _schema: Option<&str>,
-        _table: &str,
-    ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
-        Ok(Vec::new())
-    }
-    async fn ping(&self) -> Result<(), DriverError>;
-    async fn close(self: Box<Self>) -> Result<(), DriverError>;
-}
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<ForeignKeyInfo>, DriverError>;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    /// The table as structure changes plan against it, read in one call
+    /// so its columns, keys and dependents come from the same moment.
+    async fn fetch_table_definition(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<TableDefinition, DriverError>;
 
-    #[test]
-    fn service_address_prefers_the_tunnelled_service_over_the_socket() {
-        let direct = ConnectOptions {
-            host: "sql.corp.example".into(),
-            port: 1433,
-            ..Default::default()
-        };
-        assert_eq!(direct.service_address(), ("sql.corp.example", 1433));
+    async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError>;
 
-        let tunnelled = ConnectOptions {
-            host: "127.0.0.1".into(),
-            port: 54321,
-            service_endpoint: Some(("sql.corp.example".into(), 1433)),
-            ..Default::default()
-        };
-        assert_eq!(tunnelled.service_address(), ("sql.corp.example", 1433));
-    }
+    async fn table_estimate(&self, table: &TableRef, options: CallOptions) -> Result<TableEstimate, DriverError>;
+
+    /// Run a generated read and keep at most `limit` rows, marking the
+    /// result truncated when there were more.
+    async fn query_bound(
+        &self,
+        statement: &Statement,
+        limit: RowLimit,
+        options: CallOptions,
+    ) -> Result<QueryResult, DriverError>;
+
+    async fn count_rows(&self, statement: &Statement, options: CallOptions) -> Result<u64, DriverError>;
+
+    /// Stream every row of a read into `sink`, with no row limit.
+    ///
+    /// It runs on a connection of its own, never a pool slot, because an
+    /// export can take minutes. The read is held read-only by the engine
+    /// for its whole length, so user SQL that tries to write fails with
+    /// a `ReadOnly` error. Each result set arrives as `ResultSetStarted`,
+    /// then `Rows`, then `ResultSetFinished`, and each event is accepted
+    /// before the next rows are read.
+    async fn stream_read(
+        &self,
+        read: &ReadStatement,
+        sink: Box<dyn ResultSink>,
+        options: CallOptions,
+    ) -> Result<StreamSummary, DriverError>;
+
+    /// Apply a save. On an engine that cannot suspend foreign keys, a
+    /// batch that asks for it fails before anything is sent.
+    async fn write_batch(&self, batch: &WriteBatch, options: CallOptions) -> Result<WriteReport, DriverError>;
+
+    /// Ask the server what became of a write whose commit was sent and
+    /// never answered.
+    async fn resolve_commit(&self, token: &CommitToken, options: CallOptions) -> Result<CommitResolution, DriverError>;
+
+    /// Open an editor tab's own connection. It outlives this one: the
+    /// tab owns it, and closing the workspace does not close it.
+    async fn open_editor_session(
+        &self,
+        options: EditorSessionOptions,
+        cancel: CancellationToken,
+    ) -> Result<Arc<dyn EditorSession>, DriverError>;
+
+    /// Stop every call and release the pool. Safe to call more than
+    /// once, and it never closes an editor session.
+    async fn close(&self) -> Result<(), DriverError>;
 }

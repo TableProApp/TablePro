@@ -1,3 +1,4 @@
+use crate::foreign_key_mode::ForeignKeyMode;
 use crate::meta::TableRef;
 use crate::statement::GuardedStatement;
 
@@ -22,11 +23,17 @@ pub struct WriteBatch {
     pub kind: WriteKind,
     pub table: TableRef,
     pub steps: Vec<GuardedStatement>,
+    pub foreign_keys: ForeignKeyMode,
 }
 
 impl WriteBatch {
-    pub fn new(kind: WriteKind, table: TableRef, steps: Vec<GuardedStatement>) -> Self {
-        Self { kind, table, steps }
+    pub fn new(kind: WriteKind, table: TableRef, steps: Vec<GuardedStatement>, foreign_keys: ForeignKeyMode) -> Self {
+        Self {
+            kind,
+            table,
+            steps,
+            foreign_keys,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
