@@ -185,6 +185,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::filter_presets::tests::applying_two_saved_filters_switches_the_rules_in_the_browse_editor"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::row_inspector::tests::the_inspector_lists_a_row_and_returns_to_its_placeholder"
     ],
     [

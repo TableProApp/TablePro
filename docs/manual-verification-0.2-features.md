@@ -186,6 +186,13 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 - [ ] A JSON or binary cell shows "Values of this type can't be used as a filter".
 - [ ] The item is absent from SQL editor result grids.
 
+## Named browse filters
+
+- [ ] On one table, build and apply two structured filters, save them under different names, and switch between them without editing the rules.
+- [ ] Rename one preset and delete the other; restart BookiE and confirm the renamed preset remains scoped to the same connection, schema and table.
+- [ ] Save a preset with raw SQL, an empty name, an overlong name and beyond the per-table limit; each is refused with a useful message.
+- [ ] Open the preset on a table whose columns changed; the invalid saved rule is not applied silently.
+
 ## Catalog window
 
 Main menu, then Catalog, on a PostgreSQL connection with a few objects of each kind.

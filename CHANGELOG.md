@@ -10,6 +10,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A foreign key cell offers Go to Referenced Row.
 - ENUM and SET cells on MySQL and MariaDB, and enum cells on PostgreSQL, are edited from a list of members.
 - A preference chooses how NULL is displayed in the grid.
+- Browse filters can be saved, applied, renamed and deleted per connection, schema and table.
 - MySQL and MariaDB connections can use a local Unix socket file, saved with the connection and exported in version 3 connection bundles.
 - Query history now opens in a docked panel beneath the workspace, which stays visible while you search and reopen queries.
 - SQL result grids can sort supported, homogeneous typed columns in memory without re-running the SQL statement; SQL NULL values stay last in either direction.

@@ -1,10 +1,12 @@
 use super::column_widths::ColumnWidthStore;
 use super::filter_settings::FilterSettingsStore;
+use super::named_filter_presets::NamedFilterPresetsStore;
 
 #[derive(Clone)]
 pub struct PersistenceStores {
     pub column_widths: Option<ColumnWidthStore>,
     pub filter_settings: Option<FilterSettingsStore>,
+    pub named_filter_presets: Option<NamedFilterPresetsStore>,
 }
 
 impl PersistenceStores {
@@ -12,6 +14,7 @@ impl PersistenceStores {
         Self {
             column_widths: ColumnWidthStore::open(),
             filter_settings: FilterSettingsStore::open(),
+            named_filter_presets: NamedFilterPresetsStore::open(),
         }
     }
 
@@ -25,6 +28,11 @@ impl PersistenceStores {
             && let Err(error) = store.flush()
         {
             tracing::warn!(%error, "filter settings flush failed");
+        }
+        if let Some(store) = &self.named_filter_presets
+            && let Err(error) = store.flush()
+        {
+            tracing::warn!(%error, "named filter presets flush failed");
         }
     }
 }

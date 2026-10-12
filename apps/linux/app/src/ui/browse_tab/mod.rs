@@ -602,7 +602,20 @@ impl SimpleComponent for BrowseTab {
         let on_apply_filter: std::rc::Rc<dyn Fn(tablepro_core::FilterSet)> = std::rc::Rc::new(move |set| {
             sender_for_strip.input(BrowseTabInput::FilterApplied(set));
         });
-        let filter_strip = crate::ui::filter_strip::build(Vec::new(), filter_set_for_strip, on_apply_filter);
+        let preset_context = init.connection_id.and_then(|connection| {
+            init.persistence
+                .named_filter_presets
+                .clone()
+                .map(|store| crate::ui::filter_presets::FilterPresetContext {
+                    store,
+                    connection,
+                    schema: init.schema.clone(),
+                    table: init.table.clone(),
+                    driver_id: init.driver_id.clone(),
+                })
+        });
+        let filter_strip =
+            crate::ui::filter_strip::build(Vec::new(), filter_set_for_strip, on_apply_filter, preset_context);
 
         // Banners + filter strip live in `AdwToolbarView::add_top_bar`
         // (the libadwaita-canonical placement). The default top-bar

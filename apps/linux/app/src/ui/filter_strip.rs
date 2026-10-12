@@ -347,7 +347,12 @@ impl FilterStrip {
     }
 }
 
-pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(FilterSet)>) -> FilterStrip {
+pub fn build(
+    columns: Vec<ColumnInfo>,
+    initial: FilterSet,
+    on_apply: Rc<dyn Fn(FilterSet)>,
+    preset_context: Option<crate::ui::filter_presets::FilterPresetContext>,
+) -> FilterStrip {
     let state = Rc::new(RefCell::new(initial));
     let columns: Rc<RefCell<Vec<ColumnInfo>>> =
         Rc::new(RefCell::new(columns.into_iter().filter(is_filterable).collect()));
@@ -424,6 +429,11 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     header.append(&apply_btn);
     header.append(&close_btn);
     outer.append(&header);
+    if let Some(context) = preset_context {
+        outer.append(
+            &crate::ui::filter_presets::build(context, state.clone(), columns.clone(), on_apply.clone()).widget,
+        );
+    }
 
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
