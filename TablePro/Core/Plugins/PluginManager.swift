@@ -659,11 +659,7 @@ final class PluginManager: ObservableObject {
         try validateBundleVersions(bundle)
 
         if source != .builtIn {
-            let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
-            if case .developerID(let identity) = trust,
-               !PluginDeveloperTrustStore.shared.isTrusted(identity) {
-                throw PluginError.developerNotTrusted(identity: identity)
-            }
+            try PluginCodeSignatureVerifier.verify(bundle: bundle)
         }
 
         try PluginBundleLoader.load(bundle)
