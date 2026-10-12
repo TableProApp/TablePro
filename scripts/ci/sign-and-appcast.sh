@@ -17,8 +17,9 @@ set -euo pipefail
 # architecture gets its own staging directory and its own generate_appcast run.
 #
 # Usage: sign-and-appcast.sh <version>
-# Requires: SPARKLE_PRIVATE_KEY env var, artifacts/ directory with both architectures' ZIPs,
-# and $DELTA_BASES/<arch>/ holding the earlier archives (fetch-delta-bases.sh), which may be empty.
+# Requires: SPARKLE_PRIVATE_KEY env var, artifacts/ directory with both architectures' tar.xz
+# archives, and $DELTA_BASES/<arch>/ holding the earlier archives (fetch-delta-bases.sh), which may
+# be empty.
 # Optional: CRITICAL_UPDATE=1 to mark the release critical.
 
 BASE_APPCAST="${BASE_APPCAST:-appcast.xml}"
@@ -85,18 +86,18 @@ echo "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
 # ---------------------------------------------------------------------------
 generate_item() {
   local arch="$1"
-  local zip="artifacts/TablePro-${VERSION}-${arch}.zip"
+  local archive="artifacts/TablePro-${VERSION}-${arch}.tar.xz"
   local staging="$STAGING_ROOT/$arch"
   local bases=0
   local base
 
-  if [ ! -f "$zip" ]; then
-    echo "::error::$zip is missing, so the $arch build produced no update archive"
+  if [ ! -f "$archive" ]; then
+    echo "::error::$archive is missing, so the $arch build produced no update archive"
     return 1
   fi
 
   mkdir -p "$staging"
-  cp "$zip" "$staging/"
+  cp "$archive" "$staging/"
   for base in "$DELTA_BASES/$arch"/*; do
     if [ -f "$base" ]; then
       cp "$base" "$staging/"
@@ -107,8 +108,8 @@ generate_item() {
   # Sparkle 2.9 renders Markdown natively, including code and links. Feeding hand-built HTML
   # left Markdown visible and interpreted literal SQL/XML angle brackets as HTML tags.
   #
-  # The name matches the archive's, which is how generate_appcast pairs notes to an archive.
-  # Without the pairing the item ships with no description at all.
+  # The name matches the archive's without .tar.xz, which is how generate_appcast pairs notes to
+  # an archive. Without the pairing the item ships with no description at all.
   {
     printf "# What's New in TablePro %s\n\n" "$VERSION"
     cat release_highlights.md

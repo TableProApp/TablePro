@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
-- Delta updates from the last five releases, about 6 MB instead of the full 34 MB download.
+- Smaller updates: about 6 MB from any of the last five releases and 21 MB from older ones, down from 34 MB.
 
 ### Removed
 

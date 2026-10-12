@@ -126,13 +126,16 @@ jobs:
           NOTARIZE: "true"
         run: scripts/ci/package-artifacts.sh ${{ matrix.arch }}
 
+      - name: Verify the update archive
+        run: scripts/ci/verify-update-archive.sh "build/Release/TablePro-${{ matrix.arch }}.tar.xz"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: artifacts-${{ matrix.arch }}
           path: |
             build/Release/TablePro-*.dmg
-            build/Release/TablePro-*.zip
+            build/Release/TablePro-*.tar.xz
 
   # Reads two integers out of a Swift file and fetches a JSON manifest, so it wants nothing
   # from macOS and does not need to spend a macOS runner minute (billed at ten times Linux).
@@ -177,7 +180,7 @@ jobs:
       # test-products, which is 874MB fetched to use 106MB of it, and every megabyte is another
       # chance for the blob store to drop the transfer: v0.69.0 failed here twice in a row with
       # "Artifact download failed after 5 retries", both times inside two minutes. Flatten takes any
-      # *.dmg or *.zip it finds, so a zip inside a test bundle could also reach the release.
+      # *.dmg or *.tar.xz it finds, so one inside a test bundle could also reach the release.
       - name: Download build artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -188,7 +191,7 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p artifacts/
-          find artifacts-raw/ -type f \( -name "*.dmg" -o -name "*.zip" \) -exec mv {} artifacts/ \;
+          find artifacts-raw/ -type f \( -name "*.dmg" -o -name "*.tar.xz" \) -exec mv {} artifacts/ \;
           rm -rf artifacts-raw/
           echo "Artifacts:"
           ls -lh artifacts/
@@ -252,17 +255,17 @@ jobs:
           echo "Contents of artifacts directory:"
           ls -la artifacts/
 
-          # The DMGs are already versioned by package-artifacts.sh; the ZIPs are not.
+          # The DMGs are already versioned by package-artifacts.sh; the update archives are not.
           # Both renames used to be guarded by `if [ -f ... ]` with no else, so a missing or
-          # differently named ZIP printed "organized successfully" and the release published
+          # differently named archive printed "organized successfully" and the release published
           # whatever the upload glob happened to match.
           for ARCH in arm64 x86_64; do
-            if [ ! -f "artifacts/TablePro-${ARCH}.zip" ]; then
-              echo "::error::artifacts/TablePro-${ARCH}.zip is missing; the ${ARCH} build did not produce an update archive"
+            if [ ! -f "artifacts/TablePro-${ARCH}.tar.xz" ]; then
+              echo "::error::artifacts/TablePro-${ARCH}.tar.xz is missing; the ${ARCH} build did not produce an update archive"
               ls -la artifacts/ >&2
               exit 1
             fi
-            mv "artifacts/TablePro-${ARCH}.zip" "artifacts/TablePro-${VERSION}-${ARCH}.zip"
+            mv "artifacts/TablePro-${ARCH}.tar.xz" "artifacts/TablePro-${VERSION}-${ARCH}.tar.xz"
 
             if [ ! -f "artifacts/TablePro-${VERSION}-${ARCH}.dmg" ]; then
               echo "::error::artifacts/TablePro-${VERSION}-${ARCH}.dmg is missing"
@@ -348,7 +351,7 @@ jobs:
           # A first release has nothing to build deltas from.
           shopt -s nullglob
           scripts/ci/draft-release.sh --prerelease "$PRERELEASE" "$TAG" "$TAG" release_notes.md \
-            artifacts/*.dmg artifacts/*.zip artifacts/*.delta
+            artifacts/*.dmg artifacts/*.tar.xz artifacts/*.delta
 
       - name: Publish the release
         if: steps.draft.outputs.id != ''
