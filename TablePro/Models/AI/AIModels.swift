@@ -10,7 +10,6 @@ import Foundation
 enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case copilot
     case chatgptCodex
-    case cursor
     case claude
     case claudeAgent
     case openAI
@@ -29,7 +28,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return "GitHub Copilot"
         case .chatgptCodex: return "ChatGPT"
-        case .cursor:       return "Cursor"
         case .claude:       return "Claude"
         case .claudeAgent:  return "Claude Agent"
         case .openAI:       return "OpenAI"
@@ -48,7 +46,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return ""
         case .chatgptCodex: return ""
-        case .cursor:       return ""
         case .claude:       return "https://api.anthropic.com"
         case .claudeAgent:  return ""
         case .openAI:       return "https://api.openai.com"
@@ -73,13 +70,12 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return .oauth
         case .chatgptCodex: return .oauth
-        case .cursor:       return .optionalApiKey
         case .claude:       return .apiKey
         case .claudeAgent:  return .none
         case .openAI:       return .apiKey
         case .openRouter:   return .apiKey
         case .gemini:       return .apiKey
-        case .xai:          return .optionalApiKey
+        case .xai:          return .apiKey
         case .ollama:       return .none
         case .llamaCpp:     return .none
         case .mlx:          return .none
@@ -100,7 +96,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
             return .gemini
         case .ollama:
             return .ollama
-        case .copilot, .chatgptCodex, .cursor, .claudeAgent, .openRouter, .llamaCpp, .mlx, .openCode, .custom:
+        case .copilot, .chatgptCodex, .claudeAgent, .openRouter, .llamaCpp, .mlx, .openCode, .custom:
             return .chatCompletions
         }
     }
@@ -112,7 +108,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return "chevron.left.forwardslash.chevron.right"
         case .chatgptCodex: return "bubble.left.and.bubble.right"
-        case .cursor:       return "cursorarrow"
         case .claude:       return "brain"
         case .claudeAgent:  return "terminal"
         case .openAI:       return "cpu"
@@ -172,18 +167,20 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         self.init(name: preset.displayName, type: .custom, presetID: preset.id)
     }
 
+    /// `id` and `type` are what make a row usable, so a row missing either one fails as a whole and
+    /// `AISettings` drops it. Every other field falls back on its own.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         type = try container.decode(AIProviderType.self, forKey: .type)
-        presetID = try container.decodeIfPresent(String.self, forKey: .presetID)
-        model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
-        let rawEndpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
+        name = container.decodeSetting(.name, default: "")
+        presetID = container.decodeSetting(.presetID)
+        model = container.decodeSetting(.model, default: "")
+        let rawEndpoint = container.decodeSetting(.endpoint, default: "")
         endpoint = rawEndpoint.isEmpty ? Self.defaultEndpoint(type: type, presetID: presetID) : rawEndpoint
-        maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
-        telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
-        reasoningEffort = try container.decodeIfPresent(ReasoningEffort.self, forKey: .reasoningEffort)
+        maxOutputTokens = container.decodeSetting(.maxOutputTokens)
+        telemetryEnabled = container.decodeSetting(.telemetryEnabled, default: false)
+        reasoningEffort = container.decodeSetting(.reasoningEffort)
     }
 
     var preset: AIProviderPreset? {
@@ -354,30 +351,23 @@ struct AISettings: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-        providers = try container.decodeIfPresent([AIProviderConfig].self, forKey: .providers) ?? []
-        activeProviderID = try container.decodeIfPresent(UUID.self, forKey: .activeProviderID)
-        inlineSuggestionsEnabled = try container.decodeIfPresent(Bool.self, forKey: .inlineSuggestionsEnabled) ?? false
-        inlineSuggestionDebounceMs = try container.decodeIfPresent(
-            Int.self, forKey: .inlineSuggestionDebounceMs
-        ) ?? AISettings.defaultInlineSuggestionDebounceMs
-        includeSchema = try container.decodeIfPresent(Bool.self, forKey: .includeSchema) ?? true
-        includeCurrentQuery = try container.decodeIfPresent(Bool.self, forKey: .includeCurrentQuery) ?? true
-        includeQueryResults = try container.decodeIfPresent(Bool.self, forKey: .includeQueryResults) ?? false
-        maxSchemaTables = try container.decodeIfPresent(Int.self, forKey: .maxSchemaTables) ?? 20
-        maxToolRoundtrips = try container.decodeIfPresent(
-            Int.self, forKey: .maxToolRoundtrips
-        ) ?? AISettings.defaultMaxToolRoundtrips
-        maxToolRoundtripsEnabled = try container.decodeIfPresent(
-            Bool.self, forKey: .maxToolRoundtripsEnabled
-        ) ?? true
-        defaultConnectionPolicy = try container.decodeIfPresent(
-            AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
-        ) ?? .askEachTime
-        chatMode = try container.decodeIfPresent(AIChatMode.self, forKey: .chatMode) ?? .ask
-        composerHighlightEnabled = try container.decodeIfPresent(
-            Bool.self, forKey: .composerHighlightEnabled
-        ) ?? true
+        let fallback = Self.default
+        enabled = container.decodeSetting(.enabled, default: fallback.enabled)
+        providers = container.decodeSettingElements(.providers)
+        activeProviderID = container.decodeSetting(.activeProviderID)
+        inlineSuggestionsEnabled = container.decodeSetting(.inlineSuggestionsEnabled, default: fallback.inlineSuggestionsEnabled)
+        inlineSuggestionDebounceMs = container.decodeSetting(
+            .inlineSuggestionDebounceMs, default: fallback.inlineSuggestionDebounceMs
+        )
+        includeSchema = container.decodeSetting(.includeSchema, default: fallback.includeSchema)
+        includeCurrentQuery = container.decodeSetting(.includeCurrentQuery, default: fallback.includeCurrentQuery)
+        includeQueryResults = container.decodeSetting(.includeQueryResults, default: fallback.includeQueryResults)
+        maxSchemaTables = container.decodeSetting(.maxSchemaTables, default: fallback.maxSchemaTables)
+        maxToolRoundtrips = container.decodeSetting(.maxToolRoundtrips, default: fallback.maxToolRoundtrips)
+        maxToolRoundtripsEnabled = container.decodeSetting(.maxToolRoundtripsEnabled, default: fallback.maxToolRoundtripsEnabled)
+        defaultConnectionPolicy = container.decodeSetting(.defaultConnectionPolicy, default: fallback.defaultConnectionPolicy)
+        chatMode = container.decodeSetting(.chatMode, default: fallback.chatMode)
+        composerHighlightEnabled = container.decodeSetting(.composerHighlightEnabled, default: fallback.composerHighlightEnabled)
     }
 
     var activeProvider: AIProviderConfig? {

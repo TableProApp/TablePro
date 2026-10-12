@@ -23,6 +23,7 @@ struct AIChatPanelView: View {
     /// column, where filling it would run a line the whole width of the window.
     var contentWidth: ChatContentWidth = .pane
     @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var copilotService = CopilotService.shared
     @State private var bottomVisibleMessageID: UUID?
     @State private var pinnedToBottom: Bool = true
     @State private var scrollToBottomRequest: UUID?
@@ -75,7 +76,10 @@ struct AIChatPanelView: View {
         .onChange(of: connection.id) { _ in
             viewModel.connection = connection
         }
-        .task(id: settingsManager.ai.providers.map(\.id)) {
+        .task(id: ModelListTrigger(
+            providerIDs: settingsManager.ai.providers.map(\.id),
+            isCopilotRunning: copilotService.status == .running
+        )) {
             await viewModel.loadAvailableModels()
         }
         .task(id: connection.id) {
@@ -757,4 +761,11 @@ private struct ScrollsToBottomOnFirstAppearance: ViewModifier {
             scrollToBottom()
         }
     }
+}
+
+/// Copilot lists no models until its server runs, and it starts on first use rather than with the
+/// panel, so its list is fetched again once it is up.
+private struct ModelListTrigger: Equatable {
+    let providerIDs: [UUID]
+    let isCopilotRunning: Bool
 }

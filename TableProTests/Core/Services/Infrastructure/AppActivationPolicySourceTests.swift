@@ -49,6 +49,19 @@ struct AppActivationPolicySourceTests {
         )
     }
 
+    @Test("Prompts and confirmations ask for attention instead of taking focus")
+    func promptsDoNotTakeFocus() throws {
+        let prompts = ["Core/Utilities/UI/AlertHelper.swift", "Core/Services/Execution/Providers/OperationConfirming.swift"]
+        let found = try prompts.filter { path in
+            let url = Self.repositoryRoot.appendingPathComponent("TablePro").appendingPathComponent(path)
+            return try String(contentsOf: url, encoding: .utf8).contains(".activate(")
+        }
+        #expect(
+            found.isEmpty,
+            "A prompt that takes focus can be answered by a keystroke meant for another app; use requestAttention(): \(found)"
+        )
+    }
+
     @Test("Only the policy controller sets the activation policy")
     func policyChangesGoThroughTheController() throws {
         let found = try offenders(matching: "setActivationPolicy(")
