@@ -4,3 +4,5 @@ mod auth_errors;
 mod enum_labels;
 #[path = "network_paths.rs"]
 mod network_paths;
+#[path = "xml_oid_values.rs"]
+mod xml_oid_values;

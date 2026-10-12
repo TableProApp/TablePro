@@ -7,6 +7,8 @@ pub(crate) fn decode_pg_binary_text(type_name: &str, bytes: &[u8]) -> Option<Str
         "INET" => decode_inet(bytes, false),
         "CIDR" => decode_inet(bytes, true),
         "PG_LSN" => decode_pg_lsn(bytes),
+        "XML" => String::from_utf8(bytes.to_vec()).ok(),
+        "OID" | "XID" | "CID" => Some(u32::from_be_bytes(bytes.try_into().ok()?).to_string()),
         _ => None,
     }
 }
@@ -171,6 +173,17 @@ mod tests {
         );
         assert_eq!(decode_macaddr(&[0x08, 0x00, 0x2b, 0x01, 0x02]), None);
         assert_eq!(decode_macaddr(&[0x08, 0x00, 0x2b, 0x01, 0x02, 0x03, 0x04]), None);
+    }
+
+    #[test]
+    fn value_contract_xml_is_utf8_text_and_oid_is_an_unsigned_integer() {
+        assert_eq!(decode_pg_binary_text("XML", b"<a/>").as_deref(), Some("<a/>"));
+        assert_eq!(decode_pg_binary_text("XML", &[0xff, 0xfe]), None);
+        assert_eq!(
+            decode_pg_binary_text("OID", &[0xff, 0xff, 0xff, 0xff]).as_deref(),
+            Some("4294967295")
+        );
+        assert_eq!(decode_pg_binary_text("OID", &[0, 0, 5]), None);
     }
 
     #[test]
