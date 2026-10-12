@@ -191,9 +191,10 @@ the same sitting as the tag.
   Conventional Commit of at most 72 characters.
 
 The tag runs `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and ZIP, Sparkle signatures,
-the GitHub Release with notes from `CHANGELOG.md`, then `appcast.xml`. The release is created as a
-draft holding every asset and published in one step, only when `lint`, `test`, `build` and
-`registry-readiness` pass. The job fails when the tag disagrees with `MARKETING_VERSION`.
+deltas from the previous five releases, the GitHub Release with notes from `CHANGELOG.md`, then
+`appcast.xml`. The release is created as a draft holding every asset and published in one step, only
+when `lint`, `test`, `build` and `registry-readiness` pass. The job fails when the tag disagrees with
+`MARKETING_VERSION`.
 
 A published release is immutable: its assets and its tag are locked. When a run fails:
 

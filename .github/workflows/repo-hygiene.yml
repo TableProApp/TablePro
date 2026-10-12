@@ -177,6 +177,9 @@ jobs:
       - name: Validate the appcast merge
         run: python3 scripts/ci/test_merge_appcast.py
 
+      - name: Validate the delta naming
+        run: python3 scripts/ci/test_name_deltas.py
+
       - name: Validate release withdrawal
         run: python3 scripts/ci/test_pull_release.py
 
