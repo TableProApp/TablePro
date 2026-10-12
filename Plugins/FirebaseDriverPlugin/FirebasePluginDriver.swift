@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProFirebaseCore
+import TableProLogRedaction
 import TableProPluginKit
 
 internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -107,12 +108,12 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
                     instances[RealtimeDatabaseClient.instanceName(of: url)] = url
                 }
             } catch {
-                Self.logger.info("Could not list Realtime Database instances: \(error.localizedDescription, privacy: .public)")
+                Self.logger.info("Could not list Realtime Database instances: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             }
         }
         let url = settings.databaseURL
             ?? settings.projectId.flatMap { instances["\($0)-default-rtdb"] }
-            ?? instances.values.sorted { $0.absoluteString < $1.absoluteString }.first
+            ?? instances.values.min { $0.absoluteString < $1.absoluteString }
             ?? settings.defaultDatabaseURL
         guard let url else {
             throw FirebaseError.configuration(String(localized: "Enter a Database URL."))
@@ -164,7 +165,7 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
                 let names = try await firestore.listDatabases()
                 return names.isEmpty ? [firestore.currentDatabase] : names
             } catch let error as FirebaseError {
-                Self.logger.info("Could not list Firestore databases: \(error.localizedDescription, privacy: .public)")
+                Self.logger.info("Could not list Firestore databases: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 return [firestore.currentDatabase]
             }
         }

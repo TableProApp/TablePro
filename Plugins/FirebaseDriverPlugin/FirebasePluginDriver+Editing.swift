@@ -78,7 +78,9 @@ extension FirebasePluginDriver {
             }
             if target.isGroup {
                 guard let name, FirestorePath.isDocument(name) else {
-                    throw FirebaseError.configuration(String(localized: "A new row in a collection group needs __name__ set to the full document path, such as users/alice/orders/1."))
+                    throw FirebaseError.configuration(String(
+                        localized: "A new row in a collection group needs __name__ set to the full document path, such as users/alice/orders/1."
+                    ))
                 }
                 let split = FirestorePath.split(collectionPath: name)
                 return FirebaseRequest(method: .post, path: split.parent,

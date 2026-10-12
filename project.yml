@@ -1624,6 +1624,8 @@ targets:
         product: TableProGoogleCloud
       - package: TableProCore
         product: TableProFirebaseCore
+      - package: TableProCore
+        product: TableProLogRedaction
 
   WeaviateDriverPlugin:
     templates: [DriverPlugin]

@@ -10,7 +10,7 @@ final class FirebasePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let databaseTypeId = "Firestore"
     static let realtimeDatabaseTypeId = "Firebase Realtime Database"
-    static let additionalDatabaseTypeIds: [String] = [realtimeDatabaseTypeId]
+    static let additionalDatabaseTypeIds: [String] = ["Firebase Realtime Database"]
     static let databaseDisplayName = "Cloud Firestore"
     static let iconName = "firebase-icon"
     static let defaultPort = 0
