@@ -56,7 +56,9 @@ Use **Split** in the editor toolbar to show the same query in a second side-by-s
 - **Import**: right-click a table and choose **Import CSV…** to load a CSV file
   into it, or use the button on a schema header to create a new table from a CSV
   file. Separator, header row and column mapping are detected and can be changed.
-  Auto-increment and generated columns stay on Skip; the database supplies their values.
+  For an existing table, use **Remember mapping** and **Restore mapping** to reuse
+  the destination choices for that connection and table. Auto-increment and generated
+  columns stay on Skip; the database supplies their values.
 
 ## Safety
 

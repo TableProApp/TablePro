@@ -33,6 +33,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - MySQL and MariaDB CHAR results preserve `PAD_CHAR_TO_FULL_LENGTH` padding, including VARCHAR, empty values and NULL.
 - MySQL and MariaDB CSV imports preserve impossible calendar dates accepted by `ALLOW_INVALID_DATES`.
 - PostgreSQL CSV imports preserve native BC date, timestamp and timestamptz values.
+- CSV imports into existing tables can remember and restore column mappings for a specific connection and table.
 - The sidebar groups tables and views under schemas and groups with object counts; a click collapses a group, a search expands the groups that match, and the choice is remembered per connection.
 - A Pin results button in the SQL editor keeps the current results above the results of the next run, and unpins them again.
 - Each statement of a script gets a gutter mark after a run: a tick for a statement that returned, a cross for one that failed.

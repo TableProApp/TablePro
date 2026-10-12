@@ -6,6 +6,7 @@ pub mod column_widths;
 pub mod config_io;
 pub mod connection_monitor;
 pub mod connection_service;
+pub mod csv_import_mappings;
 pub mod database_service;
 pub mod export_pages;
 pub mod filter_settings;

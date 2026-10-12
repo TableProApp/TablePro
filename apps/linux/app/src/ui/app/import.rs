@@ -14,6 +14,7 @@ use tablepro_core::{ColumnInfo, Connection, DriverError, OperationControl};
 use tablepro_policy::{BulkBatch, BulkInsertEnd, BulkInsertRequest, PolicyGuard};
 use tokio_util::sync::CancellationToken;
 
+use crate::services::csv_import_mappings::CsvMappingScope;
 use crate::ui::error_text;
 use crate::ui::import_dialog::{ImportChoice, ImportMode, ImportRequest};
 
@@ -22,6 +23,8 @@ use super::{App, AppMsg};
 /// Everything the file dialog collected, handed back to the GTK thread.
 #[derive(Debug)]
 pub struct CsvImportPreparation {
+    pub connection_id: uuid::Uuid,
+    pub database: String,
     pub schema: Option<String>,
     /// The existing table, or `None` when the import is creating one.
     pub table: Option<String>,
@@ -134,6 +137,12 @@ impl App {
         };
         let timeout_secs =
             crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
+        let database = self
+            .saved_connections
+            .iter()
+            .find(|saved| saved.id == connection_id)
+            .map(|saved| saved.database.clone())
+            .unwrap_or_default();
         sender.clone().command(move |_, shutdown| {
             shutdown
                 .register(async move {
@@ -146,6 +155,8 @@ impl App {
                             table,
                             path,
                             driver_id,
+                            connection_id,
+                            database,
                         },
                     )
                     .await
@@ -162,6 +173,23 @@ impl App {
     }
 
     pub(super) fn on_csv_import_prepared(&self, preparation: CsvImportPreparation, sender: ComponentSender<Self>) {
+        if self.connection_id != Some(preparation.connection_id)
+            || self.current_driver_id.as_deref() != Some(preparation.driver_id.as_str())
+            || self
+                .saved_connections
+                .iter()
+                .find(|saved| saved.id == preparation.connection_id)
+                .is_none_or(|saved| saved.database != preparation.database)
+        {
+            return;
+        }
+        let mapping_scope = preparation.table.as_ref().map(|table| CsvMappingScope {
+            connection_id: preparation.connection_id,
+            database: preparation.database.clone(),
+            driver_id: preparation.driver_id.clone(),
+            schema: preparation.schema.clone(),
+            table: table.clone(),
+        });
         let mode = match preparation.table {
             Some(table) => ImportMode::ExistingTable {
                 table,
@@ -178,6 +206,8 @@ impl App {
             bytes: preparation.bytes,
             format: preparation.format,
             mode,
+            mapping_store: self.persistence.csv_import_mappings.clone(),
+            mapping_scope,
         };
         crate::ui::import_dialog::present(&self.window, request, move |choice| {
             sender.input(AppMsg::StartCsvImport(Box::new(choice)));
@@ -401,6 +431,8 @@ struct Prepare {
     table: Option<String>,
     path: PathBuf,
     driver_id: String,
+    connection_id: uuid::Uuid,
+    database: String,
 }
 
 async fn prepare_import(
@@ -415,6 +447,8 @@ async fn prepare_import(
         Some(table) => existing_columns(conn, control, prepare.schema.as_deref(), table).await?,
     };
     Ok(CsvImportPreparation {
+        connection_id: prepare.connection_id,
+        database: prepare.database,
         schema: prepare.schema,
         table: prepare.table,
         path: prepare.path,

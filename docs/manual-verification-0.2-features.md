@@ -36,6 +36,10 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] Separator and header-row detection are right for a comma file, a semicolon file, and a file with no header.
 - [ ] The preview grid matches the file.
 - [ ] Column mapping is prefilled sensibly and can be changed.
+- [ ] For an existing table, remember a mapping, reorder the CSV headers, restore it, and confirm values still target the named columns; added destination columns remain on Skip.
+- [ ] Duplicate CSV headers are distinguishable, and a saved mapping refuses to restore if its selected header or destination column is missing or ambiguous.
+- [ ] A mapping saved for one connection, database, schema or table is not offered for another; Forget removes only the current table mapping.
+- [ ] With the header-row option off, saving or restoring a mapping is refused. No CSV row values appear in the saved mapping file.
 - [ ] For SQLite `id INTEGER PRIMARY KEY`, a CSV `id` header stays on Skip, explains that the database generates the value, and importing source IDs 51 and 52 stores generated IDs 1 and 2.
 - [ ] Creating a table shows a name and an inferred type per column, both editable before anything runs.
 - [ ] Approval is requested **once** for the whole import, not per batch.
