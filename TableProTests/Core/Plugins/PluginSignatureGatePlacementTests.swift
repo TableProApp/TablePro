@@ -32,7 +32,7 @@ struct PluginSignatureGatePlacementTests {
 
     @Test("Every path that loads a plugin's executable goes through the gate first")
     func loadPathsVerifySignatures() throws {
-        for function in ["activateLazyBundle", "validateAndLoadBundle", "setEnabled"] {
+        for function in ["activateLazyBundle", "validateAndLoadBundle"] {
             let body = try Self.functionBody(named: function)
             #expect(
                 body.contains("assertLoadable") || body.contains("PluginCodeSignatureVerifier"),
@@ -48,7 +48,7 @@ struct PluginSignatureGatePlacementTests {
         /// `validateDependencies` is allowed because it reads `principalClass` only for a bundle
         /// that is already `isLoaded`, so the executable it would load is the one a gated path
         /// already loaded.
-        let gated = ["setEnabled", "registerBundle", "activateLazyBundle", "validateDependencies"]
+        let gated = ["registerBundle", "activateLazyBundle", "validateDependencies"]
         var offenders: [String] = []
         for url in try Self.pluginSources() {
             let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: .newlines)

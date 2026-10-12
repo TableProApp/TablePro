@@ -22,10 +22,6 @@ internal struct ThemeListView: View {
         eligible(catalog.themes.filter(\.isBuiltIn))
     }
 
-    private var registryThemes: [ThemeDefinition] {
-        eligible(catalog.themes.filter(\.isRegistry))
-    }
-
     private var customThemes: [ThemeDefinition] {
         eligible(catalog.themes.filter(\.isEditable))
     }
@@ -48,14 +44,6 @@ internal struct ThemeListView: View {
                 Section("Built-in") {
                     ForEach(builtInThemes) { theme in
                         ThemeListRowView(theme: theme).tag(theme.id)
-                    }
-                }
-
-                if !registryThemes.isEmpty {
-                    Section("Registry") {
-                        ForEach(registryThemes) { theme in
-                            ThemeListRowView(theme: theme).tag(theme.id)
-                        }
                     }
                 }
 
@@ -146,10 +134,6 @@ internal struct ThemeListView: View {
             Menu {
                 Button(String(localized: "Duplicate")) { duplicateSelectedTheme() }
                 Button(String(localized: "Export…")) { exportSelectedTheme() }
-                if selectedTheme?.isRegistry == true {
-                    Divider()
-                    Button(String(localized: "Uninstall"), role: .destructive) { uninstallRegistryTheme() }
-                }
             } label: {
                 Image(systemName: "gearshape")
                     .frame(width: 24, height: 24)
@@ -180,17 +164,6 @@ internal struct ThemeListView: View {
     private func deleteSelectedTheme() {
         guard let theme = selectedTheme, theme.isEditable else { return }
         perform { try catalog.delete(id: theme.id) } then: { selectedThemeId = fallbackThemeId }
-    }
-
-    private func uninstallRegistryTheme() {
-        guard let theme = selectedTheme, theme.isRegistry else { return }
-        guard let entry = catalog.loadRegistryMeta().installed.first(where: { $0.id == theme.id }) else { return }
-
-        perform {
-            try ThemeRegistryInstaller.shared.uninstall(registryPluginId: entry.registryPluginId)
-        } then: {
-            selectedThemeId = fallbackThemeId
-        }
     }
 
     private func exportSelectedTheme() {

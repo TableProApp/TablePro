@@ -19,37 +19,15 @@ enum PluginCodeSignatureVerifier {
         return teamId
     }()
 
+    /// The app keeps `disable-library-validation` for SQLite and DuckDB extensions, so dyld checks
+    /// nothing and this is the whole load decision for a plugin bundle.
     static func verify(bundle: Bundle) throws {
-        _ = try evaluate(bundle: bundle)
-    }
-
-    /// Classifies a bundle's signature. Throws when the bundle is unsigned, ad-hoc signed, tampered
-    /// with, or signed by a certificate that is neither TablePro's own nor a Developer ID.
-    ///
-    /// `SecStaticCodeCheckValidity` verifies the seal and matches the certificate chain against the
-    /// requirement it is given. It does **not** establish that the bundle was notarized, and neither
-    /// does anything else reachable from in-process API: `SecRequirementCreateWithString("notarized")`
-    /// answers `errSecCSReqFailed` for a bundle that was never notarized and for one whose ticket was
-    /// revoked alike, and `SecAssessmentTicketLookup` is not in the public SDK. So what a passing
-    /// Developer ID bundle proves is that Apple issued that certificate and the bundle has not been
-    /// altered since it was signed, not that Apple has scanned it.
-    ///
-    /// The gate that carries the weight is therefore the user's own decision: a Developer ID bundle
-    /// reaches `PluginDeveloperTrustStore` and installs only once the user trusts that team by name.
-    /// Do not narrow that prompt on the strength of a notarization claim this code cannot make.
-    ///
-    /// The app carries `com.apple.security.cs.disable-library-validation` because it loads plugins
-    /// signed by other teams, so dyld checks nothing and this call is the whole load decision.
-    /// `kSecCSCheckNestedCode` is what reaches a Mach-O embedded inside the bundle, and
-    /// `kSecCSStrictValidate` is what rejects the resource-envelope anomalies `SecStaticCodeCheckValidity`
-    /// otherwise permits; without both, a bundle `codesign --verify --strict` rejects loads here.
-    static func evaluate(bundle: Bundle) throws -> PluginSignatureTrust {
         #if DEBUG
         if ProcessInfo.processInfo.environment["TABLEPRO_ALLOW_UNSIGNED_PLUGINS"] == "1" {
             logger.warning(
                 "Skipping code-signature verification for \(bundle.bundleURL.lastPathComponent): TABLEPRO_ALLOW_UNSIGNED_PLUGINS=1"
             )
-            return .firstParty
+            return
         }
         #endif
         var staticCode: SecStaticCode?
@@ -64,59 +42,23 @@ enum PluginCodeSignatureVerifier {
         }
 
         let flags = SecCSFlags(rawValue: Self.validationFlags)
-
-        if SecStaticCodeCheckValidity(code, flags, requirement(Self.firstPartyRequirement)) == errSecSuccess {
-            return .firstParty
+        let status = SecStaticCodeCheckValidity(code, flags, requirement(Self.firstPartyRequirement))
+        guard status == errSecSuccess else {
+            throw PluginError.signatureInvalid(detail: describeOSStatus(status))
         }
-
-        let developerIDStatus = SecStaticCodeCheckValidity(code, flags, requirement(Self.developerIDRequirement))
-        guard developerIDStatus == errSecSuccess else {
-            throw PluginError.signatureInvalid(detail: describeOSStatus(developerIDStatus))
-        }
-
-        guard let identity = developerIdentity(of: code) else {
-            throw PluginError.signatureInvalid(detail: "signature carries no team identifier")
-        }
-        return .developerID(identity)
     }
 
     static let validationFlags = kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate
+        | kSecCSRestrictSymlinks
 
     private static var firstPartyRequirement: String {
         "anchor apple generic and certificate leaf[subject.OU] = \"\(resolvedSigningTeamId)\""
     }
 
-    /// `1.2.840.113635.100.6.1.13` is Apple's Developer ID Application marker OID. Verified against a
-    /// Developer ID signed app with `codesign -R`.
-    private static let developerIDRequirement =
-        "anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
-
     private static func requirement(_ text: String) -> SecRequirement? {
         var requirement: SecRequirement?
         SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement)
         return requirement
-    }
-
-    private static func developerIdentity(of code: SecStaticCode) -> PluginDeveloperIdentity? {
-        var info: CFDictionary?
-        let status = SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info)
-        guard status == errSecSuccess,
-              let infoDict = info as? [String: Any],
-              let teamID = infoDict[kSecCodeInfoTeamIdentifier as String] as? String,
-              !teamID.isEmpty
-        else { return nil }
-
-        let name = signerCommonName(from: infoDict) ?? teamID
-        return PluginDeveloperIdentity(teamID: teamID, name: name)
-    }
-
-    private static func signerCommonName(from info: [String: Any]) -> String? {
-        guard let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate],
-              let leaf = certificates.first
-        else { return nil }
-        var commonName: CFString?
-        guard SecCertificateCopyCommonName(leaf, &commonName) == errSecSuccess else { return nil }
-        return commonName as String?
     }
 
     private static func teamIdFromBundleSignature() -> String? {
@@ -144,12 +86,13 @@ enum PluginCodeSignatureVerifier {
 
     private static func describeOSStatus(_ status: OSStatus) -> String {
         switch status {
-        case -67_062: "bundle is not signed"
-        case -67_061: "code signature is invalid"
-        case -67_030: "code signature has been modified or corrupted"
-        case -67_013: "signing certificate has expired"
-        case -67_058: "code signature is missing required fields"
-        case -67_028: "resource envelope has been modified"
+        case errSecCSUnsigned: "bundle is not signed"
+        case errSecCSReqFailed: "bundle is not signed by TablePro"
+        case errSecCSSignatureInvalid: "code signature is invalid"
+        case errSecCSSignatureFailed, errSecCSInfoPlistFailed: "code signature has been modified or corrupted"
+        case errSecCSBadResource: "a sealed resource is missing or has been modified"
+        case errSecCSUnsignedNestedCode: "nested code is unsigned"
+        case errSecCSInvalidSymlink: "bundle has a symbolic link that points outside it"
         default: "verification failed (OSStatus \(status))"
         }
     }

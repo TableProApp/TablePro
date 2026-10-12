@@ -53,8 +53,6 @@ internal enum ConnectionFailureClassifier {
         switch pluginError {
         case .pluginNotInstalled:
             return .installPlugin
-        case .pluginDisabled(let pluginId, _):
-            return .enablePlugin(pluginId: pluginId)
         case .pluginLoadFailed(let pluginId, _, _):
             return .openPluginSettings(pluginId: pluginId)
         case .pluginUpdateUnavailable:

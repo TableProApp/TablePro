@@ -160,9 +160,17 @@ targets:
           # Copied whole below. A plain glob flattens it into Resources/ and the
           # inventory then cannot find its texts/ directory.
           - Resources/ThirdPartyLicenses
+          # The tablepro shim, copied below to Contents/SharedSupport/bin. Contents/MacOS
+          # cannot hold it: the volume is case-insensitive and TablePro already lives there.
+          - CLI/tablepro
       - path: TablePro/Resources/ThirdPartyLicenses
         type: folder
         buildPhase: resources
+      - path: TablePro/CLI/tablepro
+        buildPhase:
+          copyFiles:
+            destination: sharedSupport
+            subpath: bin
       # The Redis plugin's own readings of a database index and of redis-cli quoting, so the
       # app classifies, quotes and resolves a Redis statement exactly as the driver will.
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
@@ -245,12 +253,6 @@ targets:
         embed: true
         copy: { destination: plugins }
       - target: MarkdownExport
-        embed: true
-        copy: { destination: plugins }
-      - target: HTMLExport
-        embed: true
-        copy: { destination: plugins }
-      - target: XMLExport
         embed: true
         copy: { destination: plugins }
       - target: XLSXImport
@@ -575,7 +577,6 @@ targets:
       - Plugins/TypesenseDriverPlugin/TypesenseQueryBuilder.swift
       - Plugins/TypesenseDriverPlugin/TypesenseSchema.swift
       - Plugins/TypesenseDriverPlugin/TypesenseStatementGenerator.swift
-      - Plugins/HTMLExportPlugin/HTMLExportModels.swift
       - Plugins/JSONExportPlugin/JSONExportModels.swift
       - Plugins/MarkdownExportPlugin/MarkdownExportModels.swift
       - Plugins/ParquetExportPlugin/ParquetExportModels.swift
@@ -881,7 +882,6 @@ targets:
       - Plugins/XLSXExportPlugin/XLSXWriter.swift
       - Plugins/XLSXImportPlugin/XLSXImportOptions.swift
       - Plugins/XLSXImportPlugin/XLSXSheetParser.swift
-      - Plugins/XMLExportPlugin/XMLExportModels.swift
       - Plugins/SnowflakeDriverPlugin/PluginCellValueBox.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeBindingEncoder.swift
@@ -1126,15 +1126,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MarkdownExportPlugin
 
-  HTMLExport:
-    templates: [DriverPlugin]
-    templateAttributes:
-      folder: HTMLExportPlugin
-      principalClass: HTMLExportPlugin
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.HTMLExportPlugin
-
   XLSXImport:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1146,15 +1137,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXImportPlugin
-
-  XMLExport:
-    templates: [DriverPlugin]
-    templateAttributes:
-      folder: XMLExportPlugin
-      principalClass: XMLExportPlugin
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XMLExportPlugin
 
   ParquetExport:
     templates: [DriverPlugin]
@@ -1665,12 +1647,10 @@ aggregateTargets:
       - OracleDriver
       - PostgreSQLDriver
       - RedisDriver
-      - HTMLExport
       - MarkdownExport
       - ParquetExport
       - SQLExport
       - XLSXImport
-      - XMLExport
       - SQLImport
       - SQLiteDriver
       - SnowflakeDriverPlugin

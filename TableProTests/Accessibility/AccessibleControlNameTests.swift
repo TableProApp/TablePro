@@ -35,7 +35,6 @@ struct AccessibleControlNameTests {
         ("TablePro/Views/Structure/CreateTableView.swift", "Add Row"),
         ("TablePro/Views/Structure/CreateTableView.swift", "Delete Selected"),
         ("TablePro/Views/ServerDashboard/DashboardToolbarView.swift", "Refresh Now"),
-        ("TablePro/Views/Settings/AIProviderDetailSheet.swift", "Copy install command"),
         ("TablePro/Views/Settings/LinkedFoldersSection.swift", "folder.name"),
         ("TablePro/Views/UsersRoles/PrivilegeChecklistView.swift", "Bulk actions"),
         ("Packages/TableProEditor/Sources/TableProEditorKit/Find/PanelView/FindControls.swift", "Previous Match"),
