@@ -12,6 +12,7 @@ pub enum SidebarObjectKind {
     Table,
     View,
     Group,
+    Schema,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +44,7 @@ fn sidebar_icon(kind: SidebarObjectKind) -> &'static str {
         SidebarObjectKind::Table => "view-list-symbolic",
         SidebarObjectKind::View => "view-paged-symbolic",
         SidebarObjectKind::Group => "folder-symbolic",
+        SidebarObjectKind::Schema => "folder-symbolic",
     }
 }
 
@@ -76,6 +78,7 @@ pub enum SidebarRowMsg {
     SetCollapsed(bool),
     NewTable,
     TableFromCsv,
+    HideSchema,
 }
 
 #[derive(Debug)]
@@ -126,6 +129,7 @@ pub enum SidebarRowOutput {
         schema: Option<String>,
         name: String,
     },
+    HideSchema(String),
 }
 
 #[relm4::factory(pub)]
@@ -265,6 +269,9 @@ impl FactoryComponent for SidebarRow {
         if self.group.is_some() {
             self.describe_group(&root);
             self.wire_group_buttons(&sender);
+            if self.kind == SidebarObjectKind::Schema {
+                self.wire_schema_menu(&root, &sender);
+            }
             return widgets;
         }
         let sender_for_open_button = sender.clone();
@@ -422,6 +429,7 @@ impl FactoryComponent for SidebarRow {
             SidebarRowMsg::DropTable => SidebarRowOutput::DropTable { schema, name },
             SidebarRowMsg::NewTable => SidebarRowOutput::NewTable { schema },
             SidebarRowMsg::TableFromCsv => SidebarRowOutput::TableFromCsv { schema },
+            SidebarRowMsg::HideSchema => SidebarRowOutput::HideSchema(schema.unwrap_or_default()),
         };
         let _ = sender.output(output);
     }
@@ -461,6 +469,42 @@ impl SidebarRow {
         let from_csv = sender.clone();
         self.csv_button
             .connect_clicked(move |_| from_csv.input(SidebarRowMsg::TableFromCsv));
+    }
+
+    fn wire_schema_menu(&mut self, root: &gtk::ListBoxRow, sender: &FactorySender<Self>) {
+        let menu = gtk::gio::Menu::new();
+        menu.append(Some(&crate::tr!("Hide schema")), Some("sidebar-row.hide-schema"));
+        let popover = gtk::PopoverMenu::from_model(Some(&menu));
+        popover.set_parent(root);
+        let sender_for_hide = sender.clone();
+        let hide_action = gtk::gio::ActionEntry::builder("hide-schema")
+            .activate(move |_, _, _| sender_for_hide.input(SidebarRowMsg::HideSchema))
+            .build();
+        let group = gtk::gio::SimpleActionGroup::new();
+        group.add_action_entries([hide_action]);
+        root.insert_action_group("sidebar-row", Some(&group));
+        let popover_for_unmap = popover.clone();
+        root.connect_unmap(move |_| popover_for_unmap.popdown());
+        self.popover = Some(popover.clone());
+        let right_click = gtk::GestureClick::builder().button(3).build();
+        let popover_for_right = popover.clone();
+        right_click.connect_pressed(move |gesture, _, x, y| {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            popover_for_right.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+            popover_for_right.popup();
+        });
+        root.add_controller(right_click);
+        let popover_for_shortcut = popover;
+        let menu_shortcut = gtk::Shortcut::builder()
+            .trigger(&crate::ui::shortcut::parse("Menu"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                popover_for_shortcut.popup();
+                glib::Propagation::Stop
+            }))
+            .build();
+        let shortcut_controller = gtk::ShortcutController::new();
+        shortcut_controller.add_shortcut(menu_shortcut);
+        root.add_controller(shortcut_controller);
     }
 }
 

@@ -140,10 +140,21 @@ fn ancestor_keys(node: &TreeNode) -> Vec<String> {
     keys
 }
 
+#[cfg(test)]
 pub fn visible_nodes(nodes: &[TreeNode], collapsed: &CollapseState, query: &str) -> Vec<usize> {
+    visible_nodes_with_hidden_schemas(nodes, collapsed, query, &HashSet::new())
+}
+
+pub fn visible_nodes_with_hidden_schemas(
+    nodes: &[TreeNode],
+    collapsed: &CollapseState,
+    query: &str,
+    hidden_schemas: &HashSet<String>,
+) -> Vec<usize> {
     let query = query.trim().to_lowercase();
     if query.is_empty() {
         return (0..nodes.len())
+            .filter(|index| schema_is_visible(&nodes[*index], hidden_schemas))
             .filter(|index| {
                 ancestor_keys(&nodes[*index])
                     .iter()
@@ -153,20 +164,29 @@ pub fn visible_nodes(nodes: &[TreeNode], collapsed: &CollapseState, query: &str)
     }
     let matching: Vec<usize> = (0..nodes.len())
         .filter(|index| {
-            nodes[*index]
-                .qualified_name()
-                .is_some_and(|name| name.to_lowercase().contains(&query))
+            schema_is_visible(&nodes[*index], hidden_schemas)
+                && nodes[*index]
+                    .qualified_name()
+                    .is_some_and(|name| name.to_lowercase().contains(&query))
         })
         .collect();
     let mut shown: HashSet<usize> = matching.iter().copied().collect();
     for index in &matching {
         for key in ancestor_keys(&nodes[*index]) {
-            if let Some(parent) = nodes.iter().position(|node| node.key == key) {
+            if let Some(parent) = nodes.iter().position(|node| node.key == key)
+                && schema_is_visible(&nodes[parent], hidden_schemas)
+            {
                 shown.insert(parent);
             }
         }
     }
     (0..nodes.len()).filter(|index| shown.contains(index)).collect()
+}
+
+fn schema_is_visible(node: &TreeNode, hidden_schemas: &HashSet<String>) -> bool {
+    node.schema
+        .as_ref()
+        .is_none_or(|schema| !hidden_schemas.contains(schema))
 }
 
 #[cfg(test)]
@@ -219,6 +239,26 @@ mod tests {
                 "    recent"
             ]
         );
+    }
+
+    #[test]
+    fn a_hidden_schema_and_its_objects_are_removed_from_sidebar_results() {
+        let nodes = build_nodes(
+            &[info(Some("audit"), "events"), info(Some("public"), "users")],
+            &[info(Some("audit"), "recent_events")],
+        );
+        let hidden = HashSet::from(["audit".to_string()]);
+        let visible = visible_nodes_with_hidden_schemas(&nodes, &CollapseState::default(), "", &hidden);
+
+        assert_eq!(labels(&nodes, &visible), ["public", "  Tables", "    users"]);
+    }
+
+    #[test]
+    fn a_search_cannot_reveal_a_hidden_schema() {
+        let nodes = build_nodes(&[info(Some("private"), "secrets")], &[]);
+        let hidden = HashSet::from(["private".to_string()]);
+
+        assert!(visible_nodes_with_hidden_schemas(&nodes, &CollapseState::default(), "secrets", &hidden).is_empty());
     }
 
     #[test]

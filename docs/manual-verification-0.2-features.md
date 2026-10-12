@@ -57,6 +57,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] Duplicate produces a new row with a distinct name, and connecting to it asks for credentials rather than reusing the original's.
 - [ ] The Name field in the connect dialog is used when set, and the derived `user@host` label still appears when it is blank.
 - [ ] Two connections to the same endpoint stay separate after reconnecting to each. This is the regression the id-first identity change fixed.
+- [ ] On PostgreSQL, right-click a schema and hide it. Confirm its tables and views disappear, search cannot reveal them, the filter menu can restore one or all schemas, and each connection retains its own hidden-schema list after reconnecting.
 
 ## Long-query notice
 

@@ -8,7 +8,7 @@ use relm4::prelude::*;
 use relm4::{adw, gtk};
 
 use super::{App, AppMsg, AppWidgets, OpenMode};
-use crate::services::sidebar_tree::{CollapseState, NodeKind, TreeNode, visible_nodes};
+use crate::services::sidebar_tree::{CollapseState, NodeKind, TreeNode, visible_nodes_with_hidden_schemas};
 use crate::ui::sidebar_row::{SidebarRow, SidebarRowOutput};
 
 pub(super) struct SidebarParts {
@@ -16,6 +16,7 @@ pub(super) struct SidebarParts {
     pub(super) nodes: Rc<RefCell<Vec<TreeNode>>>,
     pub(super) collapsed: Rc<RefCell<CollapseState>>,
     pub(super) visible: Rc<RefCell<HashSet<usize>>>,
+    pub(super) hidden_schemas: Rc<RefCell<HashSet<String>>>,
 }
 
 pub(super) fn refresh_visible(
@@ -23,8 +24,10 @@ pub(super) fn refresh_visible(
     collapsed: &RefCell<CollapseState>,
     visible: &RefCell<HashSet<usize>>,
     query: &str,
+    hidden_schemas: &RefCell<HashSet<String>>,
 ) {
-    let shown = visible_nodes(&nodes.borrow(), &collapsed.borrow(), query);
+    let shown =
+        visible_nodes_with_hidden_schemas(&nodes.borrow(), &collapsed.borrow(), query, &hidden_schemas.borrow());
     *visible.borrow_mut() = shown.into_iter().collect();
 }
 
@@ -32,6 +35,7 @@ pub(super) fn build_sidebar(widgets: &AppWidgets, sender: &ComponentSender<App>)
     let sidebar_nodes: Rc<RefCell<Vec<TreeNode>>> = Rc::new(RefCell::new(Vec::new()));
     let sidebar_collapsed: Rc<RefCell<CollapseState>> = Rc::new(RefCell::new(CollapseState::default()));
     let sidebar_visible: Rc<RefCell<HashSet<usize>>> = Rc::new(RefCell::new(HashSet::new()));
+    let sidebar_hidden_schemas: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
 
     let sidebar_factory: FactoryVecDeque<SidebarRow> = FactoryVecDeque::builder()
         .launch(
@@ -65,6 +69,7 @@ pub(super) fn build_sidebar(widgets: &AppWidgets, sender: &ComponentSender<App>)
             SidebarRowOutput::DropTable { schema, name } => AppMsg::DropTablePrompt { schema, table: name },
             SidebarRowOutput::NewTable { schema } => AppMsg::NewTableTab { schema },
             SidebarRowOutput::TableFromCsv { schema } => AppMsg::CreateTableFromCsv { schema },
+            SidebarRowOutput::HideSchema(schema) => AppMsg::HideSidebarSchema(schema),
         });
 
     let sidebar_listbox = sidebar_factory.widget();
@@ -98,10 +103,11 @@ pub(super) fn build_sidebar(widgets: &AppWidgets, sender: &ComponentSender<App>)
     let visible_for_filter = sidebar_visible.clone();
     sidebar_listbox.set_filter_func(move |row| visible_for_filter.borrow().contains(&(row.index() as usize)));
     let listbox_for_invalidate = sidebar_listbox.clone();
-    let (nodes_for_search, collapsed_for_search, visible_for_search) = (
+    let (nodes_for_search, collapsed_for_search, visible_for_search, hidden_for_search) = (
         sidebar_nodes.clone(),
         sidebar_collapsed.clone(),
         sidebar_visible.clone(),
+        sidebar_hidden_schemas.clone(),
     );
     let search_entry = widgets.table_search.clone();
     widgets.table_search.connect_search_changed(move |_| {
@@ -110,6 +116,7 @@ pub(super) fn build_sidebar(widgets: &AppWidgets, sender: &ComponentSender<App>)
             &collapsed_for_search,
             &visible_for_search,
             &search_entry.text(),
+            &hidden_for_search,
         );
         listbox_for_invalidate.invalidate_filter();
     });
@@ -150,5 +157,6 @@ pub(super) fn build_sidebar(widgets: &AppWidgets, sender: &ComponentSender<App>)
         nodes: sidebar_nodes,
         collapsed: sidebar_collapsed,
         visible: sidebar_visible,
+        hidden_schemas: sidebar_hidden_schemas,
     }
 }

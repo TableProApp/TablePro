@@ -111,8 +111,9 @@ impl App {
             "workspace ready"
         );
         self.sidebar_views = views;
-        self.restore_sidebar_collapse();
+        self.restore_sidebar_state();
         self.repopulate_sidebar(&tables);
+        self.rebuild_schema_filter_popover(&sender);
         self.rebuild_schema_buffer();
         self.refresh_window_title();
         // Restore tabs (browse + editor) persisted from the prior session

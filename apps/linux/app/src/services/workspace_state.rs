@@ -123,6 +123,7 @@ const MAX_TABLE_NAME_BYTES: usize = 256;
 const MAX_COLLAPSED_GROUPS: usize = 256;
 const MAX_COLLAPSED_KEY_BYTES: usize = 600;
 const MAX_SCHEMA_NAME_BYTES: usize = 256;
+const MAX_HIDDEN_SCHEMAS: usize = 256;
 const FILE_NAME: &str = "workspace_state.json";
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
@@ -148,6 +149,8 @@ pub struct ConnectionWorkspaceState {
     pub active_idx: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collapsed_groups: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hidden_schemas: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -507,6 +510,11 @@ fn clamp(state: &mut WorkspaceState) {
 fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
     conn.collapsed_groups.retain(|key| key.len() <= MAX_COLLAPSED_KEY_BYTES);
     conn.collapsed_groups.truncate(MAX_COLLAPSED_GROUPS);
+    conn.hidden_schemas
+        .retain(|schema| !schema.is_empty() && schema.len() <= MAX_SCHEMA_NAME_BYTES);
+    conn.hidden_schemas.sort();
+    conn.hidden_schemas.dedup();
+    conn.hidden_schemas.truncate(MAX_HIDDEN_SCHEMAS);
     // Preserve the identity of the selected tab when forward-compatible
     // records are removed. A removed selection falls back to the first tab.
     let selected = conn.active_idx as usize;
@@ -1158,5 +1166,31 @@ mod tests {
                 .iter()
                 .all(|key| key.len() <= MAX_COLLAPSED_KEY_BYTES)
         );
+    }
+
+    #[test]
+    fn hidden_schemas_round_trip_and_are_bounded_when_saved() {
+        let mut conn = connection("SELECT 1");
+        conn.hidden_schemas = vec!["private".into(), "private".into(), String::new()];
+        conn.hidden_schemas.push("x".repeat(MAX_SCHEMA_NAME_BYTES + 1));
+        conn.hidden_schemas
+            .extend((0..MAX_HIDDEN_SCHEMAS + 2).map(|i| format!("s{i}")));
+        clamp_connection(&mut conn);
+
+        let restored: ConnectionWorkspaceState = serde_json::from_str(&serde_json::to_string(&conn).unwrap()).unwrap();
+        assert_eq!(restored.hidden_schemas, conn.hidden_schemas);
+        assert_eq!(restored.hidden_schemas.len(), MAX_HIDDEN_SCHEMAS);
+        assert!(
+            restored
+                .hidden_schemas
+                .iter()
+                .all(|schema| !schema.is_empty() && schema.len() <= MAX_SCHEMA_NAME_BYTES)
+        );
+    }
+
+    #[test]
+    fn an_older_workspace_defaults_to_no_hidden_schemas() {
+        let older: ConnectionWorkspaceState = serde_json::from_str(r#"{"tabs":[],"active_idx":0}"#).unwrap();
+        assert!(older.hidden_schemas.is_empty());
     }
 }

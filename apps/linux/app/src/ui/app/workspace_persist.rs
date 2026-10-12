@@ -27,6 +27,7 @@ impl App {
         let connection_id = self.connection_id;
         let workspace = self.workspace.clone();
         let collapsed = self.sidebar_collapsed.clone();
+        let hidden_schemas = self.sidebar_hidden_schemas.clone();
         let id = glib::timeout_add_local_once(PERSIST_DELAY, move || {
             timeout.borrow_mut().take();
             pending.set(false);
@@ -39,6 +40,7 @@ impl App {
                 &workspace_tabs,
                 tab_view.as_ref(),
                 collapsed.borrow().keys(),
+                sorted_hidden_schemas(&hidden_schemas.borrow()),
             );
         });
         *self.persist_timeout.borrow_mut() = Some(id);
@@ -57,6 +59,7 @@ impl App {
             &self.workspace_tabs,
             self.workspace_tab_view.as_ref(),
             self.sidebar_collapsed.borrow().keys(),
+            sorted_hidden_schemas(&self.sidebar_hidden_schemas.borrow()),
         );
     }
 
@@ -75,6 +78,7 @@ fn do_persist_workspace_state(
     workspace_tabs: &std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
     tab_view: Option<&relm4::adw::TabView>,
     collapsed_groups: Vec<String>,
+    hidden_schemas: Vec<String>,
 ) {
     let Some(connection_id) = connection_id else {
         return;
@@ -133,8 +137,15 @@ fn do_persist_workspace_state(
             tabs: tab_records,
             active_idx,
             collapsed_groups,
+            hidden_schemas,
         },
     );
+}
+
+fn sorted_hidden_schemas(hidden_schemas: &std::collections::HashSet<String>) -> Vec<String> {
+    let mut schemas: Vec<String> = hidden_schemas.iter().cloned().collect();
+    schemas.sort();
+    schemas
 }
 
 /// `kept[i]` says whether the tab strip's raw position `i` produced a
