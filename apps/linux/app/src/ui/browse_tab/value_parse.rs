@@ -11,6 +11,9 @@ pub(super) fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Re
         }
         return Err(crate::tr!("Field is required"));
     }
+    if col.enum_type.is_some() {
+        return Ok(Value::Text(text.to_string()));
+    }
     let dt = col.data_type.to_ascii_lowercase();
     let trimmed = text.trim();
     if let Some(width) = mysql_bit_width(&dt) {

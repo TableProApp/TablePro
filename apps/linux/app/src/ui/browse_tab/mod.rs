@@ -980,9 +980,9 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::EnumLabelsLoaded(labels) => self.apply_enum_labels(labels),
             BrowseTabInput::ForeignKeysLoaded(foreign_keys) => {
-                let changed = self.foreign_keys != foreign_keys;
-                self.foreign_keys = foreign_keys;
-                if changed {
+                if self.foreign_keys != foreign_keys {
+                    self.foreign_keys = foreign_keys;
+                    self.current_column_view = None;
                     self.render_grid_if_ready(sender);
                 }
             }

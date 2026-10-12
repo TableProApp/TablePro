@@ -57,6 +57,17 @@ mod tests {
     }
 
     #[test]
+    fn an_enum_label_is_text_even_when_the_type_name_looks_like_a_builtin() {
+        for name in ["date_format", "timestamp_source", "json_kind", "uuid_style"] {
+            let parsed = super::super::value_parse::parse_input_for_column("iso", Some(&column("c", name, Some(name))));
+            assert!(
+                matches!(parsed, Ok(tablepro_core::Value::Text(ref text)) if text == "iso"),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn only_scalar_enum_columns_are_fetched_for_members() {
         let columns = [
             column("mood", "mood", Some("mood")),

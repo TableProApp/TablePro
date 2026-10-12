@@ -25,10 +25,14 @@ pub(super) fn reference_targets(
     if candidates.is_empty() {
         return Err(crate::tr!("This column is not a foreign key"));
     }
-    candidates
+    let (targets, errors): (Vec<_>, Vec<_>) = candidates
         .into_iter()
         .map(|foreign_key| reference_target(foreign_key, own_schema, row))
-        .collect()
+        .partition(Result::is_ok);
+    if targets.is_empty() {
+        return Err(errors.into_iter().find_map(Result::err).unwrap_or_default());
+    }
+    Ok(targets.into_iter().flatten().collect())
 }
 
 fn reference_target(
@@ -119,6 +123,27 @@ mod tests {
         assert_eq!(target[0].filter.rules.len(), 1);
         assert_eq!(target[0].filter.rules[0].column, "id");
         assert_eq!(target[0].filter.rules[0].op, FilterOp::Eq);
+    }
+
+    #[test]
+    fn a_usable_foreign_key_is_still_offered_when_a_sibling_key_has_a_null_column() {
+        let keys = [
+            foreign_key(&["tenant", "customer"], &["tenant_id", "id"], None),
+            foreign_key(&["tenant", "org"], &["tenant_id", "id"], None),
+        ];
+        let targets = reference_targets(
+            &keys,
+            None,
+            "tenant",
+            &row(&[
+                ("tenant", Value::Int(1)),
+                ("customer", Value::Null),
+                ("org", Value::Int(5)),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].filter.rules.len(), 2);
     }
 
     #[test]
