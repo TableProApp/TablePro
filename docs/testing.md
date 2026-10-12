@@ -202,6 +202,19 @@ For ordinary UI changes, test the affected flow manually and include before and 
 
 Where each check runs is owned by [CI tiers in the validation playbook](validation-playbook.md#ci-tiers). GitHub runs the cheap tier on pull requests; Forgejo runs the merge tier on branch pushes. Documentation-only changes skip the heavy path. Do not treat a skipped GitHub merge-tier job as a pass.
 
+### Reading a red run
+
+`scripts/classify-ci-failure.py --run RUN_ID` (or `--log FILE`) tags each failed job from its log. It reads `FORGEJO_API` or derives it from the `forgejo` remote, and the token from `~/.config/forgejo/token`, like `scripts/forgejo-gate.sh`.
+
+| Tag | Meaning | What to do |
+|---|---|---|
+| `infra` | Image pull or fixture start timeout, compiler crash, rate limit, runner volume path | Retry before reading code |
+| `gui-timing` | The window did not appear | Retry once |
+| `gui` | A GUI assertion failed | Ambiguous: a missing accessible node can be load or a real regression. Rerun once; if the same scenario fails again on a quiet runner, treat it as code |
+| `code` | Test panic, compile or lint error, application crash, startup layout abort | Read the log and fix |
+
+The tag is advice only and never changes a result. A new infrastructure signature goes in the `SIGNATURES` table with a test in `scripts/tests/test_classify_ci_failure.py`.
+
 ## Measuring how good the tests are
 
 The [September CI audit](archive/ci-audit-2026-09-27.md) distinguishes executed tests, intentional exclusions and packaging-only green runs. Mutation and coverage run on a schedule. The Forgejo nightly job measures line coverage of the unit tier only and holds a ratcheted floor in `baselines/coverage-floor.txt` (59%; 59.41% measured on 2026-10-11). Integration, installed GTK and value-contract tests are not part of that percentage. Mutation survivors need investigation. Dated first-run mutation notes are in [testing history](archive/testing-history.md#mutation-first-run-notes-2026-08-22).
