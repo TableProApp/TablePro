@@ -3,7 +3,11 @@
   <gresource prefix="/app/tablepro/TablePro">
     <file compressed="true">style.css</file>
     <file compressed="true" preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/connect-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/sqlite-file-row.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/ssh-section.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/tls-section.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/table-relation-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/statement-pending-symbolic.svg</file>
   </gresource>

@@ -12,7 +12,8 @@ mod ssh;
 #[cfg(test)]
 mod tests;
 mod tls;
+mod tls_remedy;
 
-pub use driver::driver_message;
+pub use driver::{config_message, driver_message};
 pub use operation::{connect_error_message, operation_error_message, task_failure_message};
-pub use ssh::ssh_failure_message;
+pub use tls_remedy::{TlsRemedy, connect_remedy};

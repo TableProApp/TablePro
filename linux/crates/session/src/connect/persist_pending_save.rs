@@ -25,6 +25,7 @@ pub async fn persist_pending_save(
     let PendingSave {
         connection: mut saved,
         secrets: to_store,
+        forget,
         is_new,
     } = save;
     let mut secret_failures = Vec::new();
@@ -38,6 +39,16 @@ pub async fn persist_pending_save(
         if let Err(error) = stored {
             tracing::warn!(kind = ?secret.kind, %error, "a secret was not stored");
             secret_failures.push((secret.kind, error));
+        }
+    }
+
+    // A secret the user no longer wants kept is only a convenience
+    // lost if it stays, so a refusal is logged and the save goes on.
+    if !is_new {
+        for kind in forget {
+            if let Err(error) = secrets.delete_kind(saved.id, kind).await {
+                tracing::warn!(?kind, %error, "a secret the user asked not to keep is still stored");
+            }
         }
     }
 
@@ -153,8 +164,42 @@ mod tests {
         PendingSave {
             connection: connection(id),
             secrets: vec![secret(SecretKind::DatabasePassword), secret(SecretKind::SshPassphrase)],
+            forget: Vec::new(),
             is_new,
         }
+    }
+
+    #[tokio::test]
+    async fn a_secret_the_user_stopped_remembering_is_deleted_from_an_existing_entry() {
+        let vault = Arc::new(FakeSecretVault::new());
+        let writes = RecordingWrites::new(vault.clone(), false);
+        let id = Uuid::new_v4();
+        let pending = PendingSave {
+            secrets: Vec::new(),
+            forget: vec![SecretKind::DatabasePassword],
+            ..save(id, false)
+        };
+
+        persist_pending_save(&*vault, &writes, pending).await.unwrap();
+
+        assert_eq!(vault.calls(), vec![Call::DeleteKind(id, SecretKind::DatabasePassword)]);
+        assert_eq!(writes.writes().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_new_entry_has_nothing_to_forget() {
+        let vault = Arc::new(FakeSecretVault::new());
+        let writes = RecordingWrites::new(vault.clone(), false);
+        let id = Uuid::new_v4();
+        let pending = PendingSave {
+            secrets: Vec::new(),
+            forget: vec![SecretKind::DatabasePassword],
+            ..save(id, true)
+        };
+
+        persist_pending_save(&*vault, &writes, pending).await.unwrap();
+
+        assert!(vault.calls().is_empty(), "{:?}", vault.calls());
     }
 
     #[tokio::test]

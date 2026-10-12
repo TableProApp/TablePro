@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProSqliteFileRow" parent="AdwActionRow">
+    <property name="title" translatable="yes">Database file</property>
+    <property name="subtitle" translatable="yes">No file chosen</property>
+    <property name="subtitle-selectable">true</property>
+    <child type="suffix">
+      <object class="GtkButton" id="choose_button">
+        <property name="label" translatable="yes">Choose…</property>
+        <property name="tooltip-text" translatable="yes">Open an existing database file</property>
+        <property name="valign">center</property>
+      </object>
+    </child>
+    <child type="suffix">
+      <object class="GtkButton" id="create_button">
+        <property name="label" translatable="yes">New Database…</property>
+        <property name="tooltip-text" translatable="yes">Create a database file when you connect</property>
+        <property name="valign">center</property>
+      </object>
+    </child>
+  </template>
+</interface>

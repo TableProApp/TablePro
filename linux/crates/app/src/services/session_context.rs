@@ -57,28 +57,6 @@ impl SessionContext {
     }
 }
 
-#[cfg(test)]
-impl SessionContext {
-    /// A context whose connects never reach a server, for widget tests
-    /// that only need the dialog's form.
-    pub(crate) fn for_tests(drivers: DriverRegistry, tasks: Tasks) -> Rc<Self> {
-        let liveness = LivenessPolicy::DESKTOP;
-        let (prompter, _queue) = crate::ui::credential_prompt::GtkCredentialPrompter::new();
-        Rc::new(Self {
-            drivers: Arc::new(drivers),
-            connector: Arc::new(tablepro_session::fakes::FakeConnector::new([])),
-            deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(liveness)),
-            prompter: Arc::new(prompter),
-            secrets: Arc::new(tablepro_test_support::FakeSecretVault::new()),
-            sessions: SessionRegistry::new(),
-            hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
-            tasks,
-            liveness,
-            active: ActiveSession::new(),
-        })
-    }
-}
-
 impl std::fmt::Debug for SessionContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SessionContext")

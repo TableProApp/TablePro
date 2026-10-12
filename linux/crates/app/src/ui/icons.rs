@@ -6,6 +6,7 @@ pub const DIALOG_WARNING: &str = "dialog-warning-symbolic";
 pub const DOCUMENT_OPEN: &str = "document-open-symbolic";
 pub const DOCUMENT_OPEN_RECENT: &str = "document-open-recent-symbolic";
 pub const DOCUMENT_SAVE: &str = "document-save-symbolic";
+pub const EDIT_CLEAR: &str = "edit-clear-symbolic";
 pub const EDIT_COPY: &str = "edit-copy-symbolic";
 pub const GO_FIRST: &str = "go-first-symbolic";
 pub const GO_LAST: &str = "go-last-symbolic";
@@ -46,6 +47,7 @@ pub const ALL: &[&str] = &[
     DOCUMENT_OPEN,
     DOCUMENT_OPEN_RECENT,
     DOCUMENT_SAVE,
+    EDIT_CLEAR,
     EDIT_COPY,
     GO_FIRST,
     GO_LAST,

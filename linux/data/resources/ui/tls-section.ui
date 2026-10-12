@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProTlsSection" parent="AdwPreferencesGroup">
+    <property name="title" translatable="yes">Security</property>
+    <child>
+      <object class="AdwComboRow" id="encryption_row">
+        <property name="title" translatable="yes">Encryption</property>
+        <property name="model">
+          <object class="GtkStringList" id="encryption_modes"/>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwExpanderRow" id="certificates_row">
+        <property name="title" translatable="yes">Certificates</property>
+        <property name="subtitle" translatable="yes">For a server whose certificate this computer does not trust</property>
+        <child>
+          <object class="AdwActionRow" id="ca_row">
+            <property name="title" translatable="yes">CA certificate</property>
+            <child type="suffix">
+              <object class="GtkButton" id="ca_clear_button">
+                <property name="tooltip-text" translatable="yes">Clear</property>
+                <property name="valign">center</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <accessibility>
+                  <property name="label" translatable="yes">Clear CA certificate</property>
+                </accessibility>
+              </object>
+            </child>
+            <child type="suffix">
+              <object class="GtkButton" id="ca_choose_button">
+                <property name="label" translatable="yes">Choose…</property>
+                <property name="valign">center</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Choose CA certificate</property>
+                </accessibility>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow" id="certificate_row">
+            <property name="title" translatable="yes">Client certificate</property>
+            <child type="suffix">
+              <object class="GtkButton" id="certificate_clear_button">
+                <property name="tooltip-text" translatable="yes">Clear</property>
+                <property name="valign">center</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <accessibility>
+                  <property name="label" translatable="yes">Clear client certificate</property>
+                </accessibility>
+              </object>
+            </child>
+            <child type="suffix">
+              <object class="GtkButton" id="certificate_choose_button">
+                <property name="label" translatable="yes">Choose…</property>
+                <property name="valign">center</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Choose client certificate</property>
+                </accessibility>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow" id="key_row">
+            <property name="title" translatable="yes">Client key</property>
+            <child type="suffix">
+              <object class="GtkButton" id="key_clear_button">
+                <property name="tooltip-text" translatable="yes">Clear</property>
+                <property name="valign">center</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <accessibility>
+                  <property name="label" translatable="yes">Clear client key</property>
+                </accessibility>
+              </object>
+            </child>
+            <child type="suffix">
+              <object class="GtkButton" id="key_choose_button">
+                <property name="label" translatable="yes">Choose…</property>
+                <property name="valign">center</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Choose client key</property>
+                </accessibility>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwEntryRow" id="server_name_row">
+            <property name="title" translatable="yes">TLS server name</property>
+            <property name="activates-default">true</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

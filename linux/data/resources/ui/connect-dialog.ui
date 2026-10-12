@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProConnectDialog" parent="AdwDialog">
+    <property name="title" translatable="yes">Connect</property>
+    <property name="content-width">480</property>
+    <property name="content-height">720</property>
+    <property name="default-widget">connect_button</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <child type="start">
+              <object class="GtkButton" id="test_button">
+                <property name="label" translatable="yes">Test</property>
+                <property name="tooltip-text" translatable="yes">Connect once to check the settings, then disconnect</property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="connect_button">
+                <property name="label" translatable="yes">Connect</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwToastOverlay" id="toast_overlay">
+            <property name="child">
+              <object class="AdwPreferencesPage">
+                <child>
+                  <object class="AdwPreferencesGroup">
+                    <property name="title" translatable="yes">Connection</property>
+                    <child>
+                      <object class="AdwComboRow" id="driver_row">
+                        <property name="title" translatable="yes">Driver</property>
+                        <property name="model">
+                          <object class="GtkStringList" id="driver_names"/>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="host_row">
+                        <property name="title" translatable="yes">Host</property>
+                        <property name="activates-default">true</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwSpinRow" id="port_row">
+                        <property name="title" translatable="yes">Port</property>
+                        <property name="adjustment">
+                          <object class="GtkAdjustment">
+                            <property name="lower">1</property>
+                            <property name="upper">65535</property>
+                            <property name="value">5432</property>
+                            <property name="step-increment">1</property>
+                            <property name="page-increment">10</property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="database_row">
+                        <property name="title" translatable="yes">Database</property>
+                        <property name="activates-default">true</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="TableProSqliteFileRow" id="file_row"/>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwPreferencesGroup" id="auth_group">
+                    <property name="title" translatable="yes">Authentication</property>
+                    <child>
+                      <object class="AdwComboRow" id="auth_mode_row">
+                        <property name="title" translatable="yes">Method</property>
+                        <property name="model">
+                          <object class="GtkStringList" id="auth_mode_names"/>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="username_row">
+                        <property name="title" translatable="yes">Username</property>
+                        <property name="activates-default">true</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPasswordEntryRow" id="password_row">
+                        <property name="title" translatable="yes">Password</property>
+                        <property name="activates-default">true</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwSwitchRow" id="remember_row">
+                        <property name="title" translatable="yes">Remember password</property>
+                        <property name="subtitle" translatable="yes">Keep it in the keyring; otherwise it is asked for at each connect</property>
+                        <property name="active">true</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="TableProTlsSection" id="tls_section"/>
+                </child>
+                <child>
+                  <object class="TableProSshSection" id="ssh_section"/>
+                </child>
+                <child>
+                  <object class="AdwPreferencesGroup">
+                    <property name="title" translatable="yes">Options</property>
+                    <child>
+                      <object class="AdwSwitchRow" id="read_only_row">
+                        <property name="title" translatable="yes">Read-only mode</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

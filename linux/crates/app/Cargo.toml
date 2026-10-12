@@ -44,6 +44,7 @@ futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tablepro-net = { path = "../net" }
 tablepro-ssh = { path = "../ssh" }
 tablepro-session = { path = "../session" }
 tablepro-storage = { path = "../storage" }

@@ -30,7 +30,7 @@ use super::sidebar_row::{SidebarRow, SidebarRowOutput};
 use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
 use crate::services::session_context::SessionContext;
 
-pub(crate) use connection::ReadySession;
+pub(crate) use connection::{ConnectRetry, ReadySession};
 
 /// Decrement a tab's pending-save counter in the close-after-save map.
 /// Returns `true` if the entry just dropped to zero (the caller should
@@ -118,7 +118,7 @@ pub struct App {
     /// HashMap for O(1) tab_id lookup; display order is read from
     /// `tab_view.pages()` since HashMap is unordered.
     workspace_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
-    dialog: Option<Controller<ConnectDialog>>,
+    dialog: Option<ConnectDialog>,
     schema_buffer: gtk::TextBuffer,
     history_dialog: Option<Controller<HistoryDialog>>,
     saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
@@ -323,12 +323,20 @@ pub enum AppMsg {
     OpenConnect,
     /// A connect worked; adopt its session in this window.
     SessionReady(Box<ReadySession>),
-    /// A connect from the saved list failed.
-    /// `None` when the user cancelled it, which needs no error.
+    /// The connect dialog's Connect: connect, then save the entry.
+    ConnectSubmitted(Box<super::connect_dialog::ConnectSubmission>),
+    /// A connect failed. `None` when the user cancelled it, which needs
+    /// no error. `edit` reopens the dialog on what was submitted.
     ConnectFailed {
         generation: tablepro_session::connect::AttemptGeneration,
         message: Option<String>,
+        edit: Option<Box<ConnectRetry>>,
     },
+    /// The Cancel button on the Connecting toast.
+    CancelConnect,
+    /// Open the connect dialog on a connection that failed to connect,
+    /// with the focus on the row that fixes it.
+    EditConnection(Box<ConnectRetry>),
     /// The banner's Retry: ask the monitor to reconnect now.
     RetryConnection,
     /// The adopted session's health moved.
@@ -1356,7 +1364,14 @@ impl SimpleComponent for App {
         match msg {
             AppMsg::OpenConnect => self.on_open_connect(sender),
             AppMsg::SessionReady(ready) => self.on_session_ready(*ready, sender),
-            AppMsg::ConnectFailed { generation, message } => self.on_connect_failed(generation, message),
+            AppMsg::ConnectSubmitted(submission) => self.on_connect_submission(*submission, sender),
+            AppMsg::ConnectFailed {
+                generation,
+                message,
+                edit,
+            } => self.on_connect_failed(generation, message, edit, sender),
+            AppMsg::CancelConnect => self.on_cancel_connect(),
+            AppMsg::EditConnection(retry) => self.on_edit_connection(*retry, sender),
             AppMsg::HealthChanged(health) => self.refresh_health_banner(&health),
             AppMsg::RetryConnection => self.on_retry_connection(),
             AppMsg::CatalogChanged(objects) => self.on_tables_reloaded(objects),

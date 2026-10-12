@@ -86,6 +86,7 @@ async fn save(
     let pending = PendingSave {
         connection: saved,
         secrets: vec![passphrase()],
+        forget: Vec::new(),
         is_new,
     };
     persist_pending_save(vault, &writes, pending).await

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
-use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
+use relm4::{ComponentController, ComponentSender, adw, gtk};
 
 use tablepro_core::meta::ObjectInfo;
 use tablepro_session::connect::AttemptGeneration;
@@ -14,9 +14,41 @@ use tablepro_session::{
 use tablepro_storage::{CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
-use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogOutput};
+use tablepro_session::RequestTarget;
+use tablepro_session::connect::StoreConnectionWrites;
+use tablepro_storage::StorageError;
+
+use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill, ConnectSubmission, FormField};
+use crate::ui::error_text::TlsRemedy;
+use crate::ui::ssh_inputs::SshEnvironment;
 
 use super::{App, AppMsg, qualified_label};
+
+/// What a failed connect can be retried from: the connection as it was
+/// submitted, and the setting that would fix it.
+#[derive(Debug)]
+pub(crate) struct ConnectRetry {
+    pub prefill: ConnectPrefill,
+    pub remedy: Option<TlsRemedy>,
+}
+
+/// Why a submitted connection did not open.
+enum SubmitError {
+    Connect(ConnectError),
+    Save(StorageError),
+}
+
+/// The password the user typed, so editing after a failure does not
+/// make them type it again. It stays in memory.
+fn typed_password(target: &RequestTarget) -> Option<secrecy::SecretString> {
+    match target {
+        RequestTarget::Network {
+            credentials: tablepro_core::Credentials::Password { password, .. },
+            ..
+        } => Some(password.clone()),
+        _ => None,
+    }
+}
 
 /// A connect that worked, waiting for the window to adopt it.
 pub(crate) struct ReadySession {
@@ -57,18 +89,144 @@ fn spawn_local(future: futures::future::LocalBoxFuture<'static, ()>) {
 
 impl App {
     pub(super) fn on_open_connect(&mut self, sender: ComponentSender<Self>) {
-        let dialog = ConnectDialog::builder()
-            .launch(ConnectDialogInit {
-                context: self.context.clone(),
-                storage: self.storage.clone(),
-                settings: self.settings.clone(),
-            })
-            .forward(sender.input_sender(), |out| match out {
-                ConnectDialogOutput::Connected(ready) => AppMsg::SessionReady(ready),
-                ConnectDialogOutput::Closed => AppMsg::DialogClosed,
-            });
-        dialog.widget().present(Some(&self.window));
+        self.present_connect_dialog(None, None, sender);
+    }
+
+    /// Show the connect dialog, filled from `prefill` when a connect
+    /// from it failed, with the focus on `focus`.
+    fn present_connect_dialog(
+        &mut self,
+        prefill: Option<ConnectPrefill>,
+        focus: Option<FormField>,
+        sender: ComponentSender<Self>,
+    ) {
+        let dialog = ConnectDialog::new(ConnectDialogInit {
+            drivers: self.context.drivers.clone(),
+            connector: self.context.connector.clone(),
+            interaction: self.context.attended(),
+            tasks: self.tasks.clone(),
+            saved_connections: Arc::from(self.saved_connections.clone()),
+            remembered_driver: self.settings.connect_dialog_driver(),
+            ssh_environment: SshEnvironment::detect(),
+            prefill,
+        });
+        let submitted = sender.clone();
+        dialog.connect_submitted(move |_, submission| {
+            submitted.input(AppMsg::ConnectSubmitted(Box::new(submission)));
+        });
+        let closed = sender;
+        dialog.connect_closed(move |_| closed.input(AppMsg::DialogClosed));
+        dialog.present(Some(&self.window));
+        if let Some(field) = focus {
+            dialog.reveal_field(field);
+        }
         self.dialog = Some(dialog);
+    }
+
+    /// Connect to what the dialog was filled in with, then save it. The
+    /// entry is only written once the connect works, so a typo never
+    /// lands in the connection list.
+    pub(super) fn on_connect_submission(&mut self, submission: ConnectSubmission, sender: ComponentSender<Self>) {
+        let ConnectSubmission { request, pending_save } = submission;
+        self.set_loading_page(
+            &crate::i18n::gettext("Connecting…"),
+            &crate::i18n::gettext_f("Opening {name}", &[("name", &request.metadata.name)]),
+            &sender,
+        );
+        let ticket = self.connect_attempts.begin();
+        let generation = ticket.generation();
+        let cancel = ticket.cancel().clone();
+        let retry = ConnectRetry {
+            prefill: ConnectPrefill {
+                connection: pending_save.connection.clone(),
+                password: typed_password(&request.target),
+            },
+            remedy: None,
+        };
+        let connector = self.context.connector.clone();
+        let interaction = self.context.attended();
+        let secrets = self.context.secrets.clone();
+        let writes = StoreConnectionWrites::new(self.storage.connections().clone(), self.tasks.clone());
+        let connecting = async move {
+            let pending = connector
+                .establish(request, interaction, cancel)
+                .await
+                .map_err(SubmitError::Connect)?;
+            match tablepro_session::persist_pending_save(&*secrets, &writes, pending_save).await {
+                Ok(report) => Ok((pending, report)),
+                Err(error) => {
+                    let report = pending.discard().await;
+                    tracing::debug!(?report, "closed a connection whose entry could not be saved");
+                    Err(SubmitError::Save(error))
+                }
+            }
+        };
+        let context = self.context.clone();
+        let settings = self.settings.clone();
+        crate::runtime::spawn_and_deliver(&self.tasks, connecting, move |outcome| {
+            let failed = |message: String, retry: ConnectRetry| AppMsg::ConnectFailed {
+                generation,
+                message: Some(message),
+                edit: Some(Box::new(retry)),
+            };
+            let message = match outcome {
+                Ok(Ok((pending, report))) => {
+                    // The dialog opens on this driver next time.
+                    if let Err(error) = settings.set_connect_dialog_driver(&report.saved.driver_id) {
+                        tracing::warn!(%error, "could not remember the connect dialog driver");
+                    }
+                    AppMsg::SessionReady(Box::new(ReadySession {
+                        key: SessionKey::Saved(report.saved.id),
+                        credentials: Arc::new(context.keyring_credentials(&report.saved)),
+                        pending,
+                        // A keyring refusal must not be silent: the
+                        // connection opened, but the password will be
+                        // asked for next time.
+                        warnings: report
+                            .secret_failures
+                            .iter()
+                            .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
+                            .collect(),
+                        generation: Some(generation),
+                    }))
+                }
+                Ok(Err(SubmitError::Connect(ConnectError::Cancelled))) => AppMsg::ConnectFailed {
+                    generation,
+                    message: None,
+                    edit: None,
+                },
+                Ok(Err(SubmitError::Connect(error))) => failed(
+                    crate::ui::error_text::connect_error_message(&error),
+                    ConnectRetry {
+                        remedy: crate::ui::error_text::connect_remedy(&error),
+                        ..retry
+                    },
+                ),
+                Ok(Err(SubmitError::Save(error))) => failed(
+                    crate::i18n::gettext_f(
+                        "The connection could not be saved: {error}",
+                        &[("error", &error.to_string())],
+                    ),
+                    retry,
+                ),
+                Err(failure) => failed(crate::ui::error_text::task_failure_message(&failure), retry),
+            };
+            sender.input(message);
+        });
+    }
+
+    /// The Connecting toast's Cancel. The attempt is superseded, not
+    /// only cancelled: a driver blocked in a socket call can still
+    /// connect afterwards, and that late session must not be adopted.
+    pub(super) fn on_cancel_connect(&mut self) {
+        drop(self.connect_attempts.begin());
+        self.connect_attempts.cancel();
+        self.dismiss_loading_page();
+    }
+
+    pub(super) fn on_edit_connection(&mut self, retry: ConnectRetry, sender: ComponentSender<Self>) {
+        let focus = retry.remedy.map(crate::ui::connect_dialog::remedy_field);
+        self.present_connect_dialog(Some(retry.prefill), focus, sender);
     }
 
     /// Adopt a session that connected: claim its key, start it, and
@@ -143,17 +301,43 @@ impl App {
         self.on_connected(first.objects.to_vec(), driver_id, sender);
     }
 
-    /// A connect from the saved list failed. A cancelled one returns to
-    /// the list without an error: the user is the one who stopped it.
-    pub(super) fn on_connect_failed(&mut self, generation: AttemptGeneration, message: Option<String>) {
+    /// A connect failed. A cancelled one returns to the list without an
+    /// error: the user is the one who stopped it. Otherwise the alert
+    /// offers to edit what was connected to, starting at the setting
+    /// that fixes a TLS failure when there is one.
+    pub(super) fn on_connect_failed(
+        &mut self,
+        generation: AttemptGeneration,
+        message: Option<String>,
+        edit: Option<Box<ConnectRetry>>,
+        sender: ComponentSender<Self>,
+    ) {
         if !self.connect_attempts.accepts(generation) {
             return;
         }
         self.dismiss_loading_page();
-        if let Some(message) = message {
-            tracing::warn!(error = %message, "connect failed");
-            self.set_status_page(super::StatusKind::Error, &crate::i18n::gettext("Failed"), &message);
+        let Some(message) = message else {
+            return;
+        };
+        tracing::warn!(error = %message, "connect failed");
+        let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Could Not Connect")), Some(&message));
+        dialog.add_response("close", &crate::i18n::gettext("Close"));
+        dialog.set_close_response("close");
+        dialog.set_default_response(Some("close"));
+        if let Some(retry) = edit {
+            let label = retry
+                .remedy
+                .map_or_else(|| crate::i18n::gettext("Edit Connection…"), |remedy| remedy.label());
+            dialog.add_response("edit", &label);
+            dialog.set_default_response(Some("edit"));
+            let retry = std::cell::RefCell::new(Some(retry));
+            dialog.connect_response(Some("edit"), move |_, _| {
+                if let Some(retry) = retry.borrow_mut().take() {
+                    sender.input(AppMsg::EditConnection(retry));
+                }
+            });
         }
+        dialog.present(Some(&self.window));
     }
 
     /// Throw away a connection nobody adopted, closing it under the
@@ -620,6 +804,7 @@ impl App {
         self.set_loading_page(
             &crate::i18n::gettext("Connecting…"),
             &crate::i18n::gettext_f("Opening {name}", &[("name", &saved.name)]),
+            &sender,
         );
         let ticket = self.connect_attempts.begin();
         let generation = ticket.generation();
@@ -629,6 +814,13 @@ impl App {
         let interaction = self.context.attended();
         let credentials = self.context.keyring_credentials(&saved);
         let source: Arc<dyn CredentialSource> = Arc::new(credentials.clone());
+        let retry = ConnectRetry {
+            prefill: ConnectPrefill {
+                connection: saved.clone(),
+                password: None,
+            },
+            remedy: None,
+        };
         // Reading the keyring, asking for what it lacks and connecting
         // all happen off the GTK thread; only the outcome comes back.
         let connecting = async move {
@@ -660,14 +852,20 @@ impl App {
             Ok(Err(ConnectError::Cancelled)) => sender.input(AppMsg::ConnectFailed {
                 generation,
                 message: None,
+                edit: None,
             }),
             Ok(Err(error)) => sender.input(AppMsg::ConnectFailed {
                 generation,
                 message: Some(crate::ui::error_text::connect_error_message(&error)),
+                edit: Some(Box::new(ConnectRetry {
+                    remedy: crate::ui::error_text::connect_remedy(&error),
+                    ..retry
+                })),
             }),
             Err(failure) => sender.input(AppMsg::ConnectFailed {
                 generation,
                 message: Some(crate::ui::error_text::task_failure_message(&failure)),
+                edit: Some(Box::new(retry)),
             }),
         });
     }

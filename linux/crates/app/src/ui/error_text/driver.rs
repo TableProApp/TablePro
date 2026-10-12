@@ -1,5 +1,6 @@
 use tablepro_core::{
-    ConfigError, DriverError, ErrorCategory, ReadOnlyRefusal, ServerDiagnostics, TimeoutPhase, TransportError,
+    ConfigError, DriverError, ErrorCategory, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase,
+    TransportError,
 };
 
 use super::ssh::ssh_failure_message;
@@ -54,7 +55,7 @@ fn configuration_message(error: &DriverError) -> String {
     }
 }
 
-pub(super) fn config_message(error: &ConfigError) -> String {
+pub fn config_message(error: &ConfigError) -> String {
     match error {
         ConfigError::EmptyHost => crate::i18n::gettext("Enter the server's host name."),
         ConfigError::InvalidHost => crate::i18n::gettext("The host name has spaces or control characters in it."),
@@ -138,18 +139,12 @@ fn read_only_message(error: &DriverError) -> String {
 
 /// The server's words with whatever it added: its code, the detail line
 /// and its hint.
-pub(super) fn server_message(diagnostics: &ServerDiagnostics) -> String {
+pub fn server_message(diagnostics: &ServerDiagnostics) -> String {
     let mut message = match &diagnostics.code {
-        Some(code) => match diagnostics.sqlstate() {
-            Some(sqlstate) => crate::i18n::gettext_f(
-                "Query failed (SQLSTATE {sqlstate}): {message}",
-                &[("sqlstate", sqlstate), ("message", &diagnostics.message)],
-            ),
-            None => crate::i18n::gettext_f(
-                "Query failed (error {code}): {message}",
-                &[("code", &code.to_string()), ("message", &diagnostics.message)],
-            ),
-        },
+        Some(code) => crate::i18n::gettext_f(
+            "Query failed ({code}): {message}",
+            &[("code", &server_code_text(code)), ("message", &diagnostics.message)],
+        ),
         None => crate::i18n::gettext_f("Query failed: {message}", &[("message", &diagnostics.message)]),
     };
     if let Some(detail) = diagnostics.detail.as_deref().filter(|detail| !detail.is_empty()) {
@@ -161,6 +156,19 @@ pub(super) fn server_message(diagnostics: &ServerDiagnostics) -> String {
         message.push_str(&crate::i18n::gettext_f("Hint: {hint}", &[("hint", hint)]));
     }
     message
+}
+
+/// The code in the words each engine's own documentation uses, so it
+/// can be looked up there.
+fn server_code_text(code: &ServerCode) -> String {
+    let number = code.to_string();
+    match code {
+        ServerCode::SqlState(_) => crate::i18n::gettext_f("SQLSTATE {code}", &[("code", &number)]),
+        ServerCode::MySql { .. } => crate::i18n::gettext_f("MySQL error {code}", &[("code", &number)]),
+        ServerCode::Tds { .. } => crate::i18n::gettext_f("SQL Server error {code}", &[("code", &number)]),
+        ServerCode::ClickHouse { .. } => crate::i18n::gettext_f("ClickHouse code {code}", &[("code", &number)]),
+        ServerCode::Sqlite { .. } => crate::i18n::gettext_f("SQLite error {code}", &[("code", &number)]),
+    }
 }
 
 fn timeout_message(error: &DriverError) -> String {

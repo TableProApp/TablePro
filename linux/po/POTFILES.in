@@ -45,7 +45,18 @@ crates/app/src/ui/app/structure.rs
 crates/app/src/ui/app/workspace_tabs.rs
 crates/app/src/ui/browse_tab.rs
 crates/app/src/ui/cell_editor.rs
-crates/app/src/ui/connect_dialog.rs
+crates/app/src/ui/connect_dialog/connect_form.rs
+crates/app/src/ui/connect_dialog/connect_submission.rs
+crates/app/src/ui/connect_dialog/form_errors.rs
+crates/app/src/ui/connect_dialog/form_field.rs
+crates/app/src/ui/connect_dialog/imp.rs
+crates/app/src/ui/connect_dialog/mod.rs
+crates/app/src/ui/connect_dialog/pem_validation.rs
+crates/app/src/ui/connect_dialog/read_only_row.rs
+crates/app/src/ui/connect_dialog/row_problem.rs
+crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+crates/app/src/ui/connect_dialog/tests.rs
+crates/app/src/ui/connect_dialog/tls_section.rs
 crates/app/src/ui/connection_list.rs
 crates/app/src/ui/connection_list_banner.rs
 crates/app/src/ui/connection_row.rs
@@ -67,6 +78,7 @@ crates/app/src/ui/error_text/secret.rs
 crates/app/src/ui/error_text/ssh.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
+crates/app/src/ui/error_text/tls_remedy.rs
 crates/app/src/ui/export_dialog.rs
 crates/app/src/ui/filter_strip.rs
 crates/app/src/ui/grid.rs
@@ -97,4 +109,8 @@ data/app.tablepro.TablePro.desktop.in.in
 data/app.tablepro.TablePro.gschema.xml
 data/app.tablepro.TablePro.metainfo.xml.in.in
 data/resources/shortcuts-dialog.ui
+data/resources/ui/connect-dialog.ui
 data/resources/ui/preferences-dialog.ui
+data/resources/ui/sqlite-file-row.ui
+data/resources/ui/ssh-section.ui
+data/resources/ui/tls-section.ui

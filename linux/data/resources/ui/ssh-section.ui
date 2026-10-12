@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProSshSection" parent="AdwPreferencesGroup">
+    <property name="title" translatable="yes">SSH Tunnel</property>
+    <child>
+      <object class="AdwExpanderRow" id="expander">
+        <property name="title" translatable="yes">Use SSH tunnel</property>
+        <property name="subtitle" translatable="yes">Empty rows are filled from your SSH configuration</property>
+        <property name="show-enable-switch">true</property>
+        <property name="enable-expansion">false</property>
+        <child>
+          <object class="AdwEntryRow" id="host_row">
+            <property name="title" translatable="yes">Host or alias</property>
+            <property name="activates-default">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwEntryRow" id="port_row">
+            <property name="title" translatable="yes">Port</property>
+            <property name="input-purpose">digits</property>
+            <property name="activates-default">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwEntryRow" id="user_row">
+            <property name="title" translatable="yes">Username</property>
+            <property name="activates-default">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwEntryRow" id="jump_row">
+            <property name="title" translatable="yes">Jump hosts</property>
+            <property name="activates-default">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwComboRow" id="auth_row">
+            <property name="title" translatable="yes">Authentication</property>
+            <property name="model">
+              <object class="GtkStringList" id="auth_names"/>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPasswordEntryRow" id="password_row">
+            <property name="title" translatable="yes">Password</property>
+            <property name="activates-default">true</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwEntryRow" id="key_row">
+            <property name="title" translatable="yes">Private key</property>
+            <property name="activates-default">true</property>
+            <child type="suffix">
+              <object class="GtkButton" id="key_browse_button">
+                <property name="tooltip-text" translatable="yes">Choose a private key file</property>
+                <property name="valign">center</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <accessibility>
+                  <property name="label" translatable="yes">Choose private key</property>
+                </accessibility>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPasswordEntryRow" id="passphrase_row">
+            <property name="title" translatable="yes">Passphrase</property>
+            <property name="activates-default">true</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

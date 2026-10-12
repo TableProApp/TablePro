@@ -10,6 +10,7 @@ use tablepro_session::{ConnectError, OperationError};
 use tablepro_storage::KeyringError;
 
 use super::secret::secret_message;
+use super::ssh::ssh_failure_message;
 use super::*;
 
 /// One error per category, so a category without a branch shows up as
@@ -115,6 +116,40 @@ fn server_message_includes_code_detail_hint() {
     let bare = driver_message(&DriverError::server("syntax error"));
     assert!(!bare.contains("SQLSTATE"), "{bare}");
     assert!(bare.contains("syntax error"), "{bare}");
+}
+
+#[test]
+fn diagnostics_codes_rendered_per_engine() {
+    let cases = [
+        (ServerCode::SqlState("23505".to_owned()), "SQLSTATE 23505"),
+        (
+            ServerCode::MySql {
+                number: 1062,
+                sqlstate: Some("23000".to_owned()),
+            },
+            "MySQL error 1062",
+        ),
+        (
+            ServerCode::Tds {
+                number: 2627,
+                state: 1,
+                class: 14,
+            },
+            "SQL Server error 2627",
+        ),
+        (ServerCode::ClickHouse { code: 60 }, "ClickHouse code 60"),
+        (
+            ServerCode::Sqlite {
+                primary: 19,
+                extended: 2067,
+            },
+            "SQLite error 2067",
+        ),
+    ];
+    for (code, expected) in cases {
+        let message = driver_message(&DriverError::reported(ServerDiagnostics::new(Some(code), "refused")));
+        assert!(message.contains(expected), "{message}");
+    }
 }
 
 #[test]
