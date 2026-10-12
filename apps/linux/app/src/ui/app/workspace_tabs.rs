@@ -818,6 +818,7 @@ impl App {
         };
         self.recent_pages.borrow_mut().forget(&page);
         self.read_scopes.borrow_mut().cancel_tab(id);
+        tab_view.close_page(&page);
         tab_view.close_page_finish(&page, true);
         drop(removed);
         self.persist_workspace_state();

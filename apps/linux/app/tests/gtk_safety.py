@@ -2020,6 +2020,23 @@ def two_windows_hold_two_connections(database, base):
 two_windows_hold_two_connections.environment = "local"
 
 
+def replacing_a_preview_tab_removes_the_old_page(database, base):
+    database_b = base / "safety-b.sqlite"
+    with sqlite3.connect(database_b) as connection:
+        connection.execute("CREATE TABLE other_items (id INTEGER PRIMARY KEY)")
+        connection.execute("INSERT INTO other_items(id) VALUES (1)")
+    open_saved_connection(CONNECTION_B_NAME)
+    wait_for_frame_containing(f"{CONNECTION_B_NAME} — BookiE")
+    invoke_named_action_within("safety_items", "Open safety_items")
+    wait_for_node(name="safety_items", role=pyatspi.ROLE_PAGE_TAB)
+    invoke_named_action_within("other_items", "Open other_items")
+    wait_for_node(name="other_items", role=pyatspi.ROLE_PAGE_TAB)
+    wait_for_node(name="safety_items", role=pyatspi.ROLE_PAGE_TAB, present=False)
+
+
+replacing_a_preview_tab_removes_the_old_page.environment = "local"
+
+
 def closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab(database, base, restart):
     sql_file = base / "saved-query.sql"
     sql_file.write_text("SELECT 1;\n", encoding="utf-8")
@@ -2265,6 +2282,7 @@ def main():
         a_browse_tab_reads_the_new_connection_after_a_switch,
         two_windows_hold_two_connections,
         switched_connection_keeps_workspace_tabs_after_debounce,
+        replacing_a_preview_tab_removes_the_old_page,
         closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab,
         closing_a_clean_editor_tab_removes_it_and_keeps_the_other,
         switching_one_window_leaves_the_other_windows_edits,

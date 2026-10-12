@@ -128,6 +128,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- Opening a second table over a preview tab, dropping a table with open tabs and promoting a new structure tab now remove the old tab page instead of leaving it on screen without its controller, which aborted the app when clicked.
 - A query stopped by a timeout now says "Query exceeded the Ns query timeout." instead of claiming the timeout was configured in Preferences, which was wrong for a per-connection timeout.
 - Closing an editor tab no longer leaves it on screen stuck on "Rolling back and closing session…", including after choosing Save for a file tab; the stale tab used to abort the app when Split was clicked.
 - Screen readers announce the selected-row count on the selection summary.
