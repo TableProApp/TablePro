@@ -127,17 +127,7 @@ final class AppSettingsManager: ObservableObject {
             storage.saveAI(ai)
             syncTracker.markDirty(.settings, id: AppSettingsCategory.ai)
             appEvents.aiSettingsChanged.send(())
-            let hadCopilot = oldValue.providers.contains(where: { $0.type == .copilot })
-            let hasCopilot = ai.providers.contains(where: { $0.type == .copilot })
-            if hasCopilot != hadCopilot {
-                Task { [copilotService] in
-                    if hasCopilot {
-                        await copilotService.start()
-                    } else {
-                        await copilotService.stop()
-                    }
-                }
-            }
+            copilotService.stopIfDisallowed(by: ai)
         }
     }
 
@@ -259,10 +249,6 @@ final class AppSettingsManager: ObservableObject {
         )
 
         dateFormattingService.updateFormat(dataGrid.dateFormat)
-
-        if ai.enabled, ai.providers.contains(where: { $0.type == .copilot }) {
-            Task { [copilotService] in await copilotService.start() }
-        }
     }
 
     /// Auto-pick the first configured provider as active when nothing is selected.

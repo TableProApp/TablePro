@@ -147,7 +147,7 @@ struct DiagramZoomCommandTests {
 
     @Test("View offers one Zoom In and one Zoom Out, left to the responder chain")
     func viewMenuCarriesOneItemPerVerb() throws {
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
         let view = try #require(menu.items.first { $0.title == ViewMenuBuilder.title }?.submenu)
         let zoomIns = view.items.filter { $0.action == #selector(ZoomCommandResponding.zoomIn(_:)) }
         let zoomOuts = view.items.filter { $0.action == #selector(ZoomCommandResponding.zoomOut(_:)) }

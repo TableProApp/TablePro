@@ -212,7 +212,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func persistOpenConnectionsForRecovery() {
-        LastOpenConnectionsStorage.shared.save(connectionIds: SessionRecoveryTracker.connectionIds())
+        let connectionIds = SessionRecoveryTracker.connectionIds()
+        let origin = AppActivationPolicyController.shared.origin
+        guard RecoveryConnectionList.shouldSaveOnQuit(connectionIds, origin: origin) else { return }
+        LastOpenConnectionsStorage.shared.save(connectionIds: connectionIds)
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

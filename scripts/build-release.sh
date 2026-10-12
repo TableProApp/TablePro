@@ -441,6 +441,13 @@ build_for_arch() {
         exit 1
     fi
 
+    SHIM_PATH="$BUILD_DIR/$OUTPUT_NAME/Contents/SharedSupport/bin/tablepro"
+    if [ ! -x "$SHIM_PATH" ]; then
+        echo "❌ FATAL: tablepro shim missing from $SHIM_PATH"
+        echo "Check the copy-files phase for TablePro/CLI/tablepro on the TablePro target."
+        exit 1
+    fi
+
     # Get size
     SIZE=$(ls -lh "$BINARY_PATH" 2>/dev/null | awk '{print $5}')
     if [ -z "$SIZE" ]; then

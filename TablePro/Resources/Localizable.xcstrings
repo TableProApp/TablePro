@@ -15508,46 +15508,6 @@
         }
       }
     },
-    "A key from the xAI Console bills xAI API credits. Grok 4.5 and Grok 4.3 are available." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Une clé de la console xAI consomme des crédits de l’API xAI. Grok 4.5 et Grok 4.3 sont disponibles."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI Console 키를 사용하면 xAI API 크레딧이 차감됩니다. Grok 4.5와 Grok 4.3을 사용할 수 있습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI Console'dan alınan bir anahtar xAI API kredilerinden düşer. Grok 4.5 ve Grok 4.3 kullanılabilir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Khóa lấy từ xAI Console sẽ tính phí vào tín dụng API của xAI. Có sẵn Grok 4.5 và Grok 4.3."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 xAI Console 的密钥会扣除 xAI API 额度。可用 Grok 4.5 和 Grok 4.3。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 xAI Console 的金鑰會扣除 xAI API 額度。可使用 Grok 4.5 和 Grok 4.3。"
-          }
-        }
-      }
-    },
     "A key needs a name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -49716,46 +49676,6 @@
         }
       }
     },
-    "Copy install command" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Copier la commande d’installation"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "설치 명령 복사"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kurulum komutunu kopyala"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sao chép lệnh cài đặt"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制安装命令"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "複製安裝指令"
-          }
-        }
-      }
-    },
     "Copy JSON" : {
       "localizations" : {
         "fr" : {
@@ -52838,46 +52758,6 @@
         }
       }
     },
-    "Could not start the sign-in listener. Please try again." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible de démarrer l’écouteur de connexion. Réessayez."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "로그인 리스너를 시작할 수 없습니다. 다시 시도하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oturum açma dinleyicisi başlatılamadı. Lütfen tekrar deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể khởi động trình lắng nghe đăng nhập. Vui lòng thử lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法启动登录监听器。请重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法啟動登入監聽器。請再試一次。"
-          }
-        }
-      }
-    },
     "Could not write %@." : {
       "localizations" : {
         "fr" : {
@@ -55460,46 +55340,6 @@
         }
       }
     },
-    "Cursor CLI failed: %@" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de la CLI Cursor : %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI 실패: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI başarısız oldu: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI thất bại: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI 失败：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI 失敗：%@"
-          }
-        }
-      }
-    },
     "Cursor position %d exceeds SQL length (%d)" : {
       "localizations" : {
         "en" : {
@@ -55589,46 +55429,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "游標位置 %1$lld 超出 SQL 長度（%2$lld）"
-          }
-        }
-      }
-    },
-    "Cursor sign-in failed." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de la connexion à Cursor."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor 로그인에 실패했습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor girişi başarısız oldu."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đăng nhập Cursor thất bại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor 登录失败。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor 登入失敗。"
           }
         }
       }
@@ -120272,46 +120072,6 @@
         }
       }
     },
-    "Not signed in to Cursor. Sign in first." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non connecté à Cursor. Connectez-vous d’abord."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor에 로그인되지 않았습니다. 먼저 로그인하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor'a giriş yapılmadı. Önce giriş yapın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chưa đăng nhập Cursor. Hãy đăng nhập trước."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未登录 Cursor。请先登录。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未登入 Cursor。請先登入。"
-          }
-        }
-      }
-    },
     "Not signed in to GitHub Copilot" : {
       "localizations" : {
         "fr" : {
@@ -120354,46 +120114,6 @@
     },
     "Not Signed In to iCloud" : {
 
-    },
-    "Not signed in to xAI." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non connecté à xAI."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI에 로그인되지 않았습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI'da oturum açılmamış."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chưa đăng nhập xAI."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未登录 xAI。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未登入 xAI。"
-          }
-        }
-      }
     },
     "Not started" : {
       "localizations" : {
@@ -126710,46 +126430,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Facultatif, par exemple http://localhost:8000"
-          }
-        }
-      }
-    },
-    "Optional. A key from the Cursor dashboard is used instead of signing in." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Facultatif. Une clé du tableau de bord Cursor est utilisée au lieu de la connexion."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "선택 사항입니다. 로그인하는 대신 Cursor 대시보드에서 발급한 키를 사용합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İsteğe bağlı. Giriş yapmak yerine Cursor panosundan bir anahtar kullanılır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tùy chọn. Một khóa từ bảng điều khiển Cursor được dùng thay cho đăng nhập."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可选。使用来自 Cursor 仪表板的密钥，而不是登录。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選用。使用來自 Cursor 儀表板的金鑰，而非登入。"
           }
         }
       }
@@ -164129,46 +163809,6 @@
         }
       }
     },
-    "Sign in with Cursor" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se connecter avec Cursor"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor로 로그인"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor ile giriş yap"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đăng nhập bằng Cursor"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Cursor 登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Cursor 登入"
-          }
-        }
-      }
-    },
     "Sign in with GitHub" : {
       "localizations" : {
         "fr" : {
@@ -164205,46 +163845,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 GitHub 登入"
-          }
-        }
-      }
-    },
-    "Sign in with xAI" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se connecter avec xAI"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI로 로그인"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI ile giriş yap"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đăng nhập bằng xAI"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 xAI 登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 xAI 登入"
           }
         }
       }
@@ -164678,86 +164278,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已以 %@ 身分登入。"
-          }
-        }
-      }
-    },
-    "Signed in with Cursor" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connecté avec Cursor"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor로 로그인됨"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor ile giriş yapıldı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã đăng nhập bằng Cursor"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已使用 Cursor 登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已使用 Cursor 登入"
-          }
-        }
-      }
-    },
-    "Signed in with xAI" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connecté avec xAI"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI로 로그인됨"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI ile oturum açıldı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã đăng nhập bằng xAI"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已使用 xAI 登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已使用 xAI 登入"
           }
         }
       }
@@ -182586,86 +182106,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "les identifiants ont été refusés"
-          }
-        }
-      }
-    },
-    "The Cursor CLI is not installed." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le CLI Cursor n’est pas installé."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI가 설치되어 있지 않습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI yüklü değil."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI chưa được cài đặt."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未安装 Cursor CLI。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未安裝 Cursor CLI。"
-          }
-        }
-      }
-    },
-    "The Cursor CLI is not installed. Install it, then sign in." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le CLI Cursor n’est pas installé. Installez-le, puis connectez-vous."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI가 설치되어 있지 않습니다. 설치한 다음 로그인하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI yüklü değil. Yükleyin, sonra giriş yapın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI chưa được cài đặt. Hãy cài đặt rồi đăng nhập."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未安装 Cursor CLI。请先安装，然后登录。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未安裝 Cursor CLI。請先安裝，然後登入。"
           }
         }
       }
@@ -205102,86 +204542,6 @@
         }
       }
     },
-    "Use your Cursor subscription with no API key. Requires the Cursor CLI." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Utilisez votre abonnement Cursor sans clé API. Nécessite la CLI Cursor."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API 키 없이 Cursor 구독을 사용합니다. Cursor CLI가 필요합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API anahtarı olmadan Cursor aboneliğinizi kullanın. Cursor CLI gerektirir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng gói đăng ký Cursor của bạn mà không cần khóa API. Yêu cầu Cursor CLI."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无需 API 密钥即可使用你的 Cursor 订阅。需要 Cursor CLI。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無需 API 金鑰即可使用你的 Cursor 訂閱。需要 Cursor CLI。"
-          }
-        }
-      }
-    },
-    "Use your SuperGrok or X Premium+ subscription with no API key. Sign-in opens the Grok Build consent screen. This is an unofficial interface that may change." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Utilisez votre abonnement SuperGrok ou X Premium+ sans clé API. La connexion ouvre l’écran de consentement Grok Build. Il s’agit d’une interface non officielle susceptible de changer."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API 키 없이 SuperGrok 또는 X Premium+ 구독을 사용합니다. 로그인하면 Grok Build 동의 화면이 열립니다. 이는 변경될 수 있는 비공식 인터페이스입니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API anahtarı olmadan SuperGrok veya X Premium+ aboneliğinizi kullanın. Oturum açma, Grok Build onay ekranını açar. Bu, değişebilecek resmi olmayan bir arayüzdür."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng gói SuperGrok hoặc X Premium+ của bạn mà không cần khóa API. Khi đăng nhập sẽ mở màn hình đồng ý của Grok Build. Đây là giao diện không chính thức và có thể thay đổi."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无需 API 密钥即可使用你的 SuperGrok 或 X Premium+ 订阅。登录时会打开 Grok Build 的授权页面。这是非官方接口，可能会变动。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無需 API 金鑰即可使用你的 SuperGrok 或 X Premium+ 訂閱。登入時會開啟 Grok Build 的授權畫面。這是非官方介面，可能會變動。"
-          }
-        }
-      }
-    },
     "Used by %lld" : {
       "localizations" : {
         "fr" : {
@@ -211662,46 +211022,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "X 軸"
-          }
-        }
-      }
-    },
-    "xAI did not return an access token." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI n’a pas renvoyé de jeton d’accès."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI에서 접근 토큰을 반환하지 않았습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI bir erişim belirteci döndürmedi."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI không trả về access token."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI 未返回访问令牌。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI 未回傳存取權杖。"
           }
         }
       }
