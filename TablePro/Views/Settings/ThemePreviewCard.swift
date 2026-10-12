@@ -91,6 +91,7 @@ struct ThemePreviewCard: View {
         size == .compact ? 14 : 28
     }
 
+    /// The name and kind beside it carry the meaning, so the miniature is decorative.
     private var thumbnail: some View {
         HStack(spacing: 0) {
             sidebarStrip
@@ -102,6 +103,7 @@ struct ThemePreviewCard: View {
             }
         }
         .environment(\.colorScheme, previewColorScheme)
+        .accessibilityHidden(true)
     }
 
     /// The system colours a theme leaves undeclared resolve in the appearance the theme is used

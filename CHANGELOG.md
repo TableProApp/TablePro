@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Theme file format 2. Themes written for earlier versions are not read and need to be recreated.
+- Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
 
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Content panes outside the editor and the data grid ignoring the theme.
 - JSON and PHP tree values colored differently from the same values in the row inspector.
 - Autocomplete icon colors ignoring the theme.
+- Theme color wells and the theme preview unreadable to VoiceOver.
 
 ## [0.80.0] - 2026-10-11
 

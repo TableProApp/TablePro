@@ -86063,6 +86063,9 @@
         }
       }
     },
+    "Gutter" : {
+
+    },
     "gzip executable not found" : {
       "localizations" : {
         "fr" : {
@@ -167514,6 +167517,7 @@
       }
     },
     "SQL Editor" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
