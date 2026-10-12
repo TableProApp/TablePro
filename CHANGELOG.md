@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON and PHP tree values colored differently from the same values in the row inspector.
 - Autocomplete icon colors ignoring the theme.
 - Theme color wells and the theme preview unreadable to VoiceOver.
+- GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
+
+### Security
+
+- GitHub Copilot language server pinned to a reviewed version and checksum instead of the latest npm release.
 
 ## [0.80.0] - 2026-10-11
 

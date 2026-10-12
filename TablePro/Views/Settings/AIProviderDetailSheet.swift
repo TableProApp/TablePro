@@ -120,6 +120,9 @@ struct AIProviderDetailSheet: View {
             }
             .onDisappear {
                 cancelTasks()
+                if draft.type == .copilot {
+                    copilotService.stopIfDisallowed(by: AppSettingsManager.shared.ai)
+                }
             }
         }
         .frame(minWidth: 520, minHeight: 480)
@@ -1005,9 +1008,7 @@ struct AIProviderDetailSheet: View {
     }
 
     private func ensureCopilotRunning() async {
-        if copilotService.status == .stopped {
-            await copilotService.start()
-        }
+        await copilotService.start()
     }
 
     private func copilotSignIn() async {
