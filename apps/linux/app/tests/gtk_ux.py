@@ -146,6 +146,27 @@ def scenarios(ui):
             time.sleep(0.1)
         ui.press_x11_key("Return")
 
+    def sqlite_grid_context_menu_columns_action_is_reachable_via_atspi(database, _base):
+        import sqlite3
+        with sqlite3.connect(database) as connection:
+            connection.execute("INSERT INTO safety_items(id, note) VALUES (1, 'alpha')")
+        ui.invoke_named_action_within("safety_items", "Open safety_items")
+        ui.wait_for_node(name="alpha", role=pyatspi.ROLE_LABEL)
+        cell = ui.wait_for_node(name="alpha", role=pyatspi.ROLE_LABEL)
+        extents = cell.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+        x11_click(extents.x + min(extents.width, 40) // 2, extents.y + extents.height // 2)
+        menu = ui.wait_for_node(role=pyatspi.ROLE_MENU)
+        items = [node for node in ui.descendants(menu) if ui.node_role(node) == pyatspi.ROLE_MENU_ITEM]
+        assert len(items) >= 10, f"grid menu exposed only {len(items)} actionable items"
+        actions = items[9].queryAction()
+        click_action = next(
+            index for index in range(actions.nActions) if actions.getName(index) == "click"
+        )
+        assert actions.doAction(click_action)
+        wait_for_adw_dialog("Columns")
+        ui.press_x11_key("Escape")
+        wait_for_adw_dialog("Columns", present=False)
+
     def click_cell(cell_text, count=1):
         cell = ui.wait_for_node(name=cell_text, role=pyatspi.ROLE_LABEL)
         extents = cell.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
@@ -1265,6 +1286,7 @@ GLib.MainLoop().run()
         ui.wait_for_node(name="2 unsaved changes", present=False)
 
     result = [
+        sqlite_grid_context_menu_columns_action_is_reachable_via_atspi,
         editing_a_saved_connection_prefills_it_and_saves_the_new_name,
         find_bar_replaces_every_match_in_the_editor,
         view_value_opens_the_whole_cell_with_pretty_json,
