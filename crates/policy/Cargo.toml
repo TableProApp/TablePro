@@ -33,6 +33,7 @@ tracing-subscriber.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-util.workspace = true
 tempfile.workspace = true
+proptest = "1"
 secrecy.workspace = true
 tablepro-driver-postgres = { path = "../drivers/postgres" }
 tablepro-driver-mssql = { path = "../drivers/mssql" }

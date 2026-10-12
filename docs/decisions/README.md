@@ -9,7 +9,7 @@ Which forks already have an answer (and which are still open) is listed in the [
 ```markdown
 # 000N: Title
 
-- **Status**: Accepted | Superseded by 000M | Deprecated
+- **Status**: Proposed | Accepted | Superseded by 000M | Deprecated
 - **Date**: YYYY-MM-DD
 
 ## Context
@@ -53,6 +53,8 @@ Other options and why they were rejected.
 | [0014](0014-full-table-export-snapshot.md) | Full table exports use one read snapshot | Accepted | Paged exports must read one guarded database snapshot or refuse before publishing a file |
 | [0015](0015-database-snapshots.md) | Database snapshots and restore | Accepted (0.2.x after 0.2.0) | Per-engine native snapshots behind a capability flag, generated names, one guarded and audited operation per action, a safety copy on restore |
 | [0016](0016-governed-consumer-seam.md) | PolicyGuard is the only consumer connection | Accepted | GUI, MCP and agentd issue a `PolicyGuard`; scopes and allowlists do not replace it; later UI ideas stay on that seam |
+| [0017](0017-mcp-sdk-behind-the-governed-seam.md) | Official Rust MCP SDK behind the governed seam | Proposed | Replace the hand-written protocol and transport layer; keep tokens, allowlists, approval and audit in our code. |
+| [0018](0018-headless-app-services-crate.md) | Headless application-services crate | Proposed | Move GTK-free logic and a tab model out of the GTK crate so it tests without a display. |
 
 Decisions 0007–0009 extract existing approved sprint/task-board rules. Accepted means the architecture choice is recorded; implementation and runtime acceptance remain on the [active sprint](../bookie-0.2-sprint.md) and owning boards.
 
