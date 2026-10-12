@@ -19,7 +19,6 @@ internal enum WelcomeMenuCommand: Equatable {
     case setFavorite([UUID], Bool)
     case copyConnectionString(UUID)
     case copyTableProLink(UUID)
-    case copyJSON(UUID)
     case exportToFile([UUID])
     case publishToTeamCatalog([UUID])
     case publishToTeamLibrary([UUID])
@@ -234,7 +233,6 @@ internal enum WelcomeMenuSpec {
             WelcomeMenuSection([
                 .command(Titles.copyConnectionString, .copyConnectionString(id)),
                 .command(Titles.copyTableProLink, .copyTableProLink(id)),
-                .command(Titles.copyJSON, .copyJSON(id)),
             ]),
             WelcomeMenuSection(publish),
         ])
@@ -378,7 +376,6 @@ internal extension WelcomeMenuSpec {
         static var share: String { String(localized: "Share") }
         static var copyConnectionString: String { String(localized: "Copy Connection String") }
         static var copyTableProLink: String { String(localized: "Copy TablePro Link") }
-        static var copyJSON: String { String(localized: "Copy as JSON") }
         static var moveToGroup: String { String(localized: "Move to Group") }
         static var removeFromGroup: String { String(localized: "Remove from Group") }
         static var includeInSync: String { String(localized: "Include in iCloud Sync") }

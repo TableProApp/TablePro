@@ -89,17 +89,6 @@ internal enum ConnectionShareLink {
         return link
     }
 
-    static func compactJSON(for connection: DatabaseConnection, exporter: ConnectionBundleExporter = .init()) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        guard let data = try? encoder.encode(exporter.portableSettings(for: connection)),
-              let json = String(data: data, encoding: .utf8) else {
-            logger.warning("Could not encode '\(connection.name, privacy: .private)' as JSON")
-            return "{}"
-        }
-        return json
-    }
-
     private static func sshQueryItems(_ ssh: ExportableSSHConfig) -> [URLQueryItem] {
         var items = [
             URLQueryItem(name: "ssh", value: "1"),

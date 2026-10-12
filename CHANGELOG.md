@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
 - Fonts from the theme file.
+- Clipboard URL banner in the New Connection form. Import from URL fills the form from a pasted link.
+- Share > Copy as JSON in the connection list. Copy as JSON in the data grid stays.
 
 ### Fixed
 
