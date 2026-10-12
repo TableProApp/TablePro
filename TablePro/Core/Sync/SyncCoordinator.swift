@@ -37,9 +37,6 @@ final class SyncCoordinator: ObservableObject {
     private var retryTask: Task<Void, Never>?
     private var hasStarted = false
     private var isRunning = false
-    private var isRunningCycle = false
-    private var hasDeferredNotificationPull = false
-    private var notificationPull: Task<Void, Never>?
 
     /// Triggers that arrived while a run was in flight. One more run follows it rather than the
     /// trigger cancelling it: a cancelled run reported itself as a failure.
@@ -160,7 +157,7 @@ final class SyncCoordinator: ObservableObject {
         if previousError == nil || trigger == .userRequest {
             syncStatus = .syncing
         }
-        let result = await performCycle(admission)
+        let result = await accountThenPushThenPull(admission)
         isRunning = false
         finish(result, previousError: previousError, from: generation)
         if uploadAgainRequested {
@@ -171,24 +168,12 @@ final class SyncCoordinator: ObservableObject {
     }
 
     internal func runSyncCycle(_ admission: SyncAdmission = .full) async -> SyncError? {
-        await performCycle(admission).failure?.error
+        await accountThenPushThenPull(admission).failure?.error
     }
 
     private struct CycleResult {
         var admission: SyncAdmission
         var failure: SyncStepFailure?
-    }
-
-    private func performCycle(_ admission: SyncAdmission) async -> CycleResult {
-        isRunningCycle = true
-        await notificationPull?.value
-        let result = await accountThenPushThenPull(admission)
-        isRunningCycle = false
-        if hasDeferredNotificationPull {
-            hasDeferredNotificationPull = false
-            await pullForRemoteNotification()
-        }
-        return result
     }
 
     private func accountThenPushThenPull(_ requested: SyncAdmission) async -> CycleResult {
@@ -217,10 +202,6 @@ final class SyncCoordinator: ObservableObject {
 
         let push = admission == .full ? await performPush() : PushReport()
         let pullFailure = await performPull(echoGuard: push.echoGuard)
-        while hasDeferredNotificationPull {
-            hasDeferredNotificationPull = false
-            await performPull(echoGuard: push.echoGuard)
-        }
 
         let zone = metadataStorage.zoneState
         let download = zone.reconciled(downloadFailure: pullFailure)
@@ -382,32 +363,6 @@ final class SyncCoordinator: ObservableObject {
         }
         guard let next = triggers.max(by: { reach($0) < reach($1) }), reach(next) > 0 else { return }
         await sync(next)
-    }
-
-    /// Triggered by remote push notification
-    func handleRemoteNotification() {
-        guard syncStatus.isEnabled else { return }
-
-        Task {
-            await pullForRemoteNotification()
-        }
-    }
-
-    internal func pullForRemoteNotification() async {
-        guard !isRunningCycle else {
-            hasDeferredNotificationPull = true
-            return
-        }
-        let previous = notificationPull
-        let pull = Task {
-            await previous?.value
-            await performPull()
-        }
-        notificationPull = pull
-        await pull.value
-        if notificationPull == pull {
-            notificationPull = nil
-        }
     }
 
     /// Called when user enables sync in settings
@@ -701,8 +656,7 @@ final class SyncCoordinator: ObservableObject {
 
     /// Reports a failed download instead of passing over it: a run whose pull failed did not bring
     /// this Mac up to date, and must not say Synced or move Last Synced.
-    @discardableResult
-    private func performPull(echoGuard: SyncEchoGuard? = nil) async -> SyncStepFailure? {
+    private func performPull(echoGuard: SyncEchoGuard?) async -> SyncStepFailure? {
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
