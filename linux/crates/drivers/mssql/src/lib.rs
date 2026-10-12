@@ -116,6 +116,9 @@ fn build_target(opts: &ConnectOptions) -> Result<MssqlTarget, DriverError> {
         EncryptionLevel::Off
     });
     config.trust_cert();
+    // tiberius 0.13 aborts a response that stalls for 30 seconds and leaves
+    // the connection unusable; an editor query may legitimately run longer.
+    config.command_timeout(None);
     Ok(MssqlTarget {
         config,
         dial_host: dial_host(&opts.host).to_string(),

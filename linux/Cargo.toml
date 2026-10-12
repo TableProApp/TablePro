@@ -36,7 +36,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls-aws-lc", "rustls-tls-webpki-roots"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "chrono", "rust_decimal", "uuid", "json"] }
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }
+tiberius = { version = "0.13", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 csv = "1.4"
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
@@ -92,11 +92,3 @@ ignore_without_reason = "deny"
 [profile.release]
 lto = "fat"
 codegen-units = 1
-
-# tiberius 0.12.3 pins libgssapi 0.4, whose `Buf::deref` is undefined behaviour
-# on the empty token of a successful Kerberos login (prisma/tiberius#343), and
-# rustls 0.21 with rustls-webpki 0.101 (RUSTSEC-2026-0098/0099/0104). Upstream
-# main at tiberius-rs/tiberius fixes both and has no release yet. Drop this pin
-# and bump `tiberius` when 0.13 is published.
-[patch.crates-io]
-tiberius = { git = "https://github.com/tiberius-rs/tiberius", rev = "c1d2e741ee6fe0935091826d91fb5886b6a4082a" }

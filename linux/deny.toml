@@ -55,4 +55,4 @@ deny = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = ["https://github.com/tiberius-rs/tiberius"]
+allow-git = []
