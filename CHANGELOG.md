@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Autocomplete icon colors ignoring the theme.
 - Theme color wells and the theme preview unreadable to VoiceOver.
 
+### Security
+
+- Prompts from MCP clients, pairing and query links taking focus from other apps, and Return approving them.
+
 ## [0.80.0] - 2026-10-11
 
 Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, with no Cloud SQL Auth Proxy.
