@@ -10,10 +10,27 @@ on:
   # No paths filter on pull_request: a workflow skipped by one never reports, so its gate could not
   # be a required check. The changes job below does the filtering instead.
   pull_request:
+    paths:
+      - "scripts/**"
+      - ".claude/skills/**/*.sh"
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/scripts/**"
+      - ".github/plugin-registry.json"
+      - ".github/duplicate-contract-baseline.txt"
+      - "Plugins/**/*.swift"
+      - "TablePro/**/*.swift"
+      - "Packages/**/*.swift"
+      - "TableProTests/**/*.swift"
+      - "project.yml"
+      - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
+      - ".swiftlint.yml"
   push:
     branches: [main]
     paths:
       - "scripts/**"
+      - ".claude/skills/**/*.sh"
       - ".github/workflows/**"
       - ".github/actions/**"
       - ".github/scripts/**"

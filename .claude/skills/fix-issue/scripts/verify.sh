@@ -150,8 +150,14 @@ emit() {
     esac
 }
 
+# Two quick steps can start in the same second, and the second one used to overwrite the first
+# one's log and receipt, so the earlier verdict could no longer be re-read.
 new_log() {
-    printf '%s/%s-%s.log' "$LOG_DIR" "$1" "$(date +%H%M%S)"
+    local base n=1
+    base="$LOG_DIR/$1-$(date +%H%M%S)"
+    [ -e "$base.log" ] || { printf '%s.log' "$base"; return; }
+    while [ -e "$base-$n.log" ]; do n=$((n + 1)); done
+    printf '%s-%s.log' "$base" "$n"
 }
 
 # What a backend asks about the options, so it never reads the option variables themselves.
