@@ -25,6 +25,8 @@ mod shared_container;
 mod auth_errors;
 #[path = "support/enum_labels.rs"]
 mod enum_labels;
+#[path = "support/network_paths.rs"]
+mod network_paths;
 #[path = "support/read_only_session.rs"]
 mod read_only_session;
 

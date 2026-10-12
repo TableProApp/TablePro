@@ -42,11 +42,21 @@ pub struct ConnectOptions {
     pub read_only: bool,
 }
 
+pub fn bare_host(host: &str) -> &str {
+    let trimmed = host.trim();
+    trimmed
+        .strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+        .unwrap_or(trimmed)
+}
+
 impl ConnectOptions {
     pub fn service_address(&self) -> (&str, u16) {
         self.service_endpoint
             .as_ref()
-            .map_or((self.host.as_str(), self.port), |(host, port)| (host.as_str(), *port))
+            .map_or((bare_host(self.host.as_str()), self.port), |(host, port)| {
+                (bare_host(host.as_str()), *port)
+            })
     }
 
     pub fn transport(&self) -> Transport<'_> {
@@ -62,12 +72,12 @@ impl ConnectOptions {
             }
             (None, Some(dir)) => Transport::Socket {
                 directory: dir.as_path(),
-                identity_host: self.host.as_str(),
+                identity_host: bare_host(self.host.as_str()),
                 identity_port: self.port,
                 origin: SocketOrigin::Local,
             },
             (None, None) => Transport::Tcp {
-                host: self.host.as_str(),
+                host: bare_host(self.host.as_str()),
                 port: self.port,
             },
         }
@@ -571,6 +581,31 @@ mod tests {
         };
 
         assert_eq!(options.service_address(), ("sql.corp.example", 1433));
+    }
+
+    #[test]
+    fn a_bracketed_ipv6_host_dials_the_bare_address() {
+        for (typed, dialled) in [
+            ("[::1]", "::1"),
+            ("::1", "::1"),
+            (" [fe80::1] ", "fe80::1"),
+            ("db.example", "db.example"),
+        ] {
+            let options = ConnectOptions {
+                host: typed.into(),
+                port: 5432,
+                ..Default::default()
+            };
+            assert_eq!(
+                options.transport(),
+                Transport::Tcp {
+                    host: dialled,
+                    port: 5432
+                },
+                "{typed}"
+            );
+            assert_eq!(options.service_address(), (dialled, 5432), "{typed}");
+        }
     }
 
     #[test]

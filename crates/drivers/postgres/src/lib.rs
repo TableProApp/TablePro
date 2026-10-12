@@ -1007,7 +1007,7 @@ fn map_sqlx_error(err: sqlx::Error) -> DriverError {
                 DriverError::Disconnected
             } else {
                 DriverError::Query {
-                    message: e.message().to_string(),
+                    message: with_pooler_hint(e.message(), sqlstate.as_deref()),
                     sqlstate,
                     position: statement_position(e.as_ref()),
                 }
@@ -1019,6 +1019,15 @@ fn map_sqlx_error(err: sqlx::Error) -> DriverError {
         Tls(e) => DriverError::Tls(e.to_string()),
         PoolClosed | PoolTimedOut => DriverError::Disconnected,
         other => DriverError::Internal(format!("{other}")),
+    }
+}
+
+fn with_pooler_hint(message: &str, sqlstate: Option<&str>) -> String {
+    match sqlstate {
+        Some("42P05" | "26000") => format!(
+            "{message} (the server connection may be behind a pooler in transaction mode: enable its prepared statement support, for example PgBouncer max_prepared_statements, or use session pooling)"
+        ),
+        _ => message.to_string(),
     }
 }
 

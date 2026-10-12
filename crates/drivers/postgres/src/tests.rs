@@ -6,6 +6,20 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 #[test]
+fn pooler_symptoms_get_a_hint_and_other_errors_are_left_alone() {
+    for state in ["42P05", "26000"] {
+        let message = with_pooler_hint("prepared statement \"sqlx_s_1\" already exists", Some(state));
+        assert!(message.starts_with("prepared statement"), "{message}");
+        assert!(message.contains("max_prepared_statements"), "{message}");
+    }
+    assert_eq!(
+        with_pooler_hint("relation \"t\" does not exist", Some("42P01")),
+        "relation \"t\" does not exist"
+    );
+    assert_eq!(with_pooler_hint("boom", None), "boom");
+}
+
+#[test]
 fn undecodable_cell_cannot_be_bound_as_null() {
     let params = [Value::Undecodable("NUMERIC".into())];
     assert!(matches!(

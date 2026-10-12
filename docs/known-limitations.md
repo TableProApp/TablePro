@@ -33,6 +33,7 @@ What the application does not do, or does differently from what you might expect
 
 ## Editing and connections
 
+- **PostgreSQL behind a connection pooler:** PgBouncer in session mode works. In transaction mode it works when the pooler supports prepared statements (PgBouncer 1.21 or newer with `max_prepared_statements` above 0); without that the server answers "prepared statement already exists" and the error now says so. Session features of the editor (`SET`, temporary tables, an open transaction across statements) need session pooling by design.
 - **SSH jump chains cannot be edited in the form** (UI-1b / [#548](https://github.com/cozyGarage/BookiE/issues/548)). They connect and run, but the form refuses to edit them until per-hop secrets, transport identity and the bundle format all land and pass together.
 - **Reusable SSH profiles cannot be edited** (UI-26).
 - **MySQL and MariaDB have no Unix socket endpoint in the connect dialog** ([#579](https://github.com/cozyGarage/BookiE/issues/579)). PostgreSQL sockets work; MySQL/MariaDB use TCP in the UI, and `Transport::Socket` is only for SSH-forwarded rendezvous.
