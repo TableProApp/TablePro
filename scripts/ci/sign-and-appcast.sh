@@ -4,23 +4,26 @@ set -euo pipefail
 # Signs release archives and publishes them into appcast.xml using Sparkle's generate_appcast,
 # the official tool for building Sparkle update feeds.
 #
-# generate_appcast only ever sees the release being published. It is never handed the existing
-# feed, and it never rewrites an item it did not create. Everything already published is merged
-# in afterwards by scripts/ci/merge-appcast.py, which splices text rather than re-serializing.
-# The reason is in that script's docstring: two writes in Sparkle's FeedXML.swift run outside its
-# `if createNewItem` guard, so a previously published item that a staged archive happens to match
-# has its download URL rewritten and its release notes dropped.
+# generate_appcast sees the release being published plus the archives of earlier releases it builds
+# deltas from, and writes one item. It is never handed the existing feed, and it never rewrites an
+# item it did not create. Everything already published is merged in afterwards by
+# scripts/ci/merge-appcast.py, which splices text rather than re-serializing. The reason is in that
+# script's docstring: two writes in Sparkle's FeedXML.swift run outside its `if createNewItem`
+# guard, so a previously published item that a staged archive happens to match has its download URL
+# rewritten and its release notes dropped.
 #
 # generate_appcast rejects two archives sharing a bundle version in one directory
 # (Unarchive.swift:96, SUSparkleErrorDomain 1002, reproduced against 2.9.5 and 2.10.0), so each
 # architecture gets its own staging directory and its own generate_appcast run.
 #
 # Usage: sign-and-appcast.sh <version>
-# Requires: SPARKLE_PRIVATE_KEY env var, artifacts/ directory with both architectures' ZIPs.
+# Requires: SPARKLE_PRIVATE_KEY env var, artifacts/ directory with both architectures' ZIPs,
+# and $DELTA_BASES/<arch>/ holding the earlier archives (fetch-delta-bases.sh), which may be empty.
 # Optional: CRITICAL_UPDATE=1 to mark the release critical.
 
 BASE_APPCAST="${BASE_APPCAST:-appcast.xml}"
 CRITICAL_UPDATE="${CRITICAL_UPDATE:-0}"
+DELTA_BASES="${DELTA_BASES:-delta-bases}"
 VERSION="${1:?Usage: sign-and-appcast.sh <version>}"
 
 if [ -z "${SPARKLE_PRIVATE_KEY:-}" ]; then
@@ -32,6 +35,13 @@ if [ ! -f "$BASE_APPCAST" ]; then
   echo "::error::base appcast $BASE_APPCAST does not exist"
   exit 1
 fi
+
+for arch in arm64 x86_64; do
+  if [ ! -d "$DELTA_BASES/$arch" ]; then
+    echo "::error::$DELTA_BASES/$arch does not exist; run scripts/ci/fetch-delta-bases.sh first"
+    exit 1
+  fi
+done
 
 # ---------------------------------------------------------------------------
 # 1. Extract the notes
@@ -65,27 +75,34 @@ SPARKLE_BIN="$SPARKLE_DIR/bin"
 DOWNLOAD_PREFIX="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-TableProApp/TablePro}/releases/download/v${VERSION}/"
 
 KEY_FILE=$(mktemp)
-trap 'rm -rf "$KEY_FILE"' EXIT
+STAGING_ROOT=$(mktemp -d)
+trap 'rm -rf "$KEY_FILE" "$STAGING_ROOT"' EXIT
 
 echo "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
 
 # ---------------------------------------------------------------------------
-# 3. Generate one item per architecture, each from an otherwise empty directory
+# 3. Generate one item per architecture, each in its own directory
 # ---------------------------------------------------------------------------
-# Two plain variables rather than an associative array: the macOS runners still ship bash 3.2,
-# where `declare -A` is a syntax error.
-ARM64_APPCAST=""
-X86_64_APPCAST=""
+generate_item() {
+  local arch="$1"
+  local zip="artifacts/TablePro-${VERSION}-${arch}.zip"
+  local staging="$STAGING_ROOT/$arch"
+  local bases=0
+  local base
 
-for arch in arm64 x86_64; do
-  ZIP="artifacts/TablePro-${VERSION}-${arch}.zip"
-  if [ ! -f "$ZIP" ]; then
-    echo "::error::$ZIP is missing, so the $arch build produced no update archive"
-    exit 1
+  if [ ! -f "$zip" ]; then
+    echo "::error::$zip is missing, so the $arch build produced no update archive"
+    return 1
   fi
 
-  STAGING=$(mktemp -d)
-  cp "$ZIP" "$STAGING/"
+  mkdir -p "$staging"
+  cp "$zip" "$staging/"
+  for base in "$DELTA_BASES/$arch"/*; do
+    if [ -f "$base" ]; then
+      cp "$base" "$staging/"
+      bases=$((bases + 1))
+    fi
+  done
 
   # Sparkle 2.9 renders Markdown natively, including code and links. Feeding hand-built HTML
   # left Markdown visible and interpreted literal SQL/XML angle brackets as HTML tags.
@@ -96,43 +113,75 @@ for arch in arm64 x86_64; do
     printf "# What's New in TablePro %s\n\n" "$VERSION"
     cat release_highlights.md
     printf '\n[View full changelog](https://docs.tablepro.app/changelog)\n'
-  } > "${STAGING}/TablePro-${VERSION}-${arch}.md"
+  } > "${staging}/TablePro-${VERSION}-${arch}.md"
 
   # Sparkle bypasses phasing for a critical item anyway, but passing both would be a contradiction
   # in the feed rather than a belt and braces.
-  GENERATE_FLAGS=()
+  local flags=()
   if [ "$CRITICAL_UPDATE" = "1" ]; then
     # An empty --critical-update-version writes <sparkle:criticalUpdate/> with no version
     # attribute, which SPUAppcastItemStateResolver treats as critical for every host.
-    GENERATE_FLAGS+=(--critical-update-version "")
+    flags+=(--critical-update-version "")
   else
     # Seven cohorts, so the interval times six is the tail: 21600 puts the last one 36 hours
     # behind, which fits inside the median gap between releases. A user-initiated check is never
     # phased, so Check for Updates always offers the newest build.
-    GENERATE_FLAGS+=(--phased-rollout-interval 21600)
+    flags+=(--phased-rollout-interval 21600)
   fi
 
   # --maximum-versions 1 states the invariant merge-appcast.py checks rather than leaving it as a
-  # consequence of the directory holding one archive.
+  # consequence of the directory holding one new archive. The earlier archives only feed deltas.
   "$SPARKLE_BIN/generate_appcast" \
     --ed-key-file "$KEY_FILE" \
     --download-url-prefix "$DOWNLOAD_PREFIX" \
     --embed-release-notes \
     --full-release-notes-url "https://docs.tablepro.app/changelog" \
     --maximum-versions 1 \
-    "${GENERATE_FLAGS[@]}" \
-    "$STAGING"
+    --maximum-deltas "$bases" \
+    "${flags[@]}" \
+    "$staging"
 
-  if [ ! -f "$STAGING/appcast.xml" ]; then
+  if [ ! -f "$staging/appcast.xml" ]; then
     echo "::error::generate_appcast produced no feed for $arch"
-    exit 1
+    return 1
   fi
+
+  python3 "$(dirname "$0")/name-deltas.py" \
+    --staging "$staging" \
+    --version "$VERSION" \
+    --arch "$arch" \
+    --download-prefix "$DOWNLOAD_PREFIX" \
+    --expect "$bases" \
+    --out-dir artifacts
+}
+
+# Building a delta takes about a minute and generate_appcast builds them one at a time, so the two
+# architectures run side by side. bash 3.2 on the runners has no associative arrays.
+generate_item arm64 > "$STAGING_ROOT/arm64.log" 2>&1 &
+ARM64_PID=$!
+generate_item x86_64 > "$STAGING_ROOT/x86_64.log" 2>&1 &
+X86_64_PID=$!
+
+FAILED=0
+for arch in arm64 x86_64; do
   if [ "$arch" = "arm64" ]; then
-    ARM64_APPCAST="$STAGING/appcast.xml"
+    pid="$ARM64_PID"
   else
-    X86_64_APPCAST="$STAGING/appcast.xml"
+    pid="$X86_64_PID"
+  fi
+  status=0
+  wait "$pid" || status=$?
+  echo "::group::generate_appcast $arch"
+  cat "$STAGING_ROOT/$arch.log"
+  echo "::endgroup::"
+  if [ "$status" -ne 0 ]; then
+    echo "::error::the $arch item could not be generated (exit $status)"
+    FAILED=1
   fi
 done
+if [ "$FAILED" -ne 0 ]; then
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # 4. Keep both signed items, and merge once here as a gate
@@ -147,8 +196,8 @@ done
 # in merge-appcast.py, which scripts/ci/test_merge_appcast.py covers on the Linux runner, because a
 # real release is the only thing that runs this script.
 mkdir -p appcast/items
-cp "$ARM64_APPCAST" appcast/items/arm64.xml
-cp "$X86_64_APPCAST" appcast/items/x86_64.xml
+cp "$STAGING_ROOT/arm64/appcast.xml" appcast/items/arm64.xml
+cp "$STAGING_ROOT/x86_64/appcast.xml" appcast/items/x86_64.xml
 
 python3 "$(dirname "$0")/merge-appcast.py" \
   --base "$BASE_APPCAST" \

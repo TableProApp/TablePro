@@ -9,6 +9,17 @@ internal enum MCPServerState: Sendable, Equatable {
     case failed(String)
 }
 
+internal enum MCPServerStartError: Error, LocalizedError, Equatable {
+    case turnedOff
+
+    internal var errorDescription: String? {
+        switch self {
+        case .turnedOff:
+            String(localized: "The MCP server is turned off. Turn it on in Settings > MCP.")
+        }
+    }
+}
+
 @MainActor
 internal final class MCPServerManager: ObservableObject {
     internal struct SessionSnapshot: Sendable, Identifiable {
@@ -40,6 +51,7 @@ internal final class MCPServerManager: ObservableObject {
 
     private let lifecycle = MCPServerLifecycleQueue()
     private let handshake: MCPHandshakeFile
+    private let isEnabled: @MainActor () -> Bool
 
     @Published private var composition: MCPServerComposition?
     @Published private var bridgeCredential: BridgeCredential?
@@ -61,15 +73,20 @@ internal final class MCPServerManager: ObservableObject {
         return nil
     }
 
-    private init(handshake: MCPHandshakeFile? = nil) {
+    internal init(
+        handshake: MCPHandshakeFile? = nil,
+        isEnabled: @escaping @MainActor () -> Bool = { AppSettingsManager.shared.mcp.enabled }
+    ) {
         self.handshake = handshake
             ?? MCPHandshakeFile(directory: AppStorageEnvironment.shared.supportDirectory)
+        self.isEnabled = isEnabled
     }
 
-    internal func start(port: UInt16) async {
-        await lifecycle.run { [weak self] in
+    internal func start(port: UInt16) async throws {
+        let refusal = await lifecycle.run { [weak self] in
             await self?.performStart(port: port)
         }
+        if let refusal { throw refusal }
     }
 
     internal func stop() async {
@@ -78,25 +95,13 @@ internal final class MCPServerManager: ObservableObject {
         }
     }
 
-    internal func restart(port: UInt16) async {
-        await lifecycle.run { [weak self] in
-            guard let self else { return }
-            await self.performStop()
-            await self.performStart(port: port)
+    internal func lazyStart() async throws {
+        let refusal = await lifecycle.run { [weak self] () async -> MCPServerStartError? in
+            guard let self else { return nil }
+            if self.isRunning, self.isEnabled() { return nil }
+            return await self.performStart(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
         }
-    }
-
-    internal func lazyStart() async {
-        await lifecycle.run { [weak self] in
-            guard let self, !self.isRunning else { return }
-            await self.performStart(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
-        }
-    }
-
-    internal func scheduleStart(port: UInt16) {
-        lifecycle.enqueue { [weak self] in
-            await self?.performStart(port: port)
-        }
+        if let refusal { throw refusal }
     }
 
     internal func scheduleStop() {
@@ -147,7 +152,18 @@ internal final class MCPServerManager: ObservableObject {
         await refreshClients()
     }
 
-    private func performStart(port: UInt16) async {
+    /// The one check every start path reaches, so no caller can bind a listener while MCP is off.
+    @discardableResult
+    private func performStart(port: UInt16) async -> MCPServerStartError? {
+        guard isEnabled() else {
+            await performStop()
+            handshake.writeRefusal(
+                MCPStartRefusal(pid: ProcessInfo.processInfo.processIdentifier, refusedAt: Date())
+            )
+            Self.logger.info("Refused to start the MCP server: it is turned off")
+            return .turnedOff
+        }
+
         if composition != nil {
             await performStop()
         }
@@ -176,16 +192,17 @@ internal final class MCPServerManager: ObservableObject {
             }
             guard self.generation == generation else {
                 await built.transport.stop()
-                return
+                return nil
             }
             await activate(built, generation: generation, store: store)
-            return
+            return nil
         }
 
         let failure = MCPPortAllocatorError.everyCandidateRejected(lastFailure: lastFailure)
         Self.logger.error("MCP server failed to start: \(lastFailure, privacy: .public)")
         state = .failed(failure.localizedDescription)
         tokenStore = nil
+        return nil
     }
 
     private func activate(_ built: MCPServerComposition, generation: Int, store: MCPTokenStore) async {
@@ -215,6 +232,7 @@ internal final class MCPServerManager: ObservableObject {
         await registerRevocationObserver(built, store: store, generation: generation)
 
         writeHandshake(port: boundPort, credential: credential)
+        handshake.removeRefusal()
         state = .running(port: boundPort)
         MCPAuditLogger.logServerStarted(port: boundPort)
     }

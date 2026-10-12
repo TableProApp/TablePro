@@ -39,6 +39,24 @@ public struct MCPHandshakePayload: Codable, Sendable, Equatable {
     }
 }
 
+public struct MCPStartRefusal: Codable, Sendable, Equatable {
+    public let pid: Int32
+    /// Seconds since 1970 with the fraction kept: an ISO 8601 date drops it, and a refusal from
+    /// earlier in the same second would then answer a launch it never saw.
+    public let refusedAt: TimeInterval
+
+    public init(pid: Int32, refusedAt: Date) {
+        self.pid = pid
+        self.refusedAt = refusedAt.timeIntervalSince1970
+    }
+
+    /// Only a refusal written after the launch answers it, so one left from an earlier run cannot
+    /// turn a client away once MCP is on again.
+    public func answers(launchRequestedAt: Date) -> Bool {
+        refusedAt >= launchRequestedAt.timeIntervalSince1970
+    }
+}
+
 public enum MCPHandshakeCoding {
     public static func encoder() -> JSONEncoder {
         let encoder = JSONEncoder()
@@ -56,10 +74,15 @@ public enum MCPHandshakeCoding {
 
 public enum MCPHandshakeLocation {
     public static let fileName = "mcp-handshake.json"
+    public static let refusalFileName = "mcp-start-refused.json"
     public static let sandboxEnvironmentVariable = "TABLEPRO_UI_TEST_SANDBOX"
 
     public static func file(in supportDirectory: URL) -> URL {
         supportDirectory.appendingPathComponent(fileName, isDirectory: false)
+    }
+
+    public static func refusalFile(in supportDirectory: URL) -> URL {
+        supportDirectory.appendingPathComponent(refusalFileName, isDirectory: false)
     }
 
     public static func supportDirectory(
@@ -257,30 +280,48 @@ internal final class MCPHandshakeFile {
         MCPHandshakeLocation.file(in: directory)
     }
 
+    internal var refusalUrl: URL {
+        MCPHandshakeLocation.refusalFile(in: directory)
+    }
+
     internal func write(_ payload: MCPHandshakePayload) {
         do {
-            try prepareDirectory()
-            let data = try MCPHandshakeCoding.encoder().encode(payload)
-            let staging = directory.appendingPathComponent(
-                ".\(MCPHandshakeLocation.fileName).\(UUID().uuidString)",
-                isDirectory: false
-            )
-            guard fileManager.createFile(
-                atPath: staging.path,
-                contents: data,
-                attributes: [.posixPermissions: 0o600]
-            ) else {
-                Self.logger.error("Could not stage the MCP handshake file")
-                return
-            }
-            if fileManager.fileExists(atPath: url.path) {
-                try fileManager.removeItem(at: url)
-            }
-            try fileManager.moveItem(at: staging, to: url)
+            try replace(url, with: MCPHandshakeCoding.encoder().encode(payload))
             Self.logger.info("Wrote the MCP handshake file at \(self.url.path, privacy: .private(mask: .hash))")
         } catch {
             Self.logger.error("Failed to write the MCP handshake file: \(error.publicLogShape, privacy: .public)")
         }
+    }
+
+    internal func writeRefusal(_ refusal: MCPStartRefusal) {
+        do {
+            try replace(refusalUrl, with: MCPHandshakeCoding.encoder().encode(refusal))
+        } catch {
+            Self.logger.error("Failed to write the MCP start refusal: \(error.publicLogShape, privacy: .public)")
+        }
+    }
+
+    internal func removeRefusal() {
+        remove(refusalUrl)
+    }
+
+    private func replace(_ destination: URL, with data: Data) throws {
+        try prepareDirectory()
+        let staging = directory.appendingPathComponent(
+            ".\(destination.lastPathComponent).\(UUID().uuidString)",
+            isDirectory: false
+        )
+        guard fileManager.createFile(
+            atPath: staging.path,
+            contents: data,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: staging, to: destination)
     }
 
     internal func removeIfWrittenByThisProcess(instanceId: String) {
@@ -303,12 +344,16 @@ internal final class MCPHandshakeFile {
     }
 
     private func remove() {
+        remove(url)
+    }
+
+    private func remove(_ file: URL) {
         do {
-            try fileManager.removeItem(at: url)
+            try fileManager.removeItem(at: file)
         } catch CocoaError.fileNoSuchFile {
             return
         } catch {
-            Self.logger.error("Failed to delete the handshake file: \(error.publicLogShape, privacy: .public)")
+            Self.logger.error("Failed to delete \(file.lastPathComponent, privacy: .public): \(error.publicLogShape, privacy: .public)")
         }
     }
 
