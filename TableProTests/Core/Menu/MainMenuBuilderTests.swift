@@ -100,6 +100,19 @@ struct MainMenuStructureTests {
         #expect(edit.items[editIndex].action == #selector(MainSplitViewController.editDocument(_:)))
     }
 
+    @Test("File's dump group holds Backup Dump and Restore Dump and nothing else")
+    func fileDumpGroupHoldsOnlyClientSideDumps() throws {
+        let file = try #require(buildMenu().items.first { $0.title == String(localized: "File") }?.submenu)
+        let start = try #require(file.items.firstIndex {
+            $0.action == #selector(MainSplitViewController.backupDatabase(_:))
+        })
+        let group = file.items[start...].prefix { !$0.isSeparatorItem }
+        #expect(group.map(\.action) == [
+            #selector(MainSplitViewController.backupDatabase(_:)),
+            #selector(MainSplitViewController.restoreDatabase(_:))
+        ])
+    }
+
     @Test("No two menu items share a title")
     func titlesAreUnique() {
         let titles = flatten(buildMenu())
