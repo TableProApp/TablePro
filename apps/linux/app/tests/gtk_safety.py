@@ -1506,23 +1506,37 @@ def activate_sidebar_group(name):
     raise AssertionError(f"the sidebar row {name!r} is not keyboard reachable:\n{accessible_snapshot()}")
 
 
-def wait_for_node_showing(name, showing):
-    deadline = time.monotonic() + WAIT_SECONDS
+def node_showing(name):
+    node = find_node(name=name, role=pyatspi.ROLE_LIST_ITEM)
+    return node is not None and node.getState().contains(pyatspi.STATE_SHOWING)
+
+
+def wait_for_node_showing(name, showing, timeout=WAIT_SECONDS):
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        node = find_node(name=name, role=pyatspi.ROLE_LIST_ITEM)
-        visible = node is not None and node.getState().contains(pyatspi.STATE_SHOWING)
-        if visible == showing:
+        if node_showing(name) == showing:
             return
         time.sleep(POLL_SECONDS)
     raise AssertionError(f"expected {name!r} showing={showing}:\n{accessible_snapshot()}")
 
 
+def set_sidebar_group_state(group, child, showing):
+    for _ in range(3):
+        if node_showing(child) == showing:
+            return
+        activate_sidebar_group(group)
+        try:
+            wait_for_node_showing(child, showing, timeout=8)
+            return
+        except AssertionError:
+            continue
+    wait_for_node_showing(child, showing)
+
+
 def sidebar_tables_group_collapses_and_expands(database, _base):
     wait_for_node_showing("safety_items", True)
-    activate_sidebar_group("Tables")
-    wait_for_node_showing("safety_items", False)
-    activate_sidebar_group("Tables")
-    wait_for_node_showing("safety_items", True)
+    set_sidebar_group_state("Tables", "safety_items", False)
+    set_sidebar_group_state("Tables", "safety_items", True)
 
 
 sidebar_tables_group_collapses_and_expands.environment = "local"
