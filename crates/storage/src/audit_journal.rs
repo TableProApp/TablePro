@@ -795,6 +795,21 @@ mod tests {
         assert!(error.is_err());
     }
 
+    #[test]
+    fn durable_creation_propagates_parent_sync_failure() {
+        let dir = TempDir::new().unwrap();
+        let parent = dir.path().join("journal");
+        std::fs::create_dir(&parent).unwrap();
+        let path = parent.join("audit.jsonl");
+        let opened = open_file(&path).unwrap();
+        assert!(opened.created);
+
+        let moved_parent = dir.path().join("moved-journal");
+        std::fs::rename(&parent, moved_parent).unwrap();
+
+        assert!(sync_created_file_and_parent(&opened, &path).is_err());
+    }
+
     #[tokio::test]
     async fn a_record_with_non_canonical_whitespace_in_its_event_json_still_verifies() {
         // Simulates a record written by a differently-formatted (but

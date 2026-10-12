@@ -1,0 +1,37 @@
+$ cargo test --locked -p tablepro-ssh --test agent_auth a_two_hop_chain_reaches_the_final_host -- --include-ignored --exact --test-threads=1
+
+Mutant: check_server_key returns false for every key.
+Expected: two-hop valid connection test fails.
+Observed: test failed as expected (mutant killed).
+
+   Compiling tablepro-ssh v0.1.0 (<worktree>/crates/ssh)
+warning: unused variable: `allow`
+   --> crates/ssh/src/lib.rs:406:13
+    |
+406 |         let allow = matches!(
+    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_allow`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tablepro-ssh` (lib) generated 1 warning (run `cargo fix --lib -p tablepro-ssh` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.16s
+     Running tests/agent_auth.rs (<shared-target>/debug/deps/agent_auth-079e5bc250e279d9)
+
+running 1 test
+test a_two_hop_chain_reaches_the_final_host ... FAILED
+
+failures:
+
+---- a_two_hop_chain_reaches_the_final_host stdout ----
+
+thread 'a_two_hop_chain_reaches_the_final_host' (1382392) panicked at crates/ssh/tests/agent_auth.rs:451:6:
+called `Result::unwrap()` on an `Err` value: Connect("Unknown server key")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    a_two_hop_chain_reaches_the_final_host
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 3.85s
+
+error: test failed, to rerun pass `-p tablepro-ssh --test agent_auth`

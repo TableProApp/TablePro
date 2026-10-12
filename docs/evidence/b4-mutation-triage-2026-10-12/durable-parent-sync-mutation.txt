@@ -1,0 +1,313 @@
+$ cargo test --locked -p tablepro-storage --lib audit_journal::tests::durable_creation_propagates_parent_sync_failure -- --exact --test-threads=1
+
+BASELINE PASS, exit 0
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.25
+   Compiling quote v1.0.47
+   Compiling libc v0.2.189
+   Compiling cfg-if v1.0.5
+   Compiling serde_core v1.0.229
+   Compiling typenum v1.20.1
+   Compiling equivalent v1.0.2
+   Compiling serde v1.0.229
+   Compiling version_check v0.9.5
+   Compiling hashbrown v0.17.1
+   Compiling autocfg v1.5.1
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-core v0.3.34
+   Compiling memchr v2.8.3
+   Compiling winnow v1.0.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling find-msvc-tools v0.1.12
+   Compiling shlex v2.0.1
+   Compiling futures-sink v0.3.34
+   Compiling log v0.4.34
+   Compiling smallvec v1.16.1
+   Compiling getrandom v0.4.3
+   Compiling once_cell v1.21.4
+   Compiling generic-array v0.14.7
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling bytes v1.12.1
+   Compiling num-traits v0.2.19
+   Compiling glob v0.3.4
+   Compiling futures-io v0.3.34
+   Compiling subtle v2.6.1
+   Compiling parking v2.2.1
+   Compiling pkg-config v0.3.34
+   Compiling object v0.39.1
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling indexmap v2.14.2
+   Compiling futures-channel v0.3.34
+   Compiling slab v0.4.12
+   Compiling clang-sys v1.9.1
+   Compiling futures-task v0.3.34
+   Compiling icu_normalizer_data v2.3.0
+   Compiling utf8_iter v1.0.4
+   Compiling icu_properties_data v2.3.0
+   Compiling event-listener v5.4.2
+   Compiling syn v3.0.6
+   Compiling syn v2.0.119
+   Compiling tracing-core v0.1.36
+   Compiling rustix v1.1.5
+   Compiling minimal-lexical v0.2.1
+   Compiling scopeguard v1.2.0
+   Compiling regex-syntax v0.8.11
+   Compiling endi v1.1.1
+   Compiling zmij v1.0.23
+   Compiling lock_api v0.4.14
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling jobserver v0.1.35
+   Compiling errno v0.3.14
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.3
+   Compiling nom v7.1.3
+   Compiling signal-hook-registry v1.4.8
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling cc v1.4.6
+   Compiling hybrid-array v0.4.15
+   Compiling digest v0.10.7
+   Compiling libloading v0.8.9
+   Compiling rust_decimal v1.43.0
+   Compiling bindgen v0.72.1
+   Compiling toml_edit v0.25.15+spec-1.1.0
+   Compiling itoa v1.0.18
+   Compiling bitflags v2.13.2
+   Compiling thiserror v2.0.20
+   Compiling iana-time-zone v0.1.65
+   Compiling linux-raw-sys v0.12.1
+   Compiling serde_json v1.0.151
+   Compiling parking_lot_core v0.9.12
+   Compiling either v1.18.0
+   Compiling crc32fast v1.5.2
+   Compiling fastrand v2.5.0
+   Compiling itertools v0.13.0
+   Compiling num-integer v0.1.47
+   Compiling regex-automata v0.4.18
+   Compiling proc-macro-crate v3.5.0
+   Compiling crossbeam-utils v0.8.23
+   Compiling uuid v1.26.1
+   Compiling cpufeatures v0.2.17
+   Compiling arrayvec v0.7.8
+   Compiling shlex v1.3.0
+   Compiling cmov v0.5.4
+   Compiling rustc-hash v2.1.3
+   Compiling serde_bytes v0.11.19
+   Compiling cexpr v0.6.0
+   Compiling ctutils v0.4.2
+   Compiling cmake v0.1.58
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling block-padding v0.3.3
+   Compiling bumpalo v3.20.3
+   Compiling stacker v0.1.25
+   Compiling vcpkg v0.2.15
+   Compiling const-oid v0.10.2
+   Compiling zlib-rs v0.6.8
+   Compiling foldhash v0.2.0
+   Compiling fs_extra v1.3.0
+   Compiling allocator-api2 v0.2.21
+   Compiling percent-encoding v2.3.2
+   Compiling simd-adler32 v0.3.10
+   Compiling dunce v1.0.5
+   Compiling zopfli v0.8.3
+   Compiling form_urlencoded v1.2.2
+   Compiling digest v0.11.3
+   Compiling aws-lc-sys v0.45.0
+   Compiling regex v1.13.1
+   Compiling hashbrown v0.16.1
+   Compiling inout v0.1.4
+   Compiling parking_lot v0.12.5
+   Compiling sha2 v0.10.9
+   Compiling event-listener-strategy v0.5.4
+   Compiling ar_archive_writer v0.5.3
+   Compiling typed-path v0.12.3
+   Compiling libm v0.2.16
+   Compiling crc-catalog v2.5.0
+   Compiling hex v0.4.3
+   Compiling crc v3.4.0
+   Compiling hashlink v0.11.1
+   Compiling crossbeam-queue v0.3.14
+   Compiling async-broadcast v0.7.2
+   Compiling futures-intrusive v0.5.0
+   Compiling synstructure v0.14.0
+   Compiling num-bigint v0.4.8
+   Compiling num-iter v0.1.46
+   Compiling futures-lite v2.6.1
+   Compiling hmac v0.12.1
+   Compiling spin v0.9.9
+   Compiling winnow v0.7.15
+   Compiling csv-core v0.1.13
+   Compiling ordered-stream v0.2.0
+   Compiling psm v0.1.32
+   Compiling rand_core v0.9.5
+   Compiling base64 v0.22.1
+   Compiling unicode_categories v0.1.1
+   Compiling cpufeatures v0.3.1
+   Compiling num-bigint-dig v0.9.1
+   Compiling ryu v1.0.23
+   Compiling rand v0.9.5
+   Compiling flume v0.12.0
+   Compiling csv v1.4.0
+   Compiling num-rational v0.4.2
+   Compiling serde_spanned v1.1.1
+   Compiling atoi v2.0.0
+   Compiling num-complex v0.4.6
+   Compiling zeroize_derive v1.5.0
+   Compiling enumflags2_derive v0.7.12
+   Compiling tracing-attributes v0.1.31
+   Compiling async-recursion v1.1.1
+   Compiling recursive-proc-macro-impl v0.1.1
+   Compiling flate2 v1.1.10
+   Compiling tempfile v3.27.0
+   Compiling recursive v0.1.1
+   Compiling zeroize v1.9.0
+   Compiling serde_derive v1.0.229
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.3
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling tokio-macros v2.7.2
+   Compiling futures-macro v0.3.34
+   Compiling thiserror-impl v2.0.20
+   Compiling async-trait v0.1.92
+   Compiling cipher v0.4.4
+   Compiling serde_repr v0.1.21
+   Compiling zip v8.6.0
+   Compiling sqlformat v0.5.0
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling tokio v1.53.1
+   Compiling aws-lc-rs v1.18.1
+   Compiling toml v1.1.6+spec-1.1.0
+   Compiling aes v0.8.4
+   Compiling tracing v0.1.44
+   Compiling futures-util v0.3.34
+   Compiling cbc v0.1.2
+   Compiling sqlparser v0.58.0
+   Compiling num v0.4.3
+   Compiling sha2 v0.11.0
+   Compiling pbkdf2 v0.12.2
+   Compiling hkdf v0.12.4
+   Compiling blake2 v0.11.0
+   Compiling md-5 v0.10.6
+   Compiling base64ct v1.8.3
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling argon2 v0.6.0
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling libsqlite3-sys v0.37.0
+   Compiling zvariant_utils v4.2.0
+   Compiling chrono v0.4.45
+   Compiling zcheapstr v1.1.0
+   Compiling enumflags2 v0.7.12
+   Compiling secrecy v0.10.3
+   Compiling icu_provider v2.3.1
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling zvariant_derive v5.15.0
+   Compiling futures-executor v0.3.34
+   Compiling futures v0.3.34
+   Compiling zvariant v5.15.0
+   Compiling rust_xlsxwriter v0.99.1
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling tokio-stream v0.1.19
+   Compiling tokio-util v0.7.19
+   Compiling sqlx-core v0.9.0
+   Compiling zbus_names v4.3.4
+   Compiling zbus_macros v5.19.0
+   Compiling tablepro-core v0.1.0 (<worktree>/crates/core)
+   Compiling sqlx-sqlite v0.9.0
+   Compiling zbus v5.19.0
+   Compiling sqlx v0.9.0
+   Compiling tablepro-policy v0.1.0 (<worktree>/crates/policy)
+   Compiling ashpd v0.13.13
+   Compiling oo7 v0.6.0
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 43.54s
+     Running unittests src/lib.rs (target/debug/deps/tablepro_storage-cdd4de18c746c756)
+
+running 1 test
+test audit_journal::tests::durable_creation_propagates_parent_sync_failure ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.00s
+
+
+KILLED: sync_created_file_and_parent returns success without syncing, exit 101
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.01s
+     Running unittests src/lib.rs (target/debug/deps/tablepro_storage-cdd4de18c746c756)
+
+running 1 test
+test audit_journal::tests::durable_creation_propagates_parent_sync_failure ... FAILED
+
+failures:
+
+---- audit_journal::tests::durable_creation_propagates_parent_sync_failure stdout ----
+
+thread 'audit_journal::tests::durable_creation_propagates_parent_sync_failure' (1362065) panicked at crates/storage/src/audit_journal.rs:807:9:
+assertion failed: sync_created_file_and_parent(&opened, &path).is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    audit_journal::tests::durable_creation_propagates_parent_sync_failure
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-storage --lib`
+
+KILLED: created-file guard inverted, exit 101
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.96s
+     Running unittests src/lib.rs (target/debug/deps/tablepro_storage-cdd4de18c746c756)
+
+running 1 test
+test audit_journal::tests::durable_creation_propagates_parent_sync_failure ... FAILED
+
+failures:
+
+---- audit_journal::tests::durable_creation_propagates_parent_sync_failure stdout ----
+
+thread 'audit_journal::tests::durable_creation_propagates_parent_sync_failure' (1362364) panicked at crates/storage/src/audit_journal.rs:810:9:
+assertion failed: sync_created_file_and_parent(&opened, &path).is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    audit_journal::tests::durable_creation_propagates_parent_sync_failure
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-storage --lib`
+
+KILLED: sync_parent returns success without syncing, exit 101
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.97s
+     Running unittests src/lib.rs (target/debug/deps/tablepro_storage-cdd4de18c746c756)
+
+running 1 test
+test audit_journal::tests::durable_creation_propagates_parent_sync_failure ... FAILED
+
+failures:
+
+---- audit_journal::tests::durable_creation_propagates_parent_sync_failure stdout ----
+
+thread 'audit_journal::tests::durable_creation_propagates_parent_sync_failure' (1362664) panicked at crates/storage/src/audit_journal.rs:807:9:
+assertion failed: sync_created_file_and_parent(&opened, &path).is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    audit_journal::tests::durable_creation_propagates_parent_sync_failure
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-storage --lib`

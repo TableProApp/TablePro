@@ -1,0 +1,120 @@
+$ bash scripts/test-secret-service.sh (isolated single-test selections; private D-Bus/keyring)
+
+KILLED: per-hop password defaults to empty with `tests::password_auth_uses_the_secret_bound_to_each_hop`; command `bash scripts/test-secret-service.sh`; exit 1
+
+running 1 test
+test tests::password_auth_uses_the_secret_bound_to_each_hop ... FAILED
+
+failures:
+
+---- tests::password_auth_uses_the_secret_bound_to_each_hop stdout ----
+
+thread 'tests::password_auth_uses_the_secret_bound_to_each_hop' (1389490) panicked at crates/transport/src/lib.rs:1128:9:
+assertion `left == right` failed
+  left: ["", ""]
+ right: ["fcb667c8-7eab-4874-91dc-7376c732ec85", "fdb973df-7bbb-4dc4-8e9d-6219b5b478c6"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::password_auth_uses_the_secret_bound_to_each_hop
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.09s
+
+
+   Compiling tablepro-core v0.1.0 (<worktree>/crates/core)
+   Compiling tablepro-ssh v0.1.0 (<worktree>/crates/ssh)
+   Compiling tablepro-policy v0.1.0 (<worktree>/crates/policy)
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+   Compiling tablepro-transport v0.1.0 (<worktree>/crates/transport)
+warning: unused import: `load_ssh_password`
+  --> crates/transport/src/lib.rs:13:99
+   |
+13 |     SavedConnection, SavedSshAuth, SavedSshConfig, SshClient, load_password, load_ssh_passphrase, load_ssh_password,
+   |                                                                                                   ^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tablepro-transport` (lib test) generated 1 warning (run `cargo fix --lib -p tablepro-transport --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.25s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_transport-57d2040d207989f0)
+error: test failed, to rerun pass `-p tablepro-transport --lib`
+
+isolated test failed or did not execute exactly once: tests::password_auth_uses_the_secret_bound_to_each_hop
+
+KILLED: per-hop passphrase omitted with `tests::ssh_passphrase_tests::private_key_passphrases_use_the_secret_bound_to_each_hop`; command `bash scripts/test-secret-service.sh`; exit 1
+
+running 1 test
+test tests::ssh_passphrase_tests::private_key_passphrases_use_the_secret_bound_to_each_hop ... FAILED
+
+failures:
+
+---- tests::ssh_passphrase_tests::private_key_passphrases_use_the_secret_bound_to_each_hop stdout ----
+
+thread 'tests::ssh_passphrase_tests::private_key_passphrases_use_the_secret_bound_to_each_hop' (1390106) panicked at crates/transport/src/tests/ssh_passphrase_tests.rs:39:5:
+assertion `left == right` failed
+  left: [None, None]
+ right: [Some("1a4d1e3b-1d36-439f-b444-0afd18f179fa"), Some("47286fd5-c659-44c9-9ce3-3a56016bfea7")]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::ssh_passphrase_tests::private_key_passphrases_use_the_secret_bound_to_each_hop
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.09s
+
+
+   Compiling tablepro-transport v0.1.0 (<worktree>/crates/transport)
+warning: unused import: `load_ssh_passphrase`
+  --> crates/transport/src/lib.rs:13:78
+   |
+13 |     SavedConnection, SavedSshAuth, SavedSshConfig, SshClient, load_password, load_ssh_passphrase, load_ssh_password,
+   |                                                                              ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tablepro-transport` (lib test) generated 1 warning (run `cargo fix --lib -p tablepro-transport --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.04s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_transport-57d2040d207989f0)
+error: test failed, to rerun pass `-p tablepro-transport --lib`
+
+isolated test failed or did not execute exactly once: tests::ssh_passphrase_tests::private_key_passphrases_use_the_secret_bound_to_each_hop
+
+KILLED: bundle secret adapter stores nothing with `connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials`; command `bash scripts/test-secret-service.sh`; exit 1
+
+running 1 test
+test connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials ... FAILED
+
+failures:
+
+---- connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials stdout ----
+
+thread 'connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials' (1390781) panicked at crates/storage/src/connection_bundle_tests.rs:969:5:
+assertion `left == right` failed
+  left: None
+ right: Some("hop-secret")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.02s
+
+
+   Compiling tablepro-policy v0.1.0 (<worktree>/crates/policy)
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+warning: struct `Keyring` is never constructed
+  --> crates/storage/src/connection_bundle_secret_transaction.rs:23:8
+   |
+23 | struct Keyring;
+   |        ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tablepro-storage` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.77s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_storage-cdd4de18c746c756)
+error: test failed, to rerun pass `-p tablepro-storage --lib`
+
+isolated test failed or did not execute exactly once: connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials

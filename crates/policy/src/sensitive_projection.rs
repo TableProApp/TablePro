@@ -154,6 +154,17 @@ mod tests {
     }
 
     #[test]
+    fn a_wildcard_over_a_derived_table_keeps_unrelated_columns_visible() {
+        let positions = sensitive_projection(
+            "SELECT * FROM (SELECT amount AS a FROM orders) t",
+            "postgres",
+            &sensitive_patterns(),
+            1,
+        );
+        assert_eq!(positions, vec![false]);
+    }
+
+    #[test]
     fn a_wildcard_over_a_derived_join_is_redacted_fail_closed() {
         let positions = sensitive_projection(
             "SELECT * FROM (SELECT amount AS a FROM orders) t JOIN audit_log ON t.a = audit_log.amount",

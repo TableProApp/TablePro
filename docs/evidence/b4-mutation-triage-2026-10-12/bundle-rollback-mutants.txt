@@ -1,0 +1,79 @@
+$ bash scripts/test-secret-service.sh (isolated single-test mutation probes; private D-Bus/keyring)
+
+KILLED: legacy credential rollback: database and SSH password deletes become no-ops; selector `rolling_back_an_import_removes_only_the_credentials_it_wrote`; exit 1
+running 1 test
+test connection_bundle::tests::rolling_back_an_import_removes_only_the_credentials_it_wrote ... FAILED
+
+failures:
+
+---- connection_bundle::tests::rolling_back_an_import_removes_only_the_credentials_it_wrote stdout ----
+
+thread 'connection_bundle::tests::rolling_back_an_import_removes_only_the_credentials_it_wrote' (1485833) panicked at crates/storage/src/connection_bundle_tests.rs:953:5:
+assertion failed: crate::secrets::load_password(target).await.unwrap().is_none()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    connection_bundle::tests::rolling_back_an_import_removes_only_the_credentials_it_wrote
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.09s
+
+
+   Compiling tablepro-policy v0.1.0 (<worktree>/crates/policy)
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.79s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_storage-cdd4de18c746c756)
+error: test failed, to rerun pass `-p tablepro-storage --lib`
+
+isolated test failed or did not execute exactly once: connection_bundle::tests::rolling_back_an_import_removes_only_the_credentials_it_wrote
+
+KILLED: per-hop password rollback: hop password deletion becomes a no-op; selector `rolling_back_a_bundle_import_removes_its_per_hop_credentials`; exit 1
+running 1 test
+test connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials ... FAILED
+
+failures:
+
+---- connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials stdout ----
+
+thread 'connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials' (1486164) panicked at crates/storage/src/connection_bundle_tests.rs:978:5:
+assertion failed: crate::secrets::load_ssh_hop_password(target, hop_id,
+                5).await.unwrap().is_none()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.11s
+
+
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.68s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_storage-cdd4de18c746c756)
+error: test failed, to rerun pass `-p tablepro-storage --lib`
+
+isolated test failed or did not execute exactly once: connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials
+
+
+BASELINE: both rollback cleanup selectors on unmutated source
+running 1 test
+test connection_bundle::tests::rolling_back_an_import_removes_only_the_credentials_it_wrote ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.14s
+
+
+   Compiling tablepro-storage v0.1.0 (<worktree>/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.65s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_storage-cdd4de18c746c756)
+
+
+running 1 test
+test connection_bundle::tests::rolling_back_a_bundle_import_removes_its_per_hop_credentials ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.13s
+
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_storage-cdd4de18c746c756)
+
+keyring: 2 tests executed successfully

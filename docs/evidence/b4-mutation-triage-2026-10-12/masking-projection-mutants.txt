@@ -1,0 +1,53 @@
+$ cargo test --locked -p tablepro-policy --lib <exact regression selector> -- --exact --test-threads=1
+
+KILLED: delete ! in select_projection_sensitivity with sensitive_projection::tests::a_wildcard_over_a_derived_table_keeps_unrelated_columns_visible; exit 101
+   Compiling tablepro-policy v0.1.0 (<worktree>/crates/policy)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.42s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
+
+running 1 test
+test sensitive_projection::tests::a_wildcard_over_a_derived_table_keeps_unrelated_columns_visible ... FAILED
+
+failures:
+
+---- sensitive_projection::tests::a_wildcard_over_a_derived_table_keeps_unrelated_columns_visible stdout ----
+
+thread 'sensitive_projection::tests::a_wildcard_over_a_derived_table_keeps_unrelated_columns_visible' (1394070) panicked at crates/policy/src/sensitive_projection.rs:164:9:
+assertion `left == right` failed
+  left: [true]
+ right: [false]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sensitive_projection::tests::a_wildcard_over_a_derived_table_keeps_unrelated_columns_visible
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 226 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-policy --lib`
+
+KILLED: replace == with != in text_identifiers with sensitive_projection::tests::a_sensitive_identifier_with_underscores_keeps_its_full_name; exit 101
+   Compiling tablepro-policy v0.1.0 (<worktree>/crates/policy)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.41s
+     Running unittests src/lib.rs (<shared-target>/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
+
+running 1 test
+test sensitive_projection::tests::a_sensitive_identifier_with_underscores_keeps_its_full_name ... FAILED
+
+failures:
+
+---- sensitive_projection::tests::a_sensitive_identifier_with_underscores_keeps_its_full_name stdout ----
+
+thread 'sensitive_projection::tests::a_sensitive_identifier_with_underscores_keeps_its_full_name' (1394373) panicked at crates/policy/src/sensitive_projection.rs:187:9:
+assertion `left == right` failed
+  left: [false]
+ right: [true]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sensitive_projection::tests::a_sensitive_identifier_with_underscores_keeps_its_full_name
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 226 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-policy --lib`

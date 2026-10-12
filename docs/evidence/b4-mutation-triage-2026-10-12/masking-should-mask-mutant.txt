@@ -1,0 +1,214 @@
+$ cargo test --locked -p tablepro-policy --test guard_transparency a_human_guard_preserves_results_that_agent_masking_would_hide -- --exact --test-threads=1
+
+Mutant: PolicyGuard::should_mask returns true.
+Expected: test fails.
+Observed: test failed as expected (mutant killed).
+
+   Compiling log v0.4.34
+   Compiling slab v0.4.12
+   Compiling smallvec v1.16.1
+   Compiling tracing-core v0.1.36
+   Compiling futures-channel v0.3.34
+   Compiling num-traits v0.2.19
+   Compiling zeroize v1.9.0
+   Compiling http v1.5.0
+   Compiling tokio v1.53.1
+   Compiling aws-lc-sys v0.45.0
+   Compiling aws-lc-rs v1.18.1
+   Compiling httparse v1.10.1
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling tower-service v0.3.3
+   Compiling rustls v0.23.45
+   Compiling untrusted v0.9.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling subtle v2.6.1
+   Compiling icu_normalizer v2.3.0
+   Compiling atomic-waker v1.1.2
+   Compiling try-lock v0.2.5
+   Compiling fnv v1.0.7
+   Compiling futures-util v0.3.34
+   Compiling openssl-probe v0.2.1
+   Compiling httpdate v1.0.3
+   Compiling want v0.3.1
+   Compiling anyhow v1.0.104
+   Compiling rustix v1.1.5
+   Compiling sync_wrapper v1.0.2
+   Compiling either v1.18.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling tower-layer v0.3.3
+   Compiling regex-syntax v0.8.11
+   Compiling rust_decimal v1.43.0
+   Compiling tracing v0.1.44
+   Compiling itertools v0.14.0
+   Compiling openssl-sys v0.9.117
+   Compiling idna_adapter v1.2.2
+   Compiling mime v0.3.17
+   Compiling rustversion v1.0.23
+   Compiling uuid v1.26.1
+   Compiling idna v1.1.0
+   Compiling pin-project-internal v1.1.13
+   Compiling getrandom v0.3.4
+   Compiling matchit v0.8.4
+   Compiling http-body v1.1.0
+   Compiling zerocopy v0.8.57
+   Compiling http-body-util v0.1.5
+   Compiling chrono v0.4.45
+   Compiling url v2.5.8
+   Compiling num-integer v0.1.47
+   Compiling chacha20 v0.10.2
+   Compiling rustls-native-certs v0.8.4
+   Compiling axum-core v0.5.6
+   Compiling aho-corasick v1.1.5
+   Compiling base64 v0.23.1
+   Compiling ident_case v1.0.1
+   Compiling strsim v0.11.1
+   Compiling zopfli v0.8.3
+   Compiling rand v0.10.2
+   Compiling darling_core v0.24.1
+   Compiling ureq-proto v0.6.4
+   Compiling pin-project v1.1.13
+   Compiling parking_lot_core v0.9.12
+   Compiling prost-derive v0.14.4
+   Compiling crypto-common v0.1.7
+   Compiling openssl v0.10.81
+   Compiling bollard-buildkit-proto v0.7.0
+   Compiling utf8-zero v0.8.1
+   Compiling foreign-types-shared v0.1.1
+   Compiling portable-atomic v1.15.0
+   Compiling foreign-types v0.3.2
+   Compiling regex-automata v0.4.18
+   Compiling zip v8.6.0
+   Compiling digest v0.10.7
+   Compiling parking_lot v0.12.5
+   Compiling rand_core v0.9.5
+   Compiling num-bigint v0.4.8
+   Compiling secrecy v0.10.3
+   Compiling structmeta-derive v0.3.0
+   Compiling openssl-macros v0.1.1
+   Compiling deranged v0.5.8
+   Compiling futures-executor v0.3.34
+   Compiling num-conv v0.2.2
+   Compiling native-tls v0.2.18
+   Compiling futures v0.3.34
+   Compiling time-core v0.1.9
+   Compiling powerfmt v0.2.0
+   Compiling tinyvec v1.13.3
+   Compiling byteorder v1.5.0
+   Compiling tempfile v3.27.0
+   Compiling rust_xlsxwriter v0.99.1
+   Compiling prost v0.14.4
+   Compiling sha2 v0.10.9
+   Compiling unicode-normalization v0.1.25
+   Compiling futures-intrusive v0.5.0
+   Compiling structmeta v0.3.0
+   Compiling num-rational v0.4.2
+   Compiling prost-types v0.14.4
+   Compiling encoding_rs v0.8.41
+   Compiling multiversion-macros v0.9.0
+   Compiling time v0.3.55
+   Compiling num-iter v0.1.46
+   Compiling num-complex v0.4.6
+   Compiling hmac v0.13.0
+   Compiling webpki-roots v1.0.9
+   Compiling async-stream-impl v0.3.6
+   Compiling unicode-bidi v0.3.18
+   Compiling unicode-properties v0.1.4
+   Compiling hkdf v0.13.0
+   Compiling num v0.4.3
+   Compiling xattr v1.6.1
+   Compiling tokio-util v0.7.19
+   Compiling tokio-stream v0.1.19
+   Compiling async-stream v0.3.6
+   Compiling stringprep v0.1.5
+   Compiling atoi v2.0.0
+   Compiling md-5 v0.11.0
+   Compiling darling_macro v0.24.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling simdutf8 v0.1.5
+   Compiling multiversion v0.9.0
+   Compiling core_detect v1.0.0
+   Compiling home v0.5.12
+   Compiling darling v0.24.1
+   Compiling dotenvy v0.15.7
+   Compiling serde_with_macros v3.23.0
+   Compiling multiversion_no_op v1.0.0
+   Compiling whoami v2.1.3
+   Compiling winnow v1.0.4
+   Compiling astral-tokio-tar v0.6.4
+   Compiling h2 v0.4.19
+   Compiling tower v0.5.3
+   Compiling regex v1.13.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling enumflags2 v0.7.12
+   Compiling ferroid v2.0.0
+   Compiling rand_chacha v0.9.0
+   Compiling asynchronous-codec v0.7.0
+   Compiling serde_with v3.23.0
+   Compiling docker_credential v1.4.0
+   Compiling tiberius-macros v0.1.0
+   Compiling tablepro-core v0.1.0 (<worktree>/crates/core)
+   Compiling axum v0.8.9
+   Compiling rand v0.9.5
+   Compiling etcetera v0.11.0
+   Compiling parse-display-derive v0.9.1
+   Compiling futures-timer v3.0.4
+   Compiling connection-string v0.2.0
+   Compiling async-native-tls v0.6.0
+   Compiling pretty-hex v0.4.2
+   Compiling lazy_static v1.5.0
+   Compiling toml v1.1.6+spec-1.1.0
+   Compiling sharded-slab v0.1.7
+   Compiling sqlparser v0.58.0
+   Compiling tiberius v0.13.0
+   Compiling matchers v0.2.0
+   Compiling tracing-serde v0.2.0
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling nu-ansi-term v0.50.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling parse-display v0.9.1
+   Compiling hyper v1.11.1
+   Compiling tablepro-driver-mssql v0.1.0 (<worktree>/crates/drivers/mssql)
+   Compiling hyper-util v0.1.20
+   Compiling hyper-timeout v0.5.2
+   Compiling hyperlocal v0.9.1
+   Compiling tonic v0.14.6
+   Compiling tonic-prost v0.14.6
+   Compiling tablepro-policy v0.1.0 (<worktree>/crates/policy)
+   Compiling rustls-webpki v0.103.15
+   Compiling ureq v3.4.2
+   Compiling tokio-rustls v0.26.5
+   Compiling sqlx-core v0.9.0
+   Compiling hyper-rustls v0.27.9
+   Compiling sqlx-postgres v0.9.0 (<worktree>/vendor/sqlx-postgres)
+   Compiling bollard-stubs v1.52.1-rc.29.1.3
+   Compiling sqlx v0.9.0
+   Compiling tablepro-driver-postgres v0.1.0 (<worktree>/crates/drivers/postgres)
+   Compiling bollard v0.20.2
+   Compiling testcontainers v0.27.3
+   Compiling testcontainers-modules v0.15.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 46.50s
+     Running tests/guard_transparency.rs (target/debug/deps/guard_transparency-eb81b02117688599)
+
+running 1 test
+test a_human_guard_preserves_results_that_agent_masking_would_hide ... FAILED
+
+failures:
+
+---- a_human_guard_preserves_results_that_agent_masking_would_hide stdout ----
+
+thread 'a_human_guard_preserves_results_that_agent_masking_would_hide' (1370204) panicked at crates/policy/tests/guard_transparency.rs:232:5:
+assertion `left == right` failed
+  left: Text("***REDACTED***")
+ right: Text("first-secret")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    a_human_guard_preserves_results_that_agent_masking_would_hide
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-policy --test guard_transparency`

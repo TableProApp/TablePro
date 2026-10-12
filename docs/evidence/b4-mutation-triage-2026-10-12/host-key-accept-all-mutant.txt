@@ -1,0 +1,23 @@
+$ cargo test --locked -p tablepro-ssh --test agent_auth declining_a_built_in_host_key_does_not_learn_it -- --include-ignored --exact --test-threads=1
+
+Mutant: check_server_key returns true for every key.
+Observed: decline test still returns UnknownHostKey, records no known_hosts entry, and passes.
+Source trace: connect_and_auth checks HostKeyOutcome::Unknown before calling authenticate; this mutation does not reach authentication.
+
+   Compiling tablepro-ssh v0.1.0 (<worktree>/crates/ssh)
+warning: unused variable: `allow`
+   --> crates/ssh/src/lib.rs:406:13
+    |
+406 |         let allow = matches!(
+    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_allow`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tablepro-ssh` (lib) generated 1 warning (run `cargo fix --lib -p tablepro-ssh` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.81s
+     Running tests/agent_auth.rs (<shared-target>/debug/deps/agent_auth-079e5bc250e279d9)
+
+running 1 test
+test declining_a_built_in_host_key_does_not_learn_it ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 1.98s
