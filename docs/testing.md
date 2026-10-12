@@ -12,6 +12,10 @@ Command catalogs, layer boundaries and CI ownership live in the [validation play
 
 Run from the repository root. Current scope and acceptance are in [the active sprint](bookie-0.2-sprint.md); dated audits stay in [archive](archive/).
 
+## What a container run proves
+
+Database fixtures, the GTK scenarios and the distro-floor jobs run in containers or virtual displays. A pass there shows the code behaves as designed against a disposable database; it is not acceptance of a connection path. Unix sockets, IPv6 loopback, desktop portals and the Secret Service behave differently on a real host, and a container run has already hidden one such difference (Docker does not publish `::1`). Acceptance for those paths is the installed package connecting to a real database on a native desktop, recorded under PKG-1 and in the [manual checklist](manual-verification-0.2-features.md).
+
 ## Local checks and fixtures
 
 Use `./scripts/preflight.sh` for the quick non-GTK gate and `python3 scripts/run-test-layer.py quick` / `full` for the playbook layers. Keep both `--lib` and `--bins` when invoking Cargo unit tests directly. `tablepro-app` puts UI and service tests in the `tablepro_app` library; `agentd` still has tests in both targets. DuckDB stays out of the default gate because its optional native build is large.
