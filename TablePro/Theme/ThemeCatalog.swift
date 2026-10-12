@@ -17,16 +17,7 @@ internal struct RejectedThemeRecord: Equatable, Sendable {
 
 internal enum ThemeOrigin: Sendable {
     case bundle
-    case registry
     case user
-
-    internal var allowedPrefix: String? {
-        switch self {
-        case .bundle: return ThemeDefinition.builtInPrefix
-        case .registry: return ThemeDefinition.registryPrefix
-        case .user: return nil
-        }
-    }
 }
 
 /// Owns the list. Loading is off the main actor; every mutation updates the in-memory list
@@ -78,22 +69,11 @@ internal final class ThemeCatalog: ObservableObject {
     }
 
     internal func delete(id: String) throws {
-        guard !id.hasPrefix(ThemeDefinition.builtInPrefix), !id.hasPrefix(ThemeDefinition.registryPrefix) else {
+        guard !id.hasPrefix(ThemeDefinition.builtInPrefix) else {
             throw ThemeLoadError.reservedIdentifier(id)
         }
         try Self.remove(id: id, from: Self.userDirectory)
         themes.removeAll { $0.id == id }
-    }
-
-    internal func saveRegistryTheme(_ theme: ThemeDefinition) throws {
-        try Self.write(theme, to: Self.registryDirectory)
-        upsert(theme)
-    }
-
-    internal func deleteRegistryTheme(id: String) throws {
-        try Self.remove(id: id, from: Self.registryDirectory)
-        themes.removeAll { $0.id == id }
-        rejected.removeAll { $0.fileName == "\(id).json" }
     }
 
     internal func importTheme(from url: URL) throws -> ThemeDefinition {
@@ -111,27 +91,6 @@ internal final class ThemeCatalog: ObservableObject {
 
     internal func exportTheme(_ theme: ThemeDefinition, to url: URL) throws {
         try ThemeEncoder.data(for: theme).write(to: url, options: .atomic)
-    }
-
-    internal func loadRegistryMeta() -> RegistryThemeMeta {
-        let url = Self.registryMetaURL
-        guard FileManager.default.fileExists(atPath: url.path) else { return RegistryThemeMeta() }
-        do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(RegistryThemeMeta.self, from: try Data(contentsOf: url))
-        } catch {
-            Self.logger.error("Failed to load registry meta: \(error)")
-            return RegistryThemeMeta()
-        }
-    }
-
-    internal func saveRegistryMeta(_ meta: RegistryThemeMeta) throws {
-        Self.ensureDirectory(Self.registryDirectory)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        try encoder.encode(meta).write(to: Self.registryMetaURL, options: .atomic)
     }
 
     private func containsTheme(id: String) -> Bool {
@@ -152,12 +111,6 @@ internal final class ThemeCatalog: ObservableObject {
         AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro/Themes", isDirectory: true)
 
-    nonisolated private static let registryDirectory: URL =
-        userDirectory.appendingPathComponent("Registry", isDirectory: true)
-
-    nonisolated private static let registryMetaURL: URL =
-        registryDirectory.appendingPathComponent("registry-meta.json")
-
     // MARK: - Disk
 
     nonisolated private static func loadContents() -> ThemeCatalogContents {
@@ -165,11 +118,9 @@ internal final class ThemeCatalog: ObservableObject {
         var rejected: [RejectedThemeRecord] = []
 
         ensureDirectory(userDirectory)
-        ensureDirectory(registryDirectory)
 
         let sources: [(URL, ThemeOrigin)] = [
             (Bundle.main.resourceURL, .bundle),
-            (registryDirectory, .registry),
             (userDirectory, .user),
         ].compactMap { url, source in url.map { ($0, source) } }
 
@@ -206,7 +157,7 @@ internal final class ThemeCatalog: ObservableObject {
         let files: [URL]
         do {
             files = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-                .filter { $0.pathExtension == "json" && $0.lastPathComponent != "registry-meta.json" }
+                .filter { $0.pathExtension == "json" }
         } catch {
             logger.error("Failed to list \(directory.lastPathComponent): \(error)")
             return ([], [])
@@ -240,19 +191,14 @@ internal final class ThemeCatalog: ObservableObject {
         return (themes, rejected)
     }
 
-    /// A reserved prefix is accepted only from the directory that owns it. A file dropped into the
-    /// user folder claiming `tablepro.` or `registry.` would otherwise shadow the real theme, be
-    /// read-only because the prefix says built-in, and be impossible to delete.
+    /// A user file claiming `tablepro.` would shadow the built-in theme, read as read-only and be
+    /// impossible to delete.
     nonisolated private static func validate(identifier: String, from source: ThemeOrigin) throws {
         guard ThemeIdentifier.isValid(identifier) else {
             throw ThemeLoadError.invalidIdentifier(identifier)
         }
-
-        let reserved = [ThemeDefinition.builtInPrefix, ThemeDefinition.registryPrefix]
-        for prefix in reserved where identifier.hasPrefix(prefix) {
-            guard source.allowedPrefix == prefix else {
-                throw ThemeLoadError.reservedIdentifier(identifier)
-            }
+        guard source == .bundle || !identifier.hasPrefix(ThemeDefinition.builtInPrefix) else {
+            throw ThemeLoadError.reservedIdentifier(identifier)
         }
     }
 

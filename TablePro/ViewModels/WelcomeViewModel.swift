@@ -699,9 +699,7 @@ final class WelcomeViewModel: ObservableObject {
     func performConnectionErrorRecovery() {
         guard let recovery = connectionErrorRecovery else { return }
         dismissConnectionError()
-        ConnectionRecoveryPerformer.perform(recovery.action, for: recovery.connection) { [weak self] in
-            self?.connectToDatabase(recovery.connection)
-        }
+        ConnectionRecoveryPerformer.perform(recovery.action, for: recovery.connection)
     }
 
     func dismissConnectionError() {

@@ -97,9 +97,7 @@ internal final class LaunchIntentRouter {
             recoveryTitle: action.title,
             window: NSApp.keyWindow
         ) {
-            ConnectionRecoveryPerformer.perform(action, for: connection) {
-                Task { await LaunchIntentRouter.shared.route(intent) }
-            }
+            ConnectionRecoveryPerformer.perform(action, for: connection)
         }
         return true
     }
