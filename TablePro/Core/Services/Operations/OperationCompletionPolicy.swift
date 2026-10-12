@@ -9,13 +9,13 @@ internal enum CompletionSuppression: Equatable, Sendable {
     case cancelled
     case belowThreshold
     case resultOnScreen
-    case kindDisabled
+    case notificationsOff
 }
 
 /// What should happen now that an operation has finished.
 ///
 /// The tab marker and the notification are separate channels on purpose. The marker is the
-/// in-app one and does not depend on notification permission, on the per-kind toggles, or on
+/// in-app one and does not depend on notification permission, on the notification switch, or on
 /// the user ever having seen a banner, so a user who denied notifications still gets told which
 /// tab finished while they were away.
 internal struct CompletionDecision: Equatable {
@@ -72,9 +72,9 @@ internal enum OperationCompletionPolicy {
         /// keyed on a tab change and returning to the app is not one.
         let marksOwnerUnseen = !visibility.ownerIsSelectedInWindow
 
-        guard settings.isEnabled(for: completion.kind) else {
+        guard settings.isEnabled else {
             return CompletionDecision(
-                notification: nil, marksOwnerUnseen: marksOwnerUnseen, suppression: .kindDisabled
+                notification: nil, marksOwnerUnseen: marksOwnerUnseen, suppression: .notificationsOff
             )
         }
 

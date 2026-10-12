@@ -100,20 +100,8 @@ struct OperationCompletionPolicyTests {
         }
     }
 
-    @Test("A disabled kind still marks the tab but posts nothing")
-    func disabledKindStillMarksTheTab() {
-        var settings = NotificationSettings()
-        settings.setEnabled(false, for: .query)
-        let decision = OperationCompletionPolicy.decide(
-            completion: completion(), visibility: .offScreen, settings: settings
-        )
-        #expect(decision.notification == nil)
-        #expect(decision.marksOwnerUnseen)
-        #expect(decision.suppression == .kindDisabled)
-    }
-
-    @Test("Turning notifications off entirely still marks the tab")
-    func masterSwitchStillMarksTheTab() {
+    @Test("Turning notifications off still marks the tab")
+    func switchOffStillMarksTheTab() {
         let decision = OperationCompletionPolicy.decide(
             completion: completion(),
             visibility: .offScreen,
@@ -121,6 +109,17 @@ struct OperationCompletionPolicyTests {
         )
         #expect(decision.notification == nil)
         #expect(decision.marksOwnerUnseen)
+        #expect(decision.suppression == .notificationsOff)
+    }
+
+    @Test("With notifications on, every kind posts")
+    func everyKindPostsWhileOn() {
+        for kind in TrackedOperationKind.allCases {
+            let decision = OperationCompletionPolicy.decide(
+                completion: completion(kind: kind), visibility: .offScreen, settings: .default
+            )
+            #expect(decision.notification != nil, "\(kind.rawValue)")
+        }
     }
 
     /// One tab owns its query, its structure changes, its row saves and its fetch-all. Keying the
@@ -182,12 +181,19 @@ struct OperationCompletionPolicyTests {
         #expect(NotificationSettings(thresholdSeconds: 99_999).validatedThresholdSeconds == 600)
     }
 
-    /// Stored as the kinds that are OFF, so a kind added by a later release arrives enabled
-    /// instead of being silently absent from an older stored set.
-    @Test("A kind the stored settings have never heard of is enabled")
-    func unknownKindDefaultsToEnabled() {
-        let settings = NotificationSettings(disabledKindIds: ["somethingOlderBuildsNeverKnew"])
-        #expect(settings.isEnabled(for: .backup))
+    @Test("Stored settings with per-kind choices load with the switch and the threshold intact")
+    func storedKindChoicesAreIgnored() throws {
+        let suiteName = "notifications-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            Data(#"{"isEnabled":false,"thresholdSeconds":60,"disabledKindIds":["query","backup"]}"#.utf8),
+            forKey: "com.TablePro.settings.notifications"
+        )
+
+        let settings = AppSettingsStorage(userDefaults: defaults).loadNotifications()
+
+        #expect(settings == NotificationSettings(isEnabled: false, thresholdSeconds: 60))
     }
 
     /// Automatic grammar agreement returns its own markup verbatim when the catalog has no entry
