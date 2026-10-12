@@ -16,6 +16,7 @@ enum PluginError: LocalizedError {
     case notFound
     case registryUnreachable
     case noCompatibleBinary
+    case appTooOldForPlugin(oldestPublishedKit: Int, appKit: Int)
     case installFailed(String)
     case pluginConflict(existingName: String)
     case appVersionTooOld(minimumRequired: String, currentApp: String)
@@ -55,6 +56,8 @@ enum PluginError: LocalizedError {
             return String(localized: "Couldn't reach the plugin registry. Check your connection and try again.")
         case .noCompatibleBinary:
             return String(localized: "Plugin does not contain a compatible binary for this architecture")
+        case .appTooOldForPlugin:
+            return String(localized: "This plugin needs a newer version of TablePro. Update TablePro, then install it again.")
         case .installFailed(let reason):
             return String(format: String(localized: "Plugin installation failed: %@"), reason)
         case .pluginConflict(let existingName):
@@ -113,7 +116,8 @@ enum PluginError: LocalizedError {
 
     var isPermanentReconciliationFailure: Bool {
         switch self {
-        case .noCompatibleBinary, .incompatibleVersion, .incompatibleWithCurrentApp, .appVersionTooOld:
+        case .noCompatibleBinary, .appTooOldForPlugin, .incompatibleVersion, .incompatibleWithCurrentApp,
+             .appVersionTooOld:
             return true
         default:
             return false

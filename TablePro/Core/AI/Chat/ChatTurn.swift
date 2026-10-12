@@ -3,8 +3,9 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
+import os
 
 enum ChatRole: String, Codable, Sendable {
     case user
@@ -22,11 +23,11 @@ enum ChatContentBlockKind: Sendable, Equatable {
     case sqlWalkthrough(SqlWalkthroughBlock)
 }
 
-@MainActor @Observable
-final class ChatContentBlock: Identifiable {
+@MainActor
+final class ChatContentBlock: ObservableObject, Identifiable {
     let id: UUID
-    var kind: ChatContentBlockKind
-    var isStreaming: Bool
+    @Published var kind: ChatContentBlockKind
+    @Published var isStreaming: Bool
 
     init(id: UUID = UUID(), kind: ChatContentBlockKind, isStreaming: Bool = false) {
         self.id = id
@@ -94,15 +95,15 @@ extension ChatContentBlock {
     }
 }
 
-@MainActor @Observable
-final class ChatTurn: Identifiable {
+@MainActor
+final class ChatTurn: ObservableObject, Identifiable {
     let id: UUID
     let role: ChatRole
-    var blocks: [ChatContentBlock]
+    @Published var blocks: [ChatContentBlock]
     let timestamp: Date
-    var usage: AITokenUsage?
-    var modelId: String?
-    var providerId: String?
+    @Published var usage: AITokenUsage?
+    @Published var modelId: String?
+    @Published var providerId: String?
 
     init(
         id: UUID = UUID(),
@@ -363,8 +364,8 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
         modelId = try container.decodeIfPresent(String.self, forKey: .modelId)
         providerId = try container.decodeIfPresent(String.self, forKey: .providerId)
 
-        if let decodedBlocks = try container.decodeIfPresent([ChatContentBlockWire].self, forKey: .blocks) {
-            blocks = decodedBlocks
+        if let decodedBlocks = try container.decodeIfPresent([LossyContentBlockWire].self, forKey: .blocks) {
+            blocks = decodedBlocks.compactMap(\.block)
         } else {
             let legacyContainer = try decoder.container(keyedBy: LegacyKeys.self)
             if let legacyText = try legacyContainer.decodeIfPresent(String.self, forKey: .content) {
@@ -402,6 +403,38 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
 
     private enum LegacyKeys: String, CodingKey {
         case content
+    }
+}
+
+private struct LossyContentBlockWire: Decodable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ChatTurnWire")
+
+    let block: ChatContentBlockWire?
+
+    init(from decoder: Decoder) throws {
+        do {
+            block = try ChatContentBlockWire(from: decoder)
+        } catch {
+            block = nil
+            let kind = Self.describeKind(in: decoder)
+            Self.logger.warning("Skipped a chat block that could not be decoded: kind=\(kind, privacy: .public)")
+        }
+    }
+
+    private enum ProbeKeys: String, CodingKey {
+        case kind, attachment
+    }
+
+    private static func describeKind(in decoder: Decoder) -> String {
+        guard let container = try? decoder.container(keyedBy: ProbeKeys.self),
+              let kind = try? container.decode(String.self, forKey: .kind) else {
+            return "unreadable"
+        }
+        guard let attachment = try? container.nestedContainer(keyedBy: ProbeKeys.self, forKey: .attachment),
+              let attachmentKind = try? attachment.decode(String.self, forKey: .kind) else {
+            return kind
+        }
+        return "\(kind)/\(attachmentKind)"
     }
 }
 

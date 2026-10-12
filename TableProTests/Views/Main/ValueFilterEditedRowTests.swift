@@ -18,7 +18,6 @@ private final class EditedRowLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Value filter after an edit takes a row out of its match")
 @MainActor
 struct ValueFilterEditedRowTests {
     private struct Fixture {
@@ -180,7 +179,7 @@ struct ValueFilterEditedRowTests {
         fixture.coordinator.selectionState.indices = [0]
 
         let statements = try fixture.coordinator.sidebarEditStatements(
-            editedFields: [(columnIndex: 1, columnName: "name", newValue: "Yan")]
+            editedFields: [InspectorFieldEdit(columnIndex: 1, columnName: "name", newValue: "Yan")]
         )
 
         #expect(statements.count == 1)

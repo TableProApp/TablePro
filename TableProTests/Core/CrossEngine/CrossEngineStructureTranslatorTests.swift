@@ -3,9 +3,9 @@
 //  TableProTests
 //
 
+@testable import TablePro
 import TableProPluginKit
 import XCTest
-@testable import TablePro
 
 final class CrossEngineStructureTranslatorTests: XCTestCase {
     private func column(
@@ -20,7 +20,10 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         onUpdate: String? = nil,
         extra: String? = nil,
         generation: String? = nil,
-        isPrimaryKey: Bool = false
+        isPrimaryKey: Bool = false,
+        ddlSpelling: String? = nil,
+        ddlDefault: String? = nil,
+        ddlGenerationExpression: String? = nil
     ) -> EditableColumnDefinition {
         EditableColumnDefinition(
             id: UUID(),
@@ -37,7 +40,10 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
             extra: extra,
             generationExpression: generation,
             generationKind: generation == nil ? nil : .stored,
-            isPrimaryKey: isPrimaryKey
+            isPrimaryKey: isPrimaryKey,
+            ddlSpelling: ddlSpelling,
+            ddlDefault: ddlDefault,
+            ddlGenerationExpression: ddlGenerationExpression
         )
     }
 
@@ -96,6 +102,34 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         XCTAssertFalse(
             CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mariadb).translated
         )
+    }
+
+    func testASameFamilyCopyKeepsTheServersTypeSpelling() {
+        let shape = column("shape", "geometry", ddlSpelling: "public.geometry(Point,4326)")
+        let result = CrossEngineStructureTranslator.translate(
+            snapshot(columns: [shape]), from: .postgresql, to: .postgresql
+        )
+        XCTAssertEqual(result.snapshot.columns.map(\.ddlSpelling), ["public.geometry(Point,4326)"])
+    }
+
+    /// `DATE` renders as `DATE` on MySQL, so a spelling cleared only by a changed `dataType` would
+    /// have carried PostgreSQL's text into a MySQL table.
+    func testATranslatedColumnCarriesNoSourceSpellings() {
+        let made = column("made", "DATE", defaultValue: "CURRENT_DATE", ddlSpelling: "date", ddlDefault: "CURRENT_DATE")
+        let shape = column(
+            "shape",
+            "geometry",
+            generation: "st_x(shape)",
+            ddlSpelling: "public.geometry(Point,4326)",
+            ddlGenerationExpression: "public.st_x(shape)"
+        )
+        let result = CrossEngineStructureTranslator.translate(
+            snapshot(columns: [made, shape]), from: .postgresql, to: .mysql
+        )
+        XCTAssertTrue(result.translated)
+        XCTAssertEqual(result.snapshot.columns.map(\.ddlSpelling), [nil, nil])
+        XCTAssertEqual(result.snapshot.columns.map(\.ddlDefault), [nil, nil])
+        XCTAssertEqual(result.snapshot.columns.map(\.ddlGenerationExpression), [nil, nil])
     }
 
     // MARK: - Types
@@ -186,6 +220,16 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         }
     }
 
+    /// A MySQL or MariaDB nullable column reads back with a NULL default. Carried across, SQL Server
+    /// turns it into a named default constraint on every such column, and a later DROP COLUMN on the
+    /// target then fails on each one. No default means the same thing on every engine.
+    func testANullDefaultIsNotCarriedAcross() {
+        let source = snapshot(columns: [column("nickname", "VARCHAR(50)", defaultValue: "NULL")])
+        let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mssql)
+        XCTAssertNil(result.snapshot.columns[0].defaultValue)
+        XCTAssertFalse(result.notes.contains { $0.subject == "nickname" })
+    }
+
     func testAPostgresCastIsStrippedFromALiteralDefault() {
         let source = snapshot(columns: [column("state", "character varying(10)", defaultValue: "'new'::character varying")])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
@@ -219,6 +263,21 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         XCTAssertNil(result.snapshot.columns[0].generationExpression)
         XCTAssertNil(result.snapshot.columns[0].generationKind)
         XCTAssertTrue(result.notes.contains { $0.subject == "total" })
+    }
+
+    /// The review keeps a type change to one line, cut in the middle, because a spelling such as an
+    /// `ENUM` value list has no space to wrap at. A note written as a sentence still wraps.
+    func testATypeChangeIsMarkedApartFromASentence() throws {
+        let source = snapshot(columns: [
+            column("status", "enum('pending','paid','shipped','delivered','cancelled','refunded')"),
+            column("total", "DECIMAL(10,2)", generation: "price * quantity")
+        ])
+        let result = CrossEngineStructureTranslator.translate(source, from: .mariadb, to: .postgresql)
+        let status = try XCTUnwrap(result.notes.first { $0.subject == "status" })
+        XCTAssertTrue(status.isTypeChange)
+        XCTAssertTrue(status.summary.hasSuffix("→ VARCHAR(9)"))
+        let total = try XCTUnwrap(result.notes.first { $0.subject == "total" })
+        XCTAssertFalse(total.isTypeChange)
     }
 
     // MARK: - Keys and indexes
@@ -311,7 +370,7 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         let source = snapshot(columns: [column("flag", "TINYINT(1)"), column("made", "DATETIME")])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
         XCTAssertEqual(result.targetKinds["flag"], .boolean)
-        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: nil, hasTimeZone: false))
+        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: 6, hasTimeZone: false))
     }
 
     /// The kinds describe what was written, not what was read. Carrying the source's answer over
@@ -326,12 +385,12 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
 
-        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["DATETIME", "JSON", "TINYINT(1)"])
-        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: nil, hasTimeZone: false))
+        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["DATETIME(6)", "JSON", "TINYINT(1)"])
+        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: 6, hasTimeZone: false))
         XCTAssertEqual(result.targetKinds["tags"], .json)
         XCTAssertEqual(result.targetKinds["live"], .boolean)
 
-        XCTAssertEqual(result.sourceKinds["made"], .timestamp(precision: nil, hasTimeZone: true))
+        XCTAssertEqual(result.sourceKinds["made"], .timestamp(precision: 6, hasTimeZone: true))
         XCTAssertEqual(result.sourceKinds["tags"], .array(element: .integer(bytes: 4)))
         XCTAssertEqual(result.sourceKinds["live"], .boolean)
     }

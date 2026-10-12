@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Export service state")
 struct ExportServiceRedisTests {
 
     @Test("ExportState initializes with correct defaults")

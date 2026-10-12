@@ -9,7 +9,6 @@ import Testing
 import TableProSyncTransport
 @testable import TablePro
 
-@Suite("ConnectionStorage Additional Fields")
 @MainActor
 struct ConnectionStorageAdditionalFieldsTests {
     private let storage: ConnectionStorage

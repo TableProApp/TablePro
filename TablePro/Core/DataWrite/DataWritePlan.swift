@@ -58,8 +58,30 @@ struct RowWriteOperation: Codable, Sendable, Equatable {
     let writtenColumns: [String]
     /// Why this row cannot be rewound, or nil when it can.
     let refusal: RewindRefusal?
+    /// The columns the row had no field for before the write, on an engine that tells a missing
+    /// field from NULL. Nil in a record saved before that was captured.
+    var preImageAbsentColumns: Set<Int>?
+    /// The same for the row as the write left it.
+    var postImageAbsentColumns: Set<Int>?
 
     var isReversible: Bool { refusal == nil }
+
+    /// The fields to leave missing when the row is put back as it was before the write.
+    ///
+    /// A record saved before absence was captured holds NULL for both, and the app of that time
+    /// put every NULL back as a missing field, so that is what it still means.
+    var absentColumnsBeforeWrite: Set<Int> {
+        preImageAbsentColumns ?? Self.nullColumns(of: preImage)
+    }
+
+    var absentColumnsAfterWrite: Set<Int> {
+        postImageAbsentColumns ?? Self.nullColumns(of: postImage)
+    }
+
+    private static func nullColumns(of image: [PluginCellValue]?) -> Set<Int> {
+        guard let image else { return [] }
+        return Set(image.indices.filter { image[$0].isNull })
+    }
 }
 
 /// One statement, and how many rows it is allowed to touch.
@@ -73,21 +95,27 @@ struct DataWriteStep: Sendable {
     let kind: Kind
     let statement: ParameterizedStatement
     /// The most rows this statement may legitimately touch, or nil when the engine's count for it
-    /// carries no meaning: DDL, a session setting, or a statement a plugin wrote itself, where
-    /// nothing tells the host which rows went into it.
+    /// carries no meaning: DDL, a session setting, or a statement a plugin wrote itself for a table
+    /// with a primary key, where nothing tells the host which rows went into it.
     let expectedRowCount: Int?
     let tableName: String?
+    /// Whether this statement finds its rows by matching every column, because the table declares no
+    /// primary key. Such a match can silently find nothing, so unlike a keyed write it is held to
+    /// the count it expected rather than only to an upper bound.
+    let matchesRowsWithoutKey: Bool
 
     init(
         kind: Kind,
         statement: ParameterizedStatement,
         expectedRowCount: Int? = nil,
-        tableName: String? = nil
+        tableName: String? = nil,
+        matchesRowsWithoutKey: Bool = false
     ) {
         self.kind = kind
         self.statement = statement
         self.expectedRowCount = expectedRowCount
         self.tableName = tableName
+        self.matchesRowsWithoutKey = matchesRowsWithoutKey
     }
 }
 
@@ -117,13 +145,18 @@ struct DataWritePlan: Sendable {
     /// failure that got there.
     let epilogue: [String]
 
+    /// Whether the steps depend on the prologue having run. Turning foreign keys off is a courtesy a failure can skip;
+    /// SQL Server's `IDENTITY_INSERT` is not, since every restoring INSERT then fails, so the run stops first.
+    let prologueIsRequired: Bool
+
     init(
         scope: DatabaseScope,
         databaseType: DatabaseType,
         steps: [DataWriteStep],
         rowOperations: [RowWriteOperation] = [],
         prologue: [String] = [],
-        epilogue: [String] = []
+        epilogue: [String] = [],
+        prologueIsRequired: Bool = false
     ) {
         self.scope = scope
         self.databaseType = databaseType
@@ -131,6 +164,7 @@ struct DataWritePlan: Sendable {
         self.rowOperations = rowOperations
         self.prologue = prologue
         self.epilogue = epilogue
+        self.prologueIsRequired = prologueIsRequired
     }
 
     var statements: [ParameterizedStatement] {

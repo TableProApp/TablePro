@@ -11,7 +11,7 @@ private func args(_ tokens: String...) -> [Data] { tokens.map { Data($0.utf8) } 
 private func spec(first: Int, last: Int, step: Int, response: RedisResponsePolicy? = nil) -> RedisCommandSpec {
     RedisCommandSpec(
         name: "test", firstKey: first, lastKey: last, step: step,
-        isReadOnly: false, hasMovableKeys: false, requestPolicy: .multiShard, responsePolicy: response
+        isReadOnly: false, isWrite: false, hasMovableKeys: false, requestPolicy: .multiShard, responsePolicy: response
     )
 }
 
@@ -20,7 +20,6 @@ private func slotOf(_ key: Data) -> Int {
     (String(data: key, encoding: .utf8)?.hasPrefix("a") ?? false) ? 100 : 200
 }
 
-@Suite("Redis multi-shard planner - splitting")
 struct RedisMultiShardPlannerSplitTests {
     @Test("Keys are grouped by the slot they hash to")
     func groupsBySlot() throws {
@@ -107,7 +106,6 @@ struct RedisMultiShardPlannerSplitTests {
     }
 }
 
-@Suite("Redis multi-shard planner - reassembly")
 struct RedisMultiShardPlannerScatterTests {
     @Test("MGET comes back in the order the caller asked for its keys")
     func preservesKeyOrder() throws {
@@ -161,5 +159,20 @@ struct RedisMultiShardPlannerScatterTests {
             keyIndices: commandSpec.keyIndices(forArgumentCount: arguments.count)
         )
         #expect(combined.errorMessage == "NOPERM")
+    }
+
+    @Test("A slot group queued by an open block is reported as queued, not scattered as nils")
+    func surfacesQueuedGroup() throws {
+        let arguments = args("MGET", "a1", "b1")
+        let commandSpec = spec(first: 1, last: -1, step: 1)
+        let groups = try #require(
+            RedisMultiShardPlanner.split(arguments: arguments, spec: commandSpec, slotOf: slotOf)
+        )
+        let combined = RedisMultiShardPlanner.scatterInKeyOrder(
+            groups: groups,
+            replies: [.array([.string("valueA1")]), .status("QUEUED")],
+            keyIndices: commandSpec.keyIndices(forArgumentCount: arguments.count)
+        )
+        #expect(combined.isQueued)
     }
 }

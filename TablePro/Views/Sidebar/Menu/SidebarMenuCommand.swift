@@ -15,12 +15,15 @@ import TableProPluginKit
 internal enum SidebarMenuCommand: Equatable {
     case createTable
     case createView
+    case createDatabase
     /// Carries the database and schema of the section it was raised from, because a tree lists
     /// every database and schema, and a template opened against the browsed one would create the
     /// type somewhere else: PostgreSQL cannot reach another database by qualifying the name.
     case createType(database: String?, schema: String?)
     case filterDatabases
     case showAllDatabases
+    case filterSchemas
+    case showAllSchemas
     case openInNewTab(DatabaseTreeTableRef)
     case editViewDefinition(DatabaseTreeTableRef)
     case copyDDL(DatabaseTreeTableRef)
@@ -48,7 +51,10 @@ internal enum SidebarMenuCommand: Equatable {
     /// and every later command on that row would name an object that does not exist.
     case beginRenameTable(ref: DatabaseTreeTableRef, isRecentRow: Bool)
     case renameContainer(DatabaseContainerRef)
+    case createSchema(database: String?)
+    case editSchema(DatabaseContainerRef)
     case toggleFavorite(DatabaseTreeTableRef)
+    case tableFolder(TableFolderCommand)
     case removeRecent(DatabaseTreeTableRef)
     case clearRecents
     case useAsActive(DatabaseContainerRef)
@@ -70,10 +76,24 @@ internal enum SidebarMenuCommand: Equatable {
     case refreshHierarchicalSchema(String)
     case copyText(String)
     case showObjectSource(DatabaseObjectRef)
+    case refreshRedisKeys
     case copyRedisNamespacePrefix(String)
     case copyRedisKey(String)
-    case openRedisKey(key: String, keyType: String)
+    case openRedisKey(key: String, keyType: String?)
     case toggleObjectIcons
     case toggleObjectComments
+    case toggleSystemContainers
+    case togglePartitions
     case setRowSize(SidebarRowSizePreference)
+}
+
+/// Folders only record which objects belong to them, so none of these reaches the database and
+/// none is withheld on a read-only connection.
+internal enum TableFolderCommand: Equatable {
+    case create(TableFolderContainer)
+    case createHolding([DatabaseTreeTableRef])
+    case move([DatabaseTreeTableRef], into: TableFolder)
+    case remove([DatabaseTreeTableRef])
+    case rename(TableFolder)
+    case delete(TableFolder)
 }

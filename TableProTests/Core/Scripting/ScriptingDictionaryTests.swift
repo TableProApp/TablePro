@@ -15,7 +15,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Scripting dictionary")
 struct ScriptingDictionaryTests {
     // MARK: - Loading
 
@@ -271,6 +270,20 @@ struct ScriptingDictionaryTests {
         }
     }
 
+    /// Measured with a throwaway scriptable app: a property named `result sets` beside a record type named
+    /// `result set` compiles, and AppleScript then reads it as every element of that type and answers `{}`.
+    @Test("No record property is named the plural of a record type")
+    func propertiesAreNotPluralsOfRecordTypes() throws {
+        let records = try suite().elements(forName: "record-type")
+        let plurals = Set(records.compactMap { $0.attribute(forName: "name")?.stringValue }.map { $0 + "s" })
+        for record in records {
+            for property in record.elements(forName: "property") {
+                let name = property.attribute(forName: "name")?.stringValue ?? ""
+                #expect(!plurals.contains(name), "'\(name)' reads as every element of a record type, not the property")
+            }
+        }
+    }
+
     // MARK: - The encoder and the dictionary agree
 
     @Test("Every record key the encoder writes is declared in the dictionary")
@@ -285,6 +298,16 @@ struct ScriptingDictionaryTests {
         for key in ScriptingKeys.QueryResult.all + ScriptingKeys.ResultRow.all {
             #expect(declared.contains(key), "'\(key)' is written by the encoder but not declared")
         }
+    }
+
+    @Test("Every key of a result set is declared on the result set record type")
+    func resultSetKeysAreDeclared() throws {
+        let resultSet = try #require(
+            try suite().elements(forName: "record-type")
+                .first { $0.attribute(forName: "name")?.stringValue == "result set" }
+        )
+        let declared = Set(resultSet.elements(forName: "property").map { cocoaKey(of: $0) })
+        #expect(declared == Set(ScriptingKeys.ResultSet.all))
     }
 
     @Test("Every command parameter key the commands read is declared in the dictionary")
@@ -328,9 +351,84 @@ struct ScriptingDictionaryTests {
         }
         for kind in [
             TabType.query, .table, .createTable, .erDiagram,
-            .serverDashboard, .usersRoles, .insights, .objectSource
+            .serverDashboard, .usersRoles, .insights, .objectSource, .versionHistory
         ] {
             #expect(declared.contains(ScriptEnumerations.code(for: kind)), "no enumerator for \(kind)")
+        }
+        for color in ConnectionColor.allCases {
+            #expect(declared.contains(ScriptEnumerations.code(for: color)), "no enumerator for \(color)")
+        }
+    }
+
+    @Test("The connection color enumeration names each color in lowercase, as MCP does")
+    func connectionColorEnumerators() throws {
+        let enumeration = try #require(
+            try suite().elements(forName: "enumeration")
+                .first { $0.attribute(forName: "name")?.stringValue == "connection color" }
+        )
+        var nameByCode: [FourCharCode: String] = [:]
+        for enumerator in enumeration.elements(forName: "enumerator") {
+            let code = try #require(enumerator.attribute(forName: "code")?.stringValue)
+            nameByCode[ScriptEnumerations.fourCharCode(code)] = enumerator.attribute(forName: "name")?.stringValue
+        }
+
+        #expect(nameByCode.count == ConnectionColor.allCases.count)
+        for color in ConnectionColor.allCases {
+            #expect(nameByCode[ScriptEnumerations.code(for: color)] == (color.externalName ?? "none"))
+        }
+    }
+
+    // MARK: - Connection properties
+
+    private func connectionProperties() throws -> [String: XMLElement] {
+        let connectionClass = try #require(
+            try suite().elements(forName: "class")
+                .first { $0.attribute(forName: "name")?.stringValue == "connection" }
+        )
+        var byName: [String: XMLElement] = [:]
+        for property in connectionClass.elements(forName: "property") {
+            guard let name = property.attribute(forName: "name")?.stringValue else { continue }
+            byName[name] = property
+        }
+        return byName
+    }
+
+    private func declaredType(of property: XMLElement) -> (type: String?, isList: Bool) {
+        if let type = property.attribute(forName: "type")?.stringValue {
+            return (type, false)
+        }
+        let element = property.elements(forName: "type").first
+        return (
+            element?.attribute(forName: "type")?.stringValue,
+            element?.attribute(forName: "list")?.stringValue == "yes"
+        )
+    }
+
+    @Test("A connection declares its color, group path, group color and tags, all read only")
+    func connectionLabelProperties() throws {
+        let properties = try connectionProperties()
+        let expected: [(name: String, type: String, isList: Bool, key: String)] = [
+            ("color", "connection color", false, "color"),
+            ("group path", "text", true, "groupPath"),
+            ("group color", "connection color", false, "groupColor"),
+            ("tags", "text", true, "tagNames")
+        ]
+        for property in expected {
+            let element = try #require(properties[property.name], "no '\(property.name)' property")
+            let declared = declaredType(of: element)
+            #expect(declared.type == property.type, "'\(property.name)' is not \(property.type)")
+            #expect(declared.isList == property.isList, "'\(property.name)' list-ness is wrong")
+            #expect(cocoaKey(of: element) == property.key)
+            #expect(element.attribute(forName: "access")?.stringValue == "r")
+        }
+    }
+
+    @Test("A connection exposes no user name")
+    func connectionExposesNoUserName() throws {
+        for (name, element) in try connectionProperties() {
+            for spelling in [name, cocoaKey(of: element)] {
+                #expect(!spelling.lowercased().contains("user"), "'\(spelling)' exposes the account name")
+            }
         }
     }
 

@@ -106,7 +106,7 @@ final class ChatGPTCodexCallbackServer: @unchecked Sendable {
             case .ready:
                 self?.finishReady(.success(()))
             case .failed(let error):
-                Self.logger.error("Callback listener failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Callback listener failed: \(error.publicLogShape, privacy: .public)")
                 self?.finishReady(.failure(ServerError.portInUse))
                 self?.finishCode(.failure(ServerError.portInUse))
             default:

@@ -4,15 +4,14 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 /// The gate is the one impure half of the decision: it reads the engine's curated matrix and its
 /// capability flags, and every call site in the Structure tab asks it rather than reading a flag of
 /// its own. They used to read them separately, which is how the footer, the Edit menu's Add Row, the
 /// row context menu and the grid's own paste path each got to a different answer. (#2726)
-@Suite("Structure Edit Gate")
 @MainActor
 struct StructureEditGateTests {
     private func gate(_ kind: TableInfo.TableType, _ type: DatabaseType = .postgresql) -> StructureEditGate {
@@ -26,6 +25,31 @@ struct StructureEditGateTests {
         for operation in StructureEditOperation.allCases {
             #expect(table.allows(operation), "table refused \(operation)")
         }
+    }
+
+    /// A collection declares no columns, so the two column edits it takes are the two that can be
+    /// carried out on its documents. This is the gate that kept every MongoDB collection read-only.
+    @Test("A MongoDB collection renames and removes fields and refuses every other structure edit")
+    func mongoDBCollectionEdits() {
+        let collection = gate(.table, .mongodb)
+        #expect(collection.allowsAnyEdit)
+        #expect(collection.allows(.renameColumn))
+        #expect(collection.allows(.dropColumn))
+        for operation in StructureEditOperation.allCases where operation != .renameColumn && operation != .dropColumn {
+            #expect(!collection.allows(operation), "collection allowed \(operation)")
+        }
+        #expect(collection.editableColumnFields == [.name])
+    }
+
+    @Test("MongoDB's refusals say what MongoDB support cannot generate, not that a collection has no indexes")
+    func mongoDBRefusalWording() {
+        let collection = gate(.table, .mongodb)
+        #expect(collection.resolve(.addColumn).unavailableReason == String(
+            format: String(localized: "%@ cannot make this change to a table's columns."), "MongoDB"
+        ))
+        #expect(collection.resolve(.addIndex).unavailableReason == String(
+            format: String(localized: "%@ cannot add or remove a table's indexes."), "MongoDB"
+        ))
     }
 
     @Test("A PostgreSQL view refuses a column and an index but keeps a rename and a default")
@@ -49,6 +73,60 @@ struct StructureEditGateTests {
         #expect(matview.allows(.dropIndex))
         #expect(!matview.allows(.setDefault))
         #expect(!matview.allows(.addForeignKey))
+    }
+
+    /// PGlite is PostgreSQL 17 running the same driver and the same `CREATE INDEX` and `DROP INDEX`,
+    /// and it was left on the tables-only matrix, which refused a matview's index as if the server
+    /// did. (#2522)
+    @Test("PGlite offers a materialized view the same edits PostgreSQL does")
+    func pgliteMatchesPostgreSQL() {
+        #expect(PluginManager.shared.structureEditMatrix(for: .pglite) == .postgreSQL)
+        let matview = gate(.materializedView, .pglite)
+        #expect(matview.allows(.addIndex))
+        #expect(matview.allows(.dropIndex))
+        #expect(!matview.allows(.setDefault))
+    }
+
+    @Test("A materialized view is offered no trigger, while a view and a table keep theirs")
+    func triggersFollowTheKind() {
+        #expect(!gate(.materializedView).allowsTriggerEditing)
+        #expect(!gate(.systemTable).allowsTriggerEditing)
+        #expect(gate(.table).allowsTriggerEditing)
+        #expect(gate(.view).allowsTriggerEditing)
+        #expect(gate(.foreignTable).allowsTriggerEditing)
+    }
+
+    /// SQLite, SQL Server and Oracle take an `INSTEAD OF` trigger on a view, and none of them has a
+    /// curated edit matrix, so triggers cannot be a cell of it without taking that away.
+    @Test("An uncurated engine keeps New Trigger on a view")
+    func uncuratedEngineKeepsViewTriggers() {
+        #expect(gate(.view, .sqlite).allowsTriggerEditing)
+        #expect(!gate(.view, .sqlite).allowsAnyEdit)
+    }
+
+    @Test("An engine without trigger editing offers none on any kind")
+    func engineWithoutTriggerEditing() {
+        #expect(!gate(.table, .clickhouse).allowsTriggerEditing)
+    }
+
+    /// Refusing the commit while the editor stayed open dropped whatever was typed, so the lock and
+    /// the commit guard come from this one rule.
+    @Test("A list whose add the object refuses locks every field, so nothing typed is dropped")
+    func refusedAddLocksTheWholeList() {
+        #expect(gate(.view).locksField(at: 0, on: .indexes, orderedFields: []))
+        #expect(gate(.view).lockedFieldIndices(on: .indexes, orderedFields: [], fieldCount: 5) == Set(0..<5))
+        #expect(!gate(.materializedView).locksField(at: 0, on: .indexes, orderedFields: []))
+        #expect(gate(.materializedView).locksField(at: 0, on: .foreignKeys, orderedFields: []))
+        #expect(gate(.materializedView).locksField(at: 0, on: .checkConstraints, orderedFields: []))
+        #expect(!gate(.table).locksField(at: 0, on: .indexes, orderedFields: []))
+        #expect(!gate(.table).locksField(at: 0, on: .ddl, orderedFields: []))
+    }
+
+    @Test("The Columns list locks field by field")
+    func columnsLockPerField() {
+        let fields: [StructureColumnField] = [.name, .type, .defaultValue, .comment]
+        #expect(gate(.materializedView).lockedFieldIndices(on: .columns, orderedFields: fields, fieldCount: 4) == [1, 2])
+        #expect(gate(.table).lockedFieldIndices(on: .columns, orderedFields: fields, fieldCount: 4).isEmpty)
     }
 
     @Test("A system table allows nothing at all, so the grid has nothing to offer")

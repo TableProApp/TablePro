@@ -11,23 +11,12 @@ struct HostEntry: Identifiable {
 }
 
 /// Selection arithmetic for `HostListFieldRow`.
-///
-/// `List(selection:)` with an empty `Set` after a row deletion leaves SwiftUI's
-/// selection state stuck, so subsequent clicks on remaining rows do not register
-/// until the parent view forces a redraw. This mirrors `NSTableView` HIG
-/// behaviour by moving selection to the row that takes the removed row's place.
 enum HostListSelection {
     static func nextSelection(
         afterRemoving removedIds: Set<UUID>,
         from entries: [HostEntry]
     ) -> Set<UUID> {
-        guard let firstRemoveIndex = entries.firstIndex(where: { removedIds.contains($0.id) }) else {
-            return []
-        }
-        let remaining = entries.filter { !removedIds.contains($0.id) }
-        guard !remaining.isEmpty else { return [] }
-        let nextIndex = min(firstRemoveIndex, remaining.count - 1)
-        return [remaining[nextIndex].id]
+        ListRemovalSelection.nextSelection(afterRemoving: removedIds, from: entries.map(\.id))
     }
 }
 
@@ -75,7 +64,7 @@ struct HostListFieldRow: View {
             Text(label)
         }
         .onAppear { parseValue() }
-        .onChange(of: value) { parseValue() }
+        .onChange(of: value) { _ in parseValue() }
     }
 
     /// A plugin can declare a per-field example, which matters when one form has two host lists

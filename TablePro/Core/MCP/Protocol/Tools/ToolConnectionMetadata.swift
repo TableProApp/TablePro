@@ -8,6 +8,7 @@ struct ToolConnectionMetadata: Sendable {
     let databaseName: String
     let connectionName: String
     let redactionSecrets: [String]
+    let loadsExtensions: Bool
 
     static func resolve(connectionId: UUID) async throws -> ToolConnectionMetadata {
         try await MainActor.run {
@@ -35,7 +36,8 @@ struct ToolConnectionMetadata: Sendable {
                 snapshot.username,
                 snapshot.storedDatabaseName,
                 String(snapshot.port)
-            ].filter { !$0.isEmpty }
+            ].filter { !$0.isEmpty },
+            loadsExtensions: snapshot.loadsExtensions
         )
     }
 }

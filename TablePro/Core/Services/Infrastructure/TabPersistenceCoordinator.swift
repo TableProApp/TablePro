@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 
 internal struct RestoreResult {
@@ -20,20 +20,20 @@ internal struct RestoreResult {
     }
 }
 
-@MainActor @Observable
-internal final class TabPersistenceCoordinator {
+@MainActor
+internal final class TabPersistenceCoordinator: ObservableObject {
     nonisolated internal static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
     let connectionId: UUID
 
-    @ObservationIgnored private var saveTask: Task<Void, Never>?
+    private var saveTask: Task<Void, Never>?
 
     /// Whether this window has ever had a tab of its own. Only a window that held tabs can report
     /// that the user closed them all; one that never saw any is not evidence of anything. A window
     /// left over from a disconnect is exactly that case, and treating its empty tab list as an
     /// instruction deleted the state the disconnect had just saved.
-    private(set) var hasObservedTabs = false
+    @Published private(set) var hasObservedTabs = false
 
-    @ObservationIgnored nonisolated(unsafe) private static var shared: [UUID: TabPersistenceCoordinator] = [:]
+    nonisolated(unsafe) private static var shared: [UUID: TabPersistenceCoordinator] = [:]
 
     /// One per connection, however many windows host it.
     ///
@@ -100,13 +100,13 @@ internal final class TabPersistenceCoordinator {
     ) -> (tabs: [PersistedTab], selectedTabId: UUID?, database: String?, schema: String?)? {
         guard !tabs.isEmpty else {
             Self.logger.debug(
-                "[persist] \(path, privacy: .public) skipped empty tab set connId=\(self.connectionId, privacy: .public)"
+                "[persist] \(path, privacy: .private(mask: .hash)) skipped empty tab set connId=\(self.connectionId, privacy: .public)"
             )
             return nil
         }
         guard hasObservedTabs else {
             Self.logger.info(
-                "[persist] \(path, privacy: .public) withheld before restore connId=\(self.connectionId, privacy: .public)"
+                "[persist] \(path, privacy: .private(mask: .hash)) withheld before restore connId=\(self.connectionId, privacy: .public)"
             )
             return nil
         }
@@ -123,10 +123,17 @@ internal final class TabPersistenceCoordinator {
 
     // MARK: - Clear
 
-    /// Removes the connection's saved tabs. Reserved for the user closing every tab themselves.
-    /// No automatic save path may call this: an empty in-memory tab list is not consent to
-    /// discard what is on disk.
+    /// Removes the connection's saved tabs. Reserved for the user emptying the connection
+    /// themselves, by closing its last tab or moving it to another connection. No automatic save
+    /// path may call this: an empty in-memory tab list is not consent to discard what is on disk.
     internal func clearForUserClosedAllTabs() {
+        /// Emptying a list that never held the saved set is not emptying the saved set.
+        guard hasObservedTabs else {
+            Self.logger.info(
+                "[persist] clear refused before restore connId=\(self.connectionId, privacy: .public)"
+            )
+            return
+        }
         /// The union across every window hosting the connection, not the manager that just
         /// emptied. Closing a container can empty a detached window while the original still holds
         /// tabs, and discarding the saved set there would take those with it.
@@ -177,7 +184,7 @@ internal final class TabPersistenceCoordinator {
             } catch is CancellationError {
                 return
             } catch {
-                Self.logger.fault("Failed to save tab state for connection \(connId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.fault("Failed to save tab state for connection \(connId, privacy: .public): \(error.publicLogShape, privacy: .public)")
             }
         }
     }

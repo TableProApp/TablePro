@@ -8,7 +8,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Inspector field layout")
 struct InspectorFieldLayoutTests {
     private static let everyKind: [FieldEditorKind] = [
         .singleLine,
@@ -17,11 +16,17 @@ struct InspectorFieldLayoutTests {
         .typePicker,
         .enumPicker(values: ["a", "b"]),
         .setPicker(values: ["a", "b"]),
+        .arrayElements(element: .scalar, values: []),
+        .arrayElements(element: .json, values: []),
+        .valuePicker(options: []),
         .multiLine,
         .json,
         .phpSerialized,
         .blobHex,
-        .image(.raster("public.png"))
+        .image(.raster("public.png")),
+        .geometry(GeometryFieldDescriptor(textEditor: .multiLine, source: .spatialColumn)),
+        .geometry(GeometryFieldDescriptor(textEditor: .json, source: .jsonColumn)),
+        .geometry(GeometryFieldDescriptor(textEditor: .hex, source: .binary))
     ]
 
     /// A column name is user data of no bounded length, so no label lane can hold every one of them
@@ -47,6 +52,10 @@ struct InspectorFieldLayoutTests {
         #expect(InspectorFieldLayout.resolve(for: .typePicker, isSchemaField: true) == .inline)
         #expect(InspectorFieldLayout.resolve(for: .enumPicker(values: ["a"]), isSchemaField: true) == .inline)
         #expect(InspectorFieldLayout.resolve(for: .setPicker(values: ["a"]), isSchemaField: true) == .inline)
+        #expect(
+            InspectorFieldLayout.resolve(for: .arrayElements(element: .json, values: []), isSchemaField: true)
+                == .inline
+        )
     }
 
     /// The editors that need the pane's width still take it, on a schema row as on a data row.
@@ -57,6 +66,32 @@ struct InspectorFieldLayoutTests {
         #expect(InspectorFieldLayout.resolve(for: .phpSerialized, isSchemaField: true) == .stacked)
         #expect(InspectorFieldLayout.resolve(for: .blobHex, isSchemaField: true) == .stacked)
         #expect(InspectorFieldLayout.resolve(for: .image(.raster("public.png")), isSchemaField: true) == .stacked)
+    }
+
+    /// A schema row never resolves to a geometry field, and the switch still has to place it: a map
+    /// needs the pane's width wherever it is shown.
+    @Test("A geometry field spans the width on either kind of row")
+    func geometryFieldsAreStacked() {
+        let kinds: [FieldEditorKind] = [
+            .geometry(GeometryFieldDescriptor(textEditor: .multiLine, source: .spatialColumn)),
+            .geometry(GeometryFieldDescriptor(textEditor: .json, source: .jsonColumn)),
+            .geometry(GeometryFieldDescriptor(textEditor: .hex, source: .binary))
+        ]
+        for kind in kinds {
+            #expect(InspectorFieldLayout.resolve(for: kind, isSchemaField: false) == .stacked)
+            #expect(InspectorFieldLayout.resolve(for: kind, isSchemaField: true) == .stacked)
+        }
+    }
+
+    @Test("A geometry value reaches the stacked shape through its editor")
+    func aGeometryValueStacksThroughItsEditor() {
+        let kind = FieldEditorResolver.resolve(
+            for: .spatial(rawType: "POINT"),
+            isLongText: false,
+            originalValue: "POINT(1 2)"
+        )
+        #expect(kind == .geometry(GeometryFieldDescriptor(textEditor: .multiLine, source: .spatialColumn)))
+        #expect(InspectorFieldLayout.resolve(for: kind, isSchemaField: false) == .stacked)
     }
 
     /// `.enumPicker` is the kind for a data row's ENUM column *and* for a structure row's dropdown

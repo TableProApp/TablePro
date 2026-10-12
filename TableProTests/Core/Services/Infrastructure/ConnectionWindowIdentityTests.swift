@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection window identity")
 struct ConnectionWindowIdentityTests {
     @Test("The document inspector is not a connection window")
     func inspectorIsNotAConnectionWindow() {
@@ -31,10 +30,11 @@ struct ConnectionWindowIdentityTests {
 
     @Test("The inspector predicate matches its own windows only")
     func inspectorPredicate() {
-        #expect(ConnectionWindowIdentity.isDocumentInspectorWindow("main-inspector"))
-        #expect(ConnectionWindowIdentity.isDocumentInspectorWindow("main-inspector-2"))
-        #expect(!ConnectionWindowIdentity.isDocumentInspectorWindow("main"))
-        #expect(!ConnectionWindowIdentity.isDocumentInspectorWindow(nil))
+        #expect(ConnectionWindowIdentity.isDataFileWindow("main-data-file"))
+        #expect(ConnectionWindowIdentity.isDataFileWindow("main-data-file-2"))
+        #expect(!ConnectionWindowIdentity.isDataFileWindow("main"))
+        #expect(!ConnectionWindowIdentity.isDataFileWindow(nil))
+        #expect(ConnectionWindowIdentity.isPrimaryWindow(WindowIdentifier.dataFile))
     }
 
     @Test("Welcome windows are recognised with and without a suffix")

@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis connection mode")
 struct RedisConnectionModeTests {
     @Test("An unset mode is standalone, so an existing connection keeps working")
     func defaultsToStandalone() {
@@ -26,13 +25,6 @@ struct RedisConnectionModeTests {
         #expect(RedisConnectionMode.resolve(additionalFields: ["redisMode": "galaxy"]) == .standalone)
     }
 
-    @Test("Only cluster gives up database selection")
-    func databaseSelection() {
-        #expect(RedisConnectionMode.standalone.supportsDatabaseSelection)
-        #expect(RedisConnectionMode.sentinel.supportsDatabaseSelection)
-        #expect(!RedisConnectionMode.cluster.supportsDatabaseSelection)
-    }
-
     @Test("Only standalone uses the plain Host and Port fields")
     func hostListUsage() {
         #expect(!RedisConnectionMode.standalone.usesHostList)
@@ -41,7 +33,6 @@ struct RedisConnectionModeTests {
     }
 }
 
-@Suite("Redis host list parsing")
 struct RedisHostListParserTests {
     @Test("A comma-separated list becomes one address per entry")
     func parsesList() {
@@ -93,7 +84,6 @@ struct RedisHostListParserTests {
     }
 }
 
-@Suite("Redis server info")
 struct RedisServerInfoTests {
     private let clusterInfo = "# Server\r\nredis_version:8.10.1\r\nredis_mode:cluster\r\n"
     private let sentinelInfo = "# Server\r\nredis_version:8.10.1\r\nredis_mode:sentinel\r\n"
@@ -110,22 +100,45 @@ struct RedisServerInfoTests {
         #expect(RedisServerInfo.mode(from: "redis_mode:standalone") == .standalone)
     }
 
+    /// Valkey 8 and later name the line `server_mode` unless `extended-redis-compatibility` is on.
+    @Test("Reads Valkey's server_mode when redis_mode is absent")
+    func readsValkeyServerMode() {
+        #expect(RedisServerInfo.mode(from: "# Server\r\nserver_mode:sentinel\r\n") == .sentinel)
+        #expect(RedisServerInfo.mode(from: "# Server\r\nserver_mode:cluster\r\n") == .cluster)
+        #expect(RedisServerInfo.mode(from: "# Server\r\nserver_mode:standalone\r\n") == .standalone)
+    }
+
+    @Test("redis_mode wins when a server reports both")
+    func redisModeWinsOverServerMode() {
+        let info = "# Server\r\nredis_mode:cluster\r\nserver_mode:standalone\r\n"
+        #expect(RedisServerInfo.mode(from: info) == .cluster)
+    }
+
     @Test("An absent key is absent, not a wrong answer")
     func missingKeyIsNil() {
         #expect(RedisServerInfo.mode(from: "# Server\r\n") == nil)
         #expect(RedisServerInfo.version(from: "") == nil)
     }
 
-    @Test("Reads a database's key count out of INFO keyspace")
-    func readsKeyCount() {
-        let info = "# Keyspace\r\ndb0:keys=100,expires=0,avg_ttl=0\r\ndb3:keys=7,expires=1\r\n"
-        #expect(RedisServerInfo.keyCount(forDatabase: "db0", in: info) == 100)
-        #expect(RedisServerInfo.keyCount(forDatabase: "db3", in: info) == 7)
-        #expect(RedisServerInfo.keyCount(forDatabase: "db9", in: info) == nil)
+    @Test("Reads every database's key count out of INFO keyspace")
+    func readsKeyspace() {
+        let info = "# Keyspace\r\ndb0:keys=100,expires=0,avg_ttl=0\r\ndb3:keys=7,expires=1\r\ndb20:keys=1\r\n"
+        #expect(RedisServerInfo.keyspace(from: info) == [0: 100, 3: 7, 20: 1])
+    }
+
+    @Test("An empty keyspace section names no database")
+    func emptyKeyspace() {
+        #expect(RedisServerInfo.keyspace(from: "# Keyspace\r\n").isEmpty)
+        #expect(RedisServerInfo.keyspace(from: "").isEmpty)
+    }
+
+    @Test("A line that is not a database, or has no key count, is skipped")
+    func skipsMalformedKeyspaceLines() {
+        let info = "# Keyspace\r\ndbx:keys=1\r\ndb-1:keys=4\r\ndb2:expires=1\r\nfoo:keys=9\r\ndb5:keys=2\r\n"
+        #expect(RedisServerInfo.keyspace(from: info) == [5: 2])
     }
 }
 
-@Suite("Redis topology diagnostics")
 struct RedisTopologyDiagnosticsTests {
     @Test("Standalone pointed at a cluster member says to switch to Cluster")
     func standaloneAtCluster() throws {
@@ -159,6 +172,11 @@ struct RedisTopologyDiagnosticsTests {
 
     @Test("A cluster seed through a tunnel is left alone, because it is a data node")
     func clusterThroughTunnelIsFine() {
+        #expect(RedisTopologyDiagnostics.mismatch(expected: .standalone, actual: .cluster, isTunneled: true) == nil)
+    }
+
+    @Test("A standalone server through a tunnel is left alone")
+    func standaloneThroughTunnelIsFine() {
         #expect(RedisTopologyDiagnostics.mismatch(expected: .standalone, actual: .standalone, isTunneled: true) == nil)
     }
 

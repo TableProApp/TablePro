@@ -36,7 +36,7 @@ internal enum ConnectionFileLockAction {
         do {
             outcome = try await driver.releaseIdleResource()
         } catch {
-            logger.error("Releasing the file lock for \(connectionName, privacy: .private) failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Releasing the file lock for \(connectionName, privacy: .private) failed: \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(localized: "Could not release the file"),
                 message: error.localizedDescription,

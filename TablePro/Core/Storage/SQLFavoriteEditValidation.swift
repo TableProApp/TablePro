@@ -3,8 +3,10 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import Observation
+import TableProImport
 
 internal enum SQLFavoriteKeywordValidation: Equatable {
     case valid
@@ -32,27 +34,19 @@ internal enum SQLFavoriteKeywordValidation: Equatable {
 }
 
 internal enum SQLFavoriteKeywordValidator {
-    static let reservedSQLKeywords: Set<String> = [
-        "select", "from", "where", "insert", "update", "delete",
-        "create", "drop", "alter", "join", "on", "and", "or",
-        "not", "in", "like", "between", "order", "group", "having",
-        "limit", "set", "values", "into", "as", "is", "null",
-        "true", "false", "case", "when", "then", "else", "end"
-    ]
-
     static func requiresAvailabilityCheck(_ trimmedKeyword: String) -> Bool {
-        !trimmedKeyword.isEmpty && !trimmedKeyword.contains(" ")
+        !trimmedKeyword.isEmpty && SavedQueryKeyword.isValid(trimmedKeyword)
     }
 
     static func classify(trimmedKeyword: String, isAvailable: Bool) -> SQLFavoriteKeywordValidation {
         guard !trimmedKeyword.isEmpty else { return .valid }
-        guard !trimmedKeyword.contains(" ") else {
+        guard SavedQueryKeyword.isValid(trimmedKeyword) else {
             return .error(String(localized: "Keyword cannot contain spaces"))
         }
         guard isAvailable else {
             return .error(String(localized: "This keyword is already in use"))
         }
-        guard !reservedSQLKeywords.contains(trimmedKeyword.lowercased()) else {
+        guard !SavedQueryKeyword.shadowsSQLKeyword(trimmedKeyword) else {
             return .warning(String(
                 format: String(localized: "Shadows the SQL keyword '%@'"),
                 trimmedKeyword.uppercased()
@@ -63,10 +57,9 @@ internal enum SQLFavoriteKeywordValidator {
 }
 
 @MainActor
-@Observable
-internal final class SQLFavoriteKeywordField {
-    var keyword = ""
-    private(set) var validation: SQLFavoriteKeywordValidation = .valid
+internal final class SQLFavoriteKeywordField: ObservableObject {
+    @Published var keyword = ""
+    @Published private(set) var validation: SQLFavoriteKeywordValidation = .valid
 
     private var validationId = 0
     private let availabilityCheck: (String, UUID?, UUID?) async -> Bool
@@ -101,12 +94,39 @@ internal final class SQLFavoriteKeywordField {
     }
 }
 
+internal enum SQLFavoriteSizeValidation: Equatable {
+    case valid
+    case tooLarge
+
+    static let maximumSyncableByteCount = SavedQuerySize.maximumSyncableByteCount
+
+    static func validate(name: String, query: String, keyword: String?) -> SQLFavoriteSizeValidation {
+        let byteCount = SavedQuerySize.byteCount(name: name, sql: query, keyword: keyword)
+        return byteCount > maximumSyncableByteCount ? .tooLarge : .valid
+    }
+
+    var blocksSave: Bool {
+        self == .tooLarge
+    }
+
+    var displayText: String? {
+        guard self == .tooLarge else { return nil }
+        return String(
+            format: String(
+                localized: "Saved queries are limited to %@ so they fit in iCloud. Save a query this large as a .sql file instead."
+            ),
+            ByteCountFormatter.string(fromByteCount: Int64(Self.maximumSyncableByteCount), countStyle: .file)
+        )
+    }
+}
+
 internal enum SQLFavoriteEditValidation {
     static func canSave(
         isNameBlank: Bool,
         isQueryBlank: Bool = false,
+        sizeValidation: SQLFavoriteSizeValidation = .valid,
         keywordValidation: SQLFavoriteKeywordValidation
     ) -> Bool {
-        !isNameBlank && !isQueryBlank && !keywordValidation.blocksSave
+        !isNameBlank && !isQueryBlank && !sizeValidation.blocksSave && !keywordValidation.blocksSave
     }
 }

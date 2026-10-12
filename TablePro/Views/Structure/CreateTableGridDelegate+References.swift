@@ -11,9 +11,18 @@ import TableProPluginKit
 /// They were free text, so the only way to point a key at a table was to spell its name and its
 /// columns from memory, and a typo produced a server error at Create time rather than a list that
 /// could not be wrong. `StructureGridDelegate` answers the same question for an existing table, and
-/// both go through `ForeignKeyReferenceMenus` so the two grids cannot drift.
+/// both go through `ForeignKeyReferenceMenus` so the two grids cannot drift. The Indexes grid's Type
+/// cell goes through `StructureRowProvider.indexMenuOptions` for the same reason.
 extension CreateTableGridDelegate {
     func dataGridMenuOptions(forRow row: Int, columnIndex: Int) -> [GridMenuOption]? {
+        if structureTab == .indexes {
+            guard structureChangeManager.workingIndexes.indices.contains(row) else { return nil }
+            return StructureRowProvider.indexMenuOptions(
+                columnIndex: columnIndex,
+                index: structureChangeManager.workingIndexes[row],
+                serverSupport: serverSupport
+            )
+        }
         guard structureTab == .foreignKeys,
               row >= 0, row < structureChangeManager.workingForeignKeys.count else { return nil }
         return referenceMenus.options(

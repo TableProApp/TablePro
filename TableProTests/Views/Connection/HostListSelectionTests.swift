@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Host list selection after delete")
 struct HostListSelectionTests {
     @Test("removing middle row selects row that takes its place")
     func removeMiddle() {

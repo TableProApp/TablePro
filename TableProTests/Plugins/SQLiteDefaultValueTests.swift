@@ -10,7 +10,6 @@
 
 import Testing
 
-@Suite("SQLite catalog default round trip")
 struct SQLiteDefaultValueTests {
     @Test(
         "A pragma default becomes SQL that recreates it",

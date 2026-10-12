@@ -216,7 +216,7 @@ struct FilterSQLGenerator {
         negated: Bool,
         folding: PluginSQLCaseFolding
     ) -> String? {
-        let parsed = parseListValues(values)
+        let parsed = FilterOperand.listItems(values)
         guard !parsed.isEmpty else { return nil }
 
         var literals: [String] = []
@@ -373,12 +373,8 @@ struct FilterSQLGenerator {
     // MARK: - Value Escaping
 
     private func renderLiteral(_ value: String, columnType: ColumnType?) -> RenderedLiteral {
+        guard !FilterOperand.readsAsNullLiteral(value, columnType: columnType) else { return .null }
         let trimmed = value.trimmingCharacters(in: .whitespaces)
-
-        if !ColumnTypeSQLQuoting.isKnownTextLike(columnType),
-           trimmed.caseInsensitiveCompare("NULL") == .orderedSame {
-            return .null
-        }
 
         if let booleanLiteral = booleanLiteral(for: trimmed, columnType: columnType) {
             return .value(booleanLiteral)
@@ -458,16 +454,6 @@ struct FilterSQLGenerator {
             .replacingOccurrences(of: "!", with: "!!")
             .replacingOccurrences(of: "%", with: "!%")
             .replacingOccurrences(of: "_", with: "!_")
-    }
-
-    // MARK: - List Parsing
-
-    private func parseListValues(_ input: String) -> [String] {
-        input.split(separator: ",", omittingEmptySubsequences: true)
-            .compactMap {
-                let trimmed = $0.trimmingCharacters(in: .whitespaces)
-                return trimmed.isEmpty ? nil : trimmed
-            }
     }
 }
 

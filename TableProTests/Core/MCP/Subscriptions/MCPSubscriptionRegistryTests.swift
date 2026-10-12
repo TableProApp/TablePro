@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCPSubscriptionFilter")
 struct MCPSubscriptionFilterTests {
     @Test("Params without a notifications object are invalid")
     func notificationsIsRequired() {
@@ -129,7 +128,6 @@ struct MCPSubscriptionFilterTests {
     }
 }
 
-@Suite("MCPSubscriptionRegistry")
 struct MCPSubscriptionRegistryTests {
     @Test("Opening a subscription answers with the subset the server honours")
     func openReturnsHonouredFilter() async {
@@ -277,6 +275,24 @@ struct MCPSubscriptionRegistryTests {
         await registry.closeAll()
     }
 
+    @Test("A schema update for a connection hidden from AI or blocked is never sent, even to a stream that names it")
+    func hiddenConnectionUpdatesAreNotSent() async {
+        let registry = MCPSubscriptionRegistry(connectedConnections: { [SubscriptionFixtures.granted] })
+        let sink = RecordingResponderSink()
+        await registry.open(
+            id: .number(1),
+            filter: MCPSubscriptionFilter(resourceSubscriptions: [SubscriptionFixtures.deniedUri]),
+            responder: MCPResponder(sink: sink, requestId: .number(1)),
+            principal: SubscriptionFixtures.principal()
+        )
+
+        await registry.publish(.resourceUpdated(uri: SubscriptionFixtures.deniedUri))
+
+        let frames = await sink.sseFrames
+        #expect(frames.isEmpty)
+        await registry.closeAll()
+    }
+
     @Test("A resources list change only fires when the visible connection set actually changed")
     func resourcesListChangedIsDeduplicated() async {
         let connections = MutableConnectionSet([SubscriptionFixtures.granted])
@@ -398,7 +414,6 @@ struct MCPSubscriptionRegistryTests {
     }
 }
 
-@Suite("MCPSubscriptionNotification")
 struct MCPSubscriptionNotificationTests {
     @Test("Every notification method is namespaced under notifications/")
     func methodNames() {

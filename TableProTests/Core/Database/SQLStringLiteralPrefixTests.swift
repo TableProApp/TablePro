@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQL String Literal Prefix")
 struct SQLStringLiteralPrefixTests {
     @Test("SQL Server asks for a national literal")
     func sqlServerAsksForANationalLiteral() {

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ResponsesDialect")
 struct ResponsesDialectTests {
     @Test("Each dialect has its own default test model")
     func defaultTestModels() {

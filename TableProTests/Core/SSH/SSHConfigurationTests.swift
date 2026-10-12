@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH Configuration")
 struct SSHConfigurationTests {
     @Test("Disabled SSH config is always valid")
     func testDisabledIsValid() {

@@ -260,7 +260,6 @@ private final class BlockingAuxiliaryDriver: DatabaseDriver, @unchecked Sendable
     }
 }
 
-@Suite("SchemaService routines")
 @MainActor
 struct SchemaServiceRoutinesTests {
     @Test("load caches procedures and functions alongside tables")

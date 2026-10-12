@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("LibPQPluginError result fields")
 struct LibPQPluginErrorTests {
     private static let undefinedFunctionFields: [Int32: String] = [
         Int32(UInt8(ascii: "C")): "42883",

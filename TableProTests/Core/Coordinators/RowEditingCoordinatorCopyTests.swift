@@ -38,7 +38,6 @@ private final class RowEditingCopyLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("RowEditingCoordinator copy as JSON")
 @MainActor
 struct RowEditingCoordinatorCopyTests {
     private func makeCoordinator(tableRows: TableRows? = nil) -> MainContentCoordinator {

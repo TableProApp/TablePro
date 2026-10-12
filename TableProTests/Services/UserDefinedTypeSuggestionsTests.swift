@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("User-defined type suggestions")
 struct UserDefinedTypeSuggestionsTests {
     private func type(_ name: String, schema: String?, spelling: String? = nil) -> UserDefinedTypeInfo {
         UserDefinedTypeInfo(name: name, kind: .enumeration, schema: schema, columnTypeSpelling: spelling)

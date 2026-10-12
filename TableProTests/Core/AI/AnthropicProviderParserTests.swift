@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("AnthropicProvider stream parser")
 struct AnthropicProviderParserTests {
     private func parse(_ json: [String: Any], state: inout AnthropicStreamState) throws -> [ChatStreamEvent] {
         try AnthropicProvider.parseChunk(json, state: &state)

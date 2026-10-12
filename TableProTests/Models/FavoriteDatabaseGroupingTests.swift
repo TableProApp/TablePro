@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Favorite database grouping")
 struct FavoriteDatabaseGroupingTests {
     private let connectionId = UUID()
 

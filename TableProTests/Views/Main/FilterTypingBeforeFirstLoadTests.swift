@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Filter values are typed from the schema before a table's first rows load")
 @MainActor
 struct FilterTypingBeforeFirstLoadTests {
     private static let schema = SchemaColumnStore.Entry(

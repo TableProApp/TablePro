@@ -68,7 +68,6 @@ private func prompt(_ text: String, echo: Bool = false) -> KeyboardInteractivePr
     KeyboardInteractivePrompt(text: text, echo: echo)
 }
 
-@Suite("KeyboardInteractiveContext TOTP fetch")
 struct KeyboardInteractiveContextTests {
     @Test("nextTotpCode returns empty when no provider is configured")
     func noProviderReturnsEmpty() {
@@ -101,7 +100,6 @@ struct KeyboardInteractiveContextTests {
     }
 }
 
-@Suite("KeyboardInteractiveContext prompt resolution")
 struct KeyboardInteractiveResponsesTests {
     @Test("A password prompt is answered from the fast path without prompting the user")
     func passwordFastPath() {
@@ -203,7 +201,6 @@ struct KeyboardInteractiveResponsesTests {
     }
 }
 
-@Suite("KeyboardInteractivePrompt")
 struct KeyboardInteractivePromptTests {
     @Test("Length-delimited UTF-8 bytes decode without assuming NUL-termination")
     func decodesUtf8Bytes() {
@@ -223,7 +220,6 @@ struct KeyboardInteractivePromptTests {
     }
 }
 
-@Suite("KeyboardInteractiveAuthenticator.classify")
 struct KeyboardInteractiveClassifyTests {
     @Test("A password prompt classifies as password")
     func passwordPrompt() {

@@ -9,12 +9,12 @@ struct ExecuteQueryChatTool: ChatTool {
     let name = "execute_query"
     let description = String(localized: """
         Execute a SQL query against a connection. The connection's safe mode policy applies.\
-         Multi-statement queries are rejected. Destructive operations (DROP, TRUNCATE, ALTER...DROP)\
-         are blocked here; use confirm_destructive_operation instead.
+         Multi-statement queries are rejected, except on SQL Server, where a whole script runs batch by batch\
+         at its GO lines and result_sets lists every result set when there is more than one. Destructive\
+         operations (DROP, TRUNCATE, ALTER...DROP) are blocked here; use confirm_destructive_operation instead.
         """)
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
-            "connection_id": ChatToolSchemaBuilder.connectionId,
             "query": ChatToolSchemaBuilder.string(description: "SQL or NoSQL query text"),
             "max_rows": ChatToolSchemaBuilder.integer(
                 description: "Maximum rows to return, capped at the server's configured maximum row limit. Pass null to use the configured default row limit.",
@@ -37,7 +37,6 @@ struct ExecuteQueryChatTool: ChatTool {
     let mode: ChatToolMode = .write
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
-        let connectionId = try context.resolveConnectionId(input)
         let query = try ChatToolArgumentDecoder.requireString(input, key: "query")
         let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
@@ -46,9 +45,22 @@ struct ExecuteQueryChatTool: ChatTool {
             return ChatToolResult(content: "Query exceeds 100KB limit", isError: true)
         }
 
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+        let connectionId = try await ChatToolTarget.authorized(
+            context: context,
+            input: input,
+            tool: name,
+            sql: query
+        )
 
-        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+        let capabilities = ExternalStatementGate.capabilities(
+            context.writeCapabilities,
+            takingScriptsOn: meta.databaseType
+        )
+
+        guard capabilities.contains(.mayRunMultiStatement)
+            || !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType)
+        else {
             return ChatToolResult(
                 content: "Multi-statement queries are not supported. Send one statement at a time.",
                 isError: true
@@ -65,8 +77,30 @@ struct ExecuteQueryChatTool: ChatTool {
             settings: mcpSettings
         )
 
-        let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
-        if tier == .destructive {
+        let classification = QueryClassifier.classify(query, databaseType: meta.databaseType)
+
+        /// The same refusal MCP makes through `ExternalStatementGate`: a statement that reads or
+        /// writes files, or runs server-side code, is a strictly larger capability than reading and
+        /// writing data, and larger still on a connection whose transport executes on an SSH server.
+        /// The MCP tool routes through the gate; this path did not, so it added the reach that a
+        /// remote-execution connection turns into running code on the server.
+        if classification.reachesFilesystemOrExecutesCode {
+            return ChatToolResult(
+                content: "Statements that read or write files, or run server-side code (ATTACH, LOAD, COPY, VACUUM INTO), "
+                    + "can't be sent from the assistant. Run this one in TablePro instead.",
+                isError: true
+            )
+        }
+
+        if let refusal = ExternalStatementGate.extensionCallRefusal(
+            sql: query,
+            databaseType: meta.databaseType,
+            loadsExtensions: meta.loadsExtensions
+        ) {
+            return ChatToolResult(content: refusal, isError: true)
+        }
+
+        if classification.tier == .destructive {
             return ChatToolResult(
                 content: "Destructive queries (DROP, TRUNCATE, ALTER...DROP) are blocked here. Use confirm_destructive_operation with the explicit confirmation phrase.",
                 isError: true
@@ -83,7 +117,7 @@ struct ExecuteQueryChatTool: ChatTool {
             sql: query,
             connectionId: connectionId,
             databaseType: meta.databaseType,
-            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+            capabilities: capabilities
         )
 
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
@@ -93,7 +127,8 @@ struct ExecuteQueryChatTool: ChatTool {
             scope: scope,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            principal: .inAppAssistant
+            principal: .inAppAssistant,
+            unit: .script
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }

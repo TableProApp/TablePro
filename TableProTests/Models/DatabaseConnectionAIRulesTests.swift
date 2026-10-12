@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DatabaseConnection.aiRules")
 struct DatabaseConnectionAIRulesTests {
     @Test("aiRules defaults to nil")
     func defaultsToNil() {
@@ -88,8 +87,7 @@ struct DatabaseConnectionAIRulesTests {
             databaseType: .postgresql,
             databaseName: "shop",
             tables: [],
-            columnsByTable: [:],
-            foreignKeys: [:],
+            defaultSchema: nil,
             currentQuery: nil,
             queryResults: nil,
             settings: AISettings.default,
@@ -107,8 +105,7 @@ struct DatabaseConnectionAIRulesTests {
             databaseType: .postgresql,
             databaseName: "shop",
             tables: [],
-            columnsByTable: [:],
-            foreignKeys: [:],
+            defaultSchema: nil,
             currentQuery: nil,
             queryResults: nil,
             settings: AISettings.default,
@@ -125,8 +122,7 @@ struct DatabaseConnectionAIRulesTests {
             databaseType: .postgresql,
             databaseName: "shop",
             tables: [],
-            columnsByTable: [:],
-            foreignKeys: [:],
+            defaultSchema: nil,
             currentQuery: nil,
             queryResults: nil,
             settings: AISettings.default,

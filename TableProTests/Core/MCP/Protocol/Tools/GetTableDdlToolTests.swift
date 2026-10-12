@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("GetTableDdlTool")
 struct GetTableDdlToolTests {
     private let tool = GetTableDdlTool()
 

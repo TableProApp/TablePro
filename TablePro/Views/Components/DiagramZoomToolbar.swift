@@ -8,7 +8,12 @@
 import SwiftUI
 
 struct DiagramZoomToolbar<Extras: View>: View {
-    let viewport: DiagramViewportController
+    /// Observed here rather than trusted to a parent. The percentage and both buttons' enabled
+    /// state are read from it in this body, and the plan diagram holds its viewport as a plain
+    /// property, so on a plan every zoom changed the canvas and left the readout on the old
+    /// percentage with Zoom In and Zoom Out dimmed as they were. The ER diagram hid it only because
+    /// its own toolbar happens to observe the same object and redraws this one along with it.
+    @ObservedObject var viewport: DiagramViewportController
     @ViewBuilder let extras: () -> Extras
 
     init(viewport: DiagramViewportController, @ViewBuilder extras: @escaping () -> Extras = { EmptyView() }) {
@@ -26,13 +31,14 @@ struct DiagramZoomToolbar<Extras: View>: View {
             .help(String(localized: "Zoom Out"))
 
             Button(action: viewport.resetZoom) {
-                Text(verbatim: "\(Int((viewport.magnification * 100).rounded()))%")
+                Text(verbatim: zoomPercentage)
                     .font(.system(.caption, design: .monospaced))
                     .frame(width: 40)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(String(localized: "Reset Zoom"))
+            .accessibilityValue(Text(verbatim: zoomPercentage))
             .help(String(localized: "Reset Zoom"))
 
             Button(action: viewport.zoomIn) {
@@ -55,5 +61,9 @@ struct DiagramZoomToolbar<Extras: View>: View {
         .padding(.vertical, 6)
         .themeMaterial(.toolbar, .thinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 0.5))
+    }
+
+    private var zoomPercentage: String {
+        "\(Int((viewport.magnification * 100).rounded()))%"
     }
 }

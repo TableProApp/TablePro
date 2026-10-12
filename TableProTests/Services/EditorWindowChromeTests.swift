@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Editor window chrome")
 @MainActor
 struct EditorWindowChromeTests {
     /// The real window the app opens, not a stand-in, so removing the chrome call from
@@ -18,6 +17,16 @@ struct EditorWindowChromeTests {
         window.isReleasedWhenClosed = false
         body(window)
         window.close()
+    }
+
+    /// The window's panes are hosting controllers SwiftUI fills in later than the window appears, and
+    /// a loop worked out once never sees them: the editor and the data grid were not Tab stops at
+    /// all, and a keyboard-only user could not leave the sidebar.
+    @Test("The editor window keeps its key view loop current as panes arrive")
+    func keyViewLoopStaysCurrent() {
+        withEditorWindow { window in
+            #expect(window.autorecalculatesKeyViewLoop)
+        }
     }
 
     @Test("The editor window asks for no rule between its toolbar and its content pane")

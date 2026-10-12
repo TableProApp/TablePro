@@ -40,27 +40,11 @@ final class GridSelectionController {
 
     private func postAccessibilityAnnouncement(for newSelection: GridSelection) {
         guard let tableView else { return }
-        let announcement: String
-        if newSelection.isEmpty {
-            announcement = String(localized: "Cell selection cleared")
-        } else if let rect = newSelection.boundingRectangle {
-            let cellCount = newSelection.rectangles.reduce(0) { $0 + ($1.rows.count * $1.columns.count) }
-            announcement = String(
-                format: String(localized: "%d cells selected, rows %d to %d, columns %d to %d"),
-                cellCount,
-                rect.rows.lowerBound + 1,
-                rect.rows.upperBound + 1,
-                rect.columns.lowerBound + 1,
-                rect.columns.upperBound + 1
-            )
-        } else {
-            return
-        }
         NSAccessibility.post(
             element: tableView,
             notification: .announcementRequested,
             userInfo: [
-                .announcement: announcement,
+                .announcement: Self.accessibilityAnnouncement(for: newSelection),
                 .priority: NSAccessibilityPriorityLevel.medium.rawValue
             ]
         )
@@ -74,16 +58,22 @@ final class GridSelectionController {
         update(.empty)
     }
 
-    func beginDrag(at coord: GridCoord, modifiers: NSEvent.ModifierFlags) -> MouseDisposition {
+    /// `focus` is the cell a plain click left focused. That click clears the cell selection, so
+    /// without it Shift+click and Cmd+click would lose the first cell.
+    func beginDrag(at coord: GridCoord, modifiers: NSEvent.ModifierFlags, focus: GridCoord? = nil) -> MouseDisposition {
         let cleanModifiers = modifiers.intersection([.command, .shift, .option, .control])
         if cleanModifiers.contains(.command) && !cleanModifiers.contains(.shift) {
             dragOrigin = coord
             dragMode = .additive
-            dragBaseSelection = selection
+            if selection.isEmpty, let focus {
+                dragBaseSelection = .single(GridRect(cell: focus), anchor: focus, active: focus)
+            } else {
+                dragBaseSelection = selection
+            }
             return .replaceFocus(coord)
         }
         if cleanModifiers.contains(.shift) && !cleanModifiers.contains(.command) {
-            let anchor = selection.anchor ?? coord
+            let anchor = selection.anchor ?? focus ?? coord
             dragOrigin = anchor
             dragMode = .replace
             dragBaseSelection = .empty
@@ -107,7 +97,17 @@ final class GridSelectionController {
         case .additive:
             var rectangles = dragBaseSelection.rectangles
             rectangles.append(GridRect.between(origin, coord))
-            update(GridSelection(rectangles: rectangles, activeCell: coord, anchor: origin))
+            /// The picked columns come along. Rebuilding from the base rectangles alone dropped
+            /// them, so a Cmd+drag in the body unpainted a heading the user had picked and took its
+            /// column out of `selectedFullColumnDataIndices`, disabling the column commands.
+            update(
+                GridSelection(
+                    rectangles: rectangles,
+                    activeCell: coord,
+                    anchor: origin,
+                    columns: dragBaseSelection.columns
+                )
+            )
         }
     }
 
@@ -122,58 +122,65 @@ final class GridSelectionController {
     }
 
     private func applyCmdClickToggle(at coord: GridCoord) {
-        let cellRect = GridRect(cell: coord)
-        var rectangles = dragBaseSelection.rectangles
-
-        if let index = rectangles.firstIndex(where: { $0 == cellRect }) {
-            rectangles.remove(at: index)
-            if rectangles.isEmpty {
-                update(.empty)
-                return
-            }
-            let last = rectangles[rectangles.count - 1]
-            let active = GridCoord(row: last.rows.lowerBound, displayColumn: last.columns.lowerBound)
-            update(GridSelection(rectangles: rectangles, activeCell: active, anchor: dragBaseSelection.anchor))
+        guard !dragBaseSelection.contains(coord) else {
+            update(dragBaseSelection.removing(cell: coord))
             return
         }
-
-        rectangles.append(cellRect)
-        update(GridSelection(rectangles: rectangles, activeCell: coord, anchor: coord))
-    }
-
-    func selectAll(totalRows: Int, totalColumns: Int) {
-        guard totalRows > 0, totalColumns > 0 else { return }
-        let rect = GridRect(rows: 0...(totalRows - 1), columns: 0...(totalColumns - 1))
-        let active = GridCoord(row: 0, displayColumn: 0)
-        update(.single(rect, anchor: active, active: active))
+        update(
+            GridSelection(
+                rectangles: dragBaseSelection.rectangles + [GridRect(cell: coord)],
+                activeCell: coord,
+                anchor: coord,
+                columns: dragBaseSelection.columns
+            )
+        )
     }
 
     func selectEntireColumn(_ displayColumn: Int, totalRows: Int) {
         guard displayColumn >= 0, totalRows > 0 else { return }
-        let rect = GridRect(rows: 0...(totalRows - 1), columns: displayColumn...displayColumn)
-        let anchor = GridCoord(row: 0, displayColumn: displayColumn)
-        update(.single(rect, anchor: anchor, active: anchor))
+        update(.column(displayColumn, totalRows: totalRows))
     }
 
+    /// Toggles one column in and out of the selection, which is what Cmd+click means everywhere
+    /// else on the system.
+    ///
+    /// Adding without a matching removal also grew the rectangle list without bound: `union`
+    /// concatenates, so Cmd+clicking one heading twice left two identical rectangles behind, and
+    /// the overlay, the row fill and `columns(in:)` each walk every rectangle for every visible row.
     func addEntireColumn(_ displayColumn: Int, totalRows: Int) {
         guard displayColumn >= 0, totalRows > 0 else { return }
-        let rect = GridRect(rows: 0...(totalRows - 1), columns: displayColumn...displayColumn)
-        let anchor = GridCoord(row: 0, displayColumn: displayColumn)
-        let addition = GridSelection.single(rect, anchor: anchor, active: anchor)
+        guard !selection.columns.contains(displayColumn) else {
+            removeEntireColumn(displayColumn, totalRows: totalRows)
+            return
+        }
+        let addition = GridSelection.column(displayColumn, totalRows: totalRows)
         update(selection.isEmpty ? addition : selection.union(addition))
+    }
+
+    private func removeEntireColumn(_ displayColumn: Int, totalRows: Int) {
+        let dropped = GridRect(rows: 0...(totalRows - 1), columns: displayColumn...displayColumn)
+        let rectangles = selection.rectangles.filter { $0 != dropped }
+        var columns = selection.columns
+        columns.remove(displayColumn)
+        guard let last = rectangles.last else {
+            update(.empty)
+            return
+        }
+        let active = GridCoord(row: last.rows.lowerBound, displayColumn: last.columns.lowerBound)
+        update(GridSelection(rectangles: rectangles, activeCell: active, anchor: active, columns: columns))
     }
 
     /// Display positions. `selectedFullColumnDataIndices()` is what a caller indexing column names
     /// or values wants.
     func selectedFullColumns() -> IndexSet {
-        fullySelectedColumns(in: selection)
+        selection.columns
     }
 
     /// The fully selected columns as data indices, for callers that index `TableRows.columns` or a
     /// row's values. The inspector's CSV column insert and delete are the reason this exists: a
     /// display position used there deletes the wrong column of the user's file.
     func selectedFullColumnDataIndices() -> IndexSet {
-        dataIndices(from: fullySelectedColumns(in: selection))
+        dataIndices(from: selection.columns)
     }
 
     /// Every column the selection touches, as data indices.
@@ -259,20 +266,11 @@ final class GridSelectionController {
         let union = old.affectedColumns.union(new.affectedColumns)
         if let headerView = (tableView as? KeyHandlingTableView)?.headerView as? SortableHeaderView {
             headerView.updateColumnSelectionIndicators(
-                selectedColumns: fullySelectedColumns(in: new),
-                dirtyColumns: union
+                selectedColumns: new.columns,
+                dirtyColumns: union.union(old.columns).union(new.columns)
             )
         }
         return union
-    }
-
-    private func fullySelectedColumns(in selection: GridSelection) -> IndexSet {
-        guard let totalRows = tableView?.numberOfRows, totalRows > 0 else { return IndexSet() }
-        var fully = IndexSet()
-        for rect in selection.rectangles where rect.rows.lowerBound <= 0 && rect.rows.upperBound >= totalRows - 1 {
-            fully.insert(integersIn: rect.columns.lowerBound...rect.columns.upperBound)
-        }
-        return fully
     }
 
     private func reloadRowsForFill(old: GridSelection, new: GridSelection, dirtyColumns: IndexSet) {
@@ -295,6 +293,30 @@ final class GridSelectionController {
         for row in rowsToReload {
             (tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView)?.needsDisplay = true
         }
+    }
+}
+
+internal extension GridSelectionController {
+    static func accessibilityAnnouncement(for selection: GridSelection) -> String {
+        guard let rect = selection.boundingRectangle else {
+            return String(localized: "Cell selection cleared")
+        }
+        return String(
+            format: String(localized: "%d cells selected, rows %d to %d, columns %d to %d"),
+            selection.uniqueCellCount,
+            rect.rows.lowerBound + 1,
+            rect.rows.upperBound + 1,
+            rect.columns.lowerBound + 1,
+            rect.columns.upperBound + 1
+        )
+    }
+
+    func applyInsertedRows(_ indices: IndexSet, newRowCount: Int) {
+        update(selection.insertingRows(indices, newRowCount: newRowCount))
+    }
+
+    func applyRemovedRows(_ indices: IndexSet, newRowCount: Int) {
+        update(selection.removingRows(indices, newRowCount: newRowCount))
     }
 }
 

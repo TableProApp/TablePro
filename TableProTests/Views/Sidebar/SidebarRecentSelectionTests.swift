@@ -13,7 +13,6 @@ import Testing
 /// table taken when it was opened. These are the properties that make tagging a Recent row with
 /// that copy correct: the copy still identifies the same table, so the row highlights and the
 /// selection means what the rest of the app expects it to mean.
-@Suite("Sidebar recent selection identity")
 struct SidebarRecentSelectionTests {
     private func table(
         _ name: String,

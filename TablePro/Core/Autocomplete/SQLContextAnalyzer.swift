@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProSQLGrammar
 
 private let regexLogger = Logger(subsystem: "com.TablePro", category: "SQLContextAnalyzer.Regex")
 
@@ -283,13 +284,13 @@ final class SQLContextAnalyzer {
     // MARK: - Main Analysis
 
     /// Analyze the query at the given cursor position
-    func analyze(query: String, cursorPosition: Int) -> SQLContext {
+    func analyze(query: String, cursorPosition: Int, grammar: SQLLexicalGrammar) -> SQLContext {
         let nsQuery = query as NSString
         let safePosition = min(cursorPosition, nsQuery.length)
 
         // Extract the current statement for multi-statement queries
         let located = SQLStatementScanner.locatedStatementAtCursor(
-            in: nsQuery as String, cursorPosition: safePosition
+            in: nsQuery as String, cursorPosition: safePosition, grammar: grammar
         )
         let currentStatement = located.sql
         let statementOffset = located.offset
@@ -771,7 +772,7 @@ final class SQLContextAnalyzer {
         }
 
         let start = SQLTokenBoundary.segmentStart(in: ns, endingAt: length)
-        let prefix = ns.substring(from: start)
+        let prefix = SQLTokenBoundary.matchText(of: ns.substring(from: start))
 
         guard start > 0, ns.character(at: start - 1) == Self.dot else {
             return (prefix, start, nil)
@@ -784,8 +785,7 @@ final class SQLContextAnalyzer {
         }
 
         let qualifierRange = NSRange(location: qualifierStart, length: qualifierEnd - qualifierStart)
-        let dotPrefix = ns.substring(with: qualifierRange)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "`\""))
+        let dotPrefix = SQLTokenBoundary.matchText(of: ns.substring(with: qualifierRange))
         return (prefix, start, dotPrefix)
     }
 

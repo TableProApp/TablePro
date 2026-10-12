@@ -15,7 +15,7 @@
 import SwiftUI
 
 internal struct CompareDataPlansView: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal let onCompare: () -> Void
 
     @State private var sortOrder = [KeyPathComparator(\CompareDataPlanRow.tableName)]
@@ -47,7 +47,7 @@ internal struct CompareDataPlansView: View {
             selectionHeader
             Divider()
             if visible.isEmpty {
-                ContentUnavailableView.search(text: session.searchText)
+                UnavailableStateView.search(text: session.searchText)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 plansTable(visible)
@@ -55,62 +55,91 @@ internal struct CompareDataPlansView: View {
         }
     }
 
+    @ViewBuilder
     private func plansTable(_ visible: [DataComparePlan]) -> some View {
         let groups = CompareDataPlanGrouping.groups(
             from: visible, grouping: session.grouping, sortedUsing: sortOrder
         )
         let flatRows = CompareDataPlanGrouping.rows(from: visible, sortedUsing: sortOrder)
 
-        return Table(of: CompareDataPlanRow.self, selection: $session.selectedPlanId, sortOrder: $sortOrder) {
-            TableColumn("Include") { row in
-                includeCell(row)
-            }
-            .width(min: 56, ideal: 64)
-
-            TableColumn("Table", value: \.tableName) { row in
-                Text(row.tableName)
-                    .fontWeight(row.isGroup ? .semibold : .regular)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(row.tableName)
-            }
-
-            TableColumn("Key") { row in
-                keyCell(row)
-            }
-
-            TableColumn("Insert") { row in
-                countCell(row.insertCount, kind: .insert)
-            }
-
-            TableColumn("Update") { row in
-                countCell(row.updateCount, kind: .update)
-            }
-
-            TableColumn("Delete") { row in
-                countCell(row.deleteCount, kind: .delete)
-            }
-
-            TableColumn("Same") { row in
-                countCell(row.identicalCount, kind: .identical)
-            }
-        } rows: {
-            if session.grouping == .none {
-                ForEach(flatRows) { row in
-                    SwiftUI.TableRow(row)
-                }
-            } else {
-                ForEach(groups) { group in
-                    DisclosureTableRow(group.header) {
-                        ForEach(group.rows) { row in
-                            SwiftUI.TableRow(row)
+if #available(macOS 14.0, *) {
+            Table(of: CompareDataPlanRow.self, selection: $session.selectedPlanId, sortOrder: $sortOrder) {
+                planColumns
+            } rows: {
+                if session.grouping == .none {
+                    ForEach(flatRows) { row in
+                        SwiftUI.TableRow(row)
+                    }
+                } else {
+                    ForEach(groups) { group in
+                        DisclosureTableRow(group.header) {
+                            ForEach(group.rows) { row in
+                                SwiftUI.TableRow(row)
+                            }
                         }
                     }
                 }
             }
+            .contextMenu(forSelectionType: CompareDataPlanRow.ID.self) { selection in
+                planCommands(for: selection, groups: groups)
+            }
+        } else {
+            Table(of: CompareDataPlanRow.self, selection: $session.selectedPlanId, sortOrder: $sortOrder) {
+                planColumns
+            } rows: {
+                /// A group reads as its header followed by its rows; what macOS 13 gives up is
+                /// collapsing it.
+                ForEach(session.grouping == .none ? flatRows : groups.flatMap { [$0.header] + $0.rows }) { row in
+                    SwiftUI.TableRow(row)
+                }
+            }
+            .contextMenu(forSelectionType: CompareDataPlanRow.ID.self) { selection in
+                planCommands(for: selection, groups: groups)
+            }
         }
-        .contextMenu(forSelectionType: CompareDataPlanRow.ID.self) { selection in
-            planCommands(for: selection, groups: groups)
+    }
+
+    @TableColumnBuilder<CompareDataPlanRow, KeyPathComparator<CompareDataPlanRow>>
+    private var planColumns: some TableColumnContent<CompareDataPlanRow, KeyPathComparator<CompareDataPlanRow>> {
+        TableColumn("Include") { row in
+            includeCell(row)
+        }
+        .width(min: 56, ideal: 64)
+
+        TableColumn("Table", value: \.tableName) { row in
+            Text(row.tableName)
+                .fontWeight(row.isGroup ? .semibold : .regular)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(row.tableName)
+        }
+
+        TableColumn("Key") { row in
+            keyCell(row)
+        }
+
+        TableColumn("Scope") { row in
+            if let plan = row.plan {
+                Text(Self.scopeDescription(plan.scope))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+
+        TableColumn("Insert") { row in
+            countCell(row.insertCount, kind: .insert)
+        }
+
+        TableColumn("Update") { row in
+            countCell(row.updateCount, kind: .update)
+        }
+
+        TableColumn("Delete") { row in
+            countCell(row.deleteCount, kind: .delete)
+        }
+
+        TableColumn("Same") { row in
+            countCell(row.identicalCount, kind: .identical)
         }
     }
 
@@ -209,7 +238,7 @@ internal struct CompareDataPlansView: View {
             Toggle(String(localized: "Include this table in the comparison"), isOn: enabledBinding(plan))
                 .labelsHidden()
                 .toggleStyle(.checkbox)
-                .disabled(!plan.isComparable)
+                .disabled(!plan.isComparable || !session.canChangeSetup)
                 .help(plan.unavailableReason ?? String(localized: "Include this table in the comparison"))
                 .accessibilityIdentifier("compare.plans.include.\(plan.id)")
         }
@@ -224,7 +253,7 @@ internal struct CompareDataPlansView: View {
 
     @ViewBuilder
     private func planKeyCell(_ plan: DataComparePlan) -> some View {
-        if let reason = plan.unavailableReason {
+        if let reason = plan.unavailableReason ?? plan.comparisonFailure {
             Label {
                 Text(reason)
                     .lineLimit(1)
@@ -256,6 +285,19 @@ internal struct CompareDataPlansView: View {
         guard value > 0 else { return .secondary }
         guard !differentiateWithoutColor else { return .primary }
         return CompareStatusStyle.tint(for: kind)
+    }
+
+    static func scopeDescription(_ scope: DataTableScope) -> String {
+        switch (scope.hasFilter, scope.rowLimit) {
+        case (false, nil):
+            return String(localized: "All Rows")
+        case (true, nil):
+            return String(localized: "Filtered")
+        case (false, let limit?):
+            return String(format: String(localized: "First %@"), limit.formatted())
+        case (true, let limit?):
+            return String(format: String(localized: "Filtered, first %@"), limit.formatted())
+        }
     }
 
     // MARK: - Inclusion
@@ -297,7 +339,7 @@ internal struct CompareDataPlansView: View {
     /// than costing a Compare of its own. This state is what is left: no pair yet, the list on its
     /// way, or a pair with nothing in common.
     private var emptyState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(emptyTitle, systemImage: "tablecells")
         } description: {
             Text(emptyDescription)

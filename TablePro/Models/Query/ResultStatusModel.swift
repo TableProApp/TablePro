@@ -36,6 +36,7 @@ enum ResultStatusReadout: Equatable {
 struct ResultStatusControls: Equatable {
     var showsModeSwitcher = false
     var showsReadout = false
+    var showsExecution = false
     var showsLoadingMore = false
     var showsExactCountAction = false
     var showsCountInProgress = false
@@ -50,6 +51,8 @@ struct ResultStatusControls: Equatable {
     /// The structure editor's add and remove pair, which is this bar's trailing cluster while the
     /// structure editor is the content.
     var showsStructureActions = false
+    /// Only the data grid has cells to sum. JSON and Map report the row selection, not cells.
+    var showsSelectionSummary = false
 }
 
 /// The whole status bar, resolved from tab state before any view exists.
@@ -60,20 +63,25 @@ struct ResultStatusModel: Equatable {
     let readout: ResultStatusReadout
     let controls: ResultStatusControls
     let statusMessage: String?
+    /// A picked column reaches only the rows the grid holds, so its summary is not the column's
+    /// total while the server has more.
+    let selectionSummaryCoversLoadedRowsOnly: Bool
 
     init(snapshot: StatusBarSnapshot, viewMode: ResultsViewMode, selectedRowCount: Int) {
         let selection = Self.reportedSelection(count: selectedRowCount, viewMode: viewMode)
         controls = Self.resolveControls(snapshot: snapshot, viewMode: viewMode)
         readout = Self.resolveReadout(snapshot: snapshot, selectedRowCount: selection)
         statusMessage = controls.showsReadout ? snapshot.statusMessage : nil
+        selectionSummaryCoversLoadedRowsOnly = controls.showsSelectionSummary && Self.hasUnloadedRows(snapshot)
     }
 
-    /// A mode with no grid has no selection to report.
+    /// A mode that cannot show the selection has none to report.
     ///
     /// Nothing clears the grid's selection when the mode changes, so a carried-over count would
-    /// replace the row range with a selection the user cannot see.
+    /// replace the row range with a selection the user cannot see. Map is included because it both
+    /// shows the selection and sets it.
     private static func reportedSelection(count: Int, viewMode: ResultsViewMode) -> Int {
-        viewMode.showsColumnControls ? count : 0
+        viewMode.reportsRowSelection ? count : 0
     }
 
     private static func resolveControls(
@@ -88,6 +96,12 @@ struct ResultStatusModel: Equatable {
 
         controls.showsModeSwitcher = snapshot.availableModes.count > 1
         controls.showsStructureActions = viewMode == .structure && snapshot.hasStructureActions
+        controls.showsExecution = viewMode.reportsExecution
+
+        /// A plan keeps the bar so it stays choosable and pinnable, and gives up everything the bar
+        /// says about rows. It has none, and reporting "No rows" under a plan states something
+        /// false about the statement that produced it.
+        guard !snapshot.isQueryPlan else { return controls }
 
         /// A table tab describes a table whether or not its rows have arrived, so its controls are
         /// decided by what the tab IS, never by what its buffer currently holds. Retargeting empties
@@ -113,15 +127,31 @@ struct ResultStatusModel: Equatable {
         controls.showsFetchAll = controls.showsReadout
             && snapshot.tabType == .query
             && pagination.hasMoreRows
+            && pagination.baseQueryForMore != nil
             && !pagination.isLoadingMore
 
         controls.showsColumns = viewMode.showsColumnControls && describesAResult
         controls.showsHighlightRules = viewMode == .data && describesAResult
+        controls.showsSelectionSummary = viewMode == .data && describesAResult
         controls.showsFilters = viewMode.showsRowFilters && isTable && snapshot.hasTableName
         controls.showsPagination = viewMode.showsResultScope && isTable && snapshot.hasTableName
         controls.showsPageNavigation = controls.showsPagination && snapshot.paginationCapability.allowsSeeking
 
         return controls
+    }
+
+    /// An estimate under-reports, so only an exact total is trusted. Without one this is the rule
+    /// pagination uses to offer Next.
+    private static func hasUnloadedRows(_ snapshot: StatusBarSnapshot) -> Bool {
+        let pagination = snapshot.pagination
+        if snapshot.tabType == .query {
+            return pagination.hasMoreRows
+        }
+        guard snapshot.tabType == .table else { return false }
+        if pagination.hasExactRowCount, let total = pagination.totalRowCount {
+            return total > snapshot.rowCount
+        }
+        return pagination.hasPreviousPage || pagination.canGoToNextPage(loadedRowCount: snapshot.rowCount)
     }
 
     private static func resolveReadout(snapshot: StatusBarSnapshot, selectedRowCount: Int) -> ResultStatusReadout {

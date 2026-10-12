@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("JSON Row Converter")
 struct JsonRowConverterTests {
     private func makeConverter(columns: [String], columnTypes: [ColumnType]) -> JsonRowConverter {
         JsonRowConverter(columns: columns, columnTypes: columnTypes)

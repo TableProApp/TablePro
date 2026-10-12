@@ -9,7 +9,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("WelcomeImportMenuButton")
 struct WelcomeImportMenuButtonTests {
     private final class Recorder {
         var fired: [String] = []
@@ -20,6 +19,7 @@ struct WelcomeImportMenuButtonTests {
             importConnectionsFile: { recorder.fired.append("file") },
             importFromURL: { recorder.fired.append("url") },
             importFromApp: { recorder.fired.append("app") },
+            importFromAWS: { recorder.fired.append("aws") },
             openProjectFolder: { recorder.fired.append("folder") }
         ))
     }
@@ -42,6 +42,6 @@ struct WelcomeImportMenuButtonTests {
             coordinator.runCommand(item)
         }
 
-        #expect(recorder.fired == ["file", "url", "app", "folder"])
+        #expect(recorder.fired == ["file", "url", "app", "aws", "folder"])
     }
 }

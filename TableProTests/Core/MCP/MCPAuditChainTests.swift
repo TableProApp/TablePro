@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MCP Audit Chain")
 struct MCPAuditChainTests {
     private func entry(action: String, details: String? = nil) -> AuditEntry {
         AuditEntry(

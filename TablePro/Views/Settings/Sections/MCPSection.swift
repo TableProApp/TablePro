@@ -3,8 +3,8 @@ import SwiftUI
 
 struct MCPSection: View {
     @Binding var settings: MCPSettings
-    @State private var manager = MCPServerManager.shared
-    @State private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var manager = MCPServerManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var tokenList: [MCPAuthToken] = []
     @State private var showSetupSheet = false
     @State private var showCreateSheet = false
@@ -43,8 +43,9 @@ struct MCPSection: View {
     }
 
     var body: some View {
-        Section(String(localized: "Integrations")) {
+        Section {
             Toggle(String(localized: "Enable MCP Server"), isOn: $settings.enabled)
+                .accessibilityIdentifier("mcp-enable-server-toggle")
 
             if showsStatus {
                 LabeledContent(String(localized: "Status")) {
@@ -75,6 +76,17 @@ struct MCPSection: View {
                 .font(.callout)
 
             MCPGrantListView()
+
+            Toggle(
+                String(localized: "Allow apps to list connections hidden from AI"),
+                isOn: $settings.allowsHiddenConnectionListing
+            )
+            .accessibilityIdentifier("mcp-hidden-connection-listing-toggle")
+
+            // swiftlint:disable:next line_length
+            Text(String(localized: "A paired app, such as a launcher, can ask when it pairs to show connections whose AI Policy is Never, with their user names. It still cannot query them. Turning this off stops every app at once."))
+                .foregroundStyle(.secondary)
+                .font(.callout)
         } header: {
             Text("Connection Access")
         } footer: {
@@ -170,7 +182,8 @@ struct MCPSection: View {
                 permissions: permissions,
                 connectionAccess: access,
                 expiresAt: expiresAt,
-                isBridgeCredential: false
+                isBridgeCredential: false,
+                extraScopes: []
             ) else { return }
             revealedToken = result.token
             revealedPlaintext = result.plaintext
@@ -187,7 +200,7 @@ struct MCPSection: View {
 }
 
 private struct MCPStatusIndicator: View {
-    @State private var manager = MCPServerManager.shared
+    @ObservedObject private var manager = MCPServerManager.shared
 
     var body: some View {
         IntegrationStatusIndicator(status: status, label: statusText)

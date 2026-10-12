@@ -6,6 +6,7 @@
 import SwiftUI
 
 internal struct SetPickerView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let context: FieldEditorContext
     internal let values: [String]
     internal var onSetNull: (() -> Void)?
@@ -30,19 +31,19 @@ internal struct SetPickerView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Text(displayLabel)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
-                    .foregroundStyle(context.valueState.placeholder == nil ? .primary : .secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.down")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(Rectangle())
+            /// The label is the value alone. A borderless menu draws its own trailing chevron, and
+            /// a second one in the label does not land beside it: measured, the label's chevron
+            /// renders at the *leading* edge, so the field read `⌄ a,b ⌄`.
+            Text(displayLabel)
+                .font(themeEngine.valueFontSwiftUI)
+                .foregroundStyle(context.valueState.placeholder == nil ? .primary : .secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
         .background(.quinary, in: RoundedRectangle(cornerRadius: 5))

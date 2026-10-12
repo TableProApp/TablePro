@@ -5,34 +5,73 @@
 
 import Combine
 import Foundation
-import Observation
 import os
 
 /// Manager for query tabs
-@MainActor @Observable
-final class QueryTabManager {
-    var tabs: [QueryTab] = [] {
+@MainActor
+final class QueryTabManager: ObservableObject {
+    @Published var tabs: [QueryTab] = [] {
         didSet {
             _tabIndexMapDirty = true
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
+                pruneActivations(keeping: tabs)
             }
             publishAnchorChange(oldTabs: oldValue, newTabs: tabs)
             syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
         }
     }
 
-    var selectedTabId: UUID?
+    /// Every writer of the selection comes through here, which makes this the one place that sees
+    /// every tab the user switches to: a click in the strip, Command 1 to 9, a new tab, a table
+    /// opened from the sidebar, a reopened tab and the neighbour a close lands on alike. A view
+    /// modifier could not stand in for it, because a connection the window is not showing has its
+    /// views unparented.
+    @Published var selectedTabId: UUID? {
+        didSet {
+            guard selectedTabId != oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
 
-    var tabStructureVersion: Int = 0
+    /// Whether the window shows this connection's tabs, in the key window. The window sets it, for
+    /// every connection it hosts at once. Only then is a selection a tab the user switched to: a
+    /// restore that finishes for a connection in the background selects a tab nobody has seen, and
+    /// recording it would send the next Control-Tab there. Coming to the front records the selected
+    /// tab, because the user is now looking at it.
+    var isFrontmost = false {
+        didSet {
+            guard isFrontmost != oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
 
-    @ObservationIgnored var pendingFocusTabId: UUID?
+    @Published var tabStructureVersion: Int = 0
 
-    @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
-    @ObservationIgnored private var _tabIndexMapDirty = true
+    var pendingFocusTabId: UUID?
 
-    @ObservationIgnored private let globalTabsProvider: () -> [QueryTab]
-    @ObservationIgnored private weak var tabSessionRegistry: TabSessionRegistry?
+    /// When each open tab was last the selected one, as a sequence number rather than a time, so
+    /// two selections in one run-loop turn still order. The sequence is shared by every tab manager
+    /// so a window hosting several connections can order all of their tabs together.
+    private(set) var activationSequence: [UUID: UInt64] = [:]
+    private static var lastActivationSequence: UInt64 = 0
+    private var activationRecordPending = false
+
+    /// Held while the window is on its way to a tab across an await, such as the rail switching a
+    /// connection's database before it selects the tab that database holds. The tab shown in the
+    /// meantime is a waypoint, and the one landed on is recorded when the hold lifts.
+    var defersActivationRecord = false {
+        didSet {
+            guard !defersActivationRecord, oldValue else { return }
+            scheduleActivationRecord()
+        }
+    }
+
+    private var _tabIndexMap: [UUID: Int] = [:]
+    private var _tabIndexMapDirty = true
+
+    private let globalTabsProvider: () -> [QueryTab]
+    private weak var tabSessionRegistry: TabSessionRegistry?
 
     init(
         globalTabsProvider: @escaping () -> [QueryTab] = { [] },
@@ -112,6 +151,37 @@ final class QueryTabManager {
         selectedTabId = tabs[((current + offset) % count + count) % count].id
     }
 
+    // MARK: - Recency
+
+    /// The tab is recorded once the turn settles, not at each write. Opening a table into another
+    /// connection brings that connection forward and then selects the new tab in the same turn, so
+    /// the tab it was showing is never drawn; recorded as it passed through, it would be what the
+    /// next Control-Tab went back to.
+    private func scheduleActivationRecord() {
+        guard isFrontmost, !defersActivationRecord, !activationRecordPending else { return }
+        activationRecordPending = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.recordSettledActivation() }
+        }
+    }
+
+    private func recordSettledActivation() {
+        activationRecordPending = false
+        guard isFrontmost, !defersActivationRecord, let id = selectedTab?.id else { return }
+        recordActivation(of: id)
+    }
+
+    private func recordActivation(of id: UUID) {
+        Self.lastActivationSequence += 1
+        activationSequence[id] = Self.lastActivationSequence
+    }
+
+    private func pruneActivations(keeping tabs: [QueryTab]) {
+        guard !activationSequence.isEmpty else { return }
+        let openIds = Set(tabs.map(\.id))
+        activationSequence = activationSequence.filter { openIds.contains($0.key) }
+    }
+
     func bindTabSessionRegistry(_ registry: TabSessionRegistry) {
         tabSessionRegistry = registry
         for tab in tabs where registry.session(for: tab.id) == nil {
@@ -187,11 +257,24 @@ final class QueryTabManager {
 
     // MARK: - Tab Management
 
-    func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil, claimFocus: Bool = false) {
+    func addTab(
+        initialQuery: String? = nil,
+        title: String? = nil,
+        databaseName: String = "",
+        sourceFileURL: URL? = nil,
+        sourceFileStamp: FileStamp? = nil,
+        sourceFileEncoding: FileTextEncoding? = nil,
+        claimFocus: Bool = false
+    ) {
         if let sourceFileURL,
            let existingIndex = tabs.firstIndex(where: { $0.content.sourceFileURL == sourceFileURL }) {
             if let query = initialQuery {
-                adoptReopenedFile(at: existingIndex, content: query, url: sourceFileURL)
+                adoptReopenedFile(
+                    at: existingIndex,
+                    content: query,
+                    stamp: sourceFileStamp,
+                    encoding: sourceFileEncoding
+                )
             }
             selectedTabId = tabs[existingIndex].id
             return
@@ -214,9 +297,13 @@ final class QueryTabManager {
 
         newTab.tableContext.databaseName = databaseName
         newTab.content.sourceFileURL = sourceFileURL
-        if let sourceFileURL {
-            newTab.content.savedFileContent = newTab.content.query
-            newTab.content.loadMtime = FileTextLoader.modificationDate(of: sourceFileURL)
+        if sourceFileURL != nil {
+            FileTabBaseline.adopt(
+                text: newTab.content.query,
+                stamp: sourceFileStamp,
+                encoding: sourceFileEncoding,
+                into: &newTab.content
+            )
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -235,15 +322,12 @@ final class QueryTabManager {
     /// The baseline moves with the buffer. Writing the text without it left the tab reading as
     /// dirty against content it had just loaded, and armed the same banner for a change it had
     /// already taken.
-    private func adoptReopenedFile(at index: Int, content: String, url: URL) {
+    private func adoptReopenedFile(at index: Int, content: String, stamp: FileStamp?, encoding: FileTextEncoding?) {
         /// An unknown baseline is not a licence to replace what the tab holds. `isFileDirty` reads a
         /// missing one as clean, so without this a tab that never learned what its file said would
         /// be overwritten by the very check meant to protect it.
         guard tabs[index].content.savedFileContent != nil, !tabs[index].content.isFileDirty else { return }
-        tabs[index].content.query = content
-        tabs[index].content.savedFileContent = content
-        tabs[index].content.loadMtime = FileTextLoader.modificationDate(of: url)
-        tabs[index].content.externalModificationDetected = false
+        FileTabBaseline.adopt(text: content, stamp: stamp, encoding: encoding, into: &tabs[index].content)
     }
 
     /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than
@@ -257,17 +341,40 @@ final class QueryTabManager {
         }
     }
 
-    var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
+    @Published var onTableOpened: ((
+        _ tableName: String,
+        _ schemaName: String?,
+        _ databaseName: String,
+        _ isView: Bool,
+        _ objectType: TableInfo.TableType?,
+        _ isPreview: Bool
+    ) -> Void)?
 
     /// Fired the instant a tab stops being about the table it was about. Whoever owns execution
     /// listens here rather than at the navigation call sites, because a retarget that forgets to
     /// invalidate is exactly how a finished query paints its rows into a tab showing something else.
-    var onTabRetargeted: ((UUID) -> Void)?
+    @Published var onTabRetargeted: ((UUID) -> Void)?
 
+    @Published var onTableSchemaResolved: ((_ tableName: String, _ databaseName: String, _ schemaName: String) -> Void)?
+
+    /// `objectType` carries what the object is, where the caller knew it, alongside the `isView`
+    /// the callers that know only that much pass. Whoever records the open needs the kind: a
+    /// MariaDB sequence recorded as "not a table" came back as a view and was offered Drop View.
     private func notifyTableOpened(
-        tableName: String, schemaName: String?, databaseName: String, isView: Bool, isPreview: Bool
+        tableName: String, schemaName: String?, databaseName: String,
+        isView: Bool, objectType: TableInfo.TableType?, isPreview: Bool
     ) {
-        onTableOpened?(tableName, schemaName, databaseName, isView, isPreview)
+        onTableOpened?(tableName, schemaName, databaseName, isView, objectType, isPreview)
+    }
+
+    /// A table tab opened before its schema was known was reported without one, so whoever recorded
+    /// that open learns the schema when the tab does. Otherwise the record keeps naming the table in
+    /// whichever schema is browsed when it is next used.
+    func adoptResolvedSchema(_ schemaName: String, at index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        tabs[index].tableContext.schemaName = schemaName
+        guard let tableName = tabs[index].tableContext.tableName else { return }
+        onTableSchemaResolved?(tableName, tabs[index].tableContext.databaseName, schemaName)
     }
 
     /// The tab already showing this table, preferring the selected one.
@@ -310,7 +417,7 @@ final class QueryTabManager {
             selectedTabId = existingTab.id
             notifyTableOpened(
                 tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-                isView: isView, isPreview: isPreview
+                isView: isView, objectType: objectType, isPreview: isPreview
             )
             return false
         }
@@ -338,7 +445,7 @@ final class QueryTabManager {
         selectedTabId = newTab.id
         notifyTableOpened(
             tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-            isView: isView, isPreview: isPreview
+            isView: isView, objectType: objectType, isPreview: isPreview
         )
         return true
     }
@@ -415,6 +522,30 @@ final class QueryTabManager {
         selectedTabId = newTab.id
     }
 
+    func addVersionHistoryTab(subject: VersionHistorySubject, title: String) {
+        if let existing = tabs.first(where: {
+            $0.tabType == .versionHistory && $0.display.versionHistorySubject == subject
+        }) {
+            selectedTabId = existing.id
+            return
+        }
+        var newTab = QueryTab(title: title, tabType: .versionHistory)
+        newTab.tableContext.isEditable = false
+        newTab.display.versionHistorySubject = subject
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
+    static var versionHistoryFallbackTitle: String {
+        String(localized: "History")
+    }
+
+    static func versionHistoryTitle(for name: String) -> String {
+        guard !name.isBlank else { return versionHistoryFallbackTitle }
+        return String(format: String(localized: "History: %@"), name)
+    }
+
     static func objectSourceTitle(for objectRef: DatabaseObjectRef) -> String {
         let format: String
         switch objectRef.kind {
@@ -472,8 +603,19 @@ final class QueryTabManager {
         var tab = tabs[selectedIndex]
         tab.tabType = .table
         tab.title = Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType)
-        tab.tableContext.tableName = tableName
-        tab.content.query = query
+        /// Built whole rather than field by field: a field left over describes the previous table,
+        /// and its primary keys were what a keyless table's edits matched rows on.
+        tab.tableContext = TabTableContext(
+            tableName: tableName,
+            databaseName: databaseName,
+            schemaName: schemaName,
+            isEditable: !isView,
+            isView: isView,
+            objectType: objectType
+        )
+        /// Fresh for the same reason. A query tab keeps the file it was opened from, and a table
+        /// carried that binding, so Save wrote the table's query into the file.
+        tab.content = TabQueryContent(query: query)
         tab.schemaVersion += 1
         tab.execution.executionTime = nil
         tab.execution.statusMessage = nil
@@ -488,10 +630,8 @@ final class QueryTabManager {
         tab.cellSelection = .empty
         tab.pendingChanges = TabChangeSnapshot()
         tab.hasUserInteraction = false
-        tab.tableContext.isView = isView
-        tab.tableContext.objectType = objectType
-        tab.tableContext.isEditable = !isView
         tab.filterState = TabFilterState()
+        tab.valueFilter = GridValueFilterState()
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
         // Retargeting points the tab at a different table, so a restore that has not been consumed
@@ -500,14 +640,13 @@ final class QueryTabManager {
         tab.pendingRestoredSort = nil
         tab.restoredPage = nil
         tab.restoredPageSize = nil
-        tab.tableContext.databaseName = databaseName
-        tab.tableContext.schemaName = schemaName
+        tab.restoredRowAnchor = nil
         tab.isPreview = isPreview
         tabs[selectedIndex] = tab
         tabStructureVersion += 1
         notifyTableOpened(
             tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-            isView: isView, isPreview: isPreview
+            isView: isView, objectType: objectType, isPreview: isPreview
         )
         return true
     }

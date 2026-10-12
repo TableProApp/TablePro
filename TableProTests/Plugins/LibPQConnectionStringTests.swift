@@ -7,13 +7,27 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("LibPQConnectionString")
 struct LibPQConnectionStringTests {
+    private func pluginSource(_ name: String) throws -> String {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repository
+                .appendingPathComponent("Plugins/PostgreSQLDriverPlugin")
+                .appendingPathComponent(name),
+            encoding: .utf8
+        )
+    }
+
     private func build(
         user: String = "postgres",
         password: String? = "hunter2",
         sslConfig: SSLConfiguration = SSLConfiguration(),
-        options: String? = nil
+        options: String? = nil,
+        applicationName: String? = nil,
+        connectTimeoutSeconds: Int? = nil
     ) -> String {
         LibPQConnectionString.build(
             host: "db.example.com",
@@ -22,7 +36,9 @@ struct LibPQConnectionStringTests {
             password: password,
             database: "app",
             sslConfig: sslConfig,
-            options: options
+            options: options,
+            applicationName: applicationName,
+            connectTimeoutSeconds: connectTimeoutSeconds
         )
     }
 
@@ -36,6 +52,58 @@ struct LibPQConnectionStringTests {
         #expect(conninfo.contains("user='postgres'"))
         #expect(conninfo.contains("password='hunter2'"))
         #expect(conninfo.contains("sslmode='disable'"))
+    }
+
+    @Test("The remaining budget reaches libpq's native connection setting")
+    func connectTimeoutReachesConnectionString() {
+        let timeout = LibPQConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "4201"])
+
+        #expect(timeout.nativeSeconds == 5)
+        #expect(build(connectTimeoutSeconds: timeout.nativeSeconds).contains("connect_timeout='5'"))
+    }
+
+    @Test("The compatibility timeout is clamped before reaching libpq")
+    func connectTimeoutFallbackClamps() {
+        #expect(LibPQConnectTimeout(additionalFields: ["connectTimeoutSeconds": "0"]).milliseconds == 1)
+        #expect(
+            LibPQConnectTimeout(additionalFields: ["connectTimeoutSeconds": String(Int64.min)]).milliseconds == 1
+        )
+        #expect(
+            LibPQConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "999999999"]).milliseconds
+                == LibPQConnectTimeout.maximumMilliseconds
+        )
+    }
+
+    @Test("TCP and bootstrap probes consume one absolute libpq deadline")
+    func connectDeadlineShrinksAcrossPhases() {
+        let deadline = LibPQConnectDeadline(
+            timeout: LibPQConnectTimeout(milliseconds: 4_200),
+            nowMicroseconds: 1_000_000
+        )
+
+        #expect(deadline.remainingMicroseconds(nowMicroseconds: 2_250_000) == 2_950_000)
+        #expect(
+            deadline.nextPollDeadline(nowMicroseconds: 2_250_000, maximumSliceMicroseconds: 100_000)
+                == 2_350_000
+        )
+        #expect(deadline.remainingMicroseconds(nowMicroseconds: 5_200_000) == nil)
+        #expect(
+            deadline.nextPollDeadline(nowMicroseconds: 5_200_000, maximumSliceMicroseconds: 100_000) == nil
+        )
+    }
+
+    @Test("Bootstrap queries use pollable libpq I/O and adoption follows every post-connect probe")
+    func bootstrapQueriesStayInsideDeadline() throws {
+        let connection = try pluginSource("LibPQPluginConnection.swift")
+        let core = try pluginSource("LibPQDriverCore.swift")
+
+        #expect(connection.contains("if let deadline = activeConnectDeadline"))
+        #expect(connection.contains("PQsendQuery(connection"))
+        #expect(connection.contains("PQsocketPoll("))
+        #expect(connection.contains("requestServerCancel(on: connection, evenWhenSuppressed: true)"))
+        let probes = try #require(core.range(of: "await onPostConnect?()"))
+        let adoption = try #require(core.range(of: "try await pqConn.finishConnecting()"))
+        #expect(probes.lowerBound < adoption.lowerBound)
     }
 
     @Test("The session is pinned to UTF8 in the startup packet, so RESET ALL and DISCARD ALL keep it")
@@ -97,6 +165,79 @@ struct LibPQConnectionStringTests {
         #expect(conninfo.contains("user='o\\'brien'"))
         #expect(conninfo.contains("password='back\\\\slash'"))
         #expect(conninfo.contains("options='-c application_name=\\'x\\''"))
+    }
+
+    @Test("The application name reaches libpq as a fallback, ahead of the connection options")
+    func sendsFallbackApplicationName() {
+        let conninfo = build(options: "-c search_path=app", applicationName: "TablePro Metadata")
+
+        #expect(conninfo.hasSuffix(
+            "client_encoding='UTF8' fallback_application_name='TablePro Metadata' options='-c search_path=app'"
+        ))
+        #expect(!conninfo.contains(" application_name="))
+    }
+
+    @Test("No application name, or an empty one, sends no application name keyword")
+    func omitsMissingApplicationName() {
+        #expect(!build().contains("application_name"))
+        #expect(!build(applicationName: "").contains("application_name"))
+    }
+
+    /// Measured on libpq 17: a fallback name replaces an `application_name` set in `options`, so it
+    /// has to stay out whenever the user named the session there, in any of the server's spellings.
+    @Test(
+        "A name the user gives the session in the connection options keeps the fallback out",
+        arguments: [
+            "-c application_name=reporting",
+            "-capplication_name=reporting",
+            "--application_name=reporting",
+            "-c application-name=reporting",
+            "--application-name=reporting",
+            "-c Application_Name=reporting"
+        ]
+    )
+    func userApplicationNameWins(options: String) {
+        let conninfo = build(options: options, applicationName: "TablePro")
+
+        #expect(!conninfo.contains("fallback_application_name"))
+        #expect(conninfo.contains("options="))
+    }
+
+    @Test(
+        "An option that only mentions application_name in its value still gets the fallback",
+        arguments: ["-c search_path=application_name,public", "--search-path=application_name", "-c statement_timeout=0"]
+    )
+    func valuesDoNotNameTheApplication(options: String) {
+        #expect(build(options: options, applicationName: "TablePro").contains("fallback_application_name='TablePro'"))
+    }
+
+    @Test("Each setting in the options is read by its name, in every spelling the server takes")
+    func readsSettingNames() {
+        #expect(
+            LibPQConnectionString.settingNames(in: "-c Search_Path=x -cstatement_timeout=0 --work-mem=64MB -c")
+                == ["search_path", "statement_timeout", "work_mem"]
+        )
+    }
+
+    @Test("A quote or backslash in the application name is escaped")
+    func escapesApplicationName() {
+        #expect(build(applicationName: "o'brien\\x").contains("fallback_application_name='o\\'brien\\\\x'"))
+    }
+
+    @Test("A metadata connection is named apart from the session, and anything else is the session")
+    func namesEachPurpose() {
+        #expect(LibPQConnectionString.applicationName(forPurpose: "metadata") == "TablePro Metadata")
+        #expect(LibPQConnectionString.applicationName(forPurpose: "session") == "TablePro")
+        #expect(LibPQConnectionString.applicationName(forPurpose: nil) == "TablePro")
+        #expect(LibPQConnectionString.applicationName(forPurpose: "other") == "TablePro")
+    }
+
+    @Test("Both names fit the server's 63-byte limit and are plain ASCII")
+    func namesFitTheServerLimit() {
+        for name in [LibPQConnectionString.sessionApplicationName, LibPQConnectionString.metadataApplicationName] {
+            #expect(name.utf8.count <= 63)
+            #expect(name.allSatisfy { $0.isASCII })
+        }
     }
 
     @Test("UTF8 and its PostgreSQL 8.0 name UNICODE both count as the pinned encoding")

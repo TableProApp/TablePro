@@ -12,7 +12,7 @@ import TableProPluginKit
 private final class KafkaFrameDecoder: ByteToMessageDecoder {
     typealias InboundOut = ByteBuffer
 
-    private static let maximumFrameLength = 256 * 1024 * 1024
+    private static let maximumFrameLength = 256 * 1_024 * 1_024
 
     func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
         guard buffer.readableBytes >= 4 else { return .needMoreData }
@@ -42,10 +42,15 @@ private final class KafkaResponseHandler: ChannelInboundHandler, @unchecked Send
     private var failure: Error?
     private let lock = NIOLock()
 
-    /// Registers the one in-flight request. A second registration is refused rather than
-    /// allowed to overwrite the first: dropping a continuation leaks it and hangs its caller
-    /// forever, which is far harder to diagnose than an error naming the overlap.
-    func expect(_ continuation: CheckedContinuation<ByteBuffer, Error>) {
+    /// Registers the one in-flight request, and says whether the caller may now write.
+    ///
+    /// A second registration is refused rather than allowed to overwrite the first: dropping a
+    /// continuation leaks it and hangs its caller forever, which is far harder to diagnose than
+    /// an error naming the overlap. The return value is what stops the refusal being worse than
+    /// the overlap: the caller used to be resumed with the error and then write its request
+    /// anyway, so the broker answered a request nobody was waiting for and the orphan frame
+    /// resumed the NEXT caller, failing it on a correlation id mismatch.
+    func expect(_ continuation: CheckedContinuation<ByteBuffer, Error>) -> Bool {
         let resolved: Error? = lock.withLock {
             if let failure { return failure }
             guard pending == nil else {
@@ -56,7 +61,9 @@ private final class KafkaResponseHandler: ChannelInboundHandler, @unchecked Send
             pending = continuation
             return nil
         }
-        if let resolved { continuation.resume(throwing: resolved) }
+        guard let resolved else { return true }
+        continuation.resume(throwing: resolved)
+        return false
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -141,6 +148,8 @@ actor KafkaConnection {
     private var channel: Channel?
     private var handler: KafkaResponseHandler?
     private var correlationId: Int32 = 0
+    private var wireSlotIsTaken = false
+    private var waitingForWireSlot: [CheckedContinuation<Void, Never>] = []
     private(set) var apiVersions: KafkaApiVersionTable = .preNegotiation
 
     let endpoint: KafkaEndpoint
@@ -164,6 +173,15 @@ actor KafkaConnection {
         timeout: TimeAmount
     ) async throws {
         guard channel == nil else { return }
+
+        let timeoutNanoseconds = UInt64(max(1, timeout.nanoseconds))
+        let expiresAt = ProcessInfo.processInfo.systemUptime + TimeInterval(timeoutNanoseconds) / 1_000_000_000
+        let timeoutTask = Task { [weak self] in
+            try await Task.sleep(nanoseconds: timeoutNanoseconds)
+            guard !Task.isCancelled else { return }
+            await self?.close()
+        }
+        defer { timeoutTask.cancel() }
 
         let sslContext = try Self.makeSSLContext(ssl)
         let serverHostname = ssl.verifiesHostname ? endpoint.host : nil
@@ -201,9 +219,15 @@ actor KafkaConnection {
         handler = responseHandler
 
         do {
+            guard ProcessInfo.processInfo.systemUptime < expiresAt else {
+                throw KafkaError.connectionFailed(String(localized: "Timed out while connecting to the Kafka broker"))
+            }
             try Task.checkCancellation()
             apiVersions = try await negotiateApiVersions()
             try await authenticate(credentials)
+            guard ProcessInfo.processInfo.systemUptime < expiresAt else {
+                throw KafkaError.connectionFailed(String(localized: "Timed out while connecting to the Kafka broker"))
+            }
         } catch {
             await close()
             throw error
@@ -248,7 +272,17 @@ actor KafkaConnection {
     }
 
     /// Sends one request and reads its reply.
+    ///
+    /// Requests queue rather than collide. An actor releases its executor across every `await`,
+    /// so two callers that both reach this method interleave, and the wire slot the response
+    /// handler guards holds exactly one of them. The queue is what makes a connection shared by
+    /// the health monitor's 30-second ping and a running statement work at all; without it
+    /// whichever arrived second failed with "two requests overlapped", and a fan-out across
+    /// leaders makes a shared connection far more common than it used to be.
     func send(_ request: KafkaRequest) async throws -> KafkaProtocolReader {
+        await claimWireSlot()
+        defer { releaseWireSlot() }
+
         guard let channel, let handler, channel.isActive else { throw KafkaError.notConnected }
         try Task.checkCancellation()
 
@@ -260,7 +294,7 @@ actor KafkaConnection {
 
         let frame = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                handler.expect(continuation)
+                guard handler.expect(continuation) else { return }
                 channel.writeAndFlush(buffer).whenFailure { error in
                     handler.finish(with: KafkaError.connectionFailed(error.localizedDescription))
                 }
@@ -275,6 +309,29 @@ actor KafkaConnection {
             throw KafkaError.malformedResponse("correlation id \(received) does not match the request's \(sent)")
         }
         return body
+    }
+
+    /// Waits for the wire slot.
+    ///
+    /// Deliberately not cancellable. A waiter that unwound on cancellation would have to resume
+    /// itself out of a nonisolated handler and race the holder's release, and the wait it would
+    /// be escaping is already bounded: the request ahead ends when the broker answers or when
+    /// its own cancellation closes the channel. A cancelled waiter takes the slot and gives it
+    /// straight back at the `Task.checkCancellation()` below.
+    private func claimWireSlot() async {
+        guard wireSlotIsTaken else {
+            wireSlotIsTaken = true
+            return
+        }
+        await withCheckedContinuation { waitingForWireSlot.append($0) }
+    }
+
+    private func releaseWireSlot() {
+        guard !waitingForWireSlot.isEmpty else {
+            wireSlotIsTaken = false
+            return
+        }
+        waitingForWireSlot.removeFirst().resume()
     }
 
     /// Asks the broker what it supports, then never sends a version outside that range.
@@ -323,7 +380,14 @@ actor KafkaConnection {
         try apiVersions.negotiated(api)
     }
 
+    static func tlsConfigurationError(for ssl: SSLConfiguration) -> KafkaError? {
+        guard ssl.mode == .verifyCa,
+              ssl.caCertificatePath.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return .verifyCaNeedsCertificate
+    }
+
     private static func makeSSLContext(_ ssl: SSLConfiguration) throws -> NIOSSLContext? {
+        if let error = tlsConfigurationError(for: ssl) { throw error }
         guard ssl.isEnabled else { return nil }
         var configuration = TLSConfiguration.makeClientConfiguration()
         configuration.certificateVerification = verification(for: ssl.mode)

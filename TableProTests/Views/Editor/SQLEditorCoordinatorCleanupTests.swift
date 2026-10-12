@@ -6,13 +6,13 @@
 //  Validates that destroy() and monitor cleanup are safe and idempotent.
 //
 
+import Combine
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("SQLEditorCoordinator Cleanup")
 struct SQLEditorCoordinatorCleanupTests {
     // MARK: - destroy() Safety
 
@@ -39,6 +39,18 @@ struct SQLEditorCoordinatorCleanupTests {
         coordinator.destroy()
         #expect(coordinator.isDestroyed == true)
         #expect(coordinator.vimMode == .normal)
+    }
+
+    /// `destroy()` runs inside SwiftUI's teardown of the editor's hosting view, where a published
+    /// change aborts the app with an exclusivity violation on macOS 26.
+    @Test("destroy() publishes no change")
+    func destroyPublishesNothing() {
+        let coordinator = SQLEditorCoordinator()
+        var changes = 0
+        let subscription = coordinator.objectWillChange.sink { changes += 1 }
+        coordinator.destroy()
+        subscription.cancel()
+        #expect(changes == 0)
     }
 
     // MARK: - Post-Destroy State

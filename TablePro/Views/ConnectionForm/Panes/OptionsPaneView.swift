@@ -13,26 +13,123 @@ import TableProPluginKit
 /// three sidebar panes called Customization, Advanced and AI Rules. They answer one question, so
 /// they are one tab.
 struct OptionsPaneView: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     private var databaseType: DatabaseType { coordinator.network.type }
-    private var aiIsEnabled: Bool { AppSettingsManager.shared.ai.enabled }
+    private var aiIsEnabled: Bool { settingsManager.ai.enabled }
 
     var body: some View {
         Form {
             driverSection
+            extensionsSection
+            timeoutSection
             startupSection
             preConnectSection
             safetySection
             if aiIsEnabled {
                 aiRulesSection
             }
-            if AppSettingsManager.shared.sync.enabled {
+            if settingsManager.sync.enabled {
                 syncSection
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - Timeouts
+
+    private var timeoutSection: some View {
+        Section {
+            LabeledContent(String(localized: "Connect timeout")) {
+                HStack(spacing: 4) {
+                    TextField(
+                        String(localized: "Connect timeout"),
+                        value: $coordinator.customization.connectTimeoutSeconds,
+                        format: .number.grouping(.never),
+                        prompt: Text(verbatim: connectTimeoutPlaceholder)
+                    )
+                    .labelsHidden()
+                    .frame(width: 100)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityIdentifier("connection-form-connect-timeout")
+                    Text(String(localized: "seconds"))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .help(connectTimeoutHelp)
+
+            LabeledContent(String(localized: "Query timeout")) {
+                HStack(spacing: 4) {
+                    TextField(
+                        String(localized: "Query timeout"),
+                        value: $coordinator.customization.queryTimeoutSeconds,
+                        format: .number.grouping(.never),
+                        prompt: Text(verbatim: queryTimeoutPlaceholder)
+                    )
+                    .labelsHidden()
+                    .frame(width: 100)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityIdentifier("connection-form-query-timeout")
+                    Text(String(localized: "seconds"))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .help(queryTimeoutHelp)
+        } header: {
+            Text(String(localized: "Timeouts"))
+        } footer: {
+            Text(
+                String(localized: """
+                    Query timeout applies only to database drivers that support it. \
+                    Use 0 for no limit. Reconnect to apply changes.
+                    """)
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var connectTimeoutPlaceholder: String {
+        String(
+            format: String(localized: "Default (%d)"),
+            ConnectionTimeoutPolicy.defaultConnectTimeoutSeconds
+        )
+    }
+
+    private var connectTimeoutHelp: String {
+        String(
+            format: String(localized: """
+                Maximum time for TCP, TLS, authentication, tunnel, and proxy setup. \
+                Leave blank to use the %d-second default.
+                """),
+            ConnectionTimeoutPolicy.defaultConnectTimeoutSeconds
+        )
+    }
+
+    private var queryTimeoutPlaceholder: String {
+        String(
+            format: String(localized: "Global (%d)"),
+            settingsManager.general.queryTimeoutSeconds
+        )
+    }
+
+    private var queryTimeoutHelp: String {
+        let globalQueryTimeoutSeconds = settingsManager.general.queryTimeoutSeconds
+        guard globalQueryTimeoutSeconds > 0 else {
+            return String(localized: """
+                Leave blank to use the global setting, which has no limit. \
+                This setting applies only to database drivers that support it.
+                """)
+        }
+        return String(
+            format: String(localized: """
+                Leave blank to use the global %d-second timeout. \
+                This setting applies only to database drivers that support it.
+                """),
+            globalQueryTimeoutSeconds
+        )
     }
 
     // MARK: - Driver options
@@ -64,12 +161,30 @@ struct OptionsPaneView: View {
         )
     }
 
+    // MARK: - Extensions
+
+    @ViewBuilder
+    private var extensionsSection: some View {
+        if let field = coordinator.advanced.extensionListField {
+            Section {
+                LoadableExtensionListEditor(value: advancedFieldBinding(for: field))
+            } header: {
+                Text(field.label)
+            } footer: {
+                Text("Loaded in this order each time the database file opens on this Mac. An extension runs with full access to your Mac, so add only files you trust.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     // MARK: - Startup
 
     private var startupSection: some View {
         Section {
             StartupCommandsEditor(text: $coordinator.advanced.startupCommands)
                 .frame(height: 80)
+                .accessibilityIdentifier("connection-form-startup-commands")
         } header: {
             Text(String(localized: "Startup Commands"))
         } footer: {

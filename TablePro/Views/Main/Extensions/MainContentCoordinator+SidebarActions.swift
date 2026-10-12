@@ -8,14 +8,13 @@
 import AppKit
 import Foundation
 import TableProPluginKit
-import UniformTypeIdentifiers
 
 extension MainContentCoordinator {
     // MARK: - Result Set Operations
 
     var canPinActiveResultSet: Bool {
         guard let tab = tabManager.selectedTab else { return false }
-        return ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
+        return ResultSetPolicy.canPin(tabType: tab.tabType, display: tab.display)
     }
 
     var isActiveResultSetPinned: Bool {
@@ -62,7 +61,14 @@ extension MainContentCoordinator {
 
         if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
             applyResultSetSwitch(to: lastPinned.id, in: tabId)
-            tabManager.mutate(at: tabIdx) { $0.display.removeUnpinnedResults() }
+            tabManager.mutate(at: tabIdx) { tab in
+                tab.display.removeUnpinnedResults()
+                /// A failed execution records its message on the tab rather than on a result set,
+                /// so returning here without clearing it left the banner over the pinned result the
+                /// switch just revealed, and only the banner's own Dismiss could take it away.
+                tab.execution.errorMessage = nil
+                tab.execution.errorQuery = nil
+            }
             return
         }
 
@@ -80,10 +86,22 @@ extension MainContentCoordinator {
         toolbarState.isResultsCollapsed = true
     }
 
+    // MARK: - Database Operations
+
+    func createDatabase() {
+        guard !safeModeLevel.blocksAllWrites,
+              services.pluginManager.supportsContainerSwitching(for: connection.type)
+        else { return }
+        activeSheet = .createDatabase
+    }
+
     // MARK: - Table Operations
 
     func createNewTable() {
-        guard !safeModeLevel.blocksAllWrites else { return }
+        guard !safeModeLevel.blocksAllWrites,
+              CreateTableEligibility.canCreateTable(with: DatabaseManager.shared.driver(for: connection.id)) else {
+            return
+        }
 
         if tabManager.tabs.isEmpty {
             tabManager.addCreateTableTab(databaseName: browseDatabaseName)
@@ -100,11 +118,9 @@ extension MainContentCoordinator {
     // MARK: - View Operations
 
     func createView() {
-        guard !safeModeLevel.blocksAllWrites else { return }
-
-        let driver = DatabaseManager.shared.driver(for: connection.id)
-        let template = driver?.createViewTemplate()
-            ?? "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
+        guard !safeModeLevel.blocksAllWrites,
+              let template = DatabaseManager.shared.driver(for: connection.id)?.createViewTemplate()
+        else { return }
 
         let payload = EditorTabPayload(
             connectionId: connection.id,
@@ -151,7 +167,9 @@ extension MainContentCoordinator {
                 query = Self.viewDefinitionFallback(
                     viewName: viewName,
                     error: error,
-                    driver: DatabaseManager.shared.driver(for: self.connection.id)
+                    template: DatabaseManager.shared.driver(for: self.connection.id)?
+                        .editViewFallbackTemplate(viewName: viewName),
+                    lineComment: self.services.pluginManager.editorLanguage(for: self.connection.type).lineCommentMarker
                 )
             }
             WindowManager.shared.openTab(payload: EditorTabPayload(
@@ -164,17 +182,17 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Every line of the error is commented out. A driver error can span several lines, and only the
-    /// first used to be, so the rest landed in the query tab as SQL.
-    static func viewDefinitionFallback(viewName: String, error: Error, driver: DatabaseDriver?) -> String {
-        let template = driver?.editViewFallbackTemplate(viewName: viewName)
-            ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
-        let reason = error.localizedDescription
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { "-- \($0)" }
-            .joined(separator: "\n")
-        let heading = "-- " + String(localized: "Could not fetch the view definition:")
-        return "\(heading)\n\(reason)\n\(template)"
+    /// Every line of the error is commented out in the tab's own language, and a line ends wherever
+    /// the engine or the editor's scanner ends one. A MongoDB tab runs JavaScript, where `--` is the
+    /// decrement operator, and an error naming a view with a carriage return in it ended the comment
+    /// partway through the name. A language with no line comment gets the template alone.
+    static func viewDefinitionFallback(viewName: String, error: Error, template: String?, lineComment: String) -> String {
+        let template = template ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
+        guard !lineComment.isEmpty else { return template }
+        let reason = error.localizedDescription.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+        let comments = ([String(localized: "Could not fetch the view definition:")] + reason.map(String.init))
+            .map { "\(lineComment) \($0)" }
+        return (comments + [template]).joined(separator: "\n")
     }
 
     // MARK: - Export/Import
@@ -205,43 +223,59 @@ extension MainContentCoordinator {
         activeSheet = .exportQueryResults
     }
 
-    func openImportDialog(formatId: String) {
-        guard !safeModeLevel.blocksAllWrites else { return }
-        guard PluginManager.shared.supportsImport(for: connection.type) else {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Import Not Supported"),
-                message: String(format: String(localized: "Import is not supported for %@ connections."), connection.type.rawValue),
-                window: nil
+    /// The menu bar's Import Data…, the Actions pull-down's leaf of the same name, and ⇧⌘I. The
+    /// file decides the format, so every format this connection imports is offered and the sheet
+    /// follows what the user picked. Resolving a format first is what made the command a permanent
+    /// alias for SQL (#3047).
+    func openImportPanel() {
+        guard let options = offeredImportFormats() else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let url = await ImportFilePanel.present(
+                matching: options,
+                message: String(localized: "Select a file to import"),
+                in: self.contentWindow
             )
-            return
+            guard let url, case .format(let formatId) = ImportFileFormatResolver.match(url, among: options) else { return }
+            self.presentImportSheet(fileURL: url, formatId: formatId)
         }
-        guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else { return }
-        let pluginType = type(of: plugin)
+    }
 
-        let panel = NSOpenPanel()
-        var contentTypes: [UTType] = []
-        for ext in pluginType.acceptedFileExtensions {
-            if let utType = UTType(filenameExtension: ext) {
-                contentTypes.append(utType)
-            }
+    /// One named format, from the Import Data From list or the object browser's own menu. The user
+    /// has already said what the file holds, so every file is offered and nothing is read off the
+    /// extension: this is the route for a CSV called `orders.txt`.
+    func openImportDialog(formatId: String) {
+        guard let options = offeredImportFormats(),
+              let option = options.first(where: { $0.id == formatId }) else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let url = await ImportFilePanel.presentForNamedFormat(
+                message: String(format: String(localized: "Select %@ file to import"), option.name),
+                in: self.contentWindow
+            )
+            guard let url else { return }
+            self.presentImportSheet(fileURL: url, formatId: formatId)
         }
-        if !pluginType.requiresTargetTable, let gzType = UTType(filenameExtension: "gz") {
-            contentTypes.append(gzType)
-        }
-        if !contentTypes.isEmpty {
-            panel.allowedContentTypes = contentTypes
-        }
-        panel.allowsMultipleSelection = false
-        panel.message = String(format: String(localized: "Select %@ file to import"), pluginType.formatDisplayName)
+    }
 
-        guard let window = contentWindow else { return }
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            self?.importFileURL = url
-            switch ImportRouting.route(formatId: formatId, requiresTargetTable: pluginType.requiresTargetTable) {
-            case .statement(let id): self?.activeSheet = .importDialog(formatId: id)
-            case .rowMapping(let id): self?.activeSheet = .rowImport(formatId: id)
-            }
+    /// The formats this connection imports from, or nil when it imports from none. An empty list is
+    /// nil too: a panel that enables every file and then refuses all of them is a dead end.
+    private func offeredImportFormats() -> [ImportFormatOption]? {
+        guard !safeModeLevel.blocksAllWrites else { return nil }
+        guard importFormatLookup.supportsImport(connection.type) else {
+            reportImportRefusal(.importNotSupported(connection.type))
+            return nil
+        }
+        let options = importFormatLookup.offeredFormats(connection.type)
+        return options.isEmpty ? nil : options
+    }
+
+    private func presentImportSheet(fileURL: URL, formatId: String) {
+        guard let requiresTargetTable = importFormatLookup.requiresTargetTable(formatId) else { return }
+        importFile = ImportFileHandoff(url: fileURL, ownsFile: false)
+        switch ImportRouting.route(formatId: formatId, requiresTargetTable: requiresTargetTable) {
+        case .statement(let id): activeSheet = .importDialog(formatId: id)
+        case .rowMapping(let id): activeSheet = .rowImport(formatId: id)
         }
     }
 
@@ -315,7 +349,7 @@ extension MainContentCoordinator {
         let subject = operation.target(tableName) ?? scope.database
         Task { [weak self] in
             guard let self else { return }
-            let decision = await ExecutionGateProvider.shared.authorize(
+            let decision = await self.executionGate.authorize(
                 OperationRequest(
                     connectionId: self.connectionId,
                     databaseType: self.connection.type,

@@ -4,15 +4,14 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import Foundation
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator retained grid display state")
 @MainActor
 struct MainContentCoordinatorDisplayStateTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

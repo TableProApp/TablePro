@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SortColumnResolver")
 struct SortColumnResolverTests {
     private let displayColumns = ["_id", "name", "email", "createdAt"]
 

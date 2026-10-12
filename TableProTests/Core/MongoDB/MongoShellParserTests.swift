@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MongoDB Shell Parser")
 struct MongoShellParserTests {
     // MARK: - Find Operations
 

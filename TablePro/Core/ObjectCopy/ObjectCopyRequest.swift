@@ -76,6 +76,11 @@ internal enum ObjectCopyDestination: Hashable, Sendable {
     }
 }
 
+internal enum ObjectCopyPreselection: Hashable, Sendable {
+    case wholeScope
+    case objects([ObjectCopySelection])
+}
+
 /// One object the user chose to copy.
 ///
 /// A name is not an identity. PostgreSQL and Oracle both allow `f(integer)` and `f(text)` at once,

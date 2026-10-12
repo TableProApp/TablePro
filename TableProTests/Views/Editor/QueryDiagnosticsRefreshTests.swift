@@ -4,11 +4,11 @@
 //
 
 import AppKit
-@testable import CodeEditSourceEditor
-@testable import CodeEditTextView
 import Foundation
 import SwiftUI
 @testable import TablePro
+import TableProEditorKit
+import TableProTextEngine
 import Testing
 
 @MainActor
@@ -23,7 +23,6 @@ private final class DocumentReplacementRecorder: TextViewCoordinator {
 }
 
 @MainActor
-@Suite("Query diagnostics refresh")
 struct QueryDiagnosticsRefreshTests {
     private func makeEditor(_ text: String = "") -> (SQLEditorCoordinator, TextViewController) {
         let coordinator = SQLEditorCoordinator()
@@ -87,15 +86,17 @@ struct QueryDiagnosticsRefreshTests {
         #expect(underlines(in: controller).isEmpty)
     }
 
-    @Test("A tab switch pushed through the text binding re-checks the incoming tab")
-    func tabSwitchThroughBinding() async {
+    /// A tab switch replaces the whole document, which is what `SourceEditor`'s binding does for the editor.
+    /// The binding plumbing itself is the editor's, and `SourceEditorBindingSyncTests` covers it; what belongs
+    /// here is that a second replacement re-checks rather than leaving the first document's answer behind.
+    @Test("A second replacement re-checks the incoming document")
+    func secondReplacementIsChecked() async {
         let (coordinator, controller) = makeEditor()
         defer { coordinator.destroy() }
-        let sync = TextBindingSync(text: .binding(.constant("")), phase: RepresentableSyncPhase())
-        sync.applyRepresentableText("SELECT 1)", controller: controller)
+        controller.setText("SELECT 1)")
         #expect(await waitForUnderlines(in: controller) == [NSRange(location: 8, length: 1)])
 
-        sync.applyRepresentableText("SELECT name FROM t /* open", controller: controller)
+        controller.setText("SELECT name FROM t /* open")
 
         #expect(underlines(in: controller).isEmpty)
         #expect(await waitForUnderlines(in: controller) == [NSRange(location: 19, length: 2)])
@@ -133,7 +134,6 @@ struct QueryDiagnosticsRefreshTests {
 }
 
 @MainActor
-@Suite("Query diagnostic messages")
 struct QueryDiagnosticMessageTests {
     private func makeChecked(_ text: String) -> (QueryDiagnosticsController, TextViewController) {
         let controller = EditorControllerFixture.make(string: text)
@@ -193,7 +193,7 @@ struct QueryDiagnosticMessageTests {
 
         let emphases = manager.getEmphases(for: QueryDiagnosticsController.emphasisGroup)
         #expect(emphases.map(\.range) == [range])
-        #expect(emphases.first?.style == .underline(color: .systemOrange))
+        #expect(emphases.first?.style == .underline(color: ThemeEngine.shared.palette[.statusWarning]))
         #expect(
             manager.toolTip(at: try center(of: range, in: controller))
                 == "Full-width semicolon (U+FF1B). SQL reads only ; as a statement separator."
@@ -271,14 +271,5 @@ struct QueryDiagnosticMessageTests {
 
         let rotors = controller.textView.accessibilityCustomRotors()
         #expect(rotors.filter { $0.label == QueryDiagnosticsRotorSearch.label }.count == 1)
-    }
-}
-
-private extension EmphasisManager {
-    @MainActor
-    func toolTip(at point: CGPoint) -> String? {
-        guard let textView else { return nil }
-        let text = toolTips.view(textView, stringForToolTip: 0, point: point, userData: nil)
-        return text.isEmpty ? nil : text
     }
 }

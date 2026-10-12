@@ -3,8 +3,8 @@
 //  TablePro
 //
 
-import CodeEditTextView
 import Foundation
+import TableProTextEngine
 
 internal struct RevealedText: Equatable, Sendable {
     internal enum Segment: Equatable, Sendable {

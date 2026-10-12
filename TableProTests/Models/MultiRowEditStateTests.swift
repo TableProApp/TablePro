@@ -6,13 +6,12 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
-@MainActor @Suite("MultiRowEditState")
+@MainActor
 struct MultiRowEditStateTests {
-
     // MARK: - Helper
 
     private func makeSUT(
@@ -36,7 +35,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("FieldEditState Computed Properties")
     struct FieldEditStateTests {
-
         @Test("hasEdit is false when no pending changes")
         func hasEditFalseWhenNoPendingChanges() {
             let field = FieldEditState(
@@ -122,7 +120,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("configure()")
     struct ConfigureTests {
-
         private func makeSUT(
             columns: [String] = ["id", "name", "email"],
             columnTypes: [ColumnType]? = nil,
@@ -358,7 +355,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("updateField()")
     struct UpdateFieldTests {
-
         private func makeSUT(
             columns: [String] = ["id", "name", "email"],
             columnTypes: [ColumnType]? = nil,
@@ -465,7 +461,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("Set Field Special Values")
     struct SetFieldSpecialValuesTests {
-
         private func makeSUT(
             columns: [String] = ["id", "name", "email"],
             columnTypes: [ColumnType]? = nil,
@@ -553,7 +548,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("clearEdits()")
     struct ClearEditsTests {
-
         private func makeSUT(
             columns: [String] = ["id", "name", "email"],
             columnTypes: [ColumnType]? = nil,
@@ -604,7 +598,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("getEditedFields()")
     struct GetEditedFieldsTests {
-
         private func makeSUT(
             columns: [String] = ["id", "name", "email"],
             columnTypes: [ColumnType]? = nil,
@@ -671,7 +664,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("onFieldChanged Callback")
     struct OnFieldChangedCallbackTests {
-
         private func makeSUT(
             columns: [String] = ["id", "name", "email"],
             columnTypes: [ColumnType]? = nil,
@@ -693,7 +685,7 @@ struct MultiRowEditStateTests {
         func updateFieldFiresCallbackForNewEdit() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -709,7 +701,7 @@ struct MultiRowEditStateTests {
             sut.updateField(at: 1, value: "Bob")
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -724,7 +716,7 @@ struct MultiRowEditStateTests {
         func updateFieldDoesNotFireCallbackWhenSettingToOriginalNoPriorEdit() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -739,7 +731,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToNull(at: 0)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -756,7 +748,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToDefault(at: 0)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -771,7 +763,7 @@ struct MultiRowEditStateTests {
         func setFieldToNullFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -785,7 +777,7 @@ struct MultiRowEditStateTests {
         func setFieldToDefaultFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -799,7 +791,7 @@ struct MultiRowEditStateTests {
         func setFieldToFunctionFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -813,7 +805,7 @@ struct MultiRowEditStateTests {
         func setFieldToEmptyFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -830,7 +822,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToNull(at: 1)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -843,7 +835,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("externallyModifiedColumns")
     struct ExternallyModifiedColumnsTests {
-
         private func makeSUT(
             columns: [String] = ["id", "name", "email"],
             columnTypes: [ColumnType]? = nil,
@@ -945,7 +936,6 @@ struct MultiRowEditStateTests {
 
     @MainActor @Suite("clearEdits then configure")
     struct ClearEditsThenConfigureTests {
-
         @Test("Clears stale green dots after clearEdits and reconfigure")
         func clearsStaleGreenDotsAfterClearEditsAndReconfigure() {
             let sut = MultiRowEditState()
@@ -1033,6 +1023,23 @@ struct MultiRowEditStateTests {
             #expect(sut.selectedRowIndices == [2])
         }
 
+        @Test("A field the owning grid locks is shown without an editor")
+        func lockedSchemaFieldIsReadOnly() {
+            let sut = MultiRowEditState()
+            sut.configure(
+                schemaFields: [
+                    InspectorRowField(name: "Name", value: "email", editor: .schemaText),
+                    InspectorRowField(name: "Type", value: "text", editor: .typePicker, isEditable: false)
+                ],
+                displayRow: 0
+            )
+
+            #expect(sut.fields[0].isServerOwned == false)
+            #expect(sut.fields[1].isServerOwned)
+            #expect(InspectorFieldListView.isFieldEditable(sut.fields[0], kind: .schemaText, rowIsEditable: true))
+            #expect(!InspectorFieldListView.isFieldEditable(sut.fields[1], kind: .typePicker, rowIsEditable: true))
+        }
+
         @Test("A committed schema edit is not a pending sidebar edit")
         func schemaFieldsAreNotPendingEdits() {
             let sut = MultiRowEditState()
@@ -1068,7 +1075,7 @@ struct MultiRowEditStateTests {
             sut.configure(schemaFields: schemaFields(), displayRow: 0)
 
             var committed: [(Int, String?)] = []
-            sut.onFieldChanged = { index, value in committed.append((index, value.asText)) }
+            sut.onFieldChanged = { index, value, _ in committed.append((index, value.asText)) }
             sut.updateField(at: 0, value: "user_email")
 
             #expect(committed.count == 1)
@@ -1082,10 +1089,161 @@ struct MultiRowEditStateTests {
             sut.configure(schemaFields: schemaFields(), displayRow: 0)
 
             var committed = 0
-            sut.onFieldChanged = { _, _ in committed += 1 }
+            sut.onFieldChanged = { _, _, _ in committed += 1 }
             sut.updateField(at: 0, value: "email")
 
             #expect(committed == 0)
+        }
+    }
+
+    // MARK: - Binary columns
+
+    @MainActor @Suite("Binary columns")
+    struct BinaryColumnsTests {
+        private static let wkbPoint = Data(
+            [0x01, 0x01, 0x00, 0x00, 0x00] + [0, 0, 0, 0, 0, 0, 0xF0, 0x3F] + [0, 0, 0, 0, 0, 0, 0, 0x40]
+        )
+        private static let otherWkbPoint = Data(
+            [0x01, 0x01, 0x00, 0x00, 0x00] + [0, 0, 0, 0, 0, 0, 0x08, 0x40] + [0, 0, 0, 0, 0, 0, 0x10, 0x40]
+        )
+        private static let geoPackageHeader = Data([0x47, 0x50, 0x00, 0x01, 0xE6, 0x10, 0x00, 0x00])
+
+        private static let geometryHex = FieldEditorKind.geometry(
+            GeometryFieldDescriptor(textEditor: .hex, source: .binary)
+        )
+        private static let geometryText = FieldEditorKind.geometry(
+            GeometryFieldDescriptor(textEditor: .multiLine, source: .spatialColumn)
+        )
+
+        /// The handoff the main window does: the typed cells decide which columns are binary, and
+        /// the fields get each cell as text, bytes as one character per byte.
+        private func makeSUT(cells: [[PluginCellValue]], columnTypes: [ColumnType]) -> MultiRowEditState {
+            let sut = MultiRowEditState()
+            let rows: [[String?]] = cells.map { row in
+                row.map { cell -> String? in
+                    switch cell {
+                    case .null: return nil
+                    case .text(let text): return text
+                    case .bytes(let data): return String(data: data, encoding: .isoLatin1) ?? ""
+                    }
+                }
+            }
+            sut.configure(
+                selectedRowIndices: Set(cells.indices),
+                allRows: rows,
+                columns: columnTypes.indices.map { "c\($0)" },
+                columnTypes: columnTypes,
+                binaryColumns: MultiRowEditState.binaryColumns(in: cells)
+            )
+            return sut
+        }
+
+        @Test("A column whose selected cells are bytes is binary")
+        func bytesColumnIsBinary() {
+            let cells: [[PluginCellValue]] = [[.text("1"), .bytes(Self.wkbPoint), .null]]
+            #expect(MultiRowEditState.binaryColumns(in: cells) == [1])
+        }
+
+        /// A binary field commits bytes to every selected row, so one text cell rules the column out.
+        @Test("A column mixing bytes and text across the selection is not binary")
+        func mixedBytesAndTextIsNotBinary() {
+            let cells: [[PluginCellValue]] = [
+                [.bytes(Self.wkbPoint), .bytes(Self.wkbPoint), .bytes(Self.wkbPoint)],
+                [.bytes(Self.otherWkbPoint), .text("POINT(1 2)"), .null],
+                [.bytes(Self.wkbPoint), .bytes(Self.wkbPoint), .bytes(Self.wkbPoint)]
+            ]
+            #expect(MultiRowEditState.binaryColumns(in: cells) == [0, 2])
+        }
+
+        /// NULL in a text geometry column must not turn the field into a hex editor.
+        @Test("A column of NULLs alone is not binary")
+        func nullOnlyColumnIsNotBinary() {
+            #expect(MultiRowEditState.binaryColumns(in: [[.null], [.null]]).isEmpty)
+            #expect(MultiRowEditState.binaryColumns(in: []).isEmpty)
+        }
+
+        @Test("Rows of different widths are read cell by cell")
+        func raggedRowsAreRead() {
+            let cells: [[PluginCellValue]] = [[.text("1")], [.text("2"), .bytes(Self.wkbPoint)]]
+            #expect(MultiRowEditState.binaryColumns(in: cells) == [1])
+        }
+
+        @Test("configure marks the binary columns and no others")
+        func configureMarksBinaryFields() {
+            let sut = makeSUT(
+                cells: [[.text("1"), .bytes(Self.wkbPoint)]],
+                columnTypes: [.integer(rawType: "INTEGER"), .spatial(rawType: "POINT")]
+            )
+            #expect(sut.fields.map(\.isBinaryValue) == [false, true])
+        }
+
+        @Test("A field is not binary unless configure is told so")
+        func binaryColumnsDefaultToNone() {
+            let sut = MultiRowEditState()
+            sut.configure(
+                selectedRowIndices: [0],
+                allRows: [[String(data: Self.wkbPoint, encoding: .isoLatin1)]],
+                columns: ["geom"],
+                columnTypes: [.spatial(rawType: "POINT")]
+            )
+            #expect(sut.fields[0].isBinaryValue == false)
+            #expect(sut.fields[0].resolvedEditor != Self.geometryHex)
+        }
+
+        @Test("WKB bytes in a spatial column resolve to the geometry field over the hex editor")
+        func binaryGeometryResolvesToTheHexGeometryField() {
+            let sut = makeSUT(cells: [[.bytes(Self.wkbPoint)]], columnTypes: [.spatial(rawType: "POINT")])
+            #expect(sut.fields[0].resolvedEditor == Self.geometryHex)
+            #expect(FieldEditorResolver.resolve(field: sut.fields[0]) == Self.geometryHex)
+        }
+
+        @Test("Bytes in a spatial column that are not WKB resolve to the hex editor")
+        func unreadableBinaryResolvesToHex() {
+            let sut = makeSUT(
+                cells: [[.bytes(Self.geoPackageHeader + Self.wkbPoint)]],
+                columnTypes: [.spatial(rawType: "GEOMETRY")]
+            )
+            #expect(sut.fields[0].resolvedEditor == .blobHex)
+        }
+
+        @Test("Rows holding the same bytes read as one binary value")
+        func agreeingBinaryRowsResolveToGeometry() {
+            let sut = makeSUT(
+                cells: [[.bytes(Self.wkbPoint)], [.bytes(Self.wkbPoint)]],
+                columnTypes: [.spatial(rawType: "POINT")]
+            )
+            #expect(sut.fields[0].hasMultipleValues == false)
+            #expect(sut.fields[0].resolvedEditor == Self.geometryHex)
+        }
+
+        /// Rows that disagree have no bytes to read, and a blob still never gets a text field.
+        @Test("Binary rows that disagree get the hex editor")
+        func disagreeingBinaryRowsResolveToHex() {
+            let sut = makeSUT(
+                cells: [[.bytes(Self.wkbPoint)], [.bytes(Self.otherWkbPoint)]],
+                columnTypes: [.spatial(rawType: "POINT")]
+            )
+            #expect(sut.fields[0].isBinaryValue)
+            #expect(sut.fields[0].hasMultipleValues)
+            #expect(sut.fields[0].resolvedEditor == .blobHex)
+        }
+
+        @Test("A selection mixing bytes and text keeps the text geometry field")
+        func mixedSelectionKeepsTheTextField() {
+            let sut = makeSUT(
+                cells: [[.bytes(Self.wkbPoint)], [.text("POINT(1 2)")]],
+                columnTypes: [.spatial(rawType: "POINT")]
+            )
+            #expect(sut.fields[0].isBinaryValue == false)
+            #expect(sut.fields[0].hasMultipleValues)
+            #expect(sut.fields[0].resolvedEditor == Self.geometryText)
+        }
+
+        @Test("A NULL in a spatial column is a text geometry field")
+        func nullSpatialCellIsNotBinary() {
+            let sut = makeSUT(cells: [[.null]], columnTypes: [.spatial(rawType: "POINT")])
+            #expect(sut.fields[0].isBinaryValue == false)
+            #expect(sut.fields[0].resolvedEditor == Self.geometryText)
         }
     }
 }

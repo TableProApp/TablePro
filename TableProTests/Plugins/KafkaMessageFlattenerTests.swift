@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Kafka message flattener")
 struct KafkaMessageFlattenerTests {
     private func record(
         partition: Int32 = 0,
@@ -159,7 +158,6 @@ struct KafkaMessageFlattenerTests {
     }
 }
 
-@Suite("Kafka browse merge")
 struct KafkaBrowseMergeTests {
     private func record(partition: Int32, offset: Int64, timestamp: Int64) -> KafkaRecord {
         KafkaRecord(

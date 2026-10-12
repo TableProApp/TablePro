@@ -45,10 +45,14 @@ public struct DescribeTableTool: MCPToolImplementation {
                 String(localized: "Outgoing foreign keys"),
                 of: MCPToolSchema.foreignKeyDefinition
             ),
+            "check_constraints": MCPToolSchema.array(
+                String(localized: "Table-level CHECK constraints"),
+                of: MCPToolSchema.checkConstraintDefinition
+            ),
             "ddl": MCPToolSchema.string(String(localized: "CREATE statement, when the engine can produce one")),
             "approximate_row_count": MCPToolSchema.integer(String(localized: "Estimated row count"))
         ],
-        required: ["table", "database", "columns", "indexes", "foreign_keys"]
+        required: ["table", "database", "columns", "indexes", "foreign_keys", "check_constraints"]
     )
 
     public init() {}

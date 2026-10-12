@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQL Parameter Inliner")
 struct SQLParameterInlinerTests {
     @Test("Simple ? replacement for MySQL")
     func simpleQuestionMarkReplacementMySQL() {

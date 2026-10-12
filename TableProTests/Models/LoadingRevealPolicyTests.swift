@@ -55,4 +55,35 @@ final class LoadingRevealPolicyTests: XCTestCase {
     func testTheGraceStaysUnderTheSecondAtWhichAWaitStopsFeelingLikeOneGesture() {
         XCTAssertLessThan(LoadingRevealPolicy.grace, .seconds(1))
     }
+
+    func testWorkNobodySawStartWaitsTheWholeGrace() {
+        XCTAssertEqual(LoadingRevealPolicy.remainingGrace(activeSince: nil, now: .now), LoadingRevealPolicy.grace)
+    }
+
+    func testTheGraceCountsFromWhenTheWorkStarted() {
+        let started = ContinuousClock.now
+        let remaining = LoadingRevealPolicy.remainingGrace(
+            activeSince: started,
+            now: started.advanced(by: .milliseconds(200))
+        )
+
+        XCTAssertEqual(remaining, .milliseconds(300))
+    }
+
+    func testWorkAlreadyPastTheGraceRevealsAtOnce() {
+        let started = ContinuousClock.now
+        let remaining = LoadingRevealPolicy.remainingGrace(
+            activeSince: started,
+            now: started.advanced(by: .seconds(2))
+        )
+
+        XCTAssertEqual(remaining, .zero)
+    }
+
+    func testAStartAfterNowWaitsTheWholeGrace() {
+        let now = ContinuousClock.now
+        let remaining = LoadingRevealPolicy.remainingGrace(activeSince: now.advanced(by: .seconds(1)), now: now)
+
+        XCTAssertEqual(remaining, LoadingRevealPolicy.grace)
+    }
 }

@@ -1,11 +1,10 @@
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class UsersRolesViewModel {
+final class UsersRolesViewModel: ObservableObject {
     enum DetailSegment: String, CaseIterable, Identifiable {
         case privileges
         case attributes
@@ -72,41 +71,59 @@ final class UsersRolesViewModel {
     let changeManager = PrincipalChangeManager()
     let privilegeTree = PrivilegeTreeModel()
 
-    private(set) var capabilities = Capabilities()
-    private(set) var databases: [String] = []
-    private(set) var connectedPrincipal: PluginPrincipalRef?
-    private(set) var loadError: String?
-    private(set) var grantsError: String?
+    @Published private(set) var capabilities = Capabilities()
+    @Published private(set) var databases: [String] = []
+    @Published private(set) var connectedPrincipal: PluginPrincipalRef?
+    @Published private(set) var loadError: String?
+    @Published private(set) var grantsError: String?
 
-    var isLoading = false
-    var isResolvingDrop = false
-    var previewStatements: [SchemaStatement] = []
-    var applyFailure: String?
+    @Published var isLoading = false
+    @Published var isResolvingDrop = false
+    @Published var previewStatements: [SchemaStatement] = []
+    @Published var editorScript = PrincipalStatementGenerator.EditorScript.empty
+    @Published var applyFailure: String?
 
-    var selection: PluginPrincipalRef?
-    var selectedRefs: Set<PluginPrincipalRef> = []
-    var selectedScopes: Set<PluginPrivilegeScope> = []
-    var detailSegment: DetailSegment = .privileges
-    var scopeMode: ScopeMode = .all
-    var principalFilter = ""
-    var scopeFilter = ""
-    var privilegeFilter = ""
-    var activeSheet: ActiveSheet?
-    var actionError: String?
+    @Published var selection: PluginPrincipalRef?
+    @Published var selectedRefs: Set<PluginPrincipalRef> = []
+    @Published var selectedScopes: Set<PluginPrivilegeScope> = []
+    @Published var detailSegment: DetailSegment = .privileges
+    @Published var scopeMode: ScopeMode = .all
+    @Published var principalFilter = ""
+    @Published var scopeFilter = ""
+    @Published var privilegeFilter = ""
+    @Published var activeSheet: ActiveSheet?
+    @Published var actionError: String?
 
-    @ObservationIgnored
-    private(set) var loader: PrincipalListLoader?
+    @Published private(set) var loader: PrincipalListLoader?
 
-    @ObservationIgnored
     let expansionStore: PrivilegeExpansionStore
 
-    @ObservationIgnored
-    var scopeSearchTask: Task<Void, Never>?
+    @Published var scopeSearchTask: Task<Void, Never>?
 
+    private var changeManagerForwarding: AnyCancellable?
+    private var privilegeTreeForwarding: AnyCancellable?
+
+    /// The tab's view loads again on every tab or connection switch, and a non-forced load resets
+    /// the change manager, so once a snapshot is in only a forced load may replace it.
+    private var hasLoadedSnapshot = false
+
+    /// Every view on this tab observes the view model, not `changeManager`, and reads the staged
+    /// grants, the change count and each principal's stage through it. A change the manager
+    /// published reached none of them: a ticked privilege stayed unticked, and Review & Apply and
+    /// "Modified" stayed stale until the view model happened to publish something of its own.
+    ///
+    /// The scope outline reads the tree's structure version through the view model the same way,
+    /// so a search result or a switch to Granted reached it only when something else published.
+    /// The tree publishes only when its roots are replaced, so a lazy expand does not reload the
+    /// whole outline through this.
     init(connectionId: UUID, databaseType: DatabaseType) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         expansionStore = PrivilegeExpansionStore(connectionId: connectionId)
+        changeManagerForwarding = changeManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+        privilegeTreeForwarding = privilegeTree.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
     }
 
     // MARK: - Derived
@@ -183,6 +200,7 @@ final class UsersRolesViewModel {
     // MARK: - Loading
 
     func load(forceReload: Bool = false) async {
+        guard forceReload || !hasLoadedSnapshot else { return }
         guard let driver = DatabaseManager.shared.principalDriver(for: connectionId) else {
             loadError = String(
                 localized: "This connection does not support user and role management."
@@ -210,14 +228,20 @@ final class UsersRolesViewModel {
 
         do {
             let snapshot = try await loader.load(forceReload: forceReload)
-            databases = try await loader.databases()
-            connectedPrincipal = try await loader.currentPrincipal()
+            let databases = try await loader.databases()
+            let connectedPrincipal = try await loader.currentPrincipal()
+            /// Another load put its snapshot in while this one waited, and work may be staged on it.
+            guard forceReload || !hasLoadedSnapshot else { return }
+
+            self.databases = databases
+            self.connectedPrincipal = connectedPrincipal
 
             if forceReload {
                 changeManager.reload(principals: snapshot.principals, catalog: snapshot.catalog)
             } else {
                 changeManager.load(principals: snapshot.principals, catalog: snapshot.catalog)
             }
+            hasLoadedSnapshot = true
 
             privilegeTree.configure(
                 databases: databases,

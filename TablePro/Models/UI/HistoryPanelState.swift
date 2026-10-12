@@ -1,21 +1,25 @@
+import Combine
 import Foundation
-import Observation
 
 @MainActor
-@Observable
-final class HistoryPanelState {
+final class HistoryPanelState: ObservableObject {
     let connectionId: UUID
 
-    var isVisible: Bool { didSet { persistIfChanged(oldValue != isVisible) } }
-    var showsAllConnections: Bool { didSet { persistIfChanged(oldValue != showsAllConnections) } }
-    var pinnedConnectionId: UUID? { didSet { persistIfChanged(oldValue != pinnedConnectionId) } }
-    var sources: Set<QueryHistorySource> { didSet { persistIfChanged(oldValue != sources) } }
-    var dateRange: HistoryDateRange { didSet { persistIfChanged(oldValue != dateRange) } }
-    var outcome: QueryHistoryOutcome { didSet { persistIfChanged(oldValue != outcome) } }
+    /// Every one of these is `@Published`, because each is read from a SwiftUI body and a plain
+    /// `var` on an `ObservableObject` announces nothing. `isVisible` shipped as the one that shows:
+    /// Cmd+Y wrote it, `MainEditorContentView` never re-evaluated, and the drawer stayed shut until
+    /// some unrelated change redrew the window. Driving the same command from the menu bar hid it,
+    /// because menu tracking itself forces that redraw.
+    @Published var isVisible: Bool { didSet { persistIfChanged(oldValue != isVisible) } }
+    @Published var showsAllConnections: Bool { didSet { persistIfChanged(oldValue != showsAllConnections) } }
+    @Published var pinnedConnectionId: UUID? { didSet { persistIfChanged(oldValue != pinnedConnectionId) } }
+    @Published var sources: Set<QueryHistorySource> { didSet { persistIfChanged(oldValue != sources) } }
+    @Published var dateRange: HistoryDateRange { didSet { persistIfChanged(oldValue != dateRange) } }
+    @Published var outcome: QueryHistoryOutcome { didSet { persistIfChanged(oldValue != outcome) } }
 
     /// Search text is deliberately not persisted: a stale query on relaunch reads as an empty
     /// history rather than as a filter the user forgot they left behind.
-    var searchText: String = ""
+    @Published var searchText: String = ""
 
     /// Device-local and shared by every connection, because pausing is a decision about this Mac
     /// rather than about one database.

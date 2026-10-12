@@ -12,7 +12,7 @@ import SwiftUI
 /// the titlebar, and it leaves the leading edge for the status the buttons depend on. That pairing
 /// is the point here: a disabled Save is only actionable next to the field it is waiting for.
 struct ConnectionFormActionBar: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     /// Walked once per body evaluation and read four times from it.
     ///
@@ -99,6 +99,7 @@ struct ConnectionFormActionBar: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .help(issues.joined(separator: "\n"))
+            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("connection-form-validation")
         }
     }

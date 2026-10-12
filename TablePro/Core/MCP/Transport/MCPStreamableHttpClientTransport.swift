@@ -30,7 +30,7 @@ public actor MCPStreamableHttpClientTransport {
 
     private static let namedMethods: Set<String> = ["tools/call", "resources/read", "prompts/get"]
     private static let unavailableMessage =
-        "TablePro's MCP server is not reachable. Make sure TablePro is running and the MCP server is enabled in Settings > Integrations."
+        "TablePro's MCP server is not reachable. Make sure TablePro is running and the MCP server is enabled in Settings > MCP."
 
     private let configuration: MCPStreamableHttpClientConfiguration
     private let credentialsProvider: any MCPUpstreamCredentialsProviding

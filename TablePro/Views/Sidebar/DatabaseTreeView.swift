@@ -12,7 +12,7 @@ struct DatabaseTreeRoutineRef: Identifiable, Equatable {
     let routine: RoutineInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(routine.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", routine.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {
@@ -26,7 +26,7 @@ struct DatabaseTreeTriggerRef: Identifiable, Equatable {
     let trigger: TriggerInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(trigger.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", trigger.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {
@@ -40,7 +40,7 @@ struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
     let type: UserDefinedTypeInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(type.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", type.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {
@@ -49,48 +49,66 @@ struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
 }
 
 struct DatabaseTreeView: View {
-    @Bindable private var treeService = DatabaseTreeMetadataService.shared
+    @ObservedObject private var databaseManager = DatabaseManager.shared
+    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
 
     let connectionId: UUID
     let databaseType: DatabaseType
-    let viewModel: SidebarViewModel
-    let windowState: WindowSidebarState
+    @ObservedObject var viewModel: SidebarViewModel
+    @ObservedObject var windowState: WindowSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     let coordinator: MainContentCoordinator?
-    let sidebarState: SharedSidebarState
 
-    @State private var settingsManager = AppSettingsManager.shared
+    /// The publisher behind `activeDatabase` and `activeSchema` is the toolbar state, not the
+    /// coordinator, and `@ObservedObject` cannot wrap an optional. The coordinator holds it as
+    /// a stable `let`, so the view observes it directly.
+    @ObservedObject var toolbarState: ConnectionToolbarState
+    @ObservedObject var sidebarState: SharedSidebarState
+
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var showsDatabaseProgress = false
 
     private var activeDatabase: String? {
-        let name = coordinator?.toolbarState.currentDatabase ?? ""
+        let name = toolbarState.currentDatabase
         return name.isEmpty ? nil : name
     }
 
     private var activeSchema: String? {
-        coordinator?.toolbarState.currentSchema
+        toolbarState.currentSchema
     }
 
     private var isConnected: Bool {
-        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        databaseManager.session(for: connectionId)?.status == .connected
     }
 
     private var databases: [DatabaseMetadata] {
         treeService.databases(for: connectionId)
     }
 
+    private var showsSystemContainers: Bool {
+        settingsManager.general.showSystemContainers
+    }
+
     private var filteredDatabases: [DatabaseMetadata] {
         DatabaseTreeVisibility.visible(
             databases: databases,
             selected: sidebarState.databaseFilterSelected,
-            activeDatabase: activeDatabase
+            activeDatabase: activeDatabase,
+            showsSystem: showsSystemContainers
+        )
+    }
+
+    private var isFiltering: Bool {
+        DatabaseTreeVisibility.isFiltering(
+            selected: sidebarState.databaseFilterSelected,
+            databases: databases,
+            showsSystem: showsSystemContainers
         )
     }
 
     private var isFilterHidingEverything: Bool {
-        DatabaseTreeVisibility.isFiltering(selected: sidebarState.databaseFilterSelected)
-            && filteredDatabases.isEmpty
+        isFiltering && filteredDatabases.isEmpty
     }
 
     private var isLoadingDatabases: Bool {
@@ -130,32 +148,26 @@ struct DatabaseTreeView: View {
         }
     }
 
-    /// A filtered list looks exactly like a short one, so it has to say it is filtered. The button
-    /// that used to carry that state, at the bottom of the sidebar, is gone.
     @ViewBuilder
     private var filterBanner: some View {
-        if DatabaseTreeVisibility.isFiltering(selected: sidebarState.databaseFilterSelected) {
-            HStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                    .foregroundStyle(.tint)
-                Text(String(
-                    format: String(localized: "Showing %lld of %lld"),
-                    filteredDatabases.count,
-                    databases.count
-                ))
-                .lineLimit(1)
-                Spacer(minLength: 4)
-                Button(String(localized: "Show All")) {
-                    sidebarState.databaseFilterSelected = []
-                }
-                .buttonStyle(.link)
-            }
-            .font(.caption)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .accessibilityElement(children: .combine)
+        if isFiltering {
+            let summary = DatabaseTreeVisibility.summary(
+                databases: databases,
+                selected: sidebarState.databaseFilterSelected,
+                showsSystem: showsSystemContainers
+            )
+            SidebarFilterBanner(
+                label: String(format: String(localized: "Showing %1$lld of %2$lld"), summary.shown, summary.total),
+                showAll: { sidebarState.databaseFilterSelected = [] }
+            )
             Divider()
         }
+        SidebarSchemaFilterBanner(
+            connectionId: connectionId,
+            database: coordinator?.browseDatabaseName ?? activeDatabase,
+            databaseType: databaseType,
+            sidebarState: sidebarState
+        )
     }
 
     private var outline: some View {
@@ -174,6 +186,8 @@ struct DatabaseTreeView: View {
             activeSchema: activeSchema,
             selectedTables: windowState.selectedTables,
             showRecentTables: settingsManager.general.showRecentTables,
+            showSystemContainers: showsSystemContainers,
+            showsPartitions: settingsManager.general.showPartitions,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }
@@ -198,7 +212,7 @@ struct DatabaseTreeView: View {
     }
 
     private var emptyDatabasesState: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Databases"),
             systemImage: "cylinder",
             description: Text("This server has no databases yet.")
@@ -207,7 +221,7 @@ struct DatabaseTreeView: View {
     }
 
     private var filteredEmptyState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "No Databases Shown"), systemImage: "line.3.horizontal.decrease.circle")
         } description: {
             Text("The database filter hides every database on this connection.")

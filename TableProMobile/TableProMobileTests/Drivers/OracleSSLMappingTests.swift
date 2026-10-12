@@ -44,6 +44,26 @@ struct OracleSSLMappingTests {
         #expect(description.caCertificatePath == nil)
     }
 
+    @Test("A stored Verify CA connection with no CA is refused before it connects")
+    func verifyCaWithoutCertificateIsRefused() {
+        #expect(throws: OracleCoreError.certificateAuthorityRequired) {
+            try OracleTLSMapper.tls(for: DriverSSLConfiguration(mode: .verifyCa).oracleTLSDescription)
+        }
+    }
+
+    @Test("The refusal points at Verify Identity, which works on this device without a CA")
+    func refusalPointsAtVerifyIdentity() {
+        let message = OracleDriver.connectionError(for: .certificateAuthorityRequired).localizedDescription
+        #expect(message == DriverSSLConfiguration.oracleVerifyCaUnavailableMessage)
+        #expect(message.contains("Verify Identity"))
+        #expect(!message.contains("Network"))
+    }
+
+    @Test("Verify Identity with no CA is not refused")
+    func verifyIdentityWithoutCertificateIsNotRefused() throws {
+        _ = try OracleTLSMapper.tls(for: DriverSSLConfiguration(mode: .verifyFull).oracleTLSDescription)
+    }
+
     @Test("A connection with no SSL configuration carries no certificate paths")
     func legacyBoolCarriesNoPaths() {
         let description = DriverSSLConfiguration(sslEnabled: true, configuration: nil).oracleTLSDescription

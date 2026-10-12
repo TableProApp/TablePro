@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQL Completion Fuzzy Matching")
 struct SQLCompletionAdapterFuzzyTests {
     /// Helper: wraps SQLCompletionProvider.fuzzyMatchScore as a bool match
     /// to preserve existing test semantics after the fuzzy logic was unified.

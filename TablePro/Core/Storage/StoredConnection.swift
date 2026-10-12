@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 import TableProPluginKit
 
 struct StoredConnection: Codable {
@@ -29,6 +30,7 @@ struct StoredConnection: Codable {
     let sslClientKeyPath: String
 
     let color: String
+    let iconName: String?
     let tagId: String?
     let tagIds: [String]?
     let groupId: String?
@@ -40,7 +42,6 @@ struct StoredConnection: Codable {
 
     let aiPolicy: String?
 
-    // AI rules text included in the system prompt for this connection
     let aiRules: String?
 
     let aiAlwaysAllowedTools: [String]?
@@ -57,10 +58,8 @@ struct StoredConnection: Codable {
 
     let startupCommands: String?
 
-    // Sort order for sync
     let sortOrder: Int
 
-    // Local-only (excluded from iCloud sync)
     let localOnly: Bool
 
     let isSample: Bool
@@ -72,25 +71,19 @@ struct StoredConnection: Codable {
     let totpDigits: Int
     let totpPeriod: Int
 
-    // SSH tunnel mode (v2 JSON blob preserving jump hosts + profile links)
     let sshTunnelModeJson: Data?
+    let credentialModeJson: Data?
 
-    // Cloudflare Access TCP tunnel mode (JSON blob)
     let cloudflareTunnelModeJson: Data?
 
-    // Cloud SQL Auth Proxy mode (JSON blob)
     let cloudSQLProxyModeJson: Data?
 
-    // SOCKS proxy mode (JSON blob)
     let socksProxyModeJson: Data?
 
-    // Tunnel command mode (JSON blob)
     let tunnelCommandModeJson: Data?
 
-    // Plugin-driven additional fields
     let additionalFields: [String: String]?
 
-    // Password source (file, env, or command) for connections provisioned outside the app
     let passwordSource: PasswordSource?
 
     init(from connection: DatabaseConnection) {
@@ -121,6 +114,7 @@ struct StoredConnection: Codable {
         self.sslClientKeyPath = connection.sslConfig.clientKeyPath
 
         self.color = connection.color.rawValue
+        self.iconName = connection.iconName
         self.tagId = connection.tagIds.first?.uuidString
         self.tagIds = connection.tagIds.isEmpty ? nil : connection.tagIds.map { $0.uuidString }
         self.groupId = connection.groupId?.uuidString
@@ -156,32 +150,27 @@ struct StoredConnection: Codable {
 
         self.isFavorite = connection.isFavorite
 
-        // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
         self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
+        self.credentialModeJson = try? JSONEncoder().encode(connection.credentialMode)
 
-        // Cloudflare tunnel mode (only persisted when enabled)
         self.cloudflareTunnelModeJson = connection.isCloudflareEnabled
             ? (try? JSONEncoder().encode(connection.cloudflareTunnelMode))
             : nil
 
-        // Cloud SQL Auth Proxy mode (only persisted when enabled)
         self.cloudSQLProxyModeJson = connection.isCloudSQLProxyEnabled
             ? (try? JSONEncoder().encode(connection.cloudSQLProxyMode))
             : nil
 
-        // SOCKS proxy mode (only persisted when enabled)
         self.socksProxyModeJson = connection.isSOCKSProxyEnabled
             ? (try? JSONEncoder().encode(connection.socksProxyMode))
             : nil
 
-        // Tunnel command mode (only persisted when enabled)
         self.tunnelCommandModeJson = connection.isTunnelCommandEnabled
             ? (try? JSONEncoder().encode(connection.tunnelCommandMode))
             : nil
 
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
 
-        // Password source (not synced to iCloud; see SyncRecordMapper)
         self.passwordSource = connection.passwordSource
     }
 
@@ -191,7 +180,7 @@ struct StoredConnection: Codable {
         case sshAgentSocketPath
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
         case sslMode, sslCaCertificatePath, sslClientCertificatePath, sslClientKeyPath
-        case color, tagId, tagIds, groupId, sshProfileId
+        case color, iconName, tagId, tagIds, groupId, sshProfileId
         case safeModeLevel
         case externalAccess
         case isReadOnly // Legacy key for migration reading only
@@ -201,6 +190,7 @@ struct StoredConnection: Codable {
         case mongoAuthSource, mongoReadPreference, mongoWriteConcern, redisDatabase
         case mssqlSchema, oracleServiceName, startupCommands, sortOrder
         case sshTunnelModeJson
+        case credentialModeJson
         case cloudflareTunnelModeJson
         case cloudSQLProxyModeJson
         case socksProxyModeJson
@@ -237,6 +227,7 @@ struct StoredConnection: Codable {
         try container.encode(sslClientCertificatePath, forKey: .sslClientCertificatePath)
         try container.encode(sslClientKeyPath, forKey: .sslClientKeyPath)
         try container.encode(color, forKey: .color)
+        try container.encodeIfPresent(iconName, forKey: .iconName)
         try container.encodeIfPresent(tagId, forKey: .tagId)
         try container.encodeIfPresent(tagIds, forKey: .tagIds)
         try container.encodeIfPresent(groupId, forKey: .groupId)
@@ -250,6 +241,7 @@ struct StoredConnection: Codable {
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encodeIfPresent(sshTunnelModeJson, forKey: .sshTunnelModeJson)
+        try container.encodeIfPresent(credentialModeJson, forKey: .credentialModeJson)
         try container.encodeIfPresent(cloudflareTunnelModeJson, forKey: .cloudflareTunnelModeJson)
         try container.encodeIfPresent(cloudSQLProxyModeJson, forKey: .cloudSQLProxyModeJson)
         try container.encodeIfPresent(socksProxyModeJson, forKey: .socksProxyModeJson)
@@ -261,7 +253,6 @@ struct StoredConnection: Codable {
         try container.encodeIfPresent(passwordSource, forKey: .passwordSource)
     }
 
-    // Custom decoder to handle migration from old format
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
@@ -281,7 +272,6 @@ struct StoredConnection: Codable {
         sshPrivateKeyPath = try container.decode(String.self, forKey: .sshPrivateKeyPath)
         sshAgentSocketPath = try container.decodeIfPresent(String.self, forKey: .sshAgentSocketPath) ?? ""
 
-        // TOTP configuration (migration: use defaults if missing)
         totpMode = try container.decodeIfPresent(String.self, forKey: .totpMode) ?? TOTPMode.none.rawValue
         totpAlgorithm = try container.decodeIfPresent(
             String.self, forKey: .totpAlgorithm
@@ -291,7 +281,6 @@ struct StoredConnection: Codable {
         let decodedPeriod = try container.decodeIfPresent(Int.self, forKey: .totpPeriod) ?? 30
         totpPeriod = max(15, min(120, decodedPeriod))
 
-        // SSL Configuration (migration: use defaults if missing)
         sslMode = try container.decodeIfPresent(String.self, forKey: .sslMode) ?? SSLMode.disabled.rawValue
         sslCaCertificatePath = try container.decodeIfPresent(String.self, forKey: .sslCaCertificatePath) ?? ""
         sslClientCertificatePath = try container.decodeIfPresent(
@@ -299,13 +288,12 @@ struct StoredConnection: Codable {
         ) ?? ""
         sslClientKeyPath = try container.decodeIfPresent(String.self, forKey: .sslClientKeyPath) ?? ""
 
-        // Migration: use defaults if fields are missing
         color = try container.decodeIfPresent(String.self, forKey: .color) ?? ConnectionColor.none.rawValue
+        iconName = try LibrarySymbolCatalog.normalizedName(container.decodeIfPresent(String.self, forKey: .iconName))
         tagId = try container.decodeIfPresent(String.self, forKey: .tagId)
         tagIds = try container.decodeIfPresent([String].self, forKey: .tagIds)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(String.self, forKey: .sshProfileId)
-        // Migration: read new safeModeLevel first, fall back to old isReadOnly boolean
         if let levelString = try container.decodeIfPresent(String.self, forKey: .safeModeLevel) {
             safeModeLevel = levelString
         } else {
@@ -327,6 +315,7 @@ struct StoredConnection: Codable {
         startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
+        credentialModeJson = try container.decodeIfPresent(Data.self, forKey: .credentialModeJson)
         cloudflareTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudflareTunnelModeJson)
         cloudSQLProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudSQLProxyModeJson)
         socksProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .socksProxyModeJson)
@@ -353,7 +342,9 @@ struct StoredConnection: Codable {
         sshConfig.totpDigits = totpDigits
         sshConfig.totpPeriod = totpPeriod
 
-        // Prefer sshTunnelModeJson (v2 format) over legacy flat fields
+        let resolvedCredentialMode: CredentialMode = credentialModeJson
+            .flatMap { try? JSONDecoder().decode(CredentialMode.self, from: $0) } ?? .inline
+
         let resolvedTunnelMode: SSHTunnelMode
         if let json = sshTunnelModeJson,
            let decoded = try? JSONDecoder().decode(SSHTunnelMode.self, from: json) {
@@ -428,7 +419,6 @@ struct StoredConnection: Codable {
         let parsedSSHProfileId = sshProfileId.flatMap { UUID(uuidString: $0) }
         let parsedAIPolicy = aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) }
 
-        // Merge legacy named keys into additionalFields as fallback
         let mergedFields: [String: String]? = {
             var fields = additionalFields ?? [:]
             if fields["mongoAuthSource"] == nil, let v = mongoAuthSource { fields["mongoAuthSource"] = v }
@@ -456,10 +446,12 @@ struct StoredConnection: Codable {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: parsedColor,
+            iconName: iconName,
             tagIds: parsedTagIds,
             groupId: parsedGroupId,
             sshProfileId: parsedSSHProfileId,
             sshTunnelMode: resolvedTunnelMode,
+            credentialMode: resolvedCredentialMode,
             cloudflareTunnelMode: resolvedCloudflareMode,
             cloudSQLProxyMode: resolvedCloudSQLProxyMode,
             socksProxyMode: resolvedSOCKSProxyMode,

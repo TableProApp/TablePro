@@ -20,6 +20,12 @@ enum DatabaseMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Move Tab to Connection…"),
+                action: #selector(MainSplitViewController.moveTabToConnection(_:)),
+                shortcut: .moveTabToConnection,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
                 String(localized: "Open Database…"),
                 action: #selector(MainSplitViewController.openContainerSwitcher(_:)),
                 shortcut: .openDatabase,
@@ -44,6 +50,10 @@ enum DatabaseMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "New View…"),
                 action: #selector(MainSplitViewController.createNewView(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "New Folder"),
+                action: #selector(MainSplitViewController.createTableFolder(_:))
             ),
             MenuItemFactory.separator,
             /// The sidebar's own Copy To and Duplicate Database, mirrored so both are reachable

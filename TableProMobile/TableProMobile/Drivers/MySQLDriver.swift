@@ -1,5 +1,7 @@
 import CMariaDB
 import Foundation
+import os
+import TableProCoreTypes
 import TableProDatabase
 import TableProModels
 import TableProMSSQLCore
@@ -49,13 +51,58 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 
     // MARK: - Connection
 
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MySQLDriver")
+
+    static func sessionSetupStatements(for databaseType: DatabaseType) -> [String] {
+        guard databaseType == .oceanbase else { return [] }
+        return MySQLServerFlavor.oceanbase(version: nil).queryTimeoutStatements(seconds: 0)
+    }
+
+    static func serverFlavor(for databaseType: DatabaseType, banner: String?) -> MySQLServerFlavor {
+        switch databaseType {
+        case .tidb:
+            return .tidb(version: banner.flatMap(MySQLServerFlavor.tidbVersion(fromBanner:)))
+        case .oceanbase:
+            return .oceanbase(version: banner.flatMap(MySQLServerFlavor.oceanbaseVersion(fromServerVersion:)))
+        default:
+            return MySQLServerFlavor.fromBanner(banner)
+        }
+    }
+
+    static func tableListStatement(for databaseType: DatabaseType, banner: String?) -> String {
+        let flavor = serverFlavor(for: databaseType, banner: banner)
+        return MySQLServerVersion.hasInformationSchema(banner: banner, flavor: flavor) ? "SHOW FULL TABLES" : "SHOW TABLES"
+    }
+
+    static func readsForeignKeyCatalog(for databaseType: DatabaseType, banner: String?) -> Bool {
+        MySQLServerVersion.hasReferentialConstraintsCatalog(
+            banner: banner, flavor: serverFlavor(for: databaseType, banner: banner)
+        )
+    }
+
+    static func labelsShowTextAsBinary(for databaseType: DatabaseType, banner: String?) -> Bool {
+        MySQLServerVersion.labelsShowTextAsBinary(
+            banner: banner, flavor: serverFlavor(for: databaseType, banner: banner)
+        )
+    }
+
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(
             host: host, port: port, user: user, password: password, database: database,
-            ssl: ssl, encoding: connectionEncoding
+            ssl: ssl, encoding: connectionEncoding, databaseType: databaseType
         )
         serverVersion = await actor.serverVersion()
+        for statement in Self.sessionSetupStatements(for: databaseType) {
+            do {
+                _ = try await actor.execute(statement)
+            } catch {
+                Self.logger.warning(
+                    "Session setup failed with \(statement, privacy: .public): \(error.localizedDescription, privacy: .private)"
+                )
+                break
+            }
+        }
     }
 
     func disconnect() async throws {
@@ -143,31 +190,36 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let raw = try await actor.execute("SHOW FULL TABLES")
-        return MySQLTableListing.tables(fromShowFullTables: raw.rows, databaseType: databaseType)
+        let raw = try await actor.execute(Self.tableListStatement(for: databaseType, banner: serverVersion))
+        return MySQLTableListing.tables(fromShowTables: raw.rows, databaseType: databaseType)
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         let safe = table.replacingOccurrences(of: "`", with: "``")
         let raw = try await actor.execute("SHOW FULL COLUMNS FROM `\(safe)`")
+        let source = MySQLColumnListing.defaultSource(
+            flavor: Self.serverFlavor(for: databaseType, banner: serverVersion),
+            banner: serverVersion
+        )
+        let catalog = await catalogDefaults(table: table, source: source)
+        return MySQLColumnListing.columns(fromShowFullColumns: raw.rows, catalogDefaults: catalog, source: source)
+    }
 
-        return raw.rows.enumerated().compactMap { index, row in
-            guard row.count >= 9, let name = row[0], let dataType = row[1] else { return nil }
-            let isPK = row[4]?.uppercased().contains("PRI") == true
-            let isNullable = row[3]?.uppercased() == "YES"
-            let extra = row[6]
-            return ColumnInfo(
-                name: name,
-                typeName: dataType,
-                isPrimaryKey: isPK,
-                isNullable: isNullable,
-                defaultValue: row[5],
-                comment: row[8],
-                characterMaxLength: nil,
-                ordinalPosition: index,
-                isAutoIncrement: ColumnMetadataRules.mySQLIsAutoIncrement(extra: extra),
-                isGenerated: ColumnMetadataRules.mySQLIsGenerated(extra: extra)
+    /// A catalog that refuses leaves every default on what `SHOW FULL COLUMNS` reported, as it does on
+    /// the Mac, rather than taking the column list down with it.
+    private func catalogDefaults(
+        table: String,
+        source: MySQLColumnListing.DefaultSource
+    ) async -> [String: MySQLCatalogDefault] {
+        guard let query = MySQLColumnListing.catalogDefaultsQuery(table: table, source: source) else { return [:] }
+        do {
+            let raw = try await actor.execute(query)
+            return MySQLColumnListing.catalogDefaults(fromRows: raw.rows, source: source)
+        } catch {
+            Self.logger.warning(
+                "Column default catalog read failed: \(error.localizedDescription, privacy: .private)"
             )
+            return [:]
         }
     }
 
@@ -203,7 +255,12 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
+    /// Below 5.1.10 there is no `REFERENTIAL_CONSTRAINTS`, so the keys come from `SHOW CREATE TABLE`, as on
+    /// the Mac. An error here would also discard the columns and indexes loaded with the keys.
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        guard Self.readsForeignKeyCatalog(for: databaseType, banner: serverVersion) else {
+            return try await declaredForeignKeys(table: table)
+        }
         let safe = table.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "''")
         let dbSafe = database.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "''")
         let query = """
@@ -242,6 +299,27 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
+    private func declaredForeignKeys(table: String) async throws -> [ForeignKeyInfo] {
+        let safe = table.replacingOccurrences(of: "`", with: "``")
+        let raw = try await actor.execute("SHOW CREATE TABLE `\(safe)`")
+        guard let row = raw.rows.first, row.count > 1, let ddl = row[1] else { return [] }
+        let omittedAction = MySQLServerVersion.omittedForeignKeyAction(
+            banner: serverVersion,
+            flavor: Self.serverFlavor(for: databaseType, banner: serverVersion)
+        )
+        return MySQLForeignKeyClause.parse(createTable: ddl, database: database, omittedAction: omittedAction)
+            .map { key in
+                ForeignKeyInfo(
+                    name: key.name,
+                    column: key.column,
+                    referencedTable: key.referencedTable,
+                    referencedColumn: key.referencedColumn,
+                    onDelete: key.onDelete,
+                    onUpdate: key.onUpdate
+                )
+            }
+    }
+
     func fetchDatabases() async throws -> [String] {
         let raw = try await actor.execute("SHOW DATABASES")
         return raw.rows.compactMap { $0.first ?? nil }
@@ -259,7 +337,12 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     func fetchSchemas() async throws -> [String] { [] }
 
     func beginTransaction() async throws {
-        _ = try await actor.execute("START TRANSACTION")
+        try await beginTransaction(mode: .serverDefault)
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        let flavor = Self.serverFlavor(for: databaseType, banner: serverVersion)
+        _ = try await actor.execute(flavor.beginTransactionStatement(mode: mode))
     }
 
     func commitTransaction() async throws {
@@ -268,6 +351,18 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 
     func rollbackTransaction() async throws {
         _ = try await actor.execute("ROLLBACK")
+    }
+
+    func sessionTransactionState() async -> DriverTransactionState {
+        await actor.transactionState()
+    }
+}
+
+nonisolated enum MySQLSessionTransaction {
+    static func state(infoResult: my_bool, serverStatus: UInt32) -> DriverTransactionState {
+        guard infoResult == 0 else { return .unknown }
+        guard serverStatus & UInt32(SERVER_STATUS_IN_TRANS) != 0 else { return .idle }
+        return serverStatus & UInt32(SERVER_STATUS_AUTOCOMMIT) != 0 ? .explicitTransaction : .implicitTransaction
     }
 }
 
@@ -279,13 +374,16 @@ private actor MySQLActor {
     private static let connectDeadline: DispatchTimeInterval = .seconds(15)
 
     private var encoding: MySQLConnectionEncoding = .utf8
+    private var errorLanguage: String.Encoding?
+    private var showTextIsBinary = false
 
     func connect(
         host: String, port: Int, user: String, password: String, database: String,
-        ssl: DriverSSLConfiguration, encoding: MySQLConnectionEncoding
+        ssl: DriverSSLConfiguration, encoding: MySQLConnectionEncoding, databaseType: DatabaseType
     ) async throws {
         self.encoding = encoding
-        // Close existing connection if reconnecting
+        errorLanguage = nil
+        showTextIsBinary = false
         if let mysql { mysql_close(mysql); self.mysql = nil }
 
         guard let handle = mysql_init(nil) else {
@@ -357,7 +455,14 @@ private actor MySQLActor {
             throw MySQLError.connectionFailed(msg)
         }
 
+        let banner = mysql_get_server_info(handle).map { String(cString: $0) }
+        showTextIsBinary = MySQLDriver.labelsShowTextAsBinary(for: databaseType, banner: banner)
+        errorLanguage = MariaDBCharacterSet.errorLanguage(on: handle)
         self.mysql = handle
+    }
+
+    private func binaryStringsAreText(in query: String) -> Bool {
+        showTextIsBinary && mysqlStatementListsServerMetadata(query)
     }
 
     func close() {
@@ -398,12 +503,19 @@ private actor MySQLActor {
 
     private func message(from mysql: UnsafeMutablePointer<MYSQL>) -> String {
         guard let text = mysql_error(mysql) else { return "" }
-        return mysqlSessionText(cString: text, encoding: encoding)
+        return MySQLErrorText.decode(cString: text, language: errorLanguage, encoding: encoding)
     }
 
     func serverVersion() -> String? {
         guard let mysql else { return nil }
         return String(cString: mysql_get_server_info(mysql))
+    }
+
+    func transactionState() -> DriverTransactionState {
+        guard let mysql else { return .unknown }
+        var serverStatus: UInt32 = 0
+        let infoResult = mariadb_get_info(mysql, MARIADB_CONNECTION_SERVER_STATUS, &serverStatus)
+        return MySQLSessionTransaction.state(infoResult: infoResult, serverStatus: serverStatus)
     }
 
     func execute(_ query: String) throws -> RawMySQLResult {
@@ -430,7 +542,8 @@ private actor MySQLActor {
 
         let fieldCount = Int(mysql_num_fields(result))
         let described = MariaDBCharacterSet.describeColumns(
-            of: mysql_fetch_fields(result), count: fieldCount, encoding: encoding
+            of: mysql_fetch_fields(result), count: fieldCount, encoding: encoding,
+            binaryStringsAreText: binaryStringsAreText(in: query)
         )
         let columns = described.names
         let columnTypes = described.typeNames
@@ -492,7 +605,8 @@ private actor MySQLActor {
         streamingResult = result
 
         let described = MariaDBCharacterSet.describeColumns(
-            of: mysql_fetch_fields(result), count: Int(mysql_num_fields(result)), encoding: encoding
+            of: mysql_fetch_fields(result), count: Int(mysql_num_fields(result)), encoding: encoding,
+            binaryStringsAreText: binaryStringsAreText(in: query)
         )
         streamingDecoding = described
         let columns = described.names.enumerated().map { index, name in

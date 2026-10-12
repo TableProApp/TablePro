@@ -16,6 +16,7 @@ final class SyncChangeTracker: Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncChangeTracker")
 
     private let metadataStorage: SyncMetadataStorage
+    private let editGenerations = OSAllocatedUnfairLock(initialState: SyncEditGenerations())
 
     /// When true, changes are not tracked (used during remote apply to avoid sync loops)
     private let suppressionLock = OSAllocatedUnfairLock(initialState: false)
@@ -25,15 +26,17 @@ final class SyncChangeTracker: Sendable {
         set { suppressionLock.withLock { $0 = newValue } }
     }
 
-    init(metadataStorage: SyncMetadataStorage = .shared) {
+    init(metadataStorage: SyncMetadataStorage = .appDefault) {
         self.metadataStorage = metadataStorage
     }
 
     // MARK: - Mark Dirty
 
+    @MainActor
     func markDirty(_ type: SyncRecordType, id: String) {
         guard !isSuppressed, type.syncScope == .synced else { return }
         metadataStorage.markDirty(id, type: type)
+        recordEdits(type, ids: [id])
         Self.logger.info("Marked dirty: \(type.rawValue)/\(id)")
         postChangeNotification()
     }
@@ -44,29 +47,87 @@ final class SyncChangeTracker: Sendable {
     /// in-flight sync and awaits it before scheduling the next, so a few hundred of them in a row
     /// build a chain of tasks each waiting on its predecessor. Always prefer this when the caller
     /// already holds the whole set.
+    @MainActor
     func markDirty(_ type: SyncRecordType, ids: [String]) {
         guard !isSuppressed, !ids.isEmpty, type.syncScope == .synced else { return }
         metadataStorage.markDirty(ids, type: type)
+        recordEdits(type, ids: ids)
         Self.logger.trace("Marked dirty: \(type.rawValue) x\(ids.count)")
         postChangeNotification()
     }
 
     // MARK: - Mark Deleted
 
+    @MainActor
     func markDeleted(_ type: SyncRecordType, id: String) {
         guard !isSuppressed else { return }
         metadataStorage.removeDirty(id, type: type)
         metadataStorage.addTombstone(id, type: type)
+        recordEdits(type, ids: [id])
         Self.logger.trace("Marked deleted: \(type.rawValue)/\(id)")
         postChangeNotification()
     }
 
+    /// Forgets that records were waiting to be pushed, without tombstoning them.
+    ///
+    /// For records another device already deleted: a tombstone would send its own deletion back at
+    /// it, but leaving the dirty ids behind is not free either. The next push looks for records
+    /// that are gone, skips them, and never drains the entries.
+    @MainActor
+    func discardDirty(_ type: SyncRecordType, ids: [String]) {
+        guard !ids.isEmpty else { return }
+        metadataStorage.removeDirty(ids, type: type)
+    }
+
+    @MainActor
     func markDeleted(_ type: SyncRecordType, ids: [String]) {
+        markDeleted(type, ids: ids, owner: nil)
+    }
+
+    @MainActor
+    func markDeleted(_ type: SyncRecordType, ids: [String], owner: UUID?) {
         guard !isSuppressed, !ids.isEmpty else { return }
         metadataStorage.removeDirty(ids, type: type)
-        metadataStorage.addTombstones(ids, type: type)
+        metadataStorage.addTombstones(ids, type: type, owner: owner)
+        recordEdits(type, ids: ids)
         Self.logger.trace("Marked deleted: \(type.rawValue) x\(ids.count)")
         postChangeNotification()
+    }
+
+    @MainActor
+    func markDeleted(_ type: SyncRecordType, idsByOwner: [UUID: Set<String>]) {
+        let ids = idsByOwner.values.flatMap { $0 }
+        guard !isSuppressed, !ids.isEmpty else { return }
+        metadataStorage.removeDirty(ids, type: type)
+        metadataStorage.addTombstones(
+            idsByOwner.flatMap { owner, ownedIds in ownedIds.map { Tombstone(id: $0, owner: owner) } },
+            type: type
+        )
+        recordEdits(type, ids: ids)
+        Self.logger.trace("Marked deleted: \(type.rawValue) x\(ids.count)")
+        postChangeNotification()
+    }
+
+    @MainActor
+    func discardTombstones(ownedBy owners: Set<UUID>) {
+        guard !owners.isEmpty else { return }
+        metadataStorage.removeTombstones { type, tombstone in
+            SyncBoundary.owner(of: tombstone, type: type).map(owners.contains) ?? false
+        }
+    }
+
+    var ownersKeptOffSync: Set<UUID> {
+        metadataStorage.ownersKeptOffSync()
+    }
+
+    @MainActor
+    func keepOffSync(owners: Set<UUID>) {
+        metadataStorage.keepOffSync(owners: owners)
+    }
+
+    @MainActor
+    func releaseOwnersKeptOffSync(_ owners: Set<UUID>) {
+        metadataStorage.releaseOwnersKeptOffSync(owners)
     }
 
     // MARK: - Query
@@ -75,10 +136,43 @@ final class SyncChangeTracker: Sendable {
         metadataStorage.dirtyIds(for: type)
     }
 
+    func tombstonedIds(for type: SyncRecordType) -> Set<String> {
+        Set(metadataStorage.tombstones(for: type).map(\.id))
+    }
+
+    func editSnapshot() -> SyncEditSnapshot {
+        let dirty = Set(SyncRecordType.allCases.flatMap { type in
+            metadataStorage.dirtyIds(for: type).map { SyncRecordIdentity(type: type, id: $0) }
+        })
+        let tombstoned = Set(SyncRecordType.allCases.flatMap { type in
+            metadataStorage.tombstones(for: type).map { SyncRecordIdentity(type: type, id: $0.id) }
+        })
+        return editGenerations.withLock { state in
+            SyncEditSnapshot(
+                dirty: dirty,
+                generations: Dictionary(
+                    uniqueKeysWithValues: dirty.union(tombstoned).map { ($0, state.generation(of: $0)) }
+                )
+            )
+        }
+    }
+
+    func hasEdit(_ identity: SyncRecordIdentity, since snapshot: SyncEditSnapshot) -> Bool {
+        guard let recorded = snapshot.generations[identity] else { return true }
+        return editGenerations.withLock { $0.generation(of: identity) } != recorded
+    }
+
     // MARK: - Clear
 
     func clearDirty(_ type: SyncRecordType, id: String) {
         metadataStorage.removeDirty(id, type: type)
+    }
+
+    @discardableResult
+    func clearDirty(_ identity: SyncRecordIdentity, unlessEditedSince snapshot: SyncEditSnapshot) -> Bool {
+        guard !hasEdit(identity, since: snapshot) else { return false }
+        clearDirty(identity.type, id: identity.id)
+        return true
     }
 
     func clearAllDirty(_ type: SyncRecordType) {
@@ -86,6 +180,11 @@ final class SyncChangeTracker: Sendable {
     }
 
     // MARK: - Private
+
+    private func recordEdits(_ type: SyncRecordType, ids: [String]) {
+        let identities = ids.map { SyncRecordIdentity(type: type, id: $0) }
+        editGenerations.withLock { $0.recordEdits(of: identities) }
+    }
 
     private func postChangeNotification() {
         Task { @MainActor in

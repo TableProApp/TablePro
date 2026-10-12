@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("HTTP Request Stream Parser")
 struct HttpRequestStreamParserTests {
     private func drain(_ parser: inout HttpRequestStreamParser) throws -> [HttpParsedRequest] {
         var requests: [HttpParsedRequest] = []

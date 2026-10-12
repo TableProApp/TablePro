@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Read-side of the panel toggles. Each one reads the same state its `toggle` writes,
 /// so the menu title describes what the command will actually do.
@@ -33,13 +34,19 @@ extension MainContentCommandActions {
         coordinator?.tabManager.selectedTab?.display.resultsViewMode
     }
 
+    /// Recomputed here rather than read off the status bar's snapshot, because the View menu has
+    /// to validate while no status bar is on screen. Both call sites take the same inputs, the
+    /// tab's own geometry columns included, so the menu and the switcher can never disagree about
+    /// whether Map is offered.
     var availableResultsViewModes: [ResultsViewMode] {
         guard let coordinator, let tab = coordinator.tabManager.selectedTab else { return [] }
-        let columns = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)?.columns ?? []
+        let tableRows = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)
         return ResultsModeAvailability.modes(
             tabType: tab.tabType,
             hasTableName: tab.tableContext.tableName != nil,
-            hasColumns: !columns.isEmpty
+            hasColumns: !(tableRows?.columns.isEmpty ?? true),
+            hasSpatialColumn: !tab.display.spatialColumns.isEmpty,
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
         )
     }
 

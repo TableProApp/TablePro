@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 /// A `.gz` the source expanded itself is the source's to delete, whoever owns the file the caller
@@ -52,7 +53,7 @@ struct SqlFileImportSourceCleanupTests {
         let source = SqlFileImportSource(
             url: archive,
             encoding: .utf8,
-            dialect: .generic,
+            grammar: TestGrammar.standard,
             decompressedURL: nil,
             ownsDecompressedFile: false
         )
@@ -84,7 +85,7 @@ struct SqlFileImportSourceCleanupTests {
         let source = SqlFileImportSource(
             url: archive,
             encoding: .utf8,
-            dialect: .generic,
+            grammar: TestGrammar.standard,
             decompressedURL: expanded,
             ownsDecompressedFile: true
         )
@@ -109,7 +110,7 @@ struct SqlFileImportSourceCleanupTests {
         let source = SqlFileImportSource(
             url: archive,
             encoding: .utf8,
-            dialect: .generic,
+            grammar: TestGrammar.standard,
             decompressedURL: expanded,
             ownsDecompressedFile: false
         )

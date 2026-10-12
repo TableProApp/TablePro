@@ -70,13 +70,18 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         guard !databaseName.isEmpty else {
             throw CloudflareD1Error(message: String(localized: "Database name or UUID is required"))
         }
+        let connectTimeout = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+        )
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
 
         let databaseId: String
         if isUuid(databaseName) {
             databaseId = databaseName
         } else {
             let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: "")
-            client.createSession()
+            client.createSession(connectDeadline: deadline)
             defer { client.invalidateSession() }
             let databases = try await client.listDatabases()
 
@@ -95,11 +100,12 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         }
 
         let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: databaseId)
-        client.createSession()
+        client.createSession(connectDeadline: deadline)
 
         do {
             let details = try await client.getDatabaseDetails()
             lock.withLock { _serverVersion = details.version ?? "D1" }
+            client.finishConnecting()
         } catch {
             client.invalidateSession()
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
@@ -359,50 +365,8 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT il.name, il."unique", il.origin, ii.name AS col_name
-            FROM pragma_index_list('\(safeTable)') il
-            LEFT JOIN pragma_index_info(il.name) ii ON 1=1
-            ORDER BY il.seq, ii.seqno
-            """
-        let result = try await execute(query: query)
-
-        var indexMap: [(name: String, isUnique: Bool, isPrimary: Bool, columns: [String])] = []
-        var indexLookup: [String: Int] = [:]
-
-        for row in result.rows {
-            guard row.count >= 4,
-                  let indexName = row[0].asText else { continue }
-
-            let isUnique = row[1].asText == "1"
-            let origin = row[2].asText ?? "c"
-
-            if let idx = indexLookup[indexName] {
-                if let colName = row[3].asText {
-                    indexMap[idx].columns.append(colName)
-                }
-            } else {
-                let columns: [String] = row[3].asText.map { [$0] } ?? []
-                indexLookup[indexName] = indexMap.count
-                indexMap.append((
-                    name: indexName,
-                    isUnique: isUnique,
-                    isPrimary: origin == "pk",
-                    columns: columns
-                ))
-            }
-        }
-
-        return indexMap.map { entry in
-            PluginIndexInfo(
-                name: entry.name,
-                columns: entry.columns,
-                isUnique: entry.isUnique,
-                isPrimary: entry.isPrimary,
-                type: "BTREE"
-            )
-        }.sorted { $0.isPrimary && !$1.isPrimary }
+        let result = try await execute(query: SQLiteIndexCatalog.indexesQuery(table: table))
+        return SQLiteIndexCatalog.indexes(fromRows: result.rows)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
@@ -782,14 +746,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        let uniqueStr = index.isUnique ? "UNIQUE " : ""
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var statement = "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) "
-            + "ON \(quoteIdentifier(table)) (\(cols))"
-        if let predicate = index.whereClause?.nilIfEmpty {
-            statement += " WHERE \(predicate)"
-        }
-        return statement
+        SQLiteIndexCatalog.createStatement(for: index, table: table, quote: quoteIdentifier)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -801,10 +758,12 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
-        let uniqueStr = index.isUnique ? "UNIQUE " : ""
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let onClause = tableName.map { " ON \(quoteIdentifier($0))" } ?? ""
-        return "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name))\(onClause) (\(cols))"
+        guard let tableName else {
+            let unique = index.isUnique ? "UNIQUE " : ""
+            let keys = SQLiteIndexCatalog.keyList(for: index, quote: quoteIdentifier)
+            return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) \(keys)"
+        }
+        return SQLiteIndexCatalog.createStatement(for: index, table: tableName, quote: quoteIdentifier)
     }
 
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {

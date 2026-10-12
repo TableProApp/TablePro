@@ -2,7 +2,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct PrivilegeEditorPane: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
 
     var body: some View {
         AutosavingSplitView(
@@ -27,7 +27,7 @@ struct PrivilegeEditorPane: View {
                 )
                 .accessibilityIdentifier("usersroles-scope-filter")
 
-                Picker("", selection: $viewModel.scopeMode) {
+                Picker(String(localized: "Show"), selection: $viewModel.scopeMode) {
                     ForEach(UsersRolesViewModel.ScopeMode.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -51,13 +51,13 @@ struct PrivilegeEditorPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
-        .onChange(of: viewModel.scopeMode) { _, _ in
+        .onChange(of: viewModel.scopeMode) { _ in
             viewModel.applyScopeMode()
         }
-        .onChange(of: viewModel.scopeFilter) { _, _ in
+        .onChange(of: viewModel.scopeFilter) { _ in
             viewModel.searchScopes()
         }
-        .onChange(of: viewModel.selection) { _, _ in
+        .onChange(of: viewModel.selection) { _ in
             if viewModel.scopeMode == .granted {
                 viewModel.applyScopeMode()
             }

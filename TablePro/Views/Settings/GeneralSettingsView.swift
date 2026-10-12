@@ -3,13 +3,16 @@
 //  TablePro
 //
 
-import Sparkle
+import AppKit
 import SwiftUI
 
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
-    var updaterBridge: UpdaterBridge
+    /// Observed, because this view reads `canCheckForUpdates`, `lastUpdateCheckDate` and the button
+    /// title off it. Held as a plain property, Last checked and Check for Updates… kept whatever they
+    /// said when Settings opened, however many checks ran behind them.
+    @ObservedObject var updater: SoftwareUpdater
     var onResetAll: () -> Void
 
     @State private var initialLanguage: AppLanguage?
@@ -17,6 +20,33 @@ struct GeneralSettingsView: View {
     @AppStorage(SidebarPersistenceKey.defaultLayout, store: AppStorageEnvironment.shared.defaults) private var defaultSidebarLayout: SidebarLayout = .flat
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
+
+    /// Bindings straight onto Sparkle's own properties. Nothing about the update section is stored
+    /// in `GeneralSettings`, so there is no second copy to fall out of step and nothing for a
+    /// synced settings blob to overwrite on another Mac.
+    private var automaticallyChecksForUpdates: Binding<Bool> {
+        Binding(
+            get: { updater.automaticallyChecksForUpdates },
+            set: { updater.setAutomaticallyChecksForUpdates($0) }
+        )
+    }
+
+    private var automaticallyDownloadsUpdates: Binding<Bool> {
+        Binding(
+            get: { updater.automaticallyDownloadsUpdates },
+            set: { updater.setAutomaticallyDownloadsUpdates($0) }
+        )
+    }
+
+    private var lastUpdateCheckDescription: String {
+        guard let date = updater.lastUpdateCheckDate else {
+            return String(localized: "Last checked: never")
+        }
+        return String(
+            format: String(localized: "Last checked: %@"),
+            date.formatted(date: .abbreviated, time: .shortened)
+        )
+    }
 
     private var queryTimeoutOptions: [Int] {
         let current = settings.queryTimeoutSeconds
@@ -71,6 +101,20 @@ struct GeneralSettingsView: View {
                 Toggle("Show object comments", isOn: $settings.showObjectComments)
                     .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
 
+                Toggle("Show system databases and schemas", isOn: $settings.showSystemContainers)
+                    .accessibilityIdentifier("show-system-containers-toggle")
+                    .help(String(localized: """
+                        Lists system databases such as mysql and information_schema, and system schemas, \
+                        in the sidebar tree and the database filter. Switchers always list them.
+                        """))
+
+                Toggle("Show partitions", isOn: $settings.showPartitions)
+                    .accessibilityIdentifier("show-partitions-toggle")
+                    .help(String(localized: """
+                        Lists a partitioned table's partitions under it in the sidebar, with how many \
+                        it holds. Turn it off to keep partitioned tables as single rows.
+                        """))
+
                 Picker("Row size:", selection: $settings.sidebarRowSize) {
                     ForEach(SidebarRowSizePreference.allCases, id: \.self) { size in
                         Text(size.title).tag(size)
@@ -88,21 +132,7 @@ struct GeneralSettingsView: View {
                 .help(String(localized: "Layout for new connections on servers that support a database tree. Switch the current connection from the View menu."))
             }
 
-            Section("Connections") {
-                Picker("Check connections:", selection: $settings.connectionHealthCheck) {
-                    ForEach(ConnectionHealthCheck.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
-                }
-                .accessibilityIdentifier("connection-health-check-picker")
-                .help(String(localized: """
-                    TablePro runs a small query on each open connection so it can notice a dropped \
-                    one and reconnect before you hit it. Only when I use the connection stops that \
-                    background traffic, which is what a database that sleeps when idle, or bills \
-                    per query, needs; TablePro then checks the connection the first time you use \
-                    it after a pause.
-                    """))
-            }
+            ConnectionsSettingsSection(healthCheck: $settings.connectionHealthCheck)
 
             Section("Query Execution") {
                 Picker("Query timeout:", selection: $settings.queryTimeoutSeconds) {
@@ -120,28 +150,50 @@ struct GeneralSettingsView: View {
 
             TrustedExternalConnectionsSection()
 
-            Section("Software Update") {
-                Toggle("Automatically check for updates", isOn: $settings.automaticallyCheckForUpdates)
-                    .onChange(of: settings.automaticallyCheckForUpdates) { _, newValue in
-                        updaterBridge.updater.automaticallyChecksForUpdates = newValue
+            Section {
+                Toggle("Automatically check for updates", isOn: automaticallyChecksForUpdates)
+                    .accessibilityIdentifier("automatic-update-check-toggle")
+
+                Toggle("Download and install updates automatically", isOn: automaticallyDownloadsUpdates)
+                    .disabled(!updater.allowsAutomaticUpdates)
+                    .accessibilityIdentifier("automatic-update-install-toggle")
+                    .help(String(localized: "A new version downloads in the background and installs the next time you quit TablePro."))
+
+                LabeledContent {
+                    Button(updater.checkForUpdatesTitle) {
+                        updater.checkForUpdates()
                     }
-
-                Button("Check for Updates…") {
-                    updaterBridge.checkForUpdates()
+                    .disabled(!updater.canCheckForUpdates)
+                    .accessibilityIdentifier("check-for-updates-button")
+                } label: {
+                    Text(lastUpdateCheckDescription)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("last-update-check-label")
                 }
-                .disabled(!updaterBridge.canCheckForUpdates)
+                .accessibilityElement(children: .contain)
 
-                if let changelogURL = URL(string: MainMenuLink.changelog) {
-                    Link("What's New", destination: changelogURL)
+                Button {
+                    NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
+                } label: {
+                    Text(String(localized: "What's New"))
                 }
+                .buttonStyle(.link)
+                .accessibilityIdentifier("whats-new-link")
+            } header: {
+                Text("Software Update")
             }
 
             Section {
-                Toggle("Share anonymous usage data", isOn: $settings.shareAnalytics)
+                Toggle("Share usage data", isOn: $settings.shareAnalytics)
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Help improve TablePro by sharing anonymous usage statistics (no personal data or queries).")
+                Text(
+                    """
+                    One report a day: hashed Mac ID, versions, architecture, language, database types, connection count, \
+                    license status, update settings, first-use dates. Never hostnames, credentials, queries, or rows.
+                    """
+                )
             }
 
             Section {
@@ -160,7 +212,6 @@ struct GeneralSettingsView: View {
         }
         .onAppear {
             if initialLanguage == nil { initialLanguage = settings.language }
-            updaterBridge.updater.automaticallyChecksForUpdates = settings.automaticallyCheckForUpdates
         }
     }
 }
@@ -169,7 +220,7 @@ struct GeneralSettingsView: View {
     GeneralSettingsView(
         settings: .constant(.default),
         tabSettings: .constant(.default),
-        updaterBridge: UpdaterBridge.shared,
+        updater: SoftwareUpdater.shared,
         onResetAll: {}
     )
     .frame(width: 450, height: 500)

@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Auth field ordering")
 struct AuthFieldOrderTests {
     private func selector(_ id: String, hidesPassword: Bool = false) -> ConnectionField {
         ConnectionField(

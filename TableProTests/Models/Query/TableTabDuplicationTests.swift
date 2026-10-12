@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Table tab duplication")
 @MainActor
 struct TableTabDuplicationTests {
     /// The default. Clicking a table that is already open switches to it rather than piling up

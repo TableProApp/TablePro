@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ListRecentTabsTool")
 struct ListRecentTabsToolTests {
     private let tool = ListRecentTabsTool()
     private let granted = UUID()

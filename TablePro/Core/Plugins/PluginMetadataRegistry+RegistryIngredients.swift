@@ -22,6 +22,7 @@ extension PluginMetadataRegistry {
         duckdbColumnTypes: [String: [String]],
         cassandraDialect: SQLDialectDescriptor,
         cassandraColumnTypes: [String: [String]],
+        cassandraCapabilities: PluginMetadataSnapshot.CapabilityFlags,
         mongoCompletions: [CompletionEntry],
         mongoColumnTypes: [String: [String]],
         etcdCompletions: [CompletionEntry],
@@ -48,17 +49,17 @@ extension PluginMetadataRegistry {
                 "MATERIALIZED", "WITH"
             ],
             functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE",
-                "NOW", "TODAY", "YESTERDAY",
+                "count", "sum", "avg", "max", "min",
+                "concat", "substring", "left", "right", "length", "lower", "upper",
+                "trim", "ltrim", "rtrim", "replace",
+                "now", "today", "yesterday",
                 "CAST",
-                "UNIQ", "UNIQEXACT", "ARGMIN", "ARGMAX", "GROUPARRAY",
-                "TOSTRING", "TOINT32", "FORMATDATETIME",
-                "IF", "MULTIIF",
-                "ARRAYMAP", "ARRAYJOIN",
-                "MATCH", "CURRENTDATABASE", "VERSION",
-                "QUANTILE", "TOPK"
+                "uniq", "uniqExact", "argMin", "argMax", "groupArray",
+                "toString", "toInt32", "formatDateTime",
+                "if", "multiIf",
+                "arrayMap", "arrayJoin",
+                "match", "currentDatabase", "version",
+                "quantile", "topK"
             ],
             dataTypes: [
                 "INT8", "INT16", "INT32", "INT64", "INT128", "INT256",
@@ -82,7 +83,9 @@ extension PluginMetadataRegistry {
             paginationStyle: .limit,
             requiresBackslashEscaping: true,
             caseSensitivityStyle: .caseFoldFunction,
-            caseFoldFunction: "lowerUTF8"
+            caseFoldFunction: "lowerUTF8",
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: false
         )
 
         let clickhouseColumnTypes: [String: [String]] = [
@@ -209,7 +212,8 @@ extension PluginMetadataRegistry {
                 "BLOB", "RAW", "LONG RAW", "BFILE",
                 "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE",
                 "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND",
-                "BOOLEAN", "ROWID", "UROWID", "XMLTYPE", "SDO_GEOMETRY"
+                "BOOLEAN", "ROWID", "UROWID", "XMLTYPE", "SDO_GEOMETRY",
+                "INT", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION", "JSON", "VECTOR"
             ],
             tableOptions: [
                 "TABLESPACE", "PCTFREE", "INITRANS"
@@ -218,7 +222,7 @@ extension PluginMetadataRegistry {
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
             paginationStyle: .offsetFetch,
-            offsetFetchOrderBy: "ORDER BY 1",
+            offsetFetchOrderBy: "",
             autoLimitStyle: .fetchFirst,
             caseSensitivityStyle: .caseFoldFunction
         )
@@ -232,9 +236,11 @@ extension PluginMetadataRegistry {
                 "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND"
             ],
             "Binary": ["RAW", "LONG RAW", "BLOB", "BFILE"],
-            "Boolean": [],
+            "Boolean": ["BOOLEAN"],
+            "JSON": ["JSON"],
             "XML": ["XMLTYPE"],
             "Spatial": ["SDO_GEOMETRY"],
+            "Vector": ["VECTOR"],
             "Other": ["ROWID", "UROWID"]
         ]
 
@@ -428,6 +434,31 @@ extension PluginMetadataRegistry {
             "Boolean": ["BOOLEAN"],
             "Other": ["UUID", "TIMEUUID", "INET", "LIST", "SET", "MAP", "TUPLE", "FROZEN"]
         ]
+        let cassandraCapabilities = PluginMetadataSnapshot.CapabilityFlags(
+            supportsSchemaSwitching: false,
+            supportsImport: false,
+            supportsExport: true,
+            supportsSSH: true,
+            supportsSSL: true,
+            supportsCascadeDrop: false,
+            supportsForeignKeyDisable: false,
+            supportsReadOnlyMode: true,
+            supportsQueryProgress: false,
+            requiresReconnectForDatabaseSwitch: false,
+            supportsDropDatabase: true,
+            supportsModifyColumn: false,
+            supportsAddIndex: false,
+            supportsDropIndex: false,
+            supportsModifyPrimaryKey: false,
+            supportsRoutines: true,
+            supportsDatabaseTriggerBrowse: true,
+            supportsOpportunisticTLS: false,
+            supportsClientKeyPassphrase: true,
+            pagination: .leadingRowsOnly(maximumRows: nil),
+            exactRowCountIsFullScan: true,
+            supportsColumnSort: false,
+            supportsMatchAnyFilters: false
+        )
 
         let mongoCompletions: [CompletionEntry] = [
             CompletionEntry(label: "db.", insertText: "db."),
@@ -604,7 +635,7 @@ extension PluginMetadataRegistry {
             clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
             oracleDialect, oracleColumnTypes, damengDialect, damengCompletions, damengColumnTypes,
             duckdbDialect, duckdbColumnTypes,
-            cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
+            cassandraDialect, cassandraColumnTypes, cassandraCapabilities, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         )
     }

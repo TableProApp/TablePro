@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Editor tab labels")
 @MainActor
 struct EditorTabLabelResolverTests {
     private func tableTab(_ name: String, database: String = "", schema: String? = nil) -> QueryTab {

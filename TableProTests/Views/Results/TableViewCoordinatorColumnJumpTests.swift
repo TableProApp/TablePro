@@ -17,7 +17,6 @@ private final class ColumnJumpLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Jump to Column in the grid")
 @MainActor
 struct TableViewCoordinatorColumnJumpTests {
     private func makeCoordinator(

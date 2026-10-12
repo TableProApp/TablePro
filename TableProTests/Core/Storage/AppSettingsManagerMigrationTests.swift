@@ -11,7 +11,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("AppSettingsManager.migrateAI")
 @MainActor
 struct AppSettingsManagerMigrationTests {
     private func makeProvider(name: String, type: AIProviderType = .claude) -> AIProviderConfig {

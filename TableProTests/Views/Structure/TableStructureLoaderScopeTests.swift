@@ -67,7 +67,8 @@ struct TableStructureLoaderScopeTests {
         _ = try await loader.indexes()
         _ = try await loader.foreignKeys()
         _ = try await loader.triggers()
-        _ = try await loader.coreTabs(includingForeignKeys: true)
+        _ = try await loader.coreTabs(includingForeignKeys: true, includingTableComment: true)
+        _ = try await loader.tableComment()
         _ = try await loader.perform { try await $0.fetchTableDDL(table: "t") }
     }
 
@@ -85,7 +86,7 @@ struct TableStructureLoaderScopeTests {
 
         try await Self.exerciseEveryRead(loader)
 
-        #expect(provider.requestedScopes.count == 6)
+        #expect(provider.requestedScopes.count == 7)
         #expect(provider.requestedScopes.allSatisfy { $0 == tabScope })
         #expect(provider.requestedScopes.allSatisfy { $0.database == "A" })
         #expect(provider.requestedScopes.allSatisfy { $0.schema == nil })
@@ -114,7 +115,7 @@ struct TableStructureLoaderScopeTests {
 
         try await Self.exerciseEveryRead(loader)
 
-        #expect(provider.requestedScopes.count == 6)
+        #expect(provider.requestedScopes.count == 7)
         #expect(provider.requestedScopes.allSatisfy { $0.database == "orders" })
         #expect(provider.requestedScopes.allSatisfy { $0.schema == "sales" })
         #expect(provider.requestedScopes.allSatisfy { $0 != browseScope })
@@ -130,9 +131,61 @@ struct TableStructureLoaderScopeTests {
         let loader = TableStructureLoader(scope: tabScope, tableName: "orders", provider: provider)
 
         _ = try await loader.columns()
-        _ = try await loader.coreTabs(includingForeignKeys: false)
+        _ = try await loader.coreTabs(includingForeignKeys: false, includingTableComment: false)
 
         #expect(provider.driver.fetchColumnsCalls == ["orders", "orders"])
+    }
+
+    @Test("The table comment is read for the loader's table on the tab's scope")
+    func tableCommentReadsOnTheTabsScope() async throws {
+        let connection = Self.makeBrowsingSession(browseDatabase: "B")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let provider = RecordingMetadataProvider()
+        provider.driver.tableCommentToReturn = "Customer orders"
+        let tabScope = DatabaseScope(connectionId: connection.id, database: "A", schema: nil)
+        let loader = TableStructureLoader(scope: tabScope, tableName: "orders", provider: provider)
+
+        let comment = try await loader.tableComment()
+
+        #expect(comment == "Customer orders")
+        #expect(provider.requestedScopes == [tabScope])
+        #expect(provider.driver.fetchTableMetadataCalls == ["orders"])
+    }
+
+    @Test("A comment that fails to load is reported, and the columns still land")
+    func failedCommentStillLandsTheColumns() async throws {
+        let connection = Self.makeBrowsingSession(browseDatabase: "B")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let provider = RecordingMetadataProvider()
+        provider.driver.columnsToReturn["orders"] = [TestFixtures.makeColumnInfo(name: "id", dataType: "INT")]
+        provider.driver.fetchTableMetadataError = DatabaseError.queryFailed("permission denied")
+        let tabScope = DatabaseScope(connectionId: connection.id, database: "A", schema: nil)
+        let loader = TableStructureLoader(scope: tabScope, tableName: "orders", provider: provider)
+
+        let reloaded = try await loader.coreTabs(includingForeignKeys: false, includingTableComment: true)
+
+        #expect(reloaded.columns.map(\.name) == ["id"])
+        guard case .failed = reloaded.tableComment else {
+            Issue.record("Expected a failed comment, got \(String(describing: reloaded.tableComment))")
+            return
+        }
+    }
+
+    @Test("The comment is not read unless asked for")
+    func commentIsReadOnlyWhenAsked() async throws {
+        let connection = Self.makeBrowsingSession(browseDatabase: "B")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let provider = RecordingMetadataProvider()
+        let tabScope = DatabaseScope(connectionId: connection.id, database: "A", schema: nil)
+        let loader = TableStructureLoader(scope: tabScope, tableName: "orders", provider: provider)
+
+        let reloaded = try await loader.coreTabs(includingForeignKeys: false, includingTableComment: false)
+
+        #expect(reloaded.tableComment == nil)
+        #expect(provider.driver.fetchTableMetadataCalls.isEmpty)
     }
 
     @Test("A server-scoped loader passes its own scope through, never the browsed one")

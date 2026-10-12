@@ -54,9 +54,11 @@ extension TableViewCoordinator {
 
         let mouseLocation = window.mouseLocationOutsideOfEventStream
         let pointInHeader = headerView.convert(mouseLocation, from: nil)
-        let columnIndex = headerView.column(at: pointInHeader)
+        populateHeaderMenu(menu, forColumnAt: headerView.column(at: pointInHeader))
+    }
 
-        guard columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
+    func populateHeaderMenu(_ menu: NSMenu, forColumnAt columnIndex: Int) {
+        guard let tableView, columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
 
         let column = tableView.tableColumns[columnIndex]
         if column.identifier == ColumnIdentitySchema.rowNumberIdentifier { return }
@@ -70,7 +72,7 @@ extension TableViewCoordinator {
             return column.title
         }()
 
-        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+        if supportsColumnSort, let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             let sortAscItem = NSMenuItem(
                 title: String(localized: "Sort Ascending"),
                 action: #selector(sortAscending(_:)),
@@ -100,6 +102,17 @@ extension TableViewCoordinator {
             }
 
             menu.addItem(NSMenuItem.separator())
+        }
+
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+            let selectItem = NSMenuItem(
+                title: String(localized: "Select Column"),
+                action: #selector(selectColumnFromHeaderMenu(_:)),
+                keyEquivalent: ""
+            )
+            selectItem.representedObject = dataColumnIndex
+            selectItem.target = self
+            menu.addItem(selectItem)
         }
 
         let copyItem = NSMenuItem(title: String(localized: "Copy Column Name"), action: #selector(copyColumnName(_:)), keyEquivalent: "")
@@ -133,12 +146,18 @@ extension TableViewCoordinator {
             menu.addItem(fillItem)
         }
 
-        let filterItem = NSMenuItem(title: String(localized: "Filter with column"), action: #selector(filterWithColumn(_:)), keyEquivalent: "")
-        filterItem.representedObject = baseName
-        filterItem.target = self
-        menu.addItem(filterItem)
+        if supportsColumnCommands {
+            let filterItem = NSMenuItem(
+                title: String(localized: "Filter with column"),
+                action: #selector(filterWithColumn(_:)),
+                keyEquivalent: ""
+            )
+            filterItem.representedObject = baseName
+            filterItem.target = self
+            menu.addItem(filterItem)
+        }
 
-        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+        if supportsValueFilter, let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             let filterValuesItem = NSMenuItem(
                 title: String(localized: "Filter Values…"),
                 action: #selector(filterColumnValues(_:)),
@@ -192,12 +211,17 @@ extension TableViewCoordinator {
 
         menu.addItem(NSMenuItem.separator())
 
-        let hideItem = NSMenuItem(title: String(localized: "Hide Column"), action: #selector(hideColumn(_:)), keyEquivalent: "")
-        hideItem.representedObject = baseName
-        hideItem.target = self
-        menu.addItem(hideItem)
+        if supportsColumnCommands {
+            let hideItem = NSMenuItem(
+                title: String(localized: "Hide Column"), action: #selector(hideColumn(_:)), keyEquivalent: ""
+            )
+            hideItem.representedObject = baseName
+            hideItem.target = self
+            menu.addItem(hideItem)
+        }
 
-        if delegate != nil,
+        if supportsColumnCommands,
+           delegate != nil,
            columnPool.hasUserHiddenColumns {
             let showAllItem = NSMenuItem(
                 title: String(localized: "Show All Columns"),
@@ -292,6 +316,16 @@ extension TableViewCoordinator {
     /// from being written straight back over Don't Sort on the next load.
     @objc func clearSortAction() {
         delegate?.dataGridSortStateChanged(SortState(columns: [], source: .user))
+    }
+
+    /// Focuses the grid too, so the Copy that usually follows acts on the column rather than on
+    /// whatever held focus before the header was right-clicked.
+    @objc func selectColumnFromHeaderMenu(_ sender: NSMenuItem) {
+        guard let dataColumnIndex = sender.representedObject as? Int else { return }
+        selectColumn(dataColumnIndex)
+        if let tableView {
+            tableView.window?.makeFirstResponder(tableView)
+        }
     }
 
     @objc func copyColumnName(_ sender: NSMenuItem) {

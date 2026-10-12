@@ -17,9 +17,25 @@ protocol ExportMetadataReading {
     func fetchSchemas() async throws -> [String]
     func fetchDatabases() async throws -> [String]
     func fetchTables(schema: String?) async throws -> [TableInfo]
-    func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]]
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]?
+    func fetchTablesGroupedByDatabase() async -> [String: [TableInfo]]
     func loadObjects(request: ExportObjectLoader.Request, tables: [TableInfo]) async -> [ExportObjectItem]
     func columnNames(table: String, schema: String?) async -> [String]
+}
+
+/// What the export tree calls a raw `information_schema.TABLES` row.
+///
+/// The driver's vocabulary with one deliberate difference. `SYSTEM VIEW` is a system table to the
+/// sidebar, which groups it with the catalog and withholds a drop, but `PluginExportObjectKind`
+/// reads `.systemTable` as a table that carries rows: MySQL's `information_schema` entries then
+/// export as `CREATE TABLE` plus a `SELECT *` of the catalog, where a view exports as its
+/// definition. So a view stays a view at this boundary, and nothing about the sidebar changes.
+nonisolated internal enum ExportCatalogTableType {
+    internal static func decode(_ declaredType: String) -> TableInfo.TableType {
+        let kind = PluginDriverAdapter.mapPluginTableType(declaredType) ?? .table
+        guard kind == .systemTable, declaredType.lowercased().contains("view") else { return kind }
+        return .view
+    }
 }
 
 /// Reads through the connection's metadata route.
@@ -59,31 +75,46 @@ struct ExportDriverMetadataReader: ExportMetadataReading {
         }
     }
 
-    /// One server-wide read for every database. The query carries no WHERE clause, so a
-    /// connection per database would return the same rows and only cost a connect, and a
-    /// database the user can list but not open becomes an empty group instead of an error
-    /// that fails the whole dialog.
-    func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]] {
-        try await withDriver { driver in
-            let query = """
-                SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
-                FROM information_schema.TABLES
-                ORDER BY TABLE_NAME
-                """
-            let result = try await driver.execute(query: query)
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {
+        try await withDriver { try await $0.fetchTables(inSchemas: schemas) }
+    }
 
-            var grouped: [String: [TableInfo]] = [:]
-            for row in result.rows {
-                guard row.count >= 2,
-                      let rowSchema = row[0].asText,
-                      let name = row[1].asText else {
-                    continue
+    /// One server-wide read that describes every database at once, where the engine has a catalog
+    /// that answers it. It is an optimization and never the last word: the tree asks the driver
+    /// about any database this read did not describe.
+    ///
+    /// Engines with no `information_schema` refuse the statement outright (Kafka answers
+    /// "Unexpected TABLE_NAME in a CONSUME statement"), and a MySQL proxy answers it from its own
+    /// backend rather than from the databases it publishes: measured, DBLE returns no rows at all,
+    /// MyCat refuses it with 3000, and ShardingSphere-Proxy answers one data source's physical
+    /// catalog, whose names are not the logical ones. All of those come back as nothing described.
+    func fetchTablesGroupedByDatabase() async -> [String: [TableInfo]] {
+        do {
+            return try await withDriver { driver in
+                let query = """
+                    SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
+                    FROM information_schema.TABLES
+                    ORDER BY TABLE_NAME
+                    """
+                let result = try await driver.execute(query: query)
+
+                var grouped: [String: [TableInfo]] = [:]
+                for row in result.rows {
+                    guard row.count >= 2,
+                          let rowSchema = row[0].asText,
+                          let name = row[1].asText else {
+                        continue
+                    }
+                    let declaredType = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
+                    grouped[rowSchema, default: []].append(
+                        TableInfo(name: name, type: ExportCatalogTableType.decode(declaredType), rowCount: nil)
+                    )
                 }
-                let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
-                let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-                grouped[rowSchema, default: []].append(TableInfo(name: name, type: type, rowCount: nil))
+                return grouped
             }
-            return grouped
+        } catch {
+            Self.logger.warning("Export catalog read failed: \(error.publicLogShape, privacy: .public)")
+            return [:]
         }
     }
 
@@ -115,6 +146,8 @@ struct ExportDriverMetadataReader: ExportMetadataReading {
 
 /// What a row's checkboxes were before a reload.
 struct ExportRowSnapshot {
+    let container: String
+    let kind: PluginExportObjectKind
     let isSelected: Bool
     let optionValues: [Bool]
 }
@@ -127,11 +160,21 @@ struct ExportRowSnapshot {
 /// reader.
 @MainActor
 struct ExportTreeBuilder {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDialog")
+
     let connection: DatabaseConnection
     let exportDatabaseName: String
     let preselection: ExportPreselection
     let supportedObjectKinds: Set<PluginExportObjectKind>
+    /// The sidebar's schema filter, empty for none. A schema-grouped tree lists only these, plus
+    /// the schemas the dialog was asked about and `pinnedSchemas`.
+    let schemaFilter: Set<String>
+    let pinnedSchemas: Set<String>
     let reader: any ExportMetadataReading
+
+    /// What one table listing answers. A schema the tree opens collapsed reads only these until it
+    /// is expanded or ticked.
+    static let listedKinds: Set<PluginExportObjectKind> = [.table, .view, .materializedView, .foreignTable]
 
     /// Keyed by kind too, so a routine and a table that share a name do not inherit each other's
     /// checkboxes when the format changes and the tree reloads.
@@ -144,7 +187,12 @@ struct ExportTreeBuilder {
         for database in items {
             for object in database.objects {
                 snapshots[snapshotKey(container: database.name, object: object.name, kind: object.kind)] =
-                    ExportRowSnapshot(isSelected: object.isSelected, optionValues: object.optionValues)
+                    ExportRowSnapshot(
+                        container: database.name,
+                        kind: object.kind,
+                        isSelected: object.isSelected,
+                        optionValues: object.optionValues
+                    )
             }
         }
         return snapshots
@@ -169,17 +217,35 @@ struct ExportTreeBuilder {
         dbType: DatabaseType,
         priorRows: [String: ExportRowSnapshot]
     ) async throws -> [ExportDatabaseItem] {
-        let schemas = try await reader.fetchSchemas()
         let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
+        let shown = try await reader.fetchSchemas().filter { isShown($0, defaultSchema: defaultSchema) }
+        let tablesBySchema = try await tables(inSchemas: shown)
+        let selectedSideKindContainers = Set(
+            priorRows.values
+                .filter { $0.isSelected && !Self.listedKinds.contains($0.kind) }
+                .map(\.container)
+        )
         var items: [ExportDatabaseItem] = []
-        for schema in schemas {
-            let tables = try await reader.fetchTables(schema: schema)
+        for schema in shown {
             let isDefaultSchema = schema.caseInsensitiveCompare(defaultSchema) == .orderedSame
+            /// The preselected table's own schema opens too. `isDefaultSchema` cannot carry
+            /// that: it is "" on the five engines that hang tables off schemas, so every
+            /// section stayed shut and a correctly ticked row read as nothing selected.
+            let opensExpanded = isDefaultSchema
+                || preselection.containerNames.contains(schema)
+                || preselection.scopedSchema == schema
+            let readsEveryKind = opensExpanded
+                || selectsWholeSchema(schema)
+                || selectedSideKindContainers.contains(schema)
+            let unloadedKinds: Set<PluginExportObjectKind> = readsEveryKind
+                ? []
+                : supportedObjectKinds.subtracting(Self.listedKinds).subtracting([.grant])
             let loaded = await loadObjects(
                 containerName: schema,
                 schema: schema,
-                tables: tables,
-                includesPrincipals: isDefaultSchema
+                tables: tablesBySchema[schema] ?? [],
+                includesPrincipals: isDefaultSchema,
+                excluding: unloadedKinds
             )
             let objectItems = loaded.map { object in
                 restoring(
@@ -190,16 +256,12 @@ struct ExportTreeBuilder {
                     isCurrentContainer: isDefaultSchema
                 )
             }
-            guard !objectItems.isEmpty else { continue }
+            guard !objectItems.isEmpty || !unloadedKinds.isEmpty else { continue }
             items.append(ExportDatabaseItem(
                 name: schema,
                 objects: objectItems,
-                /// The preselected table's own schema opens too. `isDefaultSchema` cannot carry
-                /// that: it is "" on the five engines that hang tables off schemas, so every
-                /// section stayed shut and a correctly ticked row read as nothing selected.
-                isExpanded: isDefaultSchema
-                    || preselection.containerNames.contains(schema)
-                    || preselection.scopedSchema == schema
+                isExpanded: opensExpanded,
+                unloadedKinds: unloadedKinds
             ))
         }
         items.sort { item1, item2 in
@@ -212,11 +274,15 @@ struct ExportTreeBuilder {
 
     private func buildByDatabase(priorRows: [String: ExportRowSnapshot]) async throws -> [ExportDatabaseItem] {
         let databases = try await reader.fetchDatabases()
-        let tablesByDatabase = try await reader.fetchTablesGroupedByDatabase()
+        let tablesByDatabase = await reader.fetchTablesGroupedByDatabase()
         var items: [ExportDatabaseItem] = []
         for dbName in databases {
-            let tables = tablesByDatabase[dbName] ?? []
             let isCurrentDB = dbName == connection.database
+            let tables = if let described = tablesByDatabase[dbName] {
+                described
+            } else {
+                await tables(in: dbName, isCurrentDatabase: isCurrentDB)
+            }
             let loaded = await loadObjects(
                 containerName: dbName,
                 schema: isCurrentDB ? nil : dbName,
@@ -247,6 +313,76 @@ struct ExportTreeBuilder {
         return items
     }
 
+    /// Reads the side kinds a collapsed schema left unread, for the dialog to merge into its row.
+    func loadUnloadedObjects(of item: ExportDatabaseItem) async -> [ExportObjectItem] {
+        let kinds = item.unloadedKinds.intersection(supportedObjectKinds)
+        guard !kinds.isEmpty else { return [] }
+        let request = ExportObjectLoader.Request(containerName: item.name, schema: item.name, kinds: kinds)
+        let defaultSchema = PluginManager.shared.defaultSchemaName(for: connection.type)
+        return await reader.loadObjects(request: request, tables: []).map { object in
+            restoring(
+                object,
+                priorRows: [:],
+                container: item.name,
+                containerRef: .schema(database: exportDatabaseName, schema: item.name),
+                isCurrentContainer: item.name.caseInsensitiveCompare(defaultSchema) == .orderedSame
+            )
+        }
+    }
+
+    /// A schema the dialog was asked about is listed whatever the sidebar filter hides: a filter
+    /// must not make a preselection or a saved selection export less than it names.
+    private func isShown(_ schema: String, defaultSchema: String) -> Bool {
+        schemaFilter.isEmpty
+            || schemaFilter.contains(schema)
+            || pinnedSchemas.contains(schema)
+            || schema.caseInsensitiveCompare(defaultSchema) == .orderedSame
+            || preselection.containerNames.contains(schema)
+            || preselection.scopedSchema == schema
+            || selectsWholeSchema(schema)
+    }
+
+    /// Exporting a whole database or schema selects every kind in it, so none of it can wait for
+    /// an expansion the user has no reason to make.
+    private func selectsWholeSchema(_ schema: String) -> Bool {
+        preselection.selectsAllObjects(in: .schema(database: exportDatabaseName, schema: schema))
+    }
+
+    /// One listing for every shown schema where the engine has one, else one read per schema.
+    private func tables(inSchemas schemas: [String]) async throws -> [String: [TableInfo]] {
+        guard !schemas.isEmpty else { return [:] }
+        var grouped: [String: [TableInfo]] = [:]
+        guard let listed = try await reader.fetchTables(inSchemas: schemas) else {
+            for schema in schemas {
+                grouped[schema] = try await reader.fetchTables(schema: schema)
+            }
+            return grouped
+        }
+        let requested = Set(schemas)
+        for table in listed {
+            guard let schema = table.schema, requested.contains(schema) else { continue }
+            grouped[schema, default: []].append(table)
+        }
+        return grouped
+    }
+
+    /// What the driver says a database holds, for a database the catalog read did not describe.
+    ///
+    /// A database the account can list but not open answers with the server's own refusal (MySQL
+    /// reports `1044 Access denied` for one it lists in `SHOW DATABASES`), and one engine's export
+    /// dialog must not close over another's privileges: the database becomes an empty group, the
+    /// way a database with no objects already does, and the rest of the tree is built.
+    private func tables(in database: String, isCurrentDatabase: Bool) async -> [TableInfo] {
+        do {
+            return try await reader.fetchTables(schema: isCurrentDatabase ? nil : database)
+        } catch {
+            Self.logger.warning(
+                "Export tree read no tables for \(database, privacy: .public): \(error.publicLogShape, privacy: .public)"
+            )
+            return []
+        }
+    }
+
     private func buildFlatDatabaseItem(
         name: String,
         priorRows: [String: ExportRowSnapshot]
@@ -274,9 +410,10 @@ struct ExportTreeBuilder {
         containerName: String,
         schema: String?,
         tables: [TableInfo],
-        includesPrincipals: Bool
+        includesPrincipals: Bool,
+        excluding excludedKinds: Set<PluginExportObjectKind> = []
     ) async -> [ExportObjectItem] {
-        var kinds = supportedObjectKinds
+        var kinds = supportedObjectKinds.subtracting(excludedKinds)
         if !includesPrincipals { kinds.remove(.grant) }
         guard !kinds.isEmpty else { return [] }
         let request = ExportObjectLoader.Request(

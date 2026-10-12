@@ -22,8 +22,8 @@ final class CompareDataPlanGroupingTests: XCTestCase {
         DataComparePlan(
             table: table,
             schema: "public",
-            columns: ["id", "name"],
-            keyColumns: ["id"],
+            columns: ["id", "name"].map { CompareColumn(name: $0) },
+            scope: DataTableScope(keyColumns: ["id"]),
             isEnabled: false,
             unavailableReason: unavailableReason,
             summary: summary

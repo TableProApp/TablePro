@@ -5,17 +5,17 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @testable import TablePro
 
-@Suite("Leading-rows statements")
 @MainActor
 struct LeadingRowsStatementTests {
-    private let dialect = SqlDialect.from(databaseTypeId: DatabaseType.cloudflareR2SQL.rawValue)
+    private let grammar = DatabaseType.cloudflareR2SQL.lexicalGrammar
 
     private func bound(_ sql: String, rowCap: Int?, style: AutoLimitStyle = .limit) -> LeadingRowsStatement {
-        LeadingRowsStatement.bound(sql, rowCap: rowCap, maximumRows: 10_000, autoLimitStyle: style, lexicalDialect: dialect)
+        LeadingRowsStatement.bound(sql, rowCap: rowCap, maximumRows: 10_000, autoLimitStyle: style, grammar: grammar)
     }
 
     @Test("A capped read fetches one row past the cap, so a trimmed result is still detected")
@@ -60,6 +60,23 @@ struct LeadingRowsStatementTests {
             == "SELECT * FROM t\nLIMIT 10000")
         #expect(LeadingRowsStatement.resolve("SELECT * FROM t", rowCap: 100, databaseType: .postgresql)
             == LeadingRowsStatement(sql: "SELECT * FROM t", rowCap: 100))
+    }
+
+    @Test("An engine that caps nothing leaves the user's statement alone, ALLOW FILTERING and COUNT included")
+    func noCeilingLeavesStatementsAlone() {
+        for sql in ["SELECT * FROM t WHERE v = 1 ALLOW FILTERING", "SELECT COUNT(*) FROM t"] {
+            #expect(LeadingRowsStatement.resolve(sql, rowCap: 1_000, databaseType: .cassandra)
+                == LeadingRowsStatement(sql: sql, rowCap: 1_000))
+        }
+    }
+
+    @Test("An export from an engine that caps nothing states no limit and names nothing partial")
+    func noCeilingExportIsUnbounded() {
+        let noCeiling = PaginationCapability.leadingRowsOnly(maximumRows: nil)
+
+        #expect(ExportDataSourceAdapter.rowLimit(requested: nil, pagination: noCeiling) == nil)
+        #expect(ExportDataSourceAdapter.rowLimit(requested: 250_000, pagination: noCeiling) == 250_000)
+        #expect(ExportService.leadingRowsCapWarning(exportedRows: 100_000, pagination: noCeiling) == nil)
     }
 
     @Test("A leading-rows engine is only counted on request")

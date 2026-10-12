@@ -39,6 +39,28 @@ enum SSHAuthMethod: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+extension SSHAuthMethod {
+    /// iPhone and iPad wrote the case name ("sshAgent", "privateKey") into `sshConfigJson` and into
+    /// `.tablepro` files before the two sides agreed on these raw values, and a strict decode read
+    /// every one of them as Password: an agent or key tunnel that silently stopped authenticating,
+    /// and that the next push from this Mac then wrote back as Password for good. Both spellings
+    /// decode, so a connection synced from an already-shipped iOS build is read as it was meant.
+    init(carrying raw: String) {
+        switch raw {
+        case Self.password.rawValue, "password": self = .password
+        case Self.privateKey.rawValue, "privateKey", "publicKey": self = .privateKey
+        case Self.sshAgent.rawValue, "sshAgent", "agent": self = .sshAgent
+        case Self.keyboardInteractive.rawValue, "keyboardInteractive": self = .keyboardInteractive
+        case Self.none.rawValue, "none": self = .none
+        default: self = .password
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        self.init(carrying: try decoder.singleValueContainer().decode(String.self))
+    }
+}
+
 enum SSHAgentSocketOption: String, CaseIterable, Identifiable {
     case systemDefault
     case onePassword
@@ -106,6 +128,20 @@ enum SSHJumpAuthMethod: String, CaseIterable, Identifiable, Codable {
     case sshAgent = "SSH Agent"
 
     var id: String { rawValue }
+
+    /// Same rule as `SSHAuthMethod` above: a hop an iOS build wrote names its case, not its raw
+    /// value, and a strict decode threw `dataCorrupted` inside `jumpHosts`, which took the whole
+    /// SSH configuration and with it the connection.
+    init(carrying raw: String) {
+        switch raw {
+        case Self.privateKey.rawValue, "privateKey", "publicKey": self = .privateKey
+        default: self = .sshAgent
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        self.init(carrying: try decoder.singleValueContainer().decode(String.self))
+    }
 }
 
 struct SSHJumpHost: Codable, Hashable, Identifiable {
@@ -125,6 +161,35 @@ struct SSHJumpHost: Codable, Hashable, Identifiable {
     var proxyJumpString: String {
         "\(username)@\(host):\(port ?? 22)"
     }
+}
+
+extension SSHJumpHost {
+    enum CodingKeys: String, CodingKey {
+        case id, host, port, username, authMethod, privateKeyPath
+    }
+
+    /// Same rule as `SSHConfiguration` below: every property has a default, so every key decodes as
+    /// optional. A required decode threw `keyNotFound` on a hop an older iOS build wrote without
+    /// `authMethod`, and that failure took the whole connection out of the sync pull.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(Int.self, forKey: .port)
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        authMethod = (try? container.decodeIfPresent(SSHJumpAuthMethod.self, forKey: .authMethod)) ?? .sshAgent
+        privateKeyPath = try container.decodeIfPresent(String.self, forKey: .privateKeyPath) ?? ""
+    }
+}
+
+/// How a file-backed connection reaches a database file that lives on an SSH server.
+enum RemoteFileAccess: String, Codable, Hashable, Sendable {
+    /// Fetch a snapshot over SFTP and open the copy on this Mac, read-only. The original is never
+    /// written. This is what a connection saved before the live mode existed decodes to.
+    case readOnlyCopy
+    /// Run statements on the server against the live database through the SQLite agent, so reads
+    /// and writes act on the file the server's own programs are using.
+    case onServer
 }
 
 /// SSH tunnel configuration for database connections
@@ -152,6 +217,11 @@ struct SSHConfiguration: Codable, Hashable {
     /// explainable.
     var remoteFilePath: String = ""
 
+    /// Whether the named file is opened as a read-only copy on this Mac or as a live session on the
+    /// server. Defaults to the copy, so a configuration written before the live mode existed keeps
+    /// its old behaviour, and an older app that cannot decode this key falls back the same way.
+    var remoteFileAccess: RemoteFileAccess = .readOnlyCopy
+
     var forwardsRemoteFile: Bool { enabled && !remoteFilePath.isEmpty }
 
     /// Username may be empty: the runtime resolver supplies `User` from
@@ -168,6 +238,7 @@ extension SSHConfiguration {
         case enabled, host, port, username, authMethod, privateKeyPath, agentSocketPath, jumpHosts
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
         case remoteFilePath
+        case remoteFileAccess
     }
 
     /// Every property here declares a default, so every key decodes as optional. A required decode
@@ -190,6 +261,7 @@ extension SSHConfiguration {
         totpDigits = try container.decodeIfPresent(Int.self, forKey: .totpDigits) ?? 6
         totpPeriod = try container.decodeIfPresent(Int.self, forKey: .totpPeriod) ?? 30
         remoteFilePath = try container.decodeIfPresent(String.self, forKey: .remoteFilePath) ?? ""
+        remoteFileAccess = try container.decodeIfPresent(RemoteFileAccess.self, forKey: .remoteFileAccess) ?? .readOnlyCopy
     }
 }
 

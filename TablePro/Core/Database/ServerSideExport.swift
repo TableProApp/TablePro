@@ -108,50 +108,65 @@ enum ServerSideExport {
 
     // MARK: - Oracle
 
+    /// The `ADD_FILE` file type for the log file. `DBMS_DATAPUMP.KU$_FILE_TYPE_LOG_FILE` is `3`; the constant is not
+    /// named because reaching it through PL/SQL would resolve `DBMS_DATAPUMP` there, which a package named `SYS` in the
+    /// caller's schema captures.
+    private static let dataPumpLogFileType = 3
+
     /// Data Pump is a job rather than a statement, and `DBMS_DATAPUMP` is the only way to start one
     /// without shelling out to `expdp` on the server. The file lands in the directory object, so the
     /// caller is told where rather than handed anything.
+    ///
+    /// Every `DBMS_DATAPUMP` call is made through an `EXECUTE IMMEDIATE` of a `CALL`, which resolves the package at SQL
+    /// level: the first component of a qualified name is a schema there, so a package named `SYS` planted in the schema
+    /// the session runs under cannot capture it. Named directly in a `BEGIN ... END` block, `SYS.DBMS_DATAPUMP`
+    /// resolves through PL/SQL, which reaches that package first and runs its `OPEN`, `ADD_FILE` and `START_JOB` with
+    /// the reader's privileges (measured captured on 23ai; the `CALL` form ran the real package). The only PL/SQL-level
+    /// names left are the block's own scalar variables and `NUMBER`/`VARCHAR2`, which are not schema objects.
     private static func oracleStatement(
         _ request: Request,
         directory: String,
         escape: (String) -> String
     ) -> String? {
         guard !directory.isEmpty else { return nil }
-        let stem = sanitizedFileStem(request.table)
+        let stem = escape(sanitizedFileStem(request.table))
         let directoryLiteral = escape(directory.uppercased())
-        let tableFilter = nestedLiteral(request.table.uppercased(), escape: escape)
+        let nameExpr = "IN ('\(escape(request.table.uppercased()))')"
         return """
             DECLARE
               handle NUMBER;
+              l_stem VARCHAR2(4000) := '\(stem)';
+              l_dir VARCHAR2(4000) := '\(directoryLiteral)';
+              l_name_expr VARCHAR2(4000) := '\(escape(nameExpr))';
+              l_schema_expr VARCHAR2(4000) := \(schemaFilterExpression(request, escape: escape));
             BEGIN
-              handle := DBMS_DATAPUMP.OPEN('EXPORT', 'TABLE', NULL, '\(escape(stem))');
-              DBMS_DATAPUMP.ADD_FILE(handle, '\(escape(stem)).dmp', '\(directoryLiteral)');
-              DBMS_DATAPUMP.ADD_FILE(handle, '\(escape(stem)).log', '\(directoryLiteral)', NULL,
-                DBMS_DATAPUMP.KU$_FILE_TYPE_LOG_FILE);
-              DBMS_DATAPUMP.METADATA_FILTER(handle, 'NAME_EXPR', 'IN (''\(tableFilter)'')');
-              DBMS_DATAPUMP.METADATA_FILTER(handle, 'SCHEMA_EXPR', \(schemaFilterExpression(request, escape: escape)));
-              DBMS_DATAPUMP.START_JOB(handle);
-              DBMS_DATAPUMP.DETACH(handle);
+              EXECUTE IMMEDIATE 'CALL SYS.DBMS_DATAPUMP.OPEN(:1, :2, NULL, :3) INTO :4'
+                USING 'EXPORT', 'TABLE', l_stem, OUT handle;
+              EXECUTE IMMEDIATE 'CALL SYS.DBMS_DATAPUMP.ADD_FILE(:1, :2, :3)'
+                USING handle, l_stem || '.dmp', l_dir;
+              EXECUTE IMMEDIATE 'CALL SYS.DBMS_DATAPUMP.ADD_FILE(:1, :2, :3, NULL, \(dataPumpLogFileType))'
+                USING handle, l_stem || '.log', l_dir;
+              EXECUTE IMMEDIATE 'CALL SYS.DBMS_DATAPUMP.METADATA_FILTER(:1, :2, :3)'
+                USING handle, 'NAME_EXPR', l_name_expr;
+              EXECUTE IMMEDIATE 'CALL SYS.DBMS_DATAPUMP.METADATA_FILTER(:1, :2, :3)'
+                USING handle, 'SCHEMA_EXPR', l_schema_expr;
+              EXECUTE IMMEDIATE 'CALL SYS.DBMS_DATAPUMP.START_JOB(:1)' USING handle;
+              EXECUTE IMMEDIATE 'CALL SYS.DBMS_DATAPUMP.DETACH(:1)' USING handle;
             END;
             """
     }
 
-    /// Data Pump filters by schema separately from table, so an unqualified request exports from
-    /// whatever schema the session is in, which is what `USER` names. `USER` is concatenated in
-    /// PL/SQL rather than written inside a literal, because a literal cannot hold an identifier.
+    /// The Data Pump `SCHEMA_EXPR` value, as a PL/SQL expression assigned to a `VARCHAR2`.
+    ///
+    /// Data Pump filters by schema separately from table, so an unqualified request exports from whatever schema the
+    /// session is in, which is what `USER` names. `USER` is a built-in the language resolves through `STANDARD`, not a
+    /// schema object, so it is not shadowable, and it is concatenated rather than written inside a literal because a
+    /// literal cannot hold an identifier.
     private static func schemaFilterExpression(_ request: Request, escape: (String) -> String) -> String {
         guard let schema = request.schema, !schema.isEmpty else {
             return "'IN (''' || USER || ''')'"
         }
-        return "'IN (''\(nestedLiteral(schema.uppercased(), escape: escape))'')'"
-    }
-
-    /// A value written inside a literal that is itself inside a literal, which is what Data Pump's
-    /// `NAME_EXPR` and `SCHEMA_EXPR` are. A quote has to survive both levels, so it is escaped
-    /// twice. An Oracle identifier may legally hold one, and left raw it closes the outer literal
-    /// early and hands the rest of the name to the parser as PL/SQL.
-    private static func nestedLiteral(_ value: String, escape: (String) -> String) -> String {
-        escape(escape(value))
+        return "'\(escape("IN ('\(escape(schema.uppercased()))')"))'"
     }
 
     // MARK: - Snowflake

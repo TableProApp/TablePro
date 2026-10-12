@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Highlight condition matching")
 struct HighlightConditionTests {
     private func matches(
         _ value: PluginCellValue,

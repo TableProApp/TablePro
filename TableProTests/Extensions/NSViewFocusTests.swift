@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("NSView+Focus")
 struct NSViewFocusTests {
     @Test("Returns nil for empty container view")
     func emptyView() {

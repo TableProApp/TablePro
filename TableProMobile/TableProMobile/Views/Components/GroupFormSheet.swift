@@ -1,50 +1,88 @@
 import SwiftUI
+import TableProConnectionLibrary
 import TableProModels
 
 struct GroupFormSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var name: String
     @State private var color: ConnectionColor
+    @State private var iconName: String?
+    @State private var parentId: UUID?
+    @State private var failure: LibraryWriteFailure?
     private let existingGroup: ConnectionGroup?
-    var onSave: (ConnectionGroup) -> Void
+    private let opening: GroupFormEdits
 
-    init(editing group: ConnectionGroup? = nil, onSave: @escaping (ConnectionGroup) -> Void) {
+    init(editing group: ConnectionGroup? = nil, parentId: UUID? = nil) {
+        let opening = GroupFormEdits(opening: group, parentId: parentId)
         self.existingGroup = group
-        self.onSave = onSave
-        _name = State(initialValue: group?.name ?? "")
-        _color = State(initialValue: group?.color ?? .none)
+        self.opening = opening
+        _name = State(initialValue: opening.name)
+        _color = State(initialValue: opening.color)
+        _iconName = State(initialValue: opening.iconName)
+        _parentId = State(initialValue: opening.parentId)
+    }
+
+    private var edits: GroupFormEdits {
+        GroupFormEdits(name: name, color: color, iconName: iconName, parentId: parentId)
+    }
+
+    private var hasChanges: Bool { edits != opening }
+
+    private var placementGroupId: UUID {
+        existingGroup?.id ?? UUID()
     }
 
     var body: some View {
+        let graph = LibraryGroupGraph(groups: appState.groups)
+        let groupId = placementGroupId
+        let parents = graph.flattened().filter { graph.canPlace(groupId, under: $0.id) }
         NavigationStack {
             Form {
                 Section {
                     TextField("Name", text: $name)
                         .textInputAutocapitalization(.words)
+                    SymbolPickerRow(selection: $iconName, subject: .group(color))
+                }
+
+                if !parents.isEmpty || parentId != nil {
+                    Section {
+                        Picker("Parent Group", selection: $parentId) {
+                            Text("None").tag(UUID?.none)
+                            ForEach(parents, id: \.id) { entry in
+                                Text(graph.pathNames(to: entry.id).joined(separator: " / "))
+                                    .tag(Optional(entry.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
                 }
 
                 Section("Color") {
                     ConnectionColorPicker(selection: $color)
                 }
             }
+            .interactiveDismissDisabled(hasChanges)
             .navigationTitle(existingGroup != nil ? String(localized: "Edit Group") : String(localized: "New Group"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    CancelButton { dismiss() }
+                    DiscardChangesCancelButton(hasChanges: hasChanges) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    ConfirmButton(title: "Save") {
-                        var group = existingGroup ?? ConnectionGroup()
-                        group.name = name
-                        group.color = color
-                        onSave(group)
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    ConfirmButton(title: "Save", action: save)
+                        .disabled(edits.name.isEmpty)
                 }
             }
+            .libraryWriteFailureAlert(failure, onDismiss: { failure = nil }, closeForm: { dismiss() })
         }
+    }
+
+    private func save() {
+        let outcome = edits.save(editing: existingGroup, in: appState)
+        failure = LibraryWriteFailure(outcome, kind: .group)
+        guard failure == nil else { return }
+        dismiss()
     }
 }

@@ -7,7 +7,7 @@ import AppKit
 import SwiftUI
 
 struct CloudflareTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     private var viewModel: CloudflareTunnelPaneViewModel { coordinator.cloudflareTunnel }
 
@@ -106,10 +106,7 @@ struct CloudflareTransportSections: View {
                     LabeledContent(String(localized: "Detected"), value: resolved)
                         .foregroundStyle(.secondary)
                 } else if viewModel.didResolveBinary {
-                    Label(
-                        String(localized: "cloudflared not found. Install it with `brew install cloudflared`, or choose the binary above."),
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
+                    Label(viewModel.binaryNotFoundMessage, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
                 }

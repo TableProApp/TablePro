@@ -22,7 +22,7 @@ extension PluginMetadataRegistry {
                     supportsSchemaSwitching: false,
                     supportsImport: false,
                     supportsExport: true,
-                    supportsSSH: false,
+                    supportsSSH: true,
                     supportsSSL: true,
                     supportsCascadeDrop: false,
                     supportsForeignKeyDisable: false,
@@ -90,6 +90,13 @@ private let elasticsearchColumnTypes: [String: [String]] = [
 
 func elasticsearchConnectionFields() -> [ConnectionField] {
     [
+        ConnectionField(
+            id: "esHosts",
+            label: String(localized: "Hosts"),
+            placeholder: "localhost:9200",
+            fieldType: .hostList,
+            section: .connection
+        ),
         ConnectionField(
             id: "esAuthMethod",
             label: String(localized: "Auth Method"),

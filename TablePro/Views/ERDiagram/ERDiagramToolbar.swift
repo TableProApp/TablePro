@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct ERDiagramToolbar: View {
-    @Bindable var viewModel: ERDiagramViewModel
-    let viewport: DiagramViewportController
+    @ObservedObject var viewModel: ERDiagramViewModel
+    @ObservedObject var viewport: DiagramViewportController
     let onExport: () -> Void
 
     var body: some View {

@@ -8,7 +8,6 @@ import Foundation
 import Testing
 import TableProSyncTransport
 
-@Suite("ConnectionStorage removeTagId")
 @MainActor
 struct ConnectionStorageRemoveTagTests {
     private let storage: ConnectionStorage

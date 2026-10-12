@@ -29,19 +29,28 @@ private actor FakeSentinelTransport: RedisSentinelTransport {
         self.groups = groups
     }
 
-    func primaryAddress(group: String, at sentinel: RedisNodeAddress) async throws -> RedisSentinelReply {
+    func primaryAddress(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> RedisSentinelReply {
         asked.append(sentinel)
         return try answer(sentinel)
     }
 
-    func peerSentinels(group: String, at sentinel: RedisNodeAddress) async throws -> [RedisNodeAddress] { peers }
+    func peerSentinels(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> [RedisNodeAddress] { peers }
 
-    func monitoredGroups(at sentinel: RedisNodeAddress) async throws -> [String] { groups }
+    func monitoredGroups(at sentinel: RedisNodeAddress, deadline: RedisConnectDeadline) async throws -> [String] {
+        groups
+    }
 
     func recordedAsks() -> [RedisNodeAddress] { asked }
 }
 
-@Suite("Redis Sentinel resolver - iteration")
 struct RedisSentinelResolverIterationTests {
     @Test("Stops at the first Sentinel that knows the primary")
     func stopsAtFirstAnswer() async throws {
@@ -106,7 +115,6 @@ struct RedisSentinelResolverIterationTests {
     }
 }
 
-@Suite("Redis Sentinel resolver - failures")
 struct RedisSentinelResolverFailureTests {
     @Test("No Sentinels configured is its own error")
     func noSentinels() async {
@@ -206,7 +214,6 @@ struct RedisSentinelResolverFailureTests {
     }
 }
 
-@Suite("Redis Sentinel resolver - reply parsing")
 struct RedisSentinelReplyParsingTests {
     @Test("A two-element reply is the primary's address")
     func parsesAddress() throws {
@@ -275,7 +282,6 @@ struct RedisSentinelReplyParsingTests {
     }
 }
 
-@Suite("Redis Sentinel error messages")
 struct RedisSentinelErrorPresenterTests {
     @Test("An unknown group names the group and what the quorum monitors")
     func unknownGroupMessage() {

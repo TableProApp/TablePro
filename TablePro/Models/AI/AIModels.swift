@@ -74,15 +74,39 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .copilot:      return .oauth
         case .chatgptCodex: return .oauth
         case .cursor:       return .optionalApiKey
+        case .claude:       return .apiKey
         case .claudeAgent:  return .none
+        case .openAI:       return .apiKey
+        case .openRouter:   return .apiKey
+        case .gemini:       return .apiKey
         case .xai:          return .optionalApiKey
         case .ollama:       return .none
         case .llamaCpp:     return .none
         case .mlx:          return .none
         case .openCode:     return .optionalApiKey
-        default:            return .apiKey
+        case .custom:       return .optionalApiKey
         }
     }
+
+    /// How the configured endpoint is turned into a request URL. Providers that reach a fixed
+    /// host ignore it, so they answer with `AIProviderFactory`'s own fallback transport.
+    var endpointStyle: AIEndpointStyle {
+        switch self {
+        case .claude:
+            return .messages
+        case .openAI, .xai:
+            return .responses
+        case .gemini:
+            return .gemini
+        case .ollama:
+            return .ollama
+        case .copilot, .chatgptCodex, .cursor, .claudeAgent, .openRouter, .llamaCpp, .mlx, .openCode, .custom:
+            return .chatCompletions
+        }
+    }
+
+    /// The types `OpenAICompatibleProvider` serves, which share one registration.
+    static let openAICompatibleFamily: [AIProviderType] = [.openRouter, .openCode, .ollama, .llamaCpp, .mlx, .custom]
 
     var symbolName: String {
         switch self {
@@ -110,6 +134,10 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     var name: String
     var type: AIProviderType
+    /// Set on a `.custom` provider added from an `AIProviderPreset`. An id this build does not
+    /// know is kept as it stands, so a preset from a newer build survives a round trip through
+    /// this one and reads as a plain custom provider in the meantime.
+    var presetID: String?
     var model: String
     var endpoint: String
     var maxOutputTokens: Int?
@@ -120,6 +148,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         id: UUID = UUID(),
         name: String = "",
         type: AIProviderType = .claude,
+        presetID: String? = nil,
         model: String = "",
         endpoint: String = "",
         maxOutputTokens: Int? = nil,
@@ -129,11 +158,18 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         self.id = id
         self.name = name
         self.type = type
+        self.presetID = presetID
         self.model = model
-        self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
+        self.endpoint = endpoint.isEmpty ? Self.defaultEndpoint(type: type, presetID: presetID) : endpoint
         self.maxOutputTokens = maxOutputTokens
         self.telemetryEnabled = telemetryEnabled
         self.reasoningEffort = reasoningEffort
+    }
+
+    /// The name is stored rather than derived, so a build without this preset still lists the
+    /// provider under the vendor's name.
+    init(preset: AIProviderPreset) {
+        self.init(name: preset.displayName, type: .custom, presetID: preset.id)
     }
 
     init(from decoder: Decoder) throws {
@@ -141,16 +177,38 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         type = try container.decode(AIProviderType.self, forKey: .type)
+        presetID = try container.decodeIfPresent(String.self, forKey: .presetID)
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
         let rawEndpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
-        endpoint = rawEndpoint.isEmpty ? type.defaultEndpoint : rawEndpoint
+        endpoint = rawEndpoint.isEmpty ? Self.defaultEndpoint(type: type, presetID: presetID) : rawEndpoint
         maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
         telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
         reasoningEffort = try container.decodeIfPresent(ReasoningEffort.self, forKey: .reasoningEffort)
     }
 
+    var preset: AIProviderPreset? {
+        guard type == .custom else { return nil }
+        return AIProviderPreset.preset(withID: presetID)
+    }
+
+    /// What kind of provider this is, as opposed to what the user named it.
+    var kindName: String { preset?.displayName ?? type.displayName }
+
     var displayName: String {
-        name.isEmpty ? type.displayName : name
+        name.isEmpty ? kindName : name
+    }
+
+    var symbolName: String { preset?.symbolName ?? type.symbolName }
+
+    var authStyle: AIProviderType.AuthStyle { preset?.authStyle ?? type.authStyle }
+
+    var defaultEndpoint: String { Self.defaultEndpoint(type: type, presetID: presetID) }
+
+    private static func defaultEndpoint(type: AIProviderType, presetID: String?) -> String {
+        guard type == .custom, let preset = AIProviderPreset.preset(withID: presetID) else {
+            return type.defaultEndpoint
+        }
+        return preset.endpoint
     }
 }
 
@@ -236,6 +294,9 @@ struct AISettings: Codable, Equatable, Sendable {
     var maxToolRoundtripsEnabled: Bool
     var defaultConnectionPolicy: AIConnectionPolicy
     var chatMode: AIChatMode
+    /// Set from the composer's own context menu rather than the Settings window, because the only
+    /// place the highlight is worth thinking about is the field it wraps.
+    var composerHighlightEnabled: Bool
 
     static let defaultInlineSuggestionDebounceMs: Int = 500
     static let inlineSuggestionDebounceRange: ClosedRange<Int> = 100...3_000
@@ -255,7 +316,8 @@ struct AISettings: Codable, Equatable, Sendable {
         maxToolRoundtrips: AISettings.defaultMaxToolRoundtrips,
         maxToolRoundtripsEnabled: true,
         defaultConnectionPolicy: .askEachTime,
-        chatMode: .ask
+        chatMode: .ask,
+        composerHighlightEnabled: true
     )
 
     init(
@@ -271,7 +333,8 @@ struct AISettings: Codable, Equatable, Sendable {
         maxToolRoundtrips: Int = AISettings.defaultMaxToolRoundtrips,
         maxToolRoundtripsEnabled: Bool = true,
         defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
-        chatMode: AIChatMode = .ask
+        chatMode: AIChatMode = .ask,
+        composerHighlightEnabled: Bool = true
     ) {
         self.enabled = enabled
         self.providers = providers
@@ -286,6 +349,7 @@ struct AISettings: Codable, Equatable, Sendable {
         self.maxToolRoundtripsEnabled = maxToolRoundtripsEnabled
         self.defaultConnectionPolicy = defaultConnectionPolicy
         self.chatMode = chatMode
+        self.composerHighlightEnabled = composerHighlightEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -311,6 +375,9 @@ struct AISettings: Codable, Equatable, Sendable {
             AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
         ) ?? .askEachTime
         chatMode = try container.decodeIfPresent(AIChatMode.self, forKey: .chatMode) ?? .ask
+        composerHighlightEnabled = try container.decodeIfPresent(
+            Bool.self, forKey: .composerHighlightEnabled
+        ) ?? true
     }
 
     var activeProvider: AIProviderConfig? {

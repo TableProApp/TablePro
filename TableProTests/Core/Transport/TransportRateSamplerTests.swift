@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TransportRateSampler")
 struct TransportRateSamplerTests {
     private let start = ContinuousClock.now
 

@@ -1,33 +1,33 @@
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class PrivilegeTreeModel {
+final class PrivilegeTreeModel: ObservableObject {
     enum Mode: Equatable {
         case hierarchy
         case granted
         case searchResults
     }
 
-    private(set) var roots: [PrivilegeNode] = []
-    private(set) var mode: Mode = .hierarchy
-    private(set) var structureVersion = 0
+    @Published private(set) var roots: [PrivilegeNode] = []
+    @Published private(set) var mode: Mode = .hierarchy
 
-    @ObservationIgnored
+    /// Bumped only when `roots` is replaced, which the outline answers with `reloadData()`.
+    ///
+    /// A lazy expand is not a structure change: it fills in one node, and reloading the whole
+    /// outline for it would collapse every row and expand them again. That goes out through
+    /// `nodeDidChange` instead, so this model publishes only when the outline has to start over.
+    @Published private(set) var structureVersion = 0
+
+    /// A node whose own state changed: it began loading its children, received them, or failed.
+    /// The outline reloads that item, which is how a row shows and then drops its spinner.
+    let nodeDidChange = PassthroughSubject<PrivilegeNode, Never>()
+
     private var databases: [String] = []
-
-    @ObservationIgnored
     private var hasServerScope = false
-
-    @ObservationIgnored
     private var restrictsBrowsing = false
-
-    @ObservationIgnored
     private var currentDatabase: String?
-
-    @ObservationIgnored
     private var loader: PrincipalListLoader?
 
     func configure(
@@ -57,9 +57,16 @@ final class PrivilegeTreeModel {
         bumpVersion()
     }
 
+    /// Search results are a flat list of leaves. Only the hierarchy loads children, so a result
+    /// left expandable drew a disclosure triangle that opened onto nothing, and loading under it
+    /// would list a second copy of any parent or child the search also matched.
     func showSearchResults(_ scopes: [PluginPrivilegeScope]) {
         mode = .searchResults
-        roots = scopes.map(makeNode)
+        roots = scopes.map { scope in
+            let node = makeNode(scope)
+            node.setChildren([])
+            return node
+        }
         bumpVersion()
     }
 
@@ -71,15 +78,15 @@ final class PrivilegeTreeModel {
               let loader else { return }
 
         node.beginLoading()
-        bumpVersion()
+        nodeDidChange.send(node)
 
         do {
             let children = try await loader.grantableChildren(of: node.scope)
             node.setChildren(children.map(makeNode))
-            bumpVersion()
+            nodeDidChange.send(node)
         } catch {
             node.failLoading(error.localizedDescription)
-            bumpVersion()
+            nodeDidChange.send(node)
             throw error
         }
     }

@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Theme document gate")
 struct ThemeDocumentTests {
     private static func json(_ object: [String: Any]) -> Data {
         // swiftlint:disable:next force_try

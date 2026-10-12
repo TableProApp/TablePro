@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("JDBCConnectionString")
 struct JDBCConnectionStringTests {
     @Test("MySQL with port and database")
     func mysql() {

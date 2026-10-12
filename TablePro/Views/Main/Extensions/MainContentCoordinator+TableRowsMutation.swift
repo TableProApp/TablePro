@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
     @discardableResult
@@ -23,10 +24,81 @@ extension MainContentCoordinator {
         return delta
     }
 
-    func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID) {
-        tabSessionRegistry.setTableRows(tableRows, for: tabId)
-        resetSelectionForNewResult(tabId: tabId)
+    func setActiveTableRows(
+        _ tableRows: TableRows,
+        for tabId: UUID,
+        viewport intent: GridReloadIntent = .firstRow,
+        source: ResultSourceChange = .newSource
+    ) {
+        let keepsViewState = source.keepsViewState
+        let keyColumns = viewportKeyColumns(forTab: tabId)
+        let gridIsMounted = isGridMounted(forTab: tabId, acceptsQueryTab: keepsViewState)
+        let snapshot = gridIsMounted
+            ? viewportSnapshot(forTab: tabId, intent: intent, keepsSelection: keepsViewState, keyColumns: keyColumns)
+            : .top
+        installTableRows(tableRows, for: tabId)
+        if keepsViewState {
+            carryValueFilter(onto: tableRows.columns, forTab: tabId)
+            resetSelection(tabId: tabId)
+        } else {
+            resetViewStateForNewSource(tabId: tabId)
+        }
+        if gridIsMounted {
+            let placement = GridViewportResolver.placement(
+                for: intent,
+                from: snapshot,
+                in: tableRows,
+                displayIDs: displayIDs(forTab: tabId),
+                keyColumns: keyColumns
+            )
+            tabSessionRegistry.stageViewportPlacement(placement, for: tabId)
+        }
+        if !tableRows.rows.isEmpty {
+            clearRestoredRowAnchor(forTab: tabId)
+        }
         notifyFullReplaceIfActive(tabId: tabId)
+    }
+
+    /// The one place a whole `TableRows` is installed into the shared buffer.
+    ///
+    /// Reconciling the view mode belongs here rather than at each caller, because a result set
+    /// switch and a re-seed replace the rows just as completely as a fresh execution does: a tab
+    /// left on Map that switches to a result with no geometry column is stranded exactly the same
+    /// way. An incremental edit goes through `mutateActiveTableRows` instead and never changes
+    /// which modes the result can offer.
+    private func installTableRows(_ tableRows: TableRows, for tabId: UUID) {
+        tabSessionRegistry.setTableRows(tableRows, for: tabId)
+        let spatialColumns = SpatialColumn.columns(in: tableRows)
+        tabManager.mutate(tabId: tabId) { $0.display.spatialColumns = spatialColumns }
+        reconcileResultsViewMode(against: tableRows, spatialColumns: spatialColumns, for: tabId)
+    }
+
+    /// Keeps the tab on a mode it can still offer.
+    ///
+    /// A mode that leaves `availableModes` takes its own switcher segment and every View menu item
+    /// with it, and those items carry no key equivalent, so nothing is left to press: the tab is
+    /// stranded until another statement happens to restore the mode. A succeeding non-SELECT
+    /// installs an empty `TableRows` and does exactly that.
+    private func reconcileResultsViewMode(
+        against tableRows: TableRows,
+        spatialColumns: [SpatialColumn],
+        for tabId: UUID
+    ) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        let tab = tabManager.tabs[index]
+        let available = ResultsModeAvailability.modes(
+            tabType: tab.tabType,
+            hasTableName: tab.tableContext.tableName != nil,
+            hasColumns: !tableRows.columns.isEmpty,
+            hasSpatialColumn: !spatialColumns.isEmpty,
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
+        )
+        let reconciled = ResultsModeAvailability.reconcile(
+            tab.display.resultsViewMode,
+            availableModes: available
+        )
+        guard reconciled != tab.display.resultsViewMode else { return }
+        tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = reconciled }
     }
 
     /// Switching result sets replaces what the grid shows and what an edit would be written to, so
@@ -34,13 +106,12 @@ extension MainContentCoordinator {
     /// pending edit set outlives the switch and `handleColumnsChange` refuses to rebuild the change
     /// manager while it exists, which leaves the grid writing to the outgoing result's table.
     func switchActiveResultSet(to resultSetId: UUID?, in tabId: UUID) {
-        guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        let wasActive = tabManager.tabs[tabIdx].display.activeResultSetId == resultSetId
+        guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[tabIdx].display.activeResultSetId != resultSetId else { return }
 
         confirmDiscardChangesIfNeeded(action: .resultSwitch) { [weak self] confirmed in
             guard confirmed else { return }
             self?.applyResultSetSwitch(to: resultSetId, in: tabId)
-            guard !wasActive else { return }
             self?.revealStatement(behind: resultSetId, in: tabId)
         }
     }
@@ -71,8 +142,8 @@ extension MainContentCoordinator {
         flushBufferToActiveResult(tabId: tabId, pinnedOnly: false)
         tabManager.mutate(at: tabIdx) { $0.display.activeResultSetId = resultSetId }
         guard let incoming = tabManager.tabs[tabIdx].display.activeResultSet else { return }
-        tabSessionRegistry.setTableRows(incoming.tableRows, for: tabId)
-        resetSelectionForNewResult(tabId: tabId)
+        installTableRows(incoming.tableRows, for: tabId)
+        resetViewStateForNewSource(tabId: tabId)
         syncLoadMoreState(from: incoming, at: tabIdx)
         adoptOrigin(of: incoming, at: tabIdx)
         notifyFullReplaceIfActive(tabId: tabId)
@@ -94,10 +165,17 @@ extension MainContentCoordinator {
     /// A plan or an error result carries no rows, and leaving the previous result's rows in the
     /// buffer means the next flush hands them to it, after which it renders a data grid instead of
     /// its plan or its error.
+    ///
+    /// It replaces the rows as wholly as a result switch does, so it takes the same full-replace
+    /// path. The grid skips its update while a cell editor or viewer is open, and only the full
+    /// replace closes them, so a failed Run All over an open viewer otherwise kept the previous
+    /// result's headings and selection under the error.
     func seedBufferFromActiveResult(tabId: UUID) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let rows = tabManager.tabs[idx].display.activeResultSet?.tableRows ?? TableRows()
-        tabSessionRegistry.setTableRows(rows, for: tabId)
+        installTableRows(rows, for: tabId)
+        resetViewStateForNewSource(tabId: tabId)
+        notifyFullReplaceIfActive(tabId: tabId)
     }
 
     /// A tab's table context describes its newest execution, so moving to another result has to
@@ -118,27 +196,33 @@ extension MainContentCoordinator {
         }
         let tab = tabManager.tabs[tabIdx]
         guard tab.id == tabManager.selectedTabId else { return }
+        let rows = tabSessionRegistry.tableRows(for: tab.id)
         changeManager.configureForTable(
             tableName: tab.tableContext.tableName ?? "",
             schemaName: tab.tableContext.schemaName,
             columns: resultSet.resultColumns,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: connection.type,
-            generatedColumns: tabSessionRegistry.tableRows(for: tab.id).generatedColumns,
-            rowMatchExcludedColumns: tabSessionRegistry.tableRows(for: tab.id).rowMatchExcludedColumns
+            generatedColumns: rows.generatedColumns,
+            rowMatchPolicy: rows.rowMatchPolicy,
+            columnTypeNames: rows.columnTypeNames
         )
     }
 
-    /// Row selection is a set of display positions into the result that produced it, so it
-    /// means nothing once the rows are replaced wholesale. Leaving it in place points every
-    /// consumer, the JSON view and the row inspector included, at rows that no longer exist.
-    /// Incremental edits go through `mutateActiveTableRows` and keep their selection.
-    ///
-    /// The per-column value filter goes for the same reason: it stores the displayed strings the
-    /// user picked out of the rows being replaced. Kept across a replacement it narrows an
-    /// unrelated result to nothing, with only a header indicator to explain why.
-    private func resetSelectionForNewResult(tabId: UUID) {
+    /// A value filter stores displayed strings picked out of the outgoing source, so on an unrelated
+    /// result it narrows to nothing. A query tab's grid sort goes too: the new rows carry no ORDER BY.
+    private func resetViewStateForNewSource(tabId: UUID) {
         clearValueFilter(forTab: tabId)
+        tabManager.mutate(tabId: tabId) { tab in
+            guard tab.tabType == .query, !tab.sortState.columns.isEmpty else { return }
+            tab.sortState = SortState()
+        }
+        resetSelection(tabId: tabId)
+    }
+
+    /// Row selection is a set of display positions into the rows being replaced, so it means nothing
+    /// after them. A re-read of the same source puts it back by key through the viewport placement.
+    private func resetSelection(tabId: UUID) {
         tabManager.mutate(tabId: tabId) { tab in
             guard !tab.selectedRowIndices.isEmpty || !tab.cellSelection.isEmpty else { return }
             tab.selectedRowIndices = []
@@ -153,6 +237,26 @@ extension MainContentCoordinator {
         dataTabDelegate?.tableViewCoordinator?.clearRowSelection()
         if !selectionState.indices.isEmpty {
             selectionState.indices = []
+        }
+    }
+
+    /// Orders a result that has no query of its own to send again, over the rows the grid already holds.
+    ///
+    /// A SQL Server batch can return a result no single statement stands behind, or one read by a statement that
+    /// needs a variable the batch declared. Re-running with `ORDER BY` would mean re-sending the whole script, writes
+    /// and all, so the rows are ordered here instead.
+    func sortHeldRows(by state: SortState, tabId: UUID) {
+        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            let rows = self.tabSessionRegistry.tableRows(for: tabId)
+            let sorted = state.columns.isEmpty
+                ? TableRowsSorting.inArrivalOrder(rows)
+                : TableRowsSorting.sorted(rows, by: state)
+            guard self.tabManager.mutate(tabId: tabId, { tab in
+                tab.sortState = state
+                tab.hasUserInteraction = true
+            }) else { return }
+            self.setActiveTableRows(sorted, for: tabId, source: .sameSource)
         }
     }
 
@@ -188,17 +292,5 @@ extension MainContentCoordinator {
         }
         dataTabDelegate?.tableViewCoordinator?.applyFullReplace()
         if let token { tracer.stage(.gridReloadEnd, token: token) }
-
-        if pendingScrollToTopAfterReplace.remove(tabId) != nil {
-            dataTabDelegate?.tableViewCoordinator?.scrollToTop()
-        }
-
-        /// Only once there are rows to find it in. The retarget that starts a navigation replaces
-        /// the buffer with an empty one first, and consuming the anchor there would spend it before
-        /// the rows it names have arrived.
-        if !tabSessionRegistry.tableRows(for: tabId).rows.isEmpty,
-           let anchor = pendingRowAnchors.removeValue(forKey: tabId) {
-            dataTabDelegate?.tableViewCoordinator?.selectRow(matchingKey: anchor)
-        }
     }
 }

@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Legible foreground")
 @MainActor
 struct LegibleForegroundTests {
     private static let appearances: [NSAppearance.Name] = [

@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Filter Case Sensitivity Persistence")
 struct FilterCaseSensitivityPersistenceTests {
 
     private func decode(_ json: String) throws -> TableFilter {

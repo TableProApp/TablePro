@@ -107,6 +107,57 @@ actor Gate {
     }
 }
 
+actor Flag {
+    private(set) var isRaised = false
+
+    func raise() {
+        isRaised = true
+    }
+}
+
+enum TeardownStep: Sendable, Equatable {
+    case tunnelClose
+    case driverDisconnect
+}
+
+actor OrderLog {
+    private(set) var steps: [TeardownStep] = []
+
+    func record(_ step: TeardownStep) {
+        steps.append(step)
+    }
+}
+
+/// How an attempt run on its own task ended, for a test that has to be able to stop waiting for it.
+///
+/// A test must never end on `await task.value`: that ignores the awaiting task's own cancellation, so
+/// `.timeLimit` cannot break it, and a task group never leaves scope while one of its children is
+/// awaiting one. Work that never lands then hangs the whole run instead of failing the one test that
+/// asked for it. Polling a recorded outcome is a wait the test can give up on, which is what turns
+/// that hang back into a failure.
+actor AttemptOutcome<Success: Sendable> {
+    private static var pollInterval: Duration { .milliseconds(10) }
+
+    private var result: Result<Success, any Error>?
+
+    func record(_ work: @Sendable () async throws -> Success) async {
+        do {
+            let value = try await work()
+            result = .success(value)
+        } catch {
+            result = .failure(error)
+        }
+    }
+
+    func settled(within limit: Duration) async -> Result<Success, any Error>? {
+        let deadline = ContinuousClock.now + limit
+        while result == nil, ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: Self.pollInterval)
+        }
+        return result
+    }
+}
+
 actor Barrier {
     private static let pollInterval: UInt64 = 20_000_000
     private static let maxPolls = 250
@@ -138,24 +189,40 @@ final class MockSSHProvider: SSHProvider, @unchecked Sendable {
     var closedTunnelIds: Set<UUID> = []
     var openedTunnelIds: [UUID] = []
     var tunnelledConnectionIds: [UUID] = []
+    var receivedPrompters: [(any ConnectionPrompter)?] = []
+    var beforeCloseTunnel: (@Sendable (UUID) async -> Void)?
 
     func createTunnel(
         config: SSHConfiguration,
         connectionId: UUID,
         remoteHost: String,
-        remotePort: Int
+        remotePort: Int,
+        prompter: (any ConnectionPrompter)?
     ) async throws -> SSHTunnel {
         tunnelledConnectionIds.append(connectionId)
+        receivedPrompters.append(prompter)
         let id = UUID()
         openedTunnelIds.append(id)
         return SSHTunnel(id: id, localHost: "127.0.0.1", localPort: 33_306)
     }
 
     func closeTunnel(for connectionId: UUID) async throws {
+        await beforeCloseTunnel?(connectionId)
         closedTunnels.insert(connectionId)
     }
 
     func closeTunnel(id: UUID) async throws {
         closedTunnelIds.insert(id)
+    }
+}
+
+// MARK: - Stub Prompter
+
+final class StubPrompter: ConnectionPrompter, @unchecked Sendable {
+    var answer = true
+
+    @MainActor
+    func confirm(_ question: ConnectionQuestion) async -> Bool {
+        answer
     }
 }

@@ -29,7 +29,6 @@ private struct TestOnlyFailure: Error {
     let detail: String
 }
 
-@Suite("Tool errors reach the model as results, protocol errors stay errors")
 struct MCPToolErrorSurfaceTests {
     private func result(for error: Error) async throws -> MCPToolCallResult {
         try await ThrowingTool(error: error).call(
@@ -117,7 +116,6 @@ struct MCPToolErrorSurfaceTests {
     }
 }
 
-@Suite("tools/call error surface")
 struct ToolsCallErrorSurfaceTests {
     private func handle(_ params: JsonValue?) async throws -> MCPResult {
         try await ToolsCallHandler(services: MCPToolTestHarness.services())
@@ -195,7 +193,6 @@ struct ToolsCallErrorSurfaceTests {
     }
 }
 
-@Suite("MCPErrorRedactor")
 struct MCPErrorRedactorTests {
     @Test("A host and port are stripped from a driver message")
     func hostsAndPortsAreStripped() {

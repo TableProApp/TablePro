@@ -136,7 +136,7 @@ extension TableViewCoordinator {
 
     // MARK: - FK Navigation
 
-    func handleFKArrowAction(row: Int, columnIndex: Int, openInNewTab: Bool) {
+    func handleFKArrowAction(row: Int, columnIndex: Int, intent: ReferenceOpenIntent) {
         let tableRows = tableRowsProvider()
         guard row >= 0 && row < cachedRowCount,
               columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
@@ -147,7 +147,7 @@ extension TableViewCoordinator {
         let value = cellValue(at: row, column: columnIndex)
         guard let value = value, !value.isEmpty else { return }
 
-        delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
+        delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, intent: intent)
     }
 
     // MARK: - Type Picker Popover

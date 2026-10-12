@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCP settings")
 struct MCPSettingsTests {
     @Test("The server is off until the user turns it on")
     func defaultIsDisabled() {
@@ -23,6 +22,19 @@ struct MCPSettingsTests {
         let json = Data("{}".utf8)
         let decoded = try JSONDecoder().decode(MCPSettings.self, from: json)
         #expect(decoded.requireAuthentication)
+    }
+
+    @Test("Listing connections hidden from AI is off until the user turns it on")
+    func hiddenConnectionListingIsOffByDefault() throws {
+        #expect(!MCPSettings.default.allowsHiddenConnectionListing)
+        #expect(!MCPSettings().allowsHiddenConnectionListing)
+        let absent = try JSONDecoder().decode(MCPSettings.self, from: Data("{}".utf8))
+        #expect(!absent.allowsHiddenConnectionListing)
+        let stored = try JSONDecoder().decode(
+            MCPSettings.self,
+            from: Data(#"{"allowsHiddenConnectionListing": true}"#.utf8)
+        )
+        #expect(stored.allowsHiddenConnectionListing)
     }
 
     @Test("Explicit stored false is respected")
@@ -47,7 +59,8 @@ struct MCPSettingsTests {
             "queryTimeoutSeconds",
             "logQueriesInHistory",
             "requireAuthentication",
-            "connectionApproval"
+            "connectionApproval",
+            "allowsHiddenConnectionListing"
         ])
         #expect(decoded == MCPSettings.default)
     }

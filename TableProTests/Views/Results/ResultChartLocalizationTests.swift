@@ -10,7 +10,6 @@ import Testing
 /// A count that reads "with 1 points" is a defect the compiler cannot see, and the string catalog
 /// is the only place the plural can live: `String(format:)` resolves a plural variation, but only
 /// when the catalog declares one.
-@Suite("Result chart localization")
 struct ResultChartLocalizationTests {
     @Test("The chart accessibility summary declares a plural for its point count")
     func accessibilitySummaryHasPluralVariations() throws {

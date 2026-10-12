@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("LibPQ SSL Classifier")
 struct LibPQClassifierTests {
     @Test("Classifies the AWS RDS rejection in #1298 as serverRejectedPlaintext")
     func testRDSPattern() {
@@ -56,7 +55,6 @@ struct LibPQClassifierTests {
     }
 }
 
-@Suite("MariaDB SSL Classifier")
 struct MariaDBClassifierTests {
     @Test("CR_SSL_CONNECTION_ERROR with cipher message → cipherMismatch")
     func testSSLConnectionError() {
@@ -94,7 +92,6 @@ struct MariaDBClassifierTests {
     }
 }
 
-@Suite("MongoDB SSL Classifier")
 struct MongoDBClassifierTests {
     @Test("Atlas internal-error handshake failure → unknown, not cipherMismatch")
     func testAtlasInternalErrorHandshake() {
@@ -139,7 +136,6 @@ struct MongoDBClassifierTests {
     }
 }
 
-@Suite("Redis SSL Classifier")
 struct RedisClassifierTests {
     @Test("No shared cipher → cipherMismatch")
     func testNoSharedCipher() {
@@ -158,7 +154,6 @@ struct RedisClassifierTests {
     }
 }
 
-@Suite("Oracle SSL Classifier")
 struct OracleClassifierTests {
     @Test("ORA-29024 → cipherMismatch")
     func testORA29024() {
@@ -182,7 +177,6 @@ struct OracleClassifierTests {
     }
 }
 
-@Suite("ClickHouse SSL Classifier")
 struct ClickHouseClassifierTests {
     @Test("URLError.secureConnectionFailed → cipherMismatch")
     func testSecureConnectionFailed() {
@@ -204,12 +198,53 @@ struct ClickHouseClassifierTests {
 
     @Test("Non-SSL error returns nil")
     func testNonSSL() {
-        let error = URLError(.notConnectedToInternet)
+        let error = URLError(
+            .notConnectedToInternet,
+            userInfo: [NSLocalizedDescriptionKey: "The Internet connection appears to be offline."]
+        )
         #expect(ClickHouseSSLClassifier.classifySSLError(error) == nil)
+    }
+
+    @Test("A host lookup failure is not a TLS hostname mismatch")
+    func testHostLookupFailureIsNotTLS() {
+        let error = URLError(
+            .cannotFindHost,
+            userInfo: [NSLocalizedDescriptionKey: "A server with the specified hostname could not be found."]
+        )
+        #expect(ClickHouseSSLClassifier.classifySSLError(error) == nil)
+    }
+
+    @Test("A host lookup failure wrapped by the driver is not a TLS hostname mismatch")
+    func testWrappedHostLookupFailureIsNotTLS() {
+        let lookup = URLError(
+            .cannotFindHost,
+            userInfo: [NSLocalizedDescriptionKey: "A server with the specified hostname could not be found."]
+        )
+        let wrapped = NSError(
+            domain: "ClickHouse",
+            code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey: "A server with the specified hostname could not be found.",
+                NSUnderlyingErrorKey: lookup
+            ]
+        )
+        #expect(ClickHouseSSLClassifier.classifySSLError(wrapped) == nil)
+    }
+
+    @Test("A hostname complaint that is not a URL error still reads as a hostname mismatch")
+    func testHostnameMessageOutsideURLError() {
+        let error = NSError(
+            domain: "ClickHouse",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "certificate hostname does not match"]
+        )
+        guard case .hostnameMismatch = ClickHouseSSLClassifier.classifySSLError(error) else {
+            Issue.record("Expected hostnameMismatch")
+            return
+        }
     }
 }
 
-@Suite("Cassandra Client Key Classifier")
 struct CassandraClassifierTests {
     private let encryptedPkcs8 = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIF...\n-----END ENCRYPTED PRIVATE KEY-----"
     private let encryptedPkcs1 = """

@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQLTokenizer")
 struct SQLTokenizerTests {
     let tokenizer = SQLTokenizer()
 

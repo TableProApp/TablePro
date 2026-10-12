@@ -39,7 +39,7 @@ extension MainContentView {
         }
     }
 
-    /// What the inspector's header names.
+    /// What the inspector names above its fields.
     ///
     /// A schema grid's selection is a column definition, not a row of a result: it has no position
     /// and no identity, so it gets its own case rather than being rendered as "Row 0 of 0".
@@ -105,7 +105,8 @@ extension MainContentView {
     var jsonRowSnapshotForSidebar: JSONRowSnapshot? {
         guard gridSelectionOwner == .dataGrid,
               let tab = coordinator.tabManager.selectedTab,
-              let firstDisplayIndex = coordinator.selectionState.indices.min() else { return nil }
+              let firstDisplayIndex = coordinator.selectionState.indices.min(),
+              let scope = coordinator.scope(for: tab) else { return nil }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         guard !tableRows.columns.isEmpty,
               let row = DisplayRowMapping.row(
@@ -120,7 +121,7 @@ extension MainContentView {
             columnTypes: tableRows.columnTypes,
             values: Array(row.values),
             foreignKeys: tableRows.columnForeignKeys.mapValues(JSONForeignKeyRef.init),
-            connectionId: coordinator.connection.id,
+            scope: scope,
             databaseType: coordinator.connection.type
         )
     }
@@ -257,4 +258,8 @@ struct PendingChangeTrigger: Equatable {
     let hasStructureChanges: Bool
     let isFileDirty: Bool
     let hasCreateTablePending: Bool
+    /// The fifth source. Without it staging a principal edit changes nothing this value can see, so
+    /// `updateToolbarPendingState()` is never re-run and the commit control stays dim however many
+    /// changes the Users & Roles tab holds.
+    let hasPrincipalChanges: Bool
 }

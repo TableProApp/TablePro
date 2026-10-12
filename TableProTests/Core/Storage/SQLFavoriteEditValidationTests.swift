@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLFavoriteKeywordValidator")
 struct SQLFavoriteKeywordValidatorTests {
     @Test("Empty keyword is valid regardless of availability")
     func emptyKeywordIsValid() {
@@ -54,7 +53,6 @@ struct SQLFavoriteKeywordValidatorTests {
     }
 }
 
-@Suite("SQLFavoriteEditValidation")
 struct SQLFavoriteEditValidationTests {
     @Test("Blank name blocks save")
     func blankNameBlocks() {
@@ -89,10 +87,69 @@ struct SQLFavoriteEditValidationTests {
         #expect(SQLFavoriteEditValidation.canSave(isNameBlank: false, isQueryBlank: false, keywordValidation: .valid))
         #expect(SQLFavoriteEditValidation.canSave(isNameBlank: false, keywordValidation: .valid))
     }
+
+    @Test("A query too large to sync blocks save")
+    func tooLargeBlocks() {
+        #expect(!SQLFavoriteEditValidation.canSave(
+            isNameBlank: false,
+            isQueryBlank: false,
+            sizeValidation: .tooLarge,
+            keywordValidation: .valid
+        ))
+    }
+}
+
+struct SQLFavoriteSizeValidationTests {
+    private static let limit = SQLFavoriteSizeValidation.maximumSyncableByteCount
+
+    @Test("The limit leaves room under CloudKit's 1 MB record limit")
+    func limitFitsInOneRecord() {
+        #expect(Self.limit < 1_000_000)
+    }
+
+    @Test("A favorite exactly at the limit is valid")
+    func atLimitIsValid() {
+        let query = String(repeating: "a", count: Self.limit - 2)
+        let result = SQLFavoriteSizeValidation.validate(name: "n", query: query, keyword: "k")
+        #expect(result == .valid)
+        #expect(!result.blocksSave)
+        #expect(result.displayText == nil)
+    }
+
+    @Test("One byte over the limit is too large and says so")
+    func overLimitIsTooLarge() {
+        let query = String(repeating: "a", count: Self.limit)
+        let result = SQLFavoriteSizeValidation.validate(name: "n", query: query, keyword: nil)
+        #expect(result == .tooLarge)
+        #expect(result.blocksSave)
+        let limitText = ByteCountFormatter.string(fromByteCount: Int64(Self.limit), countStyle: .file)
+        #expect(result.displayText?.contains(limitText) == true)
+    }
+
+    @Test("A seed script past 500,000 characters is valid")
+    func seedScriptPastOldCapIsValid() {
+        let script = String(repeating: "INSERT INTO users (id) VALUES (1);\n", count: 20_000)
+        #expect((script as NSString).length > 500_000)
+        #expect(SQLFavoriteSizeValidation.validate(name: "Seed", query: script, keyword: nil) == .valid)
+    }
+
+    @Test("Size is counted in UTF-8 bytes, which is what the synced record carries")
+    func countsUTF8Bytes() {
+        let query = String(repeating: "日", count: Self.limit / 3 + 1)
+        #expect((query as NSString).length < 500_000)
+        #expect(SQLFavoriteSizeValidation.validate(name: "n", query: query, keyword: nil) == .tooLarge)
+    }
+
+    @Test("The name and keyword count toward the limit")
+    func nameAndKeywordCount() {
+        let query = String(repeating: "a", count: Self.limit - 4)
+        #expect(SQLFavoriteSizeValidation.validate(name: "ab", query: query, keyword: "cd") == .valid)
+        #expect(SQLFavoriteSizeValidation.validate(name: "abc", query: query, keyword: "cd") == .tooLarge)
+        #expect(SQLFavoriteSizeValidation.validate(name: "ab", query: query, keyword: "cde") == .tooLarge)
+    }
 }
 
 @MainActor
-@Suite("SQLFavoriteKeywordField")
 struct SQLFavoriteKeywordFieldTests {
     @Test("Validation reflects the availability check result")
     func reflectsAvailability() async {

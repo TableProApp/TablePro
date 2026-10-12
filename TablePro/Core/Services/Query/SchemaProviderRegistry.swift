@@ -6,7 +6,6 @@
 //  Ref-counted per connection with grace period removal to avoid redundant schema loads.
 //
 
-import Combine
 import Foundation
 import os
 
@@ -23,7 +22,7 @@ protocol LiveScopeProviding: AnyObject {
 }
 
 @MainActor
-final class SchemaProviderRegistry {
+final class SchemaProviderRegistry: CatalogChangeTarget {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaProviderRegistry")
 
     /// How many providers one connection keeps before eviction looks for scopes nothing holds.
@@ -39,24 +38,25 @@ final class SchemaProviderRegistry {
     private var populationGenerations: [DatabaseScope: Int] = [:]
     private var refCounts: [UUID: Int] = [:]
     private var removalTasks: [UUID: Task<Void, Never>] = [:]
-    private var cancellables: Set<AnyCancellable> = []
     private let metadataDriverProvider: any ScopedMetadataProviding
+    private let browseCatalogState: @MainActor (UUID) -> SchemaState
     private weak var liveScopeProvider: (any LiveScopeProviding)?
 
     #if DEBUG
     /// Test-only init for `@testable` tests in DEBUG builds; release builds must use `.shared`.
     internal init(
         metadataDriverProvider: any ScopedMetadataProviding = DatabaseManager.shared,
-        liveScopeProvider: (any LiveScopeProviding)? = nil
+        liveScopeProvider: (any LiveScopeProviding)? = nil,
+        browseCatalogState: @escaping @MainActor (UUID) -> SchemaState = { SchemaService.shared.state(for: $0) }
     ) {
         self.metadataDriverProvider = metadataDriverProvider
         self.liveScopeProvider = liveScopeProvider
-        subscribeToRefreshSignal()
+        self.browseCatalogState = browseCatalogState
     }
     #else
     private init(metadataDriverProvider: any ScopedMetadataProviding = DatabaseManager.shared) {
         self.metadataDriverProvider = metadataDriverProvider
-        subscribeToRefreshSignal()
+        self.browseCatalogState = { SchemaService.shared.state(for: $0) }
     }
     #endif
 
@@ -64,16 +64,12 @@ final class SchemaProviderRegistry {
         liveScopeProvider = provider
     }
 
-    private func subscribeToRefreshSignal() {
-        AppCommands.shared.refreshData
-            .sink { [weak self] request in
-                self?.refresh(request: request)
-            }
-            .store(in: &cancellables)
-    }
-
     func provider(for scope: DatabaseScope) -> SQLSchemaProvider? {
         providers[scope]
+    }
+
+    func isPopulated(_ scope: DatabaseScope) -> Bool {
+        providers[scope] != nil && loadedScopes.contains(scope)
     }
 
     func getOrCreate(for scope: DatabaseScope) -> SQLSchemaProvider {
@@ -121,39 +117,63 @@ final class SchemaProviderRegistry {
         return provider
     }
 
-    /// Creates the provider for `scope` if it does not exist yet and fills it once.
-    ///
-    /// "Filled" is tracked here rather than read back off the provider, because a database with
-    /// no tables is loaded and empty, and asking the provider whether it holds any would refetch
-    /// its catalog on every tab activation forever.
+    /// The query editor's entry point: fills a tab scope's table list once, then asks for its columns.
+    /// "Filled" is tracked here because a database with no tables is loaded and empty.
     @discardableResult
     func prepare(for scope: DatabaseScope, connection: DatabaseConnection? = nil) async -> SQLSchemaProvider {
         let provider = getOrCreate(for: scope)
-        guard !loadedScopes.contains(scope) else { return provider }
-        await populate(scope: scope, provider: provider, connection: connection)
+        if !loadedScopes.contains(scope), !isFilledByBrowseOwner(scope) {
+            await populate(scope: scope, provider: provider, connection: connection)
+        }
+        await provider.requestColumnPreload()
         return provider
     }
 
-    /// A data change repopulates every provider it reaches except the browse scope, which
+    /// The browse scope holds the union of every expanded schema, which only `SchemaRefreshService`
+    /// assembles. A tab restored at launch mounts before the catalog starts loading, so an idle
+    /// catalog is still the owner's; only a failed one gets no sync, and the editor fills it.
+    private func isFilledByBrowseOwner(_ scope: DatabaseScope) -> Bool {
+        guard metadataDriverProvider.browseScope(for: scope.connectionId) == scope else { return false }
+        switch browseCatalogState(scope.connectionId) {
+        case .idle, .loading, .loaded:
+            return true
+        case .failed:
+            return false
+        }
+    }
+
+    /// A preload that served the previous table list is read again only while something renders
+    /// the scope, so a closed tab's columns are not refetched on every catalog change.
+    private func rendersScope(_ scope: DatabaseScope) -> Bool {
+        liveScopeProvider?.liveScopes(for: scope.connectionId).contains(scope) ?? true
+    }
+
+    /// A catalog change repopulates every provider it reaches except the browse scope, which
     /// `SchemaRefreshService.syncAutocompleteProvider` owns and fills with the union of every
     /// schema the sidebar has expanded. Repopulating it here as well would give one provider two
     /// writers with no ordering between them and two different table sets to write.
-    func refresh(request: DataRefreshRequest) {
-        let browseScope = metadataDriverProvider.browseScope(for: request.connectionId)
-        /// Most senders leave the scope nil, which reaches every provider of the connection.
-        /// Repopulating all of them would run a catalog fetch and a whole-schema column preload
-        /// per scope the session has ever visited, so only the scopes something still renders
-        /// are refreshed; the rest reload when a tab binds to them again.
-        let live = liveScopeProvider?.liveScopes(for: request.connectionId)
+    ///
+    /// Only the scopes something still renders are refreshed; the rest reload when a tab binds to
+    /// them again. Each one's generation moves and its population in flight is dropped before the
+    /// new one starts, so the repopulate cannot join a fetch that began before the change, and that
+    /// fetch's commit is refused when it lands.
+    func refreshCatalog(for change: CatalogChange) async {
+        guard !change.kinds.isEmpty else { return }
+        let browseScope = metadataDriverProvider.browseScope(for: change.connectionId)
+        let live = liveScopeProvider?.liveScopes(for: change.connectionId)
         let matching = providers.filter { scope, _ in
-            scope.connectionId == request.connectionId
+            scope.connectionId == change.connectionId
                 && scope != browseScope
-                && request.reaches(tabScope: scope)
+                && change.reaches(database: scope.database, schema: scope.schema)
                 && (live?.contains(scope) ?? true)
         }
-        for (scope, provider) in matching {
-            Task { [weak self] in
-                await self?.populate(scope: scope, provider: provider, connection: nil)
+        for scope in matching.keys {
+            populationGenerations[scope, default: 0] &+= 1
+            populationTasks.removeValue(forKey: scope)?.cancel()
+        }
+        await withTaskGroup(of: Void.self) { group in
+            for (scope, provider) in matching {
+                group.addTask { await self.populate(scope: scope, provider: provider, connection: nil) }
             }
         }
     }
@@ -196,12 +216,15 @@ final class SchemaProviderRegistry {
                     )
                     await provider.setNamespaces(schemas: schemas, databases: databases)
                 }
-                self?.markPopulated(scope: scope, provider: provider, generation: generation)
+                if self?.markPopulated(scope: scope, provider: provider, generation: generation) == true,
+                   self?.rendersScope(scope) == true {
+                    await provider.renewColumnPreload()
+                }
             } catch is CancellationError {
                 return
             } catch {
                 Self.logger.warning(
-                    "[schema] scope population failed scope=\(scope.qualifiedDescription, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                    "[schema] scope population failed scope=\(scope.qualifiedDescription, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
                 )
                 /// Fenced like the commit is, and for the same reason. `notePopulatedExternally`
                 /// bumps the generation when `SchemaRefreshService` fills this scope with the
@@ -223,9 +246,10 @@ final class SchemaProviderRegistry {
     /// disconnected mid-flight still completes and writes into a provider nobody holds any more.
     /// Recording the scope as loaded on the strength of that write would leave its replacement
     /// permanently unfilled, so the identity of the provider written to is the fence.
-    private func markPopulated(scope: DatabaseScope, provider: SQLSchemaProvider, generation: Int) {
-        guard providers[scope] === provider, populationGenerations[scope, default: 0] == generation else { return }
+    private func markPopulated(scope: DatabaseScope, provider: SQLSchemaProvider, generation: Int) -> Bool {
+        guard providers[scope] === provider, populationGenerations[scope, default: 0] == generation else { return false }
         loadedScopes.insert(scope)
+        return true
     }
 
     /// Clears the loaded flag so the next `prepare` retries, but only while this population is
@@ -239,11 +263,14 @@ final class SchemaProviderRegistry {
     /// has expanded, which the registry cannot assemble. Without this, a tab sitting on the
     /// browse scope would see an unfilled provider and refill it with its own single-schema
     /// list, narrowing what the sidebar had already gathered.
-    func notePopulatedExternally(scope: DatabaseScope) {
-        guard providers[scope] != nil else { return }
+    @discardableResult
+    func notePopulatedExternally(scope: DatabaseScope) -> Task<Void, Never>? {
+        guard let provider = providers[scope] else { return nil }
         loadedScopes.insert(scope)
         populationGenerations[scope, default: 0] &+= 1
         populationTasks.removeValue(forKey: scope)?.cancel()
+        guard rendersScope(scope) else { return nil }
+        return Task { await provider.renewColumnPreload() }
     }
 
     /// A population commits only while it is still the one filling this scope. `Task.cancel` is

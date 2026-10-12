@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("WindowTabGrouping")
 @MainActor
 struct WindowTabGroupingTests {
     /// Every app window shares one identifier. A per-connection identifier is what stopped two

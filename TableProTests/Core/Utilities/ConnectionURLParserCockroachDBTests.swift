@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection URL Parser - CockroachDB")
 struct ConnectionURLParserCockroachDBTests {
     @Test("Full cockroachdb URL with default port")
     func testFullURLDefaultPort() {

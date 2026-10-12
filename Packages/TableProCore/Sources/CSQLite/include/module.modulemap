@@ -1,0 +1,5 @@
+module CSQLite {
+    header "sqlite3.h"
+    header "tablepro_sqlite3.h"
+    export *
+}

@@ -109,18 +109,7 @@ extension MCPConnectionBridge {
             if panels.contains("sessions") {
                 do {
                     let sessions = try await provider.fetchSessions(execute: execute)
-                    result["sessions"] = .array(sessions.map { session in
-                        .object([
-                            "id": .string(session.id),
-                            "user": .string(session.user),
-                            "database": .string(session.database),
-                            "state": .string(session.state),
-                            "duration_seconds": .int(session.durationSeconds),
-                            "query": .string(session.query),
-                            "can_kill": .bool(session.canKill),
-                            "can_cancel": .bool(session.canCancel)
-                        ])
-                    })
+                    result["sessions"] = .array(sessions.map { Self.sessionPayload($0, provider: provider) })
                 } catch {
                     failures["sessions"] = Self.dashboardPanelFailure(panel: "sessions", error: error)
                 }
@@ -157,6 +146,19 @@ extension MCPConnectionBridge {
             }
             return try Self.dashboardPayload(panels: result, failures: failures)
         }
+    }
+
+    static func sessionPayload(_ session: DashboardSession, provider: ServerDashboardQueryProvider) -> JsonValue {
+        .object([
+            "id": .string(session.id),
+            "user": .string(session.user),
+            "database": .string(session.database),
+            "state": .string(session.state),
+            "duration_seconds": .int(session.durationSeconds),
+            "query": .string(session.query),
+            "can_kill": .bool(provider.canKill(session)),
+            "can_cancel": .bool(provider.canCancel(session))
+        ])
     }
 
     /// The paired client is told which panel the server refused, never what the server said. The
@@ -197,20 +199,52 @@ extension MCPConnectionBridge {
         cancelOnly: Bool
     ) async throws -> String {
         let databaseType = try await ensureConnected(connectionId)
-        guard let provider = ServerDashboardQueryProviderFactory.provider(for: databaseType) else {
+        let serverVersion = await MainActor.run {
+            DatabaseManager.shared.driver(for: connectionId)?.serverVersion
+        }
+        guard let provider = ServerDashboardQueryProviderFactory.provider(
+            for: databaseType,
+            serverVersion: serverVersion
+        ) else {
             throw DatabaseAccessError.dataSourceError(
                 String(localized: "TablePro has no server dashboard for this engine.")
             )
         }
-        let sql = cancelOnly
+        return try Self.sessionControlStatement(provider: provider, processId: processId, cancelOnly: cancelOnly)
+    }
+
+    static func sessionControlStatement(
+        provider: any ServerDashboardQueryProvider,
+        processId: String,
+        cancelOnly: Bool
+    ) throws -> String {
+        let requested = cancelOnly
             ? provider.cancelQuerySQL(processId: processId)
             : provider.killSessionSQL(processId: processId)
-        guard let sql else {
-            throw DatabaseAccessError.dataSourceError(
-                String(localized: "This engine cannot stop a session from TablePro.")
+        if let requested {
+            return requested
+        }
+        guard provider.acceptsProcessId(processId) else {
+            throw DatabaseAccessError.invalidArgument(
+                String(
+                    format: String(localized: "'%@' is not a process id on this engine. Take one from get_server_dashboard."),
+                    processId
+                )
             )
         }
-        return sql
+        let alternative = cancelOnly
+            ? provider.killSessionSQL(processId: processId)
+            : provider.cancelQuerySQL(processId: processId)
+        guard alternative == nil else {
+            throw DatabaseAccessError.invalidArgument(
+                cancelOnly
+                    ? String(localized: "This engine offers only mode 'kill' for stopping a session.")
+                    : String(localized: "This engine offers only mode 'cancel' for stopping a session.")
+            )
+        }
+        throw DatabaseAccessError.dataSourceError(
+            String(localized: "This engine cannot stop a session from TablePro.")
+        )
     }
 
     /// Each operation carries the object kinds it applies to, its scope and its options, because a
@@ -390,6 +424,9 @@ extension MCPConnectionBridge {
                 )
             }
         }
+        if action == "commit" || action == "rollback" {
+            CatalogChangeService.post(.transactionEnded(connectionId: scope.connectionId))
+        }
         return .object(["status": .string(action), "connection_id": .string(scope.connectionId.uuidString)])
     }
 
@@ -510,14 +547,20 @@ extension MCPConnectionBridge {
         try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
             try await driver.createDatabase(CreateDatabaseRequest(name: name, values: options))
         }
+        CatalogChangeService.post(.changed(CatalogChange(connectionId: connectionId, kinds: .databases)))
         return .object(["status": .string("created"), "database": .string(name)])
     }
 
     func dropDatabase(connectionId: UUID, name: String) async throws -> JsonValue {
+        await MainActor.run {
+            MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
+            DatabaseManager.shared.sessionLanes.close(database: name, for: connectionId)
+        }
         let (driver, _) = try await resolveDriver(connectionId)
         try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
             try await driver.dropDatabase(name: name)
         }
+        CatalogChangeService.post(.containerDropped(.database(name), connectionId: connectionId))
         return .object(["status": .string("dropped"), "database": .string(name)])
     }
 
@@ -526,6 +569,7 @@ extension MCPConnectionBridge {
         try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
             try await driver.dropSchema(name: name)
         }
+        CatalogChangeService.post(.containerDropped(.schema(database: nil, schema: name), connectionId: connectionId))
         return .object(["status": .string("dropped"), "schema": .string(name)])
     }
 

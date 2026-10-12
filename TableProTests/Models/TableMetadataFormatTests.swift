@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Table metadata formatting")
 struct TableMetadataFormatTests {
     /// The repo bans em dashes in user-facing strings, and this placeholder was one. A hyphen is
     /// what a size the database did not report shows now.

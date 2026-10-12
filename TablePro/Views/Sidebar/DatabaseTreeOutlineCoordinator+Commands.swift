@@ -17,12 +17,22 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.createNewTable()
         case .createView:
             mainCoordinator?.createView()
+        case .createDatabase:
+            mainCoordinator?.createDatabase()
         case .createType(let database, let schema):
             mainCoordinator?.createType(database: database, schema: schema)
+        case .createSchema(let database):
+            mainCoordinator?.createSchema(database: database)
+        case .editSchema(let container):
+            mainCoordinator?.editSchema(container)
         case .filterDatabases:
             mainCoordinator?.splitViewController?.presentDatabaseFilter()
         case .showAllDatabases:
             mainCoordinator?.splitViewController?.clearDatabaseFilter()
+        case .filterSchemas:
+            mainCoordinator?.splitViewController?.presentSchemaFilter()
+        case .showAllSchemas:
+            mainCoordinator?.splitViewController?.clearSchemaFilter()
         case .openInNewTab(let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openTableTab(ref.table, schema: ref.schema, forceNewTab: true)
@@ -95,6 +105,8 @@ extension DatabaseTreeOutlineCoordinator {
             beginRename(.container(ref))
         case .toggleFavorite(let ref):
             toggleFavorite(ref)
+        case .tableFolder(let folderCommand):
+            perform(folderCommand)
         case .removeRecent(let ref):
             sidebarState?.removeRecentTable(database: ref.database, schema: ref.schema, name: ref.table.name)
         case .clearRecents:
@@ -102,17 +114,9 @@ extension DatabaseTreeOutlineCoordinator {
         case .useAsActive(let container):
             useAsActive(container)
         case .setFavoriteDatabases(let databases, let environment):
-            for database in databases {
-                favoriteDatabasesStorage.setFavorite(
-                    database: database,
-                    environment: environment,
-                    connectionId: connectionId
-                )
-            }
+            setFavoriteDatabases(databases, environment: environment)
         case .removeFavoriteDatabases(let databases):
-            for database in databases {
-                favoriteDatabasesStorage.removeFavorite(database: database, connectionId: connectionId)
-            }
+            removeFavoriteDatabases(databases)
         case .refreshContainers(let targets):
             refreshContainers(targets)
         case .copyContainerNames(let targets):
@@ -128,21 +132,21 @@ extension DatabaseTreeOutlineCoordinator {
                 mode: .copyTo,
                 database: ref?.database,
                 schema: ref?.qualifyingSchema,
-                objects: objects
+                preselection: .objects(objects)
             )
         case .copyContainerTo(let container):
             mainCoordinator?.openCopyObjects(
                 mode: .copyTo,
                 database: container.database,
                 schema: container.kind == .schema ? container.schema : nil,
-                objects: []
+                preselection: .wholeScope
             )
         case .duplicateDatabase(let container):
             mainCoordinator?.openCopyObjects(
                 mode: .duplicateDatabase,
                 database: container.database,
                 schema: nil,
-                objects: []
+                preselection: .wholeScope
             )
         case .showAllTablesMetadata:
             mainCoordinator?.showAllTablesMetadata()
@@ -156,14 +160,29 @@ extension DatabaseTreeOutlineCoordinator {
             ClipboardService.shared.writeText(text)
         case .showObjectSource(let ref):
             mainCoordinator?.showObjectSource(ref)
+        case .refreshRedisKeys:
+            sidebarState?.redisKeyTreeViewModel?.reload()
         case .copyRedisNamespacePrefix(let prefix):
             ClipboardService.shared.writeText(prefix)
         case .copyRedisKey(let key):
             ClipboardService.shared.writeText(key)
         case .openRedisKey(let key, let keyType):
             mainCoordinator?.openRedisKey(key, keyType: keyType)
-        case .toggleObjectIcons, .toggleObjectComments, .setRowSize:
+        case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
+             .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
+        }
+    }
+
+    private func setFavoriteDatabases(_ databases: [String], environment: FavoriteDatabaseEnvironment) {
+        for database in databases {
+            favoriteDatabasesStorage.setFavorite(database: database, environment: environment, connectionId: connectionId)
+        }
+    }
+
+    private func removeFavoriteDatabases(_ databases: [String]) {
+        for database in databases {
+            favoriteDatabasesStorage.removeFavorite(database: database, connectionId: connectionId)
         }
     }
 

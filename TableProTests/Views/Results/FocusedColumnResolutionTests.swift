@@ -21,7 +21,6 @@ private final class FocusedColumnLayoutPersister: ColumnLayoutPersisting {
 /// ahead of the data and which the reader can reorder. Preview FK Reference used to turn it into a
 /// data index by subtracting 1, so the menu command previewed the wrong column or silently nothing
 /// while the key-equivalent path on the same cell worked.
-@Suite("Focused column resolution")
 @MainActor
 struct FocusedColumnResolutionTests {
     private func makeGrid(columns: [String]) -> (tableView: NSTableView, schema: ColumnIdentitySchema) {

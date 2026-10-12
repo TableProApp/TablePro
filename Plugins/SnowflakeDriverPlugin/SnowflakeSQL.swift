@@ -16,12 +16,12 @@ public enum SnowflakeSQL {
     /// goes first: doubling it after the quotes would also double the ones this method just added.
     public static func escapeLiteral(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     /// `LIKE` reads `_` and `%` as wildcards, so a name containing either has to arrive escaped or

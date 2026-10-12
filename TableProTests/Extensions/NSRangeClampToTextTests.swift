@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("NSRange clampedToTextLength")
 struct NSRangeClampToTextTests {
     @Test("a range inside the text is untouched")
     func rangeInsideTextIsUnchanged() {

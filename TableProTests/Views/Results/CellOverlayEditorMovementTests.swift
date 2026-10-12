@@ -11,17 +11,19 @@ import Testing
 
 /// The overlay is a text view rather than a field editor, so the four selectors AppKit would have
 /// turned into an `NSTextMovement` are read here instead (#2569).
-@Suite("Cell overlay editor movement")
 @MainActor
 struct CellOverlayEditorMovementTests {
     private struct Editing {
         let editor: CellOverlayEditor
         let textView: NSTextView
         let tableView: KeyHandlingTableView
+        let scrollView: NSScrollView
     }
 
     private func makeEditing(value: String, selection: NSRange) -> Editing {
         let tableView = KeyHandlingTableView()
+        let scrollView = NSScrollView()
+        scrollView.documentView = tableView
         let editor = CellOverlayEditor()
         editor.install(
             in: tableView,
@@ -34,7 +36,7 @@ struct CellOverlayEditorMovementTests {
         CellOverlayBase.applyCellTextLayout(to: textView)
         textView.string = value
         textView.setSelectedRange(selection)
-        return Editing(editor: editor, textView: textView, tableView: tableView)
+        return Editing(editor: editor, textView: textView, tableView: tableView, scrollView: scrollView)
     }
 
     private struct Outcome {

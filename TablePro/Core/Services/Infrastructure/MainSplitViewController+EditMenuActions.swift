@@ -71,6 +71,16 @@ extension MainSplitViewController {
         commandActions?.showFindBar()
     }
 
+    /// Find and Replace and Use Selection for Find are the editor's alone: the result grid's find bar
+    /// has no replacement field, and a selected cell is a value rather than a search term.
+    @objc func performFindAndReplace(_ sender: Any?) {
+        EditorEventRouter.shared.showFindAndReplacePanelForKeyWindow()
+    }
+
+    @objc func useSelectionForFind(_ sender: Any?) {
+        EditorEventRouter.shared.useSelectionForFindInKeyWindow()
+    }
+
     @objc func findNext(_ sender: Any?) {
         guard commandActions?.hasActiveGridFind == true else {
             EditorEventRouter.shared.findNext()
@@ -97,6 +107,14 @@ extension MainSplitViewController {
 
     @objc func duplicateRow(_ sender: Any?) {
         commandActions?.duplicateRow()
+    }
+
+    @objc func editDocument(_ sender: Any?) {
+        commandActions?.editDocument()
+    }
+
+    @objc func insertDocument(_ sender: Any?) {
+        commandActions?.insertDocument()
     }
 
     @objc func restorePreviousValues(_ sender: Any?) {

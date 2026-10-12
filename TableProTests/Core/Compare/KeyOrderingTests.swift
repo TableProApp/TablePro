@@ -156,14 +156,14 @@ final class DataDiffOrderingSafetyTests: XCTestCase {
     }
 
     private func engine(numericKey: Bool) -> DataDiffEngine {
-        var options = DataCompareOptions()
-        options.keyColumns = ["id"]
+        let descriptors = [KeyColumnDescriptor(name: "id", dataType: numericKey ? "int" : "varchar(20)")]
         return DataDiffEngine(
-            options: options,
-            columns: ["id", "name"],
-            keyDescriptors: [
-                KeyColumnDescriptor(name: "id", dataType: numericKey ? "int" : "varchar(20)")
-            ]
+            options: DataCompareOptions(),
+            shape: DataComparisonShape(
+                keyColumns: ["id"],
+                keyOrders: KeyOrdering.orders(for: ["id"], descriptors: descriptors),
+                comparedColumns: ["name"]
+            )
         )
     }
 

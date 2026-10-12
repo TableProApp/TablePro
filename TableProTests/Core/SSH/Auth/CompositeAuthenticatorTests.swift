@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SSHTunnelError.isUserCancelledAuthentication")
 struct CompositeAuthenticatorCancellationTests {
     @Test("A cancelled auth failure is recognized as a user cancellation")
     func cancelledReasonIsUserCancelled() {
@@ -29,7 +28,6 @@ struct CompositeAuthenticatorCancellationTests {
 
     @Test("Non-authentication tunnel errors are not user cancellations")
     func nonAuthErrorsAreNotUserCancelled() {
-        #expect(!SSHTunnelError.connectionTimeout.isUserCancelledAuthentication)
         #expect(!SSHTunnelError.channelOpenFailed.isUserCancelledAuthentication)
     }
 }

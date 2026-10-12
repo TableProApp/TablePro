@@ -12,6 +12,13 @@ struct VimModeIndicatorView: View {
     let mode: VimMode
 
     var body: some View {
+        badge
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityDescription)
+    }
+
+    @ViewBuilder
+    private var badge: some View {
         if case .commandLine = mode {
             Text(mode.displayLabel)
                 .font(.system(.caption, design: .monospaced))
@@ -29,6 +36,13 @@ struct VimModeIndicatorView: View {
                 .background(backgroundColor)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         }
+    }
+
+    /// The label alone reads as a bare word in the middle of the status bar. Naming what the word
+    /// is makes it a sentence. Colour is never the only difference between two modes here: the
+    /// label always says which mode it is, so `differentiateWithoutColor` needs nothing extra.
+    private var accessibilityDescription: String {
+        String(format: String(localized: "Vim mode: %@"), mode.displayLabel)
     }
 
     private var foregroundColor: Color {

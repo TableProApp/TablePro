@@ -34,9 +34,16 @@ enum PopoverPresenter {
     /// present at all once the item is clipped, and a clipped item survives only as its
     /// `menuFormRepresentation`.
     ///
-    /// The caller must have resolved `toolbarItem` out of a visible toolbar. AppKit throws
-    /// `NSInvalidArgumentException` when it cannot locate the item, which Swift cannot catch, so
-    /// the check belongs at the call site as a precondition rather than here as error handling.
+    /// The caller must have resolved `toolbarItem` out of `NSToolbar.items` as a top-level item.
+    /// AppKit throws `NSInvalidArgumentException` when it cannot locate the item, which Swift cannot
+    /// catch, so the check belongs at the call site as a precondition rather than here as error
+    /// handling. Measured on macOS 27, the one case that raised was a subitem of a group that was
+    /// off screen; a clipped top-level item is supported, and anchors on the clipped-items
+    /// indicator. `show(relativeTo: NSToolbarItem)` is macOS 14, and there is no stand-in: an item
+    /// whose view AppKit generates reports `view` as nil, so there is nothing to anchor on below
+    /// it. Callers resolve their anchor through `ToolbarSwitcherPresenter.anchor`, which answers nil
+    /// on macOS 13 so they take their own fallback instead.
+    @available(macOS 14.0, *)
     @discardableResult
     static func show<Content: View>(
         relativeTo toolbarItem: NSToolbarItem,
@@ -46,6 +53,29 @@ enum PopoverPresenter {
     ) -> NSPopover {
         let popover = make(contentSize: contentSize, behavior: behavior, content: content)
         popover.show(relativeTo: toolbarItem)
+        return popover
+    }
+
+    /// Presents from a toolbar item where AppKit allows it, and from the top of the window's
+    /// content where it does not. `show(relativeTo: NSToolbarItem)` is macOS 14, and an item whose
+    /// view AppKit generates reports `view` as nil, so macOS 13 has nothing on the toolbar to point
+    /// at. Anchoring under the titlebar keeps the popover in the same place the item sits.
+    @discardableResult
+    static func show<Content: View>(
+        relativeTo toolbarItem: NSToolbarItem,
+        in window: NSWindow?,
+        contentSize: NSSize? = nil,
+        behavior: NSPopover.Behavior = .semitransient,
+        @ViewBuilder content: (_ dismiss: @escaping () -> Void) -> Content
+    ) -> NSPopover {
+        let popover = make(contentSize: contentSize, behavior: behavior, content: content)
+        if #available(macOS 14.0, *) {
+            popover.show(relativeTo: toolbarItem)
+        } else if let host = window?.contentView {
+            let width = contentSize?.width ?? host.bounds.width
+            let rect = NSRect(x: host.bounds.midX - width / 2, y: host.bounds.maxY - 1, width: width, height: 1)
+            popover.show(relativeTo: rect, of: host, preferredEdge: .maxY)
+        }
         return popover
     }
 

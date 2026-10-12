@@ -4,11 +4,10 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
-@Suite("AIChatViewModel.executeToolUses")
 @MainActor
 struct ExecuteToolUsesTests {
     /// Stub tool that returns a fixed response when invoked. Tracks invocation
@@ -56,6 +55,10 @@ struct ExecuteToolUsesTests {
         )
     }
 
+    private func makeScope(_ mode: AIChatMode) -> ChatToolScope {
+        ChatToolScope(sessionId: UUID(), connectionId: nil, mode: mode)
+    }
+
     @Test("Resolves tool by name and returns its content as a ToolResultBlock")
     func dispatchesToRegisteredTool() async {
         let registry = ChatToolRegistry()
@@ -63,7 +66,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "alpha", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
-            mode: .agent,
+            scope: makeScope(.agent),
             context: makeContext(),
             registry: registry
         )
@@ -86,7 +89,7 @@ struct ExecuteToolUsesTests {
         ]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
-            mode: .agent,
+            scope: makeScope(.agent),
             context: makeContext(),
             registry: registry
         )
@@ -100,7 +103,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "ghost", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
-            mode: .agent,
+            scope: makeScope(.agent),
             context: makeContext(),
             registry: registry
         )
@@ -116,7 +119,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "boom", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
-            mode: .agent,
+            scope: makeScope(.agent),
             context: makeContext(),
             registry: registry
         )
@@ -132,7 +135,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "warn", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
-            mode: .agent,
+            scope: makeScope(.agent),
             context: makeContext(),
             registry: registry
         )
@@ -150,7 +153,7 @@ struct ExecuteToolUsesTests {
         ]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
-            mode: .agent,
+            scope: makeScope(.agent),
             context: makeContext(),
             registry: registry
         )
@@ -168,7 +171,7 @@ struct ExecuteToolUsesTests {
         let input: JsonValue = .object(["query": .string("SELECT 1")])
         _ = await AIChatViewModel.executeToolUses(
             [ToolUseBlock(id: "u1", name: "alpha", input: input)],
-            mode: .agent,
+            scope: makeScope(.agent),
             context: makeContext(),
             registry: registry
         )
@@ -181,7 +184,7 @@ struct ExecuteToolUsesTests {
         let registry = ChatToolRegistry()
         let results = await AIChatViewModel.executeToolUses(
             [],
-            mode: .agent,
+            scope: makeScope(.agent),
             context: makeContext(),
             registry: registry
         )
@@ -196,7 +199,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "execute_query", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
-            mode: .ask,
+            scope: makeScope(.ask),
             context: makeContext(),
             registry: registry
         )
@@ -213,7 +216,7 @@ struct ExecuteToolUsesTests {
         let blocks = [ToolUseBlock(id: "u1", name: "confirm_destructive_operation", input: .object([:]))]
         let results = await AIChatViewModel.executeToolUses(
             blocks,
-            mode: .edit,
+            scope: makeScope(.edit),
             context: makeContext(),
             registry: registry
         )

@@ -1,5 +1,5 @@
-import Testing
 @testable import TableProMSSQLCore
+import Testing
 
 @Suite("MSSQL TLS Classifier")
 struct MSSQLTLSClassifierTests {

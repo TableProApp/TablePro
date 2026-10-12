@@ -62,26 +62,30 @@ enum SessionStateFactory {
             },
             tabSessionRegistry: tabSessionRegistry
         )
-        tabMgr.onTableOpened = { tableName, schemaName, databaseName, isView, isPreview in
+        let databaseType = connection.type
+        tabMgr.onTableOpened = { tableName, schemaName, databaseName, isView, objectType, isPreview in
             SharedSidebarState.forConnection(connectionId).recordTableOpen(
-                database: databaseName, schema: schemaName, name: tableName, isView: isView, isPreview: isPreview
+                database: databaseName, schema: schemaName, name: tableName,
+                isView: isView, objectType: objectType, isPreview: isPreview,
+                connectionSwitchesDatabases: PluginManager.shared.supportsDatabaseSwitching(for: databaseType)
+            )
+        }
+        tabMgr.onTableSchemaResolved = { tableName, databaseName, schemaName in
+            SharedSidebarState.forConnection(connectionId).resolveRecentSchema(
+                database: databaseName, name: tableName, to: schemaName
             )
         }
         let changeMgr = DataChangeManager()
         changeMgr.databaseType = connection.type
         let toolbarSt = ConnectionToolbarState(connection: connection)
 
-        if let session = DatabaseManager.shared.session(for: connection.id) {
+        let session = DatabaseManager.shared.session(for: connection.id)
+        if let session {
             toolbarSt.updateConnectionState(from: session.reportedStatus)
-            if let driver = session.driver {
-            }
-        } else if let driver = DatabaseManager.shared.driver(for: connection.id) {
-            toolbarSt.connectionState = .connected
         }
 
         if connection.type.pluginTypeId == "Redis" {
-            let dbIndex = connection.redisDatabase ?? Int(connection.database) ?? 0
-            toolbarSt.currentDatabase = String(dbIndex)
+            toolbarSt.currentDatabase = session?.browseDatabase ?? String(connection.redisDatabaseIndex)
         }
 
         if let payload {

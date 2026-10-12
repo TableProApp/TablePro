@@ -65,9 +65,10 @@ final class ConnectionWindowChromeUITests: UITestCase {
         /// Each of these belongs to exactly one of the two panes that may legitimately be on
         /// screen. Asserting on buttons instead let the test pass over the blank pane it exists to
         /// catch, because a Cancel button elsewhere in the app satisfied it.
+        let connectingCard = app.descendants(matching: .any)["connection-connecting"]
         XCTAssertTrue(
             waitForPredicate(timeout: 20) {
-                app.staticTexts["Opening the connection"].exists
+                connectingCard.exists
                     || app.staticTexts["Could not connect to Probe"].exists
                     || app.staticTexts["Not connected to Probe"].exists
             },
@@ -77,6 +78,49 @@ final class ConnectionWindowChromeUITests: UITestCase {
             app.searchFields["sidebar-filter"].exists,
             "The sidebar's chrome has to stand through the whole of it"
         )
+    }
+
+    /// The two sidebar lists are chosen from a control at the top of the sidebar, over the list it
+    /// switches. The sample has no favorites, so the Favorites list settles on its empty state, and
+    /// that state going away is what shows Tables took the sidebar back.
+    func testTheSidebarScopeControlSwitchesTablesAndFavorites() throws {
+        let app = try launchWithSampleDatabase(arguments: englishArguments)
+        let window = try connectionWindow(of: app)
+
+        let scope = window.radioGroups["sidebar-scope"]
+        XCTAssertTrue(scope.waitToExist(timeout: 30), "The sidebar carries its Tables and Favorites control")
+        let tables = scope.radioButtons["Tables"]
+        let favorites = scope.radioButtons["Favorites"]
+        XCTAssertTrue(tables.waitToExist(timeout: 10))
+        XCTAssertTrue(favorites.exists)
+
+        XCTAssertTrue(waitUntilHittable(favorites, timeout: 10))
+        favorites.click()
+        let noFavorites = window.staticTexts["No Favorites"]
+        XCTAssertTrue(noFavorites.waitToExist(timeout: 15), "The Favorites segment must show the Favorites list")
+
+        XCTAssertTrue(waitUntilHittable(tables, timeout: 10))
+        tables.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 15) { !noFavorites.exists },
+            "The Tables segment must take the sidebar back from the Favorites list"
+        )
+        XCTAssertTrue(
+            objectBrowser(in: window).descendants(matching: .staticText).firstMatch.waitToExist(timeout: 15),
+            "The object browser must list the sample's tables again"
+        )
+    }
+
+    // MARK: - Helpers
+
+    /// The labels are localized, so the app runs in English. `AppleLanguages` only takes effect as a
+    /// launch argument.
+    private let englishArguments = ["-AppleLanguages", "(en)"]
+
+    private func connectionWindow(of app: XCUIApplication) throws -> XCUIElement {
+        let window = app.windows.matching(NSPredicate(format: "identifier != %@", "welcome")).firstMatch
+        XCTAssertTrue(window.waitToExist(timeout: 60), "The sample database produced no window")
+        return window
     }
 
     /// Creates a connection that cannot answer and opens it. The form is driven the way a person

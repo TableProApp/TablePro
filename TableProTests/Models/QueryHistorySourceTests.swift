@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryHistorySource")
 struct QueryHistorySourceTests {
     @Test("raw values are stable, because they are written to disk")
     func rawValuesAreStable() {
@@ -40,7 +39,6 @@ struct QueryHistorySourceTests {
     }
 }
 
-@Suite("QueryHistoryStatementType")
 struct QueryHistoryStatementTypeTests {
     @Test("reads classify as select")
     func readsClassifyAsSelect() {
@@ -77,7 +75,6 @@ struct QueryHistoryStatementTypeTests {
     }
 }
 
-@Suite("QueryHistoryFilter")
 struct QueryHistoryFilterTests {
     @Test("an empty source set matches nothing")
     func emptySourcesMatchNothing() {
@@ -102,7 +99,6 @@ struct QueryHistoryFilterTests {
     }
 }
 
-@Suite("HistoryDateRange")
 struct HistoryDateRangeTests {
     @Test("all time has no lower bound")
     func allTimeHasNoSince() {

@@ -19,7 +19,11 @@ public struct SurrealFlattenedRows: Equatable, Sendable {
 }
 
 public enum SurrealRowFlattener {
-    public static func flatten(_ value: SurrealValue, knownColumns: [String] = []) -> SurrealFlattenedRows {
+    public static func flatten(
+        _ value: SurrealValue,
+        knownColumns: [String] = [],
+        length: SurrealTextLength
+    ) -> SurrealFlattenedRows {
         let records = normalize(value)
         guard !records.isEmpty || !knownColumns.isEmpty else {
             return SurrealFlattenedRows(columns: [], columnTypeNames: [], rows: [])
@@ -28,7 +32,7 @@ public enum SurrealRowFlattener {
         if records.allSatisfy({ $0.objectPairs != nil }) {
             let columns = orderColumns(unionColumns(records, seeded: knownColumns))
             let rows = records.map { record in
-                columns.map { cell(record[$0] ?? .none) }
+                columns.map { cell(record[$0] ?? .none, length: length) }
             }
             return SurrealFlattenedRows(
                 columns: columns,
@@ -41,18 +45,18 @@ public enum SurrealRowFlattener {
         return SurrealFlattenedRows(
             columns: [column],
             columnTypeNames: [records.first?.typeName ?? "any"],
-            rows: records.map { [cell($0)] }
+            rows: records.map { [cell($0, length: length)] }
         )
     }
 
-    public static func cell(_ value: SurrealValue) -> PluginCellValue {
+    public static func cell(_ value: SurrealValue, length: SurrealTextLength) -> PluginCellValue {
         switch value {
         case .null, .none:
             return .null
         case let .bytes(data):
             return .bytes(data)
         default:
-            return .text(value.displayText)
+            return .text(value.text(length))
         }
     }
 

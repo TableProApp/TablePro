@@ -2,73 +2,60 @@
 //  PostgreSQLCatalogCompatibilityTests.swift
 //  TableProTests
 //
-//  Regression cover for #1383: PostgreSQL-compatible engines (e.g. db9.ai)
-//  report a recent Postgres version but lack optional catalogs like
-//  pg_matviews. fetchTables must omit those unions when the catalog is absent,
-//  and the catalog probe must parse presence from pg_class relation names.
+//  Regression cover for #1383: PostgreSQL-compatible engines (e.g. db9.ai) report a recent
+//  version but lack optional catalogs like pg_matviews. The listing names no such catalog, only
+//  relkind values, and the catalog probe parses presence from pg_class relation names.
 //
 
 import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.fetchTables")
 struct PostgreSQLFetchTablesQueryTests {
-    @Test("Always selects base tables and views from information_schema")
-    func alwaysIncludesBaseTables() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
-            schema: "public",
-            includeMaterializedViews: true,
-            includeForeignTables: true
-        )
-        #expect(query.contains("information_schema.tables"))
+    private static let flagCombinations: [(materializedViews: Bool, foreignTables: Bool)] = [
+        (true, true), (true, false), (false, true), (false, false)
+    ]
+
+    @Test("No combination of flags names pg_matviews or pg_foreign_table")
+    func neverNamesTheOptionalCatalogs() {
+        for flags in Self.flagCombinations {
+            let query = PostgreSQLTableListing.query(
+                schema: "public",
+                includeMaterializedViews: flags.materializedViews,
+                includeForeignTables: flags.foreignTables
+            )
+            #expect(!query.contains("pg_matviews"), "\(flags)")
+            #expect(!query.contains("pg_foreign_table"), "\(flags)")
+        }
     }
 
-    @Test("Omits the pg_matviews union when materialized views are unavailable")
-    func omitsMatviewsWhenAbsent() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
-            schema: "public",
-            includeMaterializedViews: false,
-            includeForeignTables: true
-        )
-        #expect(!query.contains("pg_matviews"))
+    @Test("Materialized views and foreign tables are listed only with their flag")
+    func relationKindsFollowTheFlags() {
+        for flags in Self.flagCombinations {
+            let query = PostgreSQLTableListing.query(
+                schema: "public",
+                includeMaterializedViews: flags.materializedViews,
+                includeForeignTables: flags.foreignTables
+            )
+            #expect(query.contains("'m'") == flags.materializedViews, "\(flags)")
+            #expect(query.contains("'f'") == flags.foreignTables, "\(flags)")
+            #expect(query.contains("'MATERIALIZED VIEW'") == flags.materializedViews, "\(flags)")
+            #expect(query.contains("'FOREIGN TABLE'") == flags.foreignTables, "\(flags)")
+        }
     }
 
-    @Test("Includes the pg_matviews union when materialized views are available")
-    func includesMatviewsWhenPresent() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
-            schema: "public",
-            includeMaterializedViews: true,
-            includeForeignTables: false
-        )
-        #expect(query.contains("pg_matviews"))
-    }
-
-    @Test("Omits the pg_foreign_table union when foreign tables are unavailable")
-    func omitsForeignTablesWhenAbsent() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
-            schema: "public",
-            includeMaterializedViews: true,
-            includeForeignTables: false
-        )
-        #expect(!query.contains("pg_foreign_table"))
-    }
-
-    @Test("With no optional catalogs, only the base query remains")
-    func baseOnlyWhenNoOptionalCatalogs() {
-        let query = PostgreSQLSchemaQueries.fetchTables(
+    @Test("Base tables, partitioned tables and views are always listed")
+    func alwaysListsTablesAndViews() {
+        let query = PostgreSQLTableListing.query(
             schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: false
         )
-        #expect(query.contains("information_schema.tables"))
-        #expect(!query.contains("pg_matviews"))
-        #expect(!query.contains("pg_foreign_table"))
+        #expect(query.contains("rc.relkind IN ('r', 'p', 'v')"))
         #expect(!query.contains("UNION ALL"))
     }
 }
 
-@Suite("PostgreSQLCatalogPresence")
 struct PostgreSQLCatalogPresenceTests {
     @Test("Parses a single present catalog")
     func parsesSingleCatalog() {

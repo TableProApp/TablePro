@@ -22,7 +22,7 @@ enum DownloadedBinary {
                 hasher.update(data: chunk)
             }
         } catch {
-            logger.error("Could not read \(path, privacy: .public) to verify its checksum")
+            logger.error("Could not read \(path, privacy: .private(mask: .hash)) to verify its checksum")
             return nil
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
@@ -52,6 +52,6 @@ enum DownloadedBinary {
         guard removed != 0 else { return }
         let code = errno
         guard code != ENOATTR else { return }
-        logger.warning("Failed to remove quarantine xattr at \(url.lastPathComponent, privacy: .public): errno=\(code)")
+        logger.warning("Failed to remove quarantine xattr at \(url.lastPathComponent, privacy: .private(mask: .hash)): errno=\(code)")
     }
 }

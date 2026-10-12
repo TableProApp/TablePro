@@ -57,7 +57,7 @@ func testSettings(auth: WeaviateAuth = WeaviateAuth(method: .none)) -> WeaviateC
 }
 
 func testClient(
-    transport: FakeWeaviateTransport,
+    transport: any WeaviateTransport,
     auth: WeaviateAuth = WeaviateAuth(method: .none)
 ) -> WeaviateClient {
     WeaviateClient(settings: testSettings(auth: auth), transport: transport, timeout: { 30 })

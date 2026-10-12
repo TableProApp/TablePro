@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CursorProvider request encoding")
 struct CursorProviderEncodingTests {
     @Test("Prompt renders the system prompt and the role-tagged conversation")
     func renderPrompt() {

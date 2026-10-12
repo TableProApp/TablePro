@@ -18,7 +18,6 @@ private struct StubPolicy: ManagedPolicyReading {
     func string(_ policy: ManagedPolicy) -> String? { strings[policy.key] }
 }
 
-@Suite("ManagedPolicyResolver")
 struct ManagedPolicyResolverTests {
     private func policy(floor: String?) -> StubPolicy {
         guard let floor else { return StubPolicy() }
@@ -93,7 +92,6 @@ struct ManagedPolicyResolverTests {
     }
 }
 
-@Suite("ManagedPolicyReader")
 struct ManagedPolicyReaderTests {
     private func makeReader(_ values: [String: Any]) -> ManagedPolicyReader {
         let suiteName = "com.TablePro.tests.policy.\(UUID().uuidString)"

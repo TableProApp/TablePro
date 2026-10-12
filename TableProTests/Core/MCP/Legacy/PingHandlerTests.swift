@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Legacy ping handler")
 struct LegacyPingHandlerTests {
     @Test("The handler answers ping for legacy clients only, and needs no scope")
     func handlerIdentity() {

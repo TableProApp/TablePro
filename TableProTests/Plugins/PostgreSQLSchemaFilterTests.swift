@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.listSchemas")
 struct PostgreSQLListSchemasTests {
     @Test("retains user schemas that start with 'pg'", arguments: [
         "pgboss", "pgcrypto", "pgvector", "pgaudit", "pgrouting"
@@ -41,7 +40,6 @@ struct PostgreSQLListSchemasTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.listSchemasRedshift")
 struct RedshiftListSchemasTests {
     @Test("retains user schemas that start with 'pg'", arguments: [
         "pgboss", "pgcrypto", "pgvector"
@@ -58,7 +56,6 @@ struct RedshiftListSchemasTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries escape character")
 struct PostgreSQLSchemaEscapeTests {
     @Test("schema queries avoid the backslash escape that Redshift rejects", arguments: [
         PostgreSQLSchemaQueries.listSchemas, PostgreSQLSchemaQueries.listSchemasRedshift

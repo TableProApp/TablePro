@@ -13,6 +13,7 @@ private final class SpyLiveActivityHandle: LiveActivityHandle {
     var holdsEndUntilReleased = false
     private(set) var isEndParked = false
     private var endGate: CheckedContinuation<Void, Never>?
+    private var parkWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(id: String, state: QueryActivityAttributes.ContentState) {
         self.id = id
@@ -29,6 +30,8 @@ private final class SpyLiveActivityHandle: LiveActivityHandle {
             await withCheckedContinuation {
                 endGate = $0
                 isEndParked = true
+                parkWaiters.forEach { $0.resume() }
+                parkWaiters.removeAll()
             }
         }
         self.state = state
@@ -40,6 +43,11 @@ private final class SpyLiveActivityHandle: LiveActivityHandle {
         isEndParked = false
         endGate?.resume()
         endGate = nil
+    }
+
+    func untilEndParks() async {
+        guard !isEndParked else { return }
+        await withCheckedContinuation { parkWaiters.append($0) }
     }
 }
 
@@ -335,9 +343,7 @@ struct QueryActivityControllerTests {
         handle?.holdsEndUntilReleased = true
 
         let ending = Task { await controller.end(token: token, outcome: .completed) }
-        while handle?.isEndParked == false {
-            await Task.yield()
-        }
+        await handle?.untilEndParks()
         await controller.reapOrphans()
         handle?.releaseEnd()
         await ending.value

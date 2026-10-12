@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONRowSnapshot change detection")
 struct JSONRowSnapshotChangeTests {
     private let reference = JSONForeignKeyRef(
         column: "ArtistId",
@@ -34,7 +33,11 @@ struct JSONRowSnapshotChangeTests {
             columnTypes: columnTypes,
             values: values,
             foreignKeys: foreignKeys,
-            connectionId: UUID(uuidString: "00000000-0000-0000-0000-0000000000AA") ?? UUID(),
+            scope: DatabaseScope(
+                connectionId: UUID(uuidString: "00000000-0000-0000-0000-0000000000AA") ?? UUID(),
+                database: "main",
+                schema: nil
+            ),
             databaseType: .sqlite
         )
     }

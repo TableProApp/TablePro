@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("TransferDialogStorage")
 struct TransferDialogStorageTests {
     private let suiteName = "com.TablePro.tests.exportDialog.\(UUID().uuidString)"
 

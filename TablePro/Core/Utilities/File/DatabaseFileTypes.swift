@@ -6,11 +6,11 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// Turns a driver's declared file extensions into the content types its Browse panel offers.
+/// Turns a driver's file extensions into the content types a save panel names a new database with.
 ///
-/// The panel used to allow `[.database, .data]`, which is every file on disk, so a DuckDB
-/// connection let you pick a `.png` and a SQLite connection let you pick a `.parquet`. The
-/// driver is the only thing that knows what it can open, and it already declares that list.
+/// Only a save panel: an open panel filtered this way matches names alone, so it disables a
+/// database saved with no extension or under another app's, which `DatabaseFileBrowseRule` reaches
+/// by reading the file instead.
 enum DatabaseFileTypes {
     /// Most database extensions are not registered system types, so
     /// `UTType(filenameExtension:)` alone returns nil for them. Declaring conformance to

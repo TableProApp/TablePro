@@ -7,8 +7,30 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("BSON Document Flattener")
 struct BsonDocumentFlattenerTests {
+    @Test("A field's kind is uniform only when every value that is there shares it")
+    func uniformKindNeedsEveryValueToAgree() {
+        let same: [[String: Any]] = [["_id": "a"], ["_id": "b"], ["other": 1]]
+        let mixed: [[String: Any]] = [["_id": "a"], ["_id": MongoDBObjectId(hex: "65a1b2c3d4e5f60718293a4b")]]
+        #expect(BsonDocumentFlattener.uniformKind(of: "_id", in: same, representation: .unspecified) == .string)
+        #expect(BsonDocumentFlattener.uniformKind(of: "_id", in: mixed, representation: .unspecified) == nil)
+        #expect(BsonDocumentFlattener.uniformKind(of: "_id", in: [], representation: .unspecified) == nil)
+    }
+
+    @Test("A field a document does not have is absent, and a field holding null is not")
+    func absentCellsTellMissingFromNull() {
+        let documents: [[String: Any]] = [
+            ["_id": "a", "deletedAt": NSNull(), "nick": "x"],
+            ["_id": "b", "nick": "y"],
+            ["_id": "c", "deletedAt": NSNull(), "nick": "z"]
+        ]
+
+        let absent = BsonDocumentFlattener.absentCells(of: documents, columns: ["_id", "deletedAt", "nick", "declared"])
+
+        #expect(absent == [0: [3], 1: [1, 3], 2: [3]])
+        #expect(BsonDocumentFlattener.absentCells(of: [["_id": "a"]], columns: ["_id"]).isEmpty)
+    }
+
     // MARK: - unionColumns(from:)
 
     @Suite("unionColumns")
@@ -374,7 +396,7 @@ struct BsonDocumentFlattenerTests {
 
         @Test("Double never gains binary floating point noise")
         func doubleHasNoExcessDigits() {
-            #expect(BsonDocumentFlattener.stringValue(for: 1847.27, representation: .unspecified) == "1847.27")
+            #expect(BsonDocumentFlattener.stringValue(for: 1_847.27, representation: .unspecified) == "1847.27")
             #expect(BsonDocumentFlattener.stringValue(for: 0.1, representation: .unspecified) == "0.1")
         }
 
@@ -386,7 +408,7 @@ struct BsonDocumentFlattenerTests {
 
         @Test("Double nested in a sub-document keeps its digits and stays a floating point value")
         func nestedDoubleMatchesScalar() {
-            let document: [String: Any] = ["rate": 0.1, "total": 1847.27, "qty": 3.0]
+            let document: [String: Any] = ["rate": 0.1, "total": 1_847.27, "qty": 3.0]
             let result = BsonDocumentFlattener.stringValue(for: document, representation: .unspecified)
             #expect(result == #"{"qty":3.0,"rate":0.1,"total":1847.27}"#)
         }
@@ -434,7 +456,7 @@ struct BsonDocumentFlattenerTests {
 
         @Test("Double nested in an array keeps the same digits as a top level one")
         func nestedArrayDoubleMatchesScalar() {
-            let values: [Any] = [0.1, 1847.27, 1.0 / 3.0]
+            let values: [Any] = [0.1, 1_847.27, 1.0 / 3.0]
             let result = BsonDocumentFlattener.stringValue(for: values, representation: .unspecified)
             #expect(result == "[0.1,1847.27,0.3333333333333333]")
         }

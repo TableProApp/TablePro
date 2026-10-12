@@ -120,6 +120,19 @@ internal struct ObjectCopyDefinitionStep: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     internal let dropStatements: [SyncStatement]
     internal let createStatements: [SyncStatement]
+    internal let note: String?
+
+    internal init(
+        selection: ObjectCopySelection,
+        dropStatements: [SyncStatement],
+        createStatements: [SyncStatement],
+        note: String? = nil
+    ) {
+        self.selection = selection
+        self.dropStatements = dropStatements
+        self.createStatements = createStatements
+        self.note = note
+    }
 
     internal var id: String { selection.id }
 
@@ -148,6 +161,13 @@ internal struct ObjectCopyStatementGroup: Sendable {
 internal struct ObjectCopySkip: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     internal let reason: String
+
+    internal var id: String { selection.id }
+}
+
+internal struct ObjectCopyPartialNote: Identifiable, Sendable {
+    internal let selection: ObjectCopySelection
+    internal let text: String
 
     internal var id: String { selection.id }
 }
@@ -211,6 +231,13 @@ internal struct ObjectCopyPlan: Sendable {
             localized: "Identity and auto-increment values are written as they are. A column the server generates always may refuse them."
         ))
         return warnings
+    }
+
+    internal var partialNotes: [ObjectCopyPartialNote] {
+        tableSteps.compactMap { step in step.note.map { ObjectCopyPartialNote(selection: step.selection, text: $0) } }
+            + definitionSteps.compactMap { step in
+                step.note.map { ObjectCopyPartialNote(selection: step.selection, text: $0) }
+            }
     }
 
     /// Every type, default and index the crossing changed, worst first.
@@ -313,18 +340,20 @@ internal struct ObjectCopyPlan: Sendable {
     /// filled, and a user reasoning about a cascade from what they were asked to approve reached
     /// the opposite conclusion from what the run would do.
     internal var scriptText: String {
+        let script = SQLScriptText(databaseType: request.target.databaseType)
         var lines: [String] = []
         if case .newDatabase(_, let name, _) = request.destination {
             lines.append(String(format: String(localized: "-- Create database %@"), name))
         }
-        lines += schemaStatements.map(\.sql)
-        lines += cleanupStatements.map(\.sql)
-        lines += creationStatements.map(\.sql)
+        let ddl = schemaStatements + cleanupStatements + creationStatements
+        if !ddl.isEmpty {
+            lines.append(script.script(ddl.map(\.sql)))
+        }
         let clears = clearGroups.flatMap(\.statements)
         if !clears.isEmpty {
             lines.append("")
             lines.append(String(localized: "-- Empty the tables the rows go into"))
-            lines += clears.map(\.sql)
+            lines.append(script.script(clears.map(\.sql)))
         }
         for step in dataSteps {
             lines.append("")
@@ -332,12 +361,16 @@ internal struct ObjectCopyPlan: Sendable {
             /// The statement itself where the server runs it, because that one is real SQL the
             /// user is about to approve. The streamed path has no statement to show: its INSERTs
             /// do not exist yet and never all exist at once, so the query it walks stands in.
-            lines.append(step.serverSideInsert?.sql ?? step.sourceQuery + ";")
+            guard let insert = step.serverSideInsert else {
+                lines.append(step.sourceQuery + ";")
+                continue
+            }
+            lines.append(script.script([insert.sql]))
         }
         guard !afterDataStatements.isEmpty else { return lines.joined(separator: "\n") }
         lines.append("")
         lines.append(String(localized: "-- Once the rows are in"))
-        lines += afterDataStatements.map(\.sql)
+        lines.append(script.script(afterDataStatements.map(\.sql)))
         return lines.joined(separator: "\n")
     }
 }

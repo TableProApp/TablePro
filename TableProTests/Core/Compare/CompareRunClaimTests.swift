@@ -248,8 +248,8 @@ final class CompareRunClaimTests: XCTestCase {
         DataComparePlan(
             table: table,
             schema: nil,
-            columns: ["id", "email"],
-            keyColumns: keyColumns,
+            columns: ["id", "email"].map { CompareColumn(name: $0) },
+            scope: DataTableScope(keyColumns: keyColumns),
             isEnabled: false
         )
     }

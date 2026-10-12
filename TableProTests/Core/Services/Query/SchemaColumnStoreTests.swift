@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SchemaColumnStore")
 @MainActor
 struct SchemaColumnStoreTests {
     nonisolated private static func entry(_ columns: [String], primaryKeys: [String] = []) -> SchemaColumnStore.Entry {

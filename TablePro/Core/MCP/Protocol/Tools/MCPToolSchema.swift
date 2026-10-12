@@ -84,24 +84,51 @@ enum MCPToolSchema {
         "description": .string(String(localized: "Cell value: string, number, boolean, or null"))
     ])
 
+    private static let resultSetProperties: [String: JsonValue] = [
+        "columns": array(String(localized: "Column names in result order"), of: stringItem),
+        "rows": array(
+            String(localized: "Rows, each an array aligned with columns"),
+            of: .object(["type": .string("array"), "items": cell])
+        ),
+        "row_count": integer(String(localized: "Number of rows returned")),
+        "rows_affected": integer(String(localized: "Rows the statement changed")),
+        "execution_time_ms": number(String(localized: "Server round trip in milliseconds")),
+        "is_truncated": boolean(String(localized: "Whether the row limit clipped the result")),
+        "status_message": string(String(localized: "Driver status message, when the engine sent one")),
+        "database": string(String(localized: "Database the statement ran against")),
+        "schema": string(String(localized: "Schema the statement ran against"))
+    ]
+
+    private static let resultSetRequired = [
+        "columns", "rows", "row_count", "rows_affected", "execution_time_ms", "is_truncated"
+    ]
+
     static let resultSet: JsonValue = object(
-        properties: [
-            "columns": array(String(localized: "Column names in result order"), of: stringItem),
-            "rows": array(
-                String(localized: "Rows, each an array aligned with columns"),
-                of: .object(["type": .string("array"), "items": cell])
-            ),
-            "row_count": integer(String(localized: "Number of rows returned")),
-            "rows_affected": integer(String(localized: "Rows the statement changed")),
-            "execution_time_ms": number(String(localized: "Server round trip in milliseconds")),
-            "is_truncated": boolean(String(localized: "Whether the row limit clipped the result")),
-            "status_message": string(String(localized: "Driver status message, when the engine sent one")),
-            "database": string(String(localized: "Database the statement ran against")),
-            "schema": string(String(localized: "Schema the statement ran against"))
-        ],
-        required: ["columns", "rows", "row_count", "rows_affected", "execution_time_ms", "is_truncated"],
+        properties: resultSetProperties,
+        required: resultSetRequired,
         allowsAdditional: true
     )
+
+    /// A result set, where the top-level fields describe the first one a SQL Server script returned and
+    /// `result_sets` lists every one of them once there is more than one.
+    static let scriptResult: JsonValue = object(
+        properties: resultSetProperties.merging([
+            "result_sets": array(
+                String(localized: "Every result set a script returned, in order, when it returned more than one"),
+                of: object(
+                    properties: resultSetProperties.filter { scriptResultSetKeys.contains($0.key) },
+                    required: ["columns", "rows", "row_count", "is_truncated"],
+                    allowsAdditional: true
+                )
+            )
+        ]) { current, _ in current },
+        required: resultSetRequired,
+        allowsAdditional: true
+    )
+
+    private static let scriptResultSetKeys: Set<String> = [
+        "columns", "rows", "row_count", "is_truncated", "status_message"
+    ]
 
     static let columnDefinition: JsonValue = object(
         properties: [
@@ -125,10 +152,11 @@ enum MCPToolSchema {
             "columns": array(String(localized: "Indexed columns in order"), of: stringItem),
             "is_unique": boolean(String(localized: "Whether the index enforces uniqueness")),
             "is_primary": boolean(String(localized: "Whether the index backs the primary key")),
+            "is_valid": boolean(String(localized: "False for an index the engine reports as invalid, which queries skip and exports leave out")),
             "type": string(String(localized: "Index type reported by the engine")),
             "where_clause": string(String(localized: "Partial index predicate"))
         ],
-        required: ["name", "columns", "is_unique", "is_primary", "type"],
+        required: ["name", "columns", "is_unique", "is_primary", "is_valid", "type"],
         allowsAdditional: true
     )
 
@@ -146,15 +174,45 @@ enum MCPToolSchema {
         allowsAdditional: true
     )
 
+    static let checkConstraintDefinition: JsonValue = object(
+        properties: [
+            "name": string(String(localized: "Constraint name")),
+            "expression": string(String(localized: "CHECK expression as the engine reports it")),
+            "is_validated": boolean(String(localized: "False for a constraint the engine has not checked against existing rows")),
+            "columns": array(String(localized: "Columns the constraint reads, when the engine reports them"), of: stringItem)
+        ],
+        required: ["name", "expression", "is_validated"],
+        allowsAdditional: true
+    )
+
     static let tableSummary: JsonValue = object(
         properties: [
             "name": string(String(localized: "Table name")),
             "type": string(String(localized: "Object type reported by the engine")),
             "schema": string(String(localized: "Schema the object belongs to")),
             "comment": string(String(localized: "Table comment")),
-            "row_count": integer(String(localized: "Approximate row count, when requested"))
+            "row_count": integer(String(localized: "Approximate row count, when requested")),
+            "partition_count": integer(String(localized: "Number of partitions, for a partitioned table"))
         ],
         required: ["name", "type"],
+        allowsAdditional: true
+    )
+
+    static let partitionSummary: JsonValue = object(
+        properties: [
+            "name": string(String(localized: "Partition name")),
+            "type": string(String(localized: "Object type, or PARTITION when the partition is not a relation")),
+            "schema": string(String(localized: "Schema the partition belongs to, when it is a relation of its own")),
+            "bound": string(String(localized: "Partition bound as the engine spells it")),
+            "ordinal_position": integer(String(localized: "Position in the parent's declared order")),
+            "row_count": integer(String(localized: "Approximate row count reported by the engine")),
+            "is_separate_relation": boolean(
+                String(localized: "Whether the partition can be queried and dropped by name")
+            ),
+            "is_subpartitioned": boolean(String(localized: "Whether the partition holds subpartitions")),
+            "parent_partition": string(String(localized: "Partition this one subdivides"))
+        ],
+        required: ["name", "type", "is_separate_relation"],
         allowsAdditional: true
     )
 }

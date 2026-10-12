@@ -21,7 +21,6 @@ private final class StubLayoutPersister: ColumnLayoutPersisting {
 /// Where the inline editor goes when it is left with Tab, Shift+Tab, Up or Down, and what moving
 /// the cell cursor there costs. Tab wraps across rows because that is what Tab means; Up and Down
 /// hold the column and stop at the ends (#2569).
-@Suite("Cell editor movement target")
 @MainActor
 struct CellEditorMovementTargetTests {
     private struct Grid {

@@ -16,7 +16,7 @@ internal struct ThemeListView: View {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeListView")
 
-    private var catalog: ThemeCatalog { ThemeCatalog.shared }
+    @ObservedObject private var catalog = ThemeCatalog.shared
 
     private var builtInThemes: [ThemeDefinition] {
         eligible(catalog.themes.filter(\.isBuiltIn))
@@ -124,13 +124,14 @@ internal struct ThemeListView: View {
                 Divider()
                 Button(String(localized: "Import…")) { importTheme() }
             } label: {
-                Image(systemName: "plus").frame(width: 24, height: 24)
+                Image(systemName: "plus")
+                    .frame(width: 24, height: 24)
+                    .accessibilityLabel(Text("Add Theme"))
             }
             .menuIndicator(.hidden)
             .buttonStyle(.borderless)
             .frame(width: 28)
             .help(Text("Add Theme"))
-            .accessibilityLabel(Text("Add Theme"))
 
             Button {
                 showDeleteConfirmation = true
@@ -150,13 +151,14 @@ internal struct ThemeListView: View {
                     Button(String(localized: "Uninstall"), role: .destructive) { uninstallRegistryTheme() }
                 }
             } label: {
-                Image(systemName: "gearshape").frame(width: 24, height: 24)
+                Image(systemName: "gearshape")
+                    .frame(width: 24, height: 24)
+                    .accessibilityLabel(Text("Theme Actions"))
             }
             .menuIndicator(.hidden)
             .buttonStyle(.borderless)
             .frame(width: 28)
             .help(Text("Theme Actions"))
-            .accessibilityLabel(Text("Theme Actions"))
 
             Spacer()
         }
@@ -234,7 +236,7 @@ internal struct ThemeListView: View {
             try work()
             completion()
         } catch {
-            Self.logger.error("Theme action failed: \(error.localizedDescription)")
+            Self.logger.error("Theme action failed: \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
             showError = true
         }

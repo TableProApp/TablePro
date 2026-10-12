@@ -3,7 +3,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("DatabaseTreeFilterStorage")
 struct DatabaseTreeFilterStorageTests {
     private func makeStorage() throws -> DatabaseTreeFilterStorage {
         let suite = "DatabaseTreeFilterStorageTests.\(UUID().uuidString)"
@@ -52,6 +51,40 @@ struct DatabaseTreeFilterStorageTests {
         storage.setSelectedDatabases(Set(["db1"]), connectionId: connId)
         storage.removeFilter(for: connId)
         #expect(storage.selectedDatabases(connectionId: connId).isEmpty)
+    }
+
+    @Test("Selected schemas round-trip per database")
+    func schemasRoundTripPerDatabase() throws {
+        let storage = try makeStorage()
+        let connId = UUID()
+        storage.setSelectedSchemas(["sales", "hr"], database: "shop", connectionId: connId)
+        storage.setSelectedSchemas(["posts"], database: "blog", connectionId: connId)
+
+        #expect(storage.selectedSchemas(connectionId: connId, database: "shop") == ["sales", "hr"])
+        #expect(storage.selectedSchemas(connectionId: connId, database: "blog") == ["posts"])
+        #expect(storage.selectedSchemas(connectionId: connId, database: "other").isEmpty)
+        #expect(storage.allSelectedSchemas(connectionId: connId) == ["shop": ["sales", "hr"], "blog": ["posts"]])
+    }
+
+    @Test("An empty schema selection clears that database alone")
+    func emptySchemaSelectionClearsOneDatabase() throws {
+        let storage = try makeStorage()
+        let connId = UUID()
+        storage.setSelectedSchemas(["sales"], database: "shop", connectionId: connId)
+        storage.setSelectedSchemas(["posts"], database: "blog", connectionId: connId)
+
+        storage.setSelectedSchemas([], database: "shop", connectionId: connId)
+
+        #expect(storage.allSelectedSchemas(connectionId: connId) == ["blog": ["posts"]])
+    }
+
+    @Test("Removing a connection's filter clears its schema filter too")
+    func removeClearsSchemas() throws {
+        let storage = try makeStorage()
+        let connId = UUID()
+        storage.setSelectedSchemas(["sales"], database: "shop", connectionId: connId)
+        storage.removeFilter(for: connId)
+        #expect(storage.allSelectedSchemas(connectionId: connId).isEmpty)
     }
 
     @Test("Remove filters batch clears across connections")

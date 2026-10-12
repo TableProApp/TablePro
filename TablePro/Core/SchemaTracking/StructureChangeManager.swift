@@ -6,46 +6,64 @@
 //  Mirrors DataChangeManager architecture for schema modifications.
 //
 
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 /// Manager for tracking and applying schema changes
-@MainActor @Observable
-final class StructureChangeManager: ChangeManaging {
-    private(set) var pendingChanges: [SchemaChangeIdentifier: SchemaChange] = [:]
-    @ObservationIgnored private var changeOrder: [SchemaChangeIdentifier] = []
-    private(set) var validationErrors: [SchemaChangeIdentifier: String] = [:]
+@MainActor
+final class StructureChangeManager: ObservableObject, ChangeManaging {
+    @Published private(set) var pendingChanges: [SchemaChangeIdentifier: SchemaChange] = [:]
+    private var changeOrder: [SchemaChangeIdentifier] = []
+    @Published private(set) var validationErrors: [SchemaChangeIdentifier: String] = [:]
     var hasChanges: Bool { !pendingChanges.isEmpty }
-    var reloadVersion: Int = 0
+    @Published var reloadVersion: Int = 0
 
     // Current state (loaded from database)
-    private(set) var currentColumns: [EditableColumnDefinition] = []
-    private(set) var currentIndexes: [EditableIndexDefinition] = []
-    private(set) var currentForeignKeys: [EditableForeignKeyDefinition] = []
-    private(set) var currentCheckConstraints: [EditableCheckConstraintDefinition] = []
-    private(set) var currentPrimaryKey: [String] = []
+    @Published private(set) var currentColumns: [EditableColumnDefinition] = []
+    @Published private(set) var currentIndexes: [EditableIndexDefinition] = []
+    @Published private(set) var currentForeignKeys: [EditableForeignKeyDefinition] = []
+    @Published private(set) var currentCheckConstraints: [EditableCheckConstraintDefinition] = []
+    @Published private(set) var currentPrimaryKey: [String] = []
 
     // Working state (includes uncommitted changes + placeholders)
-    var workingColumns: [EditableColumnDefinition] = []
-    var workingIndexes: [EditableIndexDefinition] = []
-    var workingForeignKeys: [EditableForeignKeyDefinition] = []
-    var workingCheckConstraints: [EditableCheckConstraintDefinition] = []
-    var workingPrimaryKey: [String] = []
+    @Published var workingColumns: [EditableColumnDefinition] = []
+    @Published var workingIndexes: [EditableIndexDefinition] = []
+    @Published var workingForeignKeys: [EditableForeignKeyDefinition] = []
+    @Published var workingCheckConstraints: [EditableCheckConstraintDefinition] = []
+    @Published var workingPrimaryKey: [String] = []
 
-    var tableName: String?
+    @Published var tableName: String?
+
+    /// Indexes added as `CLUSTERED`, whose type `settleClusteredAdditions` keeps deciding until the
+    /// user picks one for the row.
+    private var indexesAddedClustered: Set<UUID> = []
+
+    /// The edits a save in flight is writing, from the press until the save ends.
+    ///
+    /// While it is set nothing stages, undoes, discards or reloads. The save writes what it read at
+    /// the press and clears it when it lands, so an edit accepted in between is missing from the
+    /// script it runs and would then be cleared with the edits it did run. On MongoDB the time in
+    /// between includes a read of every document the save changes, which can run for as long as
+    /// the query timeout.
+    @Published private(set) var heldSave: StructureSaveSnapshot?
+
+    var isHeldForSave: Bool { heldSave != nil }
+
+    @Published private(set) var tableComment = ObjectCommentDraft(original: nil)
+
+    /// The comment text before the typing run still open, nil when none is. A run is one undo step,
+    /// registered when it ends rather than per keystroke.
+    private var tableCommentRunStart: String?
+
+    var hasTableCommentRun: Bool { tableCommentRunStart != nil }
+
+    private static var tableCommentActionName: String { String(localized: "Edit Comment") }
 
     // MARK: - Undo/Redo Support
 
-    /// Private `NSUndoManager` owned by this change manager. Each
-    /// `StructureChangeManager` instance has its own, so the registered actions
-    /// can never outlive the manager (the UndoManager is freed when the manager
-    /// is deallocated, taking its action queue with it). The app does not have
-    /// an NSDocument-backed `NSWindow.undoManager`, and no view in the
-    /// responder chain provides one, so wiring this through the window would
-    /// silently no-op. Cmd+Z is routed by the app's own `.commands` block in
-    /// `TableProApp` to `MainContentCommandActions.undoChange()`, which checks
-    /// the active tab's `resultsViewMode` and calls into this manager directly.
+    /// Owned per manager so its actions cannot outlive the editor. Cmd+Z reaches it through
+    /// `MainContentCommandActions.undoChange()`, not the window's undo manager.
     ///
     /// `groupsByEvent` is off. On it, NSUndoManager closes a group at the end of the run loop turn,
     /// which makes undo granularity a property of *timing* rather than of the operation: two
@@ -61,13 +79,26 @@ final class StructureChangeManager: ChangeManaging {
         return manager
     }()
 
-    var canUndo: Bool { undoManager.canUndo }
-    var canRedo: Bool { undoManager.canRedo }
+    var canUndo: Bool { !isHeldForSave && (undoManager.canUndo || hasTableCommentRun) }
+    var canRedo: Bool { !isHeldForSave && !hasTableCommentRun && undoManager.canRedo }
+
+    /// The DDL and Triggers sub-tabs show no grid, so undo there reaches only the comment.
+    var undoesTableCommentNext: Bool {
+        hasTableCommentRun || (undoManager.canUndo && undoManager.undoActionName == Self.tableCommentActionName)
+    }
+
+    var redoesTableCommentNext: Bool {
+        !hasTableCommentRun && undoManager.canRedo && undoManager.redoActionName == Self.tableCommentActionName
+    }
 
     /// Mirrors `DataChangeManager.registerUndo`. The `groupingLevel` check is what lets
     /// `performAsOneUndoStep` nest: inside one, a group is already open and this adds to it rather
-    /// than closing a group the batch still needs.
+    /// than closing a group the batch still needs. An open comment run ends first, so an edit made
+    /// after typing undoes before the typing does.
     private func registerUndo(_ actionName: String, _ handler: @escaping (StructureChangeManager) -> Void) {
+        if !undoManager.isUndoing, !undoManager.isRedoing {
+            endTableCommentRun()
+        }
         let opensOwnGroup = !undoManager.groupsByEvent && undoManager.groupingLevel == 0
         if opensOwnGroup { undoManager.beginUndoGrouping() }
         undoManager.registerUndo(withTarget: self, handler: handler)
@@ -79,6 +110,8 @@ final class StructureChangeManager: ChangeManaging {
     /// selection is the case that needs it: the grid calls `deleteColumn` once per row, and one
     /// Cmd+Z should bring the whole selection back.
     func performAsOneUndoStep(_ body: () -> Void) {
+        guard !isHeldForSave else { return }
+        endTableCommentRun()
         undoManager.beginUndoGrouping()
         defer { undoManager.endUndoGrouping() }
         body()
@@ -92,9 +125,13 @@ final class StructureChangeManager: ChangeManaging {
         indexes: [IndexInfo],
         foreignKeys: [ForeignKeyInfo],
         checkConstraints: [CheckConstraintInfo] = [],
-        primaryKey: [String]
+        primaryKey: [String],
+        tableComment: String? = nil
     ) {
+        guard !isHeldForSave else { return }
         self.tableName = tableName
+        self.tableComment = ObjectCommentDraft(original: tableComment)
+        tableCommentRunStart = nil
 
         self.currentColumns = columns.map { EditableColumnDefinition.from($0) }
 
@@ -105,21 +142,7 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
         self.currentIndexes = indexes.map { EditableIndexDefinition.from($0) }
-        // Group foreign keys by name to merge multi-column FKs into single definitions
-        let groupedFKs = Dictionary(grouping: foreignKeys, by: { $0.name })
-        self.currentForeignKeys = groupedFKs.keys.sorted().compactMap { name -> EditableForeignKeyDefinition? in
-            guard let fkInfos = groupedFKs[name], let first = fkInfos.first else { return nil }
-            return EditableForeignKeyDefinition(
-                id: first.id,
-                name: first.name,
-                columns: fkInfos.map { $0.column },
-                referencedTable: first.referencedTable,
-                referencedColumns: fkInfos.map { $0.referencedColumn },
-                referencedSchema: first.referencedSchema,
-                onDelete: EditableForeignKeyDefinition.ReferentialAction(rawValue: first.onDelete.uppercased()) ?? .noAction,
-                onUpdate: EditableForeignKeyDefinition.ReferentialAction(rawValue: first.onUpdate.uppercased()) ?? .noAction
-            )
-        }
+        self.currentForeignKeys = EditableForeignKeyDefinition.grouping(foreignKeys).sorted { $0.name < $1.name }
         self.currentCheckConstraints = checkConstraints.map { EditableCheckConstraintDefinition.from($0) }
         self.currentPrimaryKey = primaryKey
 
@@ -128,6 +151,7 @@ final class StructureChangeManager: ChangeManaging {
         pendingChanges.removeAll()
         changeOrder.removeAll()
         validationErrors.removeAll()
+        indexesAddedClustered.removeAll()
         undoManager.removeAllActions()
 
         // Increment reloadVersion to trigger DataGridView column width recalculation
@@ -178,6 +202,9 @@ final class StructureChangeManager: ChangeManaging {
     }
 
     func addIndex(_ index: EditableIndexDefinition) {
+        if index.type == .clustered {
+            indexesAddedClustered.insert(index.id)
+        }
         stageAddition(index, using: Self.indexOperations)
     }
 
@@ -202,6 +229,9 @@ final class StructureChangeManager: ChangeManaging {
     // MARK: - Index Operations
 
     func updateIndex(id: UUID, with newIndex: EditableIndexDefinition) {
+        if workingIndexes.first(where: { $0.id == id })?.type != newIndex.type {
+            indexesAddedClustered.remove(id)
+        }
         stageEdit(id: id, with: newIndex, using: Self.indexOperations)
     }
 
@@ -243,6 +273,7 @@ final class StructureChangeManager: ChangeManaging {
         _ entity: Entity,
         using operations: SchemaEntityOperations<Entity>
     ) {
+        guard !isHeldForSave else { return }
         self[keyPath: operations.working].append(entity)
         let key = operations.identifier(entity.id)
         pendingChanges[key] = operations.addition(entity)
@@ -250,7 +281,7 @@ final class StructureChangeManager: ChangeManaging {
         registerUndo(operations.addActionName) { target in
             target.applySchemaUndo(operations.additionUndo(entity))
         }
-        validate()
+        workingCopyDidChange()
     }
 
     private func stageEdit<Entity>(
@@ -258,6 +289,7 @@ final class StructureChangeManager: ChangeManaging {
         with newEntity: Entity,
         using operations: SchemaEntityOperations<Entity>
     ) {
+        guard !isHeldForSave else { return }
         if let workingIndex = self[keyPath: operations.working].firstIndex(where: { $0.id == id }) {
             let oldWorking = self[keyPath: operations.working][workingIndex]
             if oldWorking != newEntity {
@@ -286,10 +318,11 @@ final class StructureChangeManager: ChangeManaging {
             self[keyPath: operations.working][workingIndex] = newEntity
         }
 
-        validate()
+        workingCopyDidChange()
     }
 
     private func stageDeletion<Entity>(id: UUID, using operations: SchemaEntityOperations<Entity>) {
+        guard !isHeldForSave else { return }
         let key = operations.identifier(id)
         if let entity = self[keyPath: operations.current].first(where: { $0.id == id }) {
             registerUndo(operations.deleteActionName) { target in
@@ -309,7 +342,7 @@ final class StructureChangeManager: ChangeManaging {
             untrackChangeKey(key)
         }
 
-        validate()
+        workingCopyDidChange()
     }
 
     private static let columnOperations = SchemaEntityOperations<EditableColumnDefinition>(
@@ -384,6 +417,7 @@ final class StructureChangeManager: ChangeManaging {
     /// row-specific affordance and the global undo stack are independent
     /// affordances. The data tab uses the same separation.
     func undoDelete(for tab: StructureTab, at row: Int) {
+        guard !isHeldForSave else { return }
         let key: SchemaChangeIdentifier
         switch tab {
         case .columns:
@@ -404,34 +438,53 @@ final class StructureChangeManager: ChangeManaging {
         guard pendingChanges[key]?.isDelete == true else { return }
         pendingChanges.removeValue(forKey: key)
         untrackChangeKey(key)
-        validate()
+        workingCopyDidChange()
     }
 
     // MARK: - Validation
 
+    /// Runs after every change to the working copy, undo and redo included: first what the change
+    /// decides for rows it did not touch, then validation.
+    private func workingCopyDidChange() {
+        settleClusteredAdditions()
+        validate()
+    }
+
+    /// A SQL Server table keeps its rows in the order of one clustered index, and its primary key is
+    /// that index unless it says otherwise. An index added as `CLUSTERED`, which is what Duplicate
+    /// and a paste stage for a copy of that index, takes the place only when no other index the
+    /// table keeps after the save holds it, and is written `NONCLUSTERED` beside one that does, the
+    /// type the server reports for every other index. Two `CLUSTERED` indexes are refused with
+    /// "Cannot create more than one clustered index on table".
+    ///
+    /// Decided again after every change, because the place frees when its holder is deleted, and
+    /// Duplicate, edit the copy, then delete the original is how an index is replaced. Decided once,
+    /// the copy stayed `NONCLUSTERED` and the save left the table with no clustered index. A row
+    /// whose type was changed to anything else is the user's own choice and is left alone.
+    private func settleClusteredAdditions() {
+        var placeIsTaken = workingIndexes.contains { index in
+            !hasTypeSettledByTheEditor(index) && !isPendingDeletion(.index(index.id)) && index.type.ordersTableRows
+        }
+        for position in workingIndexes.indices where hasTypeSettledByTheEditor(workingIndexes[position]) {
+            var index = workingIndexes[position]
+            index.type = placeIsTaken ? .nonclustered : .clustered
+            placeIsTaken = true
+            guard index != workingIndexes[position] else { continue }
+            workingIndexes[position] = index
+            pendingChanges[.index(index.id)] = .addIndex(index)
+        }
+    }
+
+    private func hasTypeSettledByTheEditor(_ index: EditableIndexDefinition) -> Bool {
+        indexesAddedClustered.contains(index.id) && (index.type == .clustered || index.type == .nonclustered)
+    }
+
     private func validate() {
         validationErrors.removeAll()
 
-        for column in workingColumns {
-            if !column.isValid {
-                validationErrors[.column(column.id)] = String(localized: "Column must have a name and a data type")
-            }
-        }
-
-        let columnNames = workingColumns.filter { column in
-            column.isValid && !isColumnPendingDeletion(column.id)
-        }.map { $0.name }
-        let duplicateColumns = Dictionary(grouping: columnNames, by: { $0 })
-            .filter { $0.value.count > 1 }
-            .map { $0.key }
-
-        for duplicate in duplicateColumns {
-            for column in workingColumns.filter({ $0.name == duplicate && !isColumnPendingDeletion($0.id) }) {
-                validationErrors[.column(column.id)] = String(
-                    format: String(localized: "Duplicate column name: %@"), duplicate
-                )
-            }
-        }
+        let keptColumns = columnsAfterSave
+        validateColumns(keptColumns)
+        let columnNames = keptColumns.map(\.name)
 
         for index in workingIndexes where isStaged(.index(index.id)) && !index.isValid {
             validationErrors[.index(index.id)] = String(localized: "Index must have a name and at least one column")
@@ -443,17 +496,8 @@ final class StructureChangeManager: ChangeManaging {
             )
         }
 
-        let indexNames = workingIndexes.filter { $0.isValid }.map { $0.name }
-        let duplicateIndexes = Dictionary(grouping: indexNames, by: { $0 })
-            .filter { $0.value.count > 1 }
-            .map { $0.key }
-
-        for duplicate in duplicateIndexes {
-            for index in workingIndexes.filter({ $0.name == duplicate }) {
-                validationErrors[.index(index.id)] = String(
-                    format: String(localized: "Duplicate index name: %@"), duplicate
-                )
-            }
+        flagDuplicateNames(using: Self.indexOperations, name: \.name, isNamed: \.isValid, comparedAs: { $0 }) {
+            String(format: String(localized: "Duplicate index name: %@"), $0)
         }
 
         /// Only a row this save actually edits is checked against the columns.
@@ -462,9 +506,10 @@ final class StructureChangeManager: ChangeManaging {
         /// a rename in the same save leaves that name stale in the working copy without the user
         /// having done anything wrong: every engine's `RENAME COLUMN` carries the dependency over
         /// itself. Checking those rows would refuse a rename that works today. What this catches is
-        /// a row the user is *editing* into a state the database will reject.
+        /// a row the user is *editing* into a state the database will reject. An expression key names
+        /// no column of its own, so an index is checked by its column names alone.
         for index in workingIndexes where isStaged(.index(index.id)) && index.isValid {
-            for columnName in index.columns where !namesAColumn(columnName, in: columnNames) {
+            for columnName in index.referencedColumnNames where !namesAColumn(columnName, in: columnNames) {
                 validationErrors[.index(index.id)] = String(
                     format: String(localized: "Index references a column that does not exist: %@"), columnName
                 )
@@ -495,23 +540,107 @@ final class StructureChangeManager: ChangeManaging {
             )
         }
 
-        let constraintNames = workingCheckConstraints.filter { $0.isValid }.map { $0.name }
-        let duplicateConstraints = Dictionary(grouping: constraintNames, by: { $0 })
-            .filter { $0.value.count > 1 }
-            .map { $0.key }
+        flagDuplicateNames(
+            using: Self.checkConstraintOperations, name: \.name, isNamed: \.isValid, comparedAs: Self.constraintNameKey
+        ) {
+            String(format: String(localized: "Duplicate constraint name: %@"), $0)
+        }
+        flagChangesToASharedConstraintName()
 
-        for duplicate in duplicateConstraints {
-            for constraint in workingCheckConstraints.filter({ $0.name == duplicate }) {
-                validationErrors[.checkConstraint(constraint.id)] = String(
-                    format: String(localized: "Duplicate constraint name: %@"), duplicate
+        /// Checked only when this save changes the key, as the index and foreign key rows are. A
+        /// rename leaves the loaded key naming the old spelling, and every engine's `RENAME COLUMN`
+        /// carries the key over itself; dropping a key column is the database's to allow or refuse.
+        for columnName in workingPrimaryKey where isStaged(.primaryKey) && !namesAColumn(columnName, in: columnNames) {
+            validationErrors[.primaryKey] = String(
+                format: String(localized: "Primary key references a column that does not exist: %@"), columnName
+            )
+        }
+    }
+
+    /// Every column the table keeps after this save, whatever state its name and type are in.
+    private var columnsAfterSave: [EditableColumnDefinition] {
+        workingColumns.filter { !isPendingDeletion(.column($0.id)) }
+    }
+
+    /// Only a column this save adds or changes is held to being complete.
+    ///
+    /// An untouched column is the database's own, and a typeless SQLite column or an empty MongoDB
+    /// field name is no reason to refuse an edit made somewhere else. A duplicate name blocks only
+    /// when the save put one of its columns there; an untouched pair stays the database's to judge.
+    /// Every name the table will hold is compared, a blank one it was read with included, while a
+    /// blank row still to be named is incomplete rather than a duplicate.
+    private func validateColumns(_ keptColumns: [EditableColumnDefinition]) {
+        let loadedColumns = Dictionary(currentColumns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for column in keptColumns where isStaged(.column(column.id)) {
+            if column.isIncomplete(over: loadedColumns[column.id]) {
+                validationErrors[.column(column.id)] = String(localized: "Column must have a name and a data type")
+            } else if introducesNullDefaultOnNotNull(column) {
+                validationErrors[.column(column.id)] = String(
+                    format: String(localized: "%@ does not allow NULL, so its default cannot be NULL"), column.name
                 )
             }
         }
 
-        for columnName in workingPrimaryKey {
-            if !columnNames.contains(columnName) {
-                validationErrors[.primaryKey] = String(
-                    format: String(localized: "Primary key references a column that does not exist: %@"), columnName
+        let savablyNamed = keptColumns.filter { $0.hasSavableName(over: loadedColumns[$0.id]) }
+        let sameNamed = Dictionary(grouping: savablyNamed, by: \.name)
+        for (name, columns) in sameNamed where columns.count > 1 {
+            guard columns.contains(where: { isStaged(.column($0.id)) }) else { continue }
+            for column in columns {
+                validationErrors[.column(column.id)] = String(
+                    format: String(localized: "Duplicate column name: %@"), name
+                )
+            }
+        }
+    }
+
+    /// A name counts once for each row the table keeps, and blocks the save only when the save put
+    /// one of those rows there, the rule columns follow.
+    ///
+    /// A row being deleted keeps nothing: the save drops every index and check constraint before it
+    /// adds or renames one, so its name is free again by then. Deleting an index and adding one
+    /// under its name used to be refused as a duplicate of the very row being dropped.
+    ///
+    /// `comparedAs` gives the key two names must share to be one name to the database.
+    private func flagDuplicateNames<Entity>(
+        using operations: SchemaEntityOperations<Entity>,
+        name: KeyPath<Entity, String>,
+        isNamed: KeyPath<Entity, Bool>,
+        comparedAs key: (String) -> String,
+        message: (String) -> String
+    ) {
+        let kept = self[keyPath: operations.working].filter {
+            $0[keyPath: isNamed] && !isPendingDeletion(operations.identifier($0.id))
+        }
+        for rows in Dictionary(grouping: kept, by: { key($0[keyPath: name]) }).values where rows.count > 1 {
+            guard rows.contains(where: { isStaged(operations.identifier($0.id)) }) else { continue }
+            for row in rows {
+                validationErrors[operations.identifier(row.id)] = message(row[keyPath: name])
+            }
+        }
+    }
+
+    /// SQLite and MariaDB treat `c` and `C` as one check constraint name: measured on SQLite 3.54,
+    /// `ADD CONSTRAINT "C"` beside `c` fails with "constraint C already exists", and MariaDB 13.0.2
+    /// refuses it with ERROR 1826. PostgreSQL keeps the two apart, and refusing such a pair there
+    /// runs nothing.
+    private static func constraintNameKey(_ name: String) -> String {
+        name.lowercased()
+    }
+
+    /// SQLite accepts two table-level check constraints under one name, compares constraint names
+    /// without regard to case, and drops the first one it finds by that name. So a change to one
+    /// while another keeps the name can land on the other one. Changing every one of them is safe,
+    /// because each is dropped by name and added back from its own new definition. PostgreSQL keeps
+    /// `c` and `C` apart, and refusing a change to one of those runs nothing.
+    private func flagChangesToASharedConstraintName() {
+        let loaded = currentCheckConstraints.filter(\.isValid)
+        for rows in Dictionary(grouping: loaded, by: { Self.constraintNameKey($0.name) }).values where rows.count > 1 {
+            let changed = rows.filter { pendingChanges[.checkConstraint($0.id)] != nil }
+            guard !changed.isEmpty, changed.count < rows.count else { continue }
+            for row in changed {
+                validationErrors[.checkConstraint(row.id)] = String(
+                    format: String(localized: "More than one check constraint is named %@. Change or delete all of them in the same save."),
+                    row.name
                 )
             }
         }
@@ -527,6 +656,10 @@ final class StructureChangeManager: ChangeManaging {
         return !change.isDelete
     }
 
+    private func isPendingDeletion(_ key: SchemaChangeIdentifier) -> Bool {
+        pendingChanges[key]?.isDelete == true
+    }
+
     /// Identifiers compare case insensitively, the way every engine TablePro edits resolves them.
     /// SQLite accepts a column declared `ID` and referenced as `id`, and its pragmas report each
     /// spelling as written.
@@ -534,11 +667,13 @@ final class StructureChangeManager: ChangeManaging {
         columnNames.contains { $0.compare(name, options: .caseInsensitive) == .orderedSame }
     }
 
-    private func isColumnPendingDeletion(_ id: UUID) -> Bool {
-        if case .deleteColumn = pendingChanges[.column(id)] {
-            return true
-        }
-        return false
+    /// MySQL and MariaDB refuse `NOT NULL DEFAULT NULL` with ERROR 1067. SQLite and DuckDB accept it,
+    /// so a loaded column can already hold the pair, and an edit that leaves it as it was is not the
+    /// user's to fix before the save.
+    private func introducesNullDefaultOnNotNull(_ column: EditableColumnDefinition) -> Bool {
+        guard !column.isNullable, column.hasNullDefault else { return false }
+        guard let loaded = currentColumns.first(where: { $0.id == column.id }) else { return true }
+        return loaded.isNullable || !loaded.hasNullDefault
     }
 
     // MARK: - State Management
@@ -556,9 +691,13 @@ final class StructureChangeManager: ChangeManaging {
     }
 
     func discardChanges() {
+        guard !isHeldForSave else { return }
+        tableComment = ObjectCommentDraft(original: tableComment.original)
+        tableCommentRunStart = nil
         pendingChanges.removeAll()
         changeOrder.removeAll()
         validationErrors.removeAll()
+        indexesAddedClustered.removeAll()
         resetWorkingState()
         reloadVersion += 1
         undoManager.removeAllActions()
@@ -568,16 +707,88 @@ final class StructureChangeManager: ChangeManaging {
         changeOrder.compactMap { pendingChanges[$0] }
     }
 
+    // MARK: - Save Hold
+
+    /// Takes the staged edits for a save, or nil when there are none or a save already holds them.
+    /// Taken before the save's first suspension, which is what refuses a second press.
+    func holdForSave() -> StructureSaveSnapshot? {
+        endTableCommentRun()
+        guard heldSave == nil, hasChanges else { return nil }
+        let snapshot = StructureSaveSnapshot(changes: getChangesArray())
+        heldSave = snapshot
+        return snapshot
+    }
+
+    /// Ends the hold a save took. A save that wrote clears the staged edits only while they are
+    /// still exactly the ones it read, so nothing it did not write is cleared, and a hold that has
+    /// already ended cannot clear what was staged after it. Returns whether the edits were cleared.
+    @discardableResult
+    func releaseHold(_ snapshot: StructureSaveSnapshot, written: Bool) -> Bool {
+        guard heldSave?.id == snapshot.id else { return false }
+        heldSave = nil
+        guard written, getChangesArray() == snapshot.changes else { return false }
+        // The written comment is the new baseline now, or the field shows the old one until the refetch lands.
+        for case .modifyTableComment(_, let savedComment) in snapshot.changes {
+            tableComment = ObjectCommentDraft(original: savedComment)
+        }
+        discardChanges()
+        return true
+    }
+
     // MARK: - Undo/Redo Operations
 
     func undo() {
+        guard !isHeldForSave else { return }
+        endTableCommentRun()
         guard undoManager.canUndo else { return }
         undoManager.undo()
     }
 
     func redo() {
+        guard !isHeldForSave else { return }
+        endTableCommentRun()
         guard undoManager.canRedo else { return }
         undoManager.redo()
+    }
+
+    // MARK: - Table Comment
+
+    func stageTableComment(_ text: String) {
+        guard !isHeldForSave, text != tableComment.text else { return }
+        if tableCommentRunStart == nil {
+            tableCommentRunStart = tableComment.text
+        }
+        tableComment.text = text
+        restageTableComment()
+    }
+
+    func endTableCommentRun() {
+        guard let start = tableCommentRunStart else { return }
+        tableCommentRunStart = nil
+        let end = tableComment.text
+        guard start != end else { return }
+        registerUndo(Self.tableCommentActionName) { target in
+            target.applySchemaUndo(.tableCommentEdit(old: start, new: end))
+        }
+    }
+
+    private func restageTableComment() {
+        let key = SchemaChangeIdentifier.tableComment
+        if tableComment.hasChanges {
+            pendingChanges[key] = .modifyTableComment(old: tableComment.original, new: tableComment.commentToSave)
+            trackChangeKey(key)
+        } else {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
+        }
+    }
+
+    private func applyTableCommentUndo(old: String, new: String) {
+        registerUndo(Self.tableCommentActionName) { target in
+            target.applySchemaUndo(.tableCommentEdit(old: new, new: old))
+        }
+        tableComment.text = old
+        restageTableComment()
     }
 
     private func applySchemaUndo(_ action: SchemaUndoAction) {
@@ -608,9 +819,11 @@ final class StructureChangeManager: ChangeManaging {
             applyDeletionUndo(constraint, at: at, using: Self.checkConstraintOperations)
         case .primaryKeyChange(let old, _):
             applyPrimaryKeyChangeUndo(old: old)
+        case .tableCommentEdit(let old, let new):
+            applyTableCommentUndo(old: old, new: new)
         }
 
-        validate()
+        workingCopyDidChange()
     }
 
     private func applyEditUndo<Entity>(
@@ -767,4 +980,12 @@ enum SchemaUndoAction {
     case checkConstraintAdd(constraint: EditableCheckConstraintDefinition)
     case checkConstraintDelete(constraint: EditableCheckConstraintDefinition, at: Int?)
     case primaryKeyChange(old: [String], new: [String])
+    /// The field's raw text, so undo restores exactly what was typed.
+    case tableCommentEdit(old: String, new: String)
+}
+
+/// The staged edits a save read when it was pressed, and so the only edits it may clear.
+struct StructureSaveSnapshot: Equatable {
+    let id = UUID()
+    let changes: [SchemaChange]
 }

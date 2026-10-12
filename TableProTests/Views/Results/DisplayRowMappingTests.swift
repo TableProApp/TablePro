@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DisplayRowMapping")
 struct DisplayRowMappingTests {
     private func makeTableRows() -> TableRows {
         let rows: ContiguousArray<Row> = [

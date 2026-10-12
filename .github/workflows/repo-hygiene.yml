@@ -18,6 +18,11 @@ on:
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
+      - "TableProTests/**/*.swift"
+      - "project.yml"
+      - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
+      - ".swiftlint.yml"
   push:
     branches: [main]
     paths:
@@ -30,6 +35,11 @@ on:
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
+      - "TableProTests/**/*.swift"
+      - "project.yml"
+      - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
+      - ".swiftlint.yml"
   workflow_dispatch:
 
 concurrency:
@@ -80,18 +90,101 @@ jobs:
       - name: Check the plugin manifest against the plugin classes
         run: python3 scripts/ci/check-plugin-manifest.py
 
+      # A build script that writes the deployment target down itself goes stale the next time the
+      # app's floor moves, and the result is an archive built for a newer macOS than the app that
+      # links it. That shipped: #2874 moved the app to macOS 13 and five copies of "14.0" stayed.
+      - name: Check no build script hardcodes the deployment target
+        run: bash scripts/ci/check-deployment-target.sh
+
+      # The iOS app compiles source files that belong to macOS plugin targets, and it alone sets
+      # SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor, so one unmarked declaration in a shared file is
+      # @MainActor on iOS and nonisolated in the plugin. The macOS suite cannot see it and the iOS
+      # job reports it one symbol at a time, which took main red three times over one keyword.
+      - name: Check shared plugin sources are explicitly isolated for iOS
+        run: python3 scripts/ci/check-ios-shared-isolation.py
+
+      # The plugin targets build with MemberImportVisibility, so a file that logs needs the import
+      # that defines the log methods. Compiling every plugin catches it, but only once both sides
+      # are merged: the pull request that turned the feature on and the pull request that added the
+      # file were each green alone, and main broke on the merge of the second.
+      - name: Check plugin sources that log import the module that defines it
+        run: python3 scripts/ci/check-plugin-os-import.py
+
+      # SwiftLint's included: does not reach Plugins/, so this applies its log privacy rule there,
+      # with the regex read from .swiftlint.yml.
+      - name: Check no source publishes an error's text to the system log
+        run: python3 scripts/ci/check-log-privacy.py
+
+      - name: Validate the log privacy check
+        run: python3 scripts/ci/test_check_log_privacy.py
+
+      # Every top-level @Suite is a peer macro the compiler files in module-scope lookup, and each
+      # @Suite expansion walks all of them, so the test module's compile time grows with the square
+      # of their count. 2,336 of them held TableProTests' emit-module job at 544 to 626 seconds on the
+      # build runner, and 2,200 of those only renamed their type. Only a @Suite with a trait is kept.
+      - name: Check no top-level test type carries a @Suite without a trait
+        run: python3 scripts/ci/check-test-suite-attributes.py
+
+      - name: Validate the test suite attribute check
+        run: python3 scripts/ci/test_check_test_suite_attributes.py
+
+      # A plugin's or package's String(localized:) resolves against Bundle.main, which is the host
+      # app, so its strings live in the app's catalog. Xcode never finds them in the app's sources,
+      # so each one must be there and managed manually, or Xcode's next sync deletes it.
+      - name: Check plugin strings reach the string catalog
+        run: python3 scripts/localization.py plugins
+
+      - name: Validate the localization script
+        run: python3 scripts/test_localization.py
+
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
 
-      # The macOS suite cannot catch this one: the script runs before any test does, and when it
-      # gets this wrong no test runs at all. An empty quarantine list made it print a blank line,
-      # which the caller turned into an empty xcodebuild argument, and main went red for three
-      # commits with `Unknown build action ''`.
-      - name: Validate the test quarantine script
-        run: python3 scripts/ci/test_quarantine_args.py
+      # Only the kit version a release tags ever ships, and the registry keeps binaries for three,
+      # so a second bump in one release cycle drops an older release out of that window for nothing.
+      # The checkout is shallow and carries no tags, so the check lists them on origin itself.
+      - name: Check currentPluginKitVersion moved at most once since the last release
+        run: python3 scripts/ci/check-pluginkit-bump-cadence.py --remote origin
+
+      - name: Validate the PluginKit bump cadence check
+        run: python3 scripts/ci/test_check_pluginkit_bump_cadence.py
+
+      # The macOS suite cannot catch a fault here: the lister runs before any test does.
+      - name: Validate the test lister and quarantine
+        run: python3 scripts/ci/test_list_tests.py
+
+      - name: Validate the pull request title check
+        run: python3 scripts/ci/test_check_pr_title.py
 
       - name: Validate release note extraction
         run: python3 scripts/ci/test_release_notes.py
+
+      - name: Validate the DMG script's arguments
+        run: bash scripts/ci/test_create_dmg_args.sh
+
+      - name: Validate the release draft script
+        run: bash scripts/ci/test_draft_release.sh
+
+      - name: Validate changelog contributor credits
+        run: python3 scripts/ci/test_changelog_credits.py
+
+      # Only a real release runs sign-and-appcast.sh, so nothing on a pull request ever exercised
+      # the code that edits the file every install polls. These two cover the parts that can be
+      # tested without a signing key: which bytes move, and which releases are refused.
+      - name: Validate the appcast text primitives
+        run: python3 scripts/ci/test_appcast_feed.py
+
+      - name: Validate the appcast merge
+        run: python3 scripts/ci/test_merge_appcast.py
+
+      - name: Validate release withdrawal
+        run: python3 scripts/ci/test_pull_release.py
+
+      # The framework the app links and the generate_appcast that signs its feed are the same
+      # project, and nothing compared them. project.yml declares majorVersion, which XcodeGen
+      # writes as upToNextMajorVersion, so a resolve can move the framework alone.
+      - name: Check the Sparkle version agrees everywhere
+        run: python3 scripts/ci/check-sparkle-version.py
 
       # A check that guarded a real invariant and ran nowhere. Pure grep over Swift sources, so it
       # belongs on the free Linux runner. The MongoDB filter-shape check is the other one that was

@@ -11,7 +11,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("AnyChangeManager")
 struct AnyChangeManagerTests {
     // MARK: - DataChangeManager Wrapper Tests
 

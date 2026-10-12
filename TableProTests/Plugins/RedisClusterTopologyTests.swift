@@ -48,7 +48,6 @@ private func slotsReply() -> RedisReply {
     ])
 }
 
-@Suite("Redis cluster topology - CLUSTER SHARDS")
 struct RedisClusterShardsParsingTests {
     @Test("Reads both shards with their primaries")
     func parsesShards() throws {
@@ -116,7 +115,6 @@ struct RedisClusterShardsParsingTests {
     }
 }
 
-@Suite("Redis cluster topology - CLUSTER SLOTS")
 struct RedisClusterSlotsParsingTests {
     @Test("Reads the same picture as CLUSTER SHARDS")
     func matchesShards() throws {
@@ -160,7 +158,6 @@ struct RedisClusterSlotsParsingTests {
     }
 }
 
-@Suite("Redis cluster topology - slot migration")
 struct RedisClusterTopologyMigrationTests {
     @Test("Moving a slot re-points it without a full reload")
     func movesOneSlot() throws {

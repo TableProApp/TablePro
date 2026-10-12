@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis cluster redirect - MOVED and ASK")
 struct RedisClusterRedirectParsingTests {
     @Test("Parses a MOVED with a full endpoint")
     func parsesMoved() {
@@ -53,7 +52,6 @@ struct RedisClusterRedirectParsingTests {
     }
 }
 
-@Suite("Redis cluster redirect - other control errors")
 struct RedisClusterRedirectControlTests {
     @Test("Parses TRYAGAIN with its slot")
     func parsesTryAgain() {
@@ -79,7 +77,6 @@ struct RedisClusterRedirectControlTests {
     }
 }
 
-@Suite("Redis cluster redirect - non-redirects")
 struct RedisClusterRedirectRejectionTests {
     static let notRedirects = [
         "WRONGTYPE Operation against a key holding the wrong kind of value",

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryClassifier on Beancount")
 struct QueryClassifierBeancountTests {
     @Test(
         "Every statement a Beancount ledger answers is a read",

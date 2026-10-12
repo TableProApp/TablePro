@@ -37,6 +37,7 @@ enum RoutineRowLogic {
 }
 
 struct RoutineRowView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let routine: RoutineInfo
     let displayLabel: String
 
@@ -50,7 +51,7 @@ struct RoutineRowView: View {
                 .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(RoutineRowLogic.accessibilityLabel(for: routine, displayLabel: displayLabel))
         .help(RoutineRowLogic.tooltip(for: routine))

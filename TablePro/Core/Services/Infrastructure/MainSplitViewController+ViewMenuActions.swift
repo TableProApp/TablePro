@@ -22,6 +22,18 @@ extension MainSplitViewController {
         activateWorkspace(offsetBy: 1)
     }
 
+    /// Both routes to a mode, View > Mode and the Actions pull-down, send a menu item that names
+    /// its mode in `representedObject`. An item without one does nothing.
+    @objc func setContentModeFromMenu(_ sender: Any?) {
+        guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
+              let mode = ConnectionWorkspaceContentMode(rawValue: raw) else { return }
+        setContentMode(mode)
+    }
+
+    @objc func toggleContentModeFromMenu(_ sender: Any?) {
+        toggleContentMode(sender)
+    }
+
     @objc func setResultView(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
               let mode = ResultsViewMode(rawValue: raw) else { return }
@@ -51,12 +63,40 @@ extension MainSplitViewController {
         commandActions?.focusSidebarSearch()
     }
 
+    @objc func focusObjectList(_ sender: Any?) {
+        focusSidebarObjectList()
+    }
+
+    @objc func focusEditor(_ sender: Any?) {
+        focusQueryEditor()
+    }
+
+    @objc func focusResults(_ sender: Any?) {
+        focusResultGrid()
+    }
+
+    @objc func focusInspector(_ sender: Any?) {
+        focusInspectorPane()
+    }
+
+    @objc func focusAssistant(_ sender: Any?) {
+        focusAssistantPane()
+    }
+
     @objc func filterDatabases(_ sender: Any?) {
         presentDatabaseFilter()
     }
 
     @objc func showAllDatabases(_ sender: Any?) {
         clearDatabaseFilter()
+    }
+
+    @objc func filterSchemas(_ sender: Any?) {
+        presentSchemaFilter()
+    }
+
+    @objc func showAllSchemas(_ sender: Any?) {
+        clearSchemaFilter()
     }
 
     @objc func toggleFilterBar(_ sender: Any?) {
@@ -98,12 +138,16 @@ extension MainSplitViewController {
     @objc func closeResultTab(_ sender: Any?) {
         commandActions?.closeResultTab()
     }
+}
 
-    @objc func increaseEditorTextSize(_ sender: Any?) {
+/// The window's answer when nothing nearer the focus zooms: a focused diagram's scroll view claims
+/// these first, so this is what Zoom In means everywhere else.
+extension MainSplitViewController: ZoomCommandResponding {
+    @objc func zoomIn(_ sender: Any?) {
         adjustEditorTextSize(by: 1)
     }
 
-    @objc func decreaseEditorTextSize(_ sender: Any?) {
+    @objc func zoomOut(_ sender: Any?) {
         adjustEditorTextSize(by: -1)
     }
 

@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Markdown Table Converter")
 struct MarkdownTableConverterTests {
     private func makeConverter(columns: [String], columnTypes: [ColumnType]) -> MarkdownTableConverter {
         MarkdownTableConverter(columns: columns, columnTypes: columnTypes)

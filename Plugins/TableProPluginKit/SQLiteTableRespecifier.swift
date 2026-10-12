@@ -176,7 +176,9 @@ public extension SQLiteTableDDL {
                 keyColumns = tableLevel
                 continue
             }
-            if declaration.first(.primaryKey) != nil { keyColumns = [declaration.name] }
+            if declaration.constraints.contains(where: { $0.kind == .primaryKey }) {
+                keyColumns = [declaration.name]
+            }
         }
 
         guard keyColumns.count == 1, let name = keyColumns.first else { return nil }

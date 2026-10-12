@@ -1,6 +1,7 @@
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
 
 final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     enum MockError: Error { case scripted }
@@ -11,16 +12,18 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedTables: [TableInfo] = []
     var scriptedDatabases: [String] = []
     var scriptedSchemas: [String] = []
+    var scriptedTransactionState: DriverTransactionState = .unknown
 
     private(set) var executedQueries: [String] = []
     private(set) var fetchColumnsCalls: Int = 0
     private(set) var fetchForeignKeysCalls: Int = 0
+    private(set) var beganTransactionModes: [PluginTransactionAccessMode] = []
     private(set) var didBeginTransaction = false
     private(set) var didCommitTransaction = false
     private(set) var didRollbackTransaction = false
 
     var supportsSchemas: Bool = false
-    var currentSchema: String? = nil
+    var currentSchema: String?
     var supportsTransactions: Bool = true
     var serverVersion: String? = "Mock 1.0"
     var holdsSuspensionBlockingResource: Bool = false
@@ -73,15 +76,26 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func switchDatabase(to name: String) async throws {}
     func switchSchema(to name: String) async throws {}
     func beginTransaction() async throws { didBeginTransaction = true }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        beganTransactionModes.append(mode)
+        didBeginTransaction = true
+    }
+
     func commitTransaction() async throws { didCommitTransaction = true }
     func rollbackTransaction() async throws { didRollbackTransaction = true }
+    func sessionTransactionState() async -> DriverTransactionState { scriptedTransactionState }
 }
 
 final class MockSecureStore: SecureStore, @unchecked Sendable {
     private var storage: [String: String] = [:]
     var failNextStore = false
+    var refusesStores = false
 
     func store(_ value: String, forKey key: String) throws {
+        if refusesStores {
+            throw MockDatabaseDriver.MockError.scripted
+        }
         if failNextStore {
             failNextStore = false
             throw MockDatabaseDriver.MockError.scripted

@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Multi-Connection Navigation")
 struct MultiConnectionNavigationTests {
     // MARK: - Helpers
 

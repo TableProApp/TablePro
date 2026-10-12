@@ -5,14 +5,17 @@ struct PairingApproval: Sendable {
     let grantedPermissions: TokenPermissions
     let allowedConnectionIds: Set<UUID>?
     let expiresAt: Date?
+    let extraScopes: Set<MCPScope>
 }
 
 struct PairingApprovalSheet: View {
     let request: PairingRequest
     let codeExpiresAt: Date
+    let allowsHiddenConnectionListing: Bool
     let onComplete: (Result<PairingApproval, Error>) -> Void
 
     @State private var permissions: TokenPermissions
+    @State private var grantsHiddenConnections = false
     @State private var connectionAccess: ConnectionAccessMode = .all
     @State private var selectedConnectionIds: Set<UUID> = []
     @State private var expiry: ExpiryOption = .never
@@ -25,13 +28,14 @@ struct PairingApprovalSheet: View {
     init(
         request: PairingRequest,
         codeExpiresAt: Date,
+        allowsHiddenConnectionListing: Bool,
         onComplete: @escaping (Result<PairingApproval, Error>) -> Void
     ) {
         self.request = request
         self.codeExpiresAt = codeExpiresAt
+        self.allowsHiddenConnectionListing = allowsHiddenConnectionListing
         self.onComplete = onComplete
-        let initialPermissions = Self.initialPermissions(from: request)
-        _permissions = State(initialValue: initialPermissions)
+        _permissions = State(initialValue: request.scopeRequest.permissions)
         if let requested = request.requestedConnectionIds, !requested.isEmpty {
             _connectionAccess = State(initialValue: .selected)
             _selectedConnectionIds = State(initialValue: requested)
@@ -45,15 +49,25 @@ struct PairingApprovalSheet: View {
             Form {
                 permissionsSection
                 connectionAccessSection
+                if requestsHiddenConnections {
+                    hiddenConnectionsSection
+                }
                 expirySection
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
+            /// The one greedy child, and the reason the sheet needs a bound at all. A grouped
+            /// `Form` is a scroll container, so it answers any proposal with the whole proposed
+            /// height: unbounded, it measured `CGFloat.greatestFiniteMagnitude`, and the window
+            /// sized from that raised. Capping it here rather than fixing the sheet's own height
+            /// keeps the rest of the sheet free to grow with the text size. The sections scroll
+            /// inside the cap. (#2930)
+            .frame(maxHeight: 420)
 
             Divider()
             actionBar.padding()
         }
-        .frame(minWidth: 520, minHeight: 560)
+        .frame(width: 520)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
             if connectionAccess == .all {
@@ -67,15 +81,39 @@ struct PairingApprovalSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
+            /// The name is whatever the request asked to be called, so it is bounded here rather
+            /// than trusted to be short enough to lay out.
             Text(String(format: String(localized: "Allow %@ to access TablePro?"), request.clientName))
                 .font(.headline)
+                .lineLimit(2)
+                .truncationMode(.tail)
             Text(String(localized: "An external app is asking for an API token. Review the permissions before approving."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            destinationLabel
             countdownLabel
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
+    }
+
+    /// Where the one-time code is delivered, which is the only part of the request that says who
+    /// actually receives the grant. The client name above is a label the request chose for itself,
+    /// so approving on that alone approves a destination nobody was shown. Truncated in the middle
+    /// rather than the tail, because the scheme and the host are what a reader checks.
+    private var destinationLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.up.forward.app")
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text(String(format: String(localized: "Sends the code to %@"), request.redirectDisplayValue))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
     }
 
     private var countdownLabel: some View {
@@ -131,7 +169,7 @@ struct PairingApprovalSheet: View {
                 Text(String(localized: "Select Connections")).tag(ConnectionAccessMode.selected)
             }
             .labelsHidden()
-            .onChange(of: connectionAccess) { _, newValue in
+            .onChange(of: connectionAccess) { newValue in
                 if newValue == .all {
                     selectedConnectionIds = Set(connections.map(\.id))
                 } else if selectedConnectionIds.isEmpty {
@@ -192,6 +230,31 @@ struct PairingApprovalSheet: View {
         }
     }
 
+    private var requestsHiddenConnections: Bool {
+        request.scopeRequest.optionalGrants.contains(.connectionsDisplay)
+    }
+
+    /// Starts off even when the setting allows it: an agent with a shell can open a pairing link to
+    /// its own loopback redirect, and one click on Approve must not hand it these connections.
+    private var hiddenConnectionsSection: some View {
+        Section(String(localized: "Connections Hidden from AI")) {
+            if allowsHiddenConnectionListing {
+                Toggle(String(localized: "List connections hidden from AI"), isOn: $grantsHiddenConnections)
+                    .accessibilityIdentifier("pairing-hidden-connections-toggle")
+                // swiftlint:disable:next line_length
+                Text(String(localized: "Adds connections whose AI Policy is Never to this app's list, with each user name. The app still cannot query them. Blocked connections stay hidden."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                // swiftlint:disable:next line_length
+                Text(String(localized: "This app also asks to list connections hidden from AI. To allow that, turn on “Allow apps to list connections hidden from AI” in Settings > MCP, then pair again."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("pairing-hidden-connections-refusal")
+            }
+        }
+    }
+
     private var expirySection: some View {
         Section(String(localized: "Expiration")) {
             Picker(String(localized: "Expires"), selection: $expiry) {
@@ -214,7 +277,8 @@ struct PairingApprovalSheet: View {
                 let approval = PairingApproval(
                     grantedPermissions: permissions,
                     allowedConnectionIds: connectionAccess == .selected ? selectedConnectionIds : nil,
-                    expiresAt: expiry.resolvedDate
+                    expiresAt: expiry.resolvedDate,
+                    extraScopes: grantsHiddenConnections && allowsHiddenConnectionListing ? [.connectionsDisplay] : []
                 )
                 onComplete(.success(approval))
             }
@@ -251,18 +315,6 @@ struct PairingApprovalSheet: View {
             String(localized: "Read schema and run any non-destructive query, including INSERT, UPDATE, and DELETE.")
         case .fullAccess:
             String(localized: "Full access including destructive DDL after explicit confirmation.")
-        }
-    }
-
-    private static func initialPermissions(from request: PairingRequest) -> TokenPermissions {
-        guard let raw = request.requestedScopes?.lowercased() else { return .readOnly }
-        switch raw {
-        case "readwrite", "read_write", "read-write":
-            return .readWrite
-        case "fullaccess", "full_access", "full-access", "full":
-            return .fullAccess
-        default:
-            return .readOnly
         }
     }
 }

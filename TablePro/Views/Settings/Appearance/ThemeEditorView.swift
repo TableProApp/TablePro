@@ -13,7 +13,7 @@ internal struct ThemeEditorView: View {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEditorView")
 
-    private var catalog: ThemeCatalog { ThemeCatalog.shared }
+    @ObservedObject private var catalog = ThemeCatalog.shared
 
     private var theme: ThemeDefinition {
         catalog.theme(id: selectedThemeId) ?? BuiltInThemes.default(for: slotAppearance)
@@ -92,7 +92,7 @@ internal struct ThemeEditorView: View {
             try catalog.save(copy)
             selectedThemeId = copy.id
         } catch {
-            Self.logger.error("Could not duplicate theme: \(error.localizedDescription)")
+            Self.logger.error("Could not duplicate theme: \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
             showError = true
         }

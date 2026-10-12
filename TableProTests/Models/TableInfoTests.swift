@@ -6,13 +6,11 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
-@Suite("TableInfo")
 struct TableInfoTests {
-
     // MARK: - Identifiable
 
     @Test("id returns name_TABLE for a table")
@@ -51,6 +49,26 @@ struct TableInfoTests {
     func testSchemaQualifiedId() {
         let info = TableInfo(name: "events", type: .table, rowCount: nil, schema: "analytics")
         #expect(info.id == "analytics.events_TABLE")
+    }
+
+    @Test("A period inside a quoted schema or table name does not merge two tables' ids")
+    func periodInsideNameKeepsIdsDistinct() {
+        let dottedTable = TableInfo(name: "b.c", type: .table, rowCount: nil, schema: "a")
+        let dottedSchema = TableInfo(name: "c", type: .table, rowCount: nil, schema: "a.b")
+        let unqualified = TableInfo(name: "a.b", type: .table, rowCount: nil)
+        let qualified = TableInfo(name: "b", type: .table, rowCount: nil, schema: "a")
+        let trailingBackslash = TableInfo(name: "b", type: .table, rowCount: nil, schema: "a\\")
+
+        let ids = [dottedTable, dottedSchema, unqualified, qualified, trailingBackslash].map(\.id)
+        #expect(Set(ids).count == ids.count)
+        #expect(Dictionary(grouping: [dottedTable, dottedSchema], by: \.id).count == 2)
+    }
+
+    @Test("A name with no period or backslash keeps the id it always had")
+    func plainNamesKeepTheirId() {
+        #expect(TableInfo(name: "events", type: .view, rowCount: nil, schema: "analytics").id == "analytics.events_VIEW")
+        #expect(TableInfo(name: "user_log", type: .materializedView, rowCount: nil).id == "user_log_MATERIALIZED VIEW")
+        #expect(TableInfo(name: "orders", type: .table, rowCount: nil, schema: "").id == "orders_TABLE")
     }
 
     @Test("Same table name in different schemas has distinct id, equality, and hash")
@@ -206,10 +224,14 @@ struct TableInfoTests {
         #expect(!TableInfo.TableType.externalTable.allowsRowEditing)
     }
 
+    @Test("A materialized view does not allow row editing")
+    func materializedViewDisallowsRowEditing() {
+        #expect(!TableInfo.TableType.materializedView.allowsRowEditing)
+    }
+
     @Test("Local relations still allow row editing")
     func localRelationsAllowRowEditing() {
         #expect(TableInfo.TableType.table.allowsRowEditing)
-        #expect(TableInfo.TableType.materializedView.allowsRowEditing)
         #expect(TableInfo.TableType.foreignTable.allowsRowEditing)
         #expect(TableInfo.TableType.systemTable.allowsRowEditing)
         #expect(TableInfo.TableType.partitionedTable.allowsRowEditing)
@@ -219,5 +241,64 @@ struct TableInfoTests {
     func externalTableRawValue() {
         #expect(TableInfo.TableType.externalTable.rawValue == "EXTERNAL TABLE")
         #expect(TableInfo.TableType(rawValue: "EXTERNAL TABLE") == .externalTable)
+    }
+
+    /// Measured on MariaDB 11.4.13: a sequence takes an INSERT and refuses UPDATE, DELETE and
+    /// TRUNCATE with ERROR 1031, so an editable grid over one offers two writes the server
+    /// always refuses.
+    @Test("A sequence does not allow row editing")
+    func sequenceDisallowsRowEditing() {
+        #expect(!TableInfo.TableType.sequence.allowsRowEditing)
+        #expect(!TableInfo.TableType.sequence.isForeignKeyTarget)
+    }
+
+    @Test("Sequence round-trips through its raw value")
+    func sequenceRawValue() {
+        #expect(TableInfo.TableType.sequence.rawValue == "SEQUENCE")
+        #expect(TableInfo.TableType(rawValue: "SEQUENCE") == .sequence)
+    }
+
+    // MARK: - Picker eligibility
+
+    /// `mariadb-dump 12.3.3` writes `CREATE SEQUENCE` plus `DO SETVAL` for a sequence and
+    /// `CREATE TABLE ... PARTITION BY` with every row for a partitioned parent, so all three are
+    /// worth listing in the Backup Dump object tree.
+    @Test("Tables, partitioned tables and sequences are backup-selectable")
+    func backupSelectableKinds() {
+        for type in [TableInfo.TableType.table, .partitionedTable, .sequence] {
+            #expect(type.isBackupSelectable, "\(type.rawValue) should be backup-selectable")
+        }
+        for type in [TableInfo.TableType.view, .materializedView, .foreignTable, .systemTable, .externalTable] {
+            #expect(!type.isBackupSelectable, "\(type.rawValue) should not be backup-selectable")
+        }
+    }
+
+    /// Narrower than the backup list. MariaDB stores exactly one row in a sequence, so importing
+    /// rows into one is not a thing the picker should offer.
+    @Test("Only a table and a partitioned table accept imported rows")
+    func importTargetKinds() {
+        for type in [TableInfo.TableType.table, .partitionedTable] {
+            #expect(type.acceptsImportedRows, "\(type.rawValue) should accept imported rows")
+        }
+        for type in [
+            TableInfo.TableType.view, .materializedView, .foreignTable, .systemTable, .externalTable, .sequence,
+        ] {
+            #expect(!type.acceptsImportedRows, "\(type.rawValue) should not accept imported rows")
+        }
+    }
+
+    /// A trait, not part of identity: the same table with versioning turned on is the same table,
+    /// which is what keeps a refresh from replacing every row in the sidebar.
+    @Test("System versioning stays out of equality and hashing")
+    func systemVersioningIsNotIdentity() {
+        let plain = TableInfo(name: "audit", type: .table, rowCount: nil, schema: "app")
+        let versioned = TableInfo(
+            name: "audit", type: .table, rowCount: nil, schema: "app", isSystemVersioned: true
+        )
+
+        #expect(plain == versioned)
+        #expect(plain.hashValue == versioned.hashValue)
+        #expect(versioned.isSystemVersioned)
+        #expect(!plain.isSystemVersioned)
     }
 }

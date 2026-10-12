@@ -35,13 +35,17 @@ enum TeradataResultParser {
 
     static func errorDetail(_ parcel: Parcel) -> (code: Int, message: String) {
         let body = parcel.body
-        guard body.count >= 12 else { return (0, String(decoding: body, as: UTF8.self)) }
+        guard body.count >= 12 else { return (0, decodedText(body)) }
         let code = Int(body[8]) << 8 | Int(body[9])
         let messageLength = Int(body[10]) << 8 | Int(body[11])
         let end = min(12 + messageLength, body.count)
-        let message = String(decoding: body[12..<end], as: UTF8.self)
+        let message = decodedText(body[12..<end])
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (code, message.isEmpty ? String(decoding: body, as: UTF8.self) : message)
+        return (code, message.isEmpty ? decodedText(body) : message)
+    }
+
+    private static func decodedText(_ bytes: some Collection<UInt8>) -> String {
+        String(bytes: bytes, encoding: .utf8) ?? String(bytes: bytes, encoding: .isoLatin1) ?? ""
     }
 
     private static func readActivityCount(fromSuccess body: [UInt8]) -> Int {
@@ -79,6 +83,6 @@ enum TeradataResultParser {
     private static func readShortString(_ reader: inout ByteReader) throws -> String {
         let length = Int(try reader.u16())
         guard length > 0 else { return "" }
-        return String(decoding: try reader.take(length), as: UTF8.self)
+        return decodedText(try reader.take(length))
     }
 }

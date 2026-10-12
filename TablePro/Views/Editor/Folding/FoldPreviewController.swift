@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 
 /// Shows the block behind a collapsed fold while the pointer rests on its placeholder.
 ///
@@ -61,7 +61,7 @@ final class FoldPreviewController: NSObject {
 
     // MARK: - Hover
 
-    /// Reports where the pointer is, from ``CodeEditSourceEditor/TextViewCoordinator``.
+    /// Reports where the pointer is, from ``TableProEditorKit/TextViewCoordinator``.
     func hoverDidChange(to hit: CollapsedFoldHit?) {
         guard hit != activeHit else { return }
 

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TabExecutionRegistry")
 struct TabExecutionRegistryTests {
     @Test("A fresh claim is current")
     func freshClaimIsCurrent() {
@@ -129,8 +128,6 @@ struct TabExecutionRegistryTests {
         #expect(registry.ownsContent(reclaimed) == false)
     }
 
-
-
     @Test("An unknown tab is idle")
     func unknownTabIsIdle() {
         let registry = TabExecutionRegistry()
@@ -241,5 +238,182 @@ struct TabExecutionRegistryTests {
         let claimA = registry.claim(UUID())
         let claimB = registry.claim(UUID())
         #expect(claimA.epoch != claimB.epoch)
+    }
+
+    // MARK: - The uninterruptible phase
+
+    @Test("A stale claim cannot enter the uninterruptible phase")
+    func staleClaimCannotMarkTheTab() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let first = registry.claim(tabId)
+        _ = registry.claim(tabId)
+
+        let markedStale = registry.enterUninterruptiblePhase(first)
+        #expect(markedStale == false)
+        #expect(registry.isStoppable(tabId))
+    }
+
+    /// The whole point. Stop lands while the commit is on the wire, the claim survives it, and the
+    /// settle that follows still answers yes, so the batch's results reach the tab.
+    @Test("Stop keeps a claim that is committing, and it still settles afterwards")
+    func stopKeepsACommittingClaim() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+        let contentEpoch = registry.contentEpoch(for: tabId)
+        let marked = registry.enterUninterruptiblePhase(claim)
+        #expect(marked)
+
+        let outcome = registry.stop(tabId)
+
+        #expect(outcome.ended.isEmpty)
+        #expect(outcome.keptUninterruptibleClaim)
+        #expect(registry.isExecuting(tabId))
+        #expect(registry.isCurrent(claim))
+        #expect(registry.contentEpoch(for: tabId) == contentEpoch)
+        #expect(registry.isStoppable(tabId) == false)
+
+        let settled = registry.settle(claim)
+        #expect(settled)
+        #expect(registry.isAnyExecuting == false)
+    }
+
+    @Test("Stop ends the tab's own claim, bumps its content epoch, and leaves every other tab")
+    func stopEndsOnlyTheNamedTab() {
+        var registry = TabExecutionRegistry()
+        let other = UUID()
+        let stopped = UUID()
+        let otherClaim = registry.claim(other)
+        let stoppedClaim = registry.claim(stopped)
+        let stoppedEpoch = registry.contentEpoch(for: stopped)
+        let otherEpoch = registry.contentEpoch(for: other)
+
+        let outcome = registry.stop(stopped)
+
+        #expect(outcome.ended.map(\.tabId) == [stopped])
+        #expect(outcome.ended.first?.reason == .cancelledByUser)
+        #expect(registry.isCurrent(stoppedClaim) == false)
+        #expect(registry.contentEpoch(for: stopped) != stoppedEpoch)
+        #expect(registry.isCurrent(otherClaim))
+        #expect(registry.contentEpoch(for: other) == otherEpoch)
+    }
+
+    @Test("Stop keeps a committing claim on its own tab")
+    func stopKeepsTheMarkedClaim() {
+        var registry = TabExecutionRegistry()
+        let committing = UUID()
+        let committingClaim = registry.claim(committing)
+        let marked = registry.enterUninterruptiblePhase(committingClaim)
+        #expect(marked)
+
+        let outcome = registry.stop(committing)
+
+        #expect(outcome.ended.isEmpty)
+        #expect(outcome.keptUninterruptibleClaim)
+        #expect(registry.isCurrent(committingClaim))
+    }
+
+    @Test("Stop ends unclaimed work even on a tab that is committing")
+    func stopEndsUnclaimedWork() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+        _ = registry.beginUnclaimedWork(for: tabId)
+        let marked = registry.enterUninterruptiblePhase(claim)
+        #expect(marked)
+
+        _ = registry.stop(tabId)
+
+        #expect(registry.isBusy(tabId))
+        #expect(registry.isStoppable(tabId) == false)
+    }
+
+    /// Only Stop reads the mark. Closing the tab, a retarget and a lost session all end the claim
+    /// whatever it is doing, because the window it belongs to is going away regardless.
+    @Test(
+        "Everything other than Stop ends a committing claim",
+        arguments: [ExecutionEndReason.abandoned, .sessionEnded, .supersededNavigation, .cancelledByUser]
+    )
+    func invalidationIgnoresTheMark(reason: ExecutionEndReason) {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+        let marked = registry.enterUninterruptiblePhase(claim)
+        #expect(marked)
+
+        let ended = registry.invalidate(tabId, reason: reason)
+
+        #expect(ended?.reason == reason)
+        #expect(registry.isExecuting(tabId) == false)
+
+        var all = TabExecutionRegistry()
+        let allClaim = all.claim(UUID())
+        let markedAll = all.enterUninterruptiblePhase(allClaim)
+        #expect(markedAll)
+        let endedAll = all.invalidateAll(reason: reason)
+        #expect(endedAll.count == 1)
+        #expect(all.isAnyExecuting == false)
+    }
+
+    /// A script that commits half way through goes on running, so Stop has to come back.
+    @Test("Leaving the phase makes the claim stoppable again")
+    func leavingThePhaseRestoresStop() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+        let marked = registry.enterUninterruptiblePhase(claim)
+        #expect(marked)
+        registry.leaveUninterruptiblePhase(claim)
+
+        #expect(registry.isStoppable(tabId))
+        let outcome = registry.stop(tabId)
+        #expect(outcome.ended.map(\.tabId) == [tabId])
+        #expect(!outcome.keptUninterruptibleClaim)
+        #expect(registry.isExecuting(tabId) == false)
+    }
+
+    @Test("A stale claim cannot unmark the tab it no longer owns")
+    func staleClaimCannotLeaveThePhase() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let stale = registry.claim(tabId)
+        let current = registry.claim(tabId)
+        let marked = registry.enterUninterruptiblePhase(current)
+        #expect(marked)
+
+        registry.leaveUninterruptiblePhase(stale)
+
+        #expect(registry.isStoppable(tabId) == false)
+    }
+
+    @Test("An idle tab is not stoppable and unclaimed work is")
+    func stoppabilityFollowsWhatIsRunning() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        #expect(registry.isStoppable(tabId) == false)
+
+        let token = registry.beginUnclaimedWork(for: tabId)
+        #expect(registry.isStoppable(tabId))
+
+        registry.endUnclaimedWork(token, for: tabId)
+        #expect(registry.isStoppable(tabId) == false)
+    }
+
+    @Test("A run's start is the claim's own, and work with no claim reports none")
+    func startedAtIsTheClaimsOwn() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let started = ContinuousClock.now.advanced(by: .seconds(-3))
+        #expect(registry.startedAt(tabId) == nil)
+
+        let claim = registry.claim(tabId, startedAt: started)
+        #expect(registry.startedAt(tabId) == started)
+
+        let settled = registry.settle(claim)
+        #expect(settled)
+        _ = registry.beginUnclaimedWork(for: tabId)
+        #expect(registry.isBusy(tabId))
+        #expect(registry.startedAt(tabId) == nil)
     }
 }

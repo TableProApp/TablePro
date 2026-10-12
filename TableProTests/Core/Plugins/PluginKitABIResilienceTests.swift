@@ -16,7 +16,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginKit ABI resilience")
 struct PluginKitABIResilienceTests {
     private func makeMinimalDriver() -> any PluginDatabaseDriver {
         FakeMSSQLPluginDriver()
@@ -40,6 +39,16 @@ struct PluginKitABIResilienceTests {
         #expect(driver.unsupportedStructureColumnFields.isEmpty)
         #expect(driver.unsupportedIndexTypes.isEmpty)
         #expect(driver.schemaOperationRefusal(.renameCheckConstraint(from: "a", to: "b")) == nil)
+        #expect(driver.checkConstraintRefusal == nil)
+        #expect(driver.createSchemaStatement(name: "app") == nil)
+        #expect(driver.createSchemaStatements(PluginSchemaDefinition(name: "app")) == nil)
+        #expect(driver.renameSchemaStatements(name: "app", to: "archive") == nil)
+        #expect(
+            driver.alterSchemaStatements(
+                from: PluginSchemaDetails(name: "app"),
+                to: PluginSchemaDefinition(name: "app")
+            ) == nil
+        )
     }
 
     @Test("A driver that answers only the older name list has it lifted into table-like descriptors")
@@ -58,6 +67,7 @@ struct PluginKitABIResilienceTests {
         let driver = makeMinimalDriver()
         #expect(try await driver.fetchSchemas().isEmpty)
         #expect(try await driver.fetchExternalSchemaNames().isEmpty)
+        #expect(try await driver.fetchSchemaDetails(name: "app") == nil)
         #expect(try await driver.fetchApproximateRowCount(table: "users", schema: nil) == nil)
         #expect(try await driver.fetchIndexDDL(table: "users", schema: nil).isEmpty)
         #expect(try await driver.fetchCommentDDL(table: "users", schema: nil).isEmpty)

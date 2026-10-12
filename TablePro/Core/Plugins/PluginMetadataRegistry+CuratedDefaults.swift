@@ -9,11 +9,16 @@ import TableProPluginKit
 /// What the app knows about a database type before its plugin loads.
 ///
 /// The primary type ids here are overwritten by `buildMetadataSnapshot` the moment the plugin
-/// registers, so these are the pre-load answer for those. For a variant id they are the whole
+/// registers, so these are the pre-load answer for those, apart from an explain list the plugin
+/// leaves empty, which keeps the one here. For a variant id they are the whole
 /// answer: `registerVariant` keeps the curated entry and ignores the plugin's own statics, which
-/// is the only reason MariaDB, TiDB, Databend, Redshift, CockroachDB and PGlite can differ from
+/// is the only reason MariaDB, TiDB, Databend, OceanBase, Redshift, CockroachDB and PGlite can differ from
 /// the plugin that drives them.
 extension PluginMetadataRegistry {
+    /// SQLite's own extensions. libSQL and Turso name a new local file with them too, since the file
+    /// their driver creates is a SQLite database.
+    static let sqliteFileExtensions = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
+
     // swiftlint:disable:next function_body_length
     static func curatedDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let mysqlDialect = SQLDialectDescriptor(
@@ -196,7 +201,7 @@ extension PluginMetadataRegistry {
 
         let pgpassField = ConnectionField(
             id: "usePgpass",
-            label: String(localized: "Use Password File"),
+            label: String(localized: "Use ~/.pgpass"),
             defaultValue: "false",
             fieldType: .toggle,
             section: .authentication,
@@ -213,7 +218,11 @@ extension PluginMetadataRegistry {
 
         let awsIAMFields = AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
 
-        /// The MySQL plugin's types only. PostgreSQL shares `awsIAMFields` and must not pick this up:
+        /// Cloud SQL signs IAM principals in to MySQL and PostgreSQL only, so SQL Server and the
+        /// MySQL and PostgreSQL forks keep the AWS-only picker.
+        let cloudIAMFields = GoogleCloudSQLAuthFields.standardWithAWS() + [AWSAuthFields.rdsEndpointField()]
+
+        /// The MySQL plugin's types only. PostgreSQL shares the IAM fields and must not pick this up:
         /// its driver holds no releasable resource, so the setting would do nothing.
         let mysqlIdleReleaseField = ConnectionField(
             id: "mysqlIdleReleaseMinutes",
@@ -268,7 +277,8 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    browsingRequiresSelectedDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -277,14 +287,18 @@ extension PluginMetadataRegistry {
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["information_schema", "mysql", "performance_schema", "sys"],
+                    systemDatabaseNames: [
+                        "information_schema", "mysql", "performance_schema", "sys",
+                        "INFORMATION_SCHEMA", "PERFORMANCE_SCHEMA"
+                    ],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
                         .onUpdate, .autoIncrement, .comment, .charset, .collation
-                    ]
+                    ],
+                    rowMatchTextTypePrefixes: mysqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mysqlDialect,
@@ -292,10 +306,11 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
+                    additionalConnectionFields: cloudIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
                     category: .relational,
                     tagline: String(localized: "Most popular open-source SQL database"),
-                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
+                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock",
+                    defaultLocalSocketPath: MySQLLocalSocket.defaultPath
                 )
             )),
             ("MariaDB", PluginMetadataSnapshot(
@@ -332,7 +347,8 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    browsingRequiresSelectedDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -341,14 +357,18 @@ extension PluginMetadataRegistry {
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["information_schema", "mysql", "performance_schema", "sys"],
+                    systemDatabaseNames: [
+                        "information_schema", "mysql", "performance_schema", "sys",
+                        "INFORMATION_SCHEMA", "PERFORMANCE_SCHEMA"
+                    ],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
                         .onUpdate, .autoIncrement, .comment, .charset, .collation
-                    ]
+                    ],
+                    rowMatchTextTypePrefixes: mysqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mysqlDialect,
@@ -359,7 +379,8 @@ extension PluginMetadataRegistry {
                     additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
                     category: .relational,
                     tagline: String(localized: "Open-source fork of MySQL"),
-                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
+                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock",
+                    defaultLocalSocketPath: MySQLLocalSocket.defaultPath
                 )
             )),
             ("PostgreSQL", PluginMetadataSnapshot(
@@ -392,6 +413,9 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
+                    supportsSchemaPrivileges: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -411,7 +435,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
@@ -425,7 +449,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField, connectionOptionsField] + awsIAMFields,
+                    additionalConnectionFields: [pgpassField, connectionOptionsField] + cloudIAMFields,
                     category: .relational,
                     tagline: String(localized: "Advanced object-relational SQL"),
                     defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432"
@@ -435,7 +459,7 @@ extension PluginMetadataRegistry {
                 displayName: "Redshift", iconName: "redshift-icon", defaultPort: 5_439,
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
                 isDownloadable: false, primaryUrlScheme: "redshift", parameterStyle: .dollar,
-                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                navigationModel: .standard, explainVariants: redshiftExplainVariants, pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["redshift"],
                 postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#205B8E",
@@ -458,6 +482,8 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -468,7 +494,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["padb_harvest"],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
@@ -523,6 +549,8 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
                     supportsAddColumn: false,
                     supportsModifyColumn: false,
                     supportsDropColumn: false,
@@ -531,7 +559,7 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsCheckConstraints: true,
-                    supportsCheckConstraintEditing: true,
+                    supportsCheckConstraintEditing: false,
                     supportsGeneratedColumns: true,
                     defaultSSLMode: .preferred
                 ),
@@ -543,7 +571,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["system"],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
@@ -572,7 +600,9 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#F4B942",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                structureEditing: SchemaEditingSupport(foreignKeyEdit: .alter),
+                structureEditing: SchemaEditingSupport(
+                    columnReorder: .rebuild, foreignKeyEdit: .alter, structureEdits: .postgreSQL
+                ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -590,6 +620,9 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: false,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
+                    supportsSchemaPrivileges: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -598,7 +631,6 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .disabled,
-                    supportsCloudflareTunnel: false,
                     supportsConnectionPooling: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -609,7 +641,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
@@ -664,9 +696,10 @@ extension PluginMetadataRegistry {
                     supportsCheckConstraints: true,
                     supportsGeneratedColumns: true,
                     supportsDatabaseTriggerBrowse: true,
-                    supportsCloudflareTunnel: false,
                     localFilePathField: .database,
-                    supportsRemoteDatabaseFile: true
+                    newDatabaseFileExtensions: Self.sqliteFileExtensions,
+                    supportsRemoteDatabaseFile: true,
+                    supportsRemoteDatabaseSession: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -677,7 +710,7 @@ extension PluginMetadataRegistry {
                     immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
-                    fileExtensions: ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"],
+                    fileExtensions: Self.sqliteFileExtensions,
                     fileSignatures: [.magic("SQLite format 3\u{0}")],
                     databaseGroupingStrategy: .flat,
                     structureColumnFields: [
@@ -691,6 +724,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: sqliteColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [.loadableExtensions()],
                     category: .relational,
                     tagline: String(localized: "Embedded zero-config SQL database")
                 )

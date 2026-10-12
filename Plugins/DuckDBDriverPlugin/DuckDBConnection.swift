@@ -278,7 +278,7 @@ actor DuckDBConnectionActor {
     /// genuinely open, and the next release would close the handle and roll it back.
     private func noteActivity(_ query: String) {
         lastActivity = ContinuousClock.now
-        switch SQLTransactionTracking.effect(of: query) {
+        switch SQLTransactionTracking.effect(of: query, lexicalFeatures: DuckDBLexicalFeatures.features) {
         case .opens: hasOpenTransaction = true
         case .closes: hasOpenTransaction = false
         case .unchanged: break
@@ -286,6 +286,45 @@ actor DuckDBConnectionActor {
         /// keeps the file rather than closing it over something unrecognised.
         @unknown default: hasOpenTransaction = true
         }
+    }
+
+    /// What the session has open, for a caller deciding whether it may open a transaction of its
+    /// own on it.
+    ///
+    /// A released handle answers `.idle`: a release only happens over a session holding nothing, and
+    /// reopening to ask would undo it. The probe itself never reopens for the same reason, and it
+    /// runs outside `noteActivity`, so asking the question does not reset the idle clock the
+    /// question is about.
+    func sessionTransactionState() -> PluginSessionTransactionState {
+        guard !isReleased else { return .idle }
+        guard connection != nil else { return .unknown }
+        if let decided = DuckDBTransactionProbe.state(
+            catalogType: probeReading(DuckDBTransactionProbe.catalogTypeQuery),
+            tracksOpenTransaction: hasOpenTransaction
+        ) {
+            return decided
+        }
+        return DuckDBTransactionProbe.state(
+            first: probeReading(DuckDBTransactionProbe.transactionIdQuery),
+            second: probeReading(DuckDBTransactionProbe.transactionIdQuery)
+        )
+    }
+
+    /// Runs one probe statement through `duckdb_query`, which is the only path that hands back the
+    /// error *type*: a refusal because the transaction is aborted is the answer rather than a
+    /// failure, and the message text is not a contract.
+    private func probeReading(_ sql: String) -> DuckDBTransactionProbe.Reading {
+        guard let conn = connection else { return .unreadable }
+        var result = duckdb_result()
+        defer { duckdb_destroy_result(&result) }
+        guard duckdb_query(conn, sql, &result) != DuckDBError else {
+            return duckdb_result_error_type(&result) == DUCKDB_ERROR_TRANSACTION ? .abortedTransaction : .unreadable
+        }
+        guard duckdb_row_count(&result) > 0, let cell = duckdb_value_varchar(&result, 0, 0) else {
+            return .unreadable
+        }
+        defer { duckdb_free(cell) }
+        return .value(String(cString: cell))
     }
 
     /// Nil when nothing stands in the way of a release.
@@ -360,7 +399,7 @@ actor DuckDBConnectionActor {
         query: String, parameters: [PluginCellValue], connection: duckdb_connection
     ) throws -> (result: duckdb_result, schema: ColumnSchema) {
         var statement: duckdb_prepared_statement?
-        let projection = resolveProjection(query: query, connection: connection, statement: &statement)
+        let projection = try resolveProjection(query: query, connection: connection, statement: &statement)
         defer { duckdb_destroy_prepare(&statement) }
 
         if case .projected(let sql, let schema) = projection,
@@ -396,12 +435,17 @@ actor DuckDBConnectionActor {
         return projected
     }
 
+    /// A text holding more than one statement fails to prepare, and it must stay failed: running it
+    /// through `duckdb_query` would let a crafted name carry a second statement.
     private static func resolveProjection(
         query: String, connection: duckdb_connection, statement: inout duckdb_prepared_statement?
-    ) -> ResultProjection {
-        let state = duckdb_prepare(connection, query, &statement)
-
-        guard state != DuckDBError, let stmt = statement else { return .unprojected }
+    ) throws -> ResultProjection {
+        guard duckdb_prepare(connection, query, &statement) != DuckDBError, let stmt = statement else {
+            let message = statement.flatMap { duckdb_prepare_error($0) }.map { String(cString: $0) }
+                ?? "Failed to prepare statement"
+            duckdb_destroy_prepare(&statement)
+            throw DuckDBPluginError.queryFailed(message)
+        }
         guard duckdb_prepared_statement_type(stmt) == DUCKDB_STATEMENT_TYPE_SELECT else { return .unprojected }
 
         let columnCount = duckdb_prepared_statement_column_count(stmt)

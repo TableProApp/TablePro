@@ -103,7 +103,7 @@ struct TableQueryBuilder {
         selectColumns: [String]? = nil,
         limit: Int = 200,
         offset: Int = 0
-    ) -> String {
+    ) -> String? {
         if let pluginDriver {
             let targetColumns = selectColumns ?? columns
             let sortCols = SortColumnResolver.resolvedIndices(
@@ -122,19 +122,18 @@ struct TableQueryBuilder {
             }
         }
 
+        guard let dialect else { return nil }
+
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
         var query = "SELECT \(selectClause(selectColumns)) FROM \(quotedTable)"
 
-        if let dialect {
-            let activeFilters = filters.filter { $0.isEnabled }
-            let filterGen = FilterSQLGenerator(
-                dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
-                stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
-            )
-            let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
-            if !whereClause.isEmpty {
-                query += " \(whereClause)"
-            }
+        let filterGen = FilterSQLGenerator(
+            dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+        )
+        let whereClause = filterGen.generateWhereClause(from: filters.filter { $0.isEnabled }, logicMode: logicMode)
+        if !whereClause.isEmpty {
+            query += " \(whereClause)"
         }
 
         if let orderBy = orderByOrOffsetFetchDefault(sortState: sortState, columns: columns) {
@@ -161,14 +160,8 @@ struct TableQueryBuilder {
             let sortCols = SortColumnResolver.resolvedIndices(
                 for: sortState, displayColumns: columns, targetColumns: targetColumns
             )
-            var tuples: [(column: String, op: String, value: String)] = []
-            let trimmedPattern = pattern.trimmingCharacters(in: .whitespaces)
-            if !trimmedPattern.isEmpty {
-                tuples.append((column: "Key", op: "MATCH", value: trimmedPattern))
-            }
-            if let typeScope, !typeScope.isEmpty {
-                tuples.append((column: "Type", op: "=", value: typeScope))
-            }
+            let tuples = BrowseSearchState(pattern: pattern, typeScope: typeScope).pluginQueryFilters
+                .map { (column: $0.column, op: $0.op, value: $0.value) }
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, schema: schemaName, filters: tuples,
                 logicMode: "and", sortColumns: sortCols,

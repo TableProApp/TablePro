@@ -140,6 +140,7 @@ final class D1HttpClient: @unchecked Sendable {
     private let lock = NSLock()
     private var _databaseId: String
     private var session: URLSession?
+    private var connectDeadline: PluginConnectDeadline?
     private var inFlight: [ObjectIdentifier: URLSessionTask] = [:]
     private let queryTimeout = HttpQueryTimeoutBox()
 
@@ -166,19 +167,31 @@ final class D1HttpClient: @unchecked Sendable {
         queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
-    func createSession(configuration: URLSessionConfiguration = .default) {
-        configuration.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+    func createSession(
+        configuration: URLSessionConfiguration = .default,
+        connectDeadline: PluginConnectDeadline? = nil
+    ) {
+        configuration.timeoutIntervalForRequest = max(
+            HttpQueryTimeout.sessionBootstrapRequestTimeout,
+            connectDeadline?.remainingSeconds() ?? 0
+        )
         configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         lock.lock()
+        self.connectDeadline = connectDeadline
         session = URLSession(configuration: configuration)
         lock.unlock()
+    }
+
+    func finishConnecting() {
+        lock.withLock { connectDeadline = nil }
     }
 
     func invalidateSession() {
         lock.lock()
         session?.invalidateAndCancel()
         session = nil
+        connectDeadline = nil
         lock.unlock()
     }
 
@@ -315,13 +328,14 @@ final class D1HttpClient: @unchecked Sendable {
     }
 
     private func performRequest(url: URL, method: String, body: Data?) async throws -> Data {
-        guard let session = lock.withLock({ self.session }) else {
+        let connection = lock.withLock { (session: session, deadline: connectDeadline) }
+        guard let session = connection.session else {
             throw D1HttpError(message: String(localized: "Not connected to database"))
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = queryTimeout.requestTimeoutInterval
+        request.timeoutInterval = connection.deadline?.remainingSeconds() ?? queryTimeout.requestTimeoutInterval
         request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body

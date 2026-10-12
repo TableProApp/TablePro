@@ -82,10 +82,22 @@ internal final class DataGridCellAccessibilityView: NSView {
     /// and AXConfirm). Reporting it as static text would leave the menu unreachable to a client that
     /// looks for one, which is every client but a sighted pointer.
     override internal func accessibilityRole() -> NSAccessibility.Role? {
-        coordinator?.presentsComboBoxCell(columnIndex: dataColumn) == true ? .comboBox : .staticText
+        if coordinator?.checkboxMark(row: row, columnIndex: dataColumn) != nil { return .checkBox }
+        return coordinator?.presentsComboBoxCell(columnIndex: dataColumn) == true ? .comboBox : .staticText
     }
 
-    override internal func accessibilityValue() -> Any? { text }
+    override internal func accessibilityValue() -> Any? {
+        if let mark = coordinator?.checkboxMark(row: row, columnIndex: dataColumn) {
+            return NSNumber(value: mark == .checked)
+        }
+        return text
+    }
+
+    override internal func accessibilityPerformPress() -> Bool {
+        guard coordinator?.toggleCheckbox(row: row, columnIndex: dataColumn) == true else { return false }
+        NSAccessibility.post(element: self, notification: .valueChanged)
+        return true
+    }
 
     /// Every combination is its own format string rather than pieces joined at run time, so a
     /// translator sees a whole sentence and can order its parts. The pending change comes before the

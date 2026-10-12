@@ -10,10 +10,10 @@ enum IntegrationClient: String, CaseIterable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .claudeCode: return String(localized: "Claude Code")
-        case .claudeDesktop: return String(localized: "Claude Desktop")
-        case .cursor: return String(localized: "Cursor")
-        case .zed: return String(localized: "Zed")
+        case .claudeCode: return "Claude Code"
+        case .claudeDesktop: return "Claude Desktop"
+        case .cursor: return "Cursor"
+        case .zed: return "Zed"
         }
     }
 }

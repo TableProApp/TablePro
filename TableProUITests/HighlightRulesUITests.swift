@@ -41,6 +41,59 @@ final class HighlightRulesUITests: UITestCase {
         XCTAssertEqual(ruleCheckboxes(in: window).count, 1, "A rule closed without a value is not kept")
     }
 
+    func testChangingARulesColumnKeepsTheColumnItWasGiven() throws {
+        let app = try launchWithSampleDatabase()
+        let window = try readyWindow(of: app)
+        _ = try albumGrid(in: window)
+
+        openRulesFromStatusBar(in: window)
+        let add = window.buttons["highlight-rules-add"].firstMatch
+        XCTAssertTrue(waitUntilHittable(add, timeout: 10), "The popover must offer Add Rule")
+        add.click()
+
+        let column = window.popUpButtons.matching(identifier: "highlight-rule-column").firstMatch
+        XCTAssertTrue(waitUntilHittable(column, timeout: 10), "A rule must offer its column")
+        let initial = column.value as? String
+        XCTAssertNotNil(initial, "The column pull-down must publish the column it is set to")
+
+        let chosen = initial == "Title" ? "AlbumId" : "Title"
+        column.click()
+        let item = app.menuItems[chosen].firstMatch
+        XCTAssertTrue(waitUntilHittable(item, timeout: 10), "The column menu must offer \(chosen)")
+        item.click()
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { column.value as? String == chosen },
+            "Picking \(chosen) must leave the rule on it, not revert to \(initial ?? "")"
+        )
+    }
+
+    func testChangingARulesOperatorKeepsTheOperatorItWasGiven() throws {
+        let app = try launchWithSampleDatabase()
+        let window = try readyWindow(of: app)
+        _ = try albumGrid(in: window)
+
+        openRulesFromStatusBar(in: window)
+        let add = window.buttons["highlight-rules-add"].firstMatch
+        XCTAssertTrue(waitUntilHittable(add, timeout: 10), "The popover must offer Add Rule")
+        add.click()
+
+        let operatorMenu = window.descendants(matching: .any)
+            .matching(identifier: "highlight-rule-operator").firstMatch
+        XCTAssertTrue(waitUntilHittable(operatorMenu, timeout: 10), "A rule must offer its operator")
+        XCTAssertEqual(operatorMenu.value as? String, "equals", "A new rule starts on equals")
+
+        operatorMenu.click()
+        let contains = app.menuItems["contains"].firstMatch
+        XCTAssertTrue(waitUntilHittable(contains, timeout: 10), "The operator menu must list contains")
+        contains.click()
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { operatorMenu.value as? String == "contains" },
+            "Picking contains must leave the rule on contains, not revert to equals"
+        )
+    }
+
     func testTheCellMenuOffersHighlightAndOpensTheRules() throws {
         let app = try launchWithSampleDatabase()
         let window = try readyWindow(of: app)

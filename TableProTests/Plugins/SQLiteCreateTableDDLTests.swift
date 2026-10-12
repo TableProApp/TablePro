@@ -8,7 +8,6 @@ import Testing
 import TableProPluginKit
 
 /// Every expectation was checked against sqlite3 3.54.0 before it was written here.
-@Suite("SQLite CREATE TABLE DDL")
 struct SQLiteCreateTableDDLTests {
     private func definition(
         columns: [PluginColumnDefinition] = [
@@ -122,27 +121,5 @@ struct SQLiteCreateTableDDLTests {
         let columns = [PluginColumnDefinition(name: "we`ird", dataType: "TEXT")]
         let sql = try #require(sqliteCreateTableSQL(definition: definition(columns: columns)))
         #expect(sql.contains("`we``ird`"))
-    }
-
-    /// A unique partial index that loses its predicate rejects rows the user meant to exclude, so
-    /// the condition is part of the index rather than decoration.
-    @Test("a partial index keeps its WHERE predicate")
-    func partialIndex() {
-        let index = PluginIndexDefinition(
-            name: "idx_open", columns: ["parent_id"], isUnique: true, whereClause: "deleted_at IS NULL"
-        )
-        #expect(
-            sqliteAddIndexSQL(table: "child", index: index)
-                == "CREATE UNIQUE INDEX `idx_open` ON `child` (`parent_id`) WHERE deleted_at IS NULL"
-        )
-    }
-
-    @Test("an index is its own statement")
-    func addIndex() {
-        let index = PluginIndexDefinition(name: "idx_parent", columns: ["parent_id"], isUnique: true)
-        #expect(
-            sqliteAddIndexSQL(table: "child", index: index)
-                == "CREATE UNIQUE INDEX `idx_parent` ON `child` (`parent_id`)"
-        )
     }
 }

@@ -39,7 +39,7 @@ enum MCPPromptMarkdown {
             sections.append("Foreign keys:\n" + foreignKeyList(detail.foreignKeys))
         }
         if includeDdl, let ddl = detail.ddl, !ddl.isEmpty {
-            sections.append("DDL:\n```sql\n\(ddl)\n```")
+            sections.append("DDL:\n" + codeBlock(ddl, language: "sql"))
         }
         return sections.joined(separator: "\n\n")
     }
@@ -98,13 +98,13 @@ enum MCPPromptMarkdown {
         lines.append("")
         lines.append("Statements, newest first:")
         for entry in entries {
-            lines.append("```sql\n\(truncated(entry.query, limit: 600))\n```")
+            lines.append(codeBlock(truncated(entry.query, limit: 600), language: "sql"))
         }
         return lines.joined(separator: "\n")
     }
 
     static func codeBlock(_ text: String, language: String) -> String {
-        "```\(language)\n\(text)\n```"
+        MarkdownFence.wrap(text, language: language)
     }
 
     static func truncated(_ text: String, limit: Int) -> String {

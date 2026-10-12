@@ -10,10 +10,12 @@ final class AnthropicProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AnthropicProvider")
 
     private let endpoint: String
+    private let resolvedEndpoint: AIEndpoint?
     private let apiKey: String
     private let model: String
     private let maxOutputTokens: Int
     private let configuredEffort: ReasoningEffort?
+    private let providerID: UUID?
     private let session: URLSession
 
     init(
@@ -21,14 +23,25 @@ final class AnthropicProvider: ChatTransport {
         apiKey: String,
         model: String = "",
         maxOutputTokens: Int = 4_096,
-        reasoningEffort: ReasoningEffort? = nil
+        reasoningEffort: ReasoningEffort? = nil,
+        providerID: UUID? = nil,
+        session: URLSession = URLSession(configuration: .ephemeral)
     ) {
-        self.endpoint = endpoint.normalizedEndpoint()
+        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.resolvedEndpoint = AIEndpoint(endpoint, style: .messages)
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.configuredEffort = reasoningEffort
-        self.session = URLSession(configuration: .ephemeral)
+        self.providerID = providerID
+        self.session = session
+    }
+
+    private func requestURL(_ resource: String) throws -> URL {
+        guard let url = resolvedEndpoint?.url(appending: resource) else {
+            throw AIProviderError.invalidEndpoint(endpoint)
+        }
+        return url
     }
 
     func streamChat(
@@ -52,9 +65,7 @@ final class AnthropicProvider: ChatTransport {
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        guard let url = URL(string: "\(endpoint)/v1/models") else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(AIEndpointStyle.messages.modelsResource)
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -67,13 +78,25 @@ final class AnthropicProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("Anthropic model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Anthropic model fetch failed; using known models: \(error.publicLogShape, privacy: .public)")
             return Self.offlineModels
         }
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.warning("Anthropic model fetch returned no HTTP response; using known models")
+            return Self.offlineModels
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIProviderError.mapHTTPError(
+                statusCode: httpResponse.statusCode,
+                body: body,
+                requestURL: url
+            )
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = json["data"] as? [[String: Any]]
         else {
             Self.logger.warning("Anthropic model fetch returned unexpected response; using known models")
@@ -178,18 +201,16 @@ final class AnthropicProvider: ChatTransport {
         }
 
         let body = String(data: data, encoding: .utf8) ?? ""
-        throw AIProviderError.mapHTTPError(statusCode: statusCode, body: body)
+        throw AIProviderError.mapHTTPError(statusCode: statusCode, body: body, requestURL: request.url)
     }
 
-    private func buildMessagesRequest(
+    func buildMessagesRequest(
         turns: [ChatTurnWire],
         options: ChatTransportOptions,
         stream: Bool = true,
         effort: ReasoningEffort?
     ) throws -> URLRequest {
-        guard let url = URL(string: "\(endpoint)/v1/messages") else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(AIEndpointStyle.messages.chatResource(model: options.model))
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -206,7 +227,8 @@ final class AnthropicProvider: ChatTransport {
             options: options,
             effort: effort,
             maxTokens: resolvedMaxTokens,
-            stream: stream
+            stream: stream,
+            liveReasoning: AIModelCatalog.shared.fetchedInfo(providerID: providerID, modelID: options.model)?.reasoning
         )
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -218,7 +240,8 @@ final class AnthropicProvider: ChatTransport {
         options: ChatTransportOptions,
         effort: ReasoningEffort?,
         maxTokens: Int,
-        stream: Bool
+        stream: Bool,
+        liveReasoning: AIReasoningSupport? = nil
     ) throws -> [String: Any] {
         var body: [String: Any] = [
             "model": options.model,
@@ -231,7 +254,7 @@ final class AnthropicProvider: ChatTransport {
         }
 
         if let effort {
-            let reasoning = resolvedReasoning(for: options.model)
+            let reasoning = liveReasoning ?? offlineReasoning(for: options.model)
 
             if let thinking = thinkingBody(for: effort, reasoning: reasoning, maxTokens: maxTokens) {
                 body["thinking"] = thinking
@@ -254,13 +277,7 @@ final class AnthropicProvider: ChatTransport {
         return body
     }
 
-    static func resolvedReasoning(for model: String) -> AIReasoningSupport {
-        if let live = AIModelCatalog.shared.reasoning(
-            providerTypeID: AIProviderType.claude.rawValue,
-            modelID: model
-        ) {
-            return live
-        }
+    private static func offlineReasoning(for model: String) -> AIReasoningSupport {
         let capabilities = AnthropicModelCapabilities.resolve(model: model)
         return AIReasoningSupport(
             mode: capabilities.thinkingMode == .adaptive ? .adaptive : .budgeted,

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Linked folder stores")
 struct LinkedFolderStoreTests {
     @Test("LinkedFolderStorage adds and removes through the shared implementation")
     func linkedFolderRoundTrips() throws {

@@ -19,6 +19,11 @@ struct ClickHouseCapabilities: Sendable, Equatable {
         major > 23 || (major == 23 && minor >= 8)
     }
 
+    // https://clickhouse.com/docs/sql-reference/statements/alter/comment: "available since version 23.9"
+    var hasModifyComment: Bool {
+        major > 23 || (major == 23 && minor >= 9)
+    }
+
     static func parse(_ version: String?) -> ClickHouseCapabilities {
         guard let version else { return .unknown }
         let parts = version.split(separator: ".")

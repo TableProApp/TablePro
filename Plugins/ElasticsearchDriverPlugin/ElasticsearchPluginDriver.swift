@@ -112,6 +112,20 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         return result
     }
 
+    /// The mapping already names every path and every `nested` ancestor, so nothing is sampled.
+    /// Reporting them is what offers the same-element choice on a filter row: without it two
+    /// filters on one array are two independent questions, each answered by a different element.
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        try await cachedMappingColumns(table).map { column in
+            PluginFieldPath(
+                path: column.name,
+                typeName: column.type,
+                depth: column.name.split(separator: ".").count,
+                arrayPrefixes: column.nestedPaths
+            )
+        }
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         [PluginIndexInfo(name: "_id", columns: ["_id"], isUnique: true, isPrimary: true, type: "PRIMARY KEY")]
     }
@@ -193,7 +207,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         Self.logger.debug("""
         buildFilteredQuery table=\(table, privacy: .public) logic=\(logicMode, privacy: .public) limit=\(limit) offset=\(offset) \
         columns=[\(columns.joined(separator: ","), privacy: .public)] \
-        filters=\(filters.map { "\($0.column) \($0.op) '\($0.value)'" }.joined(separator: " | "), privacy: .public) \
+        filters=\(filters.map { "\($0.column) \($0.op) '\($0.value)'" }.joined(separator: " | "), privacy: .private) \
         sortColumns=\(sortColumns.map { "[\($0.columnIndex)]=\($0.ascending ? "asc" : "desc")" }.joined(separator: " "), privacy: .public) \
         resolvedSorts=\(sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .public)
         """)
@@ -202,20 +216,41 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         )
     }
 
+    /// Export reads the index through the driver's own paging rather than through a fabricated
+    /// `SELECT * FROM "<index>"`, which this driver rejects.
+    func defaultExportQuery(table: String) -> String? {
+        ElasticsearchOperations.encodeExport(index: table)
+    }
+
+    // MARK: - Table Operations
+
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
+        ElasticsearchOperations.deleteIndex(named: name, objectType: objectType)
+    }
+
+    /// Elasticsearch has no truncate. `_delete_by_query` runs asynchronously, reports version
+    /// conflicts per document and leaves the mapping behind, so it is a bulk delete rather than the
+    /// operation the app's Truncate promises. Answering nil keeps the command off the menu instead
+    /// of offering one that means something else.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        nil
+    }
+
     // MARK: - Statement Generation
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+    ) throws -> [PluginRowWrite]? {
         let typeNames = columnTypeNames(for: columns, index: table)
         let generator = ElasticsearchStatementGenerator(index: table, columns: columns, columnTypeNames: typeNames)
-        return generator.generateStatements(
+        return try generator.generateRowWrites(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,
@@ -233,6 +268,14 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         let columns = try await conn.mappingProperties(index: index)
         lock.withLock { _mappingCache[index] = columns }
         return columns
+    }
+
+    /// A mapping is cached for the life of the connection, so anything that can change one has to
+    /// say so or the grid keeps the old columns and a filter on a new field silently matches
+    /// nothing. The whole cache goes rather than one index: a console request can name a list, a
+    /// wildcard or an alias, and refilling it costs one `GET /<index>/_mapping` per index reopened.
+    func invalidateMappingCache() {
+        lock.withLock { _mappingCache.removeAll() }
     }
 
     private func columnTypeNames(for columns: [String], index: String) -> [String] {

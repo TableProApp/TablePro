@@ -35,7 +35,7 @@ internal enum EditorTabStripPalette {
     /// The system darkens a hovered tab rather than lightening it, in light appearance: a rendered
     /// `NSTabBar` measures rgb(220) under the pointer against a rgb(232) track, and this resolves
     /// to rgb(210) against rgb(220). The direction is deliberate and matches, so it is left alone.
-    internal static var hoverFill: Color { Color(nsColor: .tertiarySystemFill) }
+    internal static var hoverFill: Color { Color(nsColor: .tertiaryFill) }
 
     internal static var separator: Color { Color(nsColor: .separatorColor) }
 

@@ -8,9 +8,8 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// Owns the connection-scoped schema refresh so every window of a connection shares
-/// one load instead of running its own. Requests for the same connection and database
-/// scope join the in-flight refresh.
+/// Every window of a connection shares one refresh: a request for the same connection and
+/// database joins the one in flight.
 @MainActor
 final class SchemaRefreshService {
     static let shared = SchemaRefreshService()
@@ -20,28 +19,30 @@ final class SchemaRefreshService {
         let database: String?
     }
 
+    private struct InFlightRefresh {
+        let id: UUID
+        let task: Task<Void, Never>
+    }
+
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaRefreshService")
 
     private let schemaService: SchemaService
-    private let treeMetadataService: DatabaseTreeMetadataService
     private let providerRegistry: SchemaProviderRegistry
     private let pluginManager: PluginManager
     private let metadataDriverProvider: any ScopedMetadataProviding
     private let databaseManager: DatabaseManager?
 
-    private var inFlight: [RefreshKey: Task<Void, Never>] = [:]
+    private var inFlight: [RefreshKey: InFlightRefresh] = [:]
     private var schemaChangeCancellable: AnyCancellable?
 
     init(
         schemaService: SchemaService = .shared,
-        treeMetadataService: DatabaseTreeMetadataService = .shared,
         providerRegistry: SchemaProviderRegistry = .shared,
         pluginManager: PluginManager = .shared,
         metadataDriverProvider: any ScopedMetadataProviding = DatabaseManager.shared,
         databaseManager: DatabaseManager? = .shared
     ) {
         self.schemaService = schemaService
-        self.treeMetadataService = treeMetadataService
         self.providerRegistry = providerRegistry
         self.pluginManager = pluginManager
         self.metadataDriverProvider = metadataDriverProvider
@@ -54,25 +55,51 @@ final class SchemaRefreshService {
             }
     }
 
+    /// The tree's lists are not touched: a scope switch cannot make them stale, and the changes that
+    /// can, a catalog change or a reconnect, mark them themselves.
     func refresh(connection: DatabaseConnection, database: String? = nil) async {
         SchemaForeignKeyStore.shared.invalidate(connectionId: connection.id)
         let key = RefreshKey(connectionId: connection.id, database: database)
         if let existing = inFlight[key] {
-            await existing.value
+            await existing.task.value
             return
         }
-        let task = Task { @MainActor [weak self] in
+        let entry = InFlightRefresh(id: UUID(), task: Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.performRefresh(connection: connection, database: database)
+            await self.performRefresh(connection: connection)
+        })
+        inFlight[key] = entry
+        await entry.task.value
+        finish(entry, for: key)
+    }
+
+    /// Never joins a load that began before the write, which would hand back the old catalog. The
+    /// entry is replaced before anything awaits, so every later plain refresh joins this one instead.
+    func refreshAfterWrite(connection: DatabaseConnection) async {
+        let connectionId = connection.id
+        SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
+        for key in Array(inFlight.keys) where key.connectionId == connectionId {
+            inFlight.removeValue(forKey: key)
         }
-        inFlight[key] = task
-        await task.value
+        let key = RefreshKey(connectionId: connectionId, database: nil)
+        let entry = InFlightRefresh(id: UUID(), task: Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.schemaService.prepareForReload(connectionId: connectionId)
+            await self.performRefresh(connection: connection)
+        })
+        inFlight[key] = entry
+        await entry.task.value
+        finish(entry, for: key)
+    }
+
+    private func finish(_ entry: InFlightRefresh, for key: RefreshKey) {
+        guard inFlight[key]?.id == entry.id else { return }
         inFlight.removeValue(forKey: key)
     }
 
     func waitForRefresh(connectionId: UUID) async {
-        let tasks = inFlight.compactMap { key, task in
-            key.connectionId == connectionId ? task : nil
+        let tasks = inFlight.compactMap { key, entry in
+            key.connectionId == connectionId ? entry.task : nil
         }
         for task in tasks {
             await task.value
@@ -107,7 +134,7 @@ final class SchemaRefreshService {
               session.driver != nil,
               let scope = metadataDriverProvider.browseScope(for: connectionId) else { return false }
 
-        if schemaService.loadedScope(for: connectionId) != scope {
+        if schemaService.loadedScope(for: connectionId) != scope || !schemaService.isCatalogCurrent(for: connectionId) {
             await refresh(connection: session.connection)
             await waitForRefresh(connectionId: connectionId)
             await schemaService.waitForRefresh(connectionId: connectionId)
@@ -131,11 +158,11 @@ final class SchemaRefreshService {
                 scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
-                await schemaService.loadSchemaObjects(connectionId: connectionId, schema: schema, driver: driver)
+                await schemaService.loadSchemaObjects(schema: schema, in: scope, driver: driver)
             }
         } catch {
             Self.logger.warning(
-                "[schema] browsed schema load failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] browsed schema load failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
             return false
         }
@@ -178,12 +205,12 @@ final class SchemaRefreshService {
             providerRegistry.notePopulatedExternally(scope: browseScope)
         } catch {
             Self.logger.warning(
-                "[schema] autocomplete sync failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] autocomplete sync failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
 
-    private func refreshForSchemaSwitch(connectionId: UUID) async {
+    func refreshForSchemaSwitch(connectionId: UUID) async {
         guard let connection = databaseManager?.session(for: connectionId)?.connection else { return }
         guard pluginManager.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema else {
             await refresh(connection: connection)
@@ -243,23 +270,25 @@ final class SchemaRefreshService {
             return
         } catch {
             Self.logger.warning(
-                "[schema] routine refresh after schema switch failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] routine refresh after schema switch failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
         await syncAutocompleteProvider(connectionId: connectionId)
     }
 
-    private func performRefresh(connection: DatabaseConnection, database: String?) async {
+    private func performRefresh(connection: DatabaseConnection) async {
         let connectionId = connection.id
 
         if pluginManager.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
             await schemaService.prepareForReload(connectionId: connectionId)
         }
 
+        let browseScope = metadataDriverProvider.browseScope(for: connectionId)
         do {
-            guard let scope = metadataDriverProvider.browseScope(for: connectionId) else {
+            guard let scope = browseScope else {
                 throw DatabaseError.notConnected
             }
+            let awaitedSchemas = schemasAwaitingJudgement(in: scope)
             try await metadataDriverProvider.withMetadataDriver(
                 scope: scope,
                 workload: .bulk
@@ -271,7 +300,8 @@ final class SchemaRefreshService {
                     scope: scope
                 )
                 await schemaService.refreshLoadedSchemaObjects(
-                    connectionId: connectionId,
+                    in: scope,
+                    fetchingNow: awaitedSchemas,
                     driver: driver
                 )
             }
@@ -279,12 +309,42 @@ final class SchemaRefreshService {
             return
         } catch {
             Self.logger.warning(
-                "[schema] refresh failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] refresh failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
-            schemaService.markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+            schemaService.markLoadFailed(
+                connectionId: connectionId,
+                message: error.localizedDescription,
+                scope: browseScope
+            )
         }
 
-        await treeMetadataService.refreshLoadedTables(connectionId: connectionId, database: database)
         await syncAutocompleteProvider(connectionId: connectionId)
+    }
+
+    /// The schemas judged against the refreshed catalog as soon as it settles: the browsed one, and
+    /// every one holding a queued truncate or drop, which a catalog change prunes when it finishes.
+    private func schemasAwaitingJudgement(in scope: DatabaseScope) -> Set<String> {
+        var schemas = Set([scope.schema].compactMap { $0 })
+        guard let session = databaseManager?.session(for: scope.connectionId) else { return schemas }
+        for ref in session.pendingTruncates.union(session.pendingDeletes) {
+            guard (ref.database ?? scope.database) == scope.database, let schema = ref.qualifyingSchema else {
+                continue
+            }
+            schemas.insert(schema)
+        }
+        return schemas
+    }
+}
+
+/// The browse scope's object list, routines, triggers, types and schema list, which is everything
+/// `SchemaService` holds. A change that reaches none of it, or lands in a database the connection is
+/// not browsing, has nothing to refresh here.
+extension SchemaRefreshService: CatalogChangeTarget {
+    func refreshCatalog(for change: CatalogChange) async {
+        guard !change.kinds.isDisjoint(with: [.objects, .schemas]),
+              let connection = databaseManager?.session(for: change.connectionId)?.connection,
+              let browseScope = metadataDriverProvider.browseScope(for: change.connectionId),
+              change.reaches(database: browseScope.database) else { return }
+        await refreshAfterWrite(connection: connection)
     }
 }

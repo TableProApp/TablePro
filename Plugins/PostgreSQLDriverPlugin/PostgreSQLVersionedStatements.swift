@@ -32,7 +32,6 @@ internal struct PostgreSQLSessionFacts: Sendable, Equatable {
 }
 
 internal enum PostgreSQLVersionedStatements {
-    static let postgreSQLIndexMethods: Set<String> = ["BTREE", "HASH", "GIN", "GIST", "BRIN"]
     static let mySQLOnlyIndexTypes: Set<String> = ["FULLTEXT", "SPATIAL"]
 
     static func createSchema(_ name: String, capabilities: PostgreSQLCapabilities) -> String {
@@ -48,12 +47,21 @@ internal enum PostgreSQLVersionedStatements {
         return "DO \(tag) \(body) \(tag)"
     }
 
-    static func reindexDatabase(currentDatabase: String?, capabilities: PostgreSQLCapabilities) -> String? {
-        guard !capabilities.hasUnnamedReindexDatabase else { return "REINDEX DATABASE CONCURRENTLY" }
+    static func reindex(verbose: Bool, capabilities: PostgreSQLCapabilities) -> String {
+        verbose && capabilities.hasReindexOptions ? "REINDEX (VERBOSE)" : "REINDEX"
+    }
+
+    static func reindexDatabase(
+        currentDatabase: String?,
+        verbose: Bool,
+        capabilities: PostgreSQLCapabilities
+    ) -> String? {
+        let keyword = reindex(verbose: verbose, capabilities: capabilities)
+        guard !capabilities.hasUnnamedReindexDatabase else { return "\(keyword) DATABASE CONCURRENTLY" }
         guard let currentDatabase, !currentDatabase.isEmpty else { return nil }
         let identifier = PostgreSQLObjectQueries.quoteIdentifier(currentDatabase)
-        guard capabilities.hasReindexConcurrently else { return "REINDEX DATABASE \(identifier)" }
-        return "REINDEX DATABASE CONCURRENTLY \(identifier)"
+        guard capabilities.hasReindexConcurrently else { return "\(keyword) DATABASE \(identifier)" }
+        return "\(keyword) DATABASE CONCURRENTLY \(identifier)"
     }
 
     static func triggerTemplate(
@@ -151,9 +159,15 @@ internal enum PostgreSQLVersionedStatements {
     }
 
     static func indexRefusal(_ index: PluginIndexDefinition, capabilities: PostgreSQLCapabilities) -> String? {
+        if index.includedColumns?.isEmpty == false, !capabilities.hasCoveringIndexes {
+            return String(localized: "INCLUDE columns need PostgreSQL 11 or later.")
+        }
         guard let type = index.indexType?.uppercased(), !type.isEmpty else { return nil }
         if mySQLOnlyIndexTypes.contains(type) {
             return String(format: String(localized: "PostgreSQL has no %@ index type."), type)
+        }
+        if type == "SPGIST", !capabilities.hasSpGistIndexes {
+            return String(localized: "SP-GiST indexes need PostgreSQL 9.2 or later.")
         }
         guard type == "BRIN", !capabilities.hasBrinIndexes else { return nil }
         return String(localized: "BRIN indexes need PostgreSQL 9.5 or later.")
@@ -164,7 +178,14 @@ internal enum PostgreSQLVersionedStatements {
     }
 
     static func unsupportedIndexTypes(capabilities: PostgreSQLCapabilities) -> Set<String> {
-        capabilities.hasBrinIndexes ? mySQLOnlyIndexTypes : mySQLOnlyIndexTypes.union(["BRIN"])
+        var unsupported = mySQLOnlyIndexTypes
+        if !capabilities.hasBrinIndexes {
+            unsupported.insert("BRIN")
+        }
+        if !capabilities.hasSpGistIndexes {
+            unsupported.insert("SPGIST")
+        }
+        return unsupported
     }
 
     static func roleAttributes(capabilities: PostgreSQLCapabilities) -> Set<PostgreSQLRoleAttribute> {

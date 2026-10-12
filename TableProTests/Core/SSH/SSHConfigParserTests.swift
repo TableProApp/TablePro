@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH Config Parser")
 struct SSHConfigParserTests {
     @Test("Empty content returns empty array")
     func testEmptyContent() {

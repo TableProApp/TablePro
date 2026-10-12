@@ -10,7 +10,6 @@ import Testing
 /// The cell-range wash has to stay visible when the grid loses focus. Thinning the unemphasized
 /// selection colour out to 28% put it at 1.09:1 against a white grid, which reads as no selection
 /// at all, so the colour is now used at the opacity AppKit uses it at.
-@Suite("Data grid cell selection fill")
 @MainActor
 struct DataGridCellSelectionFillTests {
     /// The fill is built inside the appearance block. A dynamic colour resolves against whatever

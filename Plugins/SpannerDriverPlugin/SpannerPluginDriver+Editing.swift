@@ -129,6 +129,11 @@ extension SpannerPluginDriver {
         return "DROP \(keyword) \(dialect.qualifiedName(schema: sqlSchema(schema), name: name))"
     }
 
+    /// `SQL SECURITY` is a required clause of `CREATE VIEW` in both Spanner dialects.
+    func createViewTemplate() -> String? {
+        "CREATE VIEW view_name SQL SECURITY INVOKER AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
+    }
+
     private func browseRequest(
         table: String,
         schema: String?,

@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ColumnIdentitySchema")
 @MainActor
 struct ColumnIdentitySchemaTests {
     @Test("Identifiers are slot-based regardless of column names")

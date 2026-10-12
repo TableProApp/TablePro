@@ -54,7 +54,7 @@ public struct MCPPrincipal: Sendable, Equatable, Hashable {
     public static let inAppAssistant = MCPPrincipal(
         tokenFingerprint: "in-app-assistant",
         tokenId: inAppAssistantTokenId,
-        scopes: Set(MCPScope.allCases),
+        scopes: MCPScope.fullAccessSet,
         connectionAccess: .all,
         metadata: MCPPrincipalMetadata(
             label: String(localized: "AI Chat"),

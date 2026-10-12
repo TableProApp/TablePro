@@ -148,7 +148,7 @@ struct SSHServerSections: View {
                             Text(entry.displayName).tag(entry.host)
                         }
                     }
-                    .onChange(of: sshState.selectedConfigHost) {
+                    .onChange(of: sshState.selectedConfigHost) { _ in
                         applySSHConfigEntry(sshState.selectedConfigHost)
                     }
                 }

@@ -14,7 +14,6 @@ import Testing
 /// stale value in full screen while the windowed layout still looks right. `fullScreenMinHeight`
 /// left at its default of zero measured as zero drawn pixels once the menu bar auto-hid: the strip
 /// disappears on entering full screen and does not come back for the rest of the session.
-@Suite("Editor tab strip accessory")
 @MainActor
 struct EditorTabStripAccessoryControllerTests {
     @Test("The band is configured as a bottom accessory that keeps its own height")

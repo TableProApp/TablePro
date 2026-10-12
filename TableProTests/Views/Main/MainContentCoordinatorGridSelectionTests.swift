@@ -22,7 +22,6 @@ private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("MainContentCoordinator grid selection capture and restore")
 @MainActor
 struct MainContentCoordinatorGridSelectionTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

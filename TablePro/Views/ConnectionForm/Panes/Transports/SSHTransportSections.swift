@@ -12,7 +12,7 @@ import SwiftUI
 /// selected it, which is why the old `Toggle("Enable SSH Tunnel")` that made up an entire pane on
 /// its own is gone.
 struct SSHTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         SSHServerSections(sshState: $coordinator.ssh.state)
@@ -29,11 +29,8 @@ struct SSHTransportSections: View {
                 text: $coordinator.network.sshForwardUnixSocketPath,
                 prompt: Text(verbatim: coordinator.network.socketPathPrompt)
             )
-            if coordinator.network.hasHostListField, replicaSetHostsAreListed {
-                Label(
-                    String(localized: "TablePro connects to the first host over a tunnel. Replica set failover is not available."),
-                    systemImage: "exclamationmark.triangle"
-                )
+            if let caption = coordinator.network.tunnelHostListCaption {
+                Label(caption, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
@@ -85,10 +82,6 @@ struct SSHTransportSections: View {
             .font(.caption)
             .foregroundStyle(tint)
     }
-
-    private var replicaSetHostsAreListed: Bool {
-        coordinator.network.firstHostListValue.contains(",")
-    }
 }
 
 /// Points a file-backed connection at a database file on an SSH server.
@@ -96,24 +89,40 @@ struct SSHTransportSections: View {
 /// The server half is the same problem whether what comes back is a socket or a file, so it is the
 /// same view. What this adds is the path.
 struct RemoteFileTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         Section {
             TextField(String(localized: "Path"), text: $coordinator.ssh.state.remoteFilePath)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("connection-form-remote-file-path")
+            if coordinator.supportsRemoteDatabaseSession {
+                Picker(String(localized: "Open"), selection: $coordinator.ssh.state.remoteFileAccess) {
+                    Text(String(localized: "On the Server")).tag(RemoteFileAccess.onServer)
+                    Text(String(localized: "As a Read-Only Copy")).tag(RemoteFileAccess.readOnlyCopy)
+                }
+                .accessibilityIdentifier("connection-form-remote-file-access")
+            }
         } header: {
             Text(String(localized: "Remote File"))
         } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Absolute, or relative to the SSH account's home directory. `~` works.")
-                Text("The file is copied to this Mac and opened read-only. The original on the server is never written to.")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            remoteFileFooter
         }
 
         SSHServerSections(sshState: $coordinator.ssh.state)
+    }
+
+    @ViewBuilder
+    private var remoteFileFooter: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Absolute, or relative to the SSH account's home directory. `~` works.")
+            if coordinator.supportsRemoteDatabaseSession, coordinator.ssh.state.remoteFileAccess == .onServer {
+                Text("Statements run on the SSH server, so reads and writes act on the live database. The server needs python3.")
+            } else {
+                Text("The file is copied to this Mac and opened read-only. The original on the server is never written to.")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 }

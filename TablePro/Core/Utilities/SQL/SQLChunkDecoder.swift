@@ -79,7 +79,7 @@ struct SQLChunkDecoder {
 
         let resolution = Self.resolve(declaredEncoding, startingWith: data)
         resolvedEncoding = resolution.encoding
-        unitSize = Self.unitSize(of: resolution.encoding)
+        unitSize = resolution.encoding.codeUnitLength
         maximumTrim = Self.maximumTrim(of: resolution.encoding, unitSize: unitSize)
         if resolution.byteOrderMarkLength > 0, data.count >= resolution.byteOrderMarkLength {
             data = Data(data.dropFirst(resolution.byteOrderMarkLength))
@@ -92,52 +92,11 @@ struct SQLChunkDecoder {
         let byteOrderMarkLength: Int
     }
 
-    private static let utf16LittleEndianMark: [UInt8] = [0xFF, 0xFE]
-    private static let utf16BigEndianMark: [UInt8] = [0xFE, 0xFF]
-    private static let utf32LittleEndianMark: [UInt8] = [0xFF, 0xFE, 0x00, 0x00]
-    private static let utf32BigEndianMark: [UInt8] = [0x00, 0x00, 0xFE, 0xFF]
-
-    /// `.utf8` is absent on purpose: Foundation consumes a UTF-8 mark itself, measured.
     private static func resolve(_ encoding: String.Encoding, startingWith data: Data) -> Resolution {
-        switch encoding {
-        case .utf16:
-            if data.starts(with: utf16LittleEndianMark) {
-                return Resolution(encoding: .utf16LittleEndian, byteOrderMarkLength: 2)
-            }
-            if data.starts(with: utf16BigEndianMark) {
-                return Resolution(encoding: .utf16BigEndian, byteOrderMarkLength: 2)
-            }
-            return Resolution(encoding: .utf16BigEndian, byteOrderMarkLength: 0)
-        case .utf16LittleEndian:
-            return Resolution(encoding: encoding, byteOrderMarkLength: data.starts(with: utf16LittleEndianMark) ? 2 : 0)
-        case .utf16BigEndian:
-            return Resolution(encoding: encoding, byteOrderMarkLength: data.starts(with: utf16BigEndianMark) ? 2 : 0)
-        case .utf32:
-            if data.starts(with: utf32LittleEndianMark) {
-                return Resolution(encoding: .utf32LittleEndian, byteOrderMarkLength: 4)
-            }
-            if data.starts(with: utf32BigEndianMark) {
-                return Resolution(encoding: .utf32BigEndian, byteOrderMarkLength: 4)
-            }
-            return Resolution(encoding: .utf32BigEndian, byteOrderMarkLength: 0)
-        case .utf32LittleEndian:
-            return Resolution(encoding: encoding, byteOrderMarkLength: data.starts(with: utf32LittleEndianMark) ? 4 : 0)
-        case .utf32BigEndian:
-            return Resolution(encoding: encoding, byteOrderMarkLength: data.starts(with: utf32BigEndianMark) ? 4 : 0)
-        default:
-            return Resolution(encoding: encoding, byteOrderMarkLength: 0)
+        if let mark = ByteOrderMark.leading(data, allowedBy: encoding) {
+            return Resolution(encoding: mark.byteOrderedEncoding, byteOrderMarkLength: mark.length)
         }
-    }
-
-    private static func unitSize(of encoding: String.Encoding) -> Int {
-        switch encoding {
-        case .utf16, .utf16LittleEndian, .utf16BigEndian:
-            return 2
-        case .utf32, .utf32LittleEndian, .utf32BigEndian:
-            return 4
-        default:
-            return 1
-        }
+        return Resolution(encoding: encoding.unmarkedByteOrder, byteOrderMarkLength: 0)
     }
 
     /// `CFStringGetMaximumSizeForEncoding` counts bytes per UTF-16 code unit, so it is asked for

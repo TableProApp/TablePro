@@ -222,6 +222,17 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
 }
 
 extension TableFilter {
+    /// Whether both rows select the same rows, whatever their id, position or enabled flag.
+    func hasSameCondition(as other: TableFilter) -> Bool {
+        columnName == other.columnName
+            && filterOperator == other.filterOperator
+            && value == other.value
+            && secondValue == other.secondValue
+            && rawSQL == other.rawSQL
+            && isCaseSensitive == other.isCaseSensitive
+            && elementScope == other.elementScope
+    }
+
     /// The joined `value` stays as it was for drivers that still read a `BETWEEN` as one
     /// comma-separated string; `secondValue` carries the upper bound intact for those that don't,
     /// so a bound holding a comma is no longer mistaken for the separator.
@@ -261,6 +272,15 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var keyPattern: String
     var keyTypeScope: String?
 
+    /// The filters the rows on screen were actually fetched with.
+    ///
+    /// `filters` is the panel's editable draft, and `appliedFilters` resolves from it, so both
+    /// describe a query that has not run the moment a reader types into a filter row without
+    /// pressing Apply. Anything asking what a tab is *showing*, rather than what its panel says,
+    /// has to read this. It is written wherever a query is built from the filters and is
+    /// deliberately not persisted: a restored tab rebuilds its query on first load, which fills it.
+    var executedFilters: [TableFilter] = []
+
     init(isVisible: Bool = false) {
         self.filters = []
         self.commit = nil
@@ -287,6 +307,25 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var appliedFilters: [TableFilter] {
         guard let commit else { return [] }
         return Self.resolve(commit, in: filters)
+    }
+
+    /// What a table's saved filters hold: every valid row with its own enabled flag, the logic mode,
+    /// and whether those rows were running.
+    ///
+    /// Never `appliedFilters`, which is the query's reading of the same rows: `.all` drops unchecked
+    /// rows and `.solo` keeps one row forced on, so saving that loses rows the reader only switched off.
+    ///
+    /// Rows the reader typed but never applied are saved too, with `isApplied` false, so reopening
+    /// the table brings them back without running them. An empty row list still saves nothing, which
+    /// the storage reads as a delete: that is Remove All Filters, the gesture that destroys the
+    /// table's saved state. Under `FilterRestoreBehavior.dontSave` nothing is written at all, in
+    /// either direction, so what is already on disk survives both a save and a delete.
+    var persistedState: PersistedFilterState {
+        PersistedFilterState(
+            filters: filters.filter(\.isValid),
+            logicMode: filterLogicMode,
+            isApplied: commit != nil
+        )
     }
 
     static func resolve(_ commit: FilterCommit, in filters: [TableFilter]) -> [TableFilter] {

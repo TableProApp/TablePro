@@ -41,6 +41,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Headings this grid must refuse an edit for while the rest of it stays editable. See
     /// `DataGridConfiguration.lockedColumns`.
     var lockedColumns: Set<String> = []
+    var checkboxColumns: Set<Int> = []
+    var supportsColumnCommands = true
+    var supportsValueFilter = true
+    var filterMenuColumnTypes: [ColumnType]?
     var valueFilteredIDs: [RowID]? { didSet { bumpDisplayRevision() } }
     /// Ticks whenever the displayed row order or the value filter changes.
     ///
@@ -110,6 +114,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Inspector grids, which list columns rather than rows and have nothing to do with a Data Grid
     /// setting, so the grid says whether the preference is its own.
     var appliesRowSortPreferences: Bool = false
+    var supportsColumnSort: Bool = true
 
     var firstClickSortDirection: SortDirection {
         guard appliesRowSortPreferences else { return .ascending }
@@ -165,6 +170,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         } else {
             state.displayFormats = columnDisplayFormats
         }
+    }
+
+    /// Drops only the data index to `tableColumns` map, for a column that moved under a live reorder
+    /// drag. The display order, and the selection held in display positions, stay as they were
+    /// until the reorder commits, so the selection keeps naming the cells the user picked.
+    func invalidateTableColumnIndexMap() {
+        columnIndexByDataIndex.removeAll()
     }
 
     func invalidateColumnIndexCache() {
@@ -249,6 +261,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         self.isEditable = isEditable
         editRefusalMessage = configuration.editRefusalMessage
         lockedColumns = configuration.lockedColumns
+        checkboxColumns = configuration.checkboxColumns
+        supportsColumnCommands = configuration.supportsColumnCommands
+        supportsValueFilter = configuration.supportsValueFilter
+        filterMenuColumnTypes = configuration.filterMenuColumnTypes
         tableView?.toolTip = isEditable ? nil : configuration.editRefusalMessage
         dropdownColumns = configuration.dropdownColumns
         typePickerColumns = configuration.typePickerColumns
@@ -261,6 +277,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         primaryKeyColumns = configuration.primaryKeyColumns
         tabType = configuration.tabType
         appliesRowSortPreferences = configuration.appliesRowSortPreferences
+        supportsColumnSort = configuration.supportsColumnSort
     }
 
     /// A grid with no table behind it keeps a saved column order only while its columns are still the
@@ -501,13 +518,16 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         rowView.redrawCell(atTableColumnIndex: position)
     }
     let selectionController = GridSelectionController()
+    private(set) lazy var selectionSummaryTracker = SelectionSummaryTracker(
+        inputProvider: { [weak self] in self?.selectionSummaryInput() }
+    )
     var overlayEditor: CellOverlayEditor?
     var overlayViewer: CellOverlayViewer?
 
     var settingsCancellable: AnyCancellable?
     var themeCancellable: AnyCancellable?
     var systemTimeZoneCancellable: AnyCancellable?
-    internal var accessibilityActivationObserver: (any NSObjectProtocol)?
+    private var accessibilityActivationObserver: (any NSObjectProtocol)?
     private var accessibilityMountedRows = NSRange(location: 0, length: 0)
     private var lastDataGridSettings: DataGridSettings
 
@@ -592,6 +612,72 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 self.applyDataGridSettingsChange(from: prev, to: settings)
             }
     }
+
+    func applyDataGridSettingsChange(from previous: DataGridSettings, to settings: DataGridSettings) {
+        guard let tableView else { return }
+        let newRowHeight = CGFloat(settings.rowHeight.rawValue)
+        if tableView.rowHeight != newRowHeight {
+            tableView.rowHeight = newRowHeight
+            tableView.tile()
+            repaintRowGutter()
+        }
+
+        let dataChanged = previous.dateFormat != settings.dateFormat
+            || previous.nullDisplay != settings.nullDisplay
+            || previous.enableSmartValueDetection != settings.enableSmartValueDetection
+
+        if dataChanged {
+            reformatDisplayedText()
+        }
+    }
+
+    func observeThemeChanges() {
+        themeCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                if let tableView = self?.tableView {
+                    DataGridBodyChrome.applyThemeColors(to: tableView)
+                    tableView.headerView?.needsDisplay = true
+                    tableView.cornerView?.needsDisplay = true
+                }
+                self?.reloadVisibleRowsAndStates()
+                /// The row-number font is a theme value and it decides the column's width, which
+                /// the pinned gutter mirrors. Nothing re-measured it on a theme change before, so
+                /// the width was already going stale here.
+                self?.resizeRowNumberColumnForCurrentRange()
+                self?.repaintRowGutter()
+                self?.selectionController.overlay?.needsDisplay = true
+            }
+    }
+
+    /// The grid mounts no view for a data cell, so a client that attaches mid-session finds a table
+    /// of empty cells until the visible rows are built again. The remount is deferred off the
+    /// accessibility query that raised the flag, because rebuilding rows inside it would re-enter
+    /// the tree AppKit is walking.
+    private func observeAccessibilityActivation() {
+        accessibilityActivationObserver = NotificationCenter.default.addObserver(
+            forName: DataGridAccessibility.didActivateNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.remountAccessibilityCells()
+            }
+        }
+    }
+
+    /// Registered for the life of the coordinator, so it has to come off when the grid goes.
+    ///
+    /// `NotificationCenter` retains a block observer's closure, and a coordinator is built fresh on
+    /// every mount, so an entry left behind at teardown is never fired again and never reclaimed.
+    /// The closure captures `self` weakly, so this leaks the registration rather than the grid.
+    func detachAccessibilityActivationObserver() {
+        guard let accessibilityActivationObserver else { return }
+        NotificationCenter.default.removeObserver(accessibilityActivationObserver)
+        self.accessibilityActivationObserver = nil
+    }
+
+    var hasAccessibilityActivationObserver: Bool { accessibilityActivationObserver != nil }
 
     /// Whether this row is one an assistive client can be reading right now.
     ///
@@ -686,36 +772,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         synchronizeRowGutter()
     }
 
-    func applyInsertedRows(_ indices: IndexSet) {
-        guard let tableView else { return }
-        if valueFilterState.isActive {
-            reloadAfterRowMutationWithValueFilter()
-            return
-        }
-        visualIndex.rebuild(from: changeManager)
-        updateCache()
-        tableView.insertRows(at: indices, withAnimation: Self.rowAnimation(.slideDown))
-        repaintVisibleRowDecorations()
-    }
-
-    /// Accessibility > Display > Reduce Motion asks for no sliding rows, and the app
-    /// already honours it elsewhere.
-    static func rowAnimation(_ preferred: NSTableView.AnimationOptions) -> NSTableView.AnimationOptions {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? [] : preferred
-    }
-
-    func applyRemovedRows(_ indices: IndexSet) {
-        guard let tableView else { return }
-        if valueFilterState.isActive {
-            reloadAfterRowMutationWithValueFilter()
-            return
-        }
-        visualIndex.rebuild(from: changeManager)
-        updateCache()
-        tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
-        repaintVisibleRowDecorations()
-    }
-
     private func bumpDisplayRevision() {
         displayRevision &+= 1
         delegate?.dataGridDisplayOrderChanged()
@@ -730,57 +786,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func clearRowSelection() {
         guard let tableView, !tableView.selectedRowIndexes.isEmpty else { return }
         tableView.deselectAll(nil)
-    }
-
-    func applyFullReplace() {
-        dismissPopoversBoundToDisplayPositions()
-        pruneStaleValueFilters()
-        guard let tableView else { return }
-        invalidateAllDisplayCaches()
-        recomputeValueFilteredIDs()
-        updateValueFilterHeaderIndicators()
-        updateCache()
-        selectionController.clear()
-        tableView.reloadData()
-        startBackgroundPrewarm()
-    }
-
-    private func reloadAfterRowMutationWithValueFilter() {
-        guard let tableView else { return }
-        recomputeValueFilteredIDs()
-        updateCache()
-        visualIndex.rebuild(from: changeManager)
-        tableView.reloadData()
-        startBackgroundPrewarm()
-    }
-
-    /// Selects and reveals the row a navigation asked this grid to land on.
-    ///
-    /// Pushed in when the rows land rather than polled from the update pass, the way
-    /// `applyFindMatch(_:)` is. A miss is silent and final: the row may have been deleted, moved to
-    /// another page, or hidden by a value filter, and none of those is worth telling the reader
-    /// about when the view they asked for is otherwise back.
-    func selectRow(matchingKey key: [String: String]) {
-        guard let tableView else { return }
-        let tableRows = tableRowsProvider()
-
-        let keyColumns = key.compactMap { name, value in
-            tableRows.columns.firstIndex(of: name).map { (column: $0, value: value) }
-        }
-        guard keyColumns.count == key.count else { return }
-
-        guard let match = tableRows.rows.first(where: { row in
-            keyColumns.allSatisfy { row[$0.column].asText == $0.value }
-        }) else { return }
-
-        guard let displayIndex = DisplayRowMapping.displayIndex(
-            forRowID: match.id,
-            displayIDs: displayIDs,
-            in: tableRows
-        ), displayIndex < tableView.numberOfRows else { return }
-
-        selectRowsProgrammatically(IndexSet(integer: displayIndex), in: tableView)
-        tableView.scrollRowToVisible(displayIndex)
     }
 
     /// A selection the app made, not the reader. The flag is what keeps the selection delegate from
@@ -891,6 +896,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         displayState.displayFormats = formats
         displayCache.removeAll()
         delegate?.dataGridDisplayFormatChanged()
+        selectionSummaryTracker.rulesDidChange()
         return remappedValueFilters
     }
 
@@ -989,100 +995,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         displayCache.setBox(box, forID: row.id)
     }
 
-    private func invalidateDisplayCache(forDisplayRow displayIndex: Int) {
-        guard let row = displayRow(at: displayIndex) else { return }
-        displayCache.clearValues(forID: row.id)
-    }
-
-    private func invalidateDisplayCache(forDisplayRow displayIndex: Int, column: Int) {
-        guard let row = displayRow(at: displayIndex) else { return }
-        displayCache.clearHighlight(forID: row.id)
-        guard let box = displayCache.box(forID: row.id),
-              column >= 0, column < box.values.count else { return }
-        box.values[column] = nil
-        displayCache.setBox(box, forID: row.id)
-    }
-
-    func applyDelta(_ delta: Delta) {
-        switch delta {
-        case .cellChanged(let row, let column):
-            guard let tableView,
-                  let tableColumn = tableColumnIndex(for: column)
-            else { return }
-            guard row >= 0, row < tableView.numberOfRows else { return }
-            invalidateDisplayCache(forDisplayRow: row, column: column)
-            updateVisualIndex(forDisplayRow: row)
-            redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumn))
-            invalidateRowDecoration(displayRow: row)
-        case .cellsChanged(let positions):
-            guard !positions.isEmpty, let tableView else { return }
-            var rowSet = IndexSet()
-            var colSet = IndexSet()
-            for position in positions {
-                if position.row >= 0, position.row < tableView.numberOfRows {
-                    rowSet.insert(position.row)
-                }
-                if let tableColumn = tableColumnIndex(for: position.column) {
-                    colSet.insert(tableColumn)
-                }
-                invalidateDisplayCache(forDisplayRow: position.row, column: position.column)
-            }
-            guard !rowSet.isEmpty, !colSet.isEmpty else { return }
-            for row in rowSet {
-                updateVisualIndex(forDisplayRow: row)
-            }
-            redrawCells(rows: rowSet, tableColumnIndexes: colSet)
-            for row in rowSet {
-                invalidateRowDecoration(displayRow: row)
-            }
-        case .rowsInserted(let indices):
-            guard !indices.isEmpty else { return }
-            overlayEditor?.dismiss(commit: false)
-            overlayViewer?.dismiss()
-            dismissPopoversBoundToDisplayPositions()
-            applyInsertedRows(indices)
-        case .rowsRemoved(let indices):
-            guard !indices.isEmpty else { return }
-            overlayEditor?.dismiss(commit: false)
-            overlayViewer?.dismiss()
-            dismissPopoversBoundToDisplayPositions()
-            applyRemovedRows(indices)
-        case .columnsReplaced, .fullReplace:
-            overlayEditor?.dismiss(commit: false)
-            overlayViewer?.dismiss()
-            applyFullReplace()
-        }
-    }
-
-    func invalidateCachesForUndoRedo() {
-        invalidateAllDisplayCaches()
-        updateCache()
-        reloadVisibleRowsAndStates()
-    }
-
-    /// Repaints visible rows in the two layers a row needs: `repaintRows` covers the row-number
-    /// column and the drawn cells, and `refreshVisibleRowVisualStates` then visits each live
-    /// `NSTableRowView` so `applyVisualState` can carry the per-row decoration (deleted or inserted
-    /// tint, deleted-row context menu state) without recreating a view. Both delegates call this
-    /// after a model mutation that leaves the row count alone.
-    func reloadVisibleRowsAndStates() {
-        guard let tableView else { return }
-        let visibleRange = tableView.rows(in: tableView.visibleRect)
-        guard visibleRange.length > 0 else { return }
-        invalidateDisplayCache()
-        repaintRows(IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)))
-        refreshVisibleRowVisualStates()
-        startBackgroundPrewarm()
-    }
-
-    /// Single-row equivalent of `reloadVisibleRowsAndStates` for cases where
-    /// only one row's content + visual state changed (cell edit, single-row
-    /// undo delete).
-    func reloadRowAndState(at row: Int) {
-        guard let tableView, row >= 0, row < tableView.numberOfRows else { return }
-        invalidateDisplayCache(forDisplayRow: row)
-        repaintRows(IndexSet(integer: row))
-        refreshRowVisualState(at: row)
+    var hasOpenCellOverlay: Bool {
+        overlayEditor?.isActive == true || overlayViewer?.isActive == true
     }
 
     func commitActiveCellEdit() {
@@ -1250,11 +1164,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         refreshCellPresentations()
     }
 
-    func scrollToTop() {
-        guard let tableView, tableView.numberOfRows > 0 else { return }
-        tableView.scrollRowToVisible(0)
-    }
-
     @discardableResult
     func rebuildColumnMetadataCache(from tableRows: TableRows) -> Bool {
         let columns = tableRows.columns
@@ -1293,7 +1202,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             isDropdown: dropdownColumns?.contains(columnIndex) == true,
             isTypePicker: typePickerColumns?.contains(columnIndex) == true,
             isEnumOrSet: enumOrSetColumns.contains(columnIndex),
-            isEditable: isEditable
+            isEditable: isEditable,
+            isCheckbox: checkboxColumns.contains(columnIndex)
         )
     }
 
@@ -1374,8 +1284,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 // MARK: - DataGridCellAccessoryDelegate
 
 extension TableViewCoordinator: DataGridCellAccessoryDelegate {
-    func dataGridCellDidClickFKArrow(row: Int, columnIndex: Int, openInNewTab: Bool) {
-        handleFKArrowAction(row: row, columnIndex: columnIndex, openInNewTab: openInNewTab)
+    func dataGridCellDidClickFKArrow(row: Int, columnIndex: Int, intent: ReferenceOpenIntent) {
+        handleFKArrowAction(row: row, columnIndex: columnIndex, intent: intent)
     }
 
     func dataGridCellDidClickChevron(row: Int, columnIndex: Int) {

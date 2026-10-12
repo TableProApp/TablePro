@@ -52,8 +52,7 @@ extension MainContentCoordinator {
                 presentRenameFailure(error, object: ref.id)
                 return
             }
-            adoptTableRename(ref, to: newName)
-            await refreshTables()
+            services.catalogChangeService.record(.tableRenamed(ref, to: newName, connectionId: connectionId))
         }
     }
 
@@ -70,17 +69,7 @@ extension MainContentCoordinator {
                 presentRenameFailure(error, object: ref.id)
                 return
             }
-            adoptContainerRename(ref, to: newName)
-            await DatabaseTreeMetadataService.shared.refreshDatabases(
-                connectionId: connectionId,
-                databaseType: connection.type
-            )
-            if ref.kind == .schema, let database = ref.database {
-                await DatabaseTreeMetadataService.shared.refreshSchemas(
-                    connectionId: connectionId,
-                    database: database
-                )
-            }
+            services.catalogChangeService.record(.containerRenamed(ref, to: newName, connectionId: connectionId))
         }
     }
 
@@ -93,6 +82,7 @@ extension MainContentCoordinator {
             /// is, so its leases on that database are closed first.
             if let database = ref.database {
                 MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: database)
+                DatabaseManager.shared.sessionLanes.close(database: database, for: connectionId)
             }
             guard let scope = browseScope else { throw DatabaseError.notConnected }
             let route = DatabaseManager.shared.executionRoute(for: scope)
@@ -123,7 +113,7 @@ extension MainContentCoordinator {
     /// statement, and for MongoDB and SQL Server there is no statement to show. The two names are
     /// what the user is being asked to approve, and the description carries both.
     private func authorizeRename(describing description: String) async -> Bool {
-        let decision = await ExecutionGateProvider.shared.authorize(
+        let decision = await executionGate.authorize(
             OperationRequest(
                 connectionId: connectionId,
                 databaseType: connection.type,
@@ -149,7 +139,7 @@ extension MainContentCoordinator {
 
     private func presentRenameFailure(_ error: Error, object: String = "") {
         renameLogger.error(
-            "Rename failed for \(object, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            "Rename failed for \(object, privacy: .public): \(error.publicLogShape, privacy: .public)"
         )
         AlertHelper.showErrorSheet(
             title: String(localized: "Rename Failed"),
@@ -175,6 +165,10 @@ enum TableObjectKeyword {
             return "MATERIALIZED VIEW"
         case .foreignTable:
             return "FOREIGN TABLE"
+        /// `DROP SEQUENCE` is what MariaDB takes for one. Its `RENAME TABLE` ignores the keyword,
+        /// so the rename path is unaffected by the spelling.
+        case .sequence:
+            return "SEQUENCE"
         case .table, .systemTable, .partitionedTable, .externalTable:
             return "TABLE"
         }

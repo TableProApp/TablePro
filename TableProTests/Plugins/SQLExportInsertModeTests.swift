@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL export insert modes")
 struct SQLExportInsertModeTests {
 
     private func renderer(_ dialect: SqlDialect) -> SQLExportInsertRenderer {
@@ -139,7 +138,6 @@ struct SQLExportInsertModeTests {
     }
 }
 
-@Suite("SQL export file splitting")
 struct SQLExportFileWriterTests {
 
     @Test("A part keeps the compound extension so the file still opens as SQL")
@@ -226,7 +224,6 @@ struct SQLExportFileWriterTests {
     }
 }
 
-@Suite("SQL export snapshot")
 struct SQLExportSnapshotTests {
 
     @Test("Each dialect opens its own consistent-read transaction")

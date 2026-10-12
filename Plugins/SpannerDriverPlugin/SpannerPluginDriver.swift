@@ -23,6 +23,19 @@ internal final class SpannerPluginDriver: PluginDatabaseDriver, @unchecked Senda
         lock.withLock { connectedDialect }
     }
 
+    /// Spanner fixes a database's dialect when it is created, so once connected the whole grammar is known: GoogleSQL
+    /// or PostgreSQL, each measured on the emulator.
+    var sessionLexicalState: PluginSessionLexicalState? {
+        guard lock.withLock({ connectedExecutor != nil }) else { return nil }
+        let googleSQL: SQLLexicalFeatures = [
+            .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backslashEscapesInBackticks,
+            .backtickQuotes, .tripleQuotedStrings, .hashLineComments,
+        ]
+        let postgreSQL: SQLLexicalFeatures = [.taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix]
+        let enabled = dialect == .postgreSQL ? postgreSQL : googleSQL
+        return PluginSessionLexicalState(determined: googleSQL.union(postgreSQL), enabled: enabled)
+    }
+
     var capabilities: PluginCapabilities {
         [.multiSchema, .cancelQuery, .transactions, .truncateTable]
     }
@@ -51,9 +64,22 @@ internal final class SpannerPluginDriver: PluginDatabaseDriver, @unchecked Senda
     func connect() async throws {
         do {
             let settings = try SpannerConnectionSettings.parse(fields: config.additionalFields)
-            let tokenProvider = try SpannerCredentialFactory.tokenProvider(settings: settings, config: config)
+            let connectTimeout = PluginConnectTimeout.milliseconds(
+                in: config.additionalFields,
+                default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+            )
+            let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
+            let connectTimeoutPhase = PluginConnectTimeoutPhase(deadline: deadline)
+            defer { connectTimeoutPhase.finish() }
+            let tokenProvider = try SpannerCredentialFactory.tokenProvider(
+                settings: settings,
+                config: config,
+                connectTimeoutPhase: connectTimeoutPhase
+            )
             let timeout = requestTimeout
-            let transport = URLSessionSpannerTransport(requestTimeout: { timeout.requestTimeoutInterval })
+            let transport = URLSessionSpannerTransport(requestTimeout: {
+                connectTimeoutPhase.remainingSeconds(or: timeout.requestTimeoutInterval)
+            })
             let client = SpannerRESTClient(settings: settings, transport: transport, tokenProvider: tokenProvider)
             let executor = try await Self.openExecutor(client: client, driver: self)
             let dialect = executor.dialect

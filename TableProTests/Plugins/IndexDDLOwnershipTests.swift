@@ -12,7 +12,6 @@ import Testing
 /// Nothing at runtime can see the contradiction: `fetchTableDDL` hands back opaque text and the
 /// export writes whatever it gets. So the guard is a source scan, the same shape
 /// `SyncMapperFieldAccessTests` uses to keep raw `record[` out of the sync mappers.
-@Suite("Index DDL ownership")
 struct IndexDDLOwnershipTests {
     private static let pluginsDirectory: URL? = {
         var directory = URL(fileURLWithPath: #filePath)

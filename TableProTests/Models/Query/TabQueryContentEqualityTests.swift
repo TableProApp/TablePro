@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TabQueryContent.Equatable")
 struct TabQueryContentEqualityTests {
     @Test("Equal when all fields match")
     func equalWhenIdentical() {
@@ -57,6 +56,18 @@ struct TabQueryContentEqualityTests {
         b.savedFileContent = "disk"
         #expect(a == b)
         b.savedFileContent = "other"
+        #expect(a != b)
+    }
+
+    @Test("sourceFileEncoding participates in equality")
+    func sourceFileEncodingEquality() {
+        var a = TabQueryContent(query: "Q")
+        var b = TabQueryContent(query: "Q")
+        a.sourceFileEncoding = .utf8
+        #expect(a != b)
+        b.sourceFileEncoding = .utf8
+        #expect(a == b)
+        b.sourceFileEncoding = FileTextEncoding(encoding: .utf16, byteOrderMark: .utf16BigEndian)
         #expect(a != b)
     }
 

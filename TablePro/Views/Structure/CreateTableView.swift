@@ -29,19 +29,25 @@ private enum CreateTableTab: CaseIterable {
 }
 
 struct CreateTableView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "CreateTableView")
 
     let connection: DatabaseConnection
+
+    /// The tab's own scope, which is where the table is created. The browse cursor moves when the
+    /// user clicks another database in the sidebar and the open Create Table tab does not follow it,
+    /// so taking the cursor created the table somewhere the tab never named.
+    let scope: DatabaseScope?
     var coordinator: MainContentCoordinator?
-    let selectionState: GridSelectionState
+    @ObservedObject var selectionState: GridSelectionState
 
     @Environment(\.appServices) private var services
 
     /// The definition in progress. Held outside this view because the view is destroyed the moment
     /// the tab is deselected, and nothing in a Create Table tab exists anywhere else yet.
-    @Bindable var draft: CreateTableDraft
+    @ObservedObject var draft: CreateTableDraft
 
-    @State private var wrappedChangeManager: AnyChangeManager
+    @StateObject private var wrappedChangeManager: AnyChangeManager
 
     private var structureChangeManager: StructureChangeManager { draft.changeManager }
 
@@ -60,17 +66,19 @@ struct CreateTableView: View {
 
     init(
         connection: DatabaseConnection,
+        scope: DatabaseScope?,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState,
         draft: CreateTableDraft
     ) {
         self.connection = connection
+        self.scope = scope
         self.coordinator = coordinator
         self.selectionState = selectionState
         self.draft = draft
 
         let manager = draft.changeManager
-        _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
+        _wrappedChangeManager = StateObject(wrappedValue: AnyChangeManager(manager))
         _gridDelegate = State(wrappedValue: CreateTableGridDelegate(
             structureChangeManager: manager,
             structureTab: .columns,
@@ -82,25 +90,21 @@ struct CreateTableView: View {
         VStack(spacing: 0) {
             configBar
             Divider()
-            toolbar
-            Divider()
-            tabContent
+            editorContent
         }
         .navigationTitle(String(localized: "Create Table"))
         .onAppear {
-            selectionState.indices = []
-            coordinator?.inspectorRowSource = gridDelegate
-            gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
-            gridDelegate.onReferenceListsChanged = { coordinator?.inspectorRowSourceRevision += 1 }
-            serverSupport = StructureServerSupport.forConnection(connection.id)
-            updateGridDelegate()
-            if structureChangeManager.workingColumns.isEmpty {
-                structureChangeManager.addNewColumn()
-            }
+            /// A workspace switch remounts this view with `selectedRows` intact and the grid still
+            /// highlighting them, so the channel `onDisappear` cleared gets them back, not nothing.
+            selectionState.indices = selectedRows
+            draft.resolveForm(
+                from: DatabaseManager.shared.driver(for: connection.id)?.createTableFormSpec(schema: scope?.schema)
+            )
             actionHandler.createTable = { createTable() }
-            actionHandler.undo = { gridDelegate.dataGridUndo() }
-            actionHandler.redo = { gridDelegate.dataGridRedo() }
             coordinator?.createTableActions = actionHandler
+            if draft.form == nil {
+                attachStructureGrid()
+            }
             coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
         }
         .onDisappear {
@@ -126,14 +130,47 @@ struct CreateTableView: View {
                 coordinator?.inspectorRowSource = nil
             }
         }
-        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
-        .onChange(of: selectedTab) { updateGridDelegate() }
-        .onChange(of: isReadyToCreate) { updateCreateTablePendingState() }
+        .onChange(of: selectedRows) { newRows in selectionState.indices = newRows }
+        .onChange(of: selectedTab) { _ in updateGridDelegate() }
+        .onChange(of: isReadyToCreate) { _ in updateCreateTablePendingState() }
+        .task(id: compositionKey) { await recomposeAfterPause() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
         } message: {
             Text(verbatim: RevealedText(errorMessage ?? "").plainText)
         }
+    }
+
+    @ViewBuilder
+    private var editorContent: some View {
+        if draft.form != nil {
+            CreateTableFormEditor(
+                draft: draft,
+                databaseType: connection.type,
+                isCreating: isCreating,
+                generateStatements: { request in try formStatements(for: request) },
+                onCreate: { createTable() }
+            )
+        } else if draft.hasResolvedForm {
+            toolbar
+            Divider()
+            tabContent
+        } else {
+            Color.clear
+        }
+    }
+
+    private func attachStructureGrid() {
+        coordinator?.inspectorRowSource = gridDelegate
+        gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
+        gridDelegate.onReferenceListsChanged = { coordinator?.inspectorRowSourceRevision += 1 }
+        serverSupport = StructureServerSupport.forConnection(connection.id)
+        updateGridDelegate()
+        if structureChangeManager.workingColumns.isEmpty {
+            structureChangeManager.addNewColumn()
+        }
+        actionHandler.undo = { gridDelegate.dataGridUndo() }
+        actionHandler.redo = { gridDelegate.dataGridRedo() }
     }
 
     // MARK: - Config Bar
@@ -147,7 +184,19 @@ struct CreateTableView: View {
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled(true)
                 .frame(maxWidth: 300)
+                .accessibilityLabel(String(localized: "Table Name"))
                 .accessibilityIdentifier("create-table-name")
+
+            if offersTableComment {
+                Text("Comment:")
+                    .font(.body.weight(.medium))
+
+                TextField("Optional", text: $draft.tableOptions.comment)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 300)
+                    .accessibilityLabel(String(localized: "Comment"))
+                    .accessibilityIdentifier("create-table-comment")
+            }
 
             if showMySQLOptions {
                 Divider()
@@ -178,8 +227,8 @@ struct CreateTableView: View {
             Spacer()
         }
         .padding()
-        .background(ThemeEngine.shared.palette.color(.panelBackground))
-        .onChange(of: draft.tableOptions.charset) { _, newCharset in
+        .background(themeEngine.palette.color(.panelBackground))
+        .onChange(of: draft.tableOptions.charset) { newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 draft.tableOptions.collation = first
             }
@@ -187,7 +236,14 @@ struct CreateTableView: View {
     }
 
     private var showMySQLOptions: Bool {
-        connection.type == .mysql || connection.type == .mariadb
+        CreateTableDraft.offersEngineOptions(for: connection.type)
+    }
+
+    /// The form path builds its own statements and has no place for a comment.
+    private var offersTableComment: Bool {
+        guard draft.hasResolvedForm, draft.form == nil else { return false }
+        let support = DatabaseObjectToolEligibility.Support.of(DatabaseManager.shared.driver(for: connection.id))
+        return support.commentableTypes.contains(.table)
     }
 
     // MARK: - Toolbar
@@ -208,7 +264,7 @@ struct CreateTableView: View {
         /// The composed issues, not the plan's. A driver that cannot spell one of the statements,
         /// as Snowflake and Trino cannot spell `CREATE INDEX`, reports it only here, and reading the
         /// plan alone left Create Table enabled over a preview the app would then refuse to run.
-        let issues = currentStatements().issues
+        let issues = draft.composed?.issues ?? draft.plan(for: connection.type).issues
 
         return HStack(spacing: 8) {
             Button(action: { gridDelegate.dataGridAddRow() }) {
@@ -216,6 +272,7 @@ struct CreateTableView: View {
                     .frame(width: 24, height: 24)
             }
             .help(String(localized: "Add Row"))
+            .accessibilityLabel(String(localized: "Add Row"))
             .disabled(!isGridTab)
 
             Button(action: { gridDelegate.dataGridDeleteRows(selectedRows) }) {
@@ -223,13 +280,14 @@ struct CreateTableView: View {
                     .frame(width: 24, height: 24)
             }
             .help(String(localized: "Delete Selected"))
+            .accessibilityLabel(String(localized: "Delete Selected"))
             .disabled(!isGridTab || selectedRows.isEmpty)
 
             issueMessage(issues)
 
             Spacer(minLength: 12)
 
-            Picker("", selection: $selectedTab) {
+            Picker(String(localized: "Structure"), selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
                     Text(tab.displayName).tag(tab)
                 }
@@ -360,64 +418,78 @@ struct CreateTableView: View {
 
     // MARK: - SQL Preview
 
-    /// Derived from the working rows rather than refreshed by an event.
-    ///
-    /// It used to be `@State` written by `onChange(of: reloadVersion)`, and `reloadVersion` is bumped
-    /// only by a schema load and a discard, never by an edit. What kept the preview honest was the
-    /// segment switch remounting this branch, so anything that changed the draft while the preview
-    /// was already on screen, undo among them, left a statement on screen that would not be run.
+    @ViewBuilder
     private var sqlPreviewView: some View {
-        let composed = currentStatements()
-        return Group {
+        if let composed = draft.composed {
             if composed.statements.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "doc.plaintext")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    Text(composed.issues.first?.qualifiedMessage
-                        ?? String(localized: "Add columns to see the CREATE TABLE statement"))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                sqlPreviewPlaceholder(composed.issues.first?.qualifiedMessage)
             } else {
-                DDLTextView(ddl: composed.preview, fontSize: .constant(13))
+                DDLTextView(ddl: composed.preview, fontSize: .constant(13), databaseType: connection.type)
             }
+        } else if let failure = draft.compositionFailure {
+            sqlPreviewPlaceholder(failure)
+        } else {
+            uncomposedPreview(plan: draft.plan(for: connection.type))
         }
+    }
+
+    @ViewBuilder
+    private func uncomposedPreview(plan: CreateTablePlan) -> some View {
+        if plan.definition == nil {
+            sqlPreviewPlaceholder(plan.issues.first?.qualifiedMessage)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func sqlPreviewPlaceholder(_ message: String?) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "doc.plaintext")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(message ?? String(localized: "Add columns to see the CREATE TABLE statement"))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // Cell editing, row operations, undo/redo handled by CreateTableGridDelegate
 
     // MARK: - SQL Generation
 
-    /// Pure, so the toolbar can ask on every keystroke without touching the driver.
-    private var currentPlan: CreateTablePlan {
-        CreateTableDraftBuilder.plan(
-            tableName: draft.tableName,
-            options: draft.tableOptions,
-            columns: structureChangeManager.workingColumns,
-            indexes: structureChangeManager.workingIndexes,
-            foreignKeys: structureChangeManager.workingForeignKeys,
-            dialect: ForeignKeyDialect.forType(connection.type),
-            includesEngineOptions: showMySQLOptions
-        )
+    private static let compositionPause: Duration = .milliseconds(150)
+
+    private var compositionKey: CreateTableCompositionKey? {
+        scope.map { draft.compositionKey(scope: $0) }
     }
 
-    private func currentStatements() -> CreateTableStatements {
-        let plan = currentPlan
-        guard let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?
-            .schemaPluginDriver else {
-            return CreateTableStatements(statements: [], issues: plan.issues, tableName: nil)
-        }
-        return CreateTableStatementComposer.compose(plan: plan, driver: pluginDriver)
+    private func recomposeAfterPause() async {
+        guard let scope else { return }
+        try? await Task.sleep(for: Self.compositionPause)
+        guard !Task.isCancelled else { return }
+        await draft.recompose(databaseType: connection.type, scope: scope)
     }
 
     // MARK: - Create Table
 
     private var isReadyToCreate: Bool {
-        let composed = currentStatements()
-        return !isCreating && composed.issues.isEmpty && !composed.statements.isEmpty
+        guard !isCreating else { return false }
+        if let form = draft.form {
+            return form.issues(tableName: draft.tableName).isEmpty
+        }
+        guard let composed = draft.composed else { return false }
+        return composed.issues.isEmpty && !composed.statements.isEmpty
+    }
+
+    private func formStatements(for request: PluginCreateTableRequest) throws -> [String] {
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+            throw PluginCreateTableFormError(message: String(localized: "Not connected to database"))
+        }
+        return try driver.createTableStatements(for: request, schema: scope?.schema)
     }
 
     private func updateCreateTablePendingState() {
@@ -432,14 +504,22 @@ struct CreateTableView: View {
     /// last `CREATE INDEX` takes that tab's uncommitted work with it. `schemaChangeRoute` exists to
     /// keep the app's own DDL off the user's connection.
     private func createTable() {
+        guard draft.form != nil else {
+            createTableFromStructureGrid()
+            return
+        }
+        createTableFromForm()
+    }
+
+    private func createTableFromStructureGrid() {
         guard !isCreating else { return }
-        let composed = currentStatements()
-        guard composed.issues.isEmpty, !composed.statements.isEmpty else {
-            errorMessage = composed.issues.map(\.qualifiedMessage).joined(separator: "\n")
+        let plan = draft.plan(for: connection.type)
+        guard plan.issues.isEmpty else {
+            errorMessage = plan.issues.map(\.qualifiedMessage).joined(separator: "\n")
             showError = true
             return
         }
-        guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
+        guard let scope else {
             errorMessage = String(localized: "Not connected to database")
             showError = true
             return
@@ -449,23 +529,99 @@ struct CreateTableView: View {
         errorMessage = nil
         updateCreateTablePendingState()
 
-        let statements = composed.statements
-        let createdName = composed.tableName ?? draft.tableName
         Task {
             defer { isCreating = false }
             do {
-                try await DatabaseManager.shared.executeCreateTable(
-                    statements: statements,
-                    databaseType: connection.type,
-                    scope: scope
-                )
-                coordinator?.openTableTab(createdName)
-                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+                let composed = try await DatabaseManager.shared.createTableStatements(plan: plan, scope: scope)
+                guard composed.issues.isEmpty, !composed.statements.isEmpty else {
+                    errorMessage = composed.issues.map(\.qualifiedMessage).joined(separator: "\n")
+                    showError = true
+                    return
+                }
+                let createdName = composed.tableName ?? draft.tableName
+                try await runCreateTable(statements: composed.statements, createdName: createdName, in: scope)
             } catch {
-                Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Create table failed: \(error.publicLogShape, privacy: .public)")
                 errorMessage = error.localizedDescription
                 showError = true
             }
         }
+    }
+
+    private func createTableFromForm() {
+        guard !isCreating, let form = draft.form else { return }
+        let issues = form.issues(tableName: draft.tableName)
+        guard issues.isEmpty else {
+            errorMessage = issues.map(\.qualifiedMessage).joined(separator: "\n")
+            showError = true
+            return
+        }
+        guard let scope else {
+            errorMessage = String(localized: "Not connected to database")
+            showError = true
+            return
+        }
+
+        let request = form.request(tableName: draft.tableName)
+        let schema = scope.schema
+        isCreating = true
+        errorMessage = nil
+        draft.form?.clearSubmissionError()
+        updateCreateTablePendingState()
+
+        Task {
+            defer { isCreating = false }
+            do {
+                let statements = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                    try driver.createTableStatements(for: request, schema: schema)
+                }
+                guard !statements.isEmpty else {
+                    draft.form?.recordSubmissionError(PluginCreateTableFormError(
+                        message: String(localized: "The form produced no statements to run.")
+                    ))
+                    return
+                }
+                try await runCreateTable(statements: statements, createdName: request.tableName, in: scope)
+            } catch let formError as PluginCreateTableFormError {
+                draft.form?.recordSubmissionError(formError)
+            } catch {
+                Self.logger.error("Create table failed: \(error.publicLogShape, privacy: .public)")
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+        }
+    }
+
+    private func runCreateTable(statements: [String], createdName: String, in scope: DatabaseScope) async throws {
+        do {
+            try await DatabaseManager.shared.executeCreateTable(
+                statements: statements,
+                databaseType: connection.type,
+                scope: scope
+            )
+        } catch let incomplete as CreateTableIncompleteError {
+            openCreatedTable(createdName, in: scope, showStructure: true)
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Table Created with Errors"),
+                message: incomplete.message,
+                recoverySuggestion: String(
+                    localized: "The table exists, but a statement after CREATE TABLE failed. Finish the change in its Structure tab."
+                ),
+                window: coordinator?.contentWindow
+            )
+            return
+        }
+        openCreatedTable(createdName, in: scope, showStructure: false)
+    }
+
+    private func openCreatedTable(_ name: String, in scope: DatabaseScope, showStructure: Bool) {
+        let created = DatabaseObjectChange(connectionId: connection.id, scope: scope, name: name, kind: .rows)
+        coordinator?.openTableTab(
+            name,
+            schema: scope.schema,
+            database: scope.database.nilIfEmpty,
+            showStructure: showStructure
+        )
+        AppCommands.shared.objectChanged.send(created)
     }
 }

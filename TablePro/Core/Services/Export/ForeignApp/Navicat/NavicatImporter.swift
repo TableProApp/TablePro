@@ -30,38 +30,32 @@ struct NavicatImporter: ForeignAppImporter {
         ncxFileURL = url
     }
 
-    func connectionCount() -> Int {
-        (try? loadConnectionElements())?.count ?? 0
+    var savedQuerySupport: ForeignSavedQuerySupport {
+        .unavailable(reason: String(localized: "Navicat's export file has no saved queries."))
     }
 
-    func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
+    func inventory() -> ForeignAppInventory {
+        ForeignAppInventory(connections: (try? loadConnectionElements())?.count ?? 0, savedQueries: 0)
+    }
+
+    func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
         let elements = try loadConnectionElements()
-        guard !elements.isEmpty else {
-            throw ForeignAppImportError.noConnectionsFound
-        }
-
-        var connections: [ExportableConnection] = []
-        var credentials: [String: ExportableCredentials] = [:]
-
+        var records: [ForeignConnectionRecord] = []
         for element in elements {
             try Task.checkCancellation()
-            let index = connections.count
-            connections.append(buildConnection(from: element))
-            if includePasswords, let creds = buildCredentials(from: element) {
-                credentials[String(index)] = creds
-            }
+            records.append(ForeignConnectionRecord(
+                sourceId: nil,
+                settings: buildConnection(from: element),
+                groupPath: [],
+                credentials: request.includePasswords ? buildCredentials(from: element) : nil
+            ))
         }
-
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: "Navicat Import",
-            connections: connections,
-            groups: nil,
-            tags: nil,
-            credentials: credentials.isEmpty ? nil : credentials
+        return try ForeignBundleAssembly.collect(
+            appName: displayName,
+            connections: records,
+            savedQueries: [],
+            credentialsAborted: false
         )
-        return ForeignAppImportResult(envelope: envelope, sourceName: displayName)
     }
 }
 
@@ -103,17 +97,7 @@ private extension NavicatImporter {
             username: isFileBased ? "" : attr(element, "UserName"),
             type: type,
             sshConfig: buildSSHConfig(from: element),
-            sslConfig: buildSSLConfig(from: element),
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            sslConfig: buildSSLConfig(from: element)
         )
     }
 

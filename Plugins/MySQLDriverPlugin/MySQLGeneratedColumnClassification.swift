@@ -18,7 +18,7 @@ import TableProPluginKit
 ///
 /// "DEFAULT_GENERATED" is a MySQL 8 expression default, not a generated column,
 /// and stays insertable.
-internal func mysqlColumnIsGenerated(extra: String?) -> Bool {
+nonisolated internal func mysqlColumnIsGenerated(extra: String?) -> Bool {
     guard let extra else { return false }
     let upper = extra.uppercased()
     if upper.contains("STORED GENERATED") || upper.contains("VIRTUAL GENERATED") {
@@ -33,13 +33,13 @@ internal func mysqlColumnIsGenerated(extra: String?) -> Bool {
 ///
 /// It is `byDefault` rather than `always`: MySQL accepts an explicit value and only allocates the
 /// next one when the column is omitted or given NULL.
-internal func mysqlIdentityKind(extra: String?) -> IdentityKind? {
+nonisolated internal func mysqlIdentityKind(extra: String?) -> IdentityKind? {
     guard let extra, extra.uppercased().contains("AUTO_INCREMENT") else { return nil }
     return .byDefault
 }
 
 /// The kind, from the same `Extra` value. MariaDB 10.1 and older spell stored as "PERSISTENT".
-internal func mysqlGenerationKind(extra: String?) -> GenerationKind? {
+nonisolated internal func mysqlGenerationKind(extra: String?) -> GenerationKind? {
     guard let extra, mysqlColumnIsGenerated(extra: extra) else { return nil }
     let upper = extra.uppercased()
     if upper.contains("STORED GENERATED") || upper.trimmingCharacters(in: .whitespaces) == "PERSISTENT" {

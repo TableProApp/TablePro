@@ -11,11 +11,11 @@ private final class CountingSink: PluginImportDataSink, @unchecked Sendable {
     let databaseTypeId = "mock"
     let targetTable: String? = "people"
 
-    private(set) var insertedRows = 0
+    private(set) var rows: [[String: PluginCellValue]] = []
 
     func execute(statement: String) async throws {}
-    func insertRow(_ values: [String: PluginCellValue]) async throws { insertedRows += 1 }
-    func insertRows(_ rows: [[String: PluginCellValue]]) async throws { insertedRows += rows.count }
+    func insertRow(_ values: [String: PluginCellValue]) async throws { rows.append(values) }
+    func insertRows(_ rows: [[String: PluginCellValue]]) async throws { self.rows.append(contentsOf: rows) }
     func deleteAllRowsFromTargetTable() async throws {}
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
@@ -45,18 +45,31 @@ private final class FileSource: PluginImportSource, @unchecked Sendable {
 /// instances in flight at once read each other's error-handling mode.
 @Suite("JSON import skips unreadable lines", .serialized)
 struct JSONImportSkipTests {
-    private func writeNDJSON(_ lines: [String]) throws -> URL {
+    private func writeNDJSON(_ contents: Data) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("json-import-\(UUID().uuidString).ndjson")
-        try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        try contents.write(to: url)
         return url
     }
 
     private func runImport(
         _ lines: [String],
-        errorHandling: ImportErrorHandling
+        errorHandling: ImportErrorHandling,
+        sink: CountingSink = CountingSink()
     ) async throws -> Result<PluginImportResult, any Error> {
-        let url = try writeNDJSON(lines)
+        try await runImport(
+            contents: Data(lines.joined(separator: "\n").utf8),
+            errorHandling: errorHandling,
+            sink: sink
+        )
+    }
+
+    private func runImport(
+        contents: Data,
+        errorHandling: ImportErrorHandling,
+        sink: CountingSink = CountingSink()
+    ) async throws -> Result<PluginImportResult, any Error> {
+        let url = try writeNDJSON(contents)
         defer { try? FileManager.default.removeItem(at: url) }
 
         /// `settings` persists through plugin storage, so a test that writes it changes the
@@ -71,7 +84,7 @@ struct JSONImportSkipTests {
         do {
             let result = try await plugin.performImport(
                 source: FileSource(url: url),
-                sink: CountingSink(),
+                sink: sink,
                 progress: PluginImportProgress(progress: Progress())
             )
             return .success(result)
@@ -165,5 +178,91 @@ struct JSONImportSkipTests {
         #expect(result.executedStatements == 2)
         #expect(result.skippedStatements == 0)
         #expect(result.errors.isEmpty)
+    }
+
+    /// JSON allows U+2028, U+2029 and U+0085 unescaped inside a string. Reading the file with
+    /// `URL.lines` ended a line at each of them and failed both halves.
+    @Test("A string holding a Unicode line separator imports as one row")
+    func unicodeSeparatorInsideAStringImportsWhole() async throws {
+        let sink = CountingSink()
+        let outcome = try await runImport(
+            ["{\"note\":\"a\u{2028}b\u{2029}c\u{0085}d\"}", #"{"note": "e"}"#],
+            errorHandling: .skipAndContinue,
+            sink: sink
+        )
+        guard case .success(let result) = outcome else {
+            Issue.record("A valid file must import: \(outcome)")
+            return
+        }
+        #expect(result.executedStatements == 2)
+        #expect(result.skippedStatements == 0)
+        let first = try #require(sink.rows.first)
+        #expect(first["note"] == .text("a\u{2028}b\u{2029}c\u{0085}d"))
+    }
+
+    @Test("Lines ending in CRLF import every row")
+    func crlfLinesImport() async throws {
+        let outcome = try await runImport(
+            contents: Data("{\"a\":1}\r\n\r\n{\"a\":2}\r\n".utf8),
+            errorHandling: .stopAndRollback
+        )
+        guard case .success(let result) = outcome else {
+            Issue.record("A CRLF file must import: \(outcome)")
+            return
+        }
+        #expect(result.executedStatements == 2)
+    }
+
+    /// The same bytes in a `.json` file fail the whole parse. A JSON Lines file used to have the
+    /// bad byte swapped for U+FFFD and imported as if nothing were wrong.
+    @Test("A line that is not UTF-8 is reported rather than imported with replacement characters")
+    func invalidUTF8LineIsReported() async throws {
+        var contents = Data("{\"name\": \"Ada\"}\n{\"name\": \"".utf8)
+        contents.append(0xFF)
+        contents.append(Data("\"}\n{\"name\": \"Grace\"}".utf8))
+        let sink = CountingSink()
+        let outcome = try await runImport(contents: contents, errorHandling: .skipAndContinue, sink: sink)
+        guard case .success(let result) = outcome else {
+            Issue.record("Skip and Continue must not abort the import: \(outcome)")
+            return
+        }
+        #expect(result.executedStatements == 2)
+        #expect(result.skippedStatements == 1)
+        #expect(result.errors.contains { $0.line == 2 })
+        #expect(sink.rows.compactMap { $0["name"] } == [.text("Ada"), .text("Grace")])
+    }
+
+    /// `URL.lines` reads through `FileHandle.AsyncBytes`, which Foundation serves from one queue for
+    /// the whole process. A reader parked on a quiet pipe, as the Copilot language server's is,
+    /// held that queue and the import waited behind it.
+    @Test("An import finishes while another reader in the process waits on a quiet pipe")
+    func importIgnoresABlockedAsyncBytesReader() async throws {
+        let pipe = Pipe()
+        let blocker = Task {
+            for try await _ in pipe.fileHandleForReading.bytes {}
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let finished = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                let outcome = try? await self.runImport(
+                    [#"{"name": "Ada"}"#, #"{"name": "Grace"}"#],
+                    errorHandling: .stopAndRollback
+                )
+                guard case .success(let result) = outcome else { return false }
+                return result.executedStatements == 2
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                return false
+            }
+            let first = await group.next() ?? false
+            try? pipe.fileHandleForWriting.close()
+            group.cancelAll()
+            return first
+        }
+        blocker.cancel()
+
+        #expect(finished)
     }
 }

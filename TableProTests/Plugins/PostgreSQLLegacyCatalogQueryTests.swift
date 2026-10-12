@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL catalog reads that PostgreSQL 9.1 accepts")
 struct PostgreSQLLegacyCatalogQueryTests {
     private static let constructsMissingBefore96 = [
         "to_regclass", "LATERAL", "WITH ORDINALITY", "json", "array_remove", "array_position", "FILTER (",
@@ -26,8 +25,14 @@ struct PostgreSQLLegacyCatalogQueryTests {
         let queries = [
             PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: "orders", capabilities: legacy),
             PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: nil, capabilities: legacy),
-            PostgreSQLIndexQueries.indexList(schema: "public", table: "orders"),
-            PostgreSQLIndexQueries.indexList(schema: "public", table: nil),
+            PostgreSQLIndexQueries.indexList(schema: "public", table: "orders", capabilities: legacy),
+            PostgreSQLIndexQueries.indexList(schema: "public", table: nil, capabilities: legacy),
+            PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: "orders"),
+            PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: nil),
+            PostgreSQLIndexQueries.standaloneIndexQuery(schema: "public", table: "orders"),
+            PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: "public", table: "orders"),
+            PostgreSQLSchemaQueries.tableDDLColumnsQuery(schema: "public", table: "orders", capabilities: legacy),
+            PostgreSQLSchemaQueries.rebuildColumnsQuery(schema: "public", table: "orders", capabilities: legacy),
             PostgreSQLObjectQueries.triggerList(schema: "public", table: nil),
             PostgreSQLObjectQueries.userDefinedTypeList(schema: "public", identity: nil, capabilities: legacy),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: "public", table: "t"),
@@ -38,7 +43,20 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLPrincipalQueries.tableGrants(role: "r"),
             PostgreSQLPrincipalQueries.columnGrants(role: "r"),
             PostgreSQLSequenceQueries.sequenceList(schema: "public", dependentOnTable: "orders", source: .sequenceParameters),
-            PostgreSQLSchemaQueries.fetchTables(schema: "public", includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.query(schema: "public", includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.query(in: .schemas(["public"]), includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.query(in: .allSchemas, includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.informationSchemaQuery(in: .schemas(["public"])),
+            PostgreSQLSchemaQueries.columnsQuery(
+                schema: "public", table: nil, capabilities: legacy, includeMaterializedViews: false
+            ),
+            ColumnQueryShape.catalogPrimaryKeyJoin(schema: "public", fragments: ColumnQueryShape.fragments(table: nil)),
+            PostgreSQLSchemaQueries.enumLabelQuery(schema: "public", table: "orders"),
+            PostgreSQLSchemaQueries.arrayTypeQuery(schema: "public", table: nil),
+            PostgreSQLSchemaQueries.databaseMetadata(database: "app"),
+            PostgreSQLSchemaQueries.allDatabaseMetadata,
+            PostgreSQLObjectQueries.routineList(schema: "public", capabilities: legacy),
+            PostgreSQLObjectQueries.userDefinedTypeList(schemas: ["public", "app"], capabilities: legacy),
             PostgreSQLViewDefinition.catalogQuery(name: "v", schema: "public")
         ]
         for sql in queries {
@@ -53,9 +71,27 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLObjectQueries.triggerList(schema: hostile, table: hostile),
             PostgreSQLObjectQueries.routineList(schema: hostile, capabilities: Self.legacy),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: hostile, table: hostile),
-            PostgreSQLSchemaQueries.fetchTables(
+            PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: hostile, table: hostile),
+            PostgreSQLSchemaQueries.tableDDLColumnsQuery(schema: hostile, table: hostile, capabilities: Self.legacy),
+            PostgreSQLSchemaQueries.rebuildColumnsQuery(schema: hostile, table: hostile, capabilities: Self.legacy),
+            PostgreSQLIndexQueries.standaloneIndexQuery(schema: hostile, table: hostile),
+            PostgreSQLTableListing.query(
                 schema: hostile, includeMaterializedViews: true, includeForeignTables: true
-            )
+            ),
+            PostgreSQLTableListing.query(
+                in: .schemas([hostile]), includeMaterializedViews: true, includeForeignTables: true
+            ),
+            PostgreSQLTableListing.informationSchemaQuery(in: .schemas([hostile])),
+            PostgreSQLSchemaQueries.enumLabelQuery(schema: hostile, table: hostile),
+            PostgreSQLSchemaQueries.arrayTypeQuery(schema: hostile, table: hostile),
+            PostgreSQLSchemaQueries.databaseMetadata(database: hostile),
+            PostgreSQLObjectQueries.userDefinedTypeList(schemas: [hostile], capabilities: Self.legacy),
+            PostgreSQLForeignKeyQueries.foreignKeyList(schema: hostile, table: hostile, capabilities: Self.legacy),
+            ColumnQueryShape.catalogPrimaryKeyJoin(schema: hostile, fragments: ColumnQueryShape.fragments(table: hostile)),
+            ColumnQueryShape.informationSchemaPrimaryKeyJoin(
+                schema: hostile, fragments: ColumnQueryShape.fragments(table: hostile)
+            ),
+            CockroachRelationSQL.columnsQuery(schema: hostile, table: hostile)
         ]
         for sql in queries {
             #expect(sql.contains("E'a\\\\b''c'"), "\(sql)")
@@ -69,7 +105,6 @@ struct PostgreSQLLegacyCatalogQueryTests {
     }
 }
 
-@Suite("PostgreSQL foreign key catalog read")
 struct PostgreSQLForeignKeyQueryTests {
     private static let modern = PostgreSQLCapabilities(serverVersion: 170_011)
     private static let beforeConstraintParent = PostgreSQLCapabilities(serverVersion: 100_021)
@@ -79,7 +114,9 @@ struct PostgreSQLForeignKeyQueryTests {
         let sql = PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: "orders", capabilities: Self.modern)
         let derivedEnd = try #require(sql.range(of: ") con"))
         let inside = sql[..<derivedEnd.lowerBound]
+        #expect(inside.contains("JOIN pg_catalog.pg_namespace ns ON ns.oid = c.connamespace"))
         #expect(inside.contains("ns.nspname = 'public'"))
+        #expect(inside.contains("JOIN pg_catalog.pg_class src ON src.oid = c.conrelid"))
         #expect(inside.contains("src.relname = 'orders'"))
         #expect(inside.contains("pg_catalog.generate_subscripts(c.conkey, 1) AS ord"))
     }
@@ -92,11 +129,13 @@ struct PostgreSQLForeignKeyQueryTests {
         #expect(sql.contains("ORDER BY src_cl.relname, con.conname, con.ord"))
     }
 
-    @Test("The whole-schema read has no table predicate and the same projection")
+    @Test("The whole-schema read joins no table for its constraints and keeps the same projection")
     func bulkFormSharesProjection() {
         let bulk = PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: nil, capabilities: Self.modern)
         let single = PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: "orders", capabilities: Self.modern)
         #expect(!bulk.contains("src.relname ="))
+        #expect(!bulk.contains("pg_catalog.pg_class src ON"))
+        #expect(bulk.contains("JOIN pg_catalog.pg_namespace ns ON ns.oid = c.connamespace"))
         let projection: (String) -> Substring = { $0[..<($0.range(of: "FROM (")?.lowerBound ?? $0.endIndex)] }
         #expect(projection(bulk) == projection(single))
     }
@@ -157,20 +196,24 @@ struct PostgreSQLForeignKeyQueryTests {
     }
 }
 
-@Suite("PostgreSQL index catalog read")
 struct PostgreSQLIndexQueryTests {
-    @Test("Key order comes from the key position, found without array_position")
-    func keyOrderWithoutArrayPosition() {
-        let sql = PostgreSQLIndexQueries.indexList(schema: "public", table: nil)
-        #expect(sql.contains("FROM pg_catalog.generate_subscripts(ix.indkey, 1) AS k"))
-        #expect(sql.contains("WHERE ix.indkey[k] = a.attnum"))
-        #expect(sql.contains("a.attnum = ANY(ix.indkey)"))
+    private static let modern = PostgreSQLCapabilities(serverVersion: 170_011)
+
+    /// The spec changed with expression keys: the read used to join `pg_attribute` on
+    /// `attnum = ANY(indkey)`, which no expression key (attribute number 0) can satisfy, so every
+    /// expression was dropped from the list.
+    @Test("Key parts are read by position, so an expression key is not dropped by an attribute join")
+    func keyPartsReadByPosition() {
+        let sql = PostgreSQLIndexQueries.indexList(schema: "public", table: nil, capabilities: Self.modern)
+        #expect(!sql.contains("a.attnum = ANY(ix.indkey)"))
+        #expect(sql.contains("WHEN ix.indkey[k.n - 1] = 0 THEN pg_catalog.pg_get_indexdef(ix.indexrelid, k.n, true)"))
+        #expect(sql.contains("ORDER BY k.n"))
     }
 
     @Test("The per-table read adds one predicate to the whole-schema read")
     func perTableAddsOnePredicate() {
-        let single = PostgreSQLIndexQueries.indexList(schema: "public", table: "orders")
-        let bulk = PostgreSQLIndexQueries.indexList(schema: "public", table: nil)
+        let single = PostgreSQLIndexQueries.indexList(schema: "public", table: "orders", capabilities: Self.modern)
+        let bulk = PostgreSQLIndexQueries.indexList(schema: "public", table: nil, capabilities: Self.modern)
         #expect(single.contains("AND t.relname = 'orders'"))
         #expect(!bulk.contains("t.relname ="))
     }
@@ -179,9 +222,9 @@ struct PostgreSQLIndexQueryTests {
     func quotedColumnNamesStayWhole() throws {
         let row: [PluginCellValue] = [
             .text("idx_t"), .text("idx_weird"), .text(#"{"d,e",b,"first name"}"#), .text("false"), .text("false"),
-            .text("btree"), .null
+            .text("btree"), .null, .text("{}"), .text("{}")
         ]
-        let decoded = try #require(PostgreSQLIndexRow.index(from: row))
+        let decoded = try #require(PostgreSQLIndexRow.index(from: row, ddl: [:]))
         #expect(decoded.table == "idx_t")
         #expect(decoded.index.columns == ["d,e", "b", "first name"])
         #expect(decoded.index.type == "BTREE")
@@ -192,9 +235,9 @@ struct PostgreSQLIndexQueryTests {
     func flagsAndPredicate() throws {
         let row: [PluginCellValue] = [
             .text("orders"), .text("orders_big_amount"), .text("{amount}"), .text("true"), .text("false"),
-            .text("btree"), .text("(amount > (100)::numeric)")
+            .text("btree"), .text("(amount > (100)::numeric)"), .text("{}"), .text("{}")
         ]
-        let decoded = try #require(PostgreSQLIndexRow.index(from: row))
+        let decoded = try #require(PostgreSQLIndexRow.index(from: row, ddl: [:]))
         #expect(decoded.index.columns == ["amount"])
         #expect(decoded.index.isUnique)
         #expect(!decoded.index.isPrimary)
@@ -202,7 +245,6 @@ struct PostgreSQLIndexQueryTests {
     }
 }
 
-@Suite("PostgreSQL check constraint columns")
 struct PostgreSQLCheckConstraintColumnTests {
     @Test("Column names come back whole from the array literal the server prints")
     func hostileNames() {
@@ -225,7 +267,6 @@ struct PostgreSQLCheckConstraintColumnTests {
     }
 }
 
-@Suite("PostgreSQL sequence reads")
 struct PostgreSQLSequenceQueryTests {
     @Test("pg_sequences is read wherever it exists, and every other server reads the sequences one by one")
     func sourceSelection() {
@@ -350,7 +391,6 @@ struct PostgreSQLSequenceQueryTests {
     }
 }
 
-@Suite("PostgreSQL collation and table metadata reads")
 struct PostgreSQLCollationAndMetadataQueryTests {
     @Test("Before PostgreSQL 10 every collation but the default is a libc one")
     func legacyCollations() {
@@ -377,7 +417,6 @@ struct PostgreSQLCollationAndMetadataQueryTests {
     }
 }
 
-@Suite("PostgreSQL grant reads")
 struct PostgreSQLGrantQueryTests {
     @Test("aclexplode runs in a subquery's select list, which PostgreSQL 9.1 accepts")
     func grantsAvoidLateral() {
@@ -396,7 +435,6 @@ struct PostgreSQLGrantQueryTests {
     }
 }
 
-@Suite("PostgreSQL catalog booleans")
 struct PostgreSQLCatalogBooleanTests {
     @Test("The driver hands a boolean column over as true or false, and a text cast may say t or f")
     func spellings() {
@@ -418,9 +456,10 @@ struct PostgreSQLCatalogBooleanTests {
     @Test("A primary key index decoded from the driver's boolean text is unique and primary")
     func primaryKeyIndexKeepsItsFlags() throws {
         let row: [PluginCellValue] = [
-            .text("orders"), .text("orders_pkey"), .text("{id}"), .text("true"), .text("true"), .text("btree"), .null
+            .text("orders"), .text("orders_pkey"), .text("{id}"), .text("true"), .text("true"), .text("btree"), .null,
+            .text("{}"), .text("{}")
         ]
-        let decoded = try #require(PostgreSQLIndexRow.index(from: row))
+        let decoded = try #require(PostgreSQLIndexRow.index(from: row, ddl: [:]))
         #expect(decoded.index.isUnique)
         #expect(decoded.index.isPrimary)
     }

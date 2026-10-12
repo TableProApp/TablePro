@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
 
 struct SQLReviewSheet: View {
@@ -80,7 +80,6 @@ struct SQLReviewSheet: View {
 
     @State private var prepared: Prepared?
     @State private var copied = false
-    @State private var editorState: SourceEditorState?
     @State private var isExecuting = false
 
     enum DisplayMode {
@@ -138,25 +137,33 @@ struct SQLReviewSheet: View {
 
     private func prepare() async {
         guard prepared == nil, !statements.isEmpty else { return }
-        let isJavaScript = !showsStatementsVerbatim
-            && PluginManager.shared.editorLanguage(for: databaseType) == .javascript
+        let writesShellSyntax = Self.writesShellSyntax(for: databaseType, verbatim: showsStatementsVerbatim)
         let verbatim = showsStatementsVerbatim
-        let result = await Task.detached(priority: .userInitiated) { [statements, isJavaScript, verbatim] in
-            Self.build(statements: statements, isJavaScript: isJavaScript, verbatim: verbatim)
+        let result = await Task.detached(priority: .userInitiated) { [statements, writesShellSyntax, verbatim] in
+            Self.build(statements: statements, writesShellSyntax: writesShellSyntax, verbatim: verbatim)
         }.value
         prepared = result
     }
 
     static func build(statements: [String], databaseType: DatabaseType, verbatim: Bool = false) -> Prepared {
-        let isJavaScript = !verbatim && PluginManager.shared.editorLanguage(for: databaseType) == .javascript
-        return build(statements: statements, isJavaScript: isJavaScript, verbatim: verbatim)
+        build(
+            statements: statements,
+            writesShellSyntax: writesShellSyntax(for: databaseType, verbatim: verbatim),
+            verbatim: verbatim
+        )
     }
 
-    nonisolated private static func build(statements: [String], isJavaScript: Bool, verbatim: Bool) -> Prepared {
+    /// `ObjectId("…")` is MongoDB shell syntax. An Elasticsearch, Typesense or Weaviate body is JSON,
+    /// where the same rewrite of a stored `{"$oid": "…"}` leaves a request that no longer parses.
+    private static func writesShellSyntax(for databaseType: DatabaseType, verbatim: Bool) -> Bool {
+        !verbatim && QueryStatementModel.forDatabaseType(databaseType) == .javascript
+    }
+
+    nonisolated private static func build(statements: [String], writesShellSyntax: Bool, verbatim: Bool) -> Prepared {
         var full = verbatim
             ? statements.joined(separator: "\n\n")
             : statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
-        if isJavaScript {
+        if writesShellSyntax {
             full = convertExtendedJsonToShellSyntax(full)
         }
 
@@ -211,9 +218,7 @@ struct SQLReviewSheet: View {
                 Text(title ?? defaultTitle)
                     .font(.body.weight(.semibold))
                 if !statements.isEmpty {
-                    Text(
-                        "(\(statements.count) \(statements.count == 1 ? String(localized: "statement") : String(localized: "statements")))"
-                    )
+                    Text("(^[\(statements.count) statement](inflect: true))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 }
@@ -259,46 +264,8 @@ struct SQLReviewSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
     private func editor(for prepared: Prepared) -> some View {
-        switch prepared.mode {
-        case .rich:
-            richEditor(prepared.display)
-        case .plain, .truncated:
-            plainTextEditor(prepared.display)
-        }
-    }
-
-    private func richEditor(_ text: String) -> some View {
-        let stateBinding = Binding<SourceEditorState>(
-            get: { editorState ?? SourceEditorState() },
-            set: { editorState = $0 }
-        )
-        return SourceEditor(
-            .constant(text),
-            language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
-            configuration: Self.makeConfiguration(),
-            state: stateBinding,
-            foldProvider: FoldProviderResolver.provider(for: databaseType)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
-    }
-
-    /// A text view rather than a `Text` in a `ScrollView`: this path carries everything past the
-    /// tree-sitter cutoff, which for a confirmation is the whole statement however long it is, and
-    /// a single `Text` that size lays out for seconds. It wears the editor's own background, text
-    /// colour and syntax palette, which is what a hand-themed `Text` here was reaching for.
-    private func plainTextEditor(_ text: String) -> some View {
-        HighlightedSQLTextView(sql: text, databaseType: databaseType)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
+        SQLStatementPreview(prepared: prepared, databaseType: databaseType)
     }
 
     @ViewBuilder
@@ -368,23 +335,6 @@ struct SQLReviewSheet: View {
         } else {
             button.keyboardShortcut(.defaultAction)
         }
-    }
-
-    private static func makeConfiguration() -> SourceEditorConfiguration {
-        SourceEditorConfiguration(
-            appearance: .init(
-                theme: TableProEditorTheme.make(),
-                font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-                wrapLines: true
-            ),
-            behavior: .init(isEditable: false),
-            layout: .init(
-                contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-            ),
-            peripherals: EditorPeripherals.preview(
-                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
-            )
-        )
     }
 
     private func copyAll() {

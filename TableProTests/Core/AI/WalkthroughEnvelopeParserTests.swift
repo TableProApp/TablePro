@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("WalkthroughEnvelopeParser")
 struct WalkthroughEnvelopeParserTests {
     private let open = WalkthroughEnvelopeParser.openFence
     private let close = WalkthroughEnvelopeParser.closeFence

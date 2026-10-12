@@ -34,7 +34,6 @@ private final class FakeNotificationPresenter: UserNotificationPresenting {
 
 /// The real notification centre has no authorization on CI and drops everything silently, so a
 /// test written against it passes whether or not the code works.
-@Suite("OperationCompletionReporter")
 @MainActor
 struct OperationCompletionReporterTests {
     private func makeReporter(

@@ -3,12 +3,11 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 @MainActor
-@Observable
-internal final class PluginsSettingsNavigation {
+internal final class PluginsSettingsNavigation: ObservableObject {
     internal struct Request: Equatable {
         let id: UUID
         let pluginId: String?
@@ -16,7 +15,7 @@ internal final class PluginsSettingsNavigation {
 
     internal static let shared = PluginsSettingsNavigation()
 
-    internal private(set) var pendingRequest: Request?
+    @Published internal private(set) var pendingRequest: Request?
 
     internal init() {}
 

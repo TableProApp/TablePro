@@ -32,7 +32,7 @@ final class ElasticsearchPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsDatabaseSwitching = false
     static let supportsImport = false
     static let supportsExport = true
-    static let supportsSSH = false
+    static let supportsSSH = true
     static let supportsSSL = true
     static let supportsReadOnlyMode = true
     static let supportsForeignKeyDisable = false
@@ -62,6 +62,13 @@ final class ElasticsearchPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
 
     static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: "esHosts",
+            label: String(localized: "Hosts"),
+            placeholder: "localhost:9200",
+            fieldType: .hostList,
+            section: .connection
+        ),
         ConnectionField(
             id: "esAuthMethod",
             label: String(localized: "Auth Method"),

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPStatementGate refuses before it runs anything")
 struct MCPStatementGateRefusalTests {
     private func refusal(
         sql: String,
@@ -99,9 +98,33 @@ struct MCPStatementGateRefusalTests {
         #expect(error?.code == .invalidArgument)
     }
 
+    /// The execution gate counts statements too, and it counts them before Safe Mode is asked anything, so leave that
+    /// only the first gate was given refused every script at Silent (#3078).
+    @Test("A SQL Server script clears the execution gate as well when the caller takes scripts", arguments: [
+        "DECLARE @sn NVARCHAR(50) = N'x';\nSELECT 1 AS a WHERE @sn = N'x';\nSELECT 2 AS b;",
+        "SELECT 1 AS a\nGO\nSELECT 2 AS b",
+        "SELECT 1 AS a\nGO 3"
+    ])
+    func sqlServerScriptClearsBothGates(script: String) async throws {
+        let error = try await refusal(sql: script, databaseType: .mssql, allowsMultiStatement: true)
+        #expect(error == nil)
+    }
+
     @Test("A destructive statement is refused unless the caller allows destructive work")
     func destructiveIsRefusedWithoutOptIn() async throws {
         let error = try await refusal(sql: "DROP TABLE users")
+        #expect(error?.code == .denied)
+    }
+
+    /// Each ran its hidden DROP on the live engine, measured on 2026-09-19: PostgreSQL 17.11 through PQexec, DuckDB
+    /// 1.5.2 through duckdb_query, and SQL Server 2019 as one batch.
+    @Test("A DROP hidden where the engine ends a quote the old lexer did not is refused as destructive", arguments: [
+        (DatabaseType.postgresql, "SELECT 'C:\\' AS p; DROP TABLE users"),
+        (DatabaseType.duckdb, "SELECT 1 /* /* */ ' */; DROP TABLE users; --'"),
+        (DatabaseType.mssql, "SELECT [it's] FROM t; DROP TABLE users; SELECT 'x'"),
+    ])
+    func hiddenDropIsRefused(engine: DatabaseType, sql: String) async throws {
+        let error = try await refusal(sql: sql, databaseType: engine, allowsMultiStatement: true)
         #expect(error?.code == .denied)
     }
 
@@ -130,7 +153,6 @@ struct MCPStatementGateRefusalTests {
     }
 }
 
-@Suite("MCPStatementGate consent policy")
 struct MCPStatementGateConsentPolicyTests {
     private func metadata(
         safeMode: SafeModeLevel,

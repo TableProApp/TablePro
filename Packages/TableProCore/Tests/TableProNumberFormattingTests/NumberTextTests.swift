@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProNumberFormatting
+import XCTest
 
 private struct SplitMix64: RandomNumberGenerator {
     private var state: UInt64
@@ -19,7 +19,7 @@ private struct SplitMix64: RandomNumberGenerator {
 
 final class NumberTextTests: XCTestCase {
     func testGoldenDoubleStrings() {
-        XCTAssertEqual(NumberText.text(for: 1847.27), "1847.27")
+        XCTAssertEqual(NumberText.text(for: 1_847.27), "1847.27")
         XCTAssertEqual(NumberText.text(for: 0.1), "0.1")
         XCTAssertEqual(NumberText.text(for: 1.0), "1")
         XCTAssertEqual(NumberText.text(for: 100.0), "100")
@@ -99,7 +99,7 @@ final class NumberTextTests: XCTestCase {
     }
 
     func testFloatIsNotWidenedToDouble() {
-        let value: Float = 1847.27
+        let value: Float = 1_847.27
         XCTAssertEqual(Double(value).description, "1847.27001953125")
         XCTAssertEqual(NumberText.text(for: value), "1847.27")
         XCTAssertEqual(NumberText.text(for: NSNumber(value: value)), "1847.27")
@@ -157,7 +157,7 @@ final class NumberTextTests: XCTestCase {
 
     func testNestedJsonHandlesArraysNullsAndBooleans() {
         let value: [String: Any] = [
-            "items": [1847.27, 1.0, "x", NSNull()],
+            "items": [1_847.27, 1.0, "x", NSNull()],
             "flag": true,
             "count": 5
         ]
@@ -221,5 +221,32 @@ final class NumberTextTests: XCTestCase {
         XCTAssertFalse(JSONTruncation.isIncompleteStructure(#"{"a":1}"#))
         XCTAssertFalse(JSONTruncation.isIncompleteStructure("plain text..."))
         XCTAssertTrue(JSONTruncation.isIncompleteStructure(#"{"a":1, "b":"xx..."#))
+    }
+
+    func testIncompleteStructureCatchesEveryCutOfAStructure() {
+        let json = #"{"deep":[[1,2],[3,[4]]],"rows":[{"id":1,"ok":true},{"id":-2.5e3,"note":null}],"#
+            + #""tags":["a","b\"c","é"],"ctl":"a\u0001b"}"#
+        let length = (json as NSString).length
+        for maxLength in 1..<length {
+            let cut = JSONTruncation.truncate(json, maxLength: maxLength)
+            XCTAssertTrue(JSONTruncation.isIncompleteStructure(cut), cut)
+        }
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure(JSONTruncation.truncate(json, maxLength: length)))
+    }
+
+    func testIncompleteStructureCatchesACutRightAfterAnInnerCloser() {
+        XCTAssertTrue(JSONTruncation.isIncompleteStructure(#"[{"a":1},{"a":2}..."#))
+        XCTAssertTrue(JSONTruncation.isIncompleteStructure("[[1,2],[3,4]..."))
+    }
+
+    func testIncompleteStructureIgnoresProseThatOpensWithABracket() {
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure("[DRAFT] Chapter one..."))
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure("[Note: see below..."))
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure("{see notes} and more..."))
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure(#"{"a":1}..."#))
+    }
+
+    func testIncompleteStructureReadsBareWordsAsNumbersOrLiterals() {
+        XCTAssertTrue(JSONTruncation.isIncompleteStructure("[1,inf,-inf,nan,tr..."))
     }
 }

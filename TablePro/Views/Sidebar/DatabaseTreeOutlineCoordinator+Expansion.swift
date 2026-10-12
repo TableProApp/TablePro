@@ -23,11 +23,20 @@ extension DatabaseTreeOutlineCoordinator {
                 let hasMatches = flatItemCount(for: kind) > 0
                 setExpanded(sectionNode, viewModel?.effectiveExpanded(kind: kind, hasMatches: hasMatches) ?? true)
                 if outlineView.isItemExpanded(sectionNode) { restorePartitionExpansion(under: sectionNode) }
+            case .foldersSection:
+                setExpanded(sectionNode, searching || (viewModel?.isFoldersExpanded ?? true))
+                if outlineView.isItemExpanded(sectionNode) { restoreFolderExpansion(under: sectionNode) }
             case .redisKeysSection:
                 setExpanded(sectionNode, searching || (viewModel?.isRedisKeysExpanded ?? true))
+            case .schema:
+                setExpanded(sectionNode, true)
+                if outlineView.isItemExpanded(sectionNode) {
+                    triggerLoad(for: sectionNode)
+                    restoreObjectGroupExpansion(under: sectionNode)
+                }
             case .hierarchicalSchemaSection(let schema):
                 let want = searching
-                    ? hierarchicalSchemaMatches(schema)
+                    ? hierarchicalSchemaVerdict(schema) == .match
                     : windowState?.expandedTreeSchemas.contains(schema) ?? false
                 setExpanded(sectionNode, want)
                 if outlineView.isItemExpanded(sectionNode) {
@@ -53,7 +62,7 @@ extension DatabaseTreeOutlineCoordinator {
             for schemaNode in resolvedChildren(of: databaseNode) {
                 guard case .schema(let database, let schema) = schemaNode.kind else { continue }
                 let wantSchema = searching
-                    ? DatabaseTreeFilter.matches(searchText, schema) || schemaContentMatchesSearch(database: database, schema: schema)
+                    ? searchOpens(schemaNode, database: database, schema: schema)
                     : windowState?.expandedTreeDatabaseSchemas.contains(DatabaseSchemaKey(database: database, schema: schema)) ?? false
                 setExpanded(schemaNode, wantSchema)
                 if outlineView.isItemExpanded(schemaNode) {
@@ -62,6 +71,20 @@ extension DatabaseTreeOutlineCoordinator {
                 }
             }
         }
+    }
+
+    /// A schema matched by its own name alone stays closed, since opened it shows an empty container.
+    /// One already open stays open, so a row opened by hand does not snap shut when its read lands.
+    private func searchOpens(_ node: DatabaseTreeNode, database: String, schema: String) -> Bool {
+        guard schemaSearchVerdict(database: database, schema: schema) == .match else { return false }
+        if outlineView?.isItemExpanded(node) == true { return true }
+        return !objectBuckets(database: database, schema: schema).isEmpty
+    }
+
+    /// The flag is down for a click, so a schema opened by hand mid-search reads like any other.
+    private var disclosureOrigin: DatabaseTreeFilter.DisclosureOrigin {
+        guard isApplyingExpansion else { return .user }
+        return searchText.isEmpty ? .restore : .search
     }
 
     /// A connection knows where it is browsing from the moment it connects, so the tree can
@@ -76,25 +99,67 @@ extension DatabaseTreeOutlineCoordinator {
         )
     }
 
+    /// Both a partitioned table and a subpartitioned partition of one are restored here. On
+    /// PostgreSQL a subpartitioned partition is a relation of its own and loads its own children, so
+    /// it is recorded and re-expanded under the same key a table uses.
     private func restorePartitionExpansion(under parent: DatabaseTreeNode) {
-        guard searchText.isEmpty, let outlineView = self.outlineView, let windowState else { return }
-        for tableNode in resolvedChildren(of: parent) {
-            guard case .table(let ref) = tableNode.kind, ref.table.type == .partitionedTable else { continue }
+        guard showsPartitions, searchText.isEmpty, let outlineView = self.outlineView, let windowState
+        else { return }
+        for node in resolvedChildren(of: parent) {
+            guard node.isExpandable, let ref = expandableTableRef(of: node) else { continue }
             let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
             guard windowState.expandedTreeTables.contains(key) else { continue }
-            setExpanded(tableNode, true)
-            guard outlineView.isItemExpanded(tableNode) else { continue }
-            triggerLoad(for: tableNode)
-            restorePartitionExpansion(under: tableNode)
+            setExpanded(node, true)
+            guard outlineView.isItemExpanded(node) else { continue }
+            triggerLoad(for: node)
+            restorePartitionExpansion(under: node)
+        }
+    }
+
+    private func expandableTableRef(of node: DatabaseTreeNode) -> DatabaseTreeTableRef? {
+        switch node.kind {
+        case .table(let ref):
+            return ref.table.type == .partitionedTable ? ref : nil
+        case .partition(let ref):
+            return ref.tableRef
+        default:
+            return nil
+        }
+    }
+
+    private func recordTableExpansion(_ ref: DatabaseTreeTableRef, expanded: Bool) {
+        let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
+        if expanded {
+            windowState?.expandedTreeTables.insert(key)
+        } else {
+            windowState?.expandedTreeTables.remove(key)
+        }
+    }
+
+    /// A folder is open unless the user closed it, and every folder is open while a search runs, so
+    /// a match inside one is on screen rather than behind a closed triangle.
+    private func restoreFolderExpansion(under parent: DatabaseTreeNode) {
+        guard let outlineView = self.outlineView else { return }
+        let searching = !searchText.isEmpty
+        for folderNode in resolvedChildren(of: parent) {
+            guard let ref = folderNode.folderRef else { continue }
+            let collapsed = windowState?.collapsedTableFolders.contains(ref.folder.id) ?? false
+            setExpanded(folderNode, searching || !collapsed)
+            if outlineView.isItemExpanded(folderNode) { restorePartitionExpansion(under: folderNode) }
         }
     }
 
     private func restoreObjectGroupExpansion(under parent: DatabaseTreeNode) {
         guard let outlineView = self.outlineView else { return }
         let searching = !searchText.isEmpty
+        restoreFolderExpansion(under: parent)
         for groupNode in resolvedChildren(of: parent) {
             guard case .containerObjectKindSection(let group) = groupNode.kind else { continue }
-            let expanded = searching || (windowState?.isTreeObjectGroupExpanded(group) ?? group.kind.isExpandedByDefault)
+            let expanded = DatabaseTreeFilter.objectGroupIsExpanded(
+                searching: searching,
+                matchCount: searching ? matchCount(in: group) : 0,
+                stored: windowState?.isTreeObjectGroupExpanded(group) ?? group.kind.isExpandedByDefault
+            )
             setExpanded(groupNode, expanded)
             if outlineView.isItemExpanded(groupNode) { restorePartitionExpansion(under: groupNode) }
         }
@@ -112,10 +177,12 @@ extension DatabaseTreeOutlineCoordinator {
             restoreObjectGroupExpansion(under: node)
         case .schema, .hierarchicalSchemaSection:
             restoreObjectGroupExpansion(under: node)
-        case .objectKindSection, .containerObjectKindSection:
+        case .foldersSection:
+            restoreFolderExpansion(under: node)
+        case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition:
             restorePartitionExpansion(under: node)
-        case .recentSection, .recentTable, .database, .table, .routine, .trigger, .userType, .status,
-             .redisKeysSection, .redisNode:
+        case .recentSection, .recentTable, .database, .routine, .trigger,
+             .userType, .status, .redisKeysSection, .redisNode:
             break
         }
     }
@@ -133,6 +200,14 @@ extension DatabaseTreeOutlineCoordinator {
         switch node.kind {
         case .recentSection:
             viewModel?.isRecentsExpanded = expanded
+        case .foldersSection:
+            viewModel?.isFoldersExpanded = expanded
+        case .tableFolder(let ref):
+            if expanded {
+                windowState?.collapsedTableFolders.remove(ref.folder.id)
+            } else {
+                windowState?.collapsedTableFolders.insert(ref.folder.id)
+            }
         case .objectKindSection(let kind):
             viewModel?.expanded[kind] = expanded
         case .containerObjectKindSection(let group):
@@ -159,12 +234,10 @@ extension DatabaseTreeOutlineCoordinator {
                 windowState?.expandedTreeDatabaseSchemas.remove(key)
             }
         case .table(let ref):
-            let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
-            if expanded {
-                windowState?.expandedTreeTables.insert(key)
-            } else {
-                windowState?.expandedTreeTables.remove(key)
-            }
+            recordTableExpansion(ref, expanded: expanded)
+        case .partition(let ref):
+            guard let tableRef = ref.tableRef else { break }
+            recordTableExpansion(tableRef, expanded: expanded)
         case .recentTable, .routine, .trigger, .userType, .status, .redisNode:
             break
         }
@@ -174,7 +247,7 @@ extension DatabaseTreeOutlineCoordinator {
         switch node.kind {
         case .database(let metadata):
             if supportsSchemaLevel {
-                if isIdle(service.schemaListState(connectionId: connectionId, database: metadata.name)) {
+                if service.schemaListNeedsFetch(connectionId: connectionId, database: metadata.name) {
                     Task { await service.loadSchemas(connectionId: connectionId, database: metadata.name) }
                 }
                 loadExternalSchemaNames(database: metadata.name)
@@ -182,20 +255,34 @@ extension DatabaseTreeOutlineCoordinator {
                 loadObjects(database: metadata.name, schema: nil)
             }
         case .schema(let database, let schema):
+            guard DatabaseTreeFilter.readsOnDisclosure(origin: disclosureOrigin)
+                || isOpenedByUser(database: database, schema: schema)
+            else { return }
             loadObjects(database: database, schema: schema)
         case .table(let ref):
             loadPartitions(ref)
+        case .partition(let ref):
+            loadPartitions(ref.tableRef ?? ref.parent)
         case .hierarchicalSchemaSection(let schema):
             loadHierarchicalSchemaObjects(schema)
-        case .recentSection, .recentTable, .routine, .trigger, .userType, .status,
-             .objectKindSection, .containerObjectKindSection,
+        case .recentSection, .recentTable, .foldersSection, .tableFolder, .routine, .trigger, .userType,
+             .status, .objectKindSection, .containerObjectKindSection,
              .redisKeysSection, .redisNode:
             break
         }
     }
 
+    /// A schema the user has open keeps reading the lists a change overtook while a search runs; one
+    /// the search opened shows the listing's tables instead.
+    internal func isOpenedByUser(database: String, schema: String) -> Bool {
+        let key = DatabaseSchemaKey(database: database, schema: schema)
+        return windowState?.expandedTreeDatabaseSchemas.contains(key) == true || schemasOpenedDuringSearch.contains(key)
+    }
+
+    /// An expanded schema is the reader a catalog change waits for: it reads a schema never read,
+    /// and one a change has overtaken, once per change.
     private func loadHierarchicalSchemaObjects(_ schema: String) {
-        guard case .idle = schemaService.schemaState(for: connectionId, schema: schema) else { return }
+        guard schemaService.schemaObjectsNeedFetch(for: connectionId, schema: schema) else { return }
         let connectionId = connectionId
         let database = browsingDatabase
         Task {
@@ -219,12 +306,11 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     private func loadPartitions(_ ref: DatabaseTreeTableRef) {
-        guard ref.table.type == .partitionedTable else { return }
+        guard showsPartitions, ref.table.type == .partitionedTable else { return }
         let database = ref.database ?? ""
-        let state = service.partitionsLoadState(
+        guard service.partitionsNeedFetch(
             connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name
-        )
-        guard isIdle(state) else { return }
+        ) else { return }
         Task {
             await service.loadPartitions(
                 connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name
@@ -232,23 +318,11 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// An expanded container whose lists a change overtook reads them again on the next pass; a
+    /// collapsed one waits until it is opened.
     private func loadObjects(database: String, schema: String?) {
-        if isIdle(service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadTables(connectionId: connectionId, database: database, schema: schema) }
-        }
-        if isIdle(service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadRoutines(connectionId: connectionId, database: database, schema: schema) }
-        }
-        if isIdle(service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadTriggers(connectionId: connectionId, database: database, schema: schema) }
-        }
-        if isIdle(service.typesLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadUserDefinedTypes(connectionId: connectionId, database: database, schema: schema) }
-        }
-    }
-
-    private func isIdle<Value>(_ state: MetadataLoadState<Value>) -> Bool {
-        if case .idle = state { return true }
-        return false
+        guard service.objectsNeedFetch(connectionId: connectionId, database: database, schema: schema) else { return }
+        let connectionId = connectionId
+        Task { await service.loadObjects(connectionId: connectionId, database: database, schema: schema) }
     }
 }

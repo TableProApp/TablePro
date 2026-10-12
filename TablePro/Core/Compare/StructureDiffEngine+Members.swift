@@ -33,7 +33,7 @@ internal extension StructureDiffEngine {
                 continue
             }
             guard columnSignature(column) != columnSignature(existing) else { continue }
-            changes.append(.modifyColumn(old: existing, new: column))
+            changes.append(.modifyColumn(old: existing, new: modifiedColumn(column, replacing: existing)))
         }
         for column in target.columns where !sourceKeys.contains(options.matchKey(column.name)) {
             changes.append(.deleteColumn(column))
@@ -55,8 +55,15 @@ internal extension StructureDiffEngine {
         source: TableStructureSnapshot,
         target: TableStructureSnapshot
     ) -> MemberOutcome {
-        let sourceIndexes = source.indexes.filter { !$0.isPrimary }
-        let targetIndexes = target.indexes.filter { !$0.isPrimary }
+        indexChanges(source: source.indexes, target: target.indexes)
+    }
+
+    func indexChanges(
+        source: [EditableIndexDefinition],
+        target: [EditableIndexDefinition]
+    ) -> MemberOutcome {
+        let sourceIndexes = source.filter { !$0.isPrimary }
+        let targetIndexes = target.filter { !$0.isPrimary }
 
         var remaining = targetIndexes
         var changes: [SchemaChange] = []
@@ -110,6 +117,40 @@ internal extension StructureDiffEngine {
 }
 
 private extension StructureDiffEngine {
+    /// A collation the comparison does not report as changed is not a change it may make, whether it
+    /// ignores collation or finds the two equal. A driver writes a modified column's collation from
+    /// the new definition: MySQL restates the whole column to alter any part of it, and PostgreSQL
+    /// retypes when the schema-qualified spelling differs, which it does for two collations of one
+    /// name in two schemas.
+    ///
+    /// Only while the column keeps the target's type, because a collation is read on its type: MySQL
+    /// refuses `INT CHARACTER SET utf8mb4`, and PostgreSQL `integer COLLATE "C"`.
+    func modifiedColumn(
+        _ column: EditableColumnDefinition,
+        replacing existing: EditableColumnDefinition
+    ) -> EditableColumnDefinition {
+        guard options.normalizedType(column.dataType) == options.normalizedType(existing.dataType) else {
+            return column
+        }
+        guard options.ignoreCollationAndCharset || collationKey(column) == collationKey(existing) else {
+            return column
+        }
+        return column.keepingCollation(of: existing)
+    }
+
+    func collationKey(_ column: EditableColumnDefinition) -> String {
+        [options.matchKey(column.charset ?? ""), options.matchKey(column.collation ?? "")]
+            .joined(separator: "\u{1F}")
+    }
+
+    /// A nullable column behaves the same with a NULL default and with none, and engines report the
+    /// pair differently: MySQL and MariaDB spell it `DEFAULT NULL`, PostgreSQL stores no default at
+    /// all. Compared as written, every nullable column of a MySQL table reads as changed against the
+    /// same table on another engine.
+    func comparableDefault(_ column: EditableColumnDefinition) -> String? {
+        column.isNullable && column.hasNullDefault ? nil : column.defaultValue
+    }
+
     func columnSignature(_ column: EditableColumnDefinition) -> String {
         var parts: [String] = [
             options.matchKey(column.name),
@@ -117,15 +158,14 @@ private extension StructureDiffEngine {
             String(column.isNullable),
             String(column.autoIncrement),
             String(column.unsigned),
-            options.normalizedText(column.defaultValue) ?? "",
+            options.normalizedText(comparableDefault(column)) ?? "",
             options.normalizedText(column.onUpdate) ?? "",
             options.normalizedText(strippedExtra(column.extra)) ?? "",
             options.normalizedText(column.generationExpression) ?? "",
             column.generationKind?.rawValue ?? ""
         ]
         if !options.ignoreCollationAndCharset {
-            parts.append(options.matchKey(column.charset ?? ""))
-            parts.append(options.matchKey(column.collation ?? ""))
+            parts.append(collationKey(column))
         }
         if !options.ignoreCommentsAndOwners {
             parts.append(options.normalizedText(column.comment) ?? "")
@@ -133,12 +173,15 @@ private extension StructureDiffEngine {
         return parts.joined(separator: "\u{1F}")
     }
 
+    /// `INCLUDE` columns are compared on their own: they are stored in the index without being part
+    /// of its key, so `(a) INCLUDE (b)` and `(a, b)` are different indexes.
     func indexSignature(_ index: EditableIndexDefinition) -> String {
         var parts: [String] = [
             options.columnListKey(index.columns),
             String(index.isUnique),
             options.matchKey(index.type.rawValue),
-            options.normalizedText(index.whereClause) ?? ""
+            options.normalizedText(index.whereClause) ?? "",
+            options.columnListKey(index.includedColumns)
         ]
         let prefixes = index.columnPrefixes
             .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }

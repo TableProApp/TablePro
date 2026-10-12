@@ -64,7 +64,7 @@ struct ObjectSourceView: View {
             Button {
                 Task { await export() }
             } label: {
-                Label("Export…", systemImage: "square.and.arrow.down")
+                Label("Export…", systemImage: "square.and.arrow.up")
             }
             .buttonStyle(.bordered)
             .disabled(!hasSource)
@@ -101,7 +101,7 @@ struct ObjectSourceView: View {
     private func export() async {
         guard let url = await SQLFileService.showSavePanel(suggestedName: exportFileName) else { return }
         do {
-            try await SQLFileService.writeFile(content: source, to: url)
+            try await SQLFileService.writeFile(content: source, to: url, encoding: .utf8)
         } catch {
             exportError = error.localizedDescription
         }

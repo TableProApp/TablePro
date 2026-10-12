@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Cursor provider registration")
 struct CursorRegistrationTests {
     init() {
         AIProviderRegistration.registerAll()

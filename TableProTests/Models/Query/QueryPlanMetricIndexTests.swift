@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Metric Index")
 struct QueryPlanMetricIndexTests {
     private func node(
         _ operation: String,

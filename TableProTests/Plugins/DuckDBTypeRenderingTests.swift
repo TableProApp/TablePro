@@ -3,13 +3,12 @@
 //  TableProTests
 //
 //  The renderability table mirrors what duckdb_value_varchar actually returns for
-//  the linked libduckdb. scripts/check-duckdb-value-api.sh re-measures it.
+//  the linked libduckdb. scripts/probes/check-duckdb-value-api.sh re-measures it.
 //
 
 import Foundation
 import Testing
 
-@Suite("DuckDB type rendering")
 struct DuckDBTypeRenderingTests {
     @Test("Timestamp flavors the value API cannot decode need a text projection")
     func undecodableTimestampsRequireProjection() {

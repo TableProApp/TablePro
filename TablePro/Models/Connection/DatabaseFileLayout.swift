@@ -34,11 +34,12 @@ enum DatabaseFileLayout: Sendable, Equatable {
         }
     }
 
-    /// Suffixes that are rebuilt from the main file and must be cleared after it is replaced, so a
-    /// reader cannot apply a log that belongs to the file that used to be there.
+    /// Suffixes of every file the engine keeps beside a database that must not outlive a replaced
+    /// main file, so a reader cannot roll back or replay a journal that belongs to the file that
+    /// used to be there.
     var staleAfterReplaceSuffixes: [String] {
         switch self {
-        case .sqliteFamily: return ["-wal", "-shm"]
+        case .sqliteFamily: return ["-journal", "-wal", "-shm"]
         case .duckdb: return [".wal"]
         case .plainText: return []
         }

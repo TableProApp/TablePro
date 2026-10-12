@@ -15,7 +15,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Ping never reconnects")
 struct PingNeverReconnectsTests {
     /// Snowflake is the one deliberate exception. Its probe goes through `withReauthentication`,
     /// and an expired token is ordinary rather than a fault, so failing the ping would rebuild the

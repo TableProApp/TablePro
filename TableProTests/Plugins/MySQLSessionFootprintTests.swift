@@ -7,14 +7,14 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
-@Suite("MySQL session footprint")
 struct MySQLSessionFootprintTests {
     private func footprint(after statements: String...) -> MySQLSessionFootprint {
         var footprint = MySQLSessionFootprint()
         for statement in statements {
-            footprint.observe(statement)
+            footprint.observe(statement, lexicalFeatures: MySQLLexicalFeatures.mySQL)
         }
         return footprint
     }
@@ -57,6 +57,79 @@ struct MySQLSessionFootprintTests {
         #expect(footprint(after: "BEGIN", "INSERT INTO t VALUES (1)", "COMMIT").isClean)
         #expect(footprint(after: "LOCK TABLES users WRITE", "UNLOCK TABLES").isClean)
         #expect(footprint(after: "SELECT GET_LOCK('job', 10)", "SELECT RELEASE_ALL_LOCKS()").isClean)
+    }
+
+    /// Measured on MySQL 8.4 with `lock_wait_timeout = 1`: a second session's `INSERT` failed with
+    /// error 1205 while `LOCK TABLES t WRITE` was held, and went through after the holder ran
+    /// `BEGIN`. A `COMMIT` does not release it, and the same `INSERT` failed again afterwards.
+    @Test("Beginning a transaction releases the table locks, and committing does not")
+    func beginningATransactionReleasesTheLocks() {
+        #expect(footprint(after: "LOCK TABLES users WRITE", "BEGIN").hasLockedTables == false)
+        #expect(footprint(after: "LOCK TABLES users WRITE", "begin work").hasLockedTables == false)
+        #expect(footprint(after: "LOCK TABLES users WRITE", "START TRANSACTION").hasLockedTables == false)
+        #expect(footprint(after: "LOCK TABLES users WRITE", "COMMIT").hasLockedTables)
+    }
+
+    /// `SQLTransactionTracking` reads any leading `START` as opening a transaction, which is the
+    /// safe direction for the release gate and the wrong one here: `START REPLICA` holds no
+    /// transaction and releases no lock.
+    @Test("Starting replication is not beginning a transaction, so the locks stay")
+    func startingReplicationKeepsTheLocks() {
+        #expect(footprint(after: "LOCK TABLES users WRITE", "START REPLICA").hasLockedTables)
+        #expect(footprint(after: "LOCK TABLES users WRITE", "BEGIN NOT ATOMIC SELECT 1; END").hasLockedTables)
+    }
+
+    /// Measured on the same server: after `LOCK TABLES t WRITE` then
+    /// `LOCK TABLES nonexistent WRITE` (error 1146), the other session's `INSERT` went through, so
+    /// the failed statement released what the session held and acquired nothing.
+    @Test("A LOCK TABLES the server refused holds nothing")
+    func aFailedLockHoldsNothing() {
+        var result = footprint(after: "LOCK TABLES users WRITE")
+        result.observeFailure(of: "LOCK TABLES missing WRITE", lexicalFeatures: MySQLLexicalFeatures.mySQL)
+        #expect(result.hasLockedTables == false)
+        #expect(result.isClean)
+    }
+
+    /// The driver reports the text it sent, not the statement inside it the server refused, and a
+    /// server runs a batch in order and stops at the first refusal. So the lock here was taken and
+    /// the `INSERT` is what failed. Clearing the flag for any `LOCK TABLES` in the text reported a
+    /// session holding nothing, and the idle release then handed the connection back and let the
+    /// next batch's `START TRANSACTION` release the user's lock.
+    @Test("A batch whose later statement failed keeps the lock its first statement took")
+    func aFailedBatchKeepsTheLockItAlreadyTook() {
+        let batch = "LOCK TABLES users WRITE; INSERT INTO users VALUES (bad)"
+        var result = footprint(after: batch)
+        result.observeFailure(of: batch, lexicalFeatures: MySQLLexicalFeatures.mySQL)
+        #expect(result.hasLockedTables)
+        #expect(result.transactionState(isInTransaction: false) == .holdsSessionLocks)
+    }
+
+    @Test("A failure takes back nothing but the lock, because a statement can fail after changing the session")
+    func aFailureTakesBackOnlyTheLock() {
+        var result = footprint(after: "CREATE TEMPORARY TABLE staging (a INT)", "LOCK TABLES users WRITE")
+        result.observeFailure(of: "CREATE TEMPORARY TABLE staging (a INT)", lexicalFeatures: MySQLLexicalFeatures.mySQL)
+        #expect(result.hasTemporaryTables)
+        #expect(result.hasLockedTables)
+    }
+
+    @Test("The open transaction is the server's answer, and the lock is never read as one")
+    func transactionStateSeparatesLocksFromTransactions() {
+        let locked = footprint(after: "LOCK TABLES users WRITE")
+        #expect(locked.transactionState(isInTransaction: false) == .holdsSessionLocks)
+        #expect(locked.transactionState(isInTransaction: true) == .inTransaction)
+
+        let clean = footprint(after: "SELECT 1")
+        #expect(clean.transactionState(isInTransaction: false) == .idle)
+        #expect(clean.transactionState(isInTransaction: true) == .inTransaction)
+    }
+
+    /// `SET autocommit = 0` plus a write opens a transaction that appears nowhere in the text, and
+    /// the server reports it in the status flags the driver passes in here.
+    @Test("A transaction only the server can see is still reported")
+    func serverOnlyTransactionIsReported() {
+        var result = footprint(after: "SET autocommit = 0", "INSERT INTO t VALUES (1)")
+        result.observeServerTransaction(isOpen: true)
+        #expect(result.transactionState(isInTransaction: true) == .inTransaction)
     }
 
     /// A global setting outlives the connection, so it is not the session's to lose and must not
@@ -249,9 +322,34 @@ struct MySQLSessionFootprintTests {
         result.reset()
         #expect(result.isClean)
     }
+
+    /// `SET PASSWORD` writes the grant tables, not the session, so a reconnect loses nothing. It
+    /// read as a session setting, which held the connection with the wrong reason and turned off
+    /// replay until the next reconnect.
+    @Test("SET PASSWORD is an account change, not a session setting")
+    func setPasswordIsNotASessionSetting() {
+        let statements = [
+            "SET PASSWORD FOR `acc`@`%` = PASSWORD('x')",
+            "set password = password('x')",
+            "SET\n PASSWORD\tFOR `acc`@`%` = PASSWORD('x')",
+            "/*!40101 SET PASSWORD FOR `acc`@`%` = PASSWORD('x') */"
+        ]
+        for statement in statements {
+            let result = footprint(after: statement)
+            #expect(result.isClean, "\(statement)")
+            #expect(result.blockingReason == nil, "\(statement)")
+            #expect(mysqlMayReplay("SELECT 1", on: result), "\(statement)")
+        }
+    }
+
+    @Test("A setting whose name starts the same way is still a session setting")
+    func passwordPrefixedSettingsStillCount() {
+        #expect(footprint(after: "SET password_history = 3").hasSessionSettings)
+        #expect(footprint(after: "SET SESSION sql_mode = 'ANSI'").hasSessionSettings)
+        #expect(footprint(after: "SET sql_mode = 'ANSI'").hasSessionSettings)
+    }
 }
 
-@Suite("MySQL idle release policy")
 struct MySQLIdleReleaseTests {
     @Test("Anything that is not a positive number of minutes means never")
     func malformedValuesMeanNever() {

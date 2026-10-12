@@ -93,9 +93,9 @@ enum TeradataMessages {
             + "LM=\(logMech);LOB=Y;PART=DBC/SQL;SCS=UTF8;SIP=Y;SSLM=\(sslMode);TM=\(transactionMode);TVD=plain;"
         stringAttribute(30, ess)
         stringAttribute(31, "127.0.0.1")
-        portAttribute(32, 50000)
+        portAttribute(32, 50_000)
         stringAttribute(33, serverIP)
-        portAttribute(34, 1025)
+        portAttribute(34, 1_025)
         writer.u16(58); writer.u16(1); writer.u8(2)
         writer.u16(0x7FFF)
         writer.u16(0)

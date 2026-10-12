@@ -3,12 +3,11 @@
 //  TableProTests
 //
 
-import CodeEditSourceEditor
 import Foundation
-import Testing
 @testable import TablePro
+import TableProEditorKit
+import Testing
 
-@Suite("Fold placeholder summary")
 struct FoldPlaceholderSummaryTests {
 
     private func summarize(_ text: String, from lower: Int, to upper: Int, lines: Int) -> FoldPlaceholderSummary {
@@ -61,7 +60,6 @@ struct FoldPlaceholderSummaryTests {
     }
 }
 
-@Suite("SQL fold placeholder label")
 @MainActor
 struct SQLFoldPlaceholderLabelTests {
 

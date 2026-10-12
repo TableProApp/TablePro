@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProR2SQLCore
+import Testing
 
 /// A protocol that answers `/ok` at once and leaves every other request hanging until cancelled,
 /// so a test can hold several requests in flight and watch what a cancel does to each.
@@ -51,7 +51,7 @@ struct R2SQLURLSessionTransportTests {
         let response = try await transport().send(try request("/ok", timeout: 330))
 
         #expect(response.statusCode == 200)
-        #expect(String(decoding: response.body, as: UTF8.self) == #"{"success":true}"#)
+        #expect(String(bytes: response.body, encoding: .utf8) == #"{"success":true}"#)
         #expect(StubProtocol.lastTimeout == 330)
     }
 

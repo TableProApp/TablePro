@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("RedisArgumentCodec - byte round-trip")
 struct RedisArgumentCodecRoundTripTests {
     @Test("every byte value survives quote then split")
     func everyByteSurvives() {
@@ -44,7 +43,6 @@ struct RedisArgumentCodecRoundTripTests {
     }
 }
 
-@Suite("RedisArgumentCodec - readable output")
 struct RedisArgumentCodecReadabilityTests {
     @Test("a simple value is left unquoted")
     func simpleValueIsBare() {
@@ -63,7 +61,6 @@ struct RedisArgumentCodecReadabilityTests {
     }
 }
 
-@Suite("RedisArgumentCodec - redis-cli grammar")
 struct RedisArgumentCodecGrammarTests {
     @Test("hex escapes decode to raw bytes")
     func hexEscapes() {

@@ -12,7 +12,7 @@
 import SwiftUI
 
 internal struct CopyObjectsResultView: View {
-    internal let session: ObjectCopySession
+    @ObservedObject internal var session: ObjectCopySession
 
     internal var body: some View {
         if let result = session.result {
@@ -23,6 +23,20 @@ internal struct CopyObjectsResultView: View {
                         Label(
                             String(format: String(localized: "Created the database %@."), database),
                             systemImage: "cylinder.split.1x2"
+                        )
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    }
+                    if result.pendingInSessionTransaction {
+                        Label(
+                            String(
+                                localized: """
+                                    This copy ran inside the transaction already open on this \
+                                    connection. Commit it to keep the copy, or roll it back to \
+                                    discard it.
+                                    """
+                            ),
+                            systemImage: "clock.arrow.circlepath"
                         )
                         .font(.callout)
                         .foregroundStyle(.secondary)

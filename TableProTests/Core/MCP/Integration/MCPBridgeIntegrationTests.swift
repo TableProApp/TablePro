@@ -1,7 +1,8 @@
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import XCTest
+
+@testable import TablePro
 
 final class MCPBridgeIntegrationTests: XCTestCase {
     private var upstream: MockHttpServer!
@@ -371,6 +372,7 @@ final class BridgeHarness: @unchecked Sendable {
     private let hostToBridge = Pipe()
     private let bridgeToHost = Pipe()
     private let output = BridgeOutputBuffer()
+    private let outputReader: PipeReader
     private let proxy: BridgeProxy
     private let runTask: Task<Void, Never>
 
@@ -383,9 +385,8 @@ final class BridgeHarness: @unchecked Sendable {
             stdout: bridgeToHost.fileHandleForWriting
         )
         let buffer = output
-        bridgeToHost.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
+        outputReader = PipeReader(bridgeToHost.fileHandleForReading)
+        outputReader.start { chunk in
             buffer.append(chunk)
         }
         let runner = proxy
@@ -414,7 +415,7 @@ final class BridgeHarness: @unchecked Sendable {
     }
 
     func shutdown() {
-        bridgeToHost.fileHandleForReading.readabilityHandler = nil
+        outputReader.stop()
         try? hostToBridge.fileHandleForWriting.close()
         runTask.cancel()
         try? bridgeToHost.fileHandleForWriting.close()

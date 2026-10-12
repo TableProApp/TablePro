@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Filter SQL Generator MSSQL")
 struct FilterSQLGeneratorMSSQLTests {
     private static let mssqlDialect = SQLDialectDescriptor(
         identifierQuote: "[", keywords: [], functions: [], dataTypes: [],

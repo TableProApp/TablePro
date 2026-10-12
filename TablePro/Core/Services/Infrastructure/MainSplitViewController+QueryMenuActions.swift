@@ -66,6 +66,14 @@ extension MainSplitViewController {
         commandActions?.saveAsFavorite()
     }
 
+    @objc func clearQuery(_ sender: Any?) {
+        commandActions?.clearQuery()
+    }
+
+    @objc func clearResults(_ sender: Any?) {
+        commandActions?.clearResults()
+    }
+
     @objc func previewFKReference(_ sender: Any?) {
         commandActions?.previewFKReference()
     }
@@ -86,12 +94,16 @@ extension MainSplitViewController {
         commandActions?.goToLastPage()
     }
 
+    @objc func reviewQueryWithAI(_ sender: Any?) {
+        commandActions?.runAIQueryAction(.review)
+    }
+
     @objc func explainQueryWithAI(_ sender: Any?) {
-        commandActions?.aiExplainQuery()
+        commandActions?.runAIQueryAction(.explain)
     }
 
     @objc func optimizeQueryWithAI(_ sender: Any?) {
-        commandActions?.aiOptimizeQuery()
+        commandActions?.runAIQueryAction(.optimize)
     }
 
     @objc func selectNumberedTab(_ sender: Any?) {

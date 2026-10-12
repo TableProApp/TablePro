@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AWS Keyspaces SigV4 authentication")
 struct KeyspacesSigV4Tests {
     private let credentials = AWSCredentials(
         accessKeyId: "AKIDEXAMPLE",

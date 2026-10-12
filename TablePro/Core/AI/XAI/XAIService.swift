@@ -4,11 +4,12 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 
-@MainActor @Observable
-final class XAIService {
+@MainActor
+final class XAIService: ObservableObject {
     static let shared = XAIService()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "XAIService")
@@ -24,11 +25,11 @@ final class XAIService {
         }
     }
 
-    private(set) var authState: AuthState = .signedOut
-    private(set) var errorMessage: String?
+    @Published private(set) var authState: AuthState = .signedOut
+    @Published private(set) var errorMessage: String?
 
-    @ObservationIgnored private let tokenStore: XAITokenStore
-    @ObservationIgnored private let oauthClient: XAIOAuthClient
+    private let tokenStore: XAITokenStore
+    private let oauthClient: XAIOAuthClient
 
     init(
         tokenStore: XAITokenStore = .shared,
@@ -94,7 +95,7 @@ final class XAIService {
     }
 
     private func failSignIn(_ error: Error) {
-        Self.logger.error("xAI sign-in failed: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("xAI sign-in failed: \(error.publicLogShape, privacy: .public)")
         errorMessage = error.localizedDescription
         authState = .signedOut
     }

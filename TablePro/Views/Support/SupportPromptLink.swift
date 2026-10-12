@@ -11,7 +11,7 @@ import SwiftUI
 /// nothing to dismiss: it is a line of text that opens a window when clicked. It disappears on
 /// its own the moment a license is active.
 struct SupportPromptLink: View {
-    private let licenseManager = LicenseManager.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
 
     @ViewBuilder
     var body: some View {

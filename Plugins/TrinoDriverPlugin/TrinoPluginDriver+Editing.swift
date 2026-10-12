@@ -38,13 +38,15 @@ extension TrinoPluginDriver {
             switch change.type {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                let values = insertValues(change, columns: columns, insertedRowData: insertedRowData, typeName: typeName)
+                let values = TrinoRowEditValues.insertValues(
+                    change, columns: columns, insertedRowData: insertedRowData, typeName: typeName
+                )
                 if let sql = TrinoRowEditSQL.insert(qualifiedTable: target, columns: values) {
                     statements.append((sql, []))
                 }
             case .update:
                 let assignments = change.cellChanges.map {
-                    TrinoColumnValue(name: $0.columnName, value: Self.trinoValue($0.newValue), typeName: typeName($0.columnName))
+                    TrinoColumnValue(name: $0.columnName, value: TrinoRowEditValues.trinoValue($0.newValue), typeName: typeName($0.columnName))
                 }
                 let keys = keyColumns(primaryKeyColumns, columns: columns, change: change, typeName: typeName)
                 if let sql = TrinoRowEditSQL.update(qualifiedTable: target, assignments: assignments, keyColumns: keys) {
@@ -61,23 +63,6 @@ extension TrinoPluginDriver {
         return statements.isEmpty ? nil : statements
     }
 
-    private func insertValues(
-        _ change: PluginRowChange,
-        columns: [String],
-        insertedRowData: [Int: [PluginCellValue]],
-        typeName: (String) -> String
-    ) -> [TrinoColumnValue] {
-        if let rowData = insertedRowData[change.rowIndex] {
-            return columns.enumerated().compactMap { index, column in
-                guard index < rowData.count else { return nil }
-                return TrinoColumnValue(name: column, value: Self.trinoValue(rowData[index]), typeName: typeName(column))
-            }
-        }
-        return change.cellChanges.map {
-            TrinoColumnValue(name: $0.columnName, value: Self.trinoValue($0.newValue), typeName: typeName($0.columnName))
-        }
-    }
-
     private func keyColumns(
         _ primaryKeyColumns: [String],
         columns: [String],
@@ -87,7 +72,7 @@ extension TrinoPluginDriver {
         let keyNames = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
         return keyNames.compactMap { column in
             guard let value = originalValue(column, columns: columns, change: change) else { return nil }
-            return TrinoColumnValue(name: column, value: Self.trinoValue(value), typeName: typeName(column))
+            return TrinoColumnValue(name: column, value: TrinoRowEditValues.trinoValue(value), typeName: typeName(column))
         }
     }
 
@@ -96,16 +81,5 @@ extension TrinoPluginDriver {
             return originalRow[index]
         }
         return change.cellChanges.first { $0.columnName == column }?.oldValue
-    }
-
-    private static func trinoValue(_ cell: PluginCellValue) -> TrinoValue {
-        switch cell {
-        case .null:
-            return .null
-        case .text(let text):
-            return .text(text)
-        case .bytes(let data):
-            return .bytes([UInt8](data))
-        }
     }
 }

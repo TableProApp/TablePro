@@ -72,6 +72,31 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsRenameDatabase: Bool { get }
     static var supportsRenameSchema: Bool { get }
 
+    /// Whether the engine stores whole documents and implements `documentWriteStatement`,
+    /// `executeDocumentWrite` and `fetchDocument`, which is what offers Insert Document and Edit
+    /// Document. Read from the loaded plugin, so a binary built before these existed does not offer
+    /// them. Edit Document is offered only on a row the driver gave a locator.
+    static var supportsDocumentEditing: Bool { get }
+
+    /// Whether a row can lack a field altogether, apart from holding NULL, and the driver removes
+    /// one when a change's `absentColumns` names it. Offers Remove Field and a No Field placeholder,
+    /// and starts a new row with its fields missing. Read from the loaded plugin, so a binary built
+    /// before this existed offers none of it.
+    static var supportsFieldRemoval: Bool { get }
+
+    /// Whether a schema is something the engine makes from a statement. False on Oracle, where a
+    /// schema is a user, and on the engines whose namespace is the database.
+    static var supportsCreateSchema: Bool { get }
+
+    /// Whether a schema has an owner the engine can change. Separate from `supportsCreateSchema`
+    /// because several engines take an owner on create and offer no way to move it afterwards.
+    static var supportsSchemaOwner: Bool { get }
+
+    /// Whether the engine grants and revokes privileges on a schema. Requires the driver to
+    /// conform to `PluginPrincipalManagement`, which is where the privilege vocabulary and the
+    /// role list come from.
+    static var supportsSchemaPrivileges: Bool { get }
+
     static var supportsAddColumn: Bool { get }
     static var supportsModifyColumn: Bool { get }
     static var supportsDropColumn: Bool { get }
@@ -164,6 +189,11 @@ public extension DriverPlugin {
     static var supportsRenameView: Bool { supportsRenameTable }
     static var supportsRenameDatabase: Bool { false }
     static var supportsRenameSchema: Bool { false }
+    static var supportsDocumentEditing: Bool { false }
+    static var supportsFieldRemoval: Bool { false }
+    static var supportsCreateSchema: Bool { false }
+    static var supportsSchemaOwner: Bool { false }
+    static var supportsSchemaPrivileges: Bool { false }
 
     static var supportsAddColumn: Bool { true }
     static var supportsModifyColumn: Bool { true }

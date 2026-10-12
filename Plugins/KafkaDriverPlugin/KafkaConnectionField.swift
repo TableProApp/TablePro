@@ -1,6 +1,81 @@
 import Foundation
 import TableProPluginKit
 
+struct KafkaConnectTimeout: Equatable, Sendable {
+    static let defaultMilliseconds = 30_000
+    static let maximumMilliseconds = 3_600_000
+
+    let milliseconds: Int
+    let reconnectMilliseconds: Int
+
+    init(additionalFields: [String: String]) {
+        let fullMilliseconds: Int
+        if let raw = additionalFields["connectTimeoutSeconds"] {
+            fullMilliseconds = Self.parseSeconds(raw) ?? Self.defaultMilliseconds
+        } else if let raw = additionalFields[KafkaConnectionField.connectTimeout] {
+            fullMilliseconds = Self.parseSeconds(raw) ?? Self.defaultMilliseconds
+        } else {
+            fullMilliseconds = Self.defaultMilliseconds
+        }
+
+        if let raw = additionalFields["connectTimeoutMilliseconds"] {
+            milliseconds = Self.parseMilliseconds(raw) ?? Self.defaultMilliseconds
+        } else {
+            milliseconds = fullMilliseconds
+        }
+        reconnectMilliseconds = fullMilliseconds
+    }
+
+    init(milliseconds: Int) {
+        let clamped = min(max(milliseconds, 1), Self.maximumMilliseconds)
+        self.milliseconds = clamped
+        reconnectMilliseconds = clamped
+    }
+
+    private static func parseMilliseconds(_ raw: String) -> Int? {
+        guard let value = Int64(raw.trimmingCharacters(in: .whitespaces)) else { return nil }
+        return clamp(value)
+    }
+
+    private static func parseSeconds(_ raw: String) -> Int? {
+        guard let seconds = Int64(raw.trimmingCharacters(in: .whitespaces)) else { return nil }
+        let multiplied = seconds.multipliedReportingOverflow(by: 1_000)
+        let milliseconds = multiplied.overflow ? (seconds > 0 ? Int64.max : Int64.min) : multiplied.partialValue
+        return clamp(milliseconds)
+    }
+
+    private static func clamp(_ milliseconds: Int64) -> Int {
+        Int(min(max(milliseconds, 1), Int64(maximumMilliseconds)))
+    }
+}
+
+struct KafkaConnectDeadline: Sendable {
+    private let expiresAt: TimeInterval
+
+    init(timeout: KafkaConnectTimeout, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        self.init(milliseconds: timeout.milliseconds, now: now)
+    }
+
+    init(milliseconds: Int, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        expiresAt = now + TimeInterval(milliseconds) / 1_000
+    }
+
+    func remainingMilliseconds(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Int? {
+        let remaining = Int(((expiresAt - now) * 1_000).rounded(.up))
+        return remaining > 0 ? remaining : nil
+    }
+
+    /// An equal share of what is left for each of `attempts`, so one endpoint that never answers
+    /// cannot spend the time the others need.
+    func remainingMilliseconds(
+        sharedBy attempts: Int,
+        now: TimeInterval = ProcessInfo.processInfo.systemUptime
+    ) -> Int? {
+        guard let remaining = remainingMilliseconds(now: now) else { return nil }
+        return max(1, remaining / max(attempts, 1))
+    }
+}
+
 /// The field ids the connection form writes into `additionalFields`, and the small amount of
 /// interpretation the driver does on the way back out.
 ///
@@ -55,12 +130,29 @@ enum KafkaConnectionField {
         return resolved
     }
 
+    /// The form's list, else Host and Port: a tunnel clears the list and points Host and Port at
+    /// its local forward. A list saved before it replaced Host and Port named only the extra
+    /// brokers, so a Host missing from the list is still dialed, after the list.
+    static func bootstrapEndpoints(
+        host: String,
+        port: Int,
+        fields: [String: String],
+        defaultPort: Int
+    ) -> [KafkaEndpoint] {
+        let listed = (fields[bootstrapServers] ?? "")
+            .split(separator: ",")
+            .compactMap { KafkaEndpoint.parse(String($0), defaultPort: defaultPort) }
+        let primary = KafkaEndpoint(host: host.isEmpty ? "127.0.0.1" : host, port: port > 0 ? port : defaultPort)
+        if listed.isEmpty { return [primary] }
+        return host.isEmpty || listed.contains(primary) ? listed : listed + [primary]
+    }
+
     static func fields() -> [ConnectionField] {
         [
             ConnectionField(
                 id: bootstrapServers,
-                label: String(localized: "Additional Bootstrap Servers"),
-                placeholder: "broker-2:9092",
+                label: String(localized: "Bootstrap Servers"),
+                placeholder: "localhost:9092",
                 required: false,
                 fieldType: .hostList,
                 section: .connection
@@ -109,14 +201,6 @@ enum KafkaConnectionField {
                         label: String(localized: "Only use the bootstrap address")
                     )
                 ]),
-                section: .advanced
-            ),
-            ConnectionField(
-                id: connectTimeout,
-                label: String(localized: "Connect Timeout (seconds)"),
-                required: false,
-                defaultValue: "10",
-                fieldType: .stepper(range: ConnectionField.IntRange(1 ... 120)),
                 section: .advanced
             )
         ]

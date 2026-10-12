@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CodableListPreferenceStore")
 struct CodableListPreferenceStoreTests {
     private struct Item: Codable, Identifiable, Equatable {
         let id: UUID

@@ -8,11 +8,10 @@ import os
 
 /// The subsystem work a launch has to do but the first window does not need.
 ///
-/// Everything here is main-actor work: a registry fetch, a favourites prune that reads the
-/// connection store, an MCP server bind, a history cleanup. Started from the delegate it runs while
-/// the first window is still being built and takes main-thread time away from it. Started once that
-/// window has presented a frame, it costs the person nothing, because by then they are already
-/// looking at the app.
+/// Everything here is main-actor work: a registry fetch, a plugin signature sweep, an MCP server
+/// bind, a history cleanup. Started from the delegate it runs while the first window is still being
+/// built and takes main-thread time away from it. Started once that window has presented a frame,
+/// it costs the person nothing, because by then they are already looking at the app.
 ///
 /// Nothing whose absence is observable before that frame belongs here, and the bar is not whether
 /// it is cheap. A notification handler has to be registered before `applicationDidFinishLaunching`
@@ -44,10 +43,10 @@ internal enum PostLaunchWork {
         /// call. A sandboxed run has no user plugins directory to install into anyway.
         Task { await RegistryClient.shared.ensureManifest(.ifStale) }
 
-        Task { @MainActor in
-            let activeIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
-            await SQLFavoriteManager.shared.pruneOrphaned(activeConnectionIds: activeIds)
-        }
+        /// The retired per-tab split name left one permanent defaults record per query tab ever
+        /// opened, and AppKit offers no way to forget one. Here rather than in the delegate because
+        /// removing thousands is measurably slow and nothing observes them before the first frame.
+        Task { await SplitViewAutosaveSweep.sweepIfNeeded() }
 
         let mcp = AppSettingsManager.shared.mcp
         guard mcp.enabled else { return }

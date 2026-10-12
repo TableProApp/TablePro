@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("DuckDB idle release policy")
 struct DuckDBIdleReleaseTests {
     /// Every one of these is a value the connection form or a hand-edited file can produce, and
     /// each has to mean "never" rather than some interval nobody chose. A malformed setting that
@@ -51,7 +50,6 @@ struct DuckDBIdleReleaseTests {
     }
 }
 
-@Suite("DuckDB access mode")
 struct DuckDBAccessModeTests {
     /// Measured against the shipped library: `duckdb_set_config` accepts `READ_ONLY` and
     /// `read_only` and rejects everything else, and a rejected value leaves the database open

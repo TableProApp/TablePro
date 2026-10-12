@@ -5,18 +5,22 @@
 
 import Foundation
 import os
-import TableProNumberFormatting
+import TableProLogRedaction
 import TableProPluginKit
 
 final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private var mongoConnection: MongoDBConnection?
+    private(set) var mongoConnection: MongoDBConnection?
     private var scriptRuntime: MongoScriptRuntime?
-    private var currentDb: String
+    private(set) var currentDb: String
     private let columnKindLock = NSLock()
     private let rawFilterNormalizer = MongoDBRawFilterNormalizer()
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
+    private var declaredSchemasByCollection: [String: MongoDBCollectionSchema] = [:]
+    private var identityKindsByCollection: [String: BsonValueKind] = [:]
+    private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
+    private var fieldKindsByCollection: [String: MongoDBFieldKinds] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -88,7 +92,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             authMechanism: authMechanism,
             replicaSet: replicaSet,
             extraUriParams: extraParams,
-            uuidRepresentation: uuidRepresentation
+            uuidRepresentation: uuidRepresentation,
+            connectTimeout: MongoDBConnectTimeout(additionalFields: config.additionalFields)
         )
 
         try await conn.connect()
@@ -98,7 +103,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 let dbs = try await conn.listDatabases()
                 currentDb = dbs.first { !Self.systemDatabases.contains($0) } ?? dbs.first ?? ""
             } catch {
-                Self.logger.warning("listDatabases failed during connect, continuing without default database: \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("listDatabases failed during connect, continuing without default database: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             }
         }
 
@@ -137,6 +142,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
+        try await execute(query: query, context: PluginStatementContext())
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
         let startTime = Date()
 
         guard let conn = mongoConnection else {
@@ -161,17 +170,34 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        return try await runScript(trimmed, rowCap: nil, startTime: startTime)
+        return try await runScript(trimmed, rowCap: nil, access: MongoScriptAccess(context), startTime: startTime)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await execute(query: query)
     }
 
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await execute(query: query, context: context)
+    }
+
     func executeUserQuery(
         query: String,
         rowCap: Int?,
         parameters: [PluginCellValue]?
+    ) async throws -> PluginQueryResult {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
     ) async throws -> PluginQueryResult {
         let startTime = Date()
 
@@ -181,15 +207,16 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.lowercased() != "select 1" else {
-            return try await execute(query: query)
+            return try await execute(query: query, context: context)
         }
-        return try await runScript(trimmed, rowCap: rowCap, startTime: startTime)
+        return try await runScript(trimmed, rowCap: rowCap, access: MongoScriptAccess(context), startTime: startTime)
     }
 
     /// Runs one statement of the connection's shell and turns what it evaluated to into a result.
     private func runScript(
         _ statement: String,
         rowCap: Int?,
+        access: MongoScriptAccess,
         startTime: Date
     ) async throws -> PluginQueryResult {
         guard let runtime = scriptRuntime else { throw MongoDBPluginError.notConnected }
@@ -199,52 +226,95 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let outcome = try await runtime.evaluate(
                 statement: MongoShellCommandLine.rewrite(statement),
                 database: currentDb,
-                valueCeiling: ceiling
+                valueCeiling: ceiling,
+                access: access
             )
             if let switched = outcome.databaseSwitch { currentDb = switched }
+            let declared = try await declaredColumns(for: outcome)
             return capToRowCap(
                 MongoScriptResultBuilder.result(
                     for: outcome,
                     startTime: startTime,
+                    emptyColumns: MongoDBCollectionShape.emptyCollectionColumns(declaring: declared).map {
+                        (name: $0, typeName: declaredTypeName(of: $0, in: declared))
+                    },
                     documents: { documents, collection, isTruncated in
                         self.buildPluginResult(
                             from: documents, startTime: startTime,
-                            isTruncated: isTruncated, collection: collection
+                            isTruncated: isTruncated, collection: collection,
+                            declared: declared
                         )
                     }
                 ),
                 rowCap: rowCap
             )
         } catch {
-            throw mapExecutionError(error)
+            throw reportedError(error)
         }
+    }
+
+    /// The fields the collection declares, for a find that returned whole documents; empty, and not
+    /// read at all, for a projection, a pipeline or anything else. Read on the session driver because that is the one
+    /// whose writer and filters use it: `fetchColumns` runs on a pooled driver whose caches this
+    /// one never sees. Read again on a first page, so a refresh picks up a changed validator, and
+    /// reused while paging.
+    private func declaredColumns(for outcome: MongoScriptStatementResult) async throws -> MongoDBCollectionSchema {
+        guard outcome.producedDocuments,
+              let find = outcome.find, find.returnsWholeDocuments, find.database == currentDb,
+              let collection = outcome.collection, !collection.isEmpty,
+              let conn = mongoConnection else {
+            return .empty
+        }
+        let key = columnKindKey(collection)
+        let cached = columnKindLock.withLock { declaredSchemasByCollection[key] }
+        let schema: MongoDBCollectionSchema
+        if find.skip > 0, let cached {
+            schema = cached
+        } else {
+            schema = try await declaredSchema(of: collection, conn: conn)
+            columnKindLock.withLock { declaredSchemasByCollection[key] = schema }
+        }
+        return schema
+    }
+
+    private func declaredTypeName(of column: String, in schema: MongoDBCollectionSchema) -> String {
+        schema.field(named: column)?.columnTypeName(representation: uuidRepresentation)
+            ?? BsonDocumentFlattener.typeName(for: .objectId, representation: uuidRepresentation)
     }
 
     private func capToRowCap(_ result: PluginQueryResult, rowCap: Int?) -> PluginQueryResult {
         guard let rowCap, MongoDBFindLimitPolicy.isTruncated(rowCount: result.rows.count, rowCap: rowCap) else {
             return result
         }
-        return PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: Array(result.rows.prefix(rowCap)),
-            rowsAffected: result.rowsAffected,
-            executionTime: result.executionTime,
-            isTruncated: true,
-            statusMessage: result.statusMessage
-        )
+        return result.capped(to: rowCap)
     }
 
-    private func mapExecutionError(_ error: Error) -> Error {
-        guard let mongoError = error as? MongoDBError,
-              MongoDBTimeoutPolicy.isTimeoutCode(mongoError.code),
-              let maxTimeMS = mongoConnection?.effectiveMaxTimeMS(background: false) else {
-            return error
+    /// The error a failed statement surfaces, built in one place so the timeout wording and the
+    /// note about documents already written cannot overwrite each other.
+    ///
+    /// A cancel stays a cancel even when the statement had written: the app discards the result of
+    /// a query the user stopped, so there is nothing to show the note on. A write's failure leaves
+    /// as a `MongoDBError` like every other, so the app reads its code the same way.
+    private func reportedError(_ error: Error) -> Error {
+        var underlying = error
+        var writes = MongoWriteLedger()
+        if let failure = error as? MongoScriptStatementFailure {
+            if let switched = failure.databaseSwitch { currentDb = switched }
+            underlying = failure.underlying
+            writes = failure.writes
         }
-        return MongoDBError(
-            code: mongoError.code,
-            message: MongoDBTimeoutPolicy.timeoutMessage(maxTimeMS: maxTimeMS)
+        if underlying is CancellationError { return underlying }
+        let failedWrite = underlying as? MongoWriteFailure
+        let code = failedWrite?.code ?? (underlying as? MongoDBError)?.code ?? 0
+        let message = failedWrite?.message ?? (underlying as? MongoDBError)?.message ?? underlying.localizedDescription
+        let reported = writes.reportedMessage(
+            code: code,
+            message: message,
+            failedWrite: failedWrite?.stage,
+            maxTimeMS: mongoConnection?.effectiveMaxTimeMS(background: false)
         )
+        guard reported != message || failedWrite != nil else { return underlying }
+        return MongoDBError(code: code, message: reported)
     }
 
     // MARK: - Query Cancellation
@@ -260,9 +330,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let collections = try await conn.listCollections(database: currentDb)
-        return collections.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
-            .map { PluginTableInfo(name: $0, type: "table", rowCount: nil) }
+        let entries = try await conn.listNamespaces(database: currentDb, named: nil)
+            .compactMap(MongoDBNamespaceEntry.init(json:))
+        return entries.sorted(by: { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
+            .map { PluginTableInfo(name: $0.name, type: $0.pluginTableType, rowCount: nil) }
     }
 
 
@@ -289,66 +360,61 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             filter: "{}", sort: nil, projection: nil, skip: 0, limit: MongoStreamProjection.sampleSize
         ).docs
 
-        let enumMap = (try? await fetchJsonSchemaEnums(conn: conn, table: table)) ?? [:]
+        let schema = try await declaredSchema(of: table, conn: conn)
 
         if docs.isEmpty {
-            return [
-                PluginColumnInfo(
-                    name: "_id", dataType: "ObjectId", isNullable: false, isPrimaryKey: true,
-                    defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil
-                )
-            ]
+            return MongoDBCollectionShape.emptyCollectionColumns(declaring: schema)
+                .map { declaredColumnInfo($0, schema: schema) }
         }
 
-        let columns = BsonDocumentFlattener.unionColumns(from: docs)
+        let sampled = BsonDocumentFlattener.unionColumns(from: docs)
         let kinds = BsonDocumentFlattener.columnKinds(
-            for: columns, documents: docs, representation: uuidRepresentation
+            for: sampled, documents: docs, representation: uuidRepresentation
         )
-        rememberColumnKinds(kinds, for: columns, collection: table)
+        rememberColumnKinds(kinds, for: sampled, collection: table)
 
-        return columns.enumerated().map { index, name in
-            let typeName = BsonDocumentFlattener.typeName(
-                for: kinds[index], representation: uuidRepresentation
-            )
-            return PluginColumnInfo(
-                name: name, dataType: typeName, isNullable: name != "_id", isPrimaryKey: name == "_id",
+        let sampledColumns = sampled.enumerated().map { index, name in
+            PluginColumnInfo(
+                name: name,
+                dataType: BsonDocumentFlattener.typeName(for: kinds[index], representation: uuidRepresentation),
+                isNullable: name != MongoDBCollectionDDL.idField && schema.admitsNull(fieldNamed: name),
+                isPrimaryKey: name == MongoDBCollectionDDL.idField,
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
-                allowedValues: enumMap[name]
+                allowedValues: schema.allowedValues[name]
             )
         }
+        let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: schema)
+        return sampledColumns + unseen.map { declaredColumnInfo($0, schema: schema) }
     }
 
-    private func fetchJsonSchemaEnums(conn: MongoDBConnection, table: String) async throws -> [String: [String]] {
-        let escaped = escapeJsonString(table)
-        let result = try await conn.runCommand(
-            "{\"listCollections\": 1, \"filter\": {\"name\": \"\(escaped)\"}}",
-            database: currentDb
+    private func declaredColumnInfo(_ name: String, schema: MongoDBCollectionSchema) -> PluginColumnInfo {
+        let field = schema.field(named: name)
+        let isKey = name == MongoDBCollectionDDL.idField
+        return PluginColumnInfo(
+            name: name,
+            dataType: field?.columnTypeName(representation: uuidRepresentation)
+                ?? BsonDocumentFlattener.typeName(for: .objectId, representation: uuidRepresentation),
+            isNullable: !isKey && schema.admitsNull(fieldNamed: name),
+            isPrimaryKey: isKey,
+            defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
+            allowedValues: schema.allowedValues[name]
         )
-        guard let firstDoc = result.first,
-              let cursor = firstDoc["cursor"] as? [String: Any],
-              let firstBatch = cursor["firstBatch"] as? [[String: Any]],
-              let collInfo = firstBatch.first,
-              let options = collInfo["options"] as? [String: Any],
-              let validator = options["validator"] as? [String: Any],
-              let jsonSchema = validator["$jsonSchema"] as? [String: Any],
-              let properties = jsonSchema["properties"] as? [String: Any]
-        else { return [:] }
-
-        var map: [String: [String]] = [:]
-        for (colName, spec) in properties {
-            guard let specDict = spec as? [String: Any] else { continue }
-            if let enumValues = extractStringEnum(specDict["enum"]) {
-                map[colName] = enumValues
-            }
-        }
-        return map
     }
 
-    private func extractStringEnum(_ value: Any?) -> [String]? {
-        guard let array = value as? [Any], !array.isEmpty else { return nil }
-        guard array.allSatisfy({ $0 is String }) else { return nil }
-        let strings = array.compactMap { $0 as? String }
-        return strings.isEmpty ? nil : strings
+    /// A user whose role can `find` but not `listCollections` still browses, with no declared
+    /// fields, so a failed read is an empty schema rather than an error. A Stop is not a failure:
+    /// swallowing it returned the page as though nothing had been cancelled.
+    private func declaredSchema(of collection: String, conn: MongoDBConnection) async throws -> MongoDBCollectionSchema {
+        do {
+            let reply = try await conn.runCommandJson(
+                MongoDBCollectionSchema.listCollectionsCommand(for: collection), database: currentDb
+            )
+            return MongoDBCollectionSchema.parse(listCollectionsReply: reply)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return .empty
+        }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -396,19 +462,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let indexes = try await conn.listIndexes(database: currentDb, collection: table)
+        return try await indexEntries(of: table, conn: conn).map(\.pluginIndexInfo)
+    }
 
-        return indexes.compactMap { indexDoc -> PluginIndexInfo? in
-            guard let name = indexDoc["name"] as? String,
-                  let key = indexDoc["key"] as? [String: Any] else { return nil }
-
-            let columns = Array(key.keys)
-            let isUnique = (indexDoc["unique"] as? Bool) ?? (name == "_id_")
-            let isPrimary = name == "_id_"
-
-            return PluginIndexInfo(
-                name: name, columns: columns, isUnique: isUnique, isPrimary: isPrimary, type: "BTREE"
-            )
+    /// A view has no indexes, and the server says so by refusing `listIndexes` with
+    /// CommandNotSupportedOnView. libmongoc answers a missing collection the same way, with an
+    /// empty list, which is what the Enumerate Indexes spec asks for.
+    private func indexEntries(of collection: String, conn: MongoDBConnection) async throws -> [MongoDBIndexEntry] {
+        do {
+            return try await conn.listIndexes(database: currentDb, collection: collection)
+                .compactMap(MongoDBIndexEntry.init(json:))
+        } catch let error as MongoDBError where error.code == MongoDBServerErrorCode.commandNotSupportedOnView {
+            return []
         }
     }
 
@@ -467,68 +532,44 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let db = currentDb
-        var sections: [String] = ["// Collection: \(table)"]
-
+        let entry: MongoDBNamespaceEntry?
         do {
-            let result = try await conn.runCommand(
-                "{\"listCollections\": 1, \"filter\": {\"name\": \"\(escapeJsonString(table))\"}}",
-                database: db
-            )
-            if let firstDoc = result.first,
-               let cursor = firstDoc["cursor"] as? [String: Any],
-               let firstBatch = cursor["firstBatch"] as? [[String: Any]],
-               let collInfo = firstBatch.first,
-               let options = collInfo["options"] as? [String: Any] {
-                if let capped = options["capped"] as? Bool, capped {
-                    let size = options["size"] as? Int ?? 0
-                    let max = options["max"] as? Int
-                    var cappedInfo = "// Capped: true, size: \(size)"
-                    if let max { cappedInfo += ", max: \(max)" }
-                    sections.append(cappedInfo)
-                }
-                if let validator = options["validator"] {
-                    let json = prettyJson(validator)
-                    sections.append(
-                        "\n// Validator\ndb.runCommand({\n  \"collMod\": \"\(table)\",\n  \"validator\": \(json)\n})"
-                    )
-                }
-            }
+            entry = try await namespaceEntry(named: table, conn: conn)
         } catch {
             Self.logger.debug("Failed to fetch collection info for \(table): \(error.localizedDescription)")
+            entry = nil
+        }
+        if let entry, entry.isView {
+            return MongoDBNamespaceDDL.text(name: table, entry: entry, indexes: [])
         }
 
+        let indexes: [MongoDBIndexEntry]
         do {
-            let indexes = try await conn.listIndexes(database: db, collection: table)
-            let customIndexes = indexes.filter { ($0["name"] as? String) != "_id_" }
-
-            if !customIndexes.isEmpty {
-                sections.append("\n// Indexes")
-                for indexDoc in customIndexes {
-                    guard let name = indexDoc["name"] as? String,
-                          let key = indexDoc["key"] as? [String: Any] else { continue }
-
-                    let keyJson = prettyJson(key)
-                    var opts: [String] = []
-                    if (indexDoc["unique"] as? Bool) == true { opts.append("\"unique\": true") }
-                    if let ttl = indexDoc["expireAfterSeconds"] as? Int { opts.append("\"expireAfterSeconds\": \(ttl)") }
-                    if (indexDoc["sparse"] as? Bool) == true { opts.append("\"sparse\": true") }
-                    opts.append("\"name\": \"\(name)\"")
-
-                    let optsJson = "{\(opts.joined(separator: ", "))}"
-                    let accessor = MongoCollectionAccessor.expression(for: table)
-                    sections.append("\(accessor).createIndex(\(keyJson), \(optsJson))")
-                }
-            }
+            indexes = try await indexEntries(of: table, conn: conn)
         } catch {
             Self.logger.debug("Failed to fetch indexes for \(table): \(error.localizedDescription)")
+            indexes = []
         }
-
-        return sections.joined(separator: "\n")
+        return MongoDBNamespaceDDL.text(name: table, entry: entry, indexes: indexes)
     }
 
+    /// The `collMod` that redefines the view in place, which is what Edit View Definition runs. The
+    /// statement that creates it is in `fetchTableDDL`, where Show DDL and Copy DDL read it.
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        throw MongoDBPluginError.unsupportedOperation
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+        guard let statement = try await namespaceEntry(named: view, conn: conn)?.collModStatement() else {
+            throw MongoDBPluginError.viewNotFound(view)
+        }
+        return statement
+    }
+
+    private func namespaceEntry(named name: String, conn: MongoDBConnection) async throws -> MongoDBNamespaceEntry? {
+        try await conn.listNamespaces(database: currentDb, named: name)
+            .lazy
+            .compactMap(MongoDBNamespaceEntry.init(json:))
+            .first { $0.name == name }
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -659,8 +700,28 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The app-level fallback would emit `DROP TABLE <name>`, which the Mongo shell parser rejects.
     /// Mongo has no schemas or cascade, so both are ignored.
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        "db.getCollection(\"\(escapeJsonString(name))\").drop()"
+        MongoDBObjectStatements.drop(name)
     }
+
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        [MongoDBObjectStatements.truncate(table)]
+    }
+
+    // MARK: - Collection Creation
+
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        MongoDBCollectionDDL.createCollectionStatement(for: definition)
+    }
+
+    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        MongoDBCollectionDDL.createIndexStatement(collection: table, index: index)
+    }
+
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        MongoFieldChange.refusal(for: operation) ?? MongoDBCollectionDDL.refusal(for: operation)
+    }
+
+    var unsupportedIndexTypes: Set<String> { MongoDBCollectionDDL.unsupportedIndexTypes }
 
     func dropDatabase(name: String) async throws {
         guard let conn = mongoConnection else {
@@ -689,8 +750,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func editViewFallbackTemplate(viewName: String) -> String? {
-        let escaped = viewName.replacingOccurrences(of: "\"", with: "\\\"")
-        return "db.runCommand({\"collMod\": \"\(escaped)\", \"viewOn\": \"source_collection\", \"pipeline\": [{\"$match\": {}}]})"
+        MongoDBObjectStatements.redefineViewTemplate(viewName)
     }
 
     // MARK: - Query Building
@@ -727,19 +787,17 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = MongoDBStatementGenerator(
-            collectionName: table, columns: columns, columnKinds: columnKinds(for: table)
-        )
-        return generator.generateStatements(
+    ) throws -> [PluginRowWrite]? {
+        try writeGenerator(for: table, columns: columns).generateRowWrites(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
         )
@@ -750,17 +808,41 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
-        rows: [[PluginCellValue]]
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = MongoDBStatementGenerator(
-            collectionName: table, columns: columns, columnKinds: columnKinds(for: table)
-        )
-        return generator.generateRestore(rows: rows)
+        writeGenerator(for: table, columns: columns).generateRestore(rows: rows, absentCells: absentCells)
+    }
+
+    private func writeGenerator(for table: String, columns: [String]) -> MongoDBStatementGenerator {
+        let key = columnKindKey(table)
+        return columnKindLock.withLock {
+            let declared = declaredSchemasByCollection[key] ?? .empty
+            return MongoDBStatementGenerator(
+                collectionName: table,
+                columns: columns,
+                columnKinds: columnKindsByCollection[key] ?? [:],
+                declaredKinds: declared.valueKinds,
+                identityKind: identityKindsByCollection[key],
+                fieldKinds: fieldKindsByCollection[key] ?? .empty,
+                binarySubtypes: binarySubtypesByCollection[key] ?? .empty,
+                declaredBinaryFields: Self.binaryFields(declaredBy: declared),
+                capabilities: { MongoDBCapabilities.parse(self.serverVersion) }
+            )
+        }
+    }
+
+    private static func binaryFields(declaredBy schema: MongoDBCollectionSchema) -> Set<String> {
+        Set(schema.fields.filter { $0.bsonTypes.filter { $0 != "null" } == ["binData"] }.map(\.name))
     }
 
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        streamRows(query: query, context: PluginStatementContext())
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let conn = mongoConnection else {
             return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
         }
@@ -769,6 +851,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             query.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         let db = currentDb
+        let access = MongoScriptAccess(context)
 
         guard let runtime = scriptRuntime else {
             return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
@@ -778,31 +861,51 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let work = Task {
                 do {
-                    switch try await runtime.exportPlan(for: trimmed, database: db) {
-                    case .cursor(let plan):
+                    switch try await runtime.exportPlan(for: trimmed, database: db, access: access) {
+                    case .cursor(let plan, let databaseSwitch, let writes):
+                        if let databaseSwitch { self.currentDb = databaseSwitch }
+                        let census = MongoFieldCensus.request(
+                            for: plan, limit: PluginRowLimits.emergencyMax, timeoutMS: timeout
+                        )
+                        guard !Self.exportWrites(plan, census: census, timeoutMS: timeout) else {
+                            throw MongoScriptStatementFailure.carrying(
+                                MongoScriptError(MongoScriptText.refusedWritingPipelineInExport),
+                                databaseSwitch: databaseSwitch,
+                                writes: writes
+                            )
+                        }
                         let inner = plan.isFind
                             ? conn.streamFind(
                                 database: plan.database, collection: plan.collection,
                                 filter: plan.filter,
                                 optionsJson: plan.options.findOptionsJson(
                                     limit: PluginRowLimits.emergencyMax, timeoutMS: timeout
-                                )
+                                ),
+                                census: census
                             )
                             : conn.streamAggregate(
                                 database: plan.database, collection: plan.collection,
                                 pipeline: plan.pipeline,
-                                optionsJson: plan.options.aggregateOptionsJson(timeoutMS: timeout)
+                                optionsJson: plan.options.aggregateOptionsJson(timeoutMS: timeout),
+                                census: census
                             )
-                        for try await element in inner {
-                            try Task.checkCancellation()
-                            continuation.yield(element)
+                        do {
+                            for try await element in inner {
+                                try Task.checkCancellation()
+                                continuation.yield(element)
+                            }
+                        } catch {
+                            throw MongoScriptStatementFailure.carrying(
+                                error, databaseSwitch: databaseSwitch, writes: writes
+                            )
                         }
                     case .result(let outcome):
+                        if let switched = outcome.databaseSwitch { self.currentDb = switched }
                         self.yieldMaterialised(outcome, into: continuation)
                     }
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: error)
+                    continuation.finish(throwing: self.reportedError(error))
                 }
             }
             // A consumer that stops reading has to stop the cursor too, or it keeps draining the
@@ -811,8 +914,23 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    /// An export only reads, whatever the statement was sent as, and its plan runs outside the
+    /// host's checks, so every pipeline it would send is checked here.
+    private static func exportWrites(
+        _ plan: MongoScriptCursorPlan,
+        census: MongoFieldCensus.Request?,
+        timeoutMS: Int32
+    ) -> Bool {
+        var sent = [census?.pipeline, census?.optionsJson]
+        if !plan.isFind {
+            sent += [plan.pipeline, plan.options.aggregateOptionsJson(timeoutMS: timeoutMS)]
+        }
+        return sent.compactMap { $0 }.contains(where: MongoScriptAccessPolicy.writesThroughPipeline)
+    }
+
     /// Hands over a statement that had already run by the time the export asked, rather than
-    /// running it a second time.
+    /// running it a second time. Nested values render the way a streamed cursor renders them, so
+    /// one export never mixes two spellings.
     private func yieldMaterialised(
         _ outcome: MongoScriptStatementResult,
         into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
@@ -822,7 +940,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             startTime: Date(),
             documents: { documents, collection, isTruncated in
                 self.buildPluginResult(
-                    from: documents, startTime: Date(),
+                    from: MongoReadDocuments(dictionaries: documents.dictionaries, texts: []), startTime: Date(),
                     isTruncated: isTruncated, collection: collection
                 )
             }
@@ -841,11 +959,13 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Result Building
 
     private func buildPluginResult(
-        from documents: [[String: Any]],
+        from read: MongoReadDocuments,
         startTime: Date,
         isTruncated: Bool = false,
-        collection: String = ""
+        collection: String = "",
+        declared: MongoDBCollectionSchema = .empty
     ) -> PluginQueryResult {
+        let documents = read.dictionaries
         if documents.isEmpty {
             return PluginQueryResult(
                 columns: [], columnTypeNames: [],
@@ -854,23 +974,33 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        let columns = BsonDocumentFlattener.unionColumns(from: documents)
-        let kinds = BsonDocumentFlattener.columnKinds(
-            for: columns, documents: documents, representation: uuidRepresentation
+        let sampled = BsonDocumentFlattener.unionColumns(from: documents)
+        let sampledKinds = BsonDocumentFlattener.columnKinds(
+            for: sampled, documents: documents, representation: uuidRepresentation
         )
-        rememberColumnKinds(kinds, for: columns, collection: collection)
+        rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
+        rememberIdentityKind(of: documents, collection: collection)
         rememberFieldPathKinds(from: documents, collection: collection)
-        let typeNames = kinds.map { BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation) }
+        rememberBinarySubtypes(of: documents, collection: collection)
+        rememberFieldKinds(of: documents, collection: collection)
+        let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: declared)
+        let columns = sampled + unseen
+        let kinds = sampledKinds + unseen.map { declared.field(named: $0)?.valueKind ?? .null }
+        let typeNames = sampledKinds.map { BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation) }
+            + unseen.map { declaredTypeName(of: $0, in: declared) }
         let rows = BsonDocumentFlattener.flatten(
-            documents: documents, columns: columns, kinds: kinds, representation: uuidRepresentation
+            documents: documents, columns: columns, kinds: kinds,
+            representation: uuidRepresentation, storedTexts: read.texts
         )
 
-        return PluginQueryResult(
+        var result = PluginQueryResult(
             columns: columns, columnTypeNames: typeNames,
             rows: rows, rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime),
             isTruncated: isTruncated
         )
+        result.absentCells = BsonDocumentFlattener.absentCells(of: documents, columns: columns)
+        return result
     }
 
     // MARK: - Helpers
@@ -878,32 +1008,22 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func escapeJsonString(_ value: String) -> String {
         var result = ""
         result.reserveCapacity((value as NSString).length)
-        for char in value {
-            switch char {
-            case "\"": result += "\\\""
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "\\": result += "\\\\"
+            case "\"": result += "\\\""
             case "\n": result += "\\n"
             case "\r": result += "\\r"
             case "\t": result += "\\t"
             default:
-                if let ascii = char.asciiValue, ascii < 0x20 {
-                    result += String(format: "\\u%04x", ascii)
+                if scalar.value < 0x20 {
+                    result += String(format: "\\u%04x", scalar.value)
                 } else {
-                    result.append(char)
+                    result.unicodeScalars.append(scalar)
                 }
             }
         }
         return result
-    }
-
-    private func prettyJson(_ value: Any) -> String {
-        let sanitized = BsonDocumentFlattener.sanitizeForJson(value, representation: uuidRepresentation)
-        guard let json = NumberText.json(
-            from: sanitized, prettyPrinted: true, preservesFloatingPointForm: true
-        ) else {
-            return String(describing: value)
-        }
-        return json
     }
 
     private func rememberColumnKinds(_ kinds: [BsonValueKind], for columns: [String], collection: String) {
@@ -916,9 +1036,41 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columnKindLock.withLock { columnKindsByCollection[key] = byName }
     }
 
-    private func columnKinds(for collection: String) -> [String: BsonValueKind] {
+    /// Added to rather than replaced, so a value keeps its subtype after another page or another tab
+    /// of the same collection is read, and a value seen with two subtypes stays ambiguous. Past the
+    /// cap the collection starts over from this page: a value no longer found is refused, not guessed.
+    private func rememberBinarySubtypes(of documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty else { return }
+        let page = MongoDBBinarySubtypes.recording(documents)
+        guard !page.isEmpty else { return }
         let key = columnKindKey(collection)
-        return columnKindLock.withLock { columnKindsByCollection[key] ?? [:] }
+        columnKindLock.withLock {
+            let merged = (binarySubtypesByCollection[key] ?? .empty).merging(page)
+            binarySubtypesByCollection[key] = merged.count > Self.binarySubtypeLimit ? page : merged
+        }
+    }
+
+    private static let binarySubtypeLimit = 50_000
+
+    /// Added to rather than replaced, for the same reason as the binary subtypes: a string an earlier
+    /// page held still makes a text that opens with `{` ambiguous after a later page held none.
+    private func rememberFieldKinds(of documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty else { return }
+        let page = MongoDBFieldKinds.recording(documents, representation: uuidRepresentation)
+        guard !page.isEmpty else { return }
+        let key = columnKindKey(collection)
+        columnKindLock.withLock {
+            fieldKindsByCollection[key] = (fieldKindsByCollection[key] ?? .empty).merging(page)
+        }
+    }
+
+    private func rememberIdentityKind(of documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty else { return }
+        let kind = BsonDocumentFlattener.uniformKind(
+            of: MongoDBCollectionDDL.idField, in: documents, representation: uuidRepresentation
+        )
+        let key = columnKindKey(collection)
+        columnKindLock.withLock { identityKindsByCollection[key] = kind }
     }
 
     /// Recorded from the documents a browse already fetched, on the session driver that will
@@ -940,7 +1092,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func filterKinds(for collection: String) -> [String: BsonValueKind] {
         let key = columnKindKey(collection)
         return columnKindLock.withLock {
-            (fieldPathKindsByCollection[key] ?? [:]).merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
+            (declaredSchemasByCollection[key]?.valueKinds ?? [:])
+                .merging(fieldPathKindsByCollection[key] ?? [:]) { _, sampled in sampled }
+                .merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
         }
     }
 
@@ -954,7 +1108,21 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// Two databases can hold a collection of the same name with different field types.
     private func columnKindKey(_ collection: String) -> String {
-        "\(currentDb)\u{0}\(collection)"
+        MongoCollectionCacheKey.key(database: currentDb, collection: collection)
+    }
+
+    /// A Structure save renamed or removed fields on another connection, so the fields and types
+    /// this driver learned from the collection's documents and its validator no longer hold: a
+    /// later page would reuse the declared schema, and a write would type a renamed field by its old
+    /// name. Dropped in every database, since the save's database need not be this driver's.
+    func tableDefinitionDidChange(table: String, schema: String?) {
+        let isStale = { (key: String) in MongoCollectionCacheKey.names(key, collection: table) }
+        columnKindLock.withLock {
+            columnKindsByCollection = columnKindsByCollection.filter { !isStale($0.key) }
+            fieldPathKindsByCollection = fieldPathKindsByCollection.filter { !isStale($0.key) }
+            declaredSchemasByCollection = declaredSchemasByCollection.filter { !isStale($0.key) }
+            identityKindsByCollection = identityKindsByCollection.filter { !isStale($0.key) }
+        }
     }
 }
 
@@ -962,14 +1130,20 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 enum MongoDBPluginError: Error {
     case notConnected
-    case unsupportedOperation
+    case viewNotFound(String)
 }
 
 extension MongoDBPluginError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .notConnected: return String(localized: "Not connected to MongoDB")
-        case .unsupportedOperation: return String(localized: "Operation not supported for MongoDB")
+        case .viewNotFound(let name): return String(format: String(localized: "No view named %@ in this database"), name)
         }
+    }
+}
+
+private extension MongoScriptAccess {
+    init(_ context: PluginStatementContext) {
+        self = context.readOnly ? .read : .readWrite
     }
 }

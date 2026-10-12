@@ -4,58 +4,159 @@
 //
 
 import Foundation
+import TableProTabularIO
 
 internal enum FileTextLoader {
-    struct LoadedText {
+    struct LoadedText: Sendable {
         let content: String
-        let encoding: String.Encoding
-        /// When the file was last written, as of just before this text was read.
+        let textEncoding: FileTextEncoding
+        /// What the file was, as of just before this text was read.
         ///
         /// Read here rather than by the caller, because a caller that stats afterwards records a
-        /// date newer than the text it is holding, and a write that lands in between is then
-        /// invisible: the tab looks up to date against a file it never read. Taking the date first
+        /// stamp newer than the text it is holding, and a write that lands in between is then
+        /// invisible: the tab looks up to date against a file it never read. Taking the stamp first
         /// fails the other way, leaving the baseline older than the text, so the changed-on-disk
         /// notice can fire once too often but never go missing.
-        let modifiedAt: Date?
+        let stamp: FileStamp?
+        var encoding: String.Encoding { textEncoding.encoding }
         var isUTF8: Bool { encoding == .utf8 }
     }
 
     static func load(_ url: URL) -> LoadedText? {
-        let modifiedAt = modificationDate(of: url)
-        var detected: String.Encoding = .utf8
-        if let content = try? String(contentsOf: url, usedEncoding: &detected) {
-            return LoadedText(content: content, encoding: detected, modifiedAt: modifiedAt)
-        }
-        if let content = try? String(contentsOf: url, encoding: .utf8) {
-            return LoadedText(content: content, encoding: .utf8, modifiedAt: modifiedAt)
-        }
-        if let content = try? String(contentsOf: url, encoding: .isoLatin1) {
-            return LoadedText(content: content, encoding: .isoLatin1, modifiedAt: modifiedAt)
-        }
-        return nil
+        try? read(url)
     }
 
-    static func modificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+    static func read(_ url: URL) throws -> LoadedText {
+        let stamp = FileStamp.read(url)
+        if startsWithByteOrderMark(url) {
+            return try readByteOrderMarked(url, stamp: stamp)
+        }
+        let attribute = TextEncodingAttribute.read(from: url)
+        if attribute != nil {
+            var recorded: String.Encoding = .utf8
+            if let content = try? String(contentsOf: url, usedEncoding: &recorded) {
+                let textEncoding = FileTextEncoding(encoding: recorded, attributeOnDisk: attribute)
+                return LoadedText(content: content, textEncoding: textEncoding, stamp: stamp)
+            }
+        }
+        let data = try Data(contentsOf: url)
+        let detected = multiByteEncoding(of: data, isWholeFile: true)
+        if let detected, detected.codeUnitLength > 1, let content = String(data: data, encoding: detected) {
+            return LoadedText(content: content, textEncoding: FileTextEncoding(encoding: detected), stamp: stamp)
+        }
+        if let content = String(data: data, encoding: .utf8) {
+            return LoadedText(content: content, textEncoding: .utf8, stamp: stamp)
+        }
+        if let detected, let content = String(data: data, encoding: detected) {
+            return LoadedText(content: content, textEncoding: FileTextEncoding(encoding: detected), stamp: stamp)
+        }
+        guard let content = String(data: data, encoding: .isoLatin1) else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return LoadedText(content: content, textEncoding: FileTextEncoding(encoding: .isoLatin1), stamp: stamp)
+    }
+
+    static func resolvedEncoding(of url: URL) -> String.Encoding? {
+        load(url)?.encoding
+    }
+
+    static func load(_ url: URL, as textEncoding: FileTextEncoding) -> LoadedText? {
+        let stamp = FileStamp.read(url)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard textEncoding.byteOrderMark.map({ data.starts(with: $0.bytes) }) ?? (ByteOrderMark.leading(data) == nil) else {
+            return nil
+        }
+        let body = textEncoding.byteOrderMark.map { data.dropFirst($0.bytes.count) } ?? data[...]
+        let encoding = textEncoding.byteOrderMark?.byteOrderedEncoding ?? textEncoding.encoding
+        guard let content = String(data: Data(body), encoding: encoding) else { return nil }
+        return LoadedText(content: content, textEncoding: textEncoding, stamp: stamp)
+    }
+
+    private static func multiByteEncoding(of data: Data, isWholeFile: Bool) -> String.Encoding? {
+        let detected = TabularEncodingDetector.sniff(data, isWholeFile: isWholeFile).encoding
+        guard !detected.readsInPlace else { return nil }
+        return detected.foundationEncoding
+    }
+
+    static func decode(_ data: Data, declaredEncoding: String.Encoding? = nil) -> String? {
+        if declaredEncoding != nil, ByteOrderMark.leading(data) == nil, let utf8 = String(data: data, encoding: .utf8) {
+            return utf8
+        }
+        guard !data.isEmpty else { return "" }
+        return TextPrefixDecoder.decode(data, prefixLength: data.count, declaredEncoding: declaredEncoding)?.content
     }
 
     static func loadHeader(_ url: URL, maxBytes: Int = 4_096) -> LoadedText? {
+        let stamp = FileStamp.read(url)
+        let attribute = TextEncodingAttribute.read(from: url)
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: maxBytes), !data.isEmpty else { return nil }
-        let modifiedAt = modificationDate(of: url)
+        guard let bytes = try? handle.read(upToCount: maxBytes + TextPrefixDecoder.lookaheadLength) else { return nil }
+        let isWholeFile = bytes.count < maxBytes + TextPrefixDecoder.lookaheadLength
+        let declaredEncoding = attribute?.encoding ?? multiByteEncoding(of: bytes, isWholeFile: isWholeFile)
+        guard let decoded = TextPrefixDecoder.decode(
+            bytes,
+            prefixLength: maxBytes,
+            declaredEncoding: declaredEncoding
+        ) else { return nil }
+        return LoadedText(
+            content: decoded.content,
+            textEncoding: textEncoding(of: decoded, attribute: attribute),
+            stamp: stamp
+        )
+    }
 
-        if let content = String(data: data, encoding: .utf8) {
-            return LoadedText(content: content, encoding: .utf8, modifiedAt: modifiedAt)
+    private static func startsWithByteOrderMark(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let bytes = try? handle.read(upToCount: ByteOrderMark.longestLength) else { return false }
+        return ByteOrderMark.leading(bytes) != nil
+    }
+
+    private static func readByteOrderMarked(_ url: URL, stamp: FileStamp?) throws -> LoadedText {
+        let bytes = try Data(contentsOf: url)
+        guard let decoded = TextPrefixDecoder.decode(bytes, prefixLength: bytes.count) else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
         }
-        if let content = String(data: data, encoding: .isoLatin1) {
-            return LoadedText(content: content, encoding: .isoLatin1, modifiedAt: modifiedAt)
-        }
-        return nil
+        return LoadedText(
+            content: decoded.content,
+            textEncoding: textEncoding(of: decoded, attribute: nil),
+            stamp: stamp
+        )
+    }
+
+    private static func textEncoding(
+        of decoded: TextPrefixDecoder.Decoded,
+        attribute: TextEncodingAttribute?
+    ) -> FileTextEncoding {
+        FileTextEncoding(encoding: decoded.encoding, byteOrderMark: decoded.byteOrderMark, attributeOnDisk: attribute)
     }
 }
 
 internal extension String.Encoding {
+    init?(coreFoundationEncoding: CFStringEncoding) {
+        guard coreFoundationEncoding != kCFStringEncodingInvalidId,
+              CFStringIsEncodingAvailable(coreFoundationEncoding) else { return nil }
+        self.init(rawValue: CFStringConvertEncodingToNSStringEncoding(coreFoundationEncoding))
+    }
+
+    init?(ianaCharacterSetName name: String) {
+        self.init(coreFoundationEncoding: CFStringConvertIANACharSetNameToEncoding(name as CFString))
+    }
+
+    private static let gb18030 = String.Encoding(
+        coreFoundationEncoding: CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+    )
+
+    var representsAllOfUnicode: Bool {
+        switch self {
+        case .utf8, .utf16, .utf16BigEndian, .utf16LittleEndian, .utf32, .utf32BigEndian, .utf32LittleEndian:
+            return true
+        default:
+            return self == Self.gb18030
+        }
+    }
+
     var displayName: String {
         switch self {
         case .utf8: return "UTF-8"

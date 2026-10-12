@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query plan comparison")
 struct QueryPlanDiffTests {
     // MARK: - Verdict
 

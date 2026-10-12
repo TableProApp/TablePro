@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "TableProOracle",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v13),
         .iOS(.v17)
     ],
     products: [
@@ -14,7 +14,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/TableProApp/oracle-nio",
-            revision: "a5b3b355f24c807ce481f0cd68f2e9b0f5ec64e5"
+            revision: "6350a34f61aebb358358392d85c29e990dcd8c0e"
         ),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.81.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.29.0"),

@@ -15,7 +15,6 @@ import Testing
 ///
 /// These hold the helpers to carrying the structure-editing capabilities across, which is what
 /// decides whether the Structure tab offers a foreign key edit at all.
-@Suite("Plugin Metadata Snapshot Copying")
 struct PluginMetadataSnapshotCopyTests {
     private var sqliteType: DatabaseType { .sqlite }
 
@@ -42,7 +41,8 @@ struct PluginMetadataSnapshotCopyTests {
             ("withExplainVariants", original.withExplainVariants([])),
             ("withBranding", original.withBranding(from: original)),
             ("withIsDownloadable", original.withIsDownloadable(!original.isDownloadable)),
-            ("withSwitchRouting", original.withSwitchRouting(from: original))
+            ("withSwitchRouting", original.withSwitchRouting(from: original)),
+            ("withSystemNames", original.withSystemNames(databases: [], schemas: []))
         ]
 
         for (name, copy) in copies {
@@ -59,12 +59,30 @@ struct PluginMetadataSnapshotCopyTests {
             ("withExplainVariants", original.withExplainVariants([])),
             ("withBranding", original.withBranding(from: original)),
             ("withIsDownloadable", original.withIsDownloadable(!original.isDownloadable)),
-            ("withSwitchRouting", original.withSwitchRouting(from: original))
+            ("withSwitchRouting", original.withSwitchRouting(from: original)),
+            ("withSystemNames", original.withSystemNames(databases: [], schemas: []))
         ]
 
         for (name, copy) in copies {
             #expect(copy.schema.implicitSchemaName == "(default)", "\(name) reset the implicit schema")
         }
+    }
+
+    @Test("withSystemNames replaces only the two system name lists")
+    func withSystemNamesKeepsEveryOtherSchemaField() throws {
+        let original = try #require(PluginMetadataRegistry.shared.snapshot(for: .mysql))
+        let copy = original.withSystemNames(databases: ["a"], schemas: ["b"])
+
+        #expect(copy.schema.systemDatabaseNames == ["a"])
+        #expect(copy.schema.systemSchemaNames == ["b"])
+        #expect(copy.schema.defaultSchemaName == original.schema.defaultSchemaName)
+        #expect(copy.schema.containerEntityName == original.schema.containerEntityName)
+        #expect(copy.schema.databaseGroupingStrategy == original.schema.databaseGroupingStrategy)
+        #expect(copy.schema.structureColumnFields == original.schema.structureColumnFields)
+        #expect(copy.schema.rowMatchTextTypePrefixes == original.schema.rowMatchTextTypePrefixes)
+        #expect(copy.schema.fileSignatures.count == original.schema.fileSignatures.count)
+        #expect(copy.editor.columnTypesByCategory == original.editor.columnTypesByCategory)
+        #expect(copy.capabilities.supportsSSH == original.capabilities.supportsSSH)
     }
 
     /// An engine whose `ALTER TABLE` can add a constraint says so, and is not pushed through a

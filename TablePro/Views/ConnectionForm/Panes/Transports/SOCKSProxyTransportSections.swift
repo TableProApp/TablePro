@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct SOCKSProxyTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         serverSection

@@ -235,6 +235,24 @@ internal struct BigQueryQueryBuilder {
         [projectId, dataset, table].map(GoogleSQLLiteral.quotedIdentifier).joined(separator: ".")
     }
 
+    /// BigQuery keeps a table's comment in its `description` option, and setting an option to NULL
+    /// clears it.
+    static func descriptionStatement(qualifiedTable: String, objectType: String, comment: String?) -> String? {
+        let keyword: String
+        switch objectType.uppercased().replacingOccurrences(of: "_", with: " ") {
+        case "TABLE":
+            keyword = "TABLE"
+        case "VIEW":
+            keyword = "VIEW"
+        case "MATERIALIZED VIEW":
+            keyword = "MATERIALIZED VIEW"
+        default:
+            return nil
+        }
+        let value = comment.flatMap { $0.isEmpty ? nil : GoogleSQLLiteral.quotedString($0) } ?? "NULL"
+        return "ALTER \(keyword) \(qualifiedTable) SET OPTIONS (description = \(value))"
+    }
+
     static func buildSQL(from params: BigQueryQueryParams, projectId: String) -> String {
         let columns = params.columns ?? []
         let table = qualifiedTable(projectId: projectId, dataset: params.dataset, table: params.table)
@@ -428,7 +446,7 @@ internal struct BigQueryQueryBuilder {
     ) -> String? {
         let bounds: (lower: String, upper: String)
         if let secondValue = filter.secondValue {
-            bounds = (filter.value, secondValue)
+            bounds = (lowerBound(of: filter.value, upperBound: secondValue), secondValue)
         } else {
             let parts = filter.value.split(separator: ",", maxSplits: 1).map(String.init)
             guard parts.count == 2 else { return nil }
@@ -438,6 +456,13 @@ internal struct BigQueryQueryBuilder {
         let upper = bounds.upper.trimmingCharacters(in: .whitespaces)
         guard !lower.isEmpty, !upper.isEmpty else { return nil }
         return "\(column) BETWEEN \(literal(lower, kind: kind)) AND \(literal(upper, kind: kind))"
+    }
+
+    private static func lowerBound(of joinedValue: String, upperBound: String) -> String {
+        let joinedSuffix = ("," + upperBound).unicodeScalars
+        let scalars = joinedValue.unicodeScalars
+        guard scalars.reversed().starts(with: joinedSuffix.reversed()) else { return joinedValue }
+        return String(scalars.dropLast(joinedSuffix.count))
     }
 
     private static func comparisonClause(

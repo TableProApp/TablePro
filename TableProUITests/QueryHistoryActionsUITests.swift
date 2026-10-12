@@ -91,8 +91,7 @@ final class QueryHistoryActionsUITests: UITestCase {
 
     private func showHistoryDrawer(in app: XCUIApplication) {
         app.typeKey("y", modifierFlags: .command)
-        let detail = app.windows.firstMatch.descendants(matching: .any)
-            .matching(identifier: "query-history-detail").firstMatch
+        let detail = app.windows.firstMatch.groups.matching(identifier: "query-history-detail").firstMatch
         XCTAssertTrue(detail.waitToExist(timeout: 10), "Cmd+Y must show the query history drawer")
     }
 
@@ -102,7 +101,10 @@ final class QueryHistoryActionsUITests: UITestCase {
         XCTAssertTrue(list.waitToExist(timeout: 10))
         let row = list.tableRows.element(boundBy: 1)
         XCTAssertTrue(row.waitToExist(timeout: 10), "The drawer must list the query just run")
-        row.click()
+        /// Through a coordinate, for the reason `QueryHistoryFocusUITests` gives: `click()` on a row
+        /// AppKit reports as disabled selects it without a mouse-down, so the list never holds the
+        /// keyboard and Return reaches the editor instead of the list.
+        clickAtCenter(row)
 
         let preview = app.textViews["query-history-detail-query"]
         XCTAssertTrue(preview.waitToExist(timeout: 10))

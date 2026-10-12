@@ -12,6 +12,8 @@ internal extension NSWindow {
     /// next fires, and the placeholder is what a controller with no title publishes.
     static func titled(_ title: String, contentViewController: NSViewController) -> NSWindow {
         contentViewController.title = title
-        return NSWindow(contentViewController: contentViewController)
+        let window = NSWindow(contentViewController: contentViewController)
+        window.keepsKeyViewLoopCurrent()
+        return window
     }
 }

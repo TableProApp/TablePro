@@ -23,16 +23,24 @@ extension TableStructureView {
     /// A genuine refresh still refetches, through `onRefreshData`, which asks before discarding.
     @Sendable
     func loadInitialData() async {
+        session.settleOwedRefetch()
         guard !session.hasLoaded else {
             isInitialLoading = false
             isLoading = false
+            await session.reloadConcurrentRefreshAvailability()
             return
         }
         await loadColumns()
-        await loadTabDataIfNeeded(.indexes)
-        await loadTabDataIfNeeded(.foreignKeys)
-        await loadTabDataIfNeeded(.checkConstraints)
-        loadSchemaForEditing()
+        for tab in session.tabsFetchedOnMount where tab != .columns {
+            guard !Task.isCancelled else { break }
+            await loadTabDataIfNeeded(tab)
+        }
+        /// A workspace switch cancels this task and SwiftUI restarts it on return, which fetches only
+        /// for a session not yet loaded, so a load cut short here must not count as one.
+        guard !Task.isCancelled else { return }
+        await loadTableComment()
+        guard !Task.isCancelled else { return }
+        adoptFetchedBaseline()
         session.hasLoaded = true
         isInitialLoading = false
     }
@@ -45,7 +53,9 @@ extension TableStructureView {
             columns = try await structureLoader.columns()
             tabData.markFetched(.columns)
         } catch {
-            errorMessage = error.localizedDescription
+            if let message = fetchFailure(error).message {
+                errorMessage = message
+            }
         }
 
         isLoading = false
@@ -63,6 +73,7 @@ extension TableStructureView {
                 columns = try await structureLoader.columns()
             case .indexes:
                 indexes = try await structureLoader.indexes()
+                await session.reloadConcurrentRefreshAvailability()
             case .foreignKeys:
                 foreignKeys = try await structureLoader.foreignKeys()
             case .checkConstraints:
@@ -76,7 +87,8 @@ extension TableStructureView {
                 do {
                     triggers = try await structureLoader.triggers()
                 } catch {
-                    Self.logger.error("Failed to load triggers: \(error.localizedDescription, privacy: .public)")
+                    guard fetchFailure(error) != .cancelled else { return }
+                    Self.logger.error("Failed to load triggers: \(error.publicLogShape, privacy: .public)")
                     triggers = []
                 }
             case .parts:
@@ -84,9 +96,14 @@ extension TableStructureView {
             }
             tabData.markFetched(tab)
         } catch {
-            Self.logger.error("Failed to load \(tab.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            guard let message = fetchFailure(error).message else { return }
+            Self.logger.error("Failed to load \(tab.rawValue, privacy: .public): \(error.publicLogShape, privacy: .public)")
+            errorMessage = message
         }
+    }
+
+    private func fetchFailure(_ error: any Error) -> StructureFetchFailure {
+        StructureFetchFailure(error, taskIsCancelled: Task.isCancelled)
     }
 
     func loadSchemaForEditing() {
@@ -101,7 +118,8 @@ extension TableStructureView {
             indexes: indexes,
             foreignKeys: foreignKeys,
             checkConstraints: checkConstraints,
-            primaryKey: primaryKey
+            primaryKey: primaryKey,
+            tableComment: session.loadedTableComment
         )
     }
 
@@ -118,24 +136,35 @@ extension TableStructureView {
         }
     }
 
-    func onColumnsChanged() {
-        guard !isReloadingAfterSave, !isInitialLoading else { return }
+    /// A fetch that lands after edits were staged keeps them and the baseline they were made
+    /// against; the session owes the fetch until they are saved or discarded.
+    func adoptFetchedBaseline() {
+        guard !structureChangeManager.hasChanges else {
+            session.markStructureStale()
+            return
+        }
         loadSchemaForEditing()
+    }
+
+    func rebaselineUnlessEdited() {
+        guard !isReloadingAfterSave, !isInitialLoading else { return }
+        adoptFetchedBaseline()
+    }
+
+    func onColumnsChanged() {
+        rebaselineUnlessEdited()
     }
 
     func onIndexesChanged() {
-        guard !isReloadingAfterSave, !isInitialLoading else { return }
-        loadSchemaForEditing()
+        rebaselineUnlessEdited()
     }
 
     func onCheckConstraintsChanged() {
-        guard !isReloadingAfterSave, !isInitialLoading else { return }
-        loadSchemaForEditing()
+        rebaselineUnlessEdited()
     }
 
     func onForeignKeysChanged() {
-        guard !isReloadingAfterSave, !isInitialLoading else { return }
-        loadSchemaForEditing()
+        rebaselineUnlessEdited()
     }
 
     func onRefreshData() {
@@ -172,7 +201,8 @@ extension TableStructureView {
     }
 
     private func reloadAllTabs() async {
-        tabData.markAllStale()
+        session.markEveryTabStale()
+        session.gridDelegate.referenceMenus.invalidateTableLists()
         partsReloadToken += 1
         await reloadCoreTabs()
         if selectedTab == .ddl {
@@ -183,8 +213,8 @@ extension TableStructureView {
         }
     }
 
-    /// Fetches columns, indexes and foreign keys together and commits them in a single
-    /// synchronous block, so the segmented picker re-lays out once instead of per tab.
+    /// Commits in a single synchronous block, so the segmented picker re-lays out once instead of per
+    /// tab, and no columns handler re-baselines against a comment that has not landed yet.
     func reloadCoreTabs() async {
         isLoading = true
         errorMessage = nil
@@ -192,8 +222,14 @@ extension TableStructureView {
 
         let includesForeignKeys = connection.type.supportsForeignKeys
         do {
-            let reloaded = try await structureLoader.coreTabs(includingForeignKeys: includesForeignKeys)
+            let reloaded = try await structureLoader.coreTabs(
+                includingForeignKeys: includesForeignKeys,
+                includingTableComment: offersTableComment
+            )
 
+            if let comment = reloaded.tableComment {
+                session.settleTableComment(comment)
+            }
             columns = reloaded.columns
             indexes = reloaded.indexes
             tabData.markFetched(.columns)
@@ -202,9 +238,39 @@ extension TableStructureView {
                 foreignKeys = reloaded.foreignKeys
                 tabData.markFetched(.foreignKeys)
             }
+            await session.reloadConcurrentRefreshAvailability()
         } catch {
-            Self.logger.error("Failed to reload structure: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            guard let message = fetchFailure(error).message else { return }
+            Self.logger.error("Failed to reload structure: \(error.publicLogShape, privacy: .public)")
+            errorMessage = message
+        }
+    }
+}
+
+/// How a structure fetch that did not land ends, read from the error so it can be tested without
+/// mounting the view.
+///
+/// A workspace switch takes the pane out of the window, so SwiftUI cancels the view's `.task` and
+/// starts it again on return. A fetch cut short that way has not failed, and showing it left
+/// "CancellationError" on screen with no way to retry. An error that arrives after the task was
+/// cancelled counts as cancelled too: the next appearance fetches again and shows a real one then.
+internal enum StructureFetchFailure: Equatable {
+    case cancelled
+    case failed(String)
+
+    internal init(_ error: any Error, taskIsCancelled: Bool) {
+        if error is CancellationError || taskIsCancelled {
+            self = .cancelled
+        } else {
+            self = .failed(error.localizedDescription)
+        }
+    }
+
+    /// What the error view says. Nil for a cancelled fetch, which shows nothing.
+    internal var message: String? {
+        switch self {
+        case .cancelled: nil
+        case .failed(let message): message
         }
     }
 }

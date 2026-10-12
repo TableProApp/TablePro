@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("PluginBundleLoader.describeLoadFailure")
 struct PluginBundleLoaderDescribeLoadFailureTests {
     private func makeError(_ code: Int, debug: String? = nil, failureReason: String? = nil) -> NSError {
         var userInfo: [String: Any] = [:]

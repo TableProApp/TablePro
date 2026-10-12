@@ -4,13 +4,14 @@ public enum ConnectionGroupSyncField: String, SyncSchemaField {
     case groupId
     case name
     case color
+    case iconName
     case parentId
     case sortOrder
     case modifiedAtLocal
     case schemaVersion
 
     public static let verifiedInProduction: Set<Self> = [
-        .groupId, .name, .color, .parentId, .sortOrder, .modifiedAtLocal, .schemaVersion
+        .groupId, .name, .color, .iconName, .parentId, .sortOrder, .modifiedAtLocal, .schemaVersion
     ]
 }
 
@@ -62,7 +63,9 @@ public enum FavoriteDatabaseSyncField: String, SyncSchemaField {
     case modifiedAtLocal
     case schemaVersion
 
-    public static let verifiedInProduction: Set<Self> = []
+    public static let verifiedInProduction: Set<Self> = [
+        .connectionId, .database, .environment, .modifiedAtLocal, .schemaVersion
+    ]
 }
 
 public enum SQLFavoriteSyncField: String, SyncSchemaField {
@@ -98,6 +101,60 @@ public enum SQLFavoriteFolderSyncField: String, SyncSchemaField {
     public static let verifiedInProduction: Set<Self> = [
         .folderId, .name, .parentId, .connectionId,
         .sortOrder, .createdAt, .updatedAt, .modifiedAtLocal, .schemaVersion
+    ]
+}
+
+public enum TableFolderSyncField: String, SyncSchemaField {
+    case folderId
+    case connectionId
+    case database
+    case schema
+    case name
+    case createdAt
+    case updatedAt
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = [
+        .folderId, .connectionId, .database, .schema, .name,
+        .createdAt, .updatedAt, .modifiedAtLocal, .schemaVersion
+    ]
+}
+
+/// One object filed in a folder. The record is named after the object, not the folder, so moving a
+/// table between folders rewrites one record and an object can never be in two folders at once.
+public enum TableFolderItemSyncField: String, SyncSchemaField {
+    case connectionId
+    case database
+    case schema
+    case name
+    case folderId
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = [
+        .connectionId, .database, .schema, .name, .folderId, .modifiedAtLocal, .schemaVersion
+    ]
+}
+
+/// Everything except the password, which stays in the Keychain, and except the payload of a
+/// `.source` password mode, which can name a shell command this Mac would then run. `passwordMode`
+/// therefore travels as `stored`, `prompt` or `pgpass` only, and a profile using a source arrives
+/// as `prompt` on a second Mac until its owner re-authors it there.
+///
+public enum CredentialProfileSyncField: String, SyncSchemaField {
+    case profileId
+    case name
+    case username
+    case passwordMode
+    case secureFieldIdsJson
+    case sortOrder
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = [
+        .profileId, .name, .username, .passwordMode,
+        .secureFieldIdsJson, .sortOrder, .modifiedAtLocal, .schemaVersion
     ]
 }
 

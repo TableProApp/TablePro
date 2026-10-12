@@ -1,10 +1,9 @@
 import AppKit
-import CodeEditSourceEditor
 import Combine
 import Foundation
-import Observation
 import os
 import SwiftUI
+import TableProEditorKit
 
 internal enum DataGridFontVariant {
     static let regular = 0
@@ -55,18 +54,17 @@ internal struct DataGridFontCache: Equatable {
 /// Owns the active palette and the font caches, and nothing else: the catalog is `ThemeCatalog`,
 /// the choice is `ThemeResolver`, and the fonts come from settings. It never writes settings back,
 /// so the flow is one way.
-@Observable
 @MainActor
-internal final class ThemeEngine {
+internal final class ThemeEngine: ObservableObject {
     internal static let shared = ThemeEngine()
 
-    internal private(set) var pair: ThemePair
-    internal private(set) var effectiveAppearance: ThemeAppearance
-    internal private(set) var revision: Int
-    internal private(set) var palette: ThemePalette
-    internal private(set) var resolved: ResolvedTheme
-    internal private(set) var editorFonts: EditorFontCache
-    internal private(set) var dataGridFonts: DataGridFontCache
+    @Published internal private(set) var pair: ThemePair
+    @Published internal private(set) var effectiveAppearance: ThemeAppearance
+    @Published internal private(set) var revision: Int
+    @Published internal private(set) var palette: ThemePalette
+    @Published internal private(set) var resolved: ResolvedTheme
+    @Published internal private(set) var editorFonts: EditorFontCache
+    @Published internal private(set) var dataGridFonts: DataGridFontCache
 
     internal var activeTheme: ThemeDefinition { pair[effectiveAppearance] }
 
@@ -80,14 +78,13 @@ internal final class ThemeEngine {
     internal var valueFontSwiftUI: Font { Font(valueFont) }
     internal var valueFontEmphasizedSwiftUI: Font { Font(dataGridFonts.medium) }
 
-    @ObservationIgnored
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
 
-    @ObservationIgnored private var mode: AppAppearanceMode = .auto
-    @ObservationIgnored private var typography: TypographySettings = .default
-    @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
-    @ObservationIgnored private var accessibilityObserver: NSObjectProtocol?
-    @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1
+    private var mode: AppAppearanceMode = .auto
+    private var typography: TypographySettings = .default
+    private var appearanceObservation: NSKeyValueObservation?
+    private var accessibilityObserver: NSObjectProtocol?
+    private var lastAccessibilityScale: CGFloat = 1
 
     private init() {
         pair = .builtIn
@@ -202,7 +199,7 @@ internal final class ThemeEngine {
         publishChange()
     }
 
-    // MARK: - CodeEditSourceEditor
+    // MARK: - TableProEditorKit
 
     internal func makeEditorTheme() -> EditorTheme {
         let editorSettings = AppSettingsManager.shared.editor

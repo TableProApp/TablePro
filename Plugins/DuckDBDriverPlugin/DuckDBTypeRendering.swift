@@ -87,7 +87,7 @@ enum DuckDBProjectedQuery {
     }
 
     static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     static func projection(for type: DuckDBLogicalType?, at index: Int, column: String) -> String {

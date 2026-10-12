@@ -14,7 +14,7 @@ import os
 import SwiftUI
 
 @MainActor
-internal final class MainSplitViewController: NSSplitViewController, TrailingPaneProxy {
+internal final class MainSplitViewController: NSSplitViewController {
     nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     // MARK: - Payload & Session
@@ -40,11 +40,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     private var sessionState: SessionStateFactory.SessionState? {
         get { workspaces.selected?.sessionState }
         set { workspaces.selected?.sessionState = newValue }
-    }
-
-    private var trailingPaneState: TrailingPaneState? {
-        get { workspaces.selected?.trailingPaneState }
-        set { workspaces.selected?.trailingPaneState = newValue }
     }
 
     var autoConnect: Bool { workspaces.selected?.autoConnect ?? false }
@@ -76,17 +71,53 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         didSet { view.window?.subtitle = windowSubtitle }
     }
 
+    /// The file behind the titlebar's proxy icon, resolved with the title and written through the
+    /// same guard, so only the tree the window is showing can set it.
+    var windowRepresentedURL: URL? {
+        didSet { view.window?.representedURL = windowRepresentedURL }
+    }
+
     // MARK: - Split View Items
 
-    private var sidebarSplitItem: NSSplitViewItem!
+    internal private(set) var sidebarSplitItem: NSSplitViewItem!
     private var detailSplitItem: NSSplitViewItem!
-    private var inspectorSplitItem: NSSplitViewItem!
+    internal private(set) var inspectorSplitItem: NSSplitViewItem!
 
     private var navigationSidebar: NavigationSidebarViewController!
     /// Stable containers, one per split item. The pane they show is the selected workspace's own,
     /// so switching connection is a view swap and every other connection's tree stays built.
-    private var detailPaneHost: WorkspacePaneHost!
-    private var inspectorPaneHost: WorkspacePaneHost!
+    internal private(set) var detailPaneHost: WorkspacePaneHost!
+    internal private(set) var inspectorPaneHost: WorkspacePaneHost!
+
+    /// The pane state whose surface the window is following, and the subscription that follows it.
+    /// It is the selected connection's, re-armed whenever the trailing pane is parented, so a choice
+    /// made in the pane header's picker reaches the split item without the picker knowing the window.
+    weak var observedTrailingPaneState: TrailingPaneState?
+    var trailingSurfaceCancellable: AnyCancellable?
+    var inspectorCollapseCancellable: AnyCancellable?
+
+    /// The agent session whose name the window carries, and the subscription that follows it. Only
+    /// ever the selected connection's displayed session in Agent mode, re-armed by `applyWindowTitle`.
+    weak var observedAgentSession: AgentSession?
+    var agentTitleCancellable: AnyCancellable?
+
+    /// How a session command asks before it runs: a sheet on this window. Replaced under test, where
+    /// a modal alert holds the whole run with nobody there to answer it.
+    var confirmAgentSessionCommand: AgentSessionConfirming = { confirmation, window in
+        await MainSplitViewController.presentAgentSessionConfirmation(confirmation, in: window)
+    }
+
+    /// The same door for Clear Recents, which is the one conversation command that destroys
+    /// something. The question is the pane header's own, moved here with the command so the menu bar
+    /// and the pane ask it once and in the same words.
+    var confirmClearConversations: @MainActor (NSWindow?) async -> Bool = { window in
+        await AlertHelper.confirmDestructive(
+            title: String(localized: "Clear All Conversations?"),
+            message: String(localized: "This will permanently delete all conversation history."),
+            confirmButton: String(localized: "Clear"),
+            window: window
+        )
+    }
 
     /// The editor tab strip's band. It is a titlebar accessory rather than a split item, so it is
     /// owned here but installed on the window, and it follows the selected workspace the same way
@@ -110,6 +141,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
     var tabStripObservationIsArmed = false
     var tabStripObservedManager: ObjectIdentifier?
+    var tabStripObservation: AnyCancellable?
 
     // MARK: - Panel Layout State
 
@@ -124,7 +156,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// Namespaced per sandbox under UI test, because AppKit files this record in the standard
     /// defaults domain, which the sandbox does not redirect. See `SplitViewAutosaveName` for the
     /// failure that came of one case inheriting another's pane geometry.
-    private var splitAutosaveName: NSSplitView.AutosaveName {
+    private var splitAutosaveName: NSSplitView.AutosaveName? {
         SplitViewAutosaveName.current(SplitViewAutosaveName.base)
     }
 
@@ -142,9 +174,13 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
     lazy var switcherPresenter = ToolbarSwitcherPresenter(panelController: quickSwitcherPanel)
 
+    /// Control-Tab, which walks every tab this window hosts across all of its connections, so it
+    /// belongs to the window and draws in the window's one panel.
+    lazy var recentTabSwitcher = RecentTabSwitcherController(presenter: quickSwitcherPanel)
+
     // MARK: - Toolbar
 
-    private var toolbarOwner: MainWindowToolbar?
+    internal var toolbarOwner: MainWindowToolbar?
 
     /// The coordinator currently treated as this window's active one, so a workspace switch can
     /// hand over key-window state the same way AppKit would between windows.
@@ -206,10 +242,13 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         let resolvedConnection = DatabaseManager.shared.activeSessions[connectionId]?.connection
             ?? ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
 
+        /// One registry for the workspace and the assistant inside its trailing pane, so Agent mode
+        /// and the assistant draw the same sessions.
+        let agentSessions = AgentSessionRegistry.shared
         var state: SessionStateFactory.SessionState?
         var panelState: TrailingPaneState?
         if let session = resolvedSession {
-            panelState = TrailingPaneState(connectionId: session.connection.id)
+            panelState = TrailingPaneState(connectionId: session.connection.id, sessionRegistry: agentSessions)
             if let payloadId = payload?.id,
                let pending = SessionStateFactory.consumePending(for: payloadId) {
                 state = pending
@@ -243,7 +282,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
             session: resolvedSession,
             sessionState: state,
             trailingPaneState: panelState,
-            phase: phase
+            phase: phase,
+            agentSessions: agentSessions
         )
         let adopted = workspaces.insert(workspace)
 
@@ -279,6 +319,9 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
             self?.navigationSidebar.applyRailWidth(animated: false)
             self?.recomputeWindowMinSize()
         }
+        navigationSidebar.objectBrowser.onScopeSelection = { [weak self] tab in
+            self?.setSidebarTab(tab)
+        }
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: navigationSidebar)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = Self.sidebarMinThickness
@@ -287,7 +330,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
         detailPaneHost = WorkspacePaneHost()
         detailSplitItem = NSSplitViewItem(viewController: detailPaneHost)
-        detailSplitItem.minimumThickness = Self.resolveDetailMinimumThickness(for: payload?.tabType)
+        detailSplitItem.minimumThickness = Self.resolveDetailMinimumThickness(
+            for: payload?.tabType,
+            contentMode: contentMode
+        )
         detailSplitItem.holdingPriority = .defaultLow
         addSplitViewItem(detailSplitItem)
 
@@ -301,6 +347,11 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         /// without anyone having to read AppKit's own autosave record to find out which it is.
         inspectorSplitItem.isCollapsed = true
         addSplitViewItem(inspectorSplitItem)
+        // `collapsed` is KVO compliant and follows a divider drag and the autosave restore too.
+        inspectorCollapseCancellable = inspectorSplitItem.publisher(for: \.isCollapsed)
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.syncInspectorVisibility() }
 
         navigationSidebar.railController.onEntryCountChange = { [weak self] count in
             self?.applyRailVisibility(workspaceCount: count)
@@ -316,7 +367,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         /// A connection joining or leaving the window changes what every rail in the app lists,
         /// which is what this event is for. Which row is current is a separate question, answered
         /// by the rail reading its host back, so a selection change must not come through here.
-        workspaces.onMembershipChange = {
+        workspaces.onMembershipChange = { [weak self] in
+            self?.recentTabSwitcher.cancel()
             AppEvents.shared.connectionWindowsChanged.send()
         }
 
@@ -326,13 +378,11 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         applyPaneChrome()
     }
 
-    /// A divider dragged all the way in collapses the sidebar without going through
-    /// `toggleSidebar(_:)`, so the toolbar has to be reconciled here too or its segment stays lit
-    /// over a sidebar that is no longer on screen.
+    /// A divider dragged all the way in collapses a pane without going through a command, so the
+    /// window's minimum width is settled here as well as on the commands that collapse one.
     override func splitViewDidResizeSubviews(_ notification: Notification) {
         super.splitViewDidResizeSubviews(notification)
         recomputeWindowMinSize()
-        toolbarOwner?.syncSidebarSelection()
     }
 
     override func viewWillAppear() {
@@ -341,6 +391,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
         window.title = windowTitle
         window.subtitle = windowSubtitle
+        window.representedURL = windowRepresentedURL
 
         if let sessionState {
             sessionState.coordinator.trailingPaneProxy = self
@@ -356,7 +407,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
         installObservers()
         recomputeWindowMinSize()
-        window.recalculateKeyViewLoop()
         startActivationConnectIfNeeded()
     }
 
@@ -437,6 +487,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         }
         guard repaint else { return }
         applyWindowTitle()
+        /// An edit can change the engine, and what the engine can do decides whether the container
+        /// capsule stands at all. Nothing else would reconsider it for a connection with no
+        /// session, whose toolbar state never publishes.
+        toolbarOwner?.refreshContext()
     }
 
     // MARK: - Toolbar
@@ -446,8 +500,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     ///
     /// Attaching it only once a coordinator existed is what made a dozen items arrive at once, a
     /// second and a half into a connect, over a window that had been on screen the whole time.
-    /// `MainWindowToolbar` already answers with no subject: `validationContext()` returns nil, so
-    /// every connection-scoped item validates to disabled and only the window's own commands stay
+    /// `MainWindowToolbar` already answers with no subject: its context says nothing is connected,
+    /// so every connection-scoped item validates to disabled and only the window's own commands stay
     /// live, which is the dimmed-not-absent state the HIG asks for.
     ///
     /// The subject is set before the toolbar reaches the window, so a window opening onto a live
@@ -462,6 +516,13 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         owner.repoint(to: coordinator)
         guard window.toolbar !== owner.managedToolbar else { return }
         window.toolbar = owner.managedToolbar
+        /// The item set every window starts from is the full one, because `isHidden` is never
+        /// persisted, so the context is applied the moment the items exist rather than on the first
+        /// change to it. Measured on macOS 27, that moment is this assignment: `NSToolbar.items` is
+        /// filled before it returns, with the window not yet shown, and a hide written here holds
+        /// when the window appears. A repoint cannot be relied on for this: a window opening with
+        /// no session repoints from nothing to nothing, which returns before it reaches the toolbar.
+        owner.refreshContext(forcing: true)
         /// The transparency decision reads `window.toolbar?.isVisible`, so a window that gains its
         /// toolbar after that decision was taken keeps the opaque titlebar chosen for a
         /// toolbar-less one, over content that is no longer inset below it.
@@ -482,7 +543,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// that loses its session still has to reach the right phase, or switching to it later
     /// would show content for a connection that is already gone.
     private func handleConnectionStatusChange() {
-        defer { toolbarOwner?.syncSidebarSelection() }
         for workspace in workspaces.workspaces {
             reconcileStatus(of: workspace)
         }
@@ -530,7 +590,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         workspace.session = session
 
         if workspace.trailingPaneState == nil {
-            workspace.trailingPaneState = TrailingPaneState(connectionId: session.connection.id)
+            workspace.trailingPaneState = TrailingPaneState(
+                connectionId: session.connection.id,
+                sessionRegistry: workspace.agentSessions
+            )
         }
         if workspace.sessionState == nil {
             let state = SessionStateFactory.create(connection: session.connection, payload: workspace.payload)
@@ -584,10 +647,28 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         /// concerned. Only the selected one receives the real `windowDidBecomeKey`, so without
         /// this the outgoing connection keeps `isKeyWindow` true and never schedules the eviction
         /// that frees its row buffers.
+        ///
+        /// The outgoing side is read from each coordinator rather than from `lastActiveCoordinator`,
+        /// which only a switch sets. The window's first connection is made key by the window itself,
+        /// so the first switch away from it found no cached coordinator to resign: it kept
+        /// `isKeyWindow` and never scheduled the eviction.
         let incoming = workspaces.selected?.sessionState?.coordinator
+        var handedOffKey = false
+        for workspace in workspaces.workspaces {
+            guard let coordinator = workspace.sessionState?.coordinator,
+                  coordinator !== incoming,
+                  coordinator.isKeyWindow else { continue }
+            coordinator.handleWindowDidResignKey()
+            handedOffKey = true
+        }
+        /// Key status is handed over, never invented. A window that is not key can still change its
+        /// selection, and marking that connection key kept its row eviction from ever being
+        /// scheduled and let a deferred restore load in a window nobody was looking at. The real
+        /// `windowDidBecomeKey` reaches whichever connection is selected when the window comes forward.
         if lastActiveCoordinator !== incoming {
-            lastActiveCoordinator?.handleWindowDidResignKey()
-            incoming?.handleWindowDidBecomeKey()
+            if handedOffKey || view.window?.isKeyWindow == true {
+                incoming?.handleWindowDidBecomeKey()
+            }
             lastActiveCoordinator = incoming
         }
 
@@ -608,6 +689,14 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         /// costs a key comparison when nothing has moved, which is what the record is for.
         syncSelectedPanes()
         showSelectedPanes()
+
+        /// A workspace put into Agent mode while another connection was on screen never reached
+        /// the branch that reveals its columns, because that branch only ever touched the selected
+        /// one. Selection is where it gets them, which is the same repair-on-selection shape the
+        /// pane render key already relies on.
+        if let selected = workspaces.selected {
+            applyColumnVisibility(for: selected.connectionId, mode: selected.resolvedContentMode)
+        }
         applyDetailMinimumThicknessForSelection()
         applyPaneChrome()
         applyWindowTitle()
@@ -615,21 +704,38 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         /// Only this window's rail moved, and only its highlight. Broadcasting instead made every
         /// rail in the app rebuild its whole entry list to answer a question none of them asked.
         navigationSidebar?.railController.refreshSelection()
+        syncFrontmostTabManager()
+
+        /// The toolbar's shape follows the workspace, not only its coordinator. Pointing the toolbar
+        /// reaches it through a repoint, and a switch between two workspaces that both have no
+        /// coordinator is a repoint from nothing to nothing, which returns before it looks. The
+        /// engine and the mode still differ between the two, so a down SQLite connection left the
+        /// container capsule hidden over a down PostgreSQL one. When nothing has moved this costs
+        /// building the key and one comparison.
+        toolbarOwner?.refreshContext()
     }
 
     private func applyPhase() {
         syncSelectedPanes()
         applyPaneChrome()
         applyWindowTitle()
+        syncFrontmostTabManager()
         SessionRecoveryTracker.sync()
     }
 
     /// Repainted on every phase change for the same reason the panes are. Leaving it out is
     /// what let a window keep the name of a table it had stopped showing after the session
     /// underneath it went away.
+    ///
+    /// In Agent mode the name is the session's, and a session names itself only once its first
+    /// question or reply arrives, so the title it is read from is followed rather than read once.
     internal func applyWindowTitle() {
+        let agentSession = workspaces.selected?.displayedAgentSession
+        followTitle(of: agentSession)
         let resolved = WindowTitleResolver.resolveWindow(
             pane: currentPane,
+            contentMode: contentMode,
+            agentSessionTitle: agentSession?.title,
             connection: paneConnection,
             tab: sessionState?.tabManager.selectedTab,
             hasTabs: !(sessionState?.tabManager.tabs.isEmpty ?? true),
@@ -637,6 +743,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         )
         windowTitle = resolved.title
         windowSubtitle = resolved.subtitle
+        windowRepresentedURL = resolved.representedURL
     }
 
     internal func transition(to next: ConnectionWindowPhase) {
@@ -654,15 +761,24 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         let phaseChanged = workspace.phase != next
         workspace.phase = next
+        /// Whoever started the connect, a window attempt or a link calling the manager directly, a
+        /// move waiting on it must not land on a later retry the user did not tie to it.
+        if case .unavailable = next {
+            workspace.dropPendingMoves(reason: "connection unavailable")
+        }
         syncPanes(of: workspace)
-        /// `syncPanes` rebuilds both trailing roots but parents neither: which one is hosted is
-        /// decided by `showSelectedTrailingPane`, and none of its other callers is on the adoption
-        /// path. A connection whose state is built here, restoring a persisted assistant, would
-        /// otherwise keep the inspector `viewDidLoad` mounted before that state existed, while
-        /// every command reported the assistant as the visible surface.
+        /// `syncPanes` rebuilds the roots but parents none of them: which ones are hosted is decided
+        /// by the `showSelected` functions, and none of their other callers is on the adoption path.
+        /// A connection whose state is built here, restoring a persisted assistant, would otherwise
+        /// keep the inspector `viewDidLoad` mounted before that state existed, while every command
+        /// reported the assistant as the visible surface. The content columns move with the phase
+        /// too: in Agent mode a connection that drops hands the detail column from the conversation
+        /// to the unavailable screen and its Retry, and a retry hands it back.
         if workspaces.selectedConnectionId == connectionId {
+            showSelectedContentPanes()
             showSelectedTrailingPane()
         }
+        syncFrontmostTabManager()
         guard phaseChanged else { return }
         if workspaces.selectedConnectionId == connectionId {
             applyPaneChrome()
@@ -702,10 +818,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     // MARK: - Pane Construction
 
     /// Rebuilds one connection's panes into its own hosting controllers, whether or not it is the
-    /// one on screen, and records what they were built from. This is the only place all four panes
-    /// are produced, and the only writer of the record; `rebuildTrailingPanes()` refines the
-    /// inspector alone once `commandActions` exists, which is a redraw of the same key rather than
-    /// a different one.
+    /// one on screen, and records what they were built from. This is the only place the panes are
+    /// produced, Agent mode's included, and the only writer of the record; `rebuildTrailingPanes()`
+    /// refines the inspector alone once `commandActions` exists, which is a redraw of the same key
+    /// rather than a different one.
     ///
     /// Reaching a pane that is not on screen is safe and deliberate: a `rootView` write on an
     /// unparented hosting controller is deferred rather than lost, and the last value written is
@@ -717,6 +833,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace).themedContent())
         workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace).themedContent())
         workspace.panes.assistant.rootView = AnyView(buildAssistantView(for: workspace))
+        refreshAgentPanes(of: workspace)
         refreshTabStripPane(of: workspace)
         workspace.panes.markRendered(workspace.paneRenderKey)
         guard isShowing(workspace) else { return }
@@ -726,7 +843,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// The single entry point for a repaint, so a caller never has to know whether one is due. The
     /// record is what makes it free when nothing has moved, which is what lets a workspace switch
     /// ask for one without paying for the rebuild the panes exist to avoid.
-    private func syncPanes(of workspace: ConnectionWorkspace) {
+    func syncPanes(of workspace: ConnectionWorkspace) {
         guard workspace.paneRenderKey != workspace.panes.renderedKey else { return }
         refreshPanes(of: workspace)
     }
@@ -739,17 +856,30 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// Puts the selected connection's already-built panes on screen. This is the whole cost of a
     /// workspace switch now: three view swaps, with nothing rebuilt and nothing thrown away.
     private func showSelectedPanes() {
-        let selected = workspaces.selected
-        navigationSidebar.objectBrowser.show(selected?.panes.sidebar)
-        detailPaneHost.show(selected?.panes.detail)
+        showSelectedContentPanes()
         showSelectedTrailingPane()
         showSelectedTabStrip()
-        if let selected { bindSidebarChrome(to: selected) }
+        if let selected = workspaces.selected { bindSidebarChrome(to: selected) }
     }
 
-    /// The filter field lives above the object list and belongs to the window, so it follows the
-    /// connection on screen rather than being owned by one.
+    /// Parents the sidebar and detail trees the selected connection's mode draws, and does nothing
+    /// else, so a mode toggle is the same view swap a workspace switch is.
+    ///
+    /// Parenting happens here and in no builder, so a connection put into Agent mode while another
+    /// is on screen has its panes built for the mode at once and parented only when it is selected:
+    /// `applySelectedWorkspace` calls through here after its sync, which is the same repair a
+    /// background connect relies on (#2545).
+    func showSelectedContentPanes() {
+        let selected = workspaces.selected
+        navigationSidebar?.objectBrowser.show(selected.map { $0.panes.sidebarPane(for: $0.resolvedContentMode) })
+        detailPaneHost?.show(selected.map { $0.panes.detailPane(for: $0.detailMode) })
+    }
+
+    /// The scope control and the filter field live above the object list and belong to the window,
+    /// so they follow the connection on screen rather than being owned by one. Agent mode draws no
+    /// object list for either of them to act on, so both stand down while it is on.
     private func bindSidebarChrome(to workspace: ConnectionWorkspace) {
+        navigationSidebar.objectBrowser.setChromeHidden(workspace.resolvedContentMode == .agent)
         /// The pane decides, not the session. A reconnect keeps `sessionState` while the object
         /// list below the field is empty, and a filter that accepts typing for a list nobody can
         /// see is a control that answers for nothing.
@@ -799,6 +929,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// None of them carries a SwiftUI `.id` either. Identity was how one shared hosting controller
     /// was told that its content had become a different connection; each workspace has its own now,
     /// so the tree is per-connection by construction and an identity would only throw it away.
+    ///
+    /// Nor does either of these two read the mode. Agent mode draws into panes of its own, built in
+    /// `MainSplitViewController+AgentPanes`, so the browse tree keeps its identity, and everything
+    /// only it holds, however often the mode is toggled.
     @ViewBuilder
     private func buildSidebarView(for workspace: ConnectionWorkspace) -> some View {
         if workspace.resolvedPane == .content,
@@ -820,6 +954,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         }
     }
 
+    /// The unavailable screen here is what Agent mode shows too, for a connection that cannot be
+    /// reached: `ConnectionWindowPaneResolver.detailMode` hands the column back to this tree then.
     @ViewBuilder
     private func buildDetailView(for workspace: ConnectionWorkspace) -> some View {
         let pane = workspace.resolvedPane
@@ -846,6 +982,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
                 payload: workspace.payload,
                 windowTitle: windowTitleBinding(for: workspace),
                 windowSubtitle: windowSubtitleBinding(for: workspace),
+                windowRepresentedURL: windowRepresentedURLBinding(for: workspace),
                 sidebarState: SharedSidebarState.forConnection(session.connection.id),
                 pendingTruncates: sessionBinding(for: workspace, get: { $0.pendingTruncates }, set: { $0.pendingTruncates = $1 }, defaultValue: []),
                 pendingDeletes: sessionBinding(for: workspace, get: { $0.pendingDeletes }, set: { $0.pendingDeletes = $1 }, defaultValue: []),
@@ -867,18 +1004,27 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// moves off `.content`. Reading the session alone left the inspector mounted over the rows of
     /// a connection that had stopped answering, which only went unseen while the pane was being
     /// force-collapsed in exactly that state.
+    ///
+    /// The raw mode rather than the resolved one goes to the header, which resolves it against the AI
+    /// setting as it draws: turning the setting off repaints nothing this builder would be asked for.
     @ViewBuilder
     private func buildInspectorView(for workspace: ConnectionWorkspace) -> some View {
         if workspace.resolvedPane == .content,
            let session = workspace.session,
            let paneState = workspace.trailingPaneState {
             RowInspectorView(
-                state: paneState.inspector,
+                paneState: paneState,
+                contentMode: workspace.contentMode,
                 connection: session.connection
             )
             .environment(\.commandActions, workspace.sessionState?.coordinator.commandActions)
         } else {
-            TrailingPaneUnavailableView(surface: .inspector)
+            TrailingPaneUnavailableView(
+                surface: .inspector,
+                reason: .notConnected,
+                contentMode: workspace.contentMode,
+                paneState: workspace.trailingPaneState
+            )
         }
     }
 
@@ -889,11 +1035,17 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
            let paneState = workspace.trailingPaneState {
             AssistantPaneView(
                 connection: session.connection,
-                state: paneState.assistant
+                paneState: paneState,
+                contentMode: workspace.contentMode
             )
             .environment(\.commandActions, workspace.sessionState?.coordinator.commandActions)
         } else {
-            TrailingPaneUnavailableView(surface: .assistant)
+            TrailingPaneUnavailableView(
+                surface: .assistant,
+                reason: .notConnected,
+                contentMode: workspace.contentMode,
+                paneState: workspace.trailingPaneState
+            )
         }
     }
 
@@ -905,24 +1057,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         guard let selected = workspaces.selected else { return }
         selected.panes.inspector.rootView = AnyView(buildInspectorView(for: selected).themedContent())
         selected.panes.assistant.rootView = AnyView(buildAssistantView(for: selected))
-    }
-
-    /// Parents whichever surface the selected workspace is showing.
-    ///
-    /// Measured: swapping the hosted child of an inspector split item leaves its width exactly as
-    /// the user dragged it, so a surface change costs a view swap and nothing else. Assigning
-    /// `viewController` on the item itself instead would throw, which is why the pane is a
-    /// container in the first place.
-    private func showSelectedTrailingPane() {
-        guard let selected = workspaces.selected else {
-            inspectorPaneHost.show(nil)
-            return
-        }
-        let surface = TrailingPaneSurface.resolved(
-            selected.trailingPaneState?.surface ?? .inspector,
-            isAIEnabled: AppSettingsManager.shared.ai.enabled
-        )
-        inspectorPaneHost.show(selected.panes.trailingPane(for: surface))
     }
 
     // MARK: - Session Bindings
@@ -954,14 +1088,16 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         )
     }
 
-    /// The window has one titlebar, so only the connection on screen may name it. Every hosted
+    /// The window has one titlebar, so only the browse tree on screen may name it. Every hosted
     /// connection's `MainContentView` writes here whenever its selected tab changes, and those
-    /// writes no longer stop when the user switches away, because the view is still mounted.
+    /// writes no longer stop when the user switches away, because the view is still mounted. The
+    /// same is true of the selected connection's own tree while Agent mode draws the conversation
+    /// over it, and its tab is then not what the window is showing.
     private func windowTitleBinding(for workspace: ConnectionWorkspace) -> Binding<String> {
         Binding(
             get: { [weak self] in self?.windowTitle ?? "" },
             set: { [weak self] newValue in
-                guard let self, self.isShowing(workspace) else { return }
+                guard let self, self.isShowingBrowseDetail(of: workspace) else { return }
                 self.windowTitle = newValue
             }
         )
@@ -971,8 +1107,21 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         Binding(
             get: { [weak self] in self?.windowSubtitle ?? "" },
             set: { [weak self] newValue in
-                guard let self, self.isShowing(workspace) else { return }
+                guard let self, self.isShowingBrowseDetail(of: workspace) else { return }
                 self.windowSubtitle = newValue
+            }
+        )
+    }
+
+    /// Guarded like the title for the same reasons. The browse content used to write the window's
+    /// proxy icon directly, so a connection in the background, or the tree behind an agent
+    /// conversation, put its own tab's file on a titlebar naming something else.
+    private func windowRepresentedURLBinding(for workspace: ConnectionWorkspace) -> Binding<URL?> {
+        Binding(
+            get: { [weak self] in self?.windowRepresentedURL },
+            set: { [weak self] newValue in
+                guard let self, self.isShowingBrowseDetail(of: workspace) else { return }
+                self.windowRepresentedURL = newValue
             }
         )
     }
@@ -981,72 +1130,36 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         workspaces.selectedConnectionId == workspace.connectionId
     }
 
-    // MARK: - TrailingPaneProxy
-
-    /// Which surface the selected workspace shows, with the assistant resolved away when the
-    /// setting has taken it: a connection last left on the assistant must not come back to a
-    /// surface the settings no longer offer, and no notification reaches that restore.
-    private var resolvedTrailingSurface: TrailingPaneSurface {
-        TrailingPaneSurface.resolved(
-            trailingPaneState?.surface ?? .inspector,
-            isAIEnabled: AppSettingsManager.shared.ai.enabled
-        )
+    private func isShowingBrowseDetail(of workspace: ConnectionWorkspace) -> Bool {
+        isShowing(workspace) && workspace.detailMode == .browse
     }
 
-    internal var isTrailingPaneOpen: Bool {
-        guard let inspectorSplitItem else { return false }
-        return !inspectorSplitItem.isCollapsed
-    }
-
-    var isInspectorVisible: Bool {
-        isTrailingPaneOpen && resolvedTrailingSurface == .inspector
-    }
-
-    var isAssistantVisible: Bool {
-        isTrailingPaneOpen && resolvedTrailingSurface == .assistant
-    }
-
-    func showInspector() {
-        reveal(.inspector)
-    }
-
-    func showAssistant() {
-        guard AppSettingsManager.shared.ai.enabled else { return }
-        reveal(.assistant)
-    }
-
-    /// Auto-show follows a grid click, which is not a request for a different surface. Revealing
-    /// the inspector unconditionally swapped the assistant out from under a half-typed question and
-    /// persisted the inspector as that connection's surface, on every row the user clicked.
-    func revealInspectorForSelection() {
-        guard !isAssistantVisible else { return }
-        showInspector()
-    }
-
-    func hideTrailingPane() {
-        inspectorSplitItem?.animator().isCollapsed = true
-        recomputeWindowMinSize()
-    }
+    // MARK: - Trailing Pane
 
     /// Puts the hosted child back in step with what the settings now allow.
     ///
     /// The stored surface is left alone: a user who turns the assistant off and on again gets it
-    /// back, because `TrailingPaneSurface.resolved` is what hides it in the meantime rather than
+    /// back, because `TrailingPaneSurfaceResolver` is what hides it in the meantime rather than
     /// anything overwriting their choice.
+    /// Turning AI off takes Agent mode with it, and that is every pane rather than the trailing one.
+    ///
+    /// Swapping only the trailing child left a window whose sidebar still held the session rail and
+    /// whose detail pane still held a live conversation, with an inspector beside them: the feature
+    /// was off and half the window had not heard. Each workspace therefore goes through the same
+    /// path a mode toggle takes, which reparents every column the mode decides and renames the
+    /// window after what it now shows.
     private func reconcileTrailingSurfaceAvailability() {
         guard isViewLoaded else { return }
-        showSelectedTrailingPane()
+        for workspace in workspaces.workspaces {
+            AgentModeSafeModeFloor.reapply(for: workspace.connectionId)
+            applyContentMode(for: workspace)
+        }
+        toolbarOwner?.refreshContext()
         toolbarOwner?.managedToolbar.validateVisibleItems()
     }
 
-    private func reveal(_ surface: TrailingPaneSurface) {
-        trailingPaneState?.surface = surface
-        rebuildTrailingPanes()
-        showSelectedTrailingPane()
-        inspectorSplitItem?.animator().isCollapsed = false
-        recomputeWindowMinSize()
-    }
-
+    /// AppKit's own inspector toolbar item sends this as well as the menu, so it is the window's one
+    /// trailing-pane toggle, and what it toggles is decided in `MainSplitViewController+TrailingPane`.
     @objc override func toggleInspector(_ sender: Any?) {
         toggleInspector()
     }
@@ -1120,7 +1233,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     // MARK: - Sidebar
 
     /// Whether the object browser is off screen, which is the question every caller is really
-    /// asking: the toolbar's segment, the Show/Hide Sidebar title and the reveal actions.
+    /// asking: the Show/Hide Sidebar title, the list checkmarks in the View menu and the reveal
+    /// actions.
     var isSidebarCollapsed: Bool {
         sidebarSplitItem?.isCollapsed ?? true
     }
@@ -1137,43 +1251,92 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         navigationSidebar?.railAllowance ?? 0
     }
 
-    /// Every collapse route reaches AppKit's own `toggleSidebar(_:)`: the View menu sends the
-    /// selector down the responder chain, and so does the toolbar's sidebar button. Overriding
-    /// it is the one place that catches them all, so the toolbar's segment can never stay lit
-    /// over a collapsed sidebar.
-    override func toggleSidebar(_ sender: Any?) {
-        super.toggleSidebar(sender)
-        toolbarOwner?.syncSidebarSelection()
-    }
-
     func focusSidebarSearch() {
-        if sidebarSplitItem?.isCollapsed == true {
-            sidebarSplitItem?.animator().isCollapsed = false
-        }
+        expandSidebarIfCollapsed()
         navigationSidebar.objectBrowser.focusSearchField()
     }
 
+    /// The list under the filter field, whichever list that currently is. Reveals the sidebar first
+    /// for the same reason the filter command does: focusing a pane the user cannot see puts the
+    /// keyboard somewhere invisible, and `makeFirstResponder` accepts a hidden view without
+    /// complaint.
+    @discardableResult
+    func focusSidebarObjectList() -> Bool {
+        expandSidebarIfCollapsed()
+        return navigationSidebar.objectBrowser.focusObjectList()
+    }
+
+    var canFocusObjectList: Bool {
+        navigationSidebar.objectBrowser.hasObjectList
+    }
+
+    @objc func createTableFolder(_ sender: Any?) {
+        expandSidebarIfCollapsed()
+        navigationSidebar.objectBrowser.createBrowsedTableFolder()
+    }
+
+    var canCreateTableFolder: Bool {
+        navigationSidebar?.objectBrowser.canCreateBrowsedTableFolder ?? false
+    }
+
+    /// Which of the selected connection's two sidebar trees the column is drawing.
+    var shownSidebarPane: NSViewController? {
+        navigationSidebar?.objectBrowser.shownPane
+    }
+
+    private func expandSidebarIfCollapsed() {
+        guard sidebarSplitItem?.isCollapsed == true else { return }
+        sidebarSplitItem?.animator().isCollapsed = false
+    }
+
     func presentDatabaseFilter() {
+        presentSidebarFilter(.databases)
+    }
+
+    func clearDatabaseFilter() {
+        clearSidebarFilter(.databases)
+    }
+
+    /// The schema filter belongs to the database being browsed, the one whose schemas the sidebar
+    /// and Open Quickly list.
+    func presentSchemaFilter() {
+        guard let target = browsedSchemaFilterTarget else { return }
+        presentSidebarFilter(target)
+    }
+
+    func clearSchemaFilter() {
+        guard let target = browsedSchemaFilterTarget else { return }
+        clearSidebarFilter(target)
+    }
+
+    private var browsedSchemaFilterTarget: SidebarFilterTarget? {
+        guard let session = currentSession else { return nil }
+        return .schemas(database: DatabaseManager.shared.browseDatabaseName(for: session.connection))
+    }
+
+    private func presentSidebarFilter(_ target: SidebarFilterTarget) {
         guard let connectionId = currentSession?.connection.id else { return }
         if sidebarSplitItem?.isCollapsed == true {
             sidebarSplitItem?.isCollapsed = false
         }
-        navigationSidebar.objectBrowser.presentDatabaseFilter(
+        navigationSidebar.objectBrowser.presentFilter(
+            target,
             connectionId: connectionId,
             sidebarState: SharedSidebarState.forConnection(connectionId)
         )
     }
 
-    func clearDatabaseFilter() {
+    private func clearSidebarFilter(_ target: SidebarFilterTarget) {
         guard let connectionId = currentSession?.connection.id else { return }
         let state = SharedSidebarState.forConnection(connectionId)
-        guard !state.databaseFilterSelected.isEmpty else { return }
-        state.databaseFilterSelected = []
+        guard !state.filterSelection(for: target).isEmpty else { return }
+        state.setFilterSelection([], for: target)
     }
 
-    /// Which list the sidebar is showing, or nil while it is collapsed. The segmented control and
-    /// the two View-menu items both read it, so neither can report a selection the sidebar is not
-    /// showing.
+    /// Which list the sidebar is showing, or nil while it is collapsed. The two View-menu items read
+    /// it for their checkmarks, so neither can report a selection the sidebar is not showing. The
+    /// scope control reads the connection's state directly, because it is only ever on screen with
+    /// the sidebar open.
     var selectedSidebarTab: SidebarTab? {
         guard sidebarSplitItem?.isCollapsed == false else { return nil }
         guard let connectionId = currentSession?.connection.id else { return nil }
@@ -1181,18 +1344,18 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     }
 
     /// Selects a list and leaves the sidebar open, which is what a command called "Show Tables"
-    /// has to do. `setSidebarTab` is a toggle, correctly so for the segmented control it serves:
-    /// pressing the segment already selected closes the sidebar. A menu item that did that would
-    /// be a Show command that hides.
+    /// has to do. `setSidebarTab` is a toggle: pressing the list already shown closes the sidebar.
+    /// A menu item that did that would be a Show command that hides.
     func revealSidebarTab(_ tab: SidebarTab) {
         guard let connectionId = currentSession?.connection.id else { return }
         SharedSidebarState.forConnection(connectionId).selectedSidebarTab = tab
         if sidebarSplitItem?.isCollapsed == true {
             sidebarSplitItem?.animator().isCollapsed = false
         }
-        toolbarOwner?.syncSidebarSelection()
     }
 
+    /// What the sidebar's scope control drives. It writes the same state the View menu's two
+    /// commands write, and the control reads that state back, so the three cannot disagree.
     func setSidebarTab(_ tab: SidebarTab) {
         guard let connectionId = currentSession?.connection.id else { return }
         let sidebarState = SharedSidebarState.forConnection(connectionId)
@@ -1205,7 +1368,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         } else {
             sidebarState.selectedSidebarTab = tab
         }
-        toolbarOwner?.syncSidebarSelection()
     }
 
     // MARK: - Dynamic Window Minimum Size
@@ -1217,12 +1379,24 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     static let inspectorMinThickness: CGFloat = 270
     private static let sidebarMaxThickness: CGFloat = 600
 
-    static func resolveDetailMinimumThickness(for tabType: TabType?) -> CGFloat {
+    /// A tab's minimum is a contract about the tab's own content, so it holds only while that content
+    /// fills the detail column. In Agent mode the conversation does, whatever tab was left selected
+    /// behind it, and a Users & Roles tab set the conversation's floor to the privilege editor's.
+    static func resolveDetailMinimumThickness(
+        for tabType: TabType?,
+        contentMode: ConnectionWorkspaceContentMode
+    ) -> CGFloat {
+        switch contentMode {
+        case .agent:
+            return defaultDetailMinThickness
+        case .browse:
+            break
+        }
         guard let tabType else { return defaultDetailMinThickness }
         switch tabType {
         case .usersRoles:
             return UsersRolesLayoutMetrics.tabMinimumWidth
-        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource:
+        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory:
             return defaultDetailMinThickness
         }
     }
@@ -1258,15 +1432,15 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// a wide tab would raise the visible connection's minimum and the window's own minimum with it.
     func updateDetailMinimumThickness(for tabType: TabType?, connectionId: UUID) {
         guard workspaces.selectedConnectionId == connectionId else { return }
-        let resolved = Self.resolveDetailMinimumThickness(for: tabType)
+        let resolved = Self.resolveDetailMinimumThickness(for: tabType, contentMode: contentMode)
         guard let detailSplitItem, detailSplitItem.minimumThickness != resolved else { return }
         detailSplitItem.minimumThickness = resolved
         recomputeWindowMinSize()
     }
 
-    /// Re-seeded on every switch, because the item is shared and the value it holds describes
-    /// whichever connection was last on screen.
-    private func applyDetailMinimumThicknessForSelection() {
+    /// Re-seeded on every switch and every mode toggle, because the item is shared and the value it
+    /// holds describes whichever connection, and whichever of its two trees, was last on screen.
+    func applyDetailMinimumThicknessForSelection() {
         guard let selected = workspaces.selected else { return }
         updateDetailMinimumThickness(
             for: selected.sessionState?.tabManager.selectedTab?.tabType,
@@ -1283,7 +1457,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         sidebarSplitItem.minimumThickness = resolved
     }
 
-    private func recomputeWindowMinSize() {
+    func recomputeWindowMinSize() {
         applySidebarMinimumThickness()
         guard let window = view.window else { return }
         let sidebarVisible = !(sidebarSplitItem?.isCollapsed ?? true)
@@ -1342,27 +1516,12 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         }
         return super.validateUserInterfaceItem(item)
     }
-
-    /// Opening a trailing surface needs a session to put in it. Closing one the user already has
-    /// open does not, and the window no longer takes it down on their behalf, so a connection that
-    /// drops with the inspector open would otherwise leave an empty column with no command to
-    /// close it.
-    internal var canToggleTrailingPane: Bool {
-        currentPane == .content || isTrailingPaneOpen
-    }
 }
 
 // MARK: - Inspector Environment
 
 /// The inspector is its own `NSHostingController`, so `@FocusedValue` set in the detail pane
 /// never reaches it. This window's controller injects its own actions instead.
-private struct CommandActionsEnvironmentKey: EnvironmentKey {
-    static let defaultValue: MainContentCommandActions? = nil
-}
-
-extension EnvironmentValues {
-    var commandActions: MainContentCommandActions? {
-        get { self[CommandActionsEnvironmentKey.self] }
-        set { self[CommandActionsEnvironmentKey.self] = newValue }
-    }
+internal extension EnvironmentValues {
+    @Entry var commandActions: MainContentCommandActions?
 }

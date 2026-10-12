@@ -23,10 +23,22 @@ internal extension NSWindow {
             body()
             return
         }
+        guard #available(macOS 14.0, *) else {
+            /// `NSView.displayLink(target:selector:)` and `CADisplayLink` are both macOS 14.
+            /// The closest thing 13 has is the transaction's completion plus one hop: the
+            /// commit has happened, so the frame is with the WindowServer even though this
+            /// cannot wait for it to be presented. It is an approximation, and the caller is
+            /// a measurement rather than a correctness gate.
+            CATransaction.setCompletionBlock {
+                DispatchQueue.main.async { MainActor.assumeIsolated(body) }
+            }
+            return
+        }
         FirstFrameObserver.observe(view, then: body)
     }
 }
 
+@available(macOS 14.0, *)
 @MainActor
 private final class FirstFrameObserver: NSObject {
     private static var live: Set<FirstFrameObserver> = []

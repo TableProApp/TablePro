@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Statement Generator: keyless row match exclusions")
 @MainActor
 struct SQLStatementGeneratorRowMatchTests {
     private let columns = ["id", "name", "payload", "tags"]
@@ -20,7 +19,7 @@ struct SQLStatementGeneratorRowMatchTests {
             columns: columns,
             primaryKeyColumns: [],
             databaseType: .databend,
-            rowMatchExcludedColumns: excluded,
+            rowMatchPolicy: RowMatchPolicy(excludedColumns: excluded),
             quoteIdentifier: { "`\($0)`" }
         )
     }
@@ -90,7 +89,7 @@ struct SQLStatementGeneratorRowMatchTests {
             schemaName: nil,
             columns: ["payload", "tags"],
             primaryKeyColumns: [],
-            rowMatchExcludedColumns: ["payload", "tags"],
+            rowMatchPolicy: RowMatchPolicy(excludedColumns: ["payload", "tags"]),
             databaseType: .mysql,
             pluginDriver: nil
         )
@@ -107,7 +106,7 @@ struct SQLStatementGeneratorRowMatchTests {
             ColumnInfo(name: "tags", dataType: "ARRAY(INT32)", isNullable: true, isPrimaryKey: false, defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil),
             ColumnInfo(name: "doc", dataType: "variant", isNullable: true, isPrimaryKey: false, defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil),
         ]
-        #expect(QueryExecutor.rowMatchExcludedColumns(in: columns, typePrefixes: ["ARRAY", "VARIANT"]) == ["tags", "doc"])
-        #expect(QueryExecutor.rowMatchExcludedColumns(in: columns, typePrefixes: []).isEmpty)
+        #expect(QueryExecutor.columns(in: columns, typedAnyOf: ["ARRAY", "VARIANT"]) == ["tags", "doc"])
+        #expect(QueryExecutor.columns(in: columns, typedAnyOf: []).isEmpty)
     }
 }

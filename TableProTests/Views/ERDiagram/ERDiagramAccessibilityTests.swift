@@ -11,7 +11,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("ER diagram accessibility")
 @MainActor
 struct ERDiagramAccessibilityTests {
     private func column(_ name: String, primaryKey: Bool = false, foreignKey: Bool = false) -> ERColumnDisplay {
@@ -223,6 +222,42 @@ struct ERDiagramAccessibilityTests {
             fromView: view,
             rect: CGRect(x: 500, y: 500, width: ERDiagramLayout.nodeWidth, height: 80)
         ))
+    }
+
+    /// A client keeps the element it was given and reads its frame directly, so the element has to
+    /// move with the table even when nothing asks for the canvas's children again.
+    @Test("A held element reports a moved table's new frame without asking for children again")
+    func heldElementFollowsAMove() {
+        var scene = makeScene()
+        let (view, _) = makeView(scene)
+        let held = (view.accessibilityChildren() as? [ERDiagramNodeElement] ?? []).first
+        guard let held, let moved = scene.nodes.first(where: { $0.tableName == held.accessibilityLabel() }) else {
+            Issue.record("no element")
+            return
+        }
+
+        let destination = CGRect(x: 520, y: 460, width: ERDiagramLayout.nodeWidth, height: 80)
+        scene.nodeRects[moved.id] = destination
+        view.scene = scene
+
+        #expect(held.accessibilityFrame() == NSAccessibility.screenRect(fromView: view, rect: destination))
+    }
+
+    @Test("A held element reports a new selection without asking for children again")
+    func heldElementFollowsSelection() {
+        var scene = makeScene()
+        let (view, _) = makeView(scene)
+        let held = (view.accessibilityChildren() as? [ERDiagramNodeElement] ?? []).first
+        guard let held, let node = scene.nodes.first(where: { $0.tableName == held.accessibilityLabel() }) else {
+            Issue.record("no element")
+            return
+        }
+        #expect(!held.isAccessibilitySelected())
+
+        scene.selectedNodeId = node.id
+        view.scene = scene
+
+        #expect(held.isAccessibilitySelected())
     }
 
     @Test("The selected table is what the canvas reports as focused")

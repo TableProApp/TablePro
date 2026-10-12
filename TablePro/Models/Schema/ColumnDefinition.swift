@@ -27,6 +27,42 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
 
     var isPrimaryKey: Bool
 
+    /// The server's own spellings of `dataType`, `defaultValue`, `generationExpression` and
+    /// `collation` for a `CREATE TABLE`, carried from the catalog read.
+    ///
+    /// Each applies only while its field still holds the value it was read with. An edit in the
+    /// structure editor changes the field, and a spelling that outlived it would recreate the column
+    /// as it used to be. The pair is stored rather than cleared on edit, so changing a type and
+    /// changing it back restores the spelling and leaves the column equal to the one loaded: cleared,
+    /// that column stayed staged as a change no statement could express, and the save was refused.
+    ///
+    /// Not encoded. A column pasted from the clipboard can come from another connection, where a
+    /// `public.geometry` names a schema this one may not have.
+    var ddlSpelling: String? { catalogType?.spelling(for: dataType) }
+    var ddlDefault: String? { catalogDefault?.spelling(for: defaultValue) }
+    var ddlGenerationExpression: String? { catalogGeneration?.spelling(for: generationExpression) }
+    /// Paired with a `collation` that can be nil: PostgreSQL shows no collation name for a column
+    /// declared `COLLATE "default"` over a type whose own collation is `C`, and that column still
+    /// has one to write.
+    var ddlCollation: String? { catalogCollation?.spelling(for: collation) }
+    /// Paired with `dataType` like the spellings above: a type typed into the structure editor is
+    /// classified as the user wrote it, and the catalog's hint returns if the edit is undone.
+    var classificationTypeName: String? { catalogClassification?.spelling(for: dataType) }
+
+    /// What a classifier reads. `ColumnInfo.typeNameForClassification` says why it is not `dataType`.
+    var typeNameForClassification: String { classificationTypeName ?? dataType }
+
+    private var catalogType: CatalogSpelling<String>?
+    private var catalogDefault: CatalogSpelling<String>?
+    private var catalogGeneration: CatalogSpelling<String>?
+    private var catalogCollation: CatalogSpelling<String?>?
+    private var catalogClassification: CatalogSpelling<String>?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, dataType, isNullable, defaultValue, autoIncrement, unsigned, comment, collation
+        case onUpdate, charset, extra, generationExpression, generationKind, isPrimaryKey
+    }
+
     static let currentTimestampExpression = "CURRENT_TIMESTAMP"
 
     /// Spelled out rather than left to the memberwise init so the two generation fields can carry
@@ -47,7 +83,12 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         extra: String?,
         generationExpression: String? = nil,
         generationKind: GenerationKind? = nil,
-        isPrimaryKey: Bool
+        isPrimaryKey: Bool,
+        ddlSpelling: String? = nil,
+        ddlDefault: String? = nil,
+        ddlGenerationExpression: String? = nil,
+        ddlCollation: String? = nil,
+        classificationTypeName: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -64,6 +105,64 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         self.generationExpression = generationExpression
         self.generationKind = generationKind
         self.isPrimaryKey = isPrimaryKey
+        self.catalogType = ddlSpelling.map { CatalogSpelling(value: dataType, spelling: $0) }
+        self.catalogDefault = Self.catalogSpelling(value: defaultValue, spelling: ddlDefault)
+        self.catalogGeneration = Self.catalogSpelling(value: generationExpression, spelling: ddlGenerationExpression)
+        self.catalogCollation = ddlCollation.map { CatalogSpelling(value: collation, spelling: $0) }
+        self.catalogClassification = classificationTypeName.map { CatalogSpelling(value: dataType, spelling: $0) }
+    }
+
+    private static func catalogSpelling(value: String?, spelling: String?) -> CatalogSpelling<String>? {
+        guard let value, let spelling else { return nil }
+        return CatalogSpelling(value: value, spelling: spelling)
+    }
+
+    /// For a column said again in another engine's words, where none of this server's spellings
+    /// name anything the target has. The classification hint stays: it names a kind, not an object,
+    /// and a domain column still holds an integer wherever it is written.
+    mutating func dropCatalogSpellings() {
+        catalogType = nil
+        catalogDefault = nil
+        catalogGeneration = nil
+        catalogCollation = nil
+    }
+
+    /// The same column with the catalog's own spellings dropped and its collation said the way
+    /// another schema resolves it: the one name a comparison still has to write.
+    ///
+    /// `dataType`, `defaultValue` and `generationExpression` are already schema-relative on the side
+    /// they were read from, so the catalog spellings, which name the source's schema, would bind the
+    /// target's column to the source's types. A collation has no such spelling to fall back on:
+    /// dropped outright, `ALTER ... TYPE` resets the column to its type's default collation, which
+    /// changes sort order and uniqueness on a column the comparison reported as matching.
+    func droppingCatalogSpellings(collationRelativeTo schema: String?) -> EditableColumnDefinition {
+        var copy = self
+        let collationSpelling = catalogCollation
+        let hadCatalogType = catalogType != nil
+        copy.dropCatalogSpellings()
+        if hadCatalogType {
+            copy.catalogType = CatalogSpelling(value: dataType, spelling: dataType)
+        }
+        copy.catalogCollation = collationSpelling.map {
+            CatalogSpelling(value: $0.value, spelling: SchemaRelativeSpelling.of($0.spelling, ownSchema: schema))
+        }
+        return copy
+    }
+
+    /// The same column holding `other`'s character set and collation, with the catalog spelling
+    /// that goes with them.
+    ///
+    /// For a comparison that reports no collation difference: a column changed for some other reason
+    /// is rewritten whole on engines that restate the column to alter it, and with the source's
+    /// collation in it that rewrite changed a collation the comparison had left alone. Only for a
+    /// column of `other`'s type: a collation is read on its type, and `INT CHARACTER SET utf8mb4` is
+    /// a syntax error.
+    func keepingCollation(of other: EditableColumnDefinition) -> EditableColumnDefinition {
+        var copy = self
+        copy.charset = other.charset
+        copy.collation = other.collation
+        copy.catalogCollation = other.catalogCollation
+        return copy
     }
 
     /// Create a placeholder column for adding new columns
@@ -87,10 +186,46 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
 
     var isGenerated: Bool { generationExpression?.isEmpty == false }
 
+    var hasNullDefault: Bool { ColumnDefaultLiteral.isNull(defaultValue) }
+
+    /// A column that stops accepting NULL cannot keep NULL as its default: MySQL and MariaDB refuse
+    /// `NOT NULL DEFAULT NULL` with `ERROR 1067`, and elsewhere the pair only moves the failure to
+    /// the first insert that relies on it. The default goes with the nullability, in one edit, so
+    /// undo brings both back.
+    mutating func setNullable(_ isNullable: Bool) {
+        self.isNullable = isNullable
+        guard !isNullable, hasNullDefault else { return }
+        defaultValue = nil
+    }
+
+    var hasName: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    var hasDataType: Bool { !dataType.trimmingCharacters(in: .whitespaces).isEmpty }
+
     /// Check if this definition is valid (not a placeholder)
-    var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !dataType.trimmingCharacters(in: .whitespaces).isEmpty
+    var isValid: Bool { hasName && hasDataType }
+
+    /// Whether this column, as edited, lacks something a save has to write.
+    ///
+    /// A column the save adds is written from nothing, so it needs a name and a type. A loaded one
+    /// only has to keep what it had. SQLite reports a column declared without a type as type `''`,
+    /// and SQLite and MongoDB both hold a column or field whose name is empty, so an edit is never
+    /// asked for a name or a type the column did not have when it was read.
+    func isIncomplete(over loaded: EditableColumnDefinition?) -> Bool {
+        !hasSavableName(over: loaded) || !hasSavableDataType(over: loaded)
+    }
+
+    /// Whether the name this column is saved under is one the table holds.
+    ///
+    /// A blank name is a real name when the column was read with one: SQLite keeps `""` and `"   "`
+    /// as two columns, and renaming one onto the other fails with "duplicate column name". A blank
+    /// name on a column that is new, or that had a name when it was read, is still to be filled in.
+    func hasSavableName(over loaded: EditableColumnDefinition?) -> Bool {
+        hasName || loaded?.hasName == false
+    }
+
+    func hasSavableDataType(over loaded: EditableColumnDefinition?) -> Bool {
+        hasDataType || loaded?.hasDataType == false
     }
 
     /// Create from existing ColumnInfo
@@ -111,7 +246,12 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             extra: columnInfo.extra,
             generationExpression: columnInfo.generationExpression,
             generationKind: columnInfo.generationKind,
-            isPrimaryKey: columnInfo.isPrimaryKey
+            isPrimaryKey: columnInfo.isPrimaryKey,
+            ddlSpelling: columnInfo.ddlSpelling,
+            ddlDefault: columnInfo.ddlDefault,
+            ddlGenerationExpression: columnInfo.ddlGenerationExpression,
+            ddlCollation: columnInfo.ddlCollation,
+            classificationTypeName: columnInfo.classificationTypeName
         )
     }
 
@@ -127,7 +267,11 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             name: name, dataType: dataType, isNullable: isNullable, defaultValue: defaultValue,
             isPrimaryKey: isPrimaryKey, autoIncrement: autoIncrement, comment: comment,
             unsigned: unsigned, onUpdate: onUpdate, charset: charset, collation: collation,
-            generationExpression: generationExpression, generationKind: generationKind
+            generationExpression: generationExpression, generationKind: generationKind,
+            ddlSpelling: ddlSpelling,
+            ddlDefault: ddlDefault,
+            ddlGenerationExpression: ddlGenerationExpression,
+            ddlCollation: ddlCollation
         )
     }
 
@@ -145,7 +289,12 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             comment: comment,
             isGenerated: isGenerated,
             generationExpression: generationExpression,
-            generationKind: generationKind
+            generationKind: generationKind,
+            ddlSpelling: ddlSpelling,
+            ddlDefault: ddlDefault,
+            ddlGenerationExpression: ddlGenerationExpression,
+            ddlCollation: ddlCollation,
+            classificationTypeName: classificationTypeName
         )
     }
 

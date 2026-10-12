@@ -15,7 +15,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
     let metricSet: PostgreSQLDashboardMetricSet
 
     init(
-        activityCatalog: PostgreSQLActivityCatalog = .current,
+        activityCatalog: PostgreSQLActivityCatalog,
         metricSet: PostgreSQLDashboardMetricSet = .full
     ) {
         self.activityCatalog = activityCatalog
@@ -59,7 +59,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
                 throw CancellationError()
             } catch {
                 Self.logger.warning(
-                    "Metric \(definition.id, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                    "Metric \(definition.id, privacy: .public) failed: \(error.publicLogShape, privacy: .public)"
                 )
                 if firstFailure == nil { firstFailure = error }
             }
@@ -86,13 +86,17 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
     }
 
     func killSessionSQL(processId: String) -> String? {
-        guard let pid = Int(processId) else { return nil }
+        guard acceptsProcessId(processId), let pid = Int(processId) else { return nil }
         return "SELECT pg_terminate_backend(\(pid))"
     }
 
     func cancelQuerySQL(processId: String) -> String? {
-        guard let pid = Int(processId) else { return nil }
+        guard acceptsProcessId(processId), let pid = Int(processId) else { return nil }
         return "SELECT pg_cancel_backend(\(pid))"
+    }
+
+    func acceptsProcessId(_ processId: String) -> Bool {
+        Int(processId) != nil
     }
 }
 

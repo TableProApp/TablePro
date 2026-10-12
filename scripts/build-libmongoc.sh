@@ -23,9 +23,15 @@ set -eo pipefail
 #
 # Prerequisites:
 #   - Xcode Command Line Tools
-#   - CMake 3.15+ (brew install cmake)
+#   - CMake 3.15 or later, and BELOW 4. Measured with 4.4.3: configure dies in
+#     src/libmongoc/CMakeLists.txt's accept() detection with
+#     `The warning category "error -DCMAKE_CXX_LINK_EXECUTABLE=..." is not known`, because CMake 4
+#     joins that TRY_COMPILE's two CMAKE_FLAGS entries and reads the result as a -W flag. 1.30.11
+#     carries the same line, so a version bump does not help. Point CMAKE_BIN at a 3.x if the one on
+#     PATH is 4.x; 3.31.6 from cmake.org builds this cleanly.
 #   - curl
 
+CMAKE_BIN="${CMAKE_BIN:-cmake}"
 MONGOC_VERSION="1.28.1"
 MONGOC_SHA256="a93259840f461b28e198311e32144f5f8dc9fbd74348029f2793774d781bb7da"
 # shellcheck source=lib/macos.sh
@@ -84,8 +90,11 @@ build_mongoc() {
         openssl_lib_dir="$openssl_prefix/lib64"
     fi
 
+    # Snappy is pinned off rather than left to detection: on a machine that has Homebrew's
+    # snappy, CMake links it and the archive gains three undefined symbols the shipped one
+    # never had, which is a plugin that fails to load on every other machine.
     run_quiet env MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
-    cmake .. \
+    "$CMAKE_BIN" .. \
         -DCMAKE_INSTALL_PREFIX="$prefix" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_OSX_ARCHITECTURES="$arch" \
@@ -99,6 +108,7 @@ build_mongoc() {
         -DENABLE_SRV=ON \
         -DENABLE_ZLIB=SYSTEM \
         -DENABLE_ZSTD=OFF \
+        -DENABLE_SNAPPY=OFF \
         -DENABLE_SSL=OPENSSL \
         -DENABLE_TESTS=OFF \
         -DENABLE_EXAMPLES=OFF \
@@ -107,8 +117,8 @@ build_mongoc() {
         -DOPENSSL_SSL_LIBRARY="$openssl_lib_dir/libssl.a" \
         -DOPENSSL_CRYPTO_LIBRARY="$openssl_lib_dir/libcrypto.a"
 
-    run_quiet cmake --build . --parallel "$NCPU"
-    run_quiet cmake --install .
+    run_quiet "$CMAKE_BIN" --build . --parallel "$NCPU"
+    run_quiet "$CMAKE_BIN" --install .
 
     echo "✅ libmongoc $arch: $(ls -lh "$prefix/lib/libmongoc-static-1.0.a" 2>/dev/null || ls -lh "$prefix/lib64/libmongoc-static-1.0.a" 2>/dev/null | awk '{print $5}') (libmongoc) $(ls -lh "$prefix/lib/libbson-static-1.0.a" 2>/dev/null || ls -lh "$prefix/lib64/libbson-static-1.0.a" 2>/dev/null | awk '{print $5}') (libbson)"
 }

@@ -18,10 +18,17 @@ public enum SyncStatus: Equatable, Sendable {
             return true
         }
     }
+
+    /// The outcome the next trigger is judged against. Nil while nothing stands in the way.
+    public var error: SyncError? {
+        guard case .error(let error) = self else { return nil }
+        return error
+    }
 }
 
+/// Why sync is off by the person's choice or their license. A condition of the iCloud account is
+/// not one of these: sync stays on and waits for it as `SyncError.blocked`.
 public enum DisableReason: Equatable, Sendable {
-    case noAccount
     case licenseRequired
     case licenseExpired
 

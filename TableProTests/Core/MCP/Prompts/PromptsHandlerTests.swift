@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("PromptsGetHandler")
 struct PromptsHandlerTests {
     @Test("Handler declares prompts/get and the resources read scope")
     func metadata() {
@@ -154,7 +153,6 @@ struct PromptsHandlerTests {
     }
 }
 
-@Suite("MCPPromptSchemaReader connection resolution")
 struct MCPPromptSchemaReaderTests {
     private static let alpha = MCPConnectionDescriptor(
         id: UUID(uuidString: "AAAAAAAA-0000-4000-8000-000000000001") ?? UUID(),

@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDB Case Sensitivity")
 struct MongoDBCaseSensitivityTests {
     private let builder = MongoDBQueryBuilder()
 
@@ -71,7 +70,6 @@ struct MongoDBCaseSensitivityTests {
     }
 }
 
-@Suite("Elasticsearch Case Sensitivity")
 struct ElasticsearchCaseSensitivityTests {
     private let keywordField = ["status": ElasticsearchFieldInfo(type: "keyword", hasKeywordSubfield: false)]
 
@@ -147,7 +145,6 @@ struct ElasticsearchCaseSensitivityTests {
     }
 }
 
-@Suite("etcd Case Sensitivity")
 struct EtcdCaseSensitivityTests {
     private let builder = EtcdQueryBuilder()
 
@@ -162,26 +159,25 @@ struct EtcdCaseSensitivityTests {
             limit: 100,
             offset: 0
         )
-        return query.flatMap { EtcdQueryBuilder.parseRangeQuery($0) }
+        return EtcdQueryBuilder.parseRangeQuery(query)
     }
 
     @Test("The encoded query carries the row's case setting")
     func testCaseFlagRoundTrips() {
-        #expect(parsed(true)?.isCaseSensitive == true)
-        #expect(parsed(false)?.isCaseSensitive == false)
+        #expect(parsed(true)?.filter.conditions.first?.isCaseSensitive == true)
+        #expect(parsed(false)?.filter.conditions.first?.isCaseSensitive == false)
     }
 
     @Test("The rest of the query survives the extra field")
     func testOtherFieldsSurvive() {
         let range = parsed(false)
         #expect(range?.prefix == "/app")
-        #expect(range?.filterType == .contains)
-        #expect(range?.filterValue == "cfg")
+        #expect(range?.filter.conditions.first?.comparison == .contains)
+        #expect(range?.filter.conditions.first?.value == "cfg")
         #expect(range?.limit == 100)
     }
 }
 
-@Suite("BigQuery Case Sensitivity")
 struct BigQueryCaseSensitivityTests {
     private func sql(_ op: String, _ value: String, isCaseSensitive: Bool) -> String {
         let query = BigQueryQueryBuilder.encodeFilteredQuery(
@@ -215,35 +211,5 @@ struct BigQueryCaseSensitivityTests {
     func testNoEscapeClause() {
         #expect(!sql("CONTAINS", "ali", isCaseSensitive: false).contains("ESCAPE"))
         #expect(!sql("CONTAINS", "ali", isCaseSensitive: true).contains("ESCAPE"))
-    }
-}
-
-@Suite("DynamoDB Case Sensitivity")
-struct DynamoDBCaseSensitivityTests {
-    @Test("A scan tag saved before this option existed keeps each operator's old behaviour")
-    func testLegacySpecDefaults() {
-        #expect(DynamoDBFilterSpec(column: "a", op: "CONTAINS", value: "x").ignoresCase)
-        #expect(DynamoDBFilterSpec(column: "a", op: "STARTS WITH", value: "x").ignoresCase)
-        #expect(DynamoDBFilterSpec(column: "a", op: "ENDS WITH", value: "x").ignoresCase)
-        #expect(DynamoDBFilterSpec(column: "a", op: "=", value: "x").ignoresCase == false)
-        #expect(DynamoDBFilterSpec(column: "a", op: "!=", value: "x").ignoresCase == false)
-    }
-
-    @Test("An explicit setting wins over the operator default")
-    func testExplicitSettingWins() {
-        #expect(DynamoDBFilterSpec(column: "a", op: "CONTAINS", value: "x", caseSensitive: true).ignoresCase == false)
-        #expect(DynamoDBFilterSpec(column: "a", op: "=", value: "x", caseSensitive: false).ignoresCase)
-    }
-
-    @Test("The setting survives the encode and decode round trip")
-    func testRoundTrip() throws {
-        let query = DynamoDBQueryBuilder().buildFilteredQuery(
-            table: "Users",
-            filters: [PluginQueryFilter(column: "name", op: "CONTAINS", value: "al", isCaseSensitive: true)],
-            logicMode: "AND", sortColumns: [], columns: [], limit: 10, offset: 0,
-            keySchema: []
-        )
-        let parsed = try #require(query.flatMap { DynamoDBQueryBuilder.parseScanQuery($0) })
-        #expect(parsed.filters.first?.ignoresCase == false)
     }
 }

@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Recovery connection list")
 struct RecoveryConnectionListTests {
     @Test("A connected window is restored")
     func activatedWindowIsRestored() {

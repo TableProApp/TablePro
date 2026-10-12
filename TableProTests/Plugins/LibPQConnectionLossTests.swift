@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("libpq connection loss")
 struct LibPQConnectionLossTests {
     private static let serverMessage = LibPQPluginError(
         message: "FATAL:  terminating connection due to idle-session timeout",
@@ -27,6 +26,18 @@ struct LibPQConnectionLossTests {
         #expect(LibPQTransactionState.active.mayHoldTransaction)
         #expect(LibPQTransactionState.inTransaction.mayHoldTransaction)
         #expect(LibPQTransactionState.inError.mayHoldTransaction)
+    }
+
+    /// `PQTRANS_INERROR` is its own answer rather than another open transaction: a `COMMIT` there
+    /// answers with the command tag `ROLLBACK` and no error, so the user has to be told to roll
+    /// back rather than offered the choice.
+    @Test("The ReadyForQuery status is reported to the app as what the session has open")
+    func statusMapsToTheSessionState() {
+        #expect(LibPQTransactionState.idle.sessionTransactionState == .idle)
+        #expect(LibPQTransactionState.inTransaction.sessionTransactionState == .inTransaction)
+        #expect(LibPQTransactionState.inError.sessionTransactionState == .abortedTransaction)
+        #expect(LibPQTransactionState.active.sessionTransactionState == .unknown)
+        #expect(LibPQTransactionState.unknown.sessionTransactionState == .unknown)
     }
 
     @Test("A statement never sent is reported as not run, behind the server's own message")
@@ -106,7 +117,6 @@ struct LibPQConnectionLossTests {
 /// The app reads a driver error's message to tell an authentication failure from a refusal, and
 /// PostgreSQL sends those as a FATAL, which is exactly the shape that now carries an explanation
 /// as well. Both classifiers have to keep working through it.
-@Suite("libpq connection loss and the app's error classifiers")
 @MainActor
 struct LibPQConnectionLossClassifierTests {
     @Test("an authentication FATAL lost with the connection is still an authentication failure")

@@ -13,8 +13,8 @@ import Foundation
 /// this lives outside the view.
 ///
 /// A loaded database is always a list, whatever it holds. The outline says per section what is
-/// missing, so a database with no tables keeps its Procedures, Functions and Triggers, and keeps
-/// the Tables section whose menu is where a first table gets created.
+/// missing, so a database with no tables keeps its Procedures, Functions and Triggers, and its
+/// Tables section.
 internal enum SidebarObjectListPresentation: Equatable {
     /// Loading, and not yet for long enough to say so. An empty column is the placeholder the HIG
     /// asks for, and a local database answers in about 110ms, so a spinner there is a flash rather
@@ -22,6 +22,9 @@ internal enum SidebarObjectListPresentation: Equatable {
     case preparing
     case loading
     case failed(String)
+    /// The engine lists objects only inside a database and the connection has none selected, so an
+    /// empty list would read as an empty database.
+    case noDatabaseSelected
     case noMatch
     case list
 
@@ -45,7 +48,8 @@ internal enum SidebarObjectListPresentation: Equatable {
         state: SchemaState,
         hasActiveFilter: Bool,
         hasAnyMatch: Bool,
-        hasOutlastedGrace: Bool = true
+        hasOutlastedGrace: Bool = true,
+        needsDatabaseSelection: Bool = false
     ) -> SidebarObjectListPresentation {
         switch state {
         case .idle, .loading:
@@ -53,6 +57,9 @@ internal enum SidebarObjectListPresentation: Equatable {
         case .failed(let message):
             return .failed(message)
         case .loaded:
+            if needsDatabaseSelection {
+                return .noDatabaseSelected
+            }
             if hasActiveFilter, !hasAnyMatch {
                 return .noMatch
             }

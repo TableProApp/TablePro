@@ -69,7 +69,7 @@ public enum WeaviateObjectCodec {
     static let additionalKey = "_additional"
 
     public static func row(for object: WeaviateObject, columns: [String]) -> [String?] {
-        return columns.map { column in
+        columns.map { column in
             switch column {
             case WeaviateSchema.uuidColumn:
                 return object.uuid.isEmpty ? nil : object.uuid
@@ -138,4 +138,3 @@ public enum WeaviateObjectCodec {
         return WeaviateObject(uuid: uuid, className: className, properties: properties, vector: vector)
     }
 }
-

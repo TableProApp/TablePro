@@ -13,22 +13,13 @@ import Foundation
 /// can see, which for a database client is the question that matters.
 ///
 /// A connection whose **External Clients** level is Blocked is not listed at all, so a script cannot
-/// discover its name, host or database, let alone read from it. That mirrors what the MCP surface
-/// already does, and it is the reason `connections` is filtered rather than annotated.
+/// discover its name, host or database. `ExternalConnectionDirectory` drops it, the same list MCP reads.
 @MainActor
 internal enum ScriptingSnapshot {
     // MARK: - Connections
 
     internal static func connections() -> [ScriptConnection] {
-        let sessions = DatabaseManager.shared.activeSessions
-        return ConnectionStorage.shared.loadConnections()
-            .filter { $0.externalAccess != .blocked }
-            .sorted { lhs, rhs in
-                lhs.name == rhs.name
-                    ? lhs.id.uuidString < rhs.id.uuidString
-                    : lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-            }
-            .map { ScriptConnection(connection: $0, session: sessions[$0.id]) }
+        ExternalConnectionDirectory.listings().map(ScriptConnection.init(listing:))
     }
 
     internal static func connection(withId id: UUID) -> ScriptConnection? {
@@ -129,10 +120,6 @@ internal enum ScriptingSnapshot {
         return true
     }
 
-    /// Selecting the editor tab is not enough on its own. Its window can be showing a different
-    /// connection, and it can be a background member of a native tab group, either of which leaves
-    /// the tab hidden while the command reports success. The connection router already does all
-    /// three; this does the same in the same order.
     @discardableResult
     internal static func focus(tab tabId: UUID, connectionId: UUID) -> Bool {
         guard isVisibleToScripts(connectionId: connectionId),
@@ -140,23 +127,7 @@ internal enum ScriptingSnapshot {
         else {
             return false
         }
-
-        coordinator.tabManager.selectedTabId = tabId
-
-        guard let windowId = coordinator.windowId,
-              let window = WindowLifecycleMonitor.shared.window(for: windowId)
-        else {
-            coordinator.focusWindow()
-            return true
-        }
-        if let host = window.contentViewController as? MainSplitViewController,
-           host.workspaces.contains(connectionId) {
-            host.selectHostedConnection(connectionId)
-        }
-        if let group = window.tabGroup, group.selectedWindow !== window {
-            group.selectedWindow = window
-        }
-        window.makeKeyAndOrderFront(nil)
+        coordinator.selectTabAndFocusWindow(tabId)
         return true
     }
 

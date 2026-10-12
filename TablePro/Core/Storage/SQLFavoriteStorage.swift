@@ -15,11 +15,9 @@ internal actor SQLFavoriteStorage {
     }
 
     private var dbHandle = DatabaseHandle()
-    private var isPrepared = false
 
-    private var db: OpaquePointer? {
-        if !isPrepared {
-            isPrepared = true
+    internal var db: OpaquePointer? {
+        if dbHandle.pointer == nil {
             setupDatabase()
         }
         return dbHandle.pointer
@@ -65,16 +63,21 @@ internal actor SQLFavoriteStorage {
 
         let dbPath = databaseURL.path(percentEncoded: false)
 
-        if sqlite3_open(dbPath, &dbHandle.pointer) != SQLITE_OK {
-            Self.logger.error("Error opening database")
+        var pointer: OpaquePointer?
+        let openResult = sqlite3_open(dbPath, &pointer)
+        guard openResult == SQLITE_OK else {
+            Self.logger.error("Error opening database: \(String(cString: sqlite3_errstr(openResult)), privacy: .public)")
+            sqlite3_close_v2(pointer)
             return
         }
+        dbHandle.pointer = pointer
 
         execute("PRAGMA journal_mode=WAL;")
         execute("PRAGMA synchronous=NORMAL;")
 
         createTables()
         migrateIfNeeded()
+        Self.versionSchemaStatements.forEach { execute($0) }
     }
 
     // MARK: - Schema Migration
@@ -303,7 +306,11 @@ internal actor SQLFavoriteStorage {
         return result == SQLITE_DONE
     }
 
-    func updateFavorite(_ favorite: SQLFavorite) -> Bool {
+    func updateFavorite(_ favorite: SQLFavorite) -> FavoriteScopeWrite {
+        guard case .found(let previousConnectionId) = currentScope(table: "favorites", id: favorite.id) else {
+            return .failed
+        }
+
         let sql = """
             UPDATE favorites SET name = ?, query = ?, keyword = ?, folder_id = ?, connection_id = ?, sort_order = ?, updated_at = ?
             WHERE id = ?;
@@ -311,7 +318,7 @@ internal actor SQLFavoriteStorage {
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return .failed
         }
 
         defer { sqlite3_finalize(statement) }
@@ -343,10 +350,15 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 7, favorite.updatedAt.timeIntervalSince1970)
         sqlite3_bind_text(statement, 8, favorite.id.uuidString, -1, SQLITE_TRANSIENT)
 
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            Self.logger.error("Failed to write favorite: \(String(cString: sqlite3_errmsg(self.db)))")
+            return .failed
+        }
+        return .updatedExisting(previousConnectionId: previousConnectionId)
     }
 
-    func upsertFavorite(_ favorite: SQLFavorite) -> Bool {
+    func upsertFavorite(_ favorite: SQLFavorite) -> FavoriteScopeWrite {
+        let existingScope = currentScope(table: "favorites", id: favorite.id)
         let sql = """
             INSERT INTO favorites (id, name, query, keyword, folder_id, connection_id, sort_order, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -358,7 +370,7 @@ internal actor SQLFavoriteStorage {
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return .failed
         }
 
         defer { sqlite3_finalize(statement) }
@@ -391,59 +403,108 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 8, favorite.createdAt.timeIntervalSince1970)
         sqlite3_bind_double(statement, 9, favorite.updatedAt.timeIntervalSince1970)
 
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            Self.logger.error("Failed to write favorite: \(String(cString: sqlite3_errmsg(self.db)))")
+            return .failed
+        }
+        return existingScope.write
     }
 
-    func deleteFavorite(id: UUID) -> Bool {
-        let sql = "DELETE FROM favorites WHERE id = ?;"
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
-        }
+    func applyRemoteFavorites(_ incoming: [SQLFavorite]) -> RemoteFavoriteWrites? {
+        guard !incoming.isEmpty else { return RemoteFavoriteWrites(writes: [], releasedKeywordIds: []) }
 
+        return inTransaction { () -> RemoteFavoriteWrites? in
+            let resolution = RemoteFavoriteKeywordResolver.resolve(incoming: incoming, local: keywordHolders())
+            let vacated = resolution.vacatedLocalIds
+            guard vacated.isEmpty || run(
+                "UPDATE favorites SET keyword = NULL WHERE id IN (\(placeholders(vacated)));",
+                bindings: vacated.map(\.uuidString)
+            ) else {
+                return nil
+            }
+
+            var writes: [RemoteFavoriteWrite] = []
+            for favorite in resolution.upserts {
+                let write = upsertFavorite(favorite)
+                guard write.succeeded else { return nil }
+                writes.append(RemoteFavoriteWrite(connectionId: favorite.connectionId, write: write))
+            }
+            return RemoteFavoriteWrites(writes: writes, releasedKeywordIds: resolution.releasedIds)
+        }
+    }
+
+    private func keywordHolders() -> [SQLFavorite] {
+        let sql = """
+            SELECT id, name, query, keyword, folder_id, connection_id, sort_order, created_at, updated_at
+            FROM favorites WHERE keyword IS NOT NULL AND connection_id IS NOT NULL;
+            """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(statement) }
 
-        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        sqlite3_bind_text(statement, 1, id.uuidString, -1, SQLITE_TRANSIENT)
-        return sqlite3_step(statement) == SQLITE_DONE
+        var holders: [SQLFavorite] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let favorite = parseFavorite(from: statement) else { continue }
+            holders.append(favorite)
+        }
+        return holders
     }
 
-    func deleteFavorites(ids: [UUID]) -> Bool {
-        guard !ids.isEmpty else { return true }
-
-        let placeholders = ids.map { _ in "?" }.joined(separator: ",")
-        let sql = "DELETE FROM favorites WHERE id IN (\(placeholders));"
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+    internal func inTransaction<Value>(_ body: () -> Value?) -> Value? {
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return nil }
+        guard let result = body(), sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
+            Self.logger.error("Rolled back a transaction: \(String(cString: sqlite3_errmsg(self.db)))")
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return nil
         }
-
-        defer { sqlite3_finalize(statement) }
-
-        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        for (index, id) in ids.enumerated() {
-            sqlite3_bind_text(statement, Int32(index + 1), id.uuidString, -1, SQLITE_TRANSIENT)
-        }
-
-        let result = sqlite3_step(statement)
-        if result != SQLITE_DONE {
-            Self.logger.error("Failed to batch delete favorites: \(String(cString: sqlite3_errmsg(self.db)))")
-        }
-        return result == SQLITE_DONE
+        return result
     }
 
-    private static let detachDanglingFolderReferencesSQL = """
-        UPDATE favorites SET folder_id = NULL
+    /// Both tables point at `folders` by id with no foreign key behind either column, so a delete
+    /// that removes a folder leaves whatever named it holding an id nothing answers to.
+    ///
+    /// `folders.parent_id` needs this as much as `favorites.folder_id` does, now that a folder can
+    /// be available in every connection and therefore outlive the connection whose folder it sits
+    /// in. `FavoritesTreeBuilder` draws such a row at the root either way, so the user never sees
+    /// the difference, which is exactly why the column would otherwise stay wrong forever.
+    private static let danglingFavoritesSQL = """
+        SELECT id FROM favorites
         WHERE folder_id IS NOT NULL AND folder_id NOT IN (SELECT id FROM folders);
         """
+
+    private static let danglingFoldersSQL = """
+        SELECT id FROM folders
+        WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM folders);
+        """
+
+    /// Reports which rows it rewrote, because a row that survives a delete with a different parent
+    /// is a row the next push has to carry. Reporting a bare `Bool` left the survivor holding the
+    /// old id on every other device and on a fresh install, which is the same shape as the bug that
+    /// made this function return its deletions in the first place.
+    private func detachDanglingFolderReferences() -> DetachedFavoriteRecords? {
+        let favorites = ids(from: Self.danglingFavoritesSQL, bindings: [])
+        let folders = ids(from: Self.danglingFoldersSQL, bindings: [])
+
+        guard run("UPDATE favorites SET folder_id = NULL WHERE id IN (\(placeholders(favorites)));",
+                  bindings: favorites.map(\.uuidString)),
+              run("UPDATE folders SET parent_id = NULL WHERE id IN (\(placeholders(folders)));",
+                  bindings: folders.map(\.uuidString))
+        else {
+            return nil
+        }
+        return DetachedFavoriteRecords(favorites: favorites, folders: folders)
+    }
+
+    private func placeholders(_ ids: [UUID]) -> String {
+        ids.isEmpty ? "NULL" : ids.map { _ in "?" }.joined(separator: ",")
+    }
 
     /// Returns what it deleted rather than whether it deleted, because the caller has to tombstone
     /// each record for sync and cannot ask afterwards: the rows are gone. Reporting a bare `Bool`
     /// is why a deleted connection's favorites and folders lived on in CloudKit and came back on a
     /// fresh install.
-    func deleteFavoritesAndFolders(connectionId: UUID) -> DeletedFavoriteRecords {
-        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return .none }
+    func deleteFavoritesAndFolders(connectionId: UUID) -> DeletedFavoriteRecords? {
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return nil }
 
         let id = connectionId.uuidString
         /// Read inside the same transaction as the delete, so nothing can be added between the two
@@ -453,13 +514,36 @@ internal actor SQLFavoriteStorage {
 
         guard run("DELETE FROM favorites WHERE connection_id = ?;", bindings: [id]),
               run("DELETE FROM folders WHERE connection_id = ?;", bindings: [id]),
-              run(Self.detachDanglingFolderReferencesSQL) else {
+              let detached = detachDanglingFolderReferences() else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return .none
+            return nil
         }
 
-        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return .none }
-        return DeletedFavoriteRecords(favorites: favorites, folders: folders)
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return nil }
+        return DeletedFavoriteRecords(favorites: favorites, folders: folders, detached: detached)
+    }
+
+    /// The row's scope as it stands, read before the write replaces it.
+    ///
+    /// `RETURNING` cannot serve: SQLite reports the post-image of an `UPDATE`, and what a caller
+    /// needs here is the scope the record is leaving.
+    ///
+    /// It is read inside the same actor call as the write it precedes, never awaited separately by
+    /// the caller. A sync pull applies remote records from its own task while the user is editing,
+    /// so a read and a write the caller awaits one after the other are two entries this actor is
+    /// free to interleave, and the scope reported would be one somebody else had already replaced.
+    internal func currentScope(table: String, id: UUID) -> FavoriteScopeRead {
+        var statement: OpaquePointer?
+        let sql = "SELECT connection_id FROM \(table) WHERE id = ?;"
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return .notFound }
+        defer { sqlite3_finalize(statement) }
+
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+
+        guard sqlite3_step(statement) == SQLITE_ROW else { return .notFound }
+        guard let raw = sqlite3_column_text(statement, 0) else { return .found(nil) }
+        return .found(UUID(uuidString: String(cString: raw)))
     }
 
     private func ids(from sql: String, bindings: [String]) -> [UUID] {
@@ -479,42 +563,7 @@ internal actor SQLFavoriteStorage {
         return result
     }
 
-    @discardableResult
-    func pruneOrphaned(retaining activeConnectionIds: Set<UUID>) -> Int {
-        guard !activeConnectionIds.isEmpty else { return 0 }
-
-        let ids = activeConnectionIds.map(\.uuidString)
-        let placeholders = ids.map { _ in "?" }.joined(separator: ",")
-        let orphanCondition = "connection_id IS NOT NULL AND connection_id NOT IN (\(placeholders))"
-
-        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return 0 }
-
-        guard run("DELETE FROM favorites WHERE \(orphanCondition);", bindings: ids) else {
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return 0
-        }
-        let prunedFavorites = Int(sqlite3_changes(db))
-
-        guard run("DELETE FROM folders WHERE \(orphanCondition);", bindings: ids) else {
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return 0
-        }
-        let prunedFolders = Int(sqlite3_changes(db))
-
-        guard run(Self.detachDanglingFolderReferencesSQL) else {
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return 0
-        }
-
-        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return 0 }
-
-        if prunedFavorites > 0 || prunedFolders > 0 {
-            Self.logger.info("Pruned \(prunedFavorites) favorites and \(prunedFolders) folders scoped to deleted connections")
-        }
-        return prunedFavorites
-    }
-
-    private func run(_ sql: String, bindings: [String] = []) -> Bool {
+    func run(_ sql: String, bindings: [String] = []) -> Bool {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             Self.logger.error("Failed to prepare statement: \(String(cString: sqlite3_errmsg(self.db)))")
@@ -733,7 +782,11 @@ internal actor SQLFavoriteStorage {
         return sqlite3_step(statement) == SQLITE_DONE
     }
 
-    func updateFolder(_ folder: SQLFavoriteFolder) -> Bool {
+    func updateFolder(_ folder: SQLFavoriteFolder) -> FavoriteScopeWrite {
+        guard case .found(let previousConnectionId) = currentScope(table: "folders", id: folder.id) else {
+            return .failed
+        }
+
         let sql = """
             UPDATE folders SET name = ?, parent_id = ?, connection_id = ?, sort_order = ?, updated_at = ?
             WHERE id = ?;
@@ -741,7 +794,7 @@ internal actor SQLFavoriteStorage {
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return .failed
         }
 
         defer { sqlite3_finalize(statement) }
@@ -766,10 +819,15 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 5, folder.updatedAt.timeIntervalSince1970)
         sqlite3_bind_text(statement, 6, folder.id.uuidString, -1, SQLITE_TRANSIENT)
 
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            Self.logger.error("Failed to write folder: \(String(cString: sqlite3_errmsg(self.db)))")
+            return .failed
+        }
+        return .updatedExisting(previousConnectionId: previousConnectionId)
     }
 
-    func upsertFolder(_ folder: SQLFavoriteFolder) -> Bool {
+    func upsertFolder(_ folder: SQLFavoriteFolder) -> FavoriteScopeWrite {
+        let existingScope = currentScope(table: "folders", id: folder.id)
         let sql = """
             INSERT INTO folders (id, name, parent_id, connection_id, sort_order, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -781,7 +839,7 @@ internal actor SQLFavoriteStorage {
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
+            return .failed
         }
 
         defer { sqlite3_finalize(statement) }
@@ -807,30 +865,45 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_double(statement, 6, folder.createdAt.timeIntervalSince1970)
         sqlite3_bind_double(statement, 7, folder.updatedAt.timeIntervalSince1970)
 
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            Self.logger.error("Failed to write folder: \(String(cString: sqlite3_errmsg(self.db)))")
+            return .failed
+        }
+        return existingScope.write
     }
 
-    func deleteFolder(id: UUID) -> Bool {
+    /// Reports the records it moved up a level, not just whether it worked.
+    ///
+    /// Deleting a folder reparents what was inside it, which is a write to each of those rows, and
+    /// the caller has to mark every one of them dirty or the next push carries a `folderId` naming
+    /// a folder that no longer exists. Nothing can ask afterwards: the ids are read inside the same
+    /// transaction as the move, so nothing can be added between the two and travel unmarked.
+    func deleteFolder(id: UUID) -> FolderDeletion? {
         let idString = id.uuidString
 
         guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
-            return false
+            return nil
         }
+
+        let movedFavorites = ids(from: "SELECT id FROM favorites WHERE folder_id = ?;", bindings: [idString])
+        let movedFolders = ids(from: "SELECT id FROM folders WHERE parent_id = ?;", bindings: [idString])
 
         let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-        let findParentSQL = "SELECT parent_id FROM folders WHERE id = ?;"
+        let findParentSQL = "SELECT parent_id, connection_id FROM folders WHERE id = ?;"
         var findStatement: OpaquePointer?
         guard sqlite3_prepare_v2(db, findParentSQL, -1, &findStatement, nil) == SQLITE_OK else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return nil
         }
 
         sqlite3_bind_text(findStatement, 1, idString, -1, SQLITE_TRANSIENT)
 
         var parentId: String?
+        var connectionId: UUID?
         if sqlite3_step(findStatement) == SQLITE_ROW {
             parentId = sqlite3_column_text(findStatement, 0).map { String(cString: $0) }
+            connectionId = sqlite3_column_text(findStatement, 1).flatMap { UUID(uuidString: String(cString: $0)) }
         }
         sqlite3_finalize(findStatement)
 
@@ -847,12 +920,12 @@ internal actor SQLFavoriteStorage {
             sqlite3_finalize(moveFavStatement)
             if moveFavResult != SQLITE_DONE {
                 sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-                return false
+                return nil
             }
         } else {
             sqlite3_finalize(moveFavStatement)
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return nil
         }
 
         let moveSubfoldersSQL = "UPDATE folders SET parent_id = ? WHERE parent_id = ?;"
@@ -868,32 +941,32 @@ internal actor SQLFavoriteStorage {
             sqlite3_finalize(moveSubStatement)
             if moveSubResult != SQLITE_DONE {
                 sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-                return false
+                return nil
             }
         } else {
             sqlite3_finalize(moveSubStatement)
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return nil
         }
 
         let deleteSQL = "DELETE FROM folders WHERE id = ?;"
         var deleteStatement: OpaquePointer?
         guard sqlite3_prepare_v2(db, deleteSQL, -1, &deleteStatement, nil) == SQLITE_OK else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return nil
         }
 
         sqlite3_bind_text(deleteStatement, 1, idString, -1, SQLITE_TRANSIENT)
         let result = sqlite3_step(deleteStatement)
         sqlite3_finalize(deleteStatement)
 
-        if result == SQLITE_DONE {
-            sqlite3_exec(db, "COMMIT;", nil, nil, nil)
-        } else {
+        guard result == SQLITE_DONE else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            return nil
         }
 
-        return result == SQLITE_DONE
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return nil }
+        return FolderDeletion(connectionId: connectionId, movedFavorites: movedFavorites, movedFolders: movedFolders)
     }
 
     func fetchFolders(connectionId: UUID? = nil) -> [SQLFavoriteFolder] {
@@ -948,7 +1021,14 @@ internal actor SQLFavoriteStorage {
             sql += " AND connection_id IS NULL"
         }
 
-        sql += ";"
+        /// This reads the connection's own favorites and every global one at once, and nothing
+        /// stops two of them holding the same keyword: the unique index is on
+        /// (keyword, connection_id) and SQLite counts each NULL connection_id as distinct. Without
+        /// an order the winner was whichever row the scan reached last, so the keyword could expand
+        /// different SQL on two machines holding identical data. The connection's own favorite wins
+        /// over a global one, which is the precedence `fetchKeywordMap`'s caller already applies to
+        /// linked folders, and age settles the rest.
+        sql += " ORDER BY (connection_id IS NULL) ASC, created_at ASC, id ASC;"
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -966,7 +1046,8 @@ internal actor SQLFavoriteStorage {
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let keyword = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
                   let name = sqlite3_column_text(statement, 1).map({ String(cString: $0) }),
-                  let query = sqlite3_column_text(statement, 2).map({ String(cString: $0) })
+                  let query = sqlite3_column_text(statement, 2).map({ String(cString: $0) }),
+                  map[keyword] == nil
             else {
                 continue
             }
@@ -994,10 +1075,14 @@ internal actor SQLFavoriteStorage {
                 AND (connection_id IS NULL OR connection_id = ?)
                 """
         } else {
+            /// A global keyword is in every connection's expansion map, so it collides with a
+            /// keyword held anywhere, not only with another global one. Asking about global rows
+            /// alone let one connection hold the same keyword twice, which `fetchKeywordMap` then
+            /// has to break a tie over rather than expanding what the user meant. The unique index
+            /// cannot catch it either: SQLite treats NULLs in a unique index as distinct.
             sql = """
                 SELECT COUNT(*) FROM favorites
                 WHERE keyword = ?
-                AND connection_id IS NULL
                 """
         }
 
@@ -1036,7 +1121,7 @@ internal actor SQLFavoriteStorage {
 
     // MARK: - Parsing Helpers
 
-    private func parseFavorite(from statement: OpaquePointer?) -> SQLFavorite? {
+    internal func parseFavorite(from statement: OpaquePointer?) -> SQLFavorite? {
         guard let statement = statement else { return nil }
 
         guard let idString = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
@@ -1067,7 +1152,7 @@ internal actor SQLFavoriteStorage {
         )
     }
 
-    private func parseFolder(from statement: OpaquePointer?) -> SQLFavoriteFolder? {
+    internal func parseFolder(from statement: OpaquePointer?) -> SQLFavoriteFolder? {
         guard let statement = statement else { return nil }
 
         guard let idString = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
@@ -1101,13 +1186,79 @@ internal actor SQLFavoriteStorage {
 /// supplied them. A delete keyed on a connection does not, and reporting only success meant those
 /// records were never marked deleted: they stayed in CloudKit for good and reappeared on the next
 /// device to sync.
-struct DeletedFavoriteRecords {
+/// What a write to a favorite or a folder did, and to which scope.
+///
+/// A plain `Bool` cannot say it, and the caller cannot ask afterwards: the row already holds the new
+/// scope. Without the old one, a change that moves a record between global and one connection is
+/// announced to that connection alone, and every other window goes on showing a record that has
+/// left it.
+enum FavoriteScopeWrite: Equatable {
+    case failed
+    case insertedNew
+    case updatedExisting(previousConnectionId: UUID?)
+
+    var succeeded: Bool {
+        self != .failed
+    }
+
+    /// The scope the record is in, for a write that did not touch its scope. A rename or a move
+    /// between folders is announced to that scope alone, the way any other write to it would be,
+    /// and a global record's nil still reaches every connection.
+    var retainedScope: UUID? {
+        guard case .updatedExisting(let previousConnectionId) = self else { return nil }
+        return previousConnectionId
+    }
+}
+
+/// Whether a row exists, and its scope if it does. Separate from `UUID??`, which reads as one
+/// optional too many at every call site.
+enum FavoriteScopeRead: Equatable {
+    case notFound
+    case found(UUID?)
+
+    /// What an upsert reports, given what was there before it ran.
+    var write: FavoriteScopeWrite {
+        switch self {
+        case .notFound: return .insertedNew
+        case .found(let previousConnectionId): return .updatedExisting(previousConnectionId: previousConnectionId)
+        }
+    }
+}
+
+/// What deleting one folder moved up to its parent, so the caller can mark those records dirty.
+struct FolderDeletion: Equatable {
+    let connectionId: UUID?
+    let movedFavorites: [UUID]
+    let movedFolders: [UUID]
+}
+
+/// The rows a delete left in place holding a reference it had to clear.
+///
+/// Separate from the deleted ids because the two need opposite things from sync: a deleted row is
+/// tombstoned, a detached one is pushed.
+struct DetachedFavoriteRecords {
     let favorites: [UUID]
     let folders: [UUID]
 
-    static let none = DeletedFavoriteRecords(favorites: [], folders: [])
+    static let none = DetachedFavoriteRecords(favorites: [], folders: [])
 
     var isEmpty: Bool {
         favorites.isEmpty && folders.isEmpty
+    }
+}
+
+struct DeletedFavoriteRecords {
+    let favorites: [UUID]
+    let folders: [UUID]
+    let detached: DetachedFavoriteRecords
+
+    init(favorites: [UUID], folders: [UUID], detached: DetachedFavoriteRecords = .none) {
+        self.favorites = favorites
+        self.folders = folders
+        self.detached = detached
+    }
+
+    var isEmpty: Bool {
+        favorites.isEmpty && folders.isEmpty && detached.isEmpty
     }
 }

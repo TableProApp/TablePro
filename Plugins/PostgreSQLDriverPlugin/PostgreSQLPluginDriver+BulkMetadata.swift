@@ -21,12 +21,16 @@ extension PostgreSQLPluginDriver {
     var providesBulkIndexFetch: Bool { true }
 
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
-        let query = PostgreSQLIndexQueries.indexList(schema: schema ?? core.currentSchema, table: nil)
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = PostgreSQLIndexQueries.indexList(
+            schema: resolvedSchema, table: nil, capabilities: catalogCapabilities
+        )
         let result = try await execute(query: query)
+        let ddl = try await fetchIndexSpellings(schema: resolvedSchema, table: nil)
 
         var indexes: [String: [PluginIndexInfo]] = [:]
         for row in result.rows {
-            guard let decoded = PostgreSQLIndexRow.index(from: row) else { continue }
+            guard let decoded = PostgreSQLIndexRow.index(from: row, ddl: ddl) else { continue }
             indexes[decoded.table, default: []].append(decoded.index)
         }
         return indexes
@@ -60,7 +64,7 @@ extension PostgreSQLPluginDriver {
                 dataSize: (row[safe: 2]?.asText).flatMap { Int64($0) },
                 indexSize: (row[safe: 3]?.asText).flatMap { Int64($0) },
                 totalSize: (row[safe: 1]?.asText).flatMap { Int64($0) },
-                rowCount: (row[safe: 4]?.asText).flatMap { Int64($0) },
+                rowCount: PostgreSQLSchemaQueries.rowEstimate(reltuples: row[safe: 4]?.asText),
                 comment: comment?.isEmpty == true ? nil : comment,
                 engine: "PostgreSQL"
             )

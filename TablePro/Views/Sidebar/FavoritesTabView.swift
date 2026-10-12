@@ -1,10 +1,17 @@
 import SwiftUI
 import TableProImport
+import TableProPluginKit
 
 internal struct FavoritesTabView: View {
+    @ObservedObject private var teamLibrarySync = TeamLibrarySyncCoordinator.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var gitStatusStore = LinkedFolderGitStatusStore.shared
+    @ObservedObject private var schemaService = SchemaService.shared
+    @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
     @Environment(\.sidebarRowSize) private var systemRowSize
 
-    @State private var viewModel: FavoritesSidebarViewModel
+    @StateObject private var viewModel: FavoritesSidebarViewModel
     @State private var favoriteTables: [FavoriteTablesStorage.FavoriteEntry] = []
     @State private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
     @State private var folderToDelete: SQLFavoriteFolder?
@@ -14,10 +21,10 @@ internal struct FavoritesTabView: View {
     @State private var linkedMetadataTarget: LinkedSQLFavorite?
     @State private var linkedFolderToRemove: LinkedSQLFolder?
     @State private var showRemoveLinkedFolderAlert = false
+    @State private var tableOpenTask: Task<Void, Never>?
     let connectionId: UUID
     let databaseType: DatabaseType
-    @Bindable private var sharedSidebarState: SharedSidebarState
-    let tables: [TableInfo]
+    @ObservedObject private var sharedSidebarState: SharedSidebarState
     private var coordinator: MainContentCoordinator?
 
     private var searchText: String { sharedSidebarState.favoritesSearchText }
@@ -42,38 +49,53 @@ internal struct FavoritesTabView: View {
         PluginManager.shared.containerEntityNamePlural(for: databaseType)
     }
 
-    private var availableFavoriteTables: [TableInfo] {
-        let database = activeDatabase
-        let tablesByKey = Dictionary(
-            tables.map { (Self.tableKey(schema: $0.schema, name: $0.name), $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        return favoriteTables.compactMap { entry in
-            guard entry.database == database else { return nil }
-            return tablesByKey[Self.tableKey(schema: entry.schema, name: entry.name)]
-        }
+    private var session: ConnectionSession? {
+        coordinator?.services.databaseManager.session(for: connectionId)
     }
 
-    private static func tableKey(schema: String?, name: String) -> String {
-        "\(schema ?? "")\u{1}\(name)"
+    private var favoriteTableScope: FavoriteTableBrowseScope {
+        FavoriteTableBrowseScope(
+            database: activeDatabase,
+            schema: session?.browseSchema,
+            listsTablesPerSchema: DatabaseTreeMetadataService.listsTablesPerSchema(groupingStrategy)
+        )
+    }
+
+    private var groupingStrategy: GroupingStrategy {
+        PluginManager.shared.databaseGroupingStrategy(for: databaseType)
+    }
+
+    private var favoriteTableReader: FavoriteTableCatalogReader {
+        FavoriteTableCatalogReader(
+            connectionId: connectionId,
+            grouping: groupingStrategy,
+            isConnected: session?.isConnected ?? false,
+            schemaService: schemaService,
+            treeService: treeMetadata,
+            keptSchemas: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: activeDatabase ?? "")
+        )
     }
 
     init(
         connectionId: UUID,
         databaseType: DatabaseType,
         sharedSidebarState: SharedSidebarState,
-        tables: [TableInfo],
         coordinator: MainContentCoordinator?
     ) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         self.sharedSidebarState = sharedSidebarState
-        self.tables = tables
-        _viewModel = State(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
+        _viewModel = StateObject(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
         self.coordinator = coordinator
     }
 
     var body: some View {
+        let reader = favoriteTableReader
+        let tableRead = reader.read(
+            favoriteTables,
+            scope: favoriteTableScope,
+            search: SidebarSearch(searchText)
+        )
         VStack(spacing: 0) {
             if !favoriteDatabases.isEmpty {
                 FavoriteDatabaseFilterBar(selection: $sharedSidebarState.favoriteDatabaseEnvironmentFilter)
@@ -82,28 +104,39 @@ internal struct FavoritesTabView: View {
             Group {
                 let items = viewModel.filteredNodes(searchText: searchText)
                 let groups = databaseGroups
-                let filteredTables = searchText.isEmpty
-                    ? availableFavoriteTables
-                    : availableFavoriteTables.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+                let filteredTables = tableRead.resolution.rows
 
                 switch FavoritesEmptyState.resolve(FavoritesEmptyState.Input(
                     isInitialLoadComplete: viewModel.isInitialLoadComplete,
-                    hasAnyFavorite: !viewModel.nodes.isEmpty
-                        || !availableFavoriteTables.isEmpty
-                        || !teamLibraryQueries.isEmpty
-                        || !favoriteDatabases.isEmpty,
+                    hasAnyFavorite: FavoritesEmptyState.hasAnyFavorite(
+                        hasQueries: !viewModel.nodes.isEmpty,
+                        favoriteTableCount: favoriteTables.count,
+                        favoriteDatabaseCount: favoriteDatabases.count,
+                        teamLibraryQueryCount: allTeamLibraryQueries.count
+                    ),
                     hasVisibleContent: !items.isEmpty
                         || !groups.isEmpty
                         || !filteredTables.isEmpty
                         || !teamLibraryQueries.isEmpty,
                     searchText: searchText,
-                    isEnvironmentFiltered: sharedSidebarState.favoriteDatabaseEnvironmentFilter != .all
+                    isEnvironmentFiltered: sharedSidebarState.favoriteDatabaseEnvironmentFilter != .all,
+                    favoriteTablesInOtherDatabases: tableRead.resolution.otherDatabaseCount,
+                    missingFavoriteTables: tableRead.resolution.missingCount
                 )) {
                 case .loading:
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .noFavorites:
                     emptyState
+                case .favoriteTablesInOtherDatabases:
+                    favoriteTablesElsewhereState(description: String(
+                        format: String(localized: "Your favorite tables are in other %@. Switch to one to see them here."),
+                        databaseEntityNamePlural.lowercased()
+                    ))
+                case .favoriteTablesMissing:
+                    favoriteTablesElsewhereState(
+                        description: String(localized: "The tables you starred here no longer exist.")
+                    )
                 case .noFilterMatch:
                     noFilterMatchState
                 case .noSearchMatch(let term):
@@ -112,6 +145,12 @@ internal struct FavoritesTabView: View {
                     favoritesList(items, databaseGroups: groups, filteredTables: filteredTables)
                 }
             }
+            SidebarFooterBar {
+                FavoritesAddButton(perform: { perform($0) })
+            }
+        }
+        .task(id: tableRead.loadRequest) {
+            reader.load(tableRead.loadRequest)
         }
         .onAppear {
             viewModel.startWatchingLinkedFolders()
@@ -176,8 +215,9 @@ internal struct FavoritesTabView: View {
                 linkedFileToTrash = nil
             }
             Button(String(localized: "Move to Trash"), role: .destructive) {
-                coordinator?.trashLinkedFavorite(file)
-                viewModel.reloadLinkedFolders()
+                if coordinator?.trashLinkedFavorite(file) == true {
+                    viewModel.reloadLinkedFolders()
+                }
                 linkedFileToTrash = nil
             }
         } message: { file in
@@ -202,9 +242,16 @@ internal struct FavoritesTabView: View {
 
     // MARK: - List
 
+    /// Every team query this license can see, before the filter field has had a word to say about
+    /// it. The empty state asks whether the user owns anything, and the filtered list cannot answer
+    /// that question.
+    private var allTeamLibraryQueries: [TeamLibraryPullResponse.Query] {
+        guard licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
+        return teamLibrarySync.library.queries
+    }
+
     private var teamLibraryQueries: [TeamLibraryPullResponse.Query] {
-        guard LicenseManager.shared.isFeatureAvailable(.teamLibrary) else { return [] }
-        let all = TeamLibrarySyncCoordinator.shared.library.queries
+        let all = allTeamLibraryQueries
         guard !searchText.isEmpty else { return all }
         return all.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) || $0.query.localizedCaseInsensitiveContains(searchText)
@@ -270,7 +317,7 @@ internal struct FavoritesTabView: View {
     private func favoritesList(
         _ items: [FavoriteNode],
         databaseGroups: [FavoriteDatabaseGroup],
-        filteredTables: [TableInfo]
+        filteredTables: [FavoriteTableRow]
     ) -> some View {
         FavoritesOutlineView(
             input: FavoritesOutlineInput(
@@ -288,10 +335,11 @@ internal struct FavoritesTabView: View {
                 },
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),
-                teamLibraryAvailable: LicenseManager.shared.isFeatureAvailable(.teamLibrary)
+                teamLibraryAvailable: licenseManager.isFeatureAvailable(.teamLibrary),
+                linkedFileGitStates: gitStatusStore.states(for: Self.linkedFavorites(in: items))
             ),
             selection: $sharedSidebarState.selectedFavorite,
-            rowSizePreference: AppSettingsManager.shared.general.sidebarRowSize,
+            rowSizePreference: settingsManager.general.sidebarRowSize,
             actions: FavoritesOutlineActions(
                 primaryAction: { handlePrimaryAction($0) },
                 deleteSelection: { deleteNode($0) },
@@ -319,7 +367,7 @@ internal struct FavoritesTabView: View {
     /// list grew with the sidebar size and the Favorites list beside it did not.
     private var resolvedRowSize: SidebarRowSize {
         SidebarRowSizeResolver.resolve(
-            preference: AppSettingsManager.shared.general.sidebarRowSize,
+            preference: settingsManager.general.sidebarRowSize,
             system: systemRowSize
         )
     }
@@ -337,8 +385,8 @@ internal struct FavoritesTabView: View {
             databaseEnvironmentRow(group)
         case .database(let entry):
             favoriteDatabaseRow(entry)
-        case .table(let table):
-            favoriteTableRow(table: table)
+        case .table(let row):
+            favoriteTableRow(row)
         case .query(let favoriteNode):
             favoriteQueryRow(favoriteNode)
         case .teamQuery(_, let name, let publishedBy):
@@ -358,12 +406,12 @@ internal struct FavoritesTabView: View {
         } icon: {
             Image(systemName: group.environment.iconName)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
     }
 
     private func favoriteDatabaseRow(_ entry: FavoriteDatabaseEntry) -> some View {
         Label(entry.database, systemImage: "cylinder")
-            .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
             .lineLimit(1)
             .accessibilityLabel(String(
                 format: String(localized: "%@: %@"),
@@ -378,13 +426,19 @@ internal struct FavoritesTabView: View {
         case .favorite(let favorite):
             FavoriteRowView(favorite: favorite)
         case .folder(let folder):
-            Label(folder.name, systemImage: "folder")
+            FavoriteFolderRowView(folder: folder)
         case .linkedFolder(let folder):
             LinkedFolderRowLabel(folder: folder)
         case .linkedSubfolder(_, let displayName, _):
             LinkedSubfolderRowLabel(displayName: displayName)
         case .linkedFavorite(let linked):
-            LinkedFavoriteRowView(favorite: linked)
+            LinkedFavoriteRowView(favorite: linked, gitState: gitStatusStore.state(for: linked))
+        }
+    }
+
+    private static func linkedFavorites(in nodes: [FavoriteNode]) -> [LinkedSQLFavorite] {
+        nodes.flatMap { node in
+            [node.asLinkedFavorite].compactMap { $0 } + linkedFavorites(in: node.children ?? [])
         }
     }
 
@@ -408,35 +462,53 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func favoriteTableRow(table: TableInfo) -> some View {
+    private func favoriteTableRow(_ row: FavoriteTableRow) -> some View {
         Label {
-            Text(table.name)
+            HStack(spacing: 6) {
+                Text(row.entry.name)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let schema = row.otherSchema {
+                    Text(schema)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
         } icon: {
-            Image(systemName: TableRowLogic.iconName(for: table.type))
+            Image(systemName: TableRowLogic.iconName(for: row.table.type))
                 .selectionAwareTint(Color.accentColor)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .accessibilityLabel(
-            TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
+            [
+                TableRowLogic.accessibilityLabel(table: row.table, isPendingDelete: false, isPendingTruncate: false),
+                row.otherSchema
+            ]
+            .compactMap { $0 }
+            .joined(separator: ", ")
         )
     }
 
-    @ViewBuilder
-    private func favoriteTableContextMenu(_ table: TableInfo) -> some View {
-        Button(String(localized: "Open Table")) {
-            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
-        }
-
-        Button(String(localized: "Show ER Diagram")) {
-            coordinator?.showERDiagram()
-        }
-
-        Divider()
-
-        Button(role: .destructive) {
-            FavoriteTablesStorage.shared.removeFavorite(name: table.name, schema: table.schema, database: activeDatabase, connectionId: connectionId)
-        } label: {
-            Text(String(localized: "Remove from Favorites"))
+    private func openFavoriteTable(_ row: FavoriteTableRow) {
+        let reader = favoriteTableReader
+        let scope = favoriteTableScope
+        let host = coordinator
+        tableOpenTask?.cancel()
+        tableOpenTask = Task { [weak host] in
+            guard let resolved = await reader.rowForOpening(row.entry, scope: scope),
+                  !Task.isCancelled,
+                  let host,
+                  !host.isTearingDown else { return }
+            host.openTableTab(
+                resolved.entry.name,
+                schema: resolved.entry.schema,
+                database: resolved.entry.database,
+                isView: resolved.opensReadOnly,
+                objectType: resolved.verifiedType,
+                forceNonPreview: true,
+                activateGridFocus: true
+            )
         }
     }
 
@@ -451,8 +523,8 @@ internal struct FavoritesTabView: View {
             break
         case .database(let entry):
             useDatabase(entry)
-        case .table(let table):
-            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
+        case .table(let row):
+            openFavoriteTable(row)
         case .query(let node):
             switch node.content {
             case .favorite(let favorite):
@@ -463,7 +535,7 @@ internal struct FavoritesTabView: View {
                 break
             }
         case .teamQuery(let id, _, _):
-            guard let query = TeamLibrarySyncCoordinator.shared.library.queries.first(where: { $0.id == id })
+            guard let query = teamLibrarySync.library.queries.first(where: { $0.id == id })
             else { return }
             coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
         }
@@ -478,10 +550,8 @@ internal struct FavoritesTabView: View {
                 database: entry.database,
                 connectionId: connectionId
             )
-        case .table(let table):
-            FavoriteTablesStorage.shared.removeFavorite(
-                name: table.name, schema: table.schema, database: activeDatabase, connectionId: connectionId
-            )
+        case .table(let row):
+            viewModel.removeTableFavorite(row.entry)
         case .query(let node):
             switch node.content {
             case .favorite(let favorite):
@@ -514,12 +584,12 @@ internal struct FavoritesTabView: View {
                 database: entry.database,
                 connectionId: connectionId
             )
-        case .openTable(let table):
-            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
-        case .showERDiagram:
-            coordinator?.showERDiagram()
-        case .removeTableFavorite(let table):
-            viewModel.removeTableFavorite(table, database: activeDatabase)
+        case .openTable(let row):
+            openFavoriteTable(row)
+        case .showERDiagram(let schema):
+            coordinator?.showERDiagram(schema: schema)
+        case .removeTableFavorite(let entry):
+            viewModel.removeTableFavorite(entry)
         case .insertFavorite(let favorite):
             coordinator?.insertFavorite(favorite)
         case .runFavoriteInNewTab(let favorite):
@@ -535,6 +605,8 @@ internal struct FavoritesTabView: View {
             }
         case .deleteFavorite(let favorite):
             viewModel.deleteFavorite(favorite)
+        case .showFavoriteHistory(let favorite):
+            coordinator?.showVersionHistory(of: favorite)
         case .openLinkedFavorite(let favorite):
             coordinator?.openLinkedFavorite(favorite)
         case .editLinkedMetadata(let favorite):
@@ -547,6 +619,10 @@ internal struct FavoritesTabView: View {
         case .trashLinkedFavorite(let favorite):
             linkedFileToTrash = favorite
             showTrashLinkedFileAlert = true
+        case .showLinkedFileHistory(let favorite):
+            coordinator?.showVersionHistory(of: favorite)
+        case .discardLinkedFileChanges(let favorite):
+            discardChanges(to: favorite)
         case .revealLinkedFolder(let folder):
             viewModel.revealLinkedFolder(folder)
         case .setLinkedFolderEnabled(let folder, let isEnabled):
@@ -560,6 +636,8 @@ internal struct FavoritesTabView: View {
             showRemoveLinkedFolderAlert = true
         case .renameFolder(let folder):
             viewModel.startRenameFolder(folder)
+        case .setFolderGlobal(let folder, let isGlobal):
+            viewModel.setFolderGlobal(folder, isGlobal)
         case .newFavorite(let folderId):
             viewModel.createFavorite(folderId: folderId)
         case .newFolder(let parentId):
@@ -574,6 +652,21 @@ internal struct FavoritesTabView: View {
         }
     }
 
+    private func discardChanges(to favorite: LinkedSQLFavorite) {
+        let keepsStagedChanges = gitStatusStore.state(for: favorite)?.status?.hasStagedChanges == true
+        Task { @MainActor in
+            await coordinator?.discardChanges(to: favorite) {
+                await AlertHelper.confirmDestructive(
+                    title: String(format: String(localized: "Discard changes to \"%@\"?"), favorite.fileURL.lastPathComponent),
+                    message: keepsStagedChanges
+                        ? String(localized: "The file goes back to its staged version. You can't undo this action.")
+                        : String(localized: "The file goes back to its last committed version. You can't undo this action."),
+                    confirmButton: String(localized: "Discard Changes")
+                )
+            }
+        }
+    }
+
     private func useDatabase(_ entry: FavoriteDatabaseEntry) {
         guard entry.database != activeDatabase else { return }
         Task { await coordinator?.switchDatabase(to: entry.database) }
@@ -581,42 +674,59 @@ internal struct FavoritesTabView: View {
 
     // MARK: - Empty States
 
-    /// An empty list has no row to right-click, so the commands the background menu carries have to
-    /// be here too. They used to live in a bar at the bottom of the sidebar.
+    /// An empty list has no row to right-click, so the background menu's commands are here too.
     ///
     /// The actions are stacked, not left to `ContentUnavailableView`'s default row. On macOS 15 the
     /// row of three buttons is wider than the sidebar, and the view sizes its whole content to that
     /// row, so the description and the buttons ran past both edges and were cut off.
     private var emptyState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "No Favorites"), systemImage: "star")
         } description: {
             Text("Save frequently used queries, or link a folder of .sql files to share with your team.")
         } actions: {
-            VStack(spacing: 8) {
-                Button(String(localized: "New Favorite…")) {
-                    viewModel.createFavorite()
-                }
-                Button(String(localized: "New Folder")) {
-                    viewModel.createFolder()
-                }
-                Button(String(localized: "Link a Folder…")) {
-                    addLinkedFolder()
-                }
-            }
+            emptyStateActions
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func favoriteTablesElsewhereState(description: String) -> some View {
+        UnavailableStateView {
+            Label(
+                String(format: String(localized: "No Favorites in This %@"), databaseEntityName),
+                systemImage: "star"
+            )
+        } description: {
+            Text(description)
+        } actions: {
+            emptyStateActions
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyStateActions: some View {
+        VStack(spacing: 8) {
+            Button(String(localized: "New Favorite…")) {
+                viewModel.createFavorite()
+            }
+            Button(String(localized: "New Folder")) {
+                viewModel.createFolder()
+            }
+            Button(String(localized: "Link a Folder…")) {
+                addLinkedFolder()
+            }
+        }
+    }
+
     private func noSearchMatchState(_ term: String) -> some View {
-        ContentUnavailableView.search(text: term)
+        UnavailableStateView.search(text: term)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// A filter miss is not a failed search, so it never borrows the search placeholder's "check
     /// the spelling" advice. The filter control stays on screen above this, which is the reset.
     private var noFilterMatchState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "No Matching Favorites"), systemImage: "line.3.horizontal.decrease.circle")
         } description: {
             Text("No favorites match the selected environment.")

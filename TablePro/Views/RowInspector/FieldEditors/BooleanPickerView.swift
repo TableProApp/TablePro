@@ -38,11 +38,8 @@ internal struct BooleanPickerView: View {
                     ?? Self.normalized(context.valueState.editableText)
             },
             set: { newValue in
-                switch newValue {
-                case FieldPickerSentinel.null: onSetNull?()
-                case FieldPickerSentinel.defaultValue: onSetDefault?()
-                case FieldPickerSentinel.multiple: break
-                default: context.value.wrappedValue = newValue
+                FieldPickerSentinel.choose(newValue, onSetNull: onSetNull, onSetDefault: onSetDefault) {
+                    context.value.wrappedValue = $0
                 }
             }
         )

@@ -2,11 +2,15 @@ import SwiftUI
 import TableProPluginKit
 
 struct KeyPatternSearchBar: View {
-    let coordinator: MainContentCoordinator
+    @ObservedObject var coordinator: MainContentCoordinator
     let descriptor: BrowseFilterDescriptor
 
     @State private var pattern: String = ""
     @State private var typeScope: String?
+    @State private var hasSyncedFromState = false
+
+    /// How much of a type name the bar will spend width on before truncating it.
+    private static let typeScopeMaximumWidth: CGFloat = 160
 
     var body: some View {
         HStack(spacing: 8) {
@@ -27,8 +31,12 @@ struct KeyPatternSearchBar: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .fixedSize()
-                .onChange(of: typeScope) { _, _ in apply() }
+                /// Bounded rather than `.fixedSize()`, for the reason `FilterRowView`'s column
+                /// pull-down is: the items are driver-supplied type names, and a pull-down takes the
+                /// width of its widest one, so an unbounded one could make this bar wider than the
+                /// pane and clip the grid beside it.
+                .frame(maxWidth: Self.typeScopeMaximumWidth)
+                .onChange(of: typeScope) { _ in apply() }
             }
 
             if isActive {
@@ -40,8 +48,8 @@ struct KeyPatternSearchBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .onAppear(perform: syncFromState)
-        .onChange(of: coordinator.selectedTabFilterState.browseSearch) { _, _ in
+        .onAppear(perform: syncOnFirstAppearance)
+        .onChange(of: coordinator.selectedTabFilterState.browseSearch) { _ in
             syncFromState()
         }
     }
@@ -54,6 +62,14 @@ struct KeyPatternSearchBar: View {
         descriptor.usesGlob
             ? String(localized: "Key pattern, e.g. user:*")
             : String(localized: "Key pattern")
+    }
+
+    /// A connection switch removes this bar and re-adds it, firing `onAppear` again, and the field
+    /// commits only on Return. A real change to the applied search arrives through `onChange`.
+    private func syncOnFirstAppearance() {
+        guard !hasSyncedFromState else { return }
+        hasSyncedFromState = true
+        syncFromState()
     }
 
     private func syncFromState() {

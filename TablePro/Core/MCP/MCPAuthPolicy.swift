@@ -7,6 +7,7 @@ typealias MCPToolName = String
 extension MCPToolName {
     static let requiresAdminScope: Set<String> = ["confirm_destructive_operation"]
     static let writeQueryTools: Set<String> = ["execute_query"]
+    static let alwaysWriteTools: Set<String> = [StopServerSessionTool.name]
 }
 
 enum AuthDecision: Sendable {
@@ -330,7 +331,7 @@ public actor MCPAuthPolicy {
                 operationDescription: Self.operationDescription(for: operationLabel)
             )
         )
-        if case .denied(let reason) = decision {
+        if case .denied(let reason, _) = decision {
             throw DatabaseAccessError.forbidden(reason)
         }
     }
@@ -446,25 +447,18 @@ public actor MCPAuthPolicy {
         externalAccess: ExternalAccessLevel,
         databaseType: String
     ) -> String? {
-        if MCPToolName.requiresAdminScope.contains(tool) {
-            if externalAccess != .readWrite {
-                return String(localized: "Connection is read only for external clients")
-            }
-            return nil
-        }
+        guard externalAccess != .readWrite,
+              Self.intendsToWrite(tool: tool, sql: sql, databaseType: databaseType)
+        else { return nil }
+        return String(localized: "Connection is read only for external clients")
+    }
 
-        guard MCPToolName.writeQueryTools.contains(tool), let sql else {
-            return nil
+    private static func intendsToWrite(tool: MCPToolName, sql: String?, databaseType: String) -> Bool {
+        if MCPToolName.requiresAdminScope.contains(tool) || MCPToolName.alwaysWriteTools.contains(tool) {
+            return true
         }
-
-        let dbType = DatabaseType(rawValue: databaseType)
-        guard QueryClassifier.isWriteQuery(sql, databaseType: dbType) else {
-            return nil
-        }
-        if externalAccess != .readWrite {
-            return String(localized: "Connection is read only for external clients")
-        }
-        return nil
+        guard MCPToolName.writeQueryTools.contains(tool), let sql else { return false }
+        return QueryClassifier.isWriteQuery(sql, databaseType: DatabaseType(rawValue: databaseType))
     }
 
     static let defaultConnectionIdsProvider: MCPConnectionIdsProvider = {
@@ -475,25 +469,28 @@ public actor MCPAuthPolicy {
 
     private static let defaultConnectionResolver: MCPConnectionSnapshotResolver = { connectionId in
         await MainActor.run {
-            switch DatabaseManager.shared.connectionState(connectionId) {
-            case .live(_, let session):
-                let conn = session.connection
-                return MCPConnectionAuthSnapshot(
-                    policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
-                    externalAccess: conn.externalAccess,
-                    name: conn.name,
-                    databaseType: conn.type.rawValue
-                )
-            case .stored(let conn):
-                return MCPConnectionAuthSnapshot(
-                    policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
-                    externalAccess: conn.externalAccess,
-                    name: conn.name,
-                    databaseType: conn.type.rawValue
-                )
-            case .unknown:
-                return nil
-            }
+            MCPAuthPolicy.snapshot(
+                for: connectionId,
+                saved: ConnectionStorage.shared.loadConnections(),
+                defaultPolicy: AppSettingsManager.shared.ai.defaultConnectionPolicy
+            )
         }
+    }
+
+    /// Read from the saved record, never from a live session: a session keeps the AI policy and
+    /// External Clients level it connected with, so setting an open connection to Never or Blocked
+    /// would not reach it until a reconnect. A connection with no saved record is refused.
+    static func snapshot(
+        for connectionId: UUID,
+        saved: [DatabaseConnection],
+        defaultPolicy: AIConnectionPolicy
+    ) -> MCPConnectionAuthSnapshot? {
+        guard let connection = saved.first(where: { $0.id == connectionId }) else { return nil }
+        return MCPConnectionAuthSnapshot(
+            policy: connection.aiPolicy ?? defaultPolicy,
+            externalAccess: connection.externalAccess,
+            name: connection.name,
+            databaseType: connection.type.rawValue
+        )
     }
 }

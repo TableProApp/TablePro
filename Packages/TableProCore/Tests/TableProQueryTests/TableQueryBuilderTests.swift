@@ -1,8 +1,8 @@
-import Testing
 import Foundation
-@testable import TableProQuery
 @testable import TableProModels
 @testable import TableProPluginKit
+@testable import TableProQuery
+import Testing
 
 @Suite("TableQueryBuilder Tests")
 struct TableQueryBuilderTests {

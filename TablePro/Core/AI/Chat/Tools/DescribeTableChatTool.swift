@@ -10,7 +10,6 @@ struct DescribeTableChatTool: ChatTool {
     let description = String(localized: "Describe the columns of a table or view.")
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
-            "connection_id": ChatToolSchemaBuilder.connectionId,
             "table": ChatToolSchemaBuilder.string(description: "Table or view name"),
             "database": ChatToolSchemaBuilder.string(
                 description: "Database name. Pass null to use current.",
@@ -22,7 +21,7 @@ struct DescribeTableChatTool: ChatTool {
     let mode: ChatToolMode = .readOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
-        let connectionId = try context.resolveConnectionId(input)
+        let connectionId = try await ChatToolTarget.authorized(context: context, input: input, tool: name)
         let table = try ChatToolArgumentDecoder.requireString(input, key: "table")
         let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")

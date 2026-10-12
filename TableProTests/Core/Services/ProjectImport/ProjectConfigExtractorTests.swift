@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Scanned URL Normalizer")
 struct ScannedURLNormalizerTests {
 
     @Test("A raw at sign in the password is encoded using the last separator")
@@ -55,7 +54,6 @@ struct ScannedURLNormalizerTests {
     }
 }
 
-@Suite("Scanned Production Heuristic")
 struct ScannedProductionHeuristicTests {
 
     @Test("Production markers are detected in the file name, host, and database")
@@ -79,7 +77,6 @@ struct ScannedProductionHeuristicTests {
     }
 }
 
-@Suite("YAML Mapping Support")
 struct YamlMappingSupportTests {
 
     @Test("Merge keys are expanded with the owning mapping winning")
@@ -116,7 +113,6 @@ struct YamlMappingSupportTests {
     }
 }
 
-@Suite("WordPress Config Extractor")
 struct WordPressConfigExtractorTests {
 
     @Test("Standard define calls produce a MySQL candidate")
@@ -175,7 +171,6 @@ struct WordPressConfigExtractorTests {
     }
 }
 
-@Suite("Prisma Schema Extractor")
 struct PrismaSchemaExtractorTests {
     private let root = URL(fileURLWithPath: "/tmp/prisma-project")
 
@@ -246,7 +241,6 @@ struct PrismaSchemaExtractorTests {
     }
 }
 
-@Suite("Spring Properties Extractor")
 struct SpringPropertiesExtractorTests {
 
     @Test("A JDBC datasource URL is parsed with its credentials")
@@ -301,7 +295,6 @@ struct SpringPropertiesExtractorTests {
     }
 }
 
-@Suite("App Settings JSON Extractor")
 struct AppSettingsJsonExtractorTests {
 
     private func candidate(_ connectionString: String) -> ScannedConnectionCandidate? {

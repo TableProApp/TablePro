@@ -9,13 +9,28 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Database tree contextual menu")
 struct DatabaseTreeMenuSpecTests {
     private func tableRef(_ name: String, type: TableInfo.TableType = .table) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(
             database: "app",
             schema: "public",
             table: TableInfo(name: name, type: type, rowCount: nil, schema: "public")
+        )
+    }
+
+    /// The same candidate set the outline coordinator resolves: the selection plus the clicked
+    /// row, because the spec aims at the clicked row when nothing is selected.
+    private func tableOperationEligibility(
+        clicked: DatabaseTreeNode.Kind?,
+        selectedTables: Set<DatabaseTreeTableRef>,
+        canExpress: Bool,
+        isReadOnly: Bool
+    ) -> TableOperationEligibility.Context {
+        guard canExpress else { return .unavailable }
+        var candidates = selectedTables
+        if case .table(let ref) = clicked { candidates.insert(ref) }
+        return TableOperationEligibility.Context(
+            droppable: candidates, truncatable: candidates, isReadOnly: isReadOnly
         )
     }
 
@@ -31,11 +46,22 @@ struct DatabaseTreeMenuSpecTests {
         canReachOtherDatabases: Bool = true,
         canFilterDatabases: Bool = false,
         hasDatabaseFilter: Bool = false,
+        canFilterSchemas: Bool = false,
+        hasSchemaFilter: Bool = false,
         supportsRename: Bool = true,
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
         canCreateType: Bool = false,
-        objectToolSupport: DatabaseObjectToolEligibility.Support = .none
+        canCreateTable: Bool = true,
+        canCreateView: Bool = true,
+        canCreateDatabase: Bool = false,
+        supportsCreateSchema: Bool = false,
+        supportsSchemaOwner: Bool = false,
+        supportsSchemaPrivileges: Bool = false,
+        supportsCascadeDrop: Bool = true,
+        canExpressTableOperations: Bool = true,
+        objectToolSupport: DatabaseObjectToolEligibility.Support = .none,
+        canShowAllTables: Bool = true
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
             clicked: clicked,
@@ -65,22 +91,44 @@ struct DatabaseTreeMenuSpecTests {
                 supportsRenameSchema: supportsRename,
                 isReadOnly: isReadOnly
             ),
+            schemaEditEligibility: SchemaEditEligibility.Context(
+                supportsCreateSchema: supportsCreateSchema,
+                supportsSchemaOwner: supportsSchemaOwner,
+                supportsSchemaPrivileges: supportsSchemaPrivileges,
+                supportsRenameSchema: supportsRename,
+                isReadOnly: isReadOnly
+            ),
+            tableOperationEligibility: tableOperationEligibility(
+                clicked: clicked,
+                selectedTables: selectedTables,
+                canExpress: canExpressTableOperations,
+                isReadOnly: isReadOnly
+            ),
             containerEntityName: "Database",
             containerEntityNamePlural: "Databases",
             schemaEntityName: "Schema",
             schemaEntityNamePlural: "Schemas",
+            supportsCascadeDrop: supportsCascadeDrop,
             objectKindTitles: [.table: "Tables"],
             isFavorite: isFavorite,
             favoriteDatabaseEnvironments: favoriteDatabaseEnvironments,
             showObjectIcons: true,
             showObjectComments: false,
+            showSystemContainers: false,
+            showPartitions: true,
             rowSize: .matchSystem,
             canFilterDatabases: canFilterDatabases,
             hasDatabaseFilter: hasDatabaseFilter,
+            canFilterSchemas: canFilterSchemas,
+            hasSchemaFilter: hasSchemaFilter,
             canCopyObjects: canCopyObjects,
             canDuplicateDatabase: canDuplicateDatabase,
             canCreateType: canCreateType,
-            objectToolSupport: objectToolSupport
+            canCreateTable: canCreateTable,
+            canCreateView: canCreateView,
+            canCreateDatabase: canCreateDatabase,
+            objectToolSupport: objectToolSupport,
+            canShowAllTables: canShowAllTables
         )
     }
 
@@ -138,13 +186,19 @@ struct DatabaseTreeMenuSpecTests {
         #expect(titles(items).contains(String(localized: "View Options")))
     }
 
-    /// These moved out of the bar at the bottom of the sidebar, which the HIG reserves for nothing
-    /// critical, so the background menu is now their only sidebar-local home.
     @Test("Creating objects is reachable from the empty area")
     func emptyAreaOffersCreation() {
         let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
 
         #expect(issued.contains(.createTable))
+        #expect(issued.contains(.createView))
+    }
+
+    @Test("An engine that cannot create a table is not offered New Table")
+    func emptyAreaHidesNewTableWithoutCreateSupport() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canCreateTable: false)))
+
+        #expect(!issued.contains(.createTable))
         #expect(issued.contains(.createView))
     }
 
@@ -154,6 +208,44 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(!issued.contains(.createTable))
         #expect(!issued.contains(.createView))
+    }
+
+    @Test("An engine with no view template is not offered New View")
+    func emptyAreaHidesNewViewWithoutTemplate() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canCreateView: false)))
+
+        #expect(!issued.contains(.createView))
+        #expect(issued.contains(.createTable))
+    }
+
+    @Test("The empty area offers New Database where the engine creates one")
+    func emptyAreaOffersNewDatabase() {
+        let offered = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canCreateDatabase: true)))
+        let withheld = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
+        let readOnly = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: nil, isReadOnly: true, canCreateDatabase: true)
+        ))
+
+        #expect(offered.contains(.createDatabase))
+        #expect(!withheld.contains(.createDatabase))
+        #expect(!readOnly.contains(.createDatabase))
+    }
+
+    @Test("The empty area's creation items are the add button's, flattened into one group")
+    func emptyAreaCreationMatchesTheAddButton() {
+        for isReadOnly in [false, true] {
+            var base = context(
+                clicked: nil,
+                isReadOnly: isReadOnly,
+                canCreateDatabase: true,
+                supportsCreateSchema: true
+            )
+            base.offersBrowsedFolders = true
+            let sections = DatabaseTreeMenuSpec.sections(for: base)
+            let footer = DatabaseTreeMenuSpec.creationSections(base.creationFacts, hidesDatabaseWrites: isReadOnly)
+
+            #expect(sections.first.map { commands([$0]) } == commands(footer), "read-only \(isReadOnly)")
+        }
     }
 
     @Test("A nested object group refresh carries its database and schema")
@@ -212,15 +304,78 @@ struct DatabaseTreeMenuSpecTests {
         #expect(!unfiltered.contains(.showAllDatabases))
     }
 
+    @Test("Filter Schemas is offered only where tables are listed per schema")
+    func schemaFilterOnlyWhereSchemasAreListed() {
+        let schemas = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canFilterSchemas: true)))
+        let none = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canFilterSchemas: false)))
+
+        #expect(schemas.contains(.filterSchemas))
+        #expect(!none.contains(.filterSchemas))
+    }
+
+    @Test("Show All Schemas appears only when a schema filter is actually on")
+    func showAllSchemasOnlyWhenFiltered() {
+        let filtered = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: nil, canFilterSchemas: true, hasSchemaFilter: true)
+        ))
+        let unfiltered = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: nil, canFilterSchemas: true, hasSchemaFilter: false)
+        ))
+
+        #expect(filtered.contains(.showAllSchemas))
+        #expect(!unfiltered.contains(.showAllSchemas))
+    }
+
     @Test("View Options reports the settings it is toggling")
     func viewOptionsCarryTheirState() {
         let items = SidebarViewOptionsMenu.sections(context(clicked: nil)).flatMap(\.items)
-        let icons = items.compactMap { item -> SidebarMenuEntry<SidebarMenuCommand>? in
-            guard case .command(let entry) = item, entry.command == .toggleObjectIcons else { return nil }
-            return entry
+        func entry(for command: SidebarMenuCommand) -> SidebarMenuEntry<SidebarMenuCommand>? {
+            items.lazy.compactMap { item -> SidebarMenuEntry<SidebarMenuCommand>? in
+                guard case .command(let entry) = item, entry.command == command else { return nil }
+                return entry
+            }.first
         }
 
-        #expect(icons.first?.isOn == true)
+        #expect(entry(for: .toggleObjectIcons)?.isOn == true)
+        #expect(entry(for: .toggleSystemContainers)?.isOn == false)
+    }
+
+    @Test("View Options offers System Databases and Schemas and Partitions beside Icons and Comments")
+    func viewOptionsOfferSystemContainers() {
+        let sections = SidebarViewOptionsMenu.sections(
+            showObjectIcons: true,
+            showObjectComments: true,
+            showSystemContainers: true,
+            showPartitions: true,
+            rowSize: .matchSystem
+        )
+        let items = sections.first?.items ?? []
+        let toggles: [SidebarMenuCommand] = items.compactMap { item in
+            guard case .command(let entry) = item, entry.isOn == true else { return nil }
+            return entry.command
+        }
+        let expected: [SidebarMenuCommand] = [
+            .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions
+        ]
+
+        #expect(toggles == expected)
+    }
+
+    @Test("Partitions reports its own state rather than borrowing another option's")
+    func viewOptionsReportPartitionState() {
+        let sections = SidebarViewOptionsMenu.sections(
+            showObjectIcons: true,
+            showObjectComments: true,
+            showSystemContainers: true,
+            showPartitions: false,
+            rowSize: .matchSystem
+        )
+        let states: [Bool?] = (sections.first?.items ?? []).compactMap { item in
+            guard case .command(let entry) = item, entry.command == .togglePartitions else { return nil }
+            return entry.isOn
+        }
+
+        #expect(states == [false])
     }
 
     // MARK: - Tables
@@ -294,6 +449,28 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
         #expect(!issued.contains(.dropTables(targets: [clicked, elsewhere], ref: clicked)))
+    }
+
+    /// #2884: Elasticsearch has no statement for either operation, and offering them anyway is
+    /// what let the app answer an index with `DROP TABLE "test_index"`.
+    @Test("Neither Delete nor Truncate is offered where the engine has no statement")
+    func tableOperationsHiddenWhenInexpressible() {
+        let clicked = tableRef("test_index")
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(clicked), canExpressTableOperations: false)
+        ))
+
+        #expect(!issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(!issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
+    }
+
+    @Test("Delete and Truncate are offered where the engine has a statement")
+    func tableOperationsOfferedWhenExpressible() {
+        let clicked = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(clicked))))
+
+        #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
     }
 
     @Test("A table row offers Rename where the engine can do it")
@@ -742,6 +919,39 @@ struct DatabaseTreeMenuSpecTests {
         .status(.loading)
     ]
 
+    /// The Keys section's error row said what went wrong but left nothing to do about it, since the
+    /// tree only loaded again on a database switch.
+    @Test("The Keys section offers Refresh and nothing scoped to the connection")
+    func redisKeysSectionOffersRefresh() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .redisKeysSection)))
+
+        #expect(issued == [.refreshRedisKeys])
+        #expect(SidebarMenuCommand.refreshRedisKeys.shortcutAction == nil)
+    }
+
+    /// Elasticsearch, Typesense and Weaviate have no listing, and the item used to run a MongoDB command
+    /// against them.
+    @Test("Show All Tables is offered only when the engine has a listing")
+    func showAllTablesNeedsAListing() {
+        let offered = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.table))))
+        let withheld = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .objectKindSection(.table), canShowAllTables: false)
+        ))
+
+        #expect(offered.contains(.showAllTablesMetadata))
+        #expect(!withheld.contains(.showAllTablesMetadata))
+        #expect(withheld.contains(.refreshObjectKind(.table)))
+    }
+
+    @Test("A status row keeps the background menu")
+    func statusRowKeepsTheBackgroundMenu() {
+        let status = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .status(.error("NOPERM")))))
+        let background = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
+
+        #expect(status == background)
+        #expect(!status.contains(.refreshRedisKeys))
+    }
+
     @Test("Every menu produces at least one item, so none opens as an empty frame")
     func everyMenuHasContent() {
         let kinds: [DatabaseTreeNode.Kind?] = [
@@ -873,6 +1083,34 @@ struct DatabaseTreeMenuSpecTests {
         })
     }
 
+    @Test(
+        "A row Copy To cannot copy does not offer it",
+        arguments: [TableInfo.TableType.foreignTable, .sequence, .systemTable, .externalTable]
+    )
+    func uncopyableRowHidesCopyTo(type: TableInfo.TableType) {
+        let ref = tableRef("remote_orders", type: type)
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(ref), selectedTables: [ref])
+        ))
+
+        #expect(!issued.contains { if case .copyObjectsTo = $0 { return true } else { return false } })
+    }
+
+    @Test("A selection mixing a foreign table and a table copies only the table")
+    func mixedSelectionCopiesOnlyTheCopyableRows() {
+        let foreign = tableRef("remote_orders", type: .foreignTable)
+        let orders = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(foreign), selectedTables: [foreign, orders])
+        ))
+
+        let names = issued.compactMap { command -> [String]? in
+            guard case .copyObjectsTo(let objects, _) = command else { return nil }
+            return objects.map(\.name)
+        }
+        #expect(names == [["orders"]])
+    }
+
     @Test("An engine that cannot copy offers neither command")
     func ineligibleEngineHidesCopying() {
         let ref = tableRef("orders")
@@ -936,5 +1174,226 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(!issued.contains { if case .copyContainerTo = $0 { return true } else { return false } })
         #expect(!issued.contains { if case .duplicateDatabase = $0 { return true } else { return false } })
+    }
+
+    // MARK: - Schema management
+
+    @Test("A schema row offers Edit where the engine has a facet to edit")
+    func schemaOffersEdit() {
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "sales"),
+            selectedContainers: [schema],
+            supportsSchemaOwner: true
+        )))
+
+        #expect(issued.contains(.editSchema(schema)))
+    }
+
+    /// The failure Drop Schema already shipped on Redshift: an item the menu offers and the driver
+    /// then refuses, which reaches the user as an alert for something the app promised.
+    @Test("An engine with no editable facet offers no Edit on a schema row")
+    func schemaWithoutFacetsHidesEdit() {
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "sales"),
+            selectedContainers: [schema],
+            supportsRename: false
+        )))
+
+        #expect(!issued.contains { if case .editSchema = $0 { return true } else { return false } })
+    }
+
+    @Test("New Schema is offered from the empty area where the engine creates one")
+    func emptyAreaOffersNewSchema() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: nil, supportsCreateSchema: true
+        )))
+
+        #expect(issued.contains(.createSchema(database: "app")))
+    }
+
+    @Test("An engine with no CREATE SCHEMA offers nothing from the empty area")
+    func emptyAreaHidesNewSchemaWithoutCapability() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
+
+        #expect(!issued.contains { if case .createSchema = $0 { return true } else { return false } })
+    }
+
+    @Test("Read-only hides both schema management items")
+    func readOnlyHidesSchemaManagement() {
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "sales"),
+            selectedContainers: [schema],
+            isReadOnly: true,
+            supportsCreateSchema: true,
+            supportsSchemaOwner: true
+        )))
+
+        #expect(!issued.contains { if case .createSchema = $0 { return true } else { return false } })
+        #expect(!issued.contains { if case .editSchema = $0 { return true } else { return false } })
+    }
+
+    @Test("A system schema offers no Edit")
+    func systemSchemaHidesEdit() {
+        let system = DatabaseContainerRef.schema(
+            database: "app", schema: "information_schema", isSystem: true
+        )
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "information_schema"),
+            selectedContainers: [system],
+            supportsSchemaOwner: true
+        )))
+
+        #expect(!issued.contains { if case .editSchema = $0 { return true } else { return false } })
+    }
+}
+
+// MARK: - Folders
+
+extension DatabaseTreeMenuSpecTests {
+    private var folderScope: DatabaseScope {
+        DatabaseScope(connectionId: UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID(), database: "app", schema: "public")
+    }
+
+    private func folder(_ name: String) -> TableFolder {
+        TableFolder(scope: folderScope, name: name)
+    }
+
+    private func contextWithFolders(
+        clicked: DatabaseTreeNode.Kind?,
+        options: TableFolderMenuOptions? = nil,
+        offersBrowsedFolders: Bool = true,
+        isReadOnly: Bool = false
+    ) -> DatabaseTreeMenuContext {
+        var base = context(clicked: clicked, isReadOnly: isReadOnly)
+        base.tableFolderOptions = options
+        base.offersBrowsedFolders = offersBrowsedFolders
+        return base
+    }
+
+    private func moveToItems(_ sections: [DatabaseTreeMenuSection]) -> [DatabaseTreeMenuItem] {
+        sections.flatMap(\.items).flatMap { item -> [DatabaseTreeMenuItem] in
+            guard case .submenu(let title, let nested) = item, title == String(localized: "Move to") else { return [] }
+            return nested.flatMap(\.items)
+        }
+    }
+
+    @Test("The Folders section makes a folder in the browsed schema")
+    func foldersSectionOffersNewFolder() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .foldersSection)))
+
+        #expect(issued == [.tableFolder(.create(.browsed))])
+    }
+
+    @Test("A folder row renames, makes a sibling and deletes, and never drops anything")
+    func folderRowItems() {
+        let billing = folder("Billing")
+        let ref = DatabaseTreeFolderRef(folder: billing, members: [tableRef("invoices")])
+        let sections = DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .tableFolder(ref)))
+        let issued = commands(sections)
+
+        #expect(issued == [.tableFolder(.rename(billing)), .tableFolder(.create(.scope(billing.scope))), .tableFolder(.delete(billing))])
+        #expect(sections.last.map { commands($0.items) } == [.tableFolder(.delete(billing))])
+    }
+
+    @Test("Move to lists the other folders and always offers a new one")
+    func moveToListsOtherFolders() {
+        let ref = tableRef("orders")
+        let billing = folder("Billing")
+        let archive = folder("Archive")
+        let options = TableFolderMenuOptions(
+            targets: [ref], folders: [archive, billing], folderHoldingEveryTarget: billing.id, hasFiledTargets: true
+        )
+        let sections = DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .table(ref), options: options))
+
+        #expect(commands(moveToItems(sections)) == [
+            .tableFolder(.move([ref], into: archive)),
+            .tableFolder(.createHolding([ref]))
+        ])
+        #expect(commands(sections).contains(.tableFolder(.remove([ref]))))
+    }
+
+    @Test("A selection spread over several folders can be gathered into any of them")
+    func moveToOffersEveryFolderForAMixedSelection() {
+        let orders = tableRef("orders")
+        let invoices = tableRef("invoices")
+        let billing = folder("Billing")
+        let archive = folder("Archive")
+        let options = TableFolderMenuOptions(
+            targets: [orders, invoices], folders: [archive, billing], folderHoldingEveryTarget: nil, hasFiledTargets: true
+        )
+        let sections = DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .table(orders), options: options))
+
+        #expect(commands(moveToItems(sections)).contains(.tableFolder(.move([orders, invoices], into: billing))))
+        #expect(commands(moveToItems(sections)).contains(.tableFolder(.move([orders, invoices], into: archive))))
+    }
+
+    @Test("Remove from Folder only appears when something selected is in a folder")
+    func removeFromFolderNeedsAFiledTarget() {
+        let ref = tableRef("orders")
+        let options = TableFolderMenuOptions(
+            targets: [ref], folders: [folder("Billing")], folderHoldingEveryTarget: nil, hasFiledTargets: false
+        )
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .table(ref), options: options)))
+
+        #expect(!issued.contains(.tableFolder(.remove([ref]))))
+        #expect(issued.contains(.tableFolder(.createHolding([ref]))))
+    }
+
+    @Test("Filing is offered on a read-only connection, because it never reaches the database")
+    func filingSurvivesReadOnly() {
+        let ref = tableRef("orders")
+        let options = TableFolderMenuOptions(targets: [ref], folders: [], folderHoldingEveryTarget: nil, hasFiledTargets: false)
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: contextWithFolders(clicked: .table(ref), options: options, isReadOnly: true)
+        ))
+
+        #expect(issued.contains(.tableFolder(.createHolding([ref]))))
+    }
+
+    @Test("A Recent row files nothing, because it stands for a table listed elsewhere")
+    func recentRowOffersNoFolders() {
+        let ref = tableRef("orders")
+        let options = TableFolderMenuOptions(targets: [ref], folders: [folder("Billing")], folderHoldingEveryTarget: nil, hasFiledTargets: false)
+        let sections = DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .recentTable(ref), options: options))
+
+        #expect(moveToItems(sections).isEmpty)
+    }
+
+    @Test("A flat Tables or Views section makes a folder; a Procedures section does not")
+    func flatSectionsOfferNewFolderForTableKinds() {
+        for kind in [SidebarObjectKind.table, .view] {
+            let issued = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .objectKindSection(kind))))
+            #expect(issued.contains(.tableFolder(.create(.browsed))))
+        }
+        let procedures = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .objectKindSection(.procedure))))
+        #expect(!procedures.contains(.tableFolder(.create(.browsed))))
+    }
+
+    @Test("A tree Tables group makes a folder in its own database and schema")
+    func treeGroupOffersNewFolderInItsContainer() {
+        let group = DatabaseTreeObjectGroup(database: "shop", schema: "sales", kind: .table)
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .containerObjectKindSection(group))))
+
+        #expect(issued.contains(.tableFolder(.create(.container(database: "shop", schema: "sales")))))
+    }
+
+    @Test("The empty area makes a folder only where the flat list is on screen")
+    func emptyAreaOffersNewFolderInTheFlatList() {
+        let flat = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: nil, isReadOnly: true)))
+        let tree = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: nil, offersBrowsedFolders: false)))
+
+        #expect(flat.contains(.tableFolder(.create(.browsed))))
+        #expect(!tree.contains(.tableFolder(.create(.browsed))))
+    }
+
+    @Test("Folder rows and the Folders section always have a menu")
+    func folderMenusHaveContent() {
+        let ref = DatabaseTreeFolderRef(folder: folder("Billing"), members: [])
+        for kind in [DatabaseTreeNode.Kind.foldersSection, .tableFolder(ref)] {
+            #expect(!DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: kind, isReadOnly: true)).isEmpty)
+        }
     }
 }

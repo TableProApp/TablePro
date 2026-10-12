@@ -7,7 +7,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Grid column catalog")
 struct GridColumnCatalogTests {
     private let columns = ["id", "name", "created_at"]
     private let types: [ColumnType] = [

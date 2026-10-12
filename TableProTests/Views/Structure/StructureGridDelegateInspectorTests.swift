@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Structure grid delegates as inspector row sources")
+@MainActor
 struct StructureGridDelegateInspectorTests {
     private func connection() -> DatabaseConnection {
         DatabaseConnection(
@@ -66,6 +66,21 @@ struct StructureGridDelegateInspectorTests {
         try #require(delegate.orderedFields.firstIndex(of: field))
     }
 
+    @Test("A row is read-only while a save holds the edits, and editable again once it lets go")
+    func heldSaveMakesTheRowReadOnly() throws {
+        let manager = loadedManager()
+        let delegate = makeDelegate(manager: manager)
+        var email = try #require(manager.workingColumns.first { $0.name == "email" })
+        email.comment = "Contact"
+        manager.updateColumn(id: email.id, with: email)
+
+        let snapshot = try #require(manager.holdForSave())
+        #expect(delegate.inspectorRow(atDisplayRow: 1)?.isEditable == false)
+
+        manager.releaseHold(snapshot, written: false)
+        #expect(delegate.inspectorRow(atDisplayRow: 1)?.isEditable == true)
+    }
+
     @Test("The published row describes the structure grid, not the data grid")
     func publishedRowDescribesStructure() throws {
         let delegate = makeDelegate(manager: loadedManager())
@@ -119,6 +134,31 @@ struct StructureGridDelegateInspectorTests {
         #expect(manager.workingColumns[1].isNullable == false)
     }
 
+    /// The Foreign Keys inspector offers the same reference lists the grid does. One built before a
+    /// list arrived holds only `Loading…`, and nothing rebuilt it, because only Create Table moved
+    /// the inspector's revision when a list landed.
+    @Test("A reference list landing rebuilds the structure inspector")
+    func referenceListArrivalRebuildsInspector() {
+        let coordinator = MainContentCoordinator(
+            connection: connection(),
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        let delegate = StructureGridDelegate(
+            structureChangeManager: loadedManager(),
+            selectedTab: .foreignKeys,
+            connection: connection(),
+            tableName: "users",
+            coordinator: coordinator
+        )
+        let revision = coordinator.inspectorRowSourceRevision
+
+        delegate.referenceMenus.onListsChanged?()
+
+        #expect(coordinator.inspectorRowSourceRevision == revision + 1)
+    }
+
     @Test("Without a provider the delegate publishes nothing")
     func withoutProviderPublishesNothing() {
         let delegate = StructureGridDelegate(
@@ -156,5 +196,87 @@ struct StructureGridDelegateInspectorTests {
         let nameIndex = try #require(delegate.orderedFields.firstIndex(of: .name))
         delegate.commitInspectorField(displayRow: 0, fieldIndex: nameIndex, value: "sku")
         #expect(manager.workingColumns[0].name == "sku")
+    }
+
+    // MARK: - A kind that locks fields
+
+    /// The grid locked a materialized view's Type, Nullable and Default, while the inspector beside
+    /// it offered all three and staged an `ALTER COLUMN` PostgreSQL always refuses on a matview.
+    private func makeMaterializedViewDelegate(
+        manager: StructureChangeManager,
+        tab: StructureTab = .columns
+    ) -> StructureGridDelegate {
+        let connection = DatabaseConnection(
+            name: "Test", host: "localhost", port: 5_432, database: "shop", username: "postgres", type: .postgresql
+        )
+        let delegate = StructureGridDelegate(
+            structureChangeManager: manager,
+            selectedTab: tab,
+            connection: connection,
+            tableName: "daily_totals",
+            objectKind: .materializedView,
+            coordinator: nil
+        )
+        let provider = StructureRowProvider(
+            changeManager: manager,
+            tab: tab,
+            databaseType: .postgresql,
+            serverSupport: .unrestricted
+        )
+        delegate.currentProvider = provider
+        delegate.orderedFields = provider.orderedColumnFields
+        return delegate
+    }
+
+    @Test("A materialized view's inspector locks the fields its grid locks")
+    func materializedViewInspectorLocksFields() throws {
+        let delegate = makeMaterializedViewDelegate(manager: loadedManager())
+        let row = try #require(delegate.inspectorRow(atDisplayRow: 1))
+
+        #expect(row.isEditable)
+        #expect(row.fields[try fieldIndex(delegate, .name)].isEditable)
+        #expect(row.fields[try fieldIndex(delegate, .comment)].isEditable)
+        #expect(!row.fields[try fieldIndex(delegate, .type)].isEditable)
+        #expect(!row.fields[try fieldIndex(delegate, .nullable)].isEditable)
+        #expect(!row.fields[try fieldIndex(delegate, .defaultValue)].isEditable)
+    }
+
+    @Test("A locked field refuses the edit even when it arrives through the inspector")
+    func lockedFieldRefusesTheCommit() throws {
+        let manager = loadedManager()
+        let delegate = makeMaterializedViewDelegate(manager: manager)
+
+        delegate.commitInspectorField(displayRow: 1, fieldIndex: try fieldIndex(delegate, .type), value: "TEXT")
+        delegate.commitInspectorField(displayRow: 1, fieldIndex: try fieldIndex(delegate, .defaultValue), value: "'x'")
+
+        #expect(!manager.hasChanges)
+        #expect(manager.workingColumns[1].dataType == "VARCHAR(255)")
+        #expect(manager.workingColumns[1].defaultValue == nil)
+    }
+
+    @Test("An unlocked field on the same object still takes the edit")
+    func unlockedFieldTakesTheCommit() throws {
+        let manager = loadedManager()
+        let delegate = makeMaterializedViewDelegate(manager: manager)
+
+        delegate.commitInspectorField(displayRow: 1, fieldIndex: try fieldIndex(delegate, .name), value: "mail")
+
+        #expect(manager.workingColumns[1].name == "mail")
+    }
+
+    @Test("A table locks nothing, so every field stays open")
+    func tableLocksNothing() {
+        #expect(makeDelegate(manager: loadedManager()).lockedFieldIndices.isEmpty)
+    }
+
+    @Test("The row menu offers Delete only where the object accepts the drop")
+    func rowMenuFollowsTheGate() {
+        let columns = makeMaterializedViewDelegate(manager: loadedManager(), tab: .columns)
+        #expect(!columns.canStageRemoveForSelectedTab)
+        #expect(!columns.canStageAddForSelectedTab)
+
+        let indexes = makeMaterializedViewDelegate(manager: loadedManager(), tab: .indexes)
+        #expect(indexes.canStageRemoveForSelectedTab)
+        #expect(indexes.canStageAddForSelectedTab)
     }
 }

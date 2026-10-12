@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ER cluster analyzer")
 struct ERClusterAnalyzerTests {
     private func node(_ name: String) -> ERTableNode {
         ERTableNode(id: UUID(), tableName: name, columns: [], displayColumns: [], clusterId: nil)

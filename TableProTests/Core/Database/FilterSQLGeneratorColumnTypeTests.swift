@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Filter SQL Generator Column Types")
 struct FilterSQLGeneratorColumnTypeTests {
 
     private static let mysqlDialect = SQLDialectDescriptor(

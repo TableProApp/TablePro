@@ -15,7 +15,7 @@ enum AIProviderError: Error, LocalizedError {
     case invalidEndpoint(String)
     case authenticationFailed(String)
     case rateLimited
-    case modelNotFound(String)
+    case notFound(url: String?, detail: String)
     case serverError(Int, String)
     case networkError(String)
     case streamingFailed(String)
@@ -31,8 +31,17 @@ enum AIProviderError: Error, LocalizedError {
             return String(format: String(localized: "Authentication failed: %@"), detail)
         case .rateLimited:
             return String(localized: "Rate limited. Please try again later.")
-        case .modelNotFound(let model):
-            return String(format: String(localized: "Model not found: %@"), model)
+        case .notFound(let url, let detail):
+            let message: String
+            if let url, !url.isEmpty {
+                message = String(
+                    format: String(localized: "Not found (404) at %@. Check the Base URL and the model."),
+                    url
+                )
+            } else {
+                message = String(localized: "Not found (404). Check the Base URL and the model.")
+            }
+            return detail.isEmpty ? message : "\(message) \(detail)"
         case .serverError(let code, let message):
             return String(format: String(localized: "Server error (%d): %@"), code, message)
         case .networkError(let message):
@@ -45,7 +54,8 @@ enum AIProviderError: Error, LocalizedError {
     static func mapHTTPError(
         statusCode: Int,
         body: String,
-        treatForbiddenAsAuthFailure: Bool = false
+        treatForbiddenAsAuthFailure: Bool = false,
+        requestURL: URL? = nil
     ) -> AIProviderError {
         let message = parseErrorMessage(from: body) ?? body
         switch statusCode {
@@ -56,7 +66,7 @@ enum AIProviderError: Error, LocalizedError {
         case 429:
             return .rateLimited
         case 404:
-            return .modelNotFound(message)
+            return .notFound(url: requestURL?.absoluteString, detail: message)
         default:
             return .serverError(statusCode, message)
         }
@@ -75,7 +85,7 @@ enum AIProviderError: Error, LocalizedError {
 
     var isRetryable: Bool {
         switch self {
-        case .invalidEndpoint, .authenticationFailed, .modelNotFound:
+        case .invalidEndpoint, .authenticationFailed, .notFound:
             return false
         case .rateLimited, .serverError, .networkError, .streamingFailed:
             return true

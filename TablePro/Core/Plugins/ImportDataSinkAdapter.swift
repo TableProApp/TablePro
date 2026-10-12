@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     let databaseTypeId: String
@@ -13,25 +14,55 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     private let driver: DatabaseDriver
     private let databaseType: DatabaseType
-    private let columnMapping: [String: String]
+    private let grammar: SQLLexicalGrammar
+    private let exactMapping: [String: String]
+    private let foldedMapping: [String: String]
+    private let sourceFields: Set<String>
+    private let sourceFieldsPerFoldedName: [String: Int]
     private let rowGenerator: SQLStatementGenerator?
 
+    /// Asked before every statement this sink sends, because one `insertRows` call is no longer one
+    /// statement: a byte-heavy batch, or an Oracle target that takes one row per statement, splits
+    /// it into many awaited writes. The callers check their own cancellation only before entering
+    /// the sink, so without this a Stop was followed by every remaining INSERT of the batch.
+    private let isCancelled: @Sendable () -> Bool
+
+    private let tableEditDialect: TableEditDialect?
+    private let nameHazards = OSAllocatedUnfairLock<[String]>(initialState: [])
+    /// Whether this import opened the transaction it is in. A session connection can already hold
+    /// the user's own: a `BEGIN` there would join it, and the import's `COMMIT` would commit work the
+    /// user never asked to commit, so the import then runs inside it and leaves ending it to them.
+    private let ownsTransaction = OSAllocatedUnfairLock(initialState: false)
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDataSinkAdapter")
+
+    /// Rows go in as SQL `INSERT`s, so an engine with no SQL dialect can take none of them.
+    static func canWriteRows(into databaseType: DatabaseType) -> Bool {
+        (try? SQLStatementGenerator(
+            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: databaseType
+        )) != nil
+    }
 
     init(
         driver: DatabaseDriver,
         databaseType: DatabaseType,
         targetTable: String? = nil,
-        columnMapping: [String: String] = [:]
+        columnMapping: [String: String] = [:],
+        sourceFields: Set<String> = [],
+        isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
+        self.isCancelled = isCancelled
         self.driver = driver
         self.databaseType = databaseType
+        self.grammar = databaseType.lexicalGrammar
+        self.tableEditDialect = TableEditDialect.of(databaseType)
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
-        self.columnMapping = Dictionary(
-            columnMapping.map { ($0.key.lowercased(), $0.value) },
-            uniquingKeysWith: { _, last in last }
-        )
+        self.exactMapping = columnMapping
+        self.sourceFields = sourceFields
+        self.sourceFieldsPerFoldedName = Dictionary(sourceFields.map { ($0.lowercased(), 1) }, uniquingKeysWith: +)
+        self.foldedMapping = Dictionary(grouping: columnMapping, by: { $0.key.lowercased() })
+            .compactMapValues { $0.count == 1 ? $0.first?.value : nil }
         if let targetTable {
             self.rowGenerator = try? SQLStatementGenerator(
                 tableName: targetTable,
@@ -45,8 +76,52 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func execute(statement: String) async throws {
-        _ = try await driver.execute(query: statement)
+        try await execute(statement: statement, line: 1)
     }
+
+    /// What the file ran that changes where a name resolves for the rest of the session, such as a temporary table, so
+    /// the catalog can stop following a later drop of that name onto the real table.
+    var nameHazardStatements: [String] {
+        nameHazards.withLock { $0 }
+    }
+
+    /// Read before the statement runs, because one that fails part way can already have made a temporary table.
+    private func noteNameHazards(in text: String) {
+        guard let tableEditDialect else { return }
+        let statements = grammar.contains(.batchSeparatorLines)
+            ? SQLStatementScanner.executableStatements(in: text, grammar: grammar).map(\.sql)
+            : [text]
+        let hazards = statements.filter {
+            TableEditStatementParser.parse($0, dialect: tableEditDialect, grammar: grammar).changesNameHazards
+        }
+        guard !hazards.isEmpty else { return }
+        nameHazards.withLock { $0 += hazards }
+    }
+
+    /// A SQL Server file arrives a batch at a time, as sqlcmd reads it, or a statement at a time when it holds no `GO`
+    /// line, and each goes to the server whole: T-SQL scopes a variable, a table variable and a `TRY...CATCH` to one
+    /// batch, and a routine's body runs to the end of its batch. A driver that cannot send a batch whole runs its
+    /// statements one by one, as the editor does.
+    func execute(statement: String, line: Int) async throws {
+        noteNameHazards(in: statement)
+        guard grammar.contains(.batchSeparatorLines) else {
+            _ = try await driver.execute(query: statement)
+            return
+        }
+        if driver.supportsResultSetBatches,
+           let answer = try await driver.executeBatch(query: statement, rowCap: Self.batchRowCap, parameters: nil) {
+            guard let failure = BatchErrorText.describe(answer.errors, batchStartLine: line) else { return }
+            throw DatabaseError.queryFailed(failure)
+        }
+        for batchStatement in SQLStatementScanner.executableStatements(in: statement, grammar: grammar) {
+            guard !isCancelled() else { throw PluginImportCancellationError() }
+            _ = try await driver.execute(query: batchStatement.sql)
+        }
+    }
+
+    /// An import shows no rows, so a batch keeps as few of each result set as a driver takes, and the rest are read
+    /// past rather than held.
+    private static let batchRowCap = 1
 
     func insertRow(_ values: [String: PluginCellValue]) async throws {
         guard let targetTable else {
@@ -56,14 +131,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             throw PluginImportError.importFailed("Could not resolve SQL dialect for \(targetTable)")
         }
 
-        var columns: [String] = []
-        var bindValues: [PluginCellValue] = []
-        for (field, value) in values {
-            guard let column = columnMapping[field.lowercased()] else { continue }
-            columns.append(column)
-            bindValues.append(value)
-        }
-
+        let (columns, bindValues) = mappedColumnsAndValues(values)
         guard !columns.isEmpty else {
             guard values.isEmpty else {
                 throw PluginImportError.importFailed(Self.unmappedRowMessage)
@@ -109,20 +177,45 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             }
             index = next
 
-            let chunkSize = max(1, rowGenerator.maxBindParameters / columns.count)
-            var offset = 0
-            while offset < groupValues.count {
-                let end = min(offset + chunkSize, groupValues.count)
-                let chunk = Array(groupValues[offset..<end])
-                guard let statement = rowGenerator.insertStatement(columns: columns, rows: chunk) else {
-                    throw PluginImportError.importFailed(
-                        String(localized: "Could not build an INSERT for the mapped columns")
-                    )
-                }
-                _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
-                offset = end
-            }
+            try await insertGroup(groupValues, columns: columns, generator: rowGenerator)
         }
+    }
+
+    /// One budget per group, because a group is exactly the run of rows sharing one column set and
+    /// the column set is what fixes a row's width. Bounded in bytes as well as parameters: 500 rows
+    /// of three 1 MB values fit a three-column table's 21,845-row parameter ceiling and went out as
+    /// a single 500 MB statement the server refused, failing the first batch and leaving nothing
+    /// imported. The row cap also carries the engine's multi-row `VALUES` ceiling, which this path
+    /// never consulted, so an Oracle target no longer gets a statement it cannot parse.
+    private func insertGroup(
+        _ groupValues: [[PluginCellValue]],
+        columns: [String],
+        generator: SQLStatementGenerator
+    ) async throws {
+        let budget = SQLWriteBatchBudget(columnCount: columns.count, generator: generator)
+        var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
+        for row in groupValues {
+            guard let batch = filler.append(row, bytes: budget.byteCount(of: row)) else {
+                continue
+            }
+            try await write(batch, columns: columns, generator: generator)
+        }
+        guard let batch = filler.take() else { return }
+        try await write(batch, columns: columns, generator: generator)
+    }
+
+    private func write(
+        _ batch: [[PluginCellValue]],
+        columns: [String],
+        generator: SQLStatementGenerator
+    ) async throws {
+        guard !isCancelled() else { throw PluginImportCancellationError() }
+        guard let statement = generator.insertStatement(columns: columns, rows: batch) else {
+            throw PluginImportError.importFailed(
+                String(localized: "Could not build an INSERT for the mapped columns")
+            )
+        }
+        _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
     }
 
     /// A row carrying values none of which reach a mapped column writes nothing. Reporting it as
@@ -134,11 +227,23 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         String(localized: "No values in this row matched the column mapping")
     }
 
-    private func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
+    /// Exact names first. A case-insensitive match is only a fallback for a field the sheet never
+    /// listed, such as a JSON key respelled past the sample, and only when that spelling points at
+    /// one listed field, one mapping key and one field of the row, none of them already matched.
+    func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
         var pairs: [(column: String, value: PluginCellValue)] = []
+        var matchedNames = Set<String>()
         for (field, value) in values {
-            guard let column = columnMapping[field.lowercased()] else { continue }
+            guard let column = exactMapping[field] else { continue }
             pairs.append((column, value))
+            matchedNames.insert(field.lowercased())
+        }
+        let unmatched = values.filter { exactMapping[$0.key] == nil && !sourceFields.contains($0.key) }
+        for (folded, group) in Dictionary(grouping: unmatched, by: { $0.key.lowercased() }) {
+            guard group.count == 1, let entry = group.first, !matchedNames.contains(folded),
+                  sourceFieldsPerFoldedName[folded, default: 0] <= 1,
+                  let column = foldedMapping[folded] else { continue }
+            pairs.append((column, entry.value))
         }
         pairs.sort { $0.column < $1.column }
         return (pairs.map(\.column), pairs.map(\.value))
@@ -152,15 +257,25 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func beginTransaction() async throws {
+        let owner = WriteTransactionOwner.resolve(
+            supportsTransactions: driver.supportsTransactions,
+            sessionState: await driver.heldSessionTransactionState()
+        )
+        ownsTransaction.withLock { $0 = owner.opensTransaction }
+        guard owner.opensTransaction else { return }
         try await driver.beginTransaction(mode: .readWrite)
     }
 
     func commitTransaction() async throws {
+        guard ownsTransaction.withLock({ $0 }) else { return }
         try await driver.commitTransaction()
+        ownsTransaction.withLock { $0 = false }
     }
 
     func rollbackTransaction() async throws {
+        guard ownsTransaction.withLock({ $0 }) else { return }
         try await driver.rollbackTransaction()
+        ownsTransaction.withLock { $0 = false }
     }
 
     func disableForeignKeyChecks() async throws {

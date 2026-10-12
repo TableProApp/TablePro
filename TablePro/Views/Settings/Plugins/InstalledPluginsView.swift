@@ -8,10 +8,10 @@ import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct InstalledPluginsView: View {
-    private let pluginManager = PluginManager.shared
-    private let registryClient = RegistryClient.shared
-    private let installTracker = PluginInstallTracker.shared
-    private let navigation = PluginsSettingsNavigation.shared
+    @ObservedObject private var pluginManager = PluginManager.shared
+    @ObservedObject private var registryClient = RegistryClient.shared
+    @ObservedObject private var installTracker = PluginInstallTracker.shared
+    @ObservedObject private var navigation = PluginsSettingsNavigation.shared
 
     @State private var selectedPluginId: String?
     @State private var searchText = ""
@@ -187,7 +187,7 @@ struct InstalledPluginsView: View {
             .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
         case .requiresAppUpdate:
             Button(String(localized: "Update TablePro")) {
-                UpdaterBridge.shared.checkForUpdates()
+                SoftwareUpdater.shared.checkForUpdates()
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -259,16 +259,17 @@ struct InstalledPluginsView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     listBottomBar
                 }
-                .onChange(of: navigation.pendingRequest, initial: true) {
+                .onAppear { revealRequestedPlugin() }
+                .onChange(of: navigation.pendingRequest) { _ in
                     revealRequestedPlugin()
                 }
-                .onChange(of: selectedPluginId) { _, pluginId in
+                .onChange(of: selectedPluginId) { pluginId in
                     guard let pluginId else { return }
                     proxy.scrollTo(pluginId)
                 }
             }
         }
-        .onChange(of: searchText) {
+        .onChange(of: searchText) { _ in
             if let selectedPluginId, !filteredPlugins.contains(where: { $0.id == selectedPluginId }) {
                 self.selectedPluginId = nil
             }

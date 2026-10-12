@@ -15,7 +15,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Highlight Capping")
 struct HighlightCapTests {
     private static let maxHighlightLength = 10_000
 

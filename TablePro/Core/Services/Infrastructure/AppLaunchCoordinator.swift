@@ -4,25 +4,24 @@
 //
 
 import AppKit
+import Combine
 import Foundation
-import Observation
 import os
 
 @MainActor
-@Observable
-internal final class AppLaunchCoordinator {
+internal final class AppLaunchCoordinator: ObservableObject {
     internal static let shared = AppLaunchCoordinator()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
 
-    private(set) var phase: LaunchPhase = .launching
+    @Published private(set) var phase: LaunchPhase = .launching
 
-    @ObservationIgnored private let environment: any LaunchEnvironment
-    private var pendingIntents: [LaunchIntent] = []
-    private var hasFinishedLaunching = false
-    private var isDraining = false
-    private var hasRoutedAnyIntent = false
-    private var hasFinishedStartup = false
+    private let environment: any LaunchEnvironment
+    @Published private var pendingIntents: [LaunchIntent] = []
+    @Published private var hasFinishedLaunching = false
+    @Published private var isDraining = false
+    @Published private var hasRoutedAnyIntent = false
+    @Published private var hasFinishedStartup = false
 
     internal init(environment: any LaunchEnvironment = LiveLaunchEnvironment()) {
         self.environment = environment
@@ -52,10 +51,10 @@ internal final class AppLaunchCoordinator {
         let intents: [LaunchIntent] = urls.compactMap { url in
             switch URLClassifier.classify(url) {
             case .none:
-                Self.logger.warning("Unrecognized URL: \(url.sanitizedForLogging, privacy: .public)")
+                Self.logger.warning("Unrecognized URL: \(url.queryValuesRedactedForLogging, privacy: .public)")
                 return nil
             case .some(.failure(let error)):
-                Self.logger.error("URL parse failed: \(error.localizedDescription, privacy: .public) for \(url.sanitizedForLogging, privacy: .public)")
+                Self.logger.error("URL parse failed: \(error.publicLogShape, privacy: .public) for \(url.queryValuesRedactedForLogging, privacy: .public)")
                 return nil
             case .some(.success(let intent)):
                 return intent

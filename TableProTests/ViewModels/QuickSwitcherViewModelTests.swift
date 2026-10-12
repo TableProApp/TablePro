@@ -47,14 +47,18 @@ struct QuickSwitcherViewModelTests {
             schemaService: schemaService,
             schemaRefreshService: schemaRefreshService,
             schemaProviderRegistry: SchemaProviderRegistry(),
+            catalogChangeService: live.catalogChangeService,
             sqlFavoriteManager: sqlFavoriteManager ?? live.sqlFavoriteManager,
             favoriteTablesStorage: live.favoriteTablesStorage,
             favoriteDatabasesStorage: live.favoriteDatabasesStorage,
+            tableFolderStorage: live.tableFolderStorage,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
+            aiAccessApprovals: live.aiAccessApprovals,
             groupStorage: live.groupStorage,
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,
+            credentialProfileStorage: live.credentialProfileStorage,
             licenseManager: live.licenseManager,
             syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
@@ -71,11 +75,11 @@ struct QuickSwitcherViewModelTests {
 
     private func sampleItems() -> [QuickSwitcherItem] {
         [
-            QuickSwitcherItem(id: "t1", name: "users", kind: .table, subtitle: ""),
-            QuickSwitcherItem(id: "t2", name: "orders", kind: .table, subtitle: ""),
-            QuickSwitcherItem(id: "v1", name: "active_users", kind: .view, subtitle: "View"),
-            QuickSwitcherItem(id: "d1", name: "production", kind: .database, subtitle: "Database"),
-            QuickSwitcherItem(id: "h1", name: "SELECT * FROM users;", kind: .queryHistory, subtitle: "mydb")
+            QuickSwitcherItem(frecencyKey: "t1", name: "users", kind: .table, subtitle: ""),
+            QuickSwitcherItem(frecencyKey: "t2", name: "orders", kind: .table, subtitle: ""),
+            QuickSwitcherItem(frecencyKey: "v1", name: "active_users", kind: .view, subtitle: "View"),
+            QuickSwitcherItem(frecencyKey: "d1", name: "production", kind: .database, subtitle: "Database"),
+            QuickSwitcherItem(frecencyKey: "h1", name: "SELECT * FROM users;", kind: .queryHistory, subtitle: "mydb")
         ]
     }
 
@@ -111,7 +115,7 @@ struct QuickSwitcherViewModelTests {
     func connectionsScopeUsesCrossConnectionItems() async {
         let localConnectionId = UUID()
         let remoteConnectionId = UUID()
-        let local = QuickSwitcherItem(id: "local", name: "users", kind: .table, subtitle: "")
+        let local = QuickSwitcherItem(frecencyKey: "local", name: "users", kind: .table, subtitle: "")
         let remoteTarget = QuickSwitcherTarget(
             connectionId: remoteConnectionId,
             connectionName: "Analytics",
@@ -119,7 +123,7 @@ struct QuickSwitcherViewModelTests {
             schemaName: "public"
         )
         let remote = QuickSwitcherItem(
-            id: "remote",
+            frecencyKey: "remote",
             name: "events",
             kind: .table,
             subtitle: "Analytics / warehouse / public",
@@ -130,7 +134,7 @@ struct QuickSwitcherViewModelTests {
         vm.scope = .connections
         await vm.flushPendingFilter()
 
-        #expect(vm.flatItems.map(\.id) == ["remote"])
+        #expect(vm.flatItems.map(\.frecencyKey) == ["remote"])
         #expect(vm.groups.first?.header == "Analytics")
     }
 
@@ -218,7 +222,7 @@ struct QuickSwitcherViewModelTests {
         #expect(await historyStorage.record(inactiveHistory))
 
         let vm = makeViewModel(
-            items: [QuickSwitcherItem(id: "stale", name: "stale", kind: .queryHistory, subtitle: "")],
+            items: [QuickSwitcherItem(frecencyKey: "stale", name: "stale", kind: .queryHistory, subtitle: "")],
             connectionId: localConnection.id,
             services: services
         )
@@ -226,15 +230,15 @@ struct QuickSwitcherViewModelTests {
         await vm.loadCrossConnectionQueryItems()
         await vm.flushPendingFilter()
 
-        #expect(Set(vm.flatItems.map(\.id)) == Set([
+        #expect(Set(vm.flatItems.map(\.frecencyKey)) == Set([
             "favorite_\(globalFavorite.id.uuidString)",
             "favorite_\(remoteFavorite.id.uuidString)",
-            "history_\(remoteHistory.id.uuidString)"
+            QuickSwitcherFrecencyKey.queryHistory(remoteHistory.query)
         ]))
-        #expect(vm.flatItems.contains { $0.id == "stale" } == false)
+        #expect(vm.flatItems.contains { $0.frecencyKey == "stale" } == false)
         let globalItem = vm.flatItems.first { $0.id.contains(globalFavorite.id.uuidString) }
         #expect(globalItem?.target?.connectionId == localConnection.id)
-        let historyItem = try #require(vm.flatItems.first { $0.id.contains(remoteHistory.id.uuidString) })
+        let historyItem = try #require(vm.flatItems.first { $0.kind == .queryHistory })
         #expect(historyItem.target?.connectionId == remoteConnection.id)
         #expect(historyItem.target?.databaseName == "reporting")
         #expect(historyItem.subtitle.contains("Analytics / reporting"))
@@ -242,9 +246,9 @@ struct QuickSwitcherViewModelTests {
 
         vm.searchText = "analytics"
         await vm.flushPendingFilter()
-        #expect(Set(vm.flatItems.map(\.id)) == Set([
+        #expect(Set(vm.flatItems.map(\.frecencyKey)) == Set([
             "favorite_\(remoteFavorite.id.uuidString)",
-            "history_\(remoteHistory.id.uuidString)"
+            QuickSwitcherFrecencyKey.queryHistory(remoteHistory.query)
         ]))
     }
 
@@ -285,7 +289,7 @@ struct QuickSwitcherViewModelTests {
         vm.invalidateCrossConnectionQueryItems()
         await vm.loadCrossConnectionQueryItems()
 
-        #expect(vm.crossConnectionQueryItems.map(\.id) == ["favorite_\(favorite.id.uuidString)"])
+        #expect(vm.crossConnectionQueryItems.map(\.frecencyKey) == ["favorite_\(favorite.id.uuidString)"])
     }
 
     @Test("Queries scope caps an oversized local catalog")
@@ -293,7 +297,7 @@ struct QuickSwitcherViewModelTests {
         let vm = makeViewModel(items: [])
         vm.crossConnectionQueryItems = (0..<300).map { index in
             QuickSwitcherItem(
-                id: "favorite_\(index)",
+                frecencyKey: "favorite_\(index)",
                 name: "Query \(index)",
                 kind: .savedQuery,
                 subtitle: "Primary / app"
@@ -414,7 +418,7 @@ struct QuickSwitcherViewModelTests {
             schemaName: nil
         )
         let remote = QuickSwitcherItem(
-            id: "remote",
+            frecencyKey: "remote",
             name: "events",
             kind: .table,
             subtitle: "Analytics / warehouse",
@@ -426,7 +430,7 @@ struct QuickSwitcherViewModelTests {
         vm.searchText = "analytics"
         try await Task.sleep(nanoseconds: 200_000_000)
 
-        #expect(vm.flatItems.first?.id == "remote")
+        #expect(vm.flatItems.first?.frecencyKey == "remote")
         #expect(vm.flatItems.first?.target == target)
     }
 
@@ -443,7 +447,8 @@ struct QuickSwitcherViewModelTests {
                 TableInfo(name: "Album", type: .table, rowCount: nil),
                 TableInfo(name: "Track", type: .table, rowCount: nil)
             ],
-            target: target
+            target: target,
+            connectionSwitchesDatabases: false
         )
         let vm = makeViewModel(items: [])
         vm.crossConnectionItems = items
@@ -474,7 +479,8 @@ struct QuickSwitcherViewModelTests {
                 TableInfo(name: "Invoice", type: .table, rowCount: nil),
                 TableInfo(name: "InvoiceLine", type: .table, rowCount: nil)
             ],
-            target: target
+            target: target,
+            connectionSwitchesDatabases: false
         )
         let vm = makeViewModel(items: [])
         vm.crossConnectionItems = items
@@ -506,14 +512,18 @@ struct QuickSwitcherViewModelTests {
             TableInfo(name: "InvoiceLine", type: .table, rowCount: nil)
         ]
         let vm = makeViewModel(items: [])
-        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(
+            tables: tables, target: target, connectionSwitchesDatabases: true
+        )
         vm.scope = .connections
         vm.searchText = "invoice"
         try await Task.sleep(nanoseconds: 200_000_000)
 
         let chosen = try #require(vm.flatItems.first { $0.name == "InvoiceLine" })
         vm.selectedItemId = chosen.id
-        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(
+            tables: tables, target: target, connectionSwitchesDatabases: true
+        )
         try await Task.sleep(nanoseconds: 200_000_000)
 
         #expect(vm.selectedItem()?.name == "InvoiceLine")
@@ -533,7 +543,9 @@ struct QuickSwitcherViewModelTests {
             TableInfo(name: "active_users", type: .view, rowCount: nil)
         ]
 
-        let items = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+        let items = QuickSwitcherViewModel.makeCrossConnectionItems(
+            tables: tables, target: target, connectionSwitchesDatabases: true
+        )
 
         #expect(items.count == 2)
         #expect(items[0].id.contains(connectionId.uuidString))
@@ -557,7 +569,8 @@ struct QuickSwitcherViewModelTests {
 
         let item = QuickSwitcherViewModel.makeCrossConnectionItems(
             tables: [TableInfo(name: "users", type: .table, rowCount: nil)],
-            target: target
+            target: target,
+            connectionSwitchesDatabases: false
         )[0]
 
         #expect(displayName == "~/Databases/private.sqlite")
@@ -578,7 +591,9 @@ struct QuickSwitcherViewModelTests {
             TableInfo(name: "events", type: .table, rowCount: nil, schema: "audit")
         ]
 
-        let items = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+        let items = QuickSwitcherViewModel.makeCrossConnectionItems(
+            tables: tables, target: target, connectionSwitchesDatabases: true
+        )
 
         #expect(Set(items.map(\.id)).count == 2)
         #expect(Set(items.compactMap(\.target?.schemaName)) == Set(["public", "audit"]))
@@ -596,7 +611,9 @@ struct QuickSwitcherViewModelTests {
             TableInfo(name: "table_\(index)", type: .table, rowCount: nil)
         }
         let vm = makeViewModel(items: [])
-        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(
+            tables: tables, target: target, connectionSwitchesDatabases: true
+        )
         vm.scope = .connections
         await vm.flushPendingFilter()
 
@@ -606,7 +623,7 @@ struct QuickSwitcherViewModelTests {
     @Test("Query-like input stays plain text")
     func queryLikeInputStaysPlainText() async throws {
         let vm = makeViewModel(items: [
-            QuickSwitcherItem(id: "users", name: "users", kind: .table, subtitle: "Primary / app")
+            QuickSwitcherItem(frecencyKey: "users", name: "users", kind: .table, subtitle: "Primary / app")
         ])
 
         vm.searchText = "users'; DROP TABLE audit; --"
@@ -634,14 +651,14 @@ struct QuickSwitcherViewModelTests {
         )
 
         #expect(vm.canOpenStructure(QuickSwitcherItem(
-            id: "current",
+            frecencyKey: "current",
             name: "users",
             kind: .table,
             subtitle: "",
             target: currentTarget
         )))
         #expect(!vm.canOpenStructure(QuickSwitcherItem(
-            id: "remote",
+            frecencyKey: "remote",
             name: "events",
             kind: .table,
             subtitle: "",
@@ -663,7 +680,7 @@ struct QuickSwitcherViewModelTests {
     func savedQueryFoundByKeyword() async throws {
         var items = sampleItems()
         items.append(QuickSwitcherItem(
-            id: "favorite_1",
+            frecencyKey: "favorite_1",
             name: "Daily Report",
             kind: .savedQuery,
             subtitle: "rpt",
@@ -679,7 +696,7 @@ struct QuickSwitcherViewModelTests {
     func filterCaps() async {
         var items: [QuickSwitcherItem] = []
         for index in 0..<300 {
-            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
+            items.append(QuickSwitcherItem(frecencyKey: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
         }
         let vm = makeViewModel(items: items)
         vm.scope = .tables
@@ -759,7 +776,7 @@ struct QuickSwitcherViewModelTests {
         let connectionId = UUID()
         var items: [QuickSwitcherItem] = []
         for index in 0..<15 {
-            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
+            items.append(QuickSwitcherItem(frecencyKey: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
         }
         let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
         for (index, item) in items.enumerated() {
@@ -788,8 +805,8 @@ struct QuickSwitcherViewModelTests {
         let suite = makeDefaults()
         let connectionId = UUID()
         let items = [
-            QuickSwitcherItem(id: "ta", name: "users_a", kind: .table, subtitle: ""),
-            QuickSwitcherItem(id: "tb", name: "users_b", kind: .table, subtitle: "")
+            QuickSwitcherItem(frecencyKey: "ta", name: "users_a", kind: .table, subtitle: ""),
+            QuickSwitcherItem(frecencyKey: "tb", name: "users_b", kind: .table, subtitle: "")
         ]
         let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
         vm.searchText = "users"
@@ -808,7 +825,7 @@ struct QuickSwitcherViewModelTests {
     func savedQueriesGetOwnSection() async {
         var items = sampleItems()
         items.append(QuickSwitcherItem(
-            id: "f1",
+            frecencyKey: "f1",
             name: "Monthly revenue",
             kind: .savedQuery,
             subtitle: "rev",
@@ -825,7 +842,7 @@ struct QuickSwitcherViewModelTests {
     @Test("Payload survives filtering")
     func payloadSurvivesFiltering() async throws {
         let items = [QuickSwitcherItem(
-            id: "f1",
+            frecencyKey: "f1",
             name: "Monthly revenue",
             kind: .savedQuery,
             subtitle: "",
@@ -861,8 +878,8 @@ struct QuickSwitcherViewModelTests {
     @Test("A table already open in a tab outranks an equal match")
     func openTabOutranksEqualMatch() async throws {
         let items = [
-            QuickSwitcherItem(id: "ta", name: "users_a", kind: .table, subtitle: ""),
-            QuickSwitcherItem(id: "tb", name: "users_b", kind: .table, subtitle: "", isOpenInTab: true)
+            QuickSwitcherItem(frecencyKey: "ta", name: "users_a", kind: .table, subtitle: ""),
+            QuickSwitcherItem(frecencyKey: "tb", name: "users_b", kind: .table, subtitle: "", isOpenInTab: true)
         ]
         let vm = makeViewModel(items: items)
         vm.searchText = "users"
@@ -908,7 +925,7 @@ struct QuickSwitcherViewModelTests {
 
     @Test("listHeight for a single filtered result is one row")
     func listHeightSingleFilteredRow() async throws {
-        let vm = makeViewModel(items: [QuickSwitcherItem(id: "t1", name: "users", kind: .table, subtitle: "")])
+        let vm = makeViewModel(items: [QuickSwitcherItem(frecencyKey: "t1", name: "users", kind: .table, subtitle: "")])
         vm.searchText = "users"
         try await Task.sleep(nanoseconds: 200_000_000)
         #expect(vm.groups.first?.header == nil)
@@ -919,7 +936,7 @@ struct QuickSwitcherViewModelTests {
     func listHeightAtCap() async throws {
         var items: [QuickSwitcherItem] = []
         for index in 0..<9 {
-            items.append(QuickSwitcherItem(id: "t\(index)", name: "tbl_\(index)", kind: .table, subtitle: ""))
+            items.append(QuickSwitcherItem(frecencyKey: "t\(index)", name: "tbl_\(index)", kind: .table, subtitle: ""))
         }
         let vm = makeViewModel(items: items)
         vm.searchText = "tbl"
@@ -932,7 +949,7 @@ struct QuickSwitcherViewModelTests {
     func listHeightCapsWhenOverflowing() async throws {
         var items: [QuickSwitcherItem] = []
         for index in 0..<20 {
-            items.append(QuickSwitcherItem(id: "t\(index)", name: "tbl_\(index)", kind: .table, subtitle: ""))
+            items.append(QuickSwitcherItem(frecencyKey: "t\(index)", name: "tbl_\(index)", kind: .table, subtitle: ""))
         }
         let vm = makeViewModel(items: items)
         vm.searchText = "tbl"
@@ -971,8 +988,8 @@ struct QuickSwitcherViewModelTests {
     func listHeightClampsWithHeaders() async {
         var items: [QuickSwitcherItem] = []
         for index in 0..<30 {
-            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
-            items.append(QuickSwitcherItem(id: "v\(index)", name: "view_\(index)", kind: .view, subtitle: "View"))
+            items.append(QuickSwitcherItem(frecencyKey: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
+            items.append(QuickSwitcherItem(frecencyKey: "v\(index)", name: "view_\(index)", kind: .view, subtitle: "View"))
         }
         let vm = makeViewModel(items: items)
         vm.scope = .tables
@@ -1058,10 +1075,10 @@ struct QuickSwitcherViewModelTests {
     func largeSectionKeepsLaterSections() async {
         var items: [QuickSwitcherItem] = []
         for index in 0..<250 {
-            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
+            items.append(QuickSwitcherItem(frecencyKey: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
         }
         for index in 0..<40 {
-            items.append(QuickSwitcherItem(id: "v\(index)", name: "view_\(index)", kind: .view, subtitle: "View"))
+            items.append(QuickSwitcherItem(frecencyKey: "v\(index)", name: "view_\(index)", kind: .view, subtitle: "View"))
         }
         let vm = makeViewModel(items: items)
         vm.scope = .tables
@@ -1117,7 +1134,7 @@ struct QuickSwitcherViewModelTests {
     @Test("A keyword outranks a connection name in a saved query subtitle")
     func keywordOutranksConnectionPath() async {
         let keyworded = QuickSwitcherItem(
-            id: "favorite_keyworded",
+            frecencyKey: "favorite_keyworded",
             name: "Daily totals",
             kind: .savedQuery,
             subtitle: "prod · Analytics / warehouse",
@@ -1125,7 +1142,7 @@ struct QuickSwitcherViewModelTests {
             payload: "SELECT 1"
         )
         let pathOnly = QuickSwitcherItem(
-            id: "favorite_path",
+            frecencyKey: "favorite_path",
             name: "Customer churn",
             kind: .savedQuery,
             subtitle: "Production / app",
@@ -1145,7 +1162,7 @@ struct QuickSwitcherViewModelTests {
         let remoteConnectionId = UUID()
         let vm = makeViewModel(items: [], connectionId: localConnectionId, defaults: suite)
         let remote = QuickSwitcherItem(
-            id: "history_remote",
+            frecencyKey: "history_remote",
             name: "SELECT * FROM events",
             kind: .queryHistory,
             subtitle: "Analytics / warehouse",
@@ -1162,7 +1179,7 @@ struct QuickSwitcherViewModelTests {
 
         let localStore = QuickSwitcherFrecencyStore(connectionId: localConnectionId, defaults: suite)
         let remoteStore = QuickSwitcherFrecencyStore(connectionId: remoteConnectionId, defaults: suite)
-        #expect(localStore.recentItemIds(limit: 10).isEmpty)
-        #expect(remoteStore.recentItemIds(limit: 10) == ["history_remote"])
+        #expect(localStore.recentItemIds().isEmpty)
+        #expect(remoteStore.recentItemIds() == ["history_remote"])
     }
 }

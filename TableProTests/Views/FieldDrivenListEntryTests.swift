@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Field driven list entries")
 struct FieldDrivenListEntryTests {
     private struct Item: Identifiable, Equatable {
         let id: String

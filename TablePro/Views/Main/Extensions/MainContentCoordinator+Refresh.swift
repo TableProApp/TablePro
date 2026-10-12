@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 
 extension MainContentCoordinator {
@@ -33,7 +34,7 @@ extension MainContentCoordinator {
 
     private func fireRefresh(hasPendingTableOps: Bool, onDiscard: @escaping () -> Void) {
         handleRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
-        Task { await refreshTables() }
+        services.catalogChangeService.record(.changed(CatalogChange(connectionId: connectionId, kinds: .everything)))
     }
 
     func handleRefresh(
@@ -41,6 +42,10 @@ extension MainContentCoordinator {
         onDiscard: @escaping () -> Void
     ) {
         guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
+        if tab.tabType == .versionHistory {
+            AppEvents.shared.versionHistoryRefreshRequested.send(tab.id)
+            return
+        }
         if tab.display.resultsViewMode == .structure {
             structureActions?.refresh?()
             return
@@ -56,6 +61,7 @@ extension MainContentCoordinator {
               tab.tabType == .table,
               tab.display.resultsViewMode != .structure else { return }
 
+        dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
         guard changeManager.hasChanges || hasPendingTableOps else {
             reloadTableTab(at: tabIndex)
             return
@@ -65,6 +71,7 @@ extension MainContentCoordinator {
             let confirmed = await confirmDiscardChanges(action: .refresh, window: contentWindow)
             guard confirmed else { return }
             onDiscard()
+            rowEditingCoordinator.restoreRowBufferToOriginals()
             changeManager.clearChangesAndUndoHistory()
             guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
                   tab.tabType == .table else { return }
@@ -72,14 +79,14 @@ extension MainContentCoordinator {
         }
     }
 
-    private func reloadTableTab(at tabIndex: Int) {
-        cancelCurrentQuery()
+    func reloadTableTab(at tabIndex: Int) {
+        stopExecution(for: tabManager.tabs[tabIndex].id)
         /// A refresh asks for the table as it is now, so the exact count the user requested earlier
         /// describes a table that may have moved on. Retiring it here is what lets the automatic
         /// count re-derive a total, which it otherwise refuses to do rather than downgrade an exact
         /// count to an estimate.
         tabManager.mutate(at: tabIndex) { $0.pagination.retireDerivedRowCount() }
         rebuildTableQuery(at: tabIndex)
-        runQuery()
+        runQuery(viewport: .keepPlace)
     }
 }

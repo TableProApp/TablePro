@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DatabaseObjectRef coding")
 struct DatabaseObjectRefCodingTests {
     @Test("A type ref round-trips with its kind")
     func userTypeRoundTrip() throws {

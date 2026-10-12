@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Tunnel command builder")
 struct TunnelCommandBuilderTests {
     private func kubectlConfig() -> TunnelCommandConfiguration {
         var config = TunnelCommandConfiguration()

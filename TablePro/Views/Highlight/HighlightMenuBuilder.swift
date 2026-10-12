@@ -47,7 +47,7 @@ enum HighlightMenuBuilder {
                 color: color,
                 target: target
             )
-        case .text(let text) where HighlightCondition.readsAsNullLiteral(text, columnType: columnType):
+        case .text(let text) where FilterOperand.readsAsNullLiteral(text, columnType: columnType):
             return nil
         case .text(let text):
             return HighlightRule(
@@ -94,7 +94,7 @@ enum HighlightMenuBuilder {
         for template in templates {
             let existing = context.existingRules.first { $0.hasSameCondition(as: template) }
             if let existing { existingMatches.append(existing) }
-            submenu.addItem(.sectionHeader(title: sectionTitle(for: template)))
+            submenu.addItem(.sectionHeaderCompat(title: sectionTitle(for: template)))
             submenu.addItem(paletteItem(for: template, existing: existing, actions: actions))
         }
 
@@ -118,27 +118,68 @@ enum HighlightMenuBuilder {
         actions: Actions
     ) -> NSMenuItem {
         let colors = HighlightColor.allCases
-        let palette = NSMenu.palette(
-            colors: colors.map(\.systemColor),
-            titles: colors.map(\.displayName)
-        ) { menu in
-            let selected = menu.selectedItems.compactMap { menu.items.firstIndex(of: $0) }
-            guard let index = selected.first, colors.indices.contains(index) else {
-                if let existing { actions.remove(existing) }
-                return
-            }
+        let apply: (Int) -> Void = { index in
+            guard colors.indices.contains(index) else { return }
             var rule = existing ?? template
             rule.color = colors[index]
             rule.isEnabled = true
             actions.apply(rule)
         }
-        palette.selectionMode = .selectOne
-        if let existing, let index = colors.firstIndex(of: existing.color), index < palette.items.count {
-            palette.selectedItems = [palette.items[index]]
+
+        let palette: NSMenu
+        if #available(macOS 14.0, *) {
+            /// Clicking the item already selected deselects it and reports an empty selection,
+            /// measured on macOS 27: `performActionForItem(at:)` on the preselected colour leaves
+            /// `selectedItems` empty and fires the handler. That used to reach a remove arm, so
+            /// clicking the colour a rule already had deleted the rule. Removing is what **Remove
+            /// Highlight** is for, so an empty selection changes nothing.
+            let menu = NSMenu.palette(
+                colors: colors.map(\.systemColor),
+                titles: colors.map(\.displayName)
+            ) { menu in
+                guard let selected = menu.selectedItems.first,
+                      let index = menu.items.firstIndex(of: selected) else { return }
+                apply(index)
+            }
+            menu.selectionMode = .selectOne
+            if let marked = Self.markedColor(for: existing),
+               let index = colors.firstIndex(of: marked), index < menu.items.count {
+                menu.selectedItems = [menu.items[index]]
+            }
+            palette = menu
+        } else {
+            /// `NSMenu.palette` is macOS 14. The fallback is a plain menu of the same colours,
+            /// each drawn with its own swatch and check-marked when it is the rule's colour, so
+            /// the same choice is offered a row at a time instead of as one strip.
+            let menu = NSMenu()
+            for (index, color) in colors.enumerated() {
+                let entry = ClosureMenuTarget.item(title: color.displayName) { apply(index) }
+                entry.setInformativeImage(Self.swatch(for: color.systemColor))
+                entry.state = Self.markedColor(for: existing) == color ? .on : .off
+                menu.addItem(entry)
+            }
+            palette = menu
         }
 
         let item = NSMenuItem(title: sectionTitle(for: template), action: nil, keyEquivalent: "")
         item.submenu = palette
         return item
+    }
+
+    /// The color the cell is actually painted, which is nothing when the rule is switched off.
+    /// Ticking a disabled rule's color claimed a highlight the grid was not drawing.
+    static func markedColor(for existing: HighlightRule?) -> HighlightColor? {
+        guard let existing, existing.isEnabled else { return nil }
+        return existing.color
+    }
+
+    private static func swatch(for color: NSColor) -> NSImage {
+        let size = NSSize(width: 12, height: 12)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        color.setFill()
+        NSBezierPath(ovalIn: NSRect(origin: .zero, size: size)).fill()
+        image.unlockFocus()
+        return image
     }
 }

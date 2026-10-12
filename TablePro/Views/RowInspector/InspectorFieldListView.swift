@@ -3,6 +3,8 @@
 //  TablePro
 //
 
+import AppKit
+import Combine
 import SwiftUI
 
 /// The inspected row's fields.
@@ -12,15 +14,21 @@ import SwiftUI
 /// 100 columns or 2000. `Form(.formStyle(.grouped))` builds every row eagerly, four subviews each,
 /// and costs 525ms at 2000. A wide table would have paid that on every selection change.
 internal struct InspectorFieldListView: View {
-    internal let editState: MultiRowEditState
+    @ObservedObject internal var editState: MultiRowEditState
     internal let isEditable: Bool
     internal let databaseType: DatabaseType
     internal let userDefinedTypeScope: DatabaseScope?
+    internal var offersDatabaseValues = true
+
+    private var offersFieldRemoval: Bool {
+        offersDatabaseValues && PluginManager.shared.supportsFieldRemoval(for: databaseType)
+    }
     internal var onPopOut: ((FieldEditState, String, FieldEditorKind) -> Void)?
 
     @State private var searchText = ""
     @State private var showsModifiedOnly = false
     @State private var expandedFieldID: UUID?
+    @StateObject private var tabStops = InspectorTabStopRegistry()
     @FocusState private var focusedField: UUID?
 
     var body: some View {
@@ -37,7 +45,7 @@ internal struct InspectorFieldListView: View {
                 fieldList(fields)
             }
         }
-        .onChange(of: editState.fields.map(\.columnName)) {
+        .onChange(of: editState.fields.map(\.columnName)) { _ in
             expandedFieldID = nil
             focusedField = nil
         }
@@ -101,7 +109,7 @@ internal struct InspectorFieldListView: View {
     }
 
     private var emptyFilterState: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Matching Fields"),
             systemImage: "line.3.horizontal.decrease.circle",
             description: Text(String(localized: "No field matches the current filter"))
@@ -129,15 +137,10 @@ internal struct InspectorFieldListView: View {
         /// at 10. `.plain` lands at half of `intercellSpacing` and can be corrected onto the edge.
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .onKeyPress(keys: [.tab]) { press in
-            moveFocus(within: fields, forward: !press.modifiers.contains(.shift))
-        }
-        .onKeyPress(keys: ["n", "d"]) { press in
-            guard press.modifiers.contains(.control), press.modifiers.contains(.option) else {
-                return .ignored
-            }
-            return applyStateShortcut(press.key)
-        }
+        .modifier(InspectorFieldKeyShortcuts(
+            moveFocus: { forward in moveFocus(within: fields, forward: forward) },
+            applyStateShortcut: applyStateShortcut
+        ))
     }
 
     @ViewBuilder
@@ -157,10 +160,14 @@ internal struct InspectorFieldListView: View {
             onSetDefault: { editState.setFieldToDefault(at: field.columnIndex) },
             onSetEmpty: { editState.setFieldToEmpty(at: field.columnIndex) },
             onSetFunction: { editState.setFieldToFunction(at: field.columnIndex, function: $0) },
+            onRemoveField: offersFieldRemoval && !field.isSchemaField
+                ? { editState.removeField(at: field.columnIndex) }
+                : nil,
             onToggleExpand: FieldEditorContent.canExpand(kind: kind, state: FieldValueState.resolve(field))
                 ? { expandedFieldID = expandedFieldID == field.id ? nil : field.id }
                 : nil,
             onPopOut: { onPopOut?(field, $0, kind) },
+            onTabStopChange: { [tabStops] in tabStops.record($0, for: field.id) },
             focusedField: $focusedField,
             fieldID: field.id
         )
@@ -172,14 +179,20 @@ internal struct InspectorFieldListView: View {
         isEditable: Bool
     ) -> FieldEditorContext {
         let state = FieldValueState.resolve(field)
+        let columnIndex = field.columnIndex
         return FieldEditorContext(
             columnName: field.columnName,
             columnType: field.columnTypeEnum,
             isLongText: field.isLongText,
+            /// The getter reads the store, not the `state` resolved above. That value is a copy
+            /// taken when this context was built, so a getter closing over it answers whatever the
+            /// field held during that render, and an `onChange` action, which belongs to the
+            /// render that registered it, is a render behind again. An editor comparing its text
+            /// against that answer sees the value it had just replaced and puts it back (#3051).
             value: isEditable
                 ? Binding(
-                    get: { state.editableText },
-                    set: { editState.updateField(at: field.columnIndex, value: $0) }
+                    get: { editState.currentText(at: columnIndex) },
+                    set: { editState.updateField(at: columnIndex, value: $0) }
                 )
                 : .constant(state.editableText),
             originalValue: field.originalValue,
@@ -189,7 +202,7 @@ internal struct InspectorFieldListView: View {
                 ? { editState.setFieldToBytes(at: field.columnIndex, data: $0) }
                 : nil,
             editor: kind,
-            allowsNullAndDefault: !field.isSchemaField,
+            allowsNullAndDefault: offersDatabaseValues && !field.isSchemaField,
             showsTypeBadge: !field.isSchemaField,
             userDefinedTypeScope: field.isSchemaField ? userDefinedTypeScope : nil
         )
@@ -197,29 +210,39 @@ internal struct InspectorFieldListView: View {
 
     // MARK: - Keyboard
 
-    /// Tab has to be intercepted rather than left to AppKit. Measured: the key view loop inside a
-    /// SwiftUI `List` has exactly one stop, so `nextValidKeyView` never leaves the field it starts
-    /// in and Tab moved between fields not at all.
-    /// Handled while there is another field to reach, ignored at either end so the key falls
-    /// through and focus can leave the list for the search field, the filter and the view-mode
-    /// control. Wrapping around instead trapped the keyboard inside the row for good.
-    private func moveFocus(within fields: [FieldEditState], forward: Bool) -> KeyPress.Result {
+    /// Tab is intercepted because the key view loop inside a SwiftUI `List` has one stop, measured.
+    /// Ignored at either end so the key falls through and focus can leave the list, not wrap.
+    private func moveFocus(within fields: [FieldEditState], forward: Bool) -> KeyPressResultCompat {
         guard !fields.isEmpty else { return .ignored }
-        guard let current = focusedField, let index = fields.firstIndex(where: { $0.id == current }) else {
-            focusedField = forward ? fields.first?.id : fields.last?.id
-            return .handled
-        }
-        let next = forward ? index + 1 : index - 1
-        guard fields.indices.contains(next) else {
-            focusedField = nil
-            return .ignored
-        }
-        focusedField = fields[next].id
-        return .handled
+        let order = fields.map(\.id)
+        tabStops.forget(allBut: order)
+        /// With Full Keyboard Access on, the controls of a field showing a map are key views.
+        let skipped = NSApplication.shared.isFullKeyboardAccessEnabled ? [] : tabStops.fieldsWithoutTabStop
+        let destination = Self.focusDestination(from: focusedField, in: order, forward: forward, skipping: skipped)
+        focusedField = destination
+        return destination == nil ? .ignored : .handled
     }
 
-    private func applyStateShortcut(_ key: KeyEquivalent) -> KeyPress.Result {
+    /// The field Tab lands on, or nil to let the key leave the list. A field with nothing to focus
+    /// is passed over, so focus is never sent where no view can take it.
+    internal static func focusDestination(
+        from current: UUID?,
+        in order: [UUID],
+        forward: Bool,
+        skipping fieldsWithoutTabStop: Set<UUID>
+    ) -> UUID? {
+        let candidates: [UUID]
+        if let current, let index = order.firstIndex(of: current) {
+            candidates = forward ? Array(order[(index + 1)...]) : Array(order[..<index].reversed())
+        } else {
+            candidates = forward ? order : order.reversed()
+        }
+        return candidates.first { !fieldsWithoutTabStop.contains($0) }
+    }
+
+    private func applyStateShortcut(_ key: Character) -> KeyPressResultCompat {
         guard isEditable,
+              offersDatabaseValues,
               let focusedField,
               let field = editState.fields.first(where: { $0.id == focusedField }),
               !field.isSchemaField,
@@ -231,5 +254,62 @@ internal struct InspectorFieldListView: View {
             editState.setFieldToDefault(at: field.columnIndex)
         }
         return .handled
+    }
+}
+
+/// Fields whose editor holds nothing Tab can land on. A reference that publishes nothing, so a
+/// field reporting in does not redraw the list.
+@MainActor
+internal final class InspectorTabStopRegistry: ObservableObject {
+    internal private(set) var fieldsWithoutTabStop: Set<UUID> = []
+
+    internal func record(_ hasTabStop: Bool, for fieldID: UUID) {
+        if hasTabStop {
+            fieldsWithoutTabStop.remove(fieldID)
+        } else {
+            fieldsWithoutTabStop.insert(fieldID)
+        }
+    }
+
+    /// Field ids are reissued on every selection change, so the old ones are dropped.
+    internal func forget(allBut fieldIDs: [UUID]) {
+        fieldsWithoutTabStop.formIntersection(fieldIDs)
+    }
+}
+
+/// `onKeyPress` is macOS 14, and `KeyPress` cannot appear outside the check, so the handlers
+/// are gated as a pair. Tab still moves focus on macOS 13 through the responder chain; what is
+/// lost there is the Control-Option state shortcut, which the field's own menu also offers.
+private struct InspectorFieldKeyShortcuts: ViewModifier {
+    let moveFocus: (Bool) -> KeyPressResultCompat
+    let applyStateShortcut: (Character) -> KeyPressResultCompat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content
+                .onKeyPress(keys: [.tab]) { press in
+                    moveFocus(!press.modifiers.contains(.shift)).resolved
+                }
+                .onKeyPress(keys: ["n", "d"]) { press in
+                    guard press.modifiers.contains(.control), press.modifiers.contains(.option) else {
+                        return .ignored
+                    }
+                    return applyStateShortcut(press.characters.first ?? " ").resolved
+                }
+        } else {
+            content
+        }
+    }
+}
+
+/// Mirrors `KeyPress.Result`, which is macOS 14, so the handlers can be declared outside the check.
+internal enum KeyPressResultCompat {
+    case handled
+    case ignored
+
+    @available(macOS 14.0, *)
+    var resolved: KeyPress.Result {
+        self == .handled ? .handled : .ignored
     }
 }

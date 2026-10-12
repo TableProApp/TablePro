@@ -51,8 +51,13 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsRenameView: Bool = false
         var supportsRenameDatabase: Bool = false
         var supportsRenameSchema: Bool = false
+        var supportsDocumentEditing: Bool = false
+        var supportsFieldRemoval: Bool = false
         // `var` with defaults so existing call sites compile without passing these fields
         var supportsDropSchema: Bool = false
+        var supportsCreateSchema: Bool = false
+        var supportsSchemaOwner: Bool = false
+        var supportsSchemaPrivileges: Bool = false
         var supportsAddColumn: Bool = true
         var supportsModifyColumn: Bool = true
         var supportsDropColumn: Bool = true
@@ -70,11 +75,37 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsUserDefinedTypeBrowse: Bool = false
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
-        var supportsCloudflareTunnel: Bool = true
+        var tlsImpliedPorts: [Int] = []
+        var verifiesServerWithSystemTrust: Bool = false
+        var supportsPerConnectionCertificatePaths: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
+        /// Whether two pooled drivers for the same connection sit on one physical session. Snowflake
+        /// keys its session on the account and role and deliberately not on the database, so every
+        /// pooled scope shares one mutable `currentDatabase`: a statement that selects a database on
+        /// behalf of one entry selects it for all of them.
+        var pooledDriversShareOneSession: Bool = false
         var authenticationIsDatabaseScoped: Bool = false
+        /// Whether a connection that names no database has nothing to browse until one is chosen. A
+        /// MySQL session opened without one has no current database: `SHOW TABLES` there is
+        /// `ERROR 1046 No database selected`. An engine whose session falls back to a default
+        /// database, such as ClickHouse's `default`, leaves this false.
+        var browsingRequiresSelectedDatabase: Bool = false
         var pagination: PaginationCapability = .offset
+        /// Whether an exact count reads the whole table with no estimate to stand in for it, and only the driver
+        /// knows how to count it. DynamoDB bills a `Scan` of every item and has no `COUNT(*)`; Cassandra reads
+        /// every partition, because `LIMIT` does not bound `COUNT(*)`, and a filtered count needs CQL the host
+        /// cannot write. Such an engine is counted only when the user asks, and only by its driver.
+        var exactRowCountIsFullScan: Bool = false
+        /// Whether a table can be ordered by any of its columns. CQL orders rows only by clustering columns inside
+        /// one partition, so a Cassandra table offers no column sort and a query result sorts the rows it holds.
+        var supportsColumnSort: Bool = true
+        /// Whether filters can ask for rows matching any one of several conditions. CQL has no `OR`.
+        var supportsMatchAnyFilters: Bool = true
+        /// Whether a table's columns are a sample of its rows rather than a declared schema. A
+        /// MongoDB collection lists the fields found in its first documents, so a field missing from
+        /// one side's list says nothing about whether that side holds it.
+        var columnsAreSampled: Bool = false
         var isEngineReadOnly: Bool = false
 
         /// Which connection field carries the path of the local database file this driver opens,
@@ -82,7 +113,18 @@ struct PluginMetadataSnapshot: Sendable {
         /// network, which is what makes it the test for "can this connection name a remote file".
         var localFilePathField: LocalFilePathField?
 
+        /// The extensions a new database file can be named with, the first one preferred. Empty
+        /// when the driver refuses a path with nothing at it, as Beancount does, so the form offers
+        /// no way to name one. DuckDB lists only its own format: a missing Parquet or CSV path is
+        /// refused rather than created.
+        var newDatabaseFileExtensions: [String] = []
+
         var supportsSOCKSProxy: Bool { supportsSSH }
+
+        /// `cloudflared access tcp` forwards a loopback port just as an SSH tunnel does. A stored flag
+        /// drifted: it defaulted to true in the built-in snapshots, so a registry type the plugin
+        /// declares without SSH offered Cloudflare Tunnel until that plugin was installed.
+        var supportsCloudflareTunnel: Bool { supportsSSH }
 
         /// A tunnel command forwards a loopback port to the server the connection names, so it
         /// applies wherever an SSH tunnel would. Computed for the same reason `supportsSOCKSProxy`
@@ -95,6 +137,11 @@ struct PluginMetadataSnapshot: Sendable {
         /// still be excluded: a ledger is a graph of files reached through `include`, so one file
         /// out of it either fails to load or presents incomplete accounts, which is worse.
         var supportsRemoteDatabaseFile: Bool = false
+
+        /// Whether this type can run its statements on an SSH server against a live database file,
+        /// rather than only fetching a read-only copy. True for SQLite alone today, because the
+        /// remote agent opens the file with the server's `libsqlite3`.
+        var supportsRemoteDatabaseSession: Bool = false
 
         var supportsPrincipalConnectionLimit: Bool = true
 
@@ -118,8 +165,7 @@ struct PluginMetadataSnapshot: Sendable {
             supportsDropIndex: true,
             supportsModifyPrimaryKey: true,
             defaultSSLMode: .disabled,
-            supportsOpportunisticTLS: true,
-            supportsCloudflareTunnel: true
+            supportsOpportunisticTLS: true
         )
     }
 
@@ -141,6 +187,18 @@ struct PluginMetadataSnapshot: Sendable {
         let structureColumnFields: [StructureColumnField]
         let implicitSchemaName: String?
         let rowMatchExcludedTypePrefixes: [String]
+        /// Column types whose keyless row match has to compare the server's own text rendering
+        /// rather than the value itself. A grid reads every cell back as text, and on these types
+        /// that text does not compare equal to what it was read from: measured on MySQL 8.4.11 and
+        /// OceanBase 4.4.2.1, a `FLOAT` holding 1.1 reads back `1.1` and `WHERE f = '1.1'` matches
+        /// no row, because the server widens the stored single to a different double than it parses
+        /// the literal into. `JSON` never compares equal to a string at all. Listing a type here
+        /// wraps only the keyless comparison, and only for the types measured to need it: `CONCAT`
+        /// over a `BIT` column returns its raw bytes and breaks a match that works today.
+        let rowMatchTextTypePrefixes: [String]
+        /// Teradata and Snowflake compare database names without regard to case, so `dbc` is the
+        /// system database `DBC`. Every other engine keeps case: MySQL can hold a user database `MySQL`.
+        let systemDatabaseNamesIgnoreCase: Bool
 
         init(
             defaultSchemaName: String,
@@ -157,7 +215,9 @@ struct PluginMetadataSnapshot: Sendable {
             databaseGroupingStrategy: GroupingStrategy,
             structureColumnFields: [StructureColumnField],
             implicitSchemaName: String? = nil,
-            rowMatchExcludedTypePrefixes: [String] = []
+            rowMatchExcludedTypePrefixes: [String] = [],
+            rowMatchTextTypePrefixes: [String] = [],
+            systemDatabaseNamesIgnoreCase: Bool = false
         ) {
             self.defaultSchemaName = defaultSchemaName
             self.defaultGroupName = defaultGroupName
@@ -174,6 +234,8 @@ struct PluginMetadataSnapshot: Sendable {
             self.structureColumnFields = structureColumnFields
             self.implicitSchemaName = implicitSchemaName
             self.rowMatchExcludedTypePrefixes = rowMatchExcludedTypePrefixes
+            self.rowMatchTextTypePrefixes = rowMatchTextTypePrefixes
+            self.systemDatabaseNamesIgnoreCase = systemDatabaseNamesIgnoreCase
         }
 
         static let defaults = SchemaInfo(
@@ -222,6 +284,8 @@ struct PluginMetadataSnapshot: Sendable {
         /// store may have no container at all.
         let hidesBuiltInDatabase: Bool
         let defaultUnixSocketPath: String?
+        // Non-nil means the form offers Connect Using > Socket.
+        let defaultLocalSocketPath: String?
         let defaultHost: String?
 
         init(
@@ -231,6 +295,7 @@ struct PluginMetadataSnapshot: Sendable {
             hidesBuiltInPassword: Bool = false,
             hidesBuiltInDatabase: Bool = false,
             defaultUnixSocketPath: String? = nil,
+            defaultLocalSocketPath: String? = nil,
             defaultHost: String? = nil
         ) {
             self.additionalConnectionFields = additionalConnectionFields
@@ -239,6 +304,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.hidesBuiltInPassword = hidesBuiltInPassword
             self.hidesBuiltInDatabase = hidesBuiltInDatabase
             self.defaultUnixSocketPath = defaultUnixSocketPath
+            self.defaultLocalSocketPath = defaultLocalSocketPath
             self.defaultHost = defaultHost
         }
 
@@ -276,6 +342,44 @@ struct PluginMetadataSnapshot: Sendable {
             supportsDatabaseSwitching: supportsDatabaseSwitching,
             structureEditing: structureEditing,
             capabilities: capabilities, schema: schema, editor: editor, connection: connection
+        )
+    }
+
+    func withSystemNames(databases: [String], schemas: [String]) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            structureEditing: structureEditing,
+            capabilities: capabilities,
+            schema: SchemaInfo(
+                defaultSchemaName: schema.defaultSchemaName,
+                defaultGroupName: schema.defaultGroupName,
+                tableEntityName: schema.tableEntityName,
+                containerEntityName: schema.containerEntityName,
+                schemaEntityName: schema.schemaEntityName,
+                defaultPrimaryKeyColumn: schema.defaultPrimaryKeyColumn,
+                immutableColumns: schema.immutableColumns,
+                systemDatabaseNames: databases,
+                systemSchemaNames: schemas,
+                fileExtensions: schema.fileExtensions,
+                fileSignatures: schema.fileSignatures,
+                databaseGroupingStrategy: schema.databaseGroupingStrategy,
+                structureColumnFields: schema.structureColumnFields,
+                implicitSchemaName: schema.implicitSchemaName,
+                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
+                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes,
+                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase
+            ),
+            editor: editor,
+            connection: connection
         )
     }
 
@@ -342,7 +446,9 @@ struct PluginMetadataSnapshot: Sendable {
                 databaseGroupingStrategy: source.schema.databaseGroupingStrategy,
                 structureColumnFields: schema.structureColumnFields,
                 implicitSchemaName: source.schema.implicitSchemaName,
-                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes
+                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
+                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes,
+                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase
             ),
             editor: editor, connection: connection
         )
@@ -383,6 +489,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         reverseTypeIndex["MariaDB"] = "MySQL"
         reverseTypeIndex["TiDB"] = "MySQL"
         reverseTypeIndex["Databend"] = "MySQL"
+        reverseTypeIndex["OceanBase"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
         reverseTypeIndex["CockroachDB"] = "PostgreSQL"
         reverseTypeIndex["PGlite"] = "PostgreSQL"
@@ -432,6 +539,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         if let registryDefault = defaultSnapshots[typeId] {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
             Self.adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
+            Self.adoptCuratedSystemNames(&resolved, registryDefault: registryDefault)
+            Self.adoptCuratedExplainVariants(&resolved, registryDefault: registryDefault)
             if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
                 Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
                     "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
@@ -562,6 +671,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let parameterStyle = driverType.parameterStyle
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
+        let additionalConnectionFields = driverType.additionalConnectionFields.filter {
+            // Kafka releases before the shared timeout setting exposed a second control under
+            // this id. An installed old bundle still registers its metadata over the curated
+            // snapshot, so retire the field here too while its saved value migrates in the model.
+            driverType.databaseTypeId != "Kafka" || $0.id != "kafkaConnectTimeout"
+        }
 
         // A capability with no DriverPlugin static is curated per type, so it has to be carried
         // over from the built-in snapshot or plugin registration silently resets it to the
@@ -607,7 +722,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRenameView: driverType.supportsRenameView,
                 supportsRenameDatabase: driverType.supportsRenameDatabase,
                 supportsRenameSchema: driverType.supportsRenameSchema,
+                supportsDocumentEditing: driverType.supportsDocumentEditing,
+                supportsFieldRemoval: driverType.supportsFieldRemoval,
                 supportsDropSchema: driverType.supportsDropSchema,
+                supportsCreateSchema: driverType.supportsCreateSchema,
+                supportsSchemaOwner: driverType.supportsSchemaOwner,
+                supportsSchemaPrivileges: driverType.supportsSchemaPrivileges,
                 supportsAddColumn: driverType.supportsAddColumn,
                 supportsModifyColumn: driverType.supportsModifyColumn,
                 supportsDropColumn: driverType.supportsDropColumn,
@@ -625,16 +745,31 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsUserDefinedTypeBrowse: driverType.supportsUserDefinedTypeBrowse,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
-                supportsCloudflareTunnel: driverType.supportsSSH,
+                tlsImpliedPorts: existingSnapshot?.capabilities.tlsImpliedPorts ?? [],
+                verifiesServerWithSystemTrust: existingSnapshot?.capabilities
+                    .verifiesServerWithSystemTrust ?? false,
+                supportsPerConnectionCertificatePaths: existingSnapshot?.capabilities
+                    .supportsPerConnectionCertificatePaths ?? true,
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
                 supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
+                pooledDriversShareOneSession: existingSnapshot?.capabilities
+                    .pooledDriversShareOneSession ?? false,
                 authenticationIsDatabaseScoped: existingSnapshot?.capabilities
                     .authenticationIsDatabaseScoped ?? false,
+                browsingRequiresSelectedDatabase: existingSnapshot?.capabilities
+                    .browsingRequiresSelectedDatabase ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,
+                exactRowCountIsFullScan: existingSnapshot?.capabilities.exactRowCountIsFullScan ?? false,
+                supportsColumnSort: existingSnapshot?.capabilities.supportsColumnSort ?? true,
+                supportsMatchAnyFilters: existingSnapshot?.capabilities.supportsMatchAnyFilters ?? true,
+                columnsAreSampled: existingSnapshot?.capabilities.columnsAreSampled ?? false,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
+                newDatabaseFileExtensions: existingSnapshot?.capabilities.newDatabaseFileExtensions ?? [],
                 supportsRemoteDatabaseFile: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseFile ?? false,
+                supportsRemoteDatabaseSession: existingSnapshot?.capabilities
+                    .supportsRemoteDatabaseSession ?? false,
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
                     .supportsPrincipalConnectionLimit ?? true
             ),
@@ -653,7 +788,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 databaseGroupingStrategy: driverType.databaseGroupingStrategy,
                 structureColumnFields: driverType.structureColumnFields,
                 implicitSchemaName: existingSnapshot?.schema.implicitSchemaName,
-                rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? []
+                rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? [],
+                rowMatchTextTypePrefixes: existingSnapshot?.schema.rowMatchTextTypePrefixes ?? [],
+                systemDatabaseNamesIgnoreCase: existingSnapshot?.schema.systemDatabaseNamesIgnoreCase ?? false
             ),
             editor: PluginMetadataSnapshot.EditorConfig(
                 sqlDialect: driverType.sqlDialect,
@@ -661,7 +798,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 columnTypesByCategory: driverType.columnTypesByCategory
             ),
             connection: PluginMetadataSnapshot.ConnectionConfig(
-                additionalConnectionFields: driverType.additionalConnectionFields,
+                additionalConnectionFields: additionalConnectionFields,
                 category: existingSnapshot?.connection.category
                     ?? Self.fallbackCategory(forTypeId: driverType.databaseTypeId),
                 tagline: existingSnapshot?.connection.tagline
@@ -669,6 +806,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false,
                 hidesBuiltInDatabase: existingSnapshot?.connection.hidesBuiltInDatabase ?? false,
                 defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath,
+                defaultLocalSocketPath: existingSnapshot?.connection.defaultLocalSocketPath,
                 defaultHost: existingSnapshot?.connection.defaultHost
             )
         )

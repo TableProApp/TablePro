@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator lazyLoadCurrentTabIfNeeded")
 @MainActor
 struct MainContentCoordinatorLazyLoadTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
@@ -122,6 +121,42 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 5)
     }
 
+    @Test("A tab whose table changed after its rows were fetched asks to load again")
+    func loadsAStaleTabWithRows() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        seedRows(coordinator, for: tabId, rowCount: 5)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("expected tab to exist")
+            return
+        }
+        tabManager.tabs[idx].execution.lastExecutedAt = Date()
+        coordinator.tabSessionRegistry.recordChange(TableFreshness.Change(extent: .rows, at: .now), for: tabId)
+
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 5)
+    }
+
+    @Test("A stale tab holding edits is not reloaded behind the user")
+    func skipsAStaleTabWithPendingEdits() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        seedRows(coordinator, for: tabId, rowCount: 1)
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("expected tab to exist")
+            return
+        }
+        tabManager.tabs[idx].execution.lastExecutedAt = Date()
+        tabManager.tabs[idx].pendingChanges.deletedRowIDs = [.existing(0)]
+        coordinator.tabSessionRegistry.recordChange(TableFreshness.Change(extent: .rows, at: .now), for: tabId)
+
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.pendingLoadTrigger == nil)
+    }
+
     @Test("Returns early when tab has pending edits in the change manager")
     func skipsWhenPendingChangesPresent() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -153,7 +188,7 @@ struct MainContentCoordinatorLazyLoadTests {
     }
 
     /// The task slot stops answering once the load hands off to an execution: `executeQueryInternal`
-    /// supersedes, and `supersedeExecution` nils the slot held by the task it is running inside.
+    /// supersedes, and `supersedeExecution` clears the slot held by the task it is running inside.
     /// Every later trigger for the same navigation then found an empty slot and started a second
     /// identical query, and the pair collided (#2342). The registry owns the other half.
     @Test("Returns early when the tab already has an execution in flight")
@@ -163,7 +198,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let claim = coordinator.tabExecution.claim(tabId)
         let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
         defer { inFlight.cancel() }
-        coordinator.currentQueryTask = inFlight
+        coordinator.installQueryTask(inFlight, owner: .claim(claim), lease: DriverLeaseOwner())
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
@@ -178,10 +213,12 @@ struct MainContentCoordinatorLazyLoadTests {
     func skipsWhenUnclaimedWorkIsRunning() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
-        _ = coordinator.tabExecution.beginUnclaimedWork(for: tabId)
+        let token = coordinator.tabExecution.beginUnclaimedWork(for: tabId)
         let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
         defer { inFlight.cancel() }
-        coordinator.currentQueryTask = inFlight
+        coordinator.installQueryTask(
+            inFlight, owner: .unclaimedWork(tabId: tabId, token: token), lease: DriverLeaseOwner()
+        )
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
@@ -254,6 +291,26 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.pendingLoadTrigger == .restore)
     }
 
+    /// A link or an agent can select another tab before the restored window comes forward. The
+    /// deferral used to outlive that, and refused every later load of the deferred tab, including
+    /// a table opened into it from the sidebar.
+    @Test("Becoming key ends a deferral even when another tab is selected")
+    func becomingKeyEndsADeferralForAnUnselectedTab() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let deferredId = addTableTab(to: tabManager)
+        _ = addTableTab(to: tabManager, tableName: "orders", query: "SELECT * FROM orders")
+        coordinator.deferredRestoreLoadTabId = deferredId
+
+        coordinator.handleWindowDidBecomeKey()
+        #expect(coordinator.deferredRestoreLoadTabId == nil)
+
+        tabManager.selectedTabId = deferredId
+        coordinator.pendingLoadTrigger = nil
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+    }
+
     // MARK: - Idempotency
 
     @Test("Idempotent: repeated calls with the same loaded state are no-ops")
@@ -283,7 +340,7 @@ struct MainContentCoordinatorLazyLoadTests {
             return
         }
         _ = coordinator.tabExecution.claim(tabId)
-        coordinator.currentQueryTask = nil
+        #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
@@ -331,7 +388,7 @@ struct MainContentCoordinatorLazyLoadTests {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
         let claim = coordinator.tabExecution.claim(tabId)
-        #expect(coordinator.currentQueryTask == nil)
+        #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
         #expect(coordinator.tabExecution.isAnyExecuting)
 
         coordinator.lazyLoadCurrentTabIfNeeded()

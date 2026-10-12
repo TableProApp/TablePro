@@ -11,6 +11,9 @@ extension TableViewCoordinator {
     /// `markColumnWidthUserSized` decide whether the new width is the user's to keep, which is a
     /// question about persistence; the body has to be redrawn either way, and the second guard is
     /// false for the row-number column and for every unused pool slot.
+    ///
+    /// A divider drag posts this once, at mouse-up, so it is where the width is kept; the steps
+    /// before it repaint through `SortableHeaderView.viewWillDraw()`.
     func tableViewColumnDidResize(_ notification: Notification) {
         columnGeometryDidChange()
         guard !isRebuildingColumns else { return }
@@ -41,6 +44,17 @@ extension TableViewCoordinator {
             guard self?.columnLayoutPersistenceGeneration == generation else { return }
             self?.flushPendingColumnLayoutPersistence()
         }
+    }
+
+    /// Throws the pending layout away instead of writing it, for a table that is gone.
+    ///
+    /// A drop clears the table's saved layout and then closes its tab, and the teardown runs on a
+    /// later run-loop turn, so a flush there would write the layout back over the clear and mark it
+    /// dirty for sync again, waiting for a table recreated with the same name.
+    func discardPendingColumnLayoutPersistence() {
+        layoutPersistTask?.cancel()
+        layoutPersistTask = nil
+        pendingColumnLayoutPersistence = nil
     }
 
     func flushPendingColumnLayoutPersistence() {

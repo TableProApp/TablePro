@@ -7,8 +7,8 @@ import Foundation
 
 /// The first group doubles as each window's frame autosave name, so changing one of those values
 /// throws away the position the user arranged. The second group is matched by prefix at runtime by
-/// `ConnectionWindowIdentity` and `WindowManager`, so `documentInspector` has to stay under the
-/// `connection` prefix or an open inspector stops counting as a primary window.
+/// `ConnectionWindowIdentity` and `WindowManager`, so `dataFile` has to stay under the
+/// `connection` prefix or an open data file window stops counting as a primary window.
 internal enum WindowIdentifier {
     internal static let welcome = "welcome"
     internal static let connectionForm = "connection-form"
@@ -19,5 +19,5 @@ internal enum WindowIdentifier {
     internal static let compareSync = "compare-sync"
 
     internal static let connection = "main"
-    internal static let documentInspector = "main-inspector"
+    internal static let dataFile = "main-data-file"
 }

@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCP CORS Headers")
 struct MCPCorsHeadersTests {
     private func value(_ headers: [(String, String)], _ name: String) -> String? {
         headers.first { $0.0.lowercased() == name.lowercased() }?.1

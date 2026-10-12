@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("ToolsCallHandler")
 struct ToolsCallHandlerTests {
     @Test("The handler answers tools/call and requires the tools read scope")
     func methodAndScopes() {

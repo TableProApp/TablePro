@@ -3,6 +3,7 @@ import TableProModels
 
 nonisolated enum AppPreferences {
     static let cloudSyncEnabledKey = "com.TablePro.settings.cloudSyncEnabled"
+    static let usageDataKey = "com.TablePro.settings.shareAnalytics"
     static let syncPasswordsKey = "com.TablePro.settings.syncPasswords"
     static let defaultPageSizeKey = "com.TablePro.settings.defaultPageSize"
     static let defaultSafeModeKey = "com.TablePro.settings.defaultSafeMode"
@@ -11,7 +12,11 @@ nonisolated enum AppPreferences {
     static let pageSizeOptions: [Int] = [50, 100, 200, 500]
 
     static var isCloudSyncEnabled: Bool {
-        UserDefaults.standard.object(forKey: cloudSyncEnabledKey) as? Bool ?? true
+        UserDefaults.standard.bool(forKey: cloudSyncEnabledKey)
+    }
+
+    static var isUsageDataEnabled: Bool {
+        UserDefaults.standard.bool(forKey: usageDataKey)
     }
 
     static var syncsPasswords: Bool {

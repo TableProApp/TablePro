@@ -52,6 +52,7 @@ extension ConnectionFormCoordinator {
     /// stored in `ssh.state`, so only one of them can be offered: the getter decides which by
     /// capability, and offering both would let the picker select `.ssh` and read back `.remoteFile`.
     var availableTransports: [ConnectionTunnelKind?] {
+        guard !network.usesLocalSocket else { return [nil] }
         var transports: [ConnectionTunnelKind?] = [nil]
         if supportsRemoteDatabaseFile {
             transports.append(.remoteFile)
@@ -73,12 +74,38 @@ extension ConnectionFormCoordinator {
         return transports
     }
 
+    // No tunnel reaches a socket file on this Mac, so Socket clears the transport in the same edit.
+    func selectEndpoint(_ endpoint: NetworkPaneViewModel.Endpoint) {
+        guard endpoint != network.endpoint else { return }
+        network.endpoint = endpoint
+        if network.usesLocalSocket {
+            transport = nil
+        }
+        testSucceeded = false
+    }
+
     var supportsRemoteDatabaseFile: Bool {
         services.pluginManager.supportsRemoteDatabaseFile(for: network.type)
     }
 
+    /// Whether the current type can run its statements on the server, which is what decides if the
+    /// Open pop-up appears beside the remote path. A type that only fetches a copy never shows it,
+    /// and its access stays the copy.
+    var supportsRemoteDatabaseSession: Bool {
+        services.pluginManager.supportsRemoteDatabaseSession(for: network.type)
+    }
+
     var supportsSSL: Bool {
         services.pluginManager.supportsSSL(for: network.type)
+    }
+
+    internal var tunnelCommandPreview: String? {
+        let endpoint = buildEdits().applied(to: DatabaseConnection(name: "")).tunnelForwardEndpoint
+        return TunnelCommandBuilder.previewCommand(
+            for: tunnelCommand.state.buildConfig(),
+            remoteHost: endpoint.host,
+            remotePort: endpoint.port
+        )
     }
 
     /// Collapses whatever the stored connection carries onto a single transport.

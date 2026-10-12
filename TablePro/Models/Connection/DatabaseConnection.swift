@@ -147,6 +147,10 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 
 /// Model representing a database connection
 struct DatabaseConnection: Identifiable, Hashable {
+    static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
+    static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
+    static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
+
     let id: UUID
     var name: String
     var host: String
@@ -157,10 +161,13 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sshConfig: SSHConfiguration
     var sslConfig: SSLConfiguration
     var color: ConnectionColor
+    /// An SF Symbol the user picked to draw instead of the engine icon. Nil draws the engine icon.
+    var iconName: String?
     var tagIds: [UUID]
     var groupId: UUID?
     var sshProfileId: UUID?
     var sshTunnelMode: SSHTunnelMode
+    var credentialMode: CredentialMode = .inline
     var cloudflareTunnelMode: CloudflareTunnelMode = .disabled
     var cloudSQLProxyMode: CloudSQLProxyMode = .disabled
     var socksProxyMode: SOCKSProxyMode = .disabled
@@ -233,11 +240,6 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["promptForPassword"] = newValue ? "true" : "" }
     }
 
-    var usesAWSIAM: Bool {
-        let value = additionalFields["awsAuth"] ?? "off"
-        return value != "off" && !value.isEmpty
-    }
-
     var resolvesAWSIAMInDriver: Bool {
         type == .cassandra || type == .scylladb
     }
@@ -245,6 +247,42 @@ struct DatabaseConnection: Identifiable, Hashable {
     var preConnectScript: String? {
         get { additionalFields["preConnectScript"]?.nilIfEmpty }
         set { additionalFields["preConnectScript"] = newValue ?? "" }
+    }
+
+    var connectTimeoutSeconds: Int? {
+        get {
+            if let common = additionalFields[Self.connectTimeoutSecondsKey] {
+                return Int(common)
+            }
+            guard type == .kafka else { return nil }
+            return additionalFields["kafkaConnectTimeout"].flatMap(Int.init)
+        }
+        set {
+            if let newValue {
+                additionalFields[Self.connectTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.connectTimeoutSecondsKey)
+            }
+            if type == .kafka {
+                additionalFields.removeValue(forKey: "kafkaConnectTimeout")
+            }
+        }
+    }
+
+    var queryTimeoutSeconds: Int? {
+        get {
+            guard let value = additionalFields[Self.queryTimeoutSecondsKey].flatMap(Int.init),
+                  Self.queryTimeoutSecondsRange.contains(value)
+            else { return nil }
+            return value
+        }
+        set {
+            if let newValue, Self.queryTimeoutSecondsRange.contains(newValue) {
+                additionalFields[Self.queryTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.queryTimeoutSecondsKey)
+            }
+        }
     }
 
     var sshForwardUnixSocketPath: String? {
@@ -263,10 +301,12 @@ struct DatabaseConnection: Identifiable, Hashable {
         sshConfig: SSHConfiguration = SSHConfiguration(),
         sslConfig: SSLConfiguration = SSLConfiguration(),
         color: ConnectionColor = .none,
+        iconName: String? = nil,
         tagIds: [UUID] = [],
         groupId: UUID? = nil,
         sshProfileId: UUID? = nil,
         sshTunnelMode: SSHTunnelMode = .disabled,
+        credentialMode: CredentialMode = .inline,
         cloudflareTunnelMode: CloudflareTunnelMode = .disabled,
         cloudSQLProxyMode: CloudSQLProxyMode = .disabled,
         socksProxyMode: SOCKSProxyMode = .disabled,
@@ -303,9 +343,11 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.sshConfig = sshConfig
         self.sslConfig = sslConfig
         self.color = color
+        self.iconName = iconName
         self.tagIds = tagIds
         self.groupId = groupId
         self.sshProfileId = sshProfileId
+        self.credentialMode = credentialMode
         self.preferredSafeModeLevel = safeModeLevel
 
         // Auto-derive sshTunnelMode from legacy fields if not explicitly set
@@ -377,15 +419,25 @@ extension DatabaseConnection {
     static let preview = DatabaseConnection(name: "Preview Connection")
 }
 
-// MARK: - Display Helpers
+// MARK: - Device-Local State
 
-extension DatabaseConnection {
-    var hostDisplayString: String {
-        if let mongoHosts = additionalFields["mongoHosts"], mongoHosts.contains(",") {
-            let count = mongoHosts.split(separator: ",").count
-            return String(format: String(localized: "%@ (+%d more)"), "\(host):\(port)", count - 1)
-        }
-        return "\(host):\(port)"
+internal extension DatabaseConnection {
+    var participatesInSync: Bool {
+        !localOnly && !isSample
+    }
+
+    func adoptingDeviceLocalState(from local: DatabaseConnection) -> DatabaseConnection {
+        var adopted = self
+        adopted.localOnly = local.localOnly
+        adopted.isSample = local.isSample
+        adopted.passwordSource = local.passwordSource
+        adopted.credentialMode = local.credentialMode
+        adopted.externalAccess = local.externalAccess
+        adopted.cloudflareTunnelMode = local.cloudflareTunnelMode
+        adopted.cloudSQLProxyMode = local.cloudSQLProxyMode
+        adopted.socksProxyMode = local.socksProxyMode
+        adopted.tunnelCommandMode = local.tunnelCommandMode
+        return adopted
     }
 }
 
@@ -394,8 +446,9 @@ extension DatabaseConnection {
 extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
-        case sshConfig, sslConfig, color, tagId, tagIds, groupId, sshProfileId
+        case sshConfig, sslConfig, color, iconName, tagId, tagIds, groupId, sshProfileId
         case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, tunnelCommandMode
+        case credentialMode
         case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
@@ -413,6 +466,7 @@ extension DatabaseConnection: Codable {
         sshConfig = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfig) ?? SSHConfiguration()
         sslConfig = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfig) ?? SSLConfiguration()
         color = try container.decodeIfPresent(ConnectionColor.self, forKey: .color) ?? .none
+        iconName = try container.decodeIfPresent(String.self, forKey: .iconName)
         let decodedTagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds) ?? []
         if decodedTagIds.isEmpty {
             tagIds = try container.decodeIfPresent(UUID.self, forKey: .tagId).map { [$0] } ?? []
@@ -421,6 +475,7 @@ extension DatabaseConnection: Codable {
         }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
+        credentialMode = try container.decodeIfPresent(CredentialMode.self, forKey: .credentialMode) ?? .inline
         preferredSafeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
         aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
         aiRules = try container.decodeIfPresent(String.self, forKey: .aiRules)
@@ -439,7 +494,6 @@ extension DatabaseConnection: Codable {
         socksProxyMode = try container.decodeIfPresent(SOCKSProxyMode.self, forKey: .socksProxyMode) ?? .disabled
         tunnelCommandMode = try container.decodeIfPresent(TunnelCommandMode.self, forKey: .tunnelCommandMode) ?? .disabled
 
-        // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
             sshTunnelMode = tunnelMode
         } else {
@@ -467,12 +521,14 @@ extension DatabaseConnection: Codable {
         try container.encode(sshConfig, forKey: .sshConfig)
         try container.encode(sslConfig, forKey: .sslConfig)
         try container.encode(color, forKey: .color)
+        try container.encodeIfPresent(iconName, forKey: .iconName)
         if !tagIds.isEmpty {
             try container.encode(tagIds, forKey: .tagIds)
             try container.encode(tagIds[0], forKey: .tagId)
         }
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
+        try container.encode(credentialMode, forKey: .credentialMode)
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
         if case .inline = cloudflareTunnelMode {
             try container.encode(cloudflareTunnelMode, forKey: .cloudflareTunnelMode)

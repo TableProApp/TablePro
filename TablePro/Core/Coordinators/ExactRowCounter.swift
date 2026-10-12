@@ -11,9 +11,35 @@ internal enum ExactRowCounter {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExactRowCounter")
 
-    internal static func route(countSQL: String?, driverOwnsQueryBuilding: Bool) -> Route {
+    /// A driver that writes its engine's queries counts them too, and when that count is a full scan its failure is
+    /// the answer, never a cue to run the host's `COUNT(*)` as a second scan. A driver that leaves the queries to the
+    /// app, such as an older plugin, has no count of its own, so the host's is the only one there is.
+    internal static func route(
+        countSQL: String?,
+        driverOwnsQueryBuilding: Bool,
+        exactRowCountIsFullScan: Bool
+    ) -> Route {
         guard let countSQL else { return .driverCount }
-        return driverOwnsQueryBuilding ? .driverCountThenHostSQL(countSQL) : .hostCountSQL(countSQL)
+        guard driverOwnsQueryBuilding else { return .hostCountSQL(countSQL) }
+        return exactRowCountIsFullScan ? .driverCount : .driverCountThenHostSQL(countSQL)
+    }
+
+    /// The exact number of keys a browse search lists, counted only when the table it narrows is
+    /// smaller than `tableSizeLimit`.
+    ///
+    /// Nothing short of walking every key the search could match is exact, and that walk visits the
+    /// whole table, so the table's own size bounds it the way the estimate bounds an automatic
+    /// `COUNT(*)`. An unknown or larger table answers nil and the total stays unknown, with
+    /// `Count Exactly` offered for it.
+    internal static func countBrowseSearch(
+        on driver: DatabaseDriver,
+        table: String,
+        search: BrowseSearchState,
+        tableSizeLimit: Int
+    ) async throws -> Int? {
+        guard let tableSize = try await driver.fetchApproximateRowCount(table: table),
+              tableSize < tableSizeLimit else { return nil }
+        return try await driver.fetchExactRowCount(table: table, browseFilters: search.pluginQueryFilters)
     }
 
     internal static func count(
@@ -23,8 +49,12 @@ internal enum ExactRowCounter {
         logicMode: FilterLogicMode,
         countSQL: String?
     ) async throws -> Int? {
-        let ownsQueryBuilding = driver.queryBuildingPluginDriver != nil
-        switch route(countSQL: countSQL, driverOwnsQueryBuilding: ownsQueryBuilding) {
+        let chosen = route(
+            countSQL: countSQL,
+            driverOwnsQueryBuilding: driver.queryBuildingPluginDriver != nil,
+            exactRowCountIsFullScan: driver.connection.type.exactRowCountIsFullScan
+        )
+        switch chosen {
         case .driverCount:
             return try await driver.fetchExactRowCount(table: table, filters: filters, logicMode: logicMode)
         case .hostCountSQL(let sql):

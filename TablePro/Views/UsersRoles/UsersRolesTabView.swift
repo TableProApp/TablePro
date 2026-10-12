@@ -3,7 +3,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct UsersRolesTabView: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     let coordinator: MainContentCoordinator?
     let tabID: UUID
 
@@ -47,7 +47,7 @@ struct UsersRolesTabView: View {
         }
         .onAppear { install() }
         .onDisappear { teardown() }
-        .onChange(of: viewModel.changeCount) { _, _ in
+        .onChange(of: viewModel.changeCount) { _ in
             publishChangeState()
         }
     }
@@ -75,6 +75,7 @@ struct UsersRolesTabView: View {
                 isPresented: reviewBinding,
                 statements: viewModel.previewSQL,
                 databaseType: viewModel.databaseType,
+                subtitle: viewModel.openInEditorPasswordNotice,
                 warning: viewModel.lockoutWarning,
                 failure: viewModel.applyFailure,
                 primaryAction: SQLReviewSheet.PrimaryAction(
@@ -84,11 +85,7 @@ struct UsersRolesTabView: View {
                     await viewModel.executePendingChanges()
                 },
                 onOpenInEditor: {
-                    coordinator?.loadQueryIntoEditor(
-                        viewModel.previewSQL
-                            .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
-                            .joined(separator: "\n\n")
-                    )
+                    coordinator?.loadQueryIntoEditor(viewModel.editorScript.text)
                     viewModel.activeSheet = nil
                 }
             )

@@ -1,15 +1,20 @@
 import SwiftUI
 
 struct QueryInsightsView: View {
-    let viewModel: QueryInsightsViewModel
-    let coordinator: MainContentCoordinator
+    @ObservedObject var viewModel: QueryInsightsViewModel
+    @ObservedObject var coordinator: MainContentCoordinator
 
     /// `requiresPro` only disables the content and lays a scrim over it, so on its own it decides
     /// what the screen looks like and nothing about what the screen does. Activation is gated on
     /// the same answer, or an unlicensed Mac computes every aggregate, subscribes to history for
     /// the session, and leaves the numbers sitting in the view hierarchy for anything that reads it.
+    /// `isFeatureAvailable` reads `status` and `currentTier`, so the licence manager is
+    /// observed here rather than reached through `.shared`: a mid-session activation has to
+    /// repaint this screen.
+    @ObservedObject private var licenseManager = LicenseManager.shared
+
     private var isUnlocked: Bool {
-        LicenseManager.shared.isFeatureAvailable(.queryInsights)
+        licenseManager.isFeatureAvailable(.queryInsights)
     }
 
     var body: some View {
@@ -36,7 +41,7 @@ struct QueryInsightsView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if viewModel.isStoreUnavailable {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "History Unavailable"),
                 systemImage: "exclamationmark.triangle",
                 description: Text("The query history database could not be opened, so there is nothing to summarize.")
@@ -51,7 +56,7 @@ struct QueryInsightsView: View {
     @ViewBuilder
     private var emptyState: some View {
         if viewModel.hasNarrowingFilter {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label(String(localized: "No Queries Match"), systemImage: "line.3.horizontal.decrease.circle")
             } description: {
                 Text("No queries ran in this range, from the sources you selected.")
@@ -61,7 +66,7 @@ struct QueryInsightsView: View {
                 }
             }
         } else {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Queries Yet"),
                 systemImage: "chart.bar.xaxis",
                 description: Text("Run some queries and this tab will show which you run most, which run slowest, and which got slower.")
@@ -140,7 +145,7 @@ struct QueryInsightsView: View {
     }
 
     private var slowestRankingPicker: some View {
-        Picker(String(localized: "Rank By"), selection: Bindable(viewModel).slowestRanking) {
+        Picker(String(localized: "Rank By"), selection: $viewModel.slowestRanking) {
             ForEach(QueryInsightsSlowestRanking.allCases) { ranking in
                 Text(ranking.displayName).tag(ranking)
             }

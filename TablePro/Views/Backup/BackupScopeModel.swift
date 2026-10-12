@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 /// What the backup sheet is about to write, as the user has it set up.
 ///
@@ -12,8 +12,7 @@ import Observation
 /// dump carries views, routines and sequences that a list of tables does not, so a tree with every
 /// box ticked resolves to `.wholeDatabase` rather than to an enumeration of every table in it.
 @MainActor
-@Observable
-final class BackupScopeModel {
+final class BackupScopeModel: ObservableObject {
     enum ObjectLoad: Equatable {
         case notLoaded
         case loading
@@ -56,8 +55,8 @@ final class BackupScopeModel {
         }
     }
 
-    private(set) var rows: [DatabaseRow] = []
-    private(set) var isLoadingDatabases = true
+    @Published private(set) var rows: [DatabaseRow] = []
+    @Published private(set) var isLoadingDatabases = true
 
     let connection: DatabaseConnection
     let objectScope: NativeDumpObjectScope

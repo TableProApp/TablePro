@@ -6,6 +6,7 @@
 import SwiftUI
 
 internal struct MultiLineEditorView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
@@ -22,7 +23,7 @@ internal struct MultiLineEditorView: View {
             TextValueEditor(
                 text: context.value,
                 isEditable: !context.isReadOnly,
-                font: ThemeEngine.shared.valueFont,
+                font: themeEngine.valueFont,
                 movesFocusOnTab: true
             )
             .clipShape(RoundedRectangle(cornerRadius: 5))
@@ -54,6 +55,7 @@ internal struct MultiLineEditorView: View {
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Open in Window"))
+            .accessibilityLabel(String(localized: "Open in Window"))
             .padding(4)
         }
     }

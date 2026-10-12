@@ -9,28 +9,50 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// Provides cached database schema information for autocomplete
 actor SQLSchemaProvider {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLSchemaProvider")
 
-    /// How many tables' columns the cache holds, and therefore how large a schema is worth
-    /// preloading in one bulk fetch. The two are one number on purpose: fetching every column of a
-    /// schema and then keeping a fraction of them is the waste the eager load exists to avoid.
-    /// Columns are small next to row data, so this sits well above the point where a bulk fetch is
-    /// still one cheap query.
+    /// The cache's capacity in tables, and the largest schema one bulk column read fills: reading
+    /// every column and keeping a fraction is the waste the preload exists to avoid.
     static let maxCachedTables = 300
-    // MARK: - Properties
+
+    /// A column list belongs to a table, and a table is a schema and a name. Keyed by the bare name,
+    /// two schemas' `orders` shared one entry and each read whichever had been cached first.
+    private struct ColumnCacheKey: Hashable {
+        let schema: String?
+        let name: String
+    }
+
+    /// A total order over cache keys, so a walk of `columnCache` emits the same sequence every run.
+    /// Nil and empty schemas sort together and ahead of a named one.
+    private static func isOrderedBefore(_ lhs: ColumnCacheKey, _ rhs: ColumnCacheKey) -> Bool {
+        let leftSchema = lhs.schema ?? ""
+        let rightSchema = rhs.schema ?? ""
+        if leftSchema != rightSchema { return leftSchema < rightSchema }
+        return lhs.name < rhs.name
+    }
 
     private var tables: [TableInfo] = []
-    private var columnCache: [String: [ColumnInfo]] = [:]
-    private var columnAccessOrder: [String] = []
-    private var isLoading = false
-    private var lastLoadError: Error?
-    private var lastRetryAttempt: Date?
-    private let retryCooldown: TimeInterval = 30
+    private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:]
+    private var columnAccessOrder: [ColumnCacheKey] = []
+    private var columnTasks: [ColumnCacheKey: Task<[ColumnInfo]?, Never>] = [:]
     private var loadTask: Task<Void, Never>?
-    private var eagerColumnTask: Task<Void, Never>?
     private var eagerLoadSchema: String?
+
+    private enum ColumnPreload {
+        case idle
+        case awaitingTables(generation: Int)
+        case running(generation: Int, task: Task<Void, Never>)
+        case settled(generation: Int, outcome: Outcome)
+
+        enum Outcome { case loaded, skipped, failed }
+    }
+
+    /// Each state keeps the table-list generation it answered, so a later list reads it as stale.
+    private var columnPreload: ColumnPreload = .idle
+    private var tableListGeneration = 0
+    /// Until a query editor asks, a no-reference completion never starts a bulk read.
+    private var hasEditorDemand = false
 
     struct ColumnMetadataSource: Sendable {
         let fetchColumns: @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo]
@@ -53,6 +75,12 @@ actor SQLSchemaProvider {
 
     private var fieldPathCache: [String: [PluginFieldPath]] = [:]
     private var fieldPathTasks: [String: Task<[PluginFieldPath], Never>] = [:]
+
+    /// Another schema's tables, fetched when a statement names that schema and a dot. They are
+    /// held apart from `tables`, which the scope's owner writes and every unqualified reader
+    /// trusts, so completing `attendance.` cannot make `timesheet` an answer for a bare name.
+    private var onDemandSchemaTables: [String: [TableInfo]] = [:]
+    private var onDemandSchemaTableTasks: [String: Task<[TableInfo]?, Never>] = [:]
 
     private var knownSchemas: [String] = []
     private var knownDatabases: [String] = []
@@ -88,32 +116,26 @@ actor SQLSchemaProvider {
         self.cachedDriver = driver
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
-        isLoading = true
-        lastLoadError = nil
 
         let task = Task<Void, Never> {
             do {
                 let fetched = try await driver.fetchTables()
                 await self.setLoadedTables(fetched)
             } catch {
-                await self.setLoadError(error)
+                Self.logger.error(
+                    "[schema] loadSchema failed: \(error.publicLogShape, privacy: .public)"
+                )
             }
         }
         loadTask = task
         await task.value
         loadTask = nil
-        Self.logger.info("[schema] loadSchema done ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count) error=\(self.lastLoadError != nil)")
+        Self.logger.info("[schema] loadSchema done ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count)")
     }
 
     private func setLoadedTables(_ newTables: [TableInfo]) {
         tables = newTables
-        isLoading = false
-        startEagerColumnLoad()
-    }
-
-    private func setLoadError(_ error: Error) {
-        lastLoadError = error
-        isLoading = false
+        noteTableListWritten()
     }
 
     /// Get the current connection info
@@ -128,7 +150,7 @@ actor SQLSchemaProvider {
 
     /// Get columns for a specific table (with LRU caching)
     func getColumns(for tableName: String, schema: String? = nil) async -> [ColumnInfo] {
-        let key = [schema?.lowercased(), tableName.lowercased()].compactMap(\.self).joined(separator: ".")
+        let key = cacheKey(table: tableName, schema: schema)
 
         if let cached = columnCache[key] {
             columnAccessOrder.removeAll { $0 == key }
@@ -136,25 +158,35 @@ actor SQLSchemaProvider {
             return cached
         }
 
-        do {
-            let columns: [ColumnInfo]
-            if let metadataSource {
-                columns = try await metadataSource.fetchColumns(tableName, schema)
-            } else if let driver = cachedDriver {
-                columns = schema != nil
+        if let inFlight = columnTasks[key] { return await inFlight.value ?? [] }
+        let source = metadataSource
+        let driver = cachedDriver
+        guard source != nil || driver != nil else { return [] }
+
+        let task = Task<[ColumnInfo]?, Never> {
+            do {
+                if let source { return try await source.fetchColumns(tableName, schema) }
+                guard let driver else { return nil }
+                return schema != nil
                     ? try await driver.fetchColumns(table: tableName, schema: schema)
                     : try await driver.fetchColumns(table: tableName)
-            } else {
-                return []
+            } catch {
+                Self.logger.error(
+                    "Column fetch failed for autocomplete table=\(tableName) error=\(error.publicLogShape, privacy: .public)"
+                )
+                return nil
             }
-            columnCache[key] = columns
-            columnAccessOrder.append(key)
-            evictIfNeeded()
-            return columns
-        } catch {
-            Self.logger.debug("Column fetch failed for autocomplete: \(error.localizedDescription)")
-            return []
         }
+        columnTasks[key] = task
+        let fetched = await task.value
+        guard columnTasks[key] == task else { return fetched ?? [] }
+        columnTasks[key] = nil
+        guard let columns = fetched else { return [] }
+        if columnCache.updateValue(columns, forKey: key) == nil {
+            columnAccessOrder.append(key)
+        }
+        evictIfNeeded()
+        return columns
     }
 
     private func evictIfNeeded() {
@@ -164,27 +196,28 @@ actor SQLSchemaProvider {
         }
     }
 
-    func retryLoadSchemaIfNeeded() async {
-        guard lastLoadError != nil, tables.isEmpty, !isLoading else { return }
-        guard let driver = cachedDriver else { return }
-        if let last = lastRetryAttempt, Date().timeIntervalSince(last) < retryCooldown { return }
-        lastRetryAttempt = Date()
-        lastLoadError = nil
-        await loadSchema(using: driver, connection: connectionInfo)
+    /// A lookup that names no schema reads the schema an unqualified fetch targets, which is the one
+    /// the column preload fills, so `orders` and `public.orders` on PostgreSQL share one entry.
+    private func cacheKey(table: String, schema: String?) -> ColumnCacheKey {
+        ColumnCacheKey(schema: (schema ?? eagerLoadSchema)?.lowercased(), name: table.lowercased())
     }
 
-    /// Check if schema is loaded
-    func isSchemaLoaded() -> Bool {
-        !tables.isEmpty
+    /// A table outside the default schema keeps its schema, so two cached tables of one name never
+    /// offer the same `orders.id` for columns of two different tables.
+    private func fallbackTableLabel(for key: ColumnCacheKey, canonicalName: String) -> String {
+        guard let schema = key.schema, schema != getDefaultSchema()?.lowercased() else { return canonicalName }
+        return "\(schema).\(canonicalName)"
     }
 
-    /// Check if currently loading
-    func isCurrentlyLoading() -> Bool {
-        isLoading
+    /// The schema a table can be named in without its schema: the engine's implicit schema when it
+    /// has one, otherwise the schema the driver was on when this scope loaded.
+    func getDefaultSchema() -> String? {
+        connectionInfo?.type.implicitSchemaName ?? eagerLoadSchema
     }
 
     func updateTables(_ newTables: [TableInfo]) {
         tables = newTables
+        noteTableListWritten()
     }
 
     func resetForDatabase(
@@ -197,62 +230,82 @@ actor SQLSchemaProvider {
         self.tables = newTables
         self.columnCache.removeAll()
         self.columnAccessOrder.removeAll()
+        self.columnTasks.removeAll()
         self.fieldPathCache.removeAll()
         self.fieldPathTasks.removeAll()
+        self.onDemandSchemaTables.removeAll()
+        self.onDemandSchemaTableTasks.removeAll()
         self.cachedDriver = driver
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
-        self.isLoading = false
-        self.lastLoadError = nil
         if let connection { self.connectionInfo = connection }
-        startEagerColumnLoad()
+        noteTableListWritten()
     }
 
-    /// Empties the cache without refilling it. The refresh signal that reaches here also runs a
-    /// schema reload, and that ends in `resetForDatabase`, which starts the preload; restarting it
-    /// here as well sends a second whole-schema column query for every refresh.
+    /// Reads nothing. The next editor request or no-reference completion refills it.
     func clearColumnCache() {
-        eagerColumnTask?.cancel()
-        eagerColumnTask = nil
+        if case .running(_, let task) = columnPreload { task.cancel() }
+        columnPreload = .idle
         columnCache.removeAll()
         columnAccessOrder.removeAll()
+        columnTasks.removeAll()
         fieldPathCache.removeAll()
         fieldPathTasks.removeAll()
     }
 
-    // MARK: - Eager Column Loading
+    // MARK: - Column Preload
 
-    /// How many tables the bulk fetch will actually return.
-    ///
-    /// `tables` is the union of the current schema and every other schema the sidebar has expanded,
-    /// while `fetchAllColumns()` covers one schema. Counting the union turned the preload off for a
-    /// ten-table `public` as soon as eight other schemas were open. A table the list does not
-    /// attribute to any schema counts, which is what a flat engine reports for all of them; zero
-    /// means the list describes other schemas only, and a fetch sized by it would be a guess.
-    private var eagerLoadTableCount: Int {
-        guard let eagerLoadSchema else { return tables.count }
-        return tables.filter { table in
-            guard let tableSchema = table.schema else { return true }
-            return tableSchema.caseInsensitiveCompare(eagerLoadSchema) == .orderedSame
-        }.count
+    /// Only a query editor's `prepare` calls this. It joins a read in flight and retries a failed one.
+    func requestColumnPreload() {
+        hasEditorDemand = true
+        startColumnPreloadIfStale(retryingFailure: true)
     }
 
-    private func startEagerColumnLoad() {
-        eagerColumnTask?.cancel()
-        eagerColumnTask = nil
+    /// Reads again for a table list written after a preload had served the previous one.
+    func renewColumnPreload() {
+        guard case .settled(let generation, .loaded) = columnPreload,
+              generation != tableListGeneration else { return }
+        startColumnPreloadIfStale(retryingFailure: false)
+    }
 
+    /// The bulk read covers one schema while `tables` holds every expanded one. Zero means the list
+    /// names other schemas only, so a read sized by it would be a guess.
+    private var eagerLoadTableCount: Int {
+        tables.filter { isInEagerLoadSchema($0) }.count
+    }
+
+    private func isInEagerLoadSchema(_ table: TableInfo) -> Bool {
+        guard let eagerLoadSchema, let tableSchema = table.schema else { return true }
+        return tableSchema.caseInsensitiveCompare(eagerLoadSchema) == .orderedSame
+    }
+
+    private func startColumnPreloadIfStale(retryingFailure: Bool) {
+        switch columnPreload {
+        case .awaitingTables(let generation) where generation == tableListGeneration,
+             .running(let generation, _) where generation == tableListGeneration:
+            return
+        case .settled(let generation, let outcome) where generation == tableListGeneration:
+            guard outcome == .failed, retryingFailure else { return }
+        case .idle, .awaitingTables, .running, .settled:
+            break
+        }
+        let generation = tableListGeneration
         let tableCount = eagerLoadTableCount
-        guard tableCount > 0 else { return }
+        guard tableCount > 0 else {
+            columnPreload = .awaitingTables(generation: generation)
+            return
+        }
         guard tableCount <= Self.maxCachedTables else {
             Self.logger.info(
-                "[schema] eager column load skipped tableCount=\(tableCount) limit=\(Self.maxCachedTables)"
+                "[schema] column preload skipped tableCount=\(tableCount) limit=\(Self.maxCachedTables)"
             )
+            columnPreload = .settled(generation: generation, outcome: .skipped)
             return
         }
         let source = metadataSource
         let driver = cachedDriver
         guard source != nil || driver != nil else { return }
-        eagerColumnTask = Task(priority: .utility) {
-            Self.logger.info("[schema] eager column load starting tableCount=\(tableCount)")
+        Self.logger.info("[schema] column preload starting tableCount=\(tableCount)")
+        let task = Task(priority: .utility) {
             do {
                 let allColumns: [String: [ColumnInfo]]
                 if let source {
@@ -262,19 +315,46 @@ actor SQLSchemaProvider {
                 } else {
                     return
                 }
-                guard !Task.isCancelled else { return }
-                self.populateColumnCache(allColumns)
-                Self.logger.info("[schema] eager column load complete cachedCount=\(self.columnCache.count)")
+                self.commitColumnPreload(.success(allColumns), generation: generation)
             } catch {
-                guard !Task.isCancelled else { return }
-                Self.logger.debug("[schema] eager column load failed: \(error.localizedDescription)")
+                self.commitColumnPreload(.failure(error), generation: generation)
             }
+        }
+        columnPreload = .running(generation: generation, task: task)
+    }
+
+    /// The pooled lease ignores cancellation, so a superseded read still completes and is stopped here.
+    private func commitColumnPreload(_ result: Result<[String: [ColumnInfo]], any Error>, generation: Int) {
+        guard case .running(let running, _) = columnPreload, running == generation else { return }
+        switch result {
+        case .success(let allColumns):
+            populateColumnCache(allColumns)
+            columnPreload = .settled(generation: generation, outcome: .loaded)
+            Self.logger.info("[schema] column preload complete cachedCount=\(self.columnCache.count)")
+        case .failure(let error):
+            columnPreload = .settled(generation: generation, outcome: .failed)
+            Self.logger.debug("[schema] column preload failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 
-    /// Fills the cache in the order the schema lists its tables, so which tables survive the cache
-    /// limit is the same on every run. Walking the fetched dictionary took whatever order hashing
-    /// produced, which made the cached set differ between two loads of the same database.
+    /// A request the previous list had not served yet is served against this one. A settled preload
+    /// waits for the next request.
+    private func noteTableListWritten() {
+        tableListGeneration &+= 1
+        switch columnPreload {
+        case .awaitingTables:
+            startColumnPreloadIfStale(retryingFailure: true)
+        case .running(_, let task):
+            task.cancel()
+            columnPreload = .idle
+            startColumnPreloadIfStale(retryingFailure: true)
+        case .idle, .settled:
+            break
+        }
+    }
+
+    /// In the schema's own table order, so the tables kept under the cache limit are the same every
+    /// run. Only a table listed in the preload schema takes an entry from the read.
     private func populateColumnCache(_ allColumns: [String: [ColumnInfo]]) {
         var pending: [String: [ColumnInfo]] = [:]
         pending.reserveCapacity(allColumns.count)
@@ -282,17 +362,17 @@ actor SQLSchemaProvider {
             pending[tableName.lowercased()] = columns
         }
 
-        for table in tables {
+        for table in tables where isInEagerLoadSchema(table) {
             guard let columns = pending.removeValue(forKey: table.name.lowercased()) else { continue }
-            insertIntoColumnCache(columns, forKey: table.name.lowercased())
+            insertIntoColumnCache(columns, forKey: cacheKey(table: table.name, schema: table.schema))
         }
-        for key in pending.keys.sorted() {
-            guard let columns = pending[key] else { continue }
-            insertIntoColumnCache(columns, forKey: key)
+        for tableName in pending.keys.sorted() {
+            guard let columns = pending[tableName] else { continue }
+            insertIntoColumnCache(columns, forKey: cacheKey(table: tableName, schema: nil))
         }
     }
 
-    private func insertIntoColumnCache(_ columns: [ColumnInfo], forKey key: String) {
+    private func insertIntoColumnCache(_ columns: [ColumnInfo], forKey key: ColumnCacheKey) {
         guard columnCache[key] == nil else { return }
         guard columnAccessOrder.count < Self.maxCachedTables else { return }
         columnCache[key] = columns
@@ -300,7 +380,8 @@ actor SQLSchemaProvider {
     }
 
     func waitForEagerColumnLoad() async {
-        await eagerColumnTask?.value
+        guard case .running(_, let task) = columnPreload else { return }
+        await task.value
     }
 
     /// Find table name from alias
@@ -319,7 +400,7 @@ actor SQLSchemaProvider {
             }
         }
 
-        for table in tables {
+        for table in tablesResolvableUnqualified {
             if table.name.lowercased() == lowerName {
                 return table.name
             }
@@ -328,23 +409,34 @@ actor SQLSchemaProvider {
         return nil
     }
 
+    /// `tables` is every table the scope's owner loaded, which for the browse scope includes each
+    /// schema the sidebar has expanded. A bare name only reaches the schema unqualified names
+    /// resolve in, so only its tables may be offered or matched without their schema.
+    private var tablesResolvableUnqualified: [TableInfo] {
+        guard let defaultSchema = getDefaultSchema(), !defaultSchema.isEmpty else { return tables }
+        return tables.filter { table in
+            guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
+            return tableSchema.caseInsensitiveCompare(defaultSchema) == .orderedSame
+        }
+    }
+
     // MARK: - AI Schema Context
 
     func buildSchemaContextForAI(settings: AISettings) async -> String? {
         guard !tables.isEmpty, let connection = connectionInfo else { return nil }
 
-        var columnsByTable: [String: [ColumnInfo]] = [:]
-        let tablesToFetch = Array(tables.prefix(settings.maxSchemaTables))
-        for table in tablesToFetch {
-            let columns = await getColumns(for: table.name)
-            if !columns.isEmpty {
-                columnsByTable[table.name] = columns
-            }
+        let listedTables = tables
+        var schemaTables: [AISchemaTable] = []
+        schemaTables.reserveCapacity(listedTables.count)
+        for table in listedTables.prefix(settings.maxSchemaTables) {
+            let columns = await getColumns(for: table.name, schema: table.schema)
+            schemaTables.append(AISchemaTable(table: table, columns: columns))
         }
+        schemaTables += listedTables.dropFirst(settings.maxSchemaTables).map { AISchemaTable(table: $0) }
 
         let dbType = connection.type
         let capturedConnection = connection
-        let capturedTables = tables
+        let defaultSchema = getDefaultSchema()
         let capturedScopeDatabase = scopeDatabase
         let (dbName, idQuote, editorLanguage, queryLanguageName) = await MainActor.run {
             let resolvedName = capturedScopeDatabase
@@ -358,9 +450,8 @@ actor SQLSchemaProvider {
         return AISchemaContext.buildSystemPrompt(
             databaseType: dbType,
             databaseName: dbName,
-            tables: capturedTables,
-            columnsByTable: columnsByTable,
-            foreignKeys: [:],
+            tables: schemaTables,
+            defaultSchema: defaultSchema,
             currentQuery: nil,
             queryResults: nil,
             settings: settings,
@@ -372,9 +463,9 @@ actor SQLSchemaProvider {
 
     // MARK: - Completion Items
 
-    /// Get completion items for tables
+    /// Tables a statement can name without their schema.
     func tableCompletionItems() async -> [SQLCompletionItem] {
-        let tableData = tables.map { (name: $0.name, isView: $0.type == .view) }
+        let tableData = tablesResolvableUnqualified.map { (name: $0.name, isView: $0.type == .view) }
         return await MainActor.run {
             tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
         }
@@ -421,29 +512,49 @@ actor SQLSchemaProvider {
     /// Tables of one schema — suggested after a schema-qualified dot (e.g. "DBT_MARTS.").
     /// Falls back to fetching from the database when that schema's tables aren't loaded yet.
     func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem] {
-        var matching = tables.filter { $0.schema?.caseInsensitiveCompare(schema) == .orderedSame }
-        if matching.isEmpty, let fetchSchemaTables = metadataSource?.fetchSchemaTables {
-            if let fetched = try? await fetchSchemaTables(schema), !fetched.isEmpty {
-                matching = fetched.filter { belongsToSchema($0, schema) }
-                mergeTables(fetched)
-            }
-        }
-        let tableData = matching.map { (name: $0.name, isView: $0.type == .view) }
+        let listed = await knownTables(inSchema: schema)
+        let tableData = listed.map { (name: $0.name, isView: $0.type == .view) }
         return await MainActor.run {
             tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
         }
     }
 
-    private func belongsToSchema(_ table: TableInfo, _ schema: String) -> Bool {
-        guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
-        return tableSchema.caseInsensitiveCompare(schema) == .orderedSame
+    private func knownTables(inSchema schema: String) async -> [TableInfo] {
+        let loaded = tables.filter { $0.schema?.caseInsensitiveCompare(schema) == .orderedSame }
+        guard loaded.isEmpty else { return loaded }
+        return await onDemandTables(inSchema: schema)
     }
 
-    private func mergeTables(_ newTables: [TableInfo]) {
-        var seen = Set(tables.map(\.id))
-        for table in newTables where seen.insert(table.id).inserted {
-            tables.append(table)
+    /// Concurrent callers await the fetch already in flight, and a fetch that a reset overtook
+    /// answers its own caller without writing into the scope that replaced it. An empty schema is
+    /// an answer and is kept; a failed fetch is not, so the next keystroke asks again.
+    private func onDemandTables(inSchema schema: String) async -> [TableInfo] {
+        let key = schema.lowercased()
+        if let cached = onDemandSchemaTables[key] { return cached }
+        if let inFlight = onDemandSchemaTableTasks[key] { return await inFlight.value ?? [] }
+        guard let fetchSchemaTables = metadataSource?.fetchSchemaTables else { return [] }
+
+        let task = Task<[TableInfo]?, Never> {
+            do {
+                return try await fetchSchemaTables(schema).filter { Self.belongsToSchema($0, schema) }
+            } catch {
+                Self.logger.debug(
+                    "[schema] on-demand schema tables failed: \(error.publicLogShape, privacy: .public)"
+                )
+                return nil
+            }
         }
+        onDemandSchemaTableTasks[key] = task
+        let fetched = await task.value
+        guard onDemandSchemaTableTasks[key] == task else { return fetched ?? [] }
+        onDemandSchemaTableTasks[key] = nil
+        if let fetched { onDemandSchemaTables[key] = fetched }
+        return fetched ?? []
+    }
+
+    private static func belongsToSchema(_ table: TableInfo, _ schema: String) -> Bool {
+        guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
+        return tableSchema.caseInsensitiveCompare(schema) == .orderedSame
     }
 
     /// Get completion items for columns of a specific table
@@ -472,34 +583,34 @@ actor SQLSchemaProvider {
         if let inFlight = fieldPathTasks[key] { return await inFlight.value }
         guard let sample = metadataSource?.sampleFieldPaths else { return [] }
 
-        let task = Task { (try? await sample(tableName, sampleSize)) ?? [] }
+        let task = Task {
+            do {
+                return try await sample(tableName, sampleSize)
+            } catch {
+                Self.logger.debug("[schema] field path sample failed: \(error.publicLogShape, privacy: .public)")
+                return [PluginFieldPath]()
+            }
+        }
         fieldPathTasks[key] = task
         let paths = await task.value
+        guard fieldPathTasks[key] == task else { return paths }
         fieldPathTasks[key] = nil
         if !paths.isEmpty { fieldPathCache[key] = paths }
         return paths
     }
 
-    /// Values a column is restricted to, when the database declares them (a PostgreSQL enum type,
-    /// a MongoDB `$jsonSchema` enum). Returns nothing for an ordinary column.
-    ///
-    /// Reads only what the column cache already holds, because completion runs on every keystroke
-    /// and this must never add a fetch of its own. The cache is filled by the eager preload on a
-    /// schema small enough to preload, and otherwise by `getColumns`, which column completion on the
-    /// same statement has already called for every table the statement names. A statement whose
-    /// value position is reached before any column completion ran therefore offers nothing here
-    /// until the next request.
+    /// Reads only the column cache, because completion runs per keystroke and must not add a fetch.
+    /// Until the preload or this statement's column completion has read the table, it offers nothing.
     func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
         let name = column.lowercased()
         let candidates = references.isEmpty
-            ? tables.map { (table: $0.name, schema: String?.none) }
+            ? tables.map { (table: $0.name, schema: $0.schema) }
             : references.map { (table: $0.tableName, schema: $0.schema) }
 
         for candidate in candidates {
-            let key = [candidate.schema?.lowercased(), candidate.table.lowercased()]
-                .compactMap(\.self)
-                .joined(separator: ".")
-            guard let columns = columnCache[key] else { continue }
+            guard let columns = columnCache[cacheKey(table: candidate.table, schema: candidate.schema)] else {
+                continue
+            }
             if let match = columns.first(where: { $0.name.lowercased() == name }),
                let values = match.allowedValues, !values.isEmpty {
                 return values
@@ -560,9 +671,10 @@ actor SQLSchemaProvider {
         }
     }
 
-    /// Get completion items for all columns from cached tables (zero network).
-    /// Used as fallback when no table references exist in the current statement.
+    /// Only the bulk cache can answer a statement that names no table, so once an editor has asked, a
+    /// stale cache starts a read here. This call answers from what is cached and never waits.
     func allColumnsFromCachedTables() async -> [SQLCompletionItem] {
+        if hasEditorDemand { startColumnPreloadIfStale(retryingFailure: false) }
         guard !columnCache.isEmpty else { return [] }
 
         let canonicalNames = Dictionary(
@@ -573,8 +685,14 @@ actor SQLSchemaProvider {
         var allEntries: [(table: String, col: ColumnInfo)] = []
         var nameCount: [String: Int] = [:]
 
-        for (key, columns) in columnCache {
-            let tableName = canonicalNames[key] ?? key
+        // Sorted, because this emission order is what `rankResults` falls back to for candidates
+        // that score the same, and a Dictionary hands its pairs back in an order that is seeded per
+        // process and shifts again whenever the cache takes an insert. Two equally ranked columns
+        // from different tables would otherwise swap places between launches, and Return would
+        // commit whichever one the hash seed put first.
+        for key in columnCache.keys.sorted(by: Self.isOrderedBefore) {
+            guard let columns = columnCache[key] else { continue }
+            let tableName = fallbackTableLabel(for: key, canonicalName: canonicalNames[key.name] ?? key.name)
             for col in columns {
                 allEntries.append((table: tableName, col: col))
                 nameCount[col.name.lowercased(), default: 0] += 1

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Statement Generator - binary cells")
 struct SQLStatementGeneratorBinaryTests {
     private func makeGenerator(
         databaseType: DatabaseType = .postgresql

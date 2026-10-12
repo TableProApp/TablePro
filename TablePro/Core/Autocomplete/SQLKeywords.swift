@@ -40,6 +40,7 @@ enum SQLKeywords {
         "INSERT", "INTO", "VALUES", "DEFAULT",
         "UPDATE", "SET",
         "DELETE", "TRUNCATE",
+        "MERGE", "UPSERT", "REPLACE", "CALL",
 
         // DDL
         "CREATE", "ALTER", "DROP", "RENAME", "MODIFY",
@@ -47,6 +48,11 @@ enum SQLKeywords {
         "COLUMN", "CONSTRAINT", "PRIMARY", "FOREIGN", "KEY",
         "REFERENCES", "UNIQUE", "CHECK",
         "AUTO_INCREMENT", "AUTOINCREMENT", "SERIAL",
+        "ADD", "CHANGE", "AFTER", "COMMENT", "COLLATE", "CHARSET",
+        "ENGINE", "TABLESPACE",
+
+        // Index access methods, offered after USING in CREATE INDEX
+        "BTREE", "HASH", "GIN", "GIST",
 
         // Data types (common)
         "INT", "INTEGER", "BIGINT", "SMALLINT", "TINYINT",
@@ -71,18 +77,20 @@ enum SQLKeywords {
 
         // Window clause
         "OVER", "PARTITION", "UNBOUNDED", "PRECEDING", "FOLLOWING", "CURRENT ROW",
+        "RANGE", "GROUPS",
 
         // PostgreSQL
         "RETURNING", "LATERAL", "CONCURRENTLY", "CONFLICT", "EXCLUDED",
 
         // MySQL
         "STRAIGHT_JOIN", "FORCE INDEX", "USE INDEX",
+        "SIGNED", "UNSIGNED",
 
         // DCL
         "GRANT", "REVOKE", "PRIVILEGES", "USAGE",
 
         // Utility
-        "DEALLOCATE", "PREPARE", "EXECUTE",
+        "DEALLOCATE", "PREPARE", "EXECUTE", "USE",
 
         // Other
         "WITH", "RECURSIVE", "TEMPORARY", "TEMP",

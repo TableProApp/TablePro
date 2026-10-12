@@ -12,7 +12,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("MongoDB Extended JSON Unwrapping")
 struct MongoDBExtendedJsonTests {
 
     // MARK: - $oid

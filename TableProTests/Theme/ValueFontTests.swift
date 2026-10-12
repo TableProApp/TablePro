@@ -3,11 +3,9 @@
 //  TableProTests
 //
 //  The row inspector, the cell popovers and the Compare row diff all render a stored value, so they
-//  follow the data grid font rather than the editor font. TablePlus was asked this exact question on
-//  its own row detail sidebar (TablePlus/TablePlus#1180) and answered "it should be the same font as
-//  table-data"; the grid's own inline cell editor already agreed. These tests pin that choice and the
-//  places that carry it, because both settings ship at the same family and size, so a regression is
-//  invisible until a user splits them.
+//  follow the data grid font rather than the editor font, as the grid's own inline cell editor
+//  already did. These tests pin that choice and the places that carry it, because both settings
+//  ship at the same family and size, so a regression is invisible until a user splits them.
 //
 
 import AppKit
@@ -85,11 +83,19 @@ struct ValueFontTests {
         /// own toolbar and presents in a pop-out window too, so each names the value font on its own
         /// value text; `standaloneValueViewsResolveTheValueFont` is what holds them to that.
         #expect(source.contains("case .json, .phpSerialized, .image:"))
+        /// A geometry field opts out on a line of its own, so the list above still reads as it did
+        /// and this kind cannot drift into the arm that inherits.
+        #expect(source.contains("case .geometry:\n            return nil"))
     }
 
-    /// Everything outside the inspector has no shared root to inherit from: a popover, a pop-out window
-    /// and the Compare pane are each their own presentation, and an `NSViewRepresentable` never sees a
-    /// SwiftUI `.font` at all. Each of these therefore resolves it by name.
+    /// Everything outside the inspector has no shared root to inherit from: a popover and a pop-out
+    /// window are each their own presentation, and an `NSViewRepresentable` never sees a SwiftUI
+    /// `.font` at all. Each of these therefore resolves it by name.
+    ///
+    /// The Compare rows pane is not among them any more. It draws its values through `DataGridView`,
+    /// which takes its cell font from `ThemeEngine.dataGridFonts` in `DataGridCellPalette`, and that
+    /// is the same setting `valueFont` returns. A pane that no longer renders a value itself has
+    /// nothing to name.
     @Test("Every value view outside the inspector resolves the value font")
     func standaloneValueViewsResolveTheValueFont() throws {
         let paths = [
@@ -107,18 +113,24 @@ struct ValueFontTests {
             /// `.image`, which does not, so it has to name the font itself or the same dump renders
             /// monospaced down one route and proportional down the other.
             "TablePro/Views/RowInspector/FieldEditors/BlobHexEditorView.swift",
+            /// Opts out of the row's font and hosts a text editor, a JSON editor or a hex dump
+            /// under its Text segment, so the pane names the font for all three.
+            "TablePro/Views/RowInspector/FieldEditors/GeometryFieldView.swift",
             "TablePro/Views/Results/ForeignKeyPreviewView.swift",
             "TablePro/Views/Results/ArrayValueEditorView.swift",
             "TablePro/Views/Results/SetPopoverContentView.swift",
-            "TablePro/Views/Results/JSONTreeView.swift",
-            "TablePro/Views/Results/PhpTreeView.swift",
+            /// The JSON and PHP trees both draw their rows through this outline.
+            "TablePro/Views/Results/TreeOutline/TreeOutlineRepresentable.swift",
             "TablePro/Views/Results/PhpViewerView.swift",
-            "TablePro/Views/Compare/CompareRowDiffPane.swift",
         ]
 
+        /// Either spelling names the value font. A view reads it through the `themeEngine` it
+        /// observes, so a change in Settings redraws it; a static helper, which has no instance to
+        /// observe through, reads the shared engine directly.
         var offenders: [String] = []
         for path in paths {
-            if try !source(of: path).contains("ThemeEngine.shared.valueFont") {
+            let text = try source(of: path)
+            if !text.contains("ThemeEngine.shared.valueFont"), !text.contains("themeEngine.valueFont") {
                 offenders.append(path)
             }
         }
@@ -160,7 +172,11 @@ struct ValueFontTests {
         let source = try source(of: "TablePro/Views/Results/JSONCodeEditor.swift")
 
         #expect(source.contains("onChange(of: colorScheme)"))
-        #expect(source.contains("onChange(of: AppSettingsManager.shared.editor)"))
+        /// Observed, not read off the shared instance. The value `onChange(of:)` compares is read
+        /// while the body is built, and a body that does not observe the settings is never rebuilt
+        /// when they change, so `onChange(of: AppSettingsManager.shared.editor)` never fired.
+        #expect(source.contains("@ObservedObject private var settingsManager = AppSettingsManager.shared"))
+        #expect(source.contains("onChange(of: settingsManager.editor)"))
         #expect(source.contains("onReceive(AppEvents.shared.themeChanged)"))
         #expect(source.contains("onReceive(AppEvents.shared.accessibilityTextSizeChanged)"))
     }

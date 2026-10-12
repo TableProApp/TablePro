@@ -316,6 +316,87 @@ struct HistoryPanelViewModelTests {
         )
     }
 
+    /// A workspace switch re-runs the drawer's `.task(id:)` with an unchanged id, which re-activated
+    /// from page one and dropped the Load More pages and any selection beyond them.
+    @Test("returning to the panel keeps the loaded pages and the selection")
+    func reactivationKeepsLoadedPagesAndSelection() async throws {
+        let connectionId = UUID()
+        let base = Date()
+        let entries = (0 ..< 40).map { index in
+            Self.makeEntry(
+                connectionId: connectionId,
+                query: "SELECT page_\(index)",
+                executedAt: base.addingTimeInterval(-Double(index))
+            )
+        }
+        let (viewModel, reader) = makeViewModel(connectionId: connectionId, entries: entries, pageSize: 10)
+
+        await viewModel.activate()
+        await viewModel.loadMore()
+        await viewModel.loadMore()
+        #expect(viewModel.totalLoaded == 30)
+
+        let onThirdPage = try #require(viewModel.sections.flatMap(\.entries).last)
+        viewModel.selectedEntryId = onThirdPage.id
+
+        viewModel.deactivate()
+        let beforeReturn = await reader.fetchCount()
+        await viewModel.activate()
+
+        #expect(await reader.fetchCount() > beforeReturn, "A returning panel still picks up what was recorded while away")
+        #expect(viewModel.totalLoaded == 30, "Coming back must not throw away Load More")
+        #expect(viewModel.selectedEntryId == onThirdPage.id)
+        #expect(viewModel.selectedEntry?.id == onThirdPage.id)
+        viewModel.deactivate()
+    }
+
+    @Test("the first activation loads one page")
+    func firstActivationLoadsOnePage() async {
+        let connectionId = UUID()
+        let base = Date()
+        let entries = (0 ..< 40).map { index in
+            Self.makeEntry(
+                connectionId: connectionId,
+                query: "SELECT page_\(index)",
+                executedAt: base.addingTimeInterval(-Double(index))
+            )
+        }
+        let (viewModel, _) = makeViewModel(connectionId: connectionId, entries: entries, pageSize: 10)
+
+        await viewModel.activate()
+
+        #expect(viewModel.hasLoadedOnce)
+        #expect(viewModel.totalLoaded == 10)
+        #expect(viewModel.hasMore)
+        viewModel.deactivate()
+    }
+
+    @Test("changing a filter after returning to the panel still starts the list over")
+    func filterChangeAfterReactivationResetsPaging() async {
+        let connectionId = UUID()
+        let base = Date()
+        let entries = (0 ..< 40).map { index in
+            Self.makeEntry(
+                connectionId: connectionId,
+                query: "SELECT page_\(index)",
+                executedAt: base.addingTimeInterval(-Double(index))
+            )
+        }
+        let (viewModel, _) = makeViewModel(connectionId: connectionId, entries: entries, pageSize: 10)
+
+        await viewModel.activate()
+        await viewModel.loadMore()
+        viewModel.deactivate()
+        await viewModel.activate()
+        #expect(viewModel.totalLoaded == 20)
+
+        viewModel.state.outcome = .succeeded
+        await viewModel.reload()
+
+        #expect(viewModel.totalLoaded == 10)
+        viewModel.deactivate()
+    }
+
     @Test("changing a filter starts the list over")
     func filterChangeResetsPaging() async {
         let connectionId = UUID()

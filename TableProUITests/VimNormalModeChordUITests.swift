@@ -48,6 +48,31 @@ final class VimNormalModeChordUITests: UITestCase {
         )
     }
 
+    /// #2914: the editor's own Escape and Vim's Escape were two event monitors claiming one key
+    /// with no defined order, so Escape stopped leaving Insert mode while Ctrl+[ went on working.
+    /// Each round appends a character and deletes it again, which nets to nothing only while every
+    /// Escape lands. An Escape that does not leaves the round's Normal-mode keys in the query.
+    func testEscapeLeavesInsertModeEveryTime() throws {
+        let app = try launchWithSampleDatabase()
+        enableVimModeUntilTearDown(in: app)
+        let editor = openQueryTab(in: app)
+
+        app.typeText("iSELECT")
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+        for _ in 1 ... 5 {
+            app.typeText("A")
+            app.typeText("X")
+            app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+            app.typeText("x")
+        }
+
+        XCTAssertTrue(
+            waitForValue("SELECT", in: editor),
+            "Every Escape must leave Insert mode, so each round's appended character is deleted "
+                + "again; editor holds '\(debugValue(of: editor))'"
+        )
+    }
+
     private func enableVimModeUntilTearDown(in app: XCUIApplication) {
         appWithVimMode = app
         setVimMode(true, in: app)
@@ -65,7 +90,10 @@ final class VimNormalModeChordUITests: UITestCase {
         editorPane.click()
 
         let vimToggle = settings.descendants(matching: .any).matching(identifier: "vim-mode-toggle").firstMatch
-        XCTAssertTrue(waitUntilHittable(vimToggle, timeout: 10), "The Editor pane must offer Vim mode")
+        XCTAssertTrue(
+            scrollUntilHittable(vimToggle, in: settings, timeout: 30),
+            "The Editor pane must offer Vim mode"
+        )
         if isOn(vimToggle) != enabled {
             vimToggle.click()
         }
@@ -84,11 +112,6 @@ final class VimNormalModeChordUITests: UITestCase {
         XCTAssertTrue(editor.waitToExist(timeout: 10))
         XCTAssertTrue(waitForValue("", in: editor), "A new tab starts with an empty editor")
         return editor
-    }
-
-    private func isOn(_ toggle: XCUIElement) -> Bool {
-        if let number = toggle.value as? Int { return number == 1 }
-        return (toggle.value as? String) == "1"
     }
 
     private func waitForValue(_ expected: String, in element: XCUIElement) -> Bool {

@@ -82,6 +82,21 @@ struct HranaHttpClientCancellationTests {
         #expect(client.inFlightCount == 0)
     }
 
+    @Test("A connect probe can override the query timeout without changing later queries")
+    func connectProbeTimeoutIsRequestScoped() async throws {
+        let client = try connectedClient()
+        client.setQueryTimeout(300)
+
+        _ = try await client.execute(sql: "SELECT 1", requestTimeout: 2.5)
+        #expect(HranaStubProtocol.recorded?.timeoutInterval == 2.5)
+
+        _ = try await client.execute(sql: "SELECT 1")
+        #expect(
+            HranaStubProtocol.recorded?.timeoutInterval
+                == HttpQueryTimeout(serverTimeoutSeconds: 300).requestTimeoutInterval
+        )
+    }
+
     @Test("Cancelling everything stops every request in flight, not just the latest")
     func cancelAllStopsEveryRequest() async throws {
         let client = try connectedClient()

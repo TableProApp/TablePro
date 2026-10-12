@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("GeminiProvider wire encoding")
 struct GeminiProviderEncodingTests {
     private func makeProvider() -> GeminiProvider {
         GeminiProvider(
@@ -122,7 +121,6 @@ struct GeminiProviderEncodingTests {
     }
 }
 
-@Suite("GeminiProvider schema sanitization")
 struct GeminiProviderSchemaSanitizationTests {
     @Test("Strips additionalProperties at any depth")
     func stripsAdditionalProperties() {

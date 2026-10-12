@@ -18,7 +18,8 @@ internal struct ObjectCopyTableDraft {
     let selection: ObjectCopySelection
     let snapshot: TableStructureSnapshot
     /// The same table said in the target's own types, which is what the target driver is handed.
-    /// Identical to `snapshot` whenever the two engines share a type family.
+    /// Identical to `snapshot` whenever the two engines share a type family, apart from an index the
+    /// target cannot write.
     let targetStructure: TableStructureSnapshot
     let sourceSchema: String?
     let targetSchema: String?
@@ -260,16 +261,16 @@ internal enum ObjectCopySelectQuery {
         let source = SchemaQualifiedName.render(
             name: table, schema: schema, databaseType: databaseType, quote: driver.quoteIdentifier
         )
-        var query = "SELECT \(list) FROM \(source)"
         /// `sanitizedFilter` rather than `filter`. The text is the user's own SQL against their own
         /// connection, but it is spliced into this statement, and the sanitizer is what keeps it to
         /// the single expression the field is for.
-        if let filter = scope?.sanitizedFilter, !filter.isEmpty {
-            query += " WHERE \(filter)"
-        }
-        guard let rowLimit = scope?.rowLimit else { return query }
-        /// Through the driver's own injection, because `LIMIT` is not the spelling on SQL Server or
-        /// on Oracle before 12c.
-        return driver.injectRowLimit(query, limit: rowLimit) ?? "\(query) LIMIT \(rowLimit)"
+        return SQLRowLimitClause.select(
+            columns: list,
+            from: source,
+            where: scope?.sanitizedFilter.nilIfEmpty,
+            limit: scope?.rowLimit,
+            driver: driver,
+            databaseType: databaseType
+        )
     }
 }

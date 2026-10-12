@@ -26,10 +26,10 @@ extension AppDelegate: NSMenuItemValidation {
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
-        UpdaterBridge.shared.checkForUpdates()
+        SoftwareUpdater.shared.checkForUpdates()
     }
 
-    @objc func openIntegrations(_ sender: Any?) {
+    @objc func openMCPActivity(_ sender: Any?) {
         WindowOpener.shared.openIntegrationsActivity()
     }
 
@@ -81,6 +81,10 @@ extension AppDelegate: NSMenuItemValidation {
         WelcomeRouter.shared.route(.importFromApp)
     }
 
+    @objc func importFromAWS(_ sender: Any?) {
+        WelcomeRouter.shared.route(.importFromAWS)
+    }
+
     @objc func openProjectFolder(_ sender: Any?) {
         WelcomeRouter.shared.route(.openProjectFolder)
     }
@@ -101,8 +105,14 @@ extension AppDelegate: NSMenuItemValidation {
         open(MainMenuLink.documentation)
     }
 
+    @objc func openIntegrationsDirectory(_ sender: Any?) {
+        open(MainMenuLink.integrations)
+    }
+
+    /// Opens the in-app notes rather than the browser. The window's own button reaches the full
+    /// changelog for anyone who wants every entry.
     @objc func openChangelog(_ sender: Any?) {
-        open(MainMenuLink.changelog)
+        WhatsNewWindowController.present()
     }
 
     @objc func openGitHubRepository(_ sender: Any?) {
@@ -118,10 +128,26 @@ extension AppDelegate: NSMenuItemValidation {
         NSWorkspace.shared.open(url)
     }
 
+    /// The last stop for Control-Tab, reached from a window with no editor tabs of its own, a CSV
+    /// document above all, whose windows always join one tab group. There the chord switches the
+    /// window's tabs, as AppKit's own item would have.
+    @objc func switchToRecentTab(_ sender: Any?) {
+        NSApp.keyWindow?.selectNextTab(sender)
+    }
+
+    @objc func switchToLeastRecentTab(_ sender: Any?) {
+        NSApp.keyWindow?.selectPreviousTab(sender)
+    }
+
     public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(switchToRecentTab(_:)), #selector(switchToLeastRecentTab(_:)):
+            return (NSApp.keyWindow?.tabbedWindows?.count ?? 0) > 1
         case #selector(checkForUpdates(_:)):
-            return UpdaterBridge.shared.canCheckForUpdates
+            /// Menu validation is the one moment AppKit gives an already-built item, and a
+            /// deferred update has no other way to reach this title.
+            menuItem.title = SoftwareUpdater.shared.checkForUpdatesTitle
+            return SoftwareUpdater.shared.canCheckForUpdates
         case #selector(reopenClosedTab(_:)):
             return !RecentlyClosedTabStore.shared.entries.isEmpty
         default:
@@ -134,6 +160,7 @@ enum MainMenuLink {
     static let changelog = "https://docs.tablepro.app/changelog"
     static let website = "https://tablepro.app"
     static let documentation = "https://docs.tablepro.app"
+    static let integrations = "https://tablepro.app/integrations"
     static let repository = "https://github.com/TableProApp/TablePro"
     static let issues = "https://github.com/TableProApp/TablePro/issues"
 }

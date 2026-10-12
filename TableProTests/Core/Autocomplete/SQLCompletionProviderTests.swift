@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Completion Provider")
 struct SQLCompletionProviderTests {
     private let schemaProvider: SQLSchemaProvider
     private let provider: SQLCompletionProvider
@@ -1121,17 +1120,6 @@ struct SQLCompletionProviderTests {
         #expect(items.contains { $0.kind == .keyword }, "SQL keywords must also complete without a connection")
     }
 
-    @Test("allFavoriteItems returns every favorite for session seeding")
-    func testAllFavoriteItems() {
-        provider.updateFavoriteKeywords([
-            "report": (name: "Daily Report", query: "SELECT 1"),
-            "usr": (name: "Users", query: "SELECT 2")
-        ])
-        let items = provider.allFavoriteItems()
-        #expect(items.count == 2)
-        #expect(items.allSatisfy { $0.kind == .favorite })
-    }
-
     @Test("Favorite items keep the raw cursor marker in insertText")
     func testFavoriteKeepsRawCursorMarker() async {
         provider.updateFavoriteKeywords([
@@ -1160,6 +1148,35 @@ struct SQLCompletionProviderTests {
         let (items, context) = await provider.getCompletions(text: text, cursorPosition: text.count)
 
         #expect(context.clauseType == .join)
+        #expect(items.contains { $0.kind == .table && $0.label == "inflation_rates" })
+    }
+
+    // MARK: - Quoted identifiers
+
+    @Test(
+        "A quoted table prefix still offers the table",
+        arguments: ["SELECT * FROM `cat", "SELECT * FROM `cat`"]
+    )
+    func quotedTablePrefixOffersTheTable(text: String) async {
+        await schemaProvider.updateTables([
+            TestFixtures.makeTableInfo(name: "category"),
+            TestFixtures.makeTableInfo(name: "inflation_rates")
+        ])
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(items.contains { $0.kind == .table && $0.label == "category" })
+    }
+
+    @Test("A lone quote after FROM offers every table")
+    func loneQuoteAfterFromOffersEveryTable() async {
+        await schemaProvider.updateTables([
+            TestFixtures.makeTableInfo(name: "category"),
+            TestFixtures.makeTableInfo(name: "inflation_rates")
+        ])
+        let text = "SELECT * FROM `"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(items.contains { $0.kind == .table && $0.label == "category" })
         #expect(items.contains { $0.kind == .table && $0.label == "inflation_rates" })
     }
 

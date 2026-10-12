@@ -1,5 +1,11 @@
 import Foundation
 
+public enum MSSQLTableListingScope: Sendable, Equatable {
+    case schema(String)
+    case schemas([String])
+    case allSchemas
+}
+
 public enum MSSQLSchemaQueries {
     public static func escape(_ value: String) -> String {
         MSSQLStringLiteral.escaped(value)
@@ -12,6 +18,28 @@ public enum MSSQLSchemaQueries {
     public static func bracketed(schema: String, table: String) -> String {
         "[\(escapeBracket(schema))].[\(escapeBracket(table))]"
     }
+
+    /// Both catalog views are scoped to a database, so each is qualified with the one asked about. Read unqualified
+    /// they describe whichever database the connection is using, which reported that database's size and table
+    /// count under every name. `size` counts 8 KB pages and is cast before multiplying: the session runs with
+    /// ANSI_WARNINGS off, so an int overflow past 2 GB comes back as NULL rather than as an error.
+    public static func databaseMetadata(database: String) -> String {
+        let qualified = "[\(escapeBracket(database))]"
+        return """
+            SELECT
+                (SELECT SUM(CAST(size AS bigint)) * 8192 FROM \(qualified).sys.database_files) AS size_bytes,
+                (SELECT COUNT(*) FROM \(qualified).sys.tables) AS table_count
+            """
+    }
+
+    /// Every database's file size from the server-wide view, for a database whose own catalog cannot be read
+    /// because it is offline or the login has no access to it.
+    public static let allDatabaseSizes = """
+        SELECT d.name, SUM(CAST(mf.size AS bigint)) * 8192 AS size_bytes
+        FROM sys.databases d
+        LEFT JOIN sys.master_files mf ON d.database_id = mf.database_id
+        GROUP BY d.name
+        """
 
     /// Renders `CREATE INDEX` for the rows `sys.indexes` joined to `sys.index_columns` returns,
     /// one statement per index, in the order the rows arrive.
@@ -115,7 +143,9 @@ public enum MSSQLSchemaQueries {
 
     public static let databases = "SELECT name FROM sys.databases ORDER BY name"
 
-    public static let schemas = """
+    /// Unordered, because SQL Server rejects an `ORDER BY` in a subquery and the all-schema table
+    /// listing filters by this query.
+    internal static let listedSchemaNames = """
         SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA
         WHERE SCHEMA_NAME NOT IN (
             'information_schema','sys','db_owner','db_accessadmin',
@@ -123,35 +153,57 @@ public enum MSSQLSchemaQueries {
             'db_datareader','db_datawriter','db_denydatareader',
             'db_denydatawriter','guest'
         )
-        ORDER BY SCHEMA_NAME
         """
 
+    public static let schemas = listedSchemaNames + "\nORDER BY SCHEMA_NAME"
+
     public static func tables(schema: String) -> String {
-        let s = MSSQLStringLiteral.quoted(schema)
+        tables(in: .schema(schema))
+    }
+
+    /// The same listing over one schema, a named set of them, or every schema `schemas` returns. The
+    /// last filters by that query itself rather than dropping the schema predicate, so a table is
+    /// listed here exactly when its schema is listed there. Both multi-schema listings project each
+    /// row's schema as a third column.
+    public static func tables(in scope: MSSQLTableListingScope) -> String {
+        let schemaFilter: String
+        let schemaColumn: String
+        let orderBy: String
+        switch scope {
+        case .schema(let schema):
+            schemaFilter = "t.TABLE_SCHEMA = \(MSSQLStringLiteral.quoted(schema))"
+            schemaColumn = ""
+            orderBy = "t.TABLE_NAME"
+        case .schemas(let schemas):
+            schemaFilter = schemas.isEmpty
+                ? "1 = 0"
+                : "t.TABLE_SCHEMA IN (\(schemas.map(MSSQLStringLiteral.quoted).joined(separator: ", ")))"
+            schemaColumn = ", t.TABLE_SCHEMA"
+            orderBy = "t.TABLE_SCHEMA, t.TABLE_NAME"
+        case .allSchemas:
+            schemaFilter = "t.TABLE_SCHEMA IN (\n\(listedSchemaNames)\n)"
+            schemaColumn = ", t.TABLE_SCHEMA"
+            orderBy = "t.TABLE_SCHEMA, t.TABLE_NAME"
+        }
         return """
-            SELECT t.TABLE_NAME, t.TABLE_TYPE
+            SELECT t.TABLE_NAME, t.TABLE_TYPE\(schemaColumn)
             FROM INFORMATION_SCHEMA.TABLES t
-            WHERE t.TABLE_SCHEMA = \(s)
+            WHERE \(schemaFilter)
               AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
-            ORDER BY t.TABLE_NAME
+            ORDER BY \(orderBy)
             """
     }
 
+    /// One column per row, in the order `parseColumnRow` reads.
+    ///
+    /// The catalog names are quoted before `OBJECT_ID` sees them: unquoted, a table named `a.b` or a schema named
+    /// `x.y` resolves to nothing and every column reads as neither identity nor computed.
     public static func columns(schema: String, table: String) -> String {
         let s = MSSQLStringLiteral.quoted(schema)
         let t = MSSQLStringLiteral.quoted(table)
         return """
             SELECT
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.CHARACTER_MAXIMUM_LENGTH,
-                c.NUMERIC_PRECISION,
-                c.NUMERIC_SCALE,
-                c.IS_NULLABLE,
-                c.COLUMN_DEFAULT,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED
+            \(columnSelectList)
             FROM INFORMATION_SCHEMA.COLUMNS c
             LEFT JOIN (
                 SELECT kcu.COLUMN_NAME
@@ -168,6 +220,54 @@ public enum MSSQLSchemaQueries {
             ORDER BY c.ORDINAL_POSITION
             """
     }
+
+    /// Every column of every table in the schema, each row carrying its table name after the columns
+    /// `parseColumnRow` reads, at `allColumnsTableNameIndex`.
+    public static func allColumns(schema: String) -> String {
+        let s = MSSQLStringLiteral.quoted(schema)
+        return """
+            SELECT
+            \(columnSelectList),
+                c.TABLE_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS c
+            LEFT JOIN (
+                SELECT kcu.TABLE_NAME, kcu.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                    AND tc.TABLE_SCHEMA = \(s)
+            ) pk ON c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
+            WHERE c.TABLE_SCHEMA = \(s)
+            ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
+            """
+    }
+
+    public static let allColumnsTableNameIndex = 11
+
+    /// A `rowversion` column reports its type as `timestamp`, and a system-versioned period or ledger column reports a
+    /// `GeneratedAlwaysType` above zero. Neither is identity or computed, and the server refuses a written value for
+    /// both. Before SQL Server 2016 the property does not exist and reads NULL, which is not above zero.
+    private static let columnSelectList = """
+                c.COLUMN_NAME,
+                c.DATA_TYPE,
+                c.CHARACTER_MAXIMUM_LENGTH,
+                c.NUMERIC_PRECISION,
+                c.NUMERIC_SCALE,
+                c.IS_NULLABLE,
+                c.COLUMN_DEFAULT,
+                COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
+                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
+                COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED,
+                CASE
+                    WHEN c.DATA_TYPE = 'timestamp' THEN 1
+                    WHEN COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'GeneratedAlwaysType') > 0 THEN 1
+                    ELSE 0
+                END AS IS_SERVER_GENERATED
+        """
+
+    private static let columnObjectID = "OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"
 
     public static func indexes(schema: String, table: String) -> String {
         let object = MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))
@@ -213,10 +313,12 @@ public enum MSSQLSchemaQueries {
 public struct MSSQLTableRow: Sendable, Equatable {
     public let name: String
     public let isView: Bool
+    public let schema: String?
 
-    public init(name: String, isView: Bool) {
+    public init(name: String, isView: Bool, schema: String? = nil) {
         self.name = name
         self.isView = isView
+        self.schema = schema
     }
 }
 
@@ -231,6 +333,7 @@ public struct MSSQLColumnRow: Sendable, Equatable {
     public let isIdentity: Bool
     public let isPrimaryKey: Bool
     public let isComputed: Bool
+    public let isServerGenerated: Bool
 
     public init(
         name: String,
@@ -242,7 +345,8 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         defaultValue: String?,
         isIdentity: Bool,
         isPrimaryKey: Bool,
-        isComputed: Bool = false
+        isComputed: Bool = false,
+        isServerGenerated: Bool = false
     ) {
         self.name = name
         self.dataType = dataType
@@ -254,6 +358,12 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         self.isIdentity = isIdentity
         self.isPrimaryKey = isPrimaryKey
         self.isComputed = isComputed
+        self.isServerGenerated = isServerGenerated
+    }
+
+    /// Whether the server refuses any value written to the column, which is what the host treats as generated.
+    public var isGenerated: Bool {
+        isComputed || isServerGenerated
     }
 
     public var displayType: String {
@@ -318,7 +428,7 @@ public extension MSSQLSchemaQueries {
     static func parseTableRow(_ row: [String?]) -> MSSQLTableRow? {
         guard let name = row[safe: 0] ?? nil else { return nil }
         let typeRaw = (row[safe: 1] ?? nil) ?? "BASE TABLE"
-        return MSSQLTableRow(name: name, isView: typeRaw == "VIEW")
+        return MSSQLTableRow(name: name, isView: typeRaw == "VIEW", schema: row[safe: 2] ?? nil)
     }
 
     static func parseColumnRow(_ row: [String?]) -> MSSQLColumnRow? {
@@ -333,7 +443,8 @@ public extension MSSQLSchemaQueries {
             defaultValue: row[safe: 6] ?? nil,
             isIdentity: (row[safe: 7] ?? nil) == "1",
             isPrimaryKey: (row[safe: 8] ?? nil) == "1",
-            isComputed: (row[safe: 9] ?? nil) == "1"
+            isComputed: (row[safe: 9] ?? nil) == "1",
+            isServerGenerated: (row[safe: 10] ?? nil) == "1"
         )
     }
 

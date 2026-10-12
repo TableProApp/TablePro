@@ -3,26 +3,29 @@ import TableProModels
 
 struct DatabaseIconView: View {
     let type: DatabaseType
+    var iconName: String?
     let size: CGFloat
+    var tint: Color?
 
     var body: some View {
-        let name = type.iconName
-        if name.hasSuffix("-icon") {
-            Image(name)
+        let glyph = LibraryGlyph.connectionGlyph(type: type, iconName: iconName)
+        switch glyph.source {
+        case .asset:
+            Image(glyph.name)
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
                 .frame(width: size, height: size)
                 .foregroundStyle(color)
-        } else {
-            Image(systemName: name)
+        case .symbol:
+            Image(systemName: glyph.name)
                 .font(.system(size: size))
                 .foregroundStyle(color)
         }
     }
 
     var color: Color {
-        Self.color(for: type)
+        tint ?? Self.color(for: type)
     }
 
     static func color(for type: DatabaseType) -> Color {
@@ -30,6 +33,7 @@ struct DatabaseIconView: View {
         case .mysql, .mariadb: return .orange
         case .tidb: return .red
         case .databend: return .blue
+        case .oceanbase: return .blue
         case .postgresql, .redshift: return .blue
         case .sqlite: return .green
         case .redis: return .red

@@ -211,29 +211,35 @@ internal final class TypesensePluginDriver: PluginDatabaseDriver, @unchecked Sen
         TypesenseOperations.encodeExport(collection: table)
     }
 
+    /// The console's own text, not the tagged form `TypesenseStatementGenerator` uses for row
+    /// writes. The confirmation dialog shows the statement verbatim, so the tagged form asked the
+    /// user to approve base64, and `QueryClassifier` reads the leading verb to tier a statement as
+    /// destructive, which a tagged blob defeated: a collection drop classified as an ordinary write
+    /// and skipped the destructive gate.
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         TypesenseOperations.dropCollection(named: name, objectType: objectType)
-            .map(TypesenseStatementGenerator.encode)
+            .map(TypesenseOperations.consoleText)
     }
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        [TypesenseStatementGenerator.encode(TypesenseOperations.truncateCollection(named: table))]
+        [TypesenseOperations.consoleText(TypesenseOperations.truncateCollection(named: table))]
     }
 
     // MARK: - Statement Generation
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+    ) throws -> [PluginRowWrite]? {
         let fields = lock.withLock { _schemaCache[table] }?.fieldsByName ?? [:]
         let generator = TypesenseStatementGenerator(collection: table, columns: columns, fields: fields)
-        return generator.generateStatements(
+        return try generator.generateRowWrites(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,

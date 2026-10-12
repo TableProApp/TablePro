@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 
 /// One database's share of a backup.
@@ -12,6 +12,21 @@ struct NativeDumpBatchItem: Sendable, Equatable {
     let database: String
     let scope: NativeDumpScope
     let destination: URL
+
+    /// Why this database must not be dumped at all, from whoever built the scope.
+    ///
+    /// A scope the app could not finish reading describes less than the user ticked, and running
+    /// the tool with it writes an archive that looks like a backup: a PostgreSQL partitioned parent
+    /// whose partition read failed dumps as `CREATE TABLE` and no rows. The item is recorded as
+    /// failed instead, so it reaches the same outcome list a refused connection does.
+    let blockedReason: String?
+
+    init(database: String, scope: NativeDumpScope, destination: URL, blockedReason: String? = nil) {
+        self.database = database
+        self.scope = scope
+        self.destination = destination
+        self.blockedReason = blockedReason
+    }
 }
 
 /// How one item ended.
@@ -78,16 +93,15 @@ struct NativeDumpBatchState: Equatable {
 /// because the second was unreadable helps nobody. Every item's outcome is reported, so a partial
 /// run never looks like a whole one.
 @MainActor
-@Observable
-final class NativeDumpBatch {
+final class NativeDumpBatch: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "NativeDumpBatch")
 
-    private(set) var state = NativeDumpBatchState()
+    @Published private(set) var state = NativeDumpBatchState()
 
-    @ObservationIgnored private let makeService: @MainActor () -> any NativeDumpRunning
-    @ObservationIgnored private let estimateSize: @MainActor (DatabaseConnection, String) async -> Int64?
-    @ObservationIgnored private var current: (any NativeDumpRunning)?
-    @ObservationIgnored private var cancelled = false
+    private let makeService: @MainActor () -> any NativeDumpRunning
+    private let estimateSize: @MainActor (DatabaseConnection, String) async -> Int64?
+    private var current: (any NativeDumpRunning)?
+    private var cancelled = false
 
     init(
         makeService: @escaping @MainActor () -> any NativeDumpRunning = { NativeDumpService(kind: .backup) },
@@ -158,6 +172,12 @@ final class NativeDumpBatch {
         formatId: String?,
         producesDirectory: Bool
     ) async {
+        if let blockedReason = item.blockedReason {
+            Self.logger.error("batch item blocked db=\(item.database, privacy: .public)")
+            record(item, .failed(message: blockedReason))
+            return
+        }
+
         do {
             try NativeDumpDestination.prepare(item.destination, producesDirectory: producesDirectory)
         } catch {

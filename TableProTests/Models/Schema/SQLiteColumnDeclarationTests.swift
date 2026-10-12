@@ -4,15 +4,14 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 /// The column-definition grammar the rebuild rewrites through.
 ///
 /// Every refusal and every boundary here was measured against SQLite 3.54, and several of them
 /// refute what the published railroad diagrams say.
-@Suite("SQLite Column Declaration")
 struct SQLiteColumnDeclarationTests {
     private func parse(_ text: String) throws -> SQLiteColumnDeclaration {
         try #require(SQLiteColumnDeclaration.parse(text))
@@ -113,6 +112,16 @@ struct SQLiteColumnDeclarationTests {
     @Test("A column with no type gains one after its name")
     func addsATypeToAnUntypedColumn() throws {
         #expect(rewrite("a NOT NULL", type: "TEXT") == "a TEXT NOT NULL")
+    }
+
+    /// Measured on 3.54: `CREATE TABLE n2(body NOT NULL, tag TEXT)` keeps `body`'s type empty with
+    /// `notnull` 1, so a nullability or default edit on a typeless column must not invent a type.
+    @Test("A column with no type keeps none when its nullability or default changes")
+    func editsAnUntypedColumnWithoutTypingIt() {
+        #expect(rewrite("body", isNullable: false) == "body NOT NULL")
+        #expect(rewrite("body NOT NULL", isNullable: true) == "body")
+        #expect(rewrite("body", defaultValue: "'x'") == "body DEFAULT 'x'")
+        #expect(rewrite("body DEFAULT 'x'", defaultValue: "") == "body")
     }
 
     /// Dropping the constraint takes its `ON CONFLICT` tail with it: measured, an orphaned

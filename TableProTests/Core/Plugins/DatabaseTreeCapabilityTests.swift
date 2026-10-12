@@ -11,7 +11,6 @@ import Testing
 /// `supportsDatabaseTree` decides whether the sidebar can show a database level at all.
 /// Nothing pinned it before, so relaxing its connection-mode guard was unobservable.
 @MainActor
-@Suite("Database tree capability")
 struct DatabaseTreeCapabilityTests {
     private func snapshot(forRegisteredTypeId typeId: String) -> PluginMetadataSnapshot? {
         PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)

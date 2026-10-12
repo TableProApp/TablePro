@@ -12,11 +12,12 @@ struct AISettingsView: View {
     @Binding var settings: AISettings
 
     @State private var editingProviderID: UUID?
-    @State private var addingProviderType: AIProviderType?
+    @State private var addingProvider: AIProviderConfig?
     @State private var pendingDeleteID: UUID?
-    @State private var chatGPTCodexService = ChatGPTCodexService.shared
-    @State private var cursorAgentService = CursorAgentService.shared
-    @State private var xaiService = XAIService.shared
+    @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
+    @ObservedObject private var cursorAgentService = CursorAgentService.shared
+    @ObservedObject private var xaiService = XAIService.shared
+    @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
     @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
@@ -38,7 +39,8 @@ struct AISettingsView: View {
         .task { await chatGPTCodexService.refreshAuthState() }
         .task { await cursorAgentService.refreshStatus() }
         .task { await xaiService.refreshAuthState() }
-        .onChange(of: settings.providers.map(\.id)) {
+        .task { await claudeAgentService.performRefresh() }
+        .onChange(of: settings.providers.map(\.id)) { _ in
             refreshKeyAvailability()
         }
         .sheet(item: editingProviderBinding) { provider in
@@ -59,18 +61,18 @@ struct AISettingsView: View {
                 }
             )
         }
-        .sheet(item: $addingProviderType) { type in
+        .sheet(item: $addingProvider) { provider in
             AIProviderDetailSheet(
-                provider: makeNewProvider(type: type),
+                provider: provider,
                 initialAPIKey: "",
                 isNew: true,
                 onSave: { saved, apiKey in
                     saveProvider(saved, apiKey: apiKey, isNew: true)
-                    addingProviderType = nil
+                    addingProvider = nil
                 },
                 onDelete: nil,
                 onCancel: {
-                    addingProviderType = nil
+                    addingProvider = nil
                 }
             )
         }
@@ -101,20 +103,14 @@ struct AISettingsView: View {
 
     private var activeProviderSection: some View {
         Section {
-            HStack {
-                Text("Active Provider")
-                Spacer()
-                Picker("", selection: $settings.activeProviderID) {
-                    Text("None").tag(UUID?.none)
-                    ForEach(settings.providers) { provider in
-                        Text(provider.displayName).tag(UUID?.some(provider.id))
-                    }
+            Picker("Active Provider", selection: $settings.activeProviderID) {
+                Text("None").tag(UUID?.none)
+                ForEach(settings.providers) { provider in
+                    Text(provider.displayName).tag(UUID?.some(provider.id))
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
-                .disabled(settings.providers.isEmpty)
             }
+            .pickerStyle(.menu)
+            .disabled(settings.providers.isEmpty)
         }
     }
 
@@ -172,11 +168,12 @@ struct AISettingsView: View {
                     Image(systemName: "checkmark")
                         .font(.caption.bold())
                         .foregroundStyle(Color.accentColor)
+                        .accessibilityLabel(String(localized: "Active"))
                 }
             }
             .frame(width: 14)
 
-            Image(systemName: provider.type.symbolName)
+            Image(systemName: provider.symbolName)
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
 
@@ -201,21 +198,29 @@ struct AISettingsView: View {
         Menu {
             ForEach(orderedAddableTypes, id: \.self) { type in
                 Button {
-                    addingProviderType = type
+                    addingProvider = makeNewProvider(type: type)
                 } label: {
                     Label(type.displayName, systemImage: type.symbolName)
                 }
             }
+            ForEach(AIProviderPreset.all) { preset in
+                Button {
+                    addingProvider = AIProviderConfig(preset: preset)
+                } label: {
+                    Label(preset.displayName, systemImage: preset.symbolName)
+                }
+            }
             Divider()
             Button {
-                addingProviderType = .custom
+                addingProvider = makeNewProvider(type: .custom)
             } label: {
                 Label(String(localized: "Add Custom Provider…"), systemImage: AIProviderType.custom.symbolName)
             }
         } label: {
             Label(String(localized: "Add Provider…"), systemImage: "plus")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
     }
 
@@ -339,10 +344,12 @@ struct AISettingsView: View {
     // MARK: - Status text
 
     private func statusText(for provider: AIProviderConfig) -> String {
-        switch provider.type.authStyle {
+        switch provider.authStyle {
         case .oauth:
             return oauthStatusText(for: provider.type)
-        case .apiKey, .optionalApiKey:
+        case .apiKey:
+            return apiKeyStatusText(for: provider)
+        case .optionalApiKey:
             if provider.type == .custom {
                 return customStatusText(for: provider)
             }
@@ -352,17 +359,24 @@ struct AISettingsView: View {
             if provider.type == .xai {
                 return xaiStatusText(for: provider)
             }
-            return providersWithKey.contains(provider.id)
-                ? String(localized: "API key set")
-                : String(localized: "Not configured")
+            return apiKeyStatusText(for: provider)
         case .none:
-            let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
+            if provider.type == .claudeAgent {
+                return claudeAgentStatusText()
+            }
+            let endpoint = provider.endpoint.isEmpty ? provider.defaultEndpoint : provider.endpoint
             guard !endpoint.isEmpty else { return String(localized: "Not configured") }
             if let host = URL(string: endpoint)?.host, host == "localhost" || host == "127.0.0.1" {
                 return String(localized: "Local")
             }
             return endpoint
         }
+    }
+
+    private func apiKeyStatusText(for provider: AIProviderConfig) -> String {
+        providersWithKey.contains(provider.id)
+            ? String(localized: "API key set")
+            : String(localized: "Not configured")
     }
 
     private func oauthStatusText(for type: AIProviderType) -> String {
@@ -398,6 +412,25 @@ struct AISettingsView: View {
         return String(localized: "Not configured")
     }
 
+    /// Claude Agent authenticates through the CLI rather than an endpoint or a key, so the endpoint
+    /// arm this type used to fall into could only ever answer "Not configured", however well the
+    /// provider was working. The sheet has always read the service; this row now reads the same one.
+    private func claudeAgentStatusText() -> String {
+        switch claudeAgentService.state {
+        case .signedIn(let account, _):
+            guard let account, !account.isEmpty else { return String(localized: "Signed in") }
+            return String(format: String(localized: "Signed in as %@"), account)
+        case .signedOut:
+            return String(localized: "Not signed in")
+        case .outdated(let version):
+            return String(format: String(localized: "Claude Code %@ is too old"), version)
+        case .notInstalled:
+            return String(localized: "Claude Code not installed")
+        case .unknown:
+            return String(localized: "Checking…")
+        }
+    }
+
     private func customStatusText(for provider: AIProviderConfig) -> String {
         if providersWithKey.contains(provider.id) {
             return String(localized: "API key set")
@@ -410,7 +443,7 @@ struct AISettingsView: View {
 
     private func refreshKeyAvailability() {
         var ids: Set<UUID> = []
-        for provider in settings.providers where provider.type.authStyle.usesAPIKey {
+        for provider in settings.providers where provider.authStyle.usesAPIKey {
             if let key = AIKeyStorage.shared.loadAPIKey(for: provider.id), !key.isEmpty {
                 ids.insert(provider.id)
             }
@@ -434,7 +467,7 @@ struct AISettingsView: View {
     }
 
     private func saveProvider(_ provider: AIProviderConfig, apiKey: String, isNew: Bool) {
-        if provider.type.authStyle.usesAPIKey {
+        if provider.authStyle.usesAPIKey {
             AIKeyStorage.shared.saveAPIKey(apiKey, for: provider.id)
         }
 
@@ -455,6 +488,7 @@ struct AISettingsView: View {
     private func removeProvider(_ id: UUID) {
         AIKeyStorage.shared.deleteAPIKey(for: id)
         AIProviderFactory.invalidateCache(for: id)
+        AIModelCatalog.shared.remove(providerID: id)
         settings.providers.removeAll { $0.id == id }
         if settings.activeProviderID == id {
             settings.activeProviderID = nil

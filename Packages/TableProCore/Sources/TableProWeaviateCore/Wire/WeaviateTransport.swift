@@ -51,7 +51,7 @@ public struct WeaviateHTTPResponse: Sendable, Equatable {
 private final class ParsedResponseJSON: @unchecked Sendable {
     private let body: Data
     private let lock = NSLock()
-    private var value_: Any?
+    private var cachedValue: Any?
     private var hasParsed = false
 
     init(_ body: Data) {
@@ -61,10 +61,10 @@ private final class ParsedResponseJSON: @unchecked Sendable {
     var value: Any? {
         lock.withLock {
             if !hasParsed {
-                value_ = try? JSONSerialization.jsonObject(with: body, options: [.fragmentsAllowed])
+                cachedValue = try? JSONSerialization.jsonObject(with: body, options: [.fragmentsAllowed])
                 hasParsed = true
             }
-            return value_
+            return cachedValue
         }
     }
 }

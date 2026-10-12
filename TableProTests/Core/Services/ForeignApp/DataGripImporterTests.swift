@@ -98,19 +98,19 @@ struct DataGripImporterTests {
 
     // MARK: - Discovery
 
-    @Test("connectionCount counts unique data sources")
-    func connectionCount() throws {
+    @Test("inventory counts unique data sources")
+    func inventoryCountsDataSources() throws {
         try writeDataSources([
             source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a"),
             source(uuid: "2", name: "B", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://h:5432/b")
         ])
-        #expect(importer.connectionCount() == 2)
+        #expect(importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 0))
     }
 
     @Test("import throws when no DataGrip data found")
     func noData() {
         #expect(throws: ForeignAppImportError.self) {
-            try importer.importConnections(includePasswords: false)
+            try importer.collect(.connectionsOnly)
         }
     }
 
@@ -126,8 +126,8 @@ struct DataGripImporterTests {
             source(uuid: "5", name: "lt", driverRef: "sqlite.xerial", jdbcURL: "jdbc:sqlite:/tmp/x.db")
         ])
 
-        let result = try importer.importConnections(includePasswords: false)
-        let types = Dictionary(uniqueKeysWithValues: result.envelope.connections.map { ($0.name, $0.type) })
+        let result = try importer.collect(.connectionsOnly)
+        let types = Dictionary(uniqueKeysWithValues: result.connections.map { ($0.name, $0.type) })
 
         #expect(types["my"] == "MySQL")
         #expect(types["pg"] == "PostgreSQL")
@@ -142,7 +142,7 @@ struct DataGripImporterTests {
             source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://db.example.com:3307/shop", userName: "root")
         ])
 
-        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
         #expect(connection.host == "db.example.com")
         #expect(connection.port == 3_307)
         #expect(connection.database == "shop")
@@ -155,7 +155,7 @@ struct DataGripImporterTests {
             source(uuid: "1", name: "A", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://localhost/app")
         ])
 
-        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
         #expect(connection.port == 5_432)
     }
 
@@ -165,7 +165,7 @@ struct DataGripImporterTests {
             source(uuid: "1", name: "A", driverRef: "redshift", jdbcURL: "jdbc:redshift://cluster.example.com/dev")
         ])
 
-        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
         #expect(connection.type == "Redshift")
         #expect(connection.port == 5_439)
     }
@@ -176,7 +176,7 @@ struct DataGripImporterTests {
             source(uuid: "1", name: "A", driverRef: "sqlite.xerial", jdbcURL: "jdbc:sqlite:/Users/me/app.db")
         ])
 
-        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
         #expect(connection.type == "SQLite")
         #expect(connection.database == "/Users/me/app.db")
     }
@@ -202,7 +202,7 @@ struct DataGripImporterTests {
             """
         ])
 
-        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
         #expect(connection.username == "appuser")
         let ssh = try #require(connection.sshConfig)
         #expect(ssh.host == "bastion.example.com")
@@ -227,7 +227,7 @@ struct DataGripImporterTests {
             "<sshConfig host=\"h\" id=\"SSH1\" port=\"22\" username=\"u\" authType=\"PASSWORD\"/>"
         ])
 
-        let ssh = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first?.sshConfig)
+        let ssh = try #require(try importer.collect(.connectionsOnly).connections.first?.sshConfig)
         #expect(ssh.authMethod == "Password")
         #expect(ssh.privateKeyPath == "")
     }
@@ -241,7 +241,7 @@ struct DataGripImporterTests {
             localSource(uuid: "1", extra: "<ssh-properties><enabled>false</enabled></ssh-properties>")
         ])
 
-        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
         #expect(connection.sshConfig == nil)
     }
 
@@ -268,8 +268,8 @@ struct DataGripImporterTests {
         try KdbxTestFixture.makeMainKeyFile(mainKey: mainKey)
             .write(to: configDir.appendingPathComponent("c.pwd"), atomically: true, encoding: .utf8)
 
-        let result = try importer.importConnections(includePasswords: true)
-        let credentials = try #require(result.envelope.credentials?["0"])
+        let result = try importer.collect(.withPasswords)
+        let credentials = try #require(result.bundle.credentials["1"])
         #expect(credentials.sshPassword == "ssh-pw")
     }
 
@@ -282,7 +282,7 @@ struct DataGripImporterTests {
             localSource(uuid: "1", userName: "postgres")
         ])
 
-        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
         #expect(connection.username == "postgres")
     }
 
@@ -305,7 +305,7 @@ struct DataGripImporterTests {
             """)
         ])
 
-        let connection = try #require(try importer.importConnections(includePasswords: false).envelope.connections.first)
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
         let ssl = try #require(connection.sslConfig)
         #expect(ssl.mode == "Verify Identity")
         #expect(ssl.caCertificatePath == "\(NSHomeDirectory())/certs/ca.pem")
@@ -321,9 +321,9 @@ struct DataGripImporterTests {
             source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a", group: "Production")
         ])
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.connections.first?.groupName == "Production")
-        #expect(result.envelope.groups?.contains { $0.name == "Production" } == true)
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.groupPath(at: 0) == ["Production"])
+        #expect(result.bundle.connections.first?.ref == "1")
     }
 
     @Test("deduplicates data sources by uuid")
@@ -333,7 +333,235 @@ struct DataGripImporterTests {
             source(uuid: "dup", name: "A copy", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a")
         ])
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.connections.count == 1)
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.connections.count == 1)
+    }
+
+    // MARK: - Consoles
+
+    private static let shopUUID = "11111111-1111-4111-8111-111111111111"
+    private static let orphanUUID = "22222222-2222-4222-8222-222222222222"
+    private static let mongoUUID = "33333333-3333-4333-8333-333333333333"
+    private static let unmappedUUID = "44444444-4444-4444-8444-444444444444"
+
+    private func writeConfig(_ elements: [String], configDir: String) throws {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <application>
+          <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+          \(elements.joined(separator: "\n"))
+          </component>
+        </application>
+        """
+        try ForeignFixture.write(xml, to: root.appendingPathComponent("\(configDir)/options/dataSources.xml"))
+    }
+
+    private func consoleURL(_ configDir: String, _ uuid: String, _ path: String) -> URL {
+        root.appendingPathComponent("\(configDir)/consoles/db/\(uuid)/\(path)")
+    }
+
+    private func writeConsoleFixture() throws {
+        let current = "DataGrip2026.2"
+        try writeConfig([
+            source(
+                uuid: Self.shopUUID, name: "dg_sample_shop", driverRef: "sqlite.xerial",
+                jdbcURL: "jdbc:sqlite:/tmp/dg_sample_shop.sqlite"
+            ),
+            source(
+                uuid: Self.mongoUUID, name: "dg_sample_mongo", driverRef: "mongo",
+                jdbcURL: "mongodb://localhost:27017/dg_sample"
+            ),
+            "<data-source source=\"LOCAL\" name=\"dg_sample_unmapped\" uuid=\"\(Self.unmappedUUID)\"/>"
+        ], configDir: current)
+
+        try ForeignFixture.write("select 1;", to: consoleURL(current, Self.shopUUID, "console.sql"))
+        try ForeignFixture.write("select 2;", to: consoleURL(current, Self.shopUUID, "console_1.sql"))
+        try ForeignFixture.write("select 7;", to: consoleURL(current, Self.shopUUID, "Console_7.sql"))
+        try ForeignFixture.write("  \n", to: consoleURL(current, Self.shopUUID, "console_3.sql"))
+        try ForeignFixture.write(
+            "select * from dg_sample_items;",
+            to: consoleURL(current, Self.shopUUID, "dg_sample_report.sql")
+        )
+        try ForeignFixture.write(
+            "select count(*) from dg_sample_items;",
+            to: consoleURL(current, Self.shopUUID, "reports/dg_sample_monthly.sql")
+        )
+        try ForeignFixture.write("not sql", to: consoleURL(current, Self.shopUUID, "notes.txt"))
+        try ForeignFixture.write("db.items.find()", to: consoleURL(current, Self.shopUUID, "script.js"))
+        try ForeignFixture.write("junk", to: consoleURL(current, Self.shopUUID, ".DS_Store"))
+        try ForeignFixture.write("db.dg_sample_items.find()", to: consoleURL(current, Self.mongoUUID, "console.js"))
+        try ForeignFixture.write("select 9;", to: consoleURL(current, Self.orphanUUID, "dg_sample_orphan.sql"))
+        try ForeignFixture.write("select 4;", to: consoleURL(current, Self.unmappedUUID, "dg_unmapped_query.sql"))
+        try ForeignFixture.write(
+            "select 'history';",
+            to: root.appendingPathComponent("\(current)/consoles/.history/db/\(Self.shopUUID).sql")
+        )
+        try ForeignFixture.write("select 'global';", to: root.appendingPathComponent("\(current)/scratches/scratch.sql"))
+
+        let older = "DataGrip2025.3"
+        try writeConfig([
+            source(
+                uuid: Self.shopUUID, name: "dg_sample_shop", driverRef: "sqlite.xerial",
+                jdbcURL: "jdbc:sqlite:/tmp/dg_sample_shop.sqlite"
+            )
+        ], configDir: older)
+        try ForeignFixture.write("select 'old';", to: consoleURL(older, Self.shopUUID, "dg_sample_report.sql"))
+        try ForeignFixture.write("select 'only old';", to: consoleURL(older, Self.shopUUID, "dg_sample_legacy.sql"))
+    }
+
+    private func query(_ name: String, in result: CollectedImport, connection: BundleRef?) -> BundleSavedQuery? {
+        result.bundle.savedQueries.first { $0.name == name && $0.connectionRef == connection }
+    }
+
+    @Test("collect reads consoles of each data source from its newest config dir")
+    func consolesFromNewestConfigDir() throws {
+        try writeConsoleFixture()
+
+        let result = try importer.collect(.withSavedQueries)
+        let shop = BundleRef(Self.shopUUID)
+
+        let shopNames = Set(result.bundle.savedQueries.filter { $0.connectionRef == shop }.map(\.name))
+        #expect(shopNames == ["console", "console_1", "Console_7", "dg_sample_report", "dg_sample_monthly"])
+        #expect(query("dg_sample_report", in: result, connection: shop)?.sql == "select * from dg_sample_items;")
+        #expect(query("dg_sample_legacy", in: result, connection: shop) == nil)
+
+        let monthly = try #require(query("dg_sample_monthly", in: result, connection: shop))
+        #expect(result.folderPath(of: monthly) == ["reports"])
+        #expect(result.bundle.folderChain(monthly.folderRef).allSatisfy { $0.connectionRef == shop })
+    }
+
+    @Test("collect lists default console names unchecked and user-named consoles checked")
+    func autoNamedConsolesUnchecked() throws {
+        try writeConsoleFixture()
+
+        let result = try importer.collect(.withSavedQueries)
+        let shop = BundleRef(Self.shopUUID)
+
+        for name in ["console", "console_1", "Console_7"] {
+            let console = try #require(query(name, in: result, connection: shop))
+            #expect(!result.isSuggested(console), "\(name) should start unchecked")
+        }
+        for name in ["dg_sample_report", "dg_sample_monthly"] {
+            let console = try #require(query(name, in: result, connection: shop))
+            #expect(result.isSuggested(console), "\(name) should start checked")
+        }
+    }
+
+    @Test("collect reads .js consoles only for a MongoDB data source")
+    func mongoConsolesReadAsJavaScript() throws {
+        try writeConsoleFixture()
+
+        let result = try importer.collect(.withSavedQueries)
+
+        let mongo = try #require(query("console", in: result, connection: BundleRef(Self.mongoUUID)))
+        #expect(mongo.sql == "db.dg_sample_items.find()")
+        #expect(!result.isSuggested(mongo))
+        #expect(query("script", in: result, connection: BundleRef(Self.shopUUID)) == nil)
+    }
+
+    @Test("A data source that imports no connection keeps its consoles, global and unchecked")
+    func unmappedDataSourceConsolesAreGlobal() throws {
+        try writeConsoleFixture()
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(result.connections.map { $0.name } == ["dg_sample_shop", "dg_sample_mongo"])
+        let unmapped = try #require(query("dg_unmapped_query", in: result, connection: nil))
+        #expect(result.folderPath(of: unmapped) == ["DataGrip"])
+        #expect(!result.isSuggested(unmapped))
+    }
+
+    @Test("collect skips orphan folders, history, scratches and blank or foreign files")
+    func skipsWhatDataGripDoesNotList() throws {
+        try writeConsoleFixture()
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(!result.savedQueryNames.contains("dg_sample_orphan"))
+        #expect(!result.savedQueryNames.contains("scratch"))
+        #expect(!result.savedQueryNames.contains("console_3"))
+        #expect(!result.savedQueryNames.contains("notes"))
+        #expect(!result.bundle.savedQueries.contains { $0.sql.contains("history") })
+        #expect(result.bundle.savedQueries.count == 7)
+    }
+
+    @Test("A data source uuid that is not a UUID never becomes a console path")
+    func nonUUIDDataSourceIsNotAPath() throws {
+        let current = "DataGrip2026.2"
+        try writeConfig([
+            source(
+                uuid: "../escape", name: "dg_sample_escape", driverRef: "sqlite.xerial",
+                jdbcURL: "jdbc:sqlite:/tmp/dg_sample_escape.sqlite"
+            )
+        ], configDir: current)
+        try ForeignFixture.write(
+            "select 'outside';",
+            to: root.appendingPathComponent("\(current)/consoles/escape/dg_sample_outside.sql")
+        )
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(result.bundle.savedQueries.isEmpty)
+    }
+
+    @Test("A custom default file name decides which consoles are auto-named")
+    func customScratchesName() throws {
+        let current = "DataGrip2026.2"
+        try writeConfig([
+            source(
+                uuid: Self.shopUUID, name: "dg_sample_shop", driverRef: "sqlite.xerial",
+                jdbcURL: "jdbc:sqlite:/tmp/dg_sample_shop.sqlite"
+            )
+        ], configDir: current)
+        try ForeignFixture.write(
+            """
+            <application>
+              <component name="QueryFileSettings">
+                <option name="scratchesName" value="dg_sample_q" />
+              </component>
+            </application>
+            """,
+            to: root.appendingPathComponent("\(current)/options/QueryFileSettings.xml")
+        )
+        try ForeignFixture.write("select 1;", to: consoleURL(current, Self.shopUUID, "dg_sample_q.sql"))
+        try ForeignFixture.write("select 2;", to: consoleURL(current, Self.shopUUID, "dg_sample_q_2.sql"))
+        try ForeignFixture.write("select 3;", to: consoleURL(current, Self.shopUUID, "console.sql"))
+
+        let result = try importer.collect(.withSavedQueries)
+        let shop = BundleRef(Self.shopUUID)
+
+        let base = try #require(query("dg_sample_q", in: result, connection: shop))
+        let numbered = try #require(query("dg_sample_q_2", in: result, connection: shop))
+        let console = try #require(query("console", in: result, connection: shop))
+        #expect(!result.isSuggested(base))
+        #expect(!result.isSuggested(numbered))
+        #expect(result.isSuggested(console))
+    }
+
+    @Test("Console names DataGrip generates are recognized")
+    func autoNamedConsoleNames() {
+        #expect(DataGripConsoleReader.isAutoNamed("console", baseName: "console"))
+        #expect(DataGripConsoleReader.isAutoNamed("console_1", baseName: "console"))
+        #expect(DataGripConsoleReader.isAutoNamed("Console_99999", baseName: "console"))
+        #expect(!DataGripConsoleReader.isAutoNamed("console_0", baseName: "console"))
+        #expect(!DataGripConsoleReader.isAutoNamed("console_100000", baseName: "console"))
+        #expect(!DataGripConsoleReader.isAutoNamed("console_", baseName: "console"))
+        #expect(!DataGripConsoleReader.isAutoNamed("consoles", baseName: "console"))
+    }
+
+    @Test("collect reads no consoles unless saved queries are requested")
+    func noConsolesWithoutRequest() throws {
+        try writeConsoleFixture()
+
+        let result = try importer.collect(.connectionsOnly)
+
+        #expect(result.bundle.savedQueries.isEmpty)
+    }
+
+    @Test("inventory counts consoles that have text")
+    func inventoryCountsConsoles() throws {
+        try writeConsoleFixture()
+
+        #expect(importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 7))
     }
 }

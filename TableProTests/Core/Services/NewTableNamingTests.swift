@@ -8,7 +8,6 @@ import Testing
 
 /// A row import that creates its table used to open with an empty name field, so the name reached
 /// `CREATE TABLE` unchecked and the server was the first thing to judge it.
-@Suite("New table naming")
 struct NewTableNamingTests {
     private let postgres = NewTableNameStyle.forDatabaseType(.postgresql)
 

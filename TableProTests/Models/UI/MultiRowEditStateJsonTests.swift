@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MultiRowEditState JSON change detection")
 @MainActor
 struct MultiRowEditStateJsonTests {
     private func makeState(value: String, type: ColumnType, column: String = "data") -> MultiRowEditState {

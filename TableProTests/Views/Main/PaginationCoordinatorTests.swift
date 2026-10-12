@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PaginationCoordinator navigation")
 @MainActor
 struct PaginationCoordinatorTests {
     private func makeCoordinator(
@@ -70,7 +69,7 @@ struct PaginationCoordinatorTests {
         )
         let first = UUID()
         coordinator.claimExactCount(for: tabId, token: first)
-        coordinator.releaseAllExactCounts()
+        coordinator.releaseExactCount(for: tabId)
 
         let second = UUID()
         coordinator.claimExactCount(for: tabId, token: second)

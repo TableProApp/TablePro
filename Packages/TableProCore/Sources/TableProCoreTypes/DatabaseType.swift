@@ -13,6 +13,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let mariadb = DatabaseType(rawValue: "MariaDB")
     public static let tidb = DatabaseType(rawValue: "TiDB")
     public static let databend = DatabaseType(rawValue: "Databend")
+    public static let oceanbase = DatabaseType(rawValue: "OceanBase")
     public static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     public static let sqlite = DatabaseType(rawValue: "SQLite")
     public static let redis = DatabaseType(rawValue: "Redis")
@@ -43,7 +44,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let weaviate = DatabaseType(rawValue: "Weaviate")
 
     public static let allKnownTypes: [DatabaseType] = [
-        .mysql, .mariadb, .tidb, .databend, .postgresql, .sqlite, .redis, .mongodb,
+        .mysql, .mariadb, .tidb, .databend, .oceanbase, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .dameng, .duckdb, .cassandra, .redshift,
         .etcd, .cloudflareD1, .dynamodb, .bigquery, .spanner, .snowflake, .libsql, .beancount,
         .surrealdb, .teradata, .trino, .kafka, .cloudflareR2SQL, .weaviate
@@ -56,6 +57,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .mariadb: return "mariadb-icon"
         case .tidb: return "tidb-icon"
         case .databend: return "databend-icon"
+        case .oceanbase: return "oceanbase-icon"
         case .postgresql: return "postgresql-icon"
         case .redshift: return "redshift-icon"
         case .sqlite: return "sqlite-icon"
@@ -67,6 +69,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .dameng: return "cylinder"
         case .duckdb: return "duckdb-icon"
         case .cassandra: return "cassandra-icon"
+        case .scylladb: return "scylladb-icon"
         case .etcd: return "etcd-icon"
         case .cloudflareD1: return "cloudflare-d1-icon"
         case .dynamodb: return "dynamodb-icon"
@@ -87,7 +90,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
 
     public var pluginTypeId: String {
         switch self {
-        case .mariadb, .tidb, .databend: return DatabaseType.mysql.rawValue
+        case .mariadb, .tidb, .databend, .oceanbase: return DatabaseType.mysql.rawValue
         case .redshift: return DatabaseType.postgresql.rawValue
         default: return rawValue
         }

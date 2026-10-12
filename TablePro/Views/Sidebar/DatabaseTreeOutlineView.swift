@@ -29,6 +29,8 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     let activeSchema: String?
     let selectedTables: Set<DatabaseTreeTableRef>
     let showRecentTables: Bool
+    let showSystemContainers: Bool
+    let showsPartitions: Bool
     let rowSizePreference: SidebarRowSizePreference
 
     /// The size the rows are actually drawn at, which is the system's unless the user overrode it.
@@ -67,6 +69,11 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         let menu = NSMenu()
         menu.delegate = context.coordinator
         outlineView.menu = menu
+
+        /// Tables and views drag into folders inside this window only; nothing leaves the app.
+        outlineView.registerForDraggedTypes([.tableProSidebarObject])
+        outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
+        outlineView.setDraggingSourceOperationMask([], forLocal: false)
 
         context.coordinator.attach(outlineView: outlineView)
         context.coordinator.update(from: self)

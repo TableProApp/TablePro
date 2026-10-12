@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("CellPosition")
 struct CellPositionTests {
     @Test("Equal positions are equal")
     func equalPositionsAreEqual() {
@@ -55,7 +54,6 @@ struct CellPositionTests {
     }
 }
 
-@Suite("RowVisualState")
 struct RowVisualStateTests {
     @Test("Empty state has all flags false and empty modifiedColumns")
     func emptyState() {

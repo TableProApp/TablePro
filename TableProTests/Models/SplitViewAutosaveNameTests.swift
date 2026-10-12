@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Split view autosave name")
 struct SplitViewAutosaveNameTests {
     /// A real user's saved widths and collapse states hang off this exact string. Versioning it
     /// discards all of them, so production must keep the bare name whatever the sandbox does.
@@ -66,6 +65,13 @@ struct SplitViewAutosaveNameTests {
         )
     }
 
+    @Test("The unit test host names no autosave record, so no window it builds writes one")
+    @MainActor
+    func unitTestHostNamesNoRecord() {
+        #expect(SplitViewAutosaveName.current(SplitViewAutosaveName.base) == nil)
+        #expect(SplitViewAutosaveName.current(SplitViewAutosaveName.historyDrawer(connectionId: UUID())) == nil)
+    }
+
     /// The rule is only useful if the call sites actually use it. A new autosave name assigned
     /// directly is a new leak, and this is what catches one.
     @Test("Every autosave assignment goes through the helper")
@@ -85,6 +91,8 @@ struct SplitViewAutosaveNameTests {
             "TablePro/Core/Services/Infrastructure/TabWindowController.swift",
             "TablePro/Extensions/NSWindow+FrameAutosave.swift",
             "TablePro/Core/Services/Infrastructure/MainSplitViewController.swift",
+            "TablePro/Views/DataFiles/DataFileSplitViewController.swift",
+            "TablePro/Views/DataFiles/DataFileWindowController.swift",
         ]
 
         var offenders: [String] = []

@@ -9,6 +9,7 @@
 //
 
 import AppKit
+import Combine
 import Observation
 import SwiftUI
 
@@ -19,6 +20,8 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
     private static let detailMinThickness: CGFloat = 480
 
     private let coordinator: ConnectionFormCoordinator
+
+    private var titleObservations: [AnyCancellable] = []
 
     internal init(coordinator: ConnectionFormCoordinator) {
         self.coordinator = coordinator
@@ -34,13 +37,12 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
         super.viewDidLoad()
         splitView.isVertical = true
 
-        /// `sidebarWithViewController:` is what makes the pane an actual sidebar: full window
-        /// height behind the titlebar, the vibrant material, and the divider a tracking separator
-        /// can align to. A plain split item gets none of it.
+        /// A sidebar item is what makes the pane an actual sidebar: full window height behind the
+        /// titlebar, the vibrant material, and the divider a tracking separator can align to. A
+        /// plain split item gets none of it.
         let sidebar = NSHostingController(rootView: ConnectionFormSidebar(coordinator: coordinator))
         sidebar.sizingOptions = []
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.canCollapse = true
+        let sidebarItem = NSSplitViewItem.navigationSidebar(sidebar)
         sidebarItem.minimumThickness = Self.sidebarMinThickness
         sidebarItem.maximumThickness = Self.sidebarMaxThickness
         addSplitViewItem(sidebarItem)
@@ -60,14 +62,16 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
     /// The window title follows the connection's type, which the Change… button can now alter.
     ///
     /// `NSWindow(contentViewController:)` binds the window's title to this controller's, so nothing
-    /// writes `window.title` directly. `withObservationTracking` fires once per change, so the
-    /// closure re-arms itself.
+    /// writes `window.title` directly. The coordinator passes on its children's changes, so its own
+    /// publisher covers a type change in `network`.
     private func trackTitle() {
-        withObservationTracking {
-            title = windowTitle
-        } onChange: { [weak self] in
-            Task { @MainActor in self?.trackTitle() }
-        }
+        title = windowTitle
+        titleObservations = [
+            coordinator.onMainActorChange { [weak self] in
+                guard let self else { return }
+                self.title = self.windowTitle
+            },
+        ]
     }
 
     private var windowTitle: String {
@@ -82,10 +86,8 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
 /// The tracking separator alone: it keeps the titlebar's own divider on the split divider as that
 /// divider is dragged, which is what makes the titlebar read as part of a sidebar window.
 ///
-/// No `.toggleSidebar`. The four sections are the window's only navigation, so a button whose job is
-/// to hide them earns nothing in the titlebar. Collapsing stays reachable, because
-/// `NSSplitViewController.toggleSidebar(_:)` is on the responder chain and the View menu's Show
-/// Sidebar sends exactly that, so a sidebar dragged shut can always be brought back.
+/// No `.toggleSidebar`: the sections are the window's only navigation, so the sidebar cannot be
+/// hidden and a button to hide it would do nothing.
 ///
 /// `.sidebarTrackingSeparator` is supplied by AppKit whenever the window's contentViewController is
 /// an `NSSplitViewController`, which is why this window has no wrapper around it.

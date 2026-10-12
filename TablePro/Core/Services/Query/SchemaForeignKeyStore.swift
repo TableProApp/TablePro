@@ -1,12 +1,8 @@
 import Foundation
 import os
 
-/// Foreign keys for a whole browsed schema, fetched once so the data grid knows which columns
-/// carry the navigation arrow before its first row is drawn.
-///
-/// The grid used to learn this only from the per-table metadata fetch that follows the rows, which
-/// is a separate round trip on the metadata connection: the rows arrived first and the arrow
-/// appeared afterwards. Reading this store during the first paint is what closes that gap.
+/// A browsed schema's foreign keys, read when the first table load in it starts, so each table
+/// paints its arrows with its first rows instead of after its own metadata round trip.
 @MainActor
 final class SchemaForeignKeyStore {
     static let shared = SchemaForeignKeyStore()

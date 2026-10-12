@@ -11,9 +11,8 @@ extension AIChatViewModel {
     struct PromptContext: Sendable {
         let databaseType: DatabaseType
         let databaseName: String
-        let tables: [TableInfo]
-        let columnsByTable: [String: [ColumnInfo]]
-        let foreignKeys: [String: [ForeignKeyInfo]]
+        let tables: [AISchemaTable]
+        let defaultSchema: String?
         let currentQuery: String?
         let queryResults: String?
         let settings: AISettings
@@ -38,7 +37,7 @@ extension AIChatViewModel {
                     try await driver.fetchColumns(table: tableName)
                 }
             } catch {
-                Self.logger.warning("Column fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Column fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                 columns = []
             }
             let fkMap: [String: [ForeignKeyInfo]]
@@ -47,7 +46,7 @@ extension AIChatViewModel {
                     try await driver.fetchForeignKeys(forTables: [tableName])
                 }
             } catch {
-                Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                 fkMap = [:]
             }
             guard !Task.isCancelled, let self else { return }
@@ -90,7 +89,7 @@ extension AIChatViewModel {
             await ensureColumnsLoaded(forTable: name)
         case .savedQuery(let id, _):
             await ensureSavedQueryLoaded(id: id)
-        case .currentQuery, .queryResult, .file:
+        case .currentQuery, .queryResult, .file, .queryContext:
             break
         }
     }
@@ -112,7 +111,7 @@ extension AIChatViewModel {
                         }
                         return (name, cols)
                     } catch {
-                        Self.logger.warning("Schema column fetch failed for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        Self.logger.warning("Schema column fetch failed for \(name, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                         return (name, [])
                     }
                 }
@@ -134,7 +133,7 @@ extension AIChatViewModel {
                 foreignKeysByTable[name] = fks
             }
         } catch {
-            Self.logger.warning("Foreign key bulk fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Foreign key bulk fetch failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -143,9 +142,8 @@ extension AIChatViewModel {
         return PromptContext(
             databaseType: connection.type,
             databaseName: services.databaseManager.browseDatabaseName(for: connection),
-            tables: tables,
-            columnsByTable: columnsByTable,
-            foreignKeys: foreignKeysByTable,
+            tables: schemaTables(),
+            defaultSchema: defaultSchema(for: connection),
             currentQuery: settings.includeCurrentQuery ? currentQuery : nil,
             queryResults: settings.includeQueryResults ? queryResults : nil,
             settings: settings,
@@ -157,10 +155,18 @@ extension AIChatViewModel {
     }
 
     func resolveConnectionPolicy(settings: AISettings) -> AIConnectionPolicy? {
-        let policy = connection?.aiPolicy ?? settings.defaultConnectionPolicy
+        let policy = connection.map {
+            AIConnectionAccessGate.policy(
+                for: $0.id,
+                connectionStorage: services.connectionStorage,
+                databaseManager: services.databaseManager,
+                defaultPolicy: settings.defaultConnectionPolicy,
+                unsavedCopy: $0
+            ) ?? .never
+        } ?? settings.defaultConnectionPolicy
 
         if policy == .askEachTime {
-            if let connectionID = connection?.id, sessionApprovedConnections.contains(connectionID) {
+            if let connectionID = connection?.id, services.aiAccessApprovals.isApproved(connectionID) {
                 return .alwaysAllow
             }
             return .askEachTime
@@ -176,12 +182,28 @@ extension AIChatViewModel {
             services.pluginManager.sqlDialect(for: $0.type)?.identifierQuote
         } ?? "\""
         let section = AISchemaContext.buildSchemaSection(
-            tables: tables,
-            columnsByTable: columnsByTable,
-            foreignKeys: foreignKeysByTable,
+            tables: schemaTables(),
+            defaultSchema: connection.flatMap { defaultSchema(for: $0) },
             maxTables: settings.maxSchemaTables,
             identifierQuote: identifierQuote
         )
         return section.isEmpty ? nil : section
+    }
+
+    /// `tables` lists the one schema the session browses, where a table name is unique, so the
+    /// name-keyed column and foreign key maps join to it by name.
+    private func schemaTables() -> [AISchemaTable] {
+        tables.map { table in
+            AISchemaTable(
+                table: table,
+                columns: columnsByTable[table.name] ?? [],
+                foreignKeys: foreignKeysByTable[table.name] ?? []
+            )
+        }
+    }
+
+    private func defaultSchema(for connection: DatabaseConnection) -> String? {
+        connection.type.implicitSchemaName
+            ?? services.databaseManager.session(for: connection.id)?.browseSchema
     }
 }

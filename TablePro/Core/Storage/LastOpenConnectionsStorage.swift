@@ -37,7 +37,7 @@ final class LastOpenConnectionsStorage {
             let data = try JSONEncoder().encode(connectionIds)
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            Self.logger.error("Failed to save last open connections: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save last open connections: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -47,7 +47,7 @@ final class LastOpenConnectionsStorage {
             let data = try Data(contentsOf: fileURL)
             return try JSONDecoder().decode([UUID].self, from: data)
         } catch {
-            Self.logger.error("Failed to load last open connections: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load last open connections: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }

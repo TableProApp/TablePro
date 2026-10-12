@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 internal struct FavoriteEditItem: Identifiable {
     let id = UUID()
@@ -153,22 +153,37 @@ internal extension [FavoriteNode] {
     }
 }
 
-@MainActor @Observable
-internal final class FavoritesSidebarViewModel {
-    var editDialogItem: FavoriteEditItem?
-    var renamingFolderId: UUID?
-    var showDeleteConfirmation = false
-    var favoritesToDelete: [SQLFavorite] = []
+@MainActor
+internal final class FavoritesSidebarViewModel: ObservableObject {
+    @Published var editDialogItem: FavoriteEditItem?
+    @Published var renamingFolderId: UUID?
+    @Published var showDeleteConfirmation = false
+    @Published var favoritesToDelete: [SQLFavorite] = []
 
-    @ObservationIgnored internal let connectionId: UUID
-    @ObservationIgnored private let cache: ConnectionDataCache
-    @ObservationIgnored private let services: AppServices
-    @ObservationIgnored private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
+    internal let connectionId: UUID
+    private let cache: ConnectionDataCache
+    private let services: AppServices
+    private var cacheCancellable: AnyCancellable?
+    private var cachedNodes: (revision: Int, roots: [FavoriteNode])?
+    private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
 
     var isInitialLoadComplete: Bool { cache.isInitialLoadComplete }
 
+    /// Built once per committed snapshot rather than once per read. `FavoritesTabView` asks for the
+    /// tree three times in a single pass, to filter it, to test it for emptiness and to list its
+    /// folders for the edit dialog, and every one of those used to walk the whole thing again.
+    ///
+    /// Keyed on the cache's revision rather than cleared from the change signal, so the tree can
+    /// never outlive the content it was built from whatever order the cache publishes in.
     var nodes: [FavoriteNode] {
-        var roots = buildNodes(folders: cache.folders, favorites: cache.favorites, parentId: nil)
+        if let cachedNodes, cachedNodes.revision == cache.contentRevision { return cachedNodes.roots }
+        let roots = buildRootNodes()
+        cachedNodes = (cache.contentRevision, roots)
+        return roots
+    }
+
+    private func buildRootNodes() -> [FavoriteNode] {
+        var roots = FavoritesTreeBuilder.build(folders: cache.folders, favorites: cache.favorites)
         for folder in cache.linkedFolders {
             guard folder.isEnabled else {
                 roots.append(.disabledLinkedFolder(folder))
@@ -185,7 +200,23 @@ internal final class FavoritesSidebarViewModel {
         self.connectionId = connectionId
         self.services = services
         self.cache = ConnectionDataCache.shared(for: connectionId)
+        observeCache()
         cache.ensureLoaded()
+    }
+
+    /// The tab reads the whole Queries tree out of `cache`, which is an observable object of its
+    /// own, and SwiftUI subscribes only to the one a property wrapper names. Without this relay the
+    /// load that finishes after the first render reaches no subscriber, so the tab kept the empty
+    /// tree it was built with until something unrelated happened to redraw it.
+    ///
+    /// No hop onto the next run-loop turn: `objectWillChange` is the signal SwiftUI wants, and the
+    /// cache commits its properties in one synchronous burst, so the redraw that follows reads the
+    /// finished snapshot.
+    private func observeCache() {
+        cacheCancellable = cache.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
     }
 
     private func buildLinkedTree(files: [LinkedSQLFavorite], folderId: UUID) -> [FavoriteNode] {
@@ -237,33 +268,6 @@ internal final class FavoritesSidebarViewModel {
         return subfolderNodes + sortedLeaves
     }
 
-    private func buildNodes(
-        folders: [SQLFavoriteFolder],
-        favorites: [SQLFavorite],
-        parentId: UUID?
-    ) -> [FavoriteNode] {
-        var items: [FavoriteNode] = []
-
-        let levelFolders = folders
-            .filter { $0.parentId == parentId }
-            .sorted { $0.sortOrder != $1.sortOrder ? $0.sortOrder < $1.sortOrder : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-
-        for folder in levelFolders {
-            let children = buildNodes(folders: folders, favorites: favorites, parentId: folder.id)
-            items.append(.folder(folder, children: children))
-        }
-
-        let levelFavorites = favorites
-            .filter { $0.folderId == parentId }
-            .sorted { $0.sortOrder != $1.sortOrder ? $0.sortOrder < $1.sortOrder : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-
-        for fav in levelFavorites {
-            items.append(.favorite(fav))
-        }
-
-        return items
-    }
-
     func createFavorite(query: String? = nil, folderId: UUID? = nil) {
         if let folderId {
             services.favoritesExpansionState.setFolderExpanded(folderId, expanded: true, for: connectionId)
@@ -290,11 +294,7 @@ internal final class FavoritesSidebarViewModel {
 
     func moveFavorite(id: UUID, toFolder folderId: UUID?) {
         Task {
-            let allFavorites = await manager.fetchFavorites(connectionId: connectionId)
-            guard var favorite = allFavorites.first(where: { $0.id == id }) else { return }
-            favorite.folderId = folderId
-            favorite.updatedAt = Date()
-            _ = await manager.updateFavorite(favorite)
+            _ = await manager.setFavoriteFolder(id: id, folderId: folderId)
         }
     }
 
@@ -336,15 +336,25 @@ internal final class FavoritesSidebarViewModel {
 
     /// The name arrives from the editor rather than through observable state, so a keystroke no
     /// longer round-trips through the view model on its way to the field.
+    ///
+    /// It renames by id rather than writing back the record the tree was holding. That record
+    /// carries a `connectionId` read when the row was built, and writing it whole would put that
+    /// scope back over one another window had set in the meantime.
     func commitRenameFolder(_ folder: SQLFavoriteFolder, to proposedName: String) {
         let newName = proposedName.trimmingCharacters(in: .whitespaces)
         renamingFolderId = nil
         guard !newName.isEmpty, newName != folder.name else { return }
         Task {
-            var updated = folder
-            updated.name = newName
-            updated.updatedAt = Date()
-            _ = await manager.updateFolder(updated)
+            _ = await manager.renameFolder(id: folder.id, name: newName)
+        }
+    }
+
+    /// Whether the folder itself is available in every connection. The queries inside keep the
+    /// scope they already had, and a query the other connections cannot see is simply not drawn
+    /// there, so the folder can arrive empty until those queries are made global too.
+    func setFolderGlobal(_ folder: SQLFavoriteFolder, _ isGlobal: Bool) {
+        Task {
+            _ = await manager.setFolderScope(id: folder.id, connectionId: isGlobal ? nil : connectionId)
         }
     }
 

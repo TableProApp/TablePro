@@ -6,10 +6,11 @@
 import SwiftUI
 
 struct DataRewindSection: View {
+    @ObservedObject private var licenseManager = LicenseManager.shared
     @Binding var settings: HistorySettings
 
     private var isAvailable: Bool {
-        LicenseManager.shared.isFeatureAvailable(.dataRewind)
+        licenseManager.isFeatureAvailable(.dataRewind)
     }
 
     var body: some View {

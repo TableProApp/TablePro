@@ -1,0 +1,309 @@
+//
+//  FileTextLoaderTests.swift
+//  TableProTests
+//
+
+import Foundation
+@testable import TablePro
+import Testing
+
+struct FileTextLoaderTests {
+    private static let headerLength = 4_096
+    private static let reportedName = "B\u{E1}o c\u{E1}o doanh thu"
+
+    private func withFile<T>(_ bytes: Data, _ body: (URL) -> T) throws -> T {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FileTextLoaderTests-\(UUID().uuidString).sql")
+        try bytes.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        return body(url)
+    }
+
+    private func loadHeader(of bytes: Data) throws -> FileTextLoader.LoadedText? {
+        try withFile(bytes) { FileTextLoader.loadHeader($0) }
+    }
+
+    private func load(_ bytes: Data) throws -> FileTextLoader.LoadedText? {
+        try withFile(bytes) { FileTextLoader.load($0) }
+    }
+
+    private func utf8File(named name: String, straddling character: String, bytesInsideHeader: Int) -> Data {
+        var bytes = Data("-- @name: \(name)\nSELECT '".utf8)
+        let paddingLength = Self.headerLength - bytesInsideHeader - bytes.count
+        bytes.append(Data(repeating: UInt8(ascii: "x"), count: paddingLength))
+        bytes.append(Data(character.utf8))
+        bytes.append(Data("';\n".utf8))
+        return bytes
+    }
+
+    @Test("A UTF-8 file with a character across the header limit keeps its name and encoding")
+    func keepsUTF8WhenACharacterStraddlesTheLimit() throws {
+        let bytes = utf8File(named: Self.reportedName, straddling: "\u{1EC7}", bytesInsideHeader: 2)
+        #expect(bytes.count > Self.headerLength)
+        #expect(String(data: bytes.prefix(Self.headerLength), encoding: .utf8) == nil)
+
+        let header = try #require(try loadHeader(of: bytes))
+
+        #expect(header.encoding == .utf8)
+        #expect(SQLFrontmatter.parse(header.content).name == Self.reportedName)
+    }
+
+    @Test("A genuinely Latin-1 file is still read as Latin-1")
+    func readsALatin1FileAsLatin1() throws {
+        let bytes = try #require("-- @name: Caf\u{E9} cr\u{E8}me\nSELECT 1;\n".data(using: .isoLatin1))
+
+        let header = try #require(try loadHeader(of: bytes))
+
+        #expect(header.encoding == .isoLatin1)
+        #expect(SQLFrontmatter.parse(header.content).name == "Caf\u{E9} cr\u{E8}me")
+    }
+
+    @Test("A UTF-16 file with a byte order mark is read as UTF-16")
+    func readsAUTF16FileAsUTF16() throws {
+        let text = try #require("-- @name: \(Self.reportedName)\nSELECT 1;\n".data(using: .utf16LittleEndian))
+
+        let header = try #require(try loadHeader(of: Data([0xFF, 0xFE]) + text))
+
+        #expect(header.encoding == .utf16)
+        #expect(SQLFrontmatter.parse(header.content).name == Self.reportedName)
+    }
+
+    @Test("A file shorter than the header limit is read whole")
+    func readsAShortFileWhole() throws {
+        let text = "-- @name: \(Self.reportedName)\nSELECT 1;\n"
+
+        let header = try #require(try loadHeader(of: Data(text.utf8)))
+
+        #expect(header.encoding == .utf8)
+        #expect(header.content == text)
+    }
+
+    @Test("A UTF-32 big-endian file loads as UTF-32")
+    func loadsBigEndianUTF32() throws {
+        let text = "-- @name: \(Self.reportedName)\nSELECT 1;\n"
+        let bytes = try Data([0x00, 0x00, 0xFE, 0xFF]) + #require(text.data(using: .utf32BigEndian))
+
+        let loaded = try #require(try load(bytes))
+
+        #expect(loaded.encoding == .utf32)
+        #expect(loaded.content == text)
+    }
+
+    @Test("A byte-order-marked file cut partway through a code unit keeps every byte")
+    func keepsEveryByteOfACutMarkedFile() throws {
+        let utf16 = try Data([0xFF, 0xFE]) + #require("ab".data(using: .utf16LittleEndian)) + Data([0x41])
+        let utf32 = try Data([0xFF, 0xFE, 0x00, 0x00]) + #require("ab".data(using: .utf32LittleEndian)).dropLast(2)
+
+        for bytes in [utf16, utf32] {
+            let loaded = try #require(try load(bytes))
+            #expect(loaded.encoding == .isoLatin1)
+            #expect(loaded.content == String(data: bytes, encoding: .isoLatin1))
+        }
+    }
+
+    @Test("A byte order mark outranks a text encoding attribute that names another encoding")
+    func byteOrderMarkOutranksTheEncodingAttribute() throws {
+        let text = "-- @name: \(Self.reportedName)\n"
+        let bytes = try Data([0xFF, 0xFE]) + #require(text.data(using: .utf16LittleEndian))
+        let attribute = Array("MACINTOSH;0".utf8)
+
+        let result = try withFile(bytes) { url in
+            (
+                status: setxattr(url.path, "com.apple.TextEncoding", attribute, attribute.count, 0, 0),
+                loaded: FileTextLoader.load(url)
+            )
+        }
+
+        #expect(result.status == 0)
+        let loaded = try #require(result.loaded)
+        #expect(loaded.encoding == .utf16)
+        #expect(loaded.content == text)
+    }
+
+    @Test("The header is the start of what loading the whole file reads, in the same encoding")
+    func agreesWithFullLoading() throws {
+        let text = "-- @name: \(Self.reportedName)\n"
+        let latin1 = try #require("-- @name: Caf\u{E9}\nSELECT 1;\n".data(using: .isoLatin1))
+        let utf16LittleEndian = try Data([0xFF, 0xFE]) + #require(text.data(using: .utf16LittleEndian))
+        let utf16BigEndian = try Data([0xFE, 0xFF]) + #require(text.data(using: .utf16BigEndian))
+        let utf32LittleEndian = try Data([0xFF, 0xFE, 0x00, 0x00]) + #require(text.data(using: .utf32LittleEndian))
+        let utf32BigEndian = try Data([0x00, 0x00, 0xFE, 0xFF]) + #require(text.data(using: .utf32BigEndian))
+        let files = [
+            utf8File(named: Self.reportedName, straddling: "\u{E1}", bytesInsideHeader: 1),
+            utf8File(named: Self.reportedName, straddling: "\u{1EC7}", bytesInsideHeader: 1),
+            utf8File(named: Self.reportedName, straddling: "\u{1F600}", bytesInsideHeader: 3),
+            latin1,
+            utf16LittleEndian,
+            utf16BigEndian,
+            utf32LittleEndian,
+            utf32BigEndian,
+            utf16LittleEndian + Data([0x41]),
+            utf32LittleEndian + Data([0x41, 0x00])
+        ]
+
+        for (index, bytes) in files.enumerated() {
+            let loaded = try withFile(bytes) { url in
+                (header: FileTextLoader.loadHeader(url), whole: FileTextLoader.load(url))
+            }
+            let header = try #require(loaded.header, "file \(index)")
+            let whole = try #require(loaded.whole, "file \(index)")
+            #expect(header.encoding == whole.encoding, "file \(index)")
+            #expect(whole.content.unicodeScalars.starts(with: header.content.unicodeScalars), "file \(index)")
+        }
+    }
+
+    @Test("An empty file has no header")
+    func returnsNothingForAnEmptyFile() throws {
+        let header = try loadHeader(of: Data())
+
+        #expect(header == nil)
+    }
+
+    private func withFixture<T>(_ fixture: EncodedSQLFileFixture, _ body: (URL) -> T) throws -> T {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FileTextLoaderTests-\(UUID().uuidString).sql")
+        try fixture.write(fixture.original, to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        return body(url)
+    }
+
+    @Test(
+        "Loading records the encoding, the byte order mark, and the attribute that named the encoding",
+        arguments: EncodedSQLFileFixture.allCases
+    )
+    func recordsHowTheFileWasRead(fixture: EncodedSQLFileFixture) throws {
+        let expectedMark = ByteOrderMark.leading(try #require(fixture.bytes(of: "")))
+
+        let loaded = try #require(try withFixture(fixture) { FileTextLoader.load($0) })
+
+        #expect(loaded.content == fixture.original)
+        #expect(loaded.encoding == fixture.reportedEncoding)
+        #expect(loaded.textEncoding.byteOrderMark == expectedMark)
+        #expect(loaded.textEncoding.attribute.flatMap { String(data: $0.value, encoding: .utf8) } == fixture.attributeValue)
+    }
+
+    @Test(
+        "The header is read the way the whole file is, the encoding attribute included",
+        arguments: EncodedSQLFileFixture.allCases
+    )
+    func headerAgreesWithTheWholeFile(fixture: EncodedSQLFileFixture) throws {
+        let loaded = try withFixture(fixture) { url in
+            (header: FileTextLoader.loadHeader(url), whole: FileTextLoader.load(url))
+        }
+
+        let header = try #require(loaded.header)
+        let whole = try #require(loaded.whole)
+        #expect(header.textEncoding == whole.textEncoding)
+        #expect(header.content == whole.content)
+    }
+
+    @Test("A UTF-8 byte order mark outranks a text encoding attribute and is recorded")
+    func utf8ByteOrderMarkOutranksTheEncodingAttribute() throws {
+        let text = "SELECT 'Caf\u{E9}';\n"
+        let bytes = Data([0xEF, 0xBB, 0xBF]) + Data(text.utf8)
+        let attribute = Array("MACINTOSH;0".utf8)
+
+        let loaded = try withFile(bytes) { url in
+            _ = setxattr(url.path, "com.apple.TextEncoding", attribute, attribute.count, 0, 0)
+            return FileTextLoader.load(url)
+        }
+
+        let result = try #require(loaded)
+        #expect(result.content == text)
+        #expect(result.textEncoding == FileTextEncoding(encoding: .utf8, byteOrderMark: .utf8))
+        #expect(result.textEncoding.attribute == nil)
+    }
+
+    @Test("A text encoding attribute that cannot decode the file is not kept")
+    func dropsAnAttributeThatDidNotDecodeTheFile() throws {
+        let bytes = Data([0x53, 0x81, 0x20, 0xFF, 0x0A])
+        let attribute = Array("SHIFT_JIS;2561".utf8)
+
+        let loaded = try withFile(bytes) { url in
+            _ = setxattr(url.path, "com.apple.TextEncoding", attribute, attribute.count, 0, 0)
+            return FileTextLoader.load(url)
+        }
+
+        let result = try #require(loaded)
+        #expect(result.encoding == .isoLatin1)
+        #expect(result.textEncoding.attribute == nil)
+    }
+
+    @Test("A file recorded as ASCII is read as UTF-8, and the ASCII record is not kept")
+    func readsAnASCIIRecordAsUTF8() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FileTextLoaderTests-\(UUID().uuidString).sql")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try "SELECT 1;\n".write(to: url, atomically: true, encoding: .ascii)
+
+        let loaded = try #require(FileTextLoader.load(url))
+        let header = try #require(FileTextLoader.loadHeader(url))
+
+        #expect(loaded.textEncoding == .utf8)
+        #expect(header.textEncoding == .utf8)
+    }
+
+    private static let japaneseScript = """
+    -- @name: 在庫一覧
+    SELECT 商品コード, 商品名 FROM 在庫 WHERE 区分 = 'ｻﾞｲｺｶﾝﾘｽﾙ';
+    INSERT INTO 顧客 (氏名, 住所) VALUES ('髙橋 太郎', '東京都港区芝公園４－２－８');
+    UPDATE 顧客 SET 備考 = 'ポイント交換済み' WHERE 氏名 = '山﨑 花子';
+
+    """
+
+    @Test("A Shift JIS script with no recorded encoding opens as Shift JIS")
+    func readsAnUnmarkedShiftJISFile() throws {
+        let bytes = try #require(Self.japaneseScript.data(using: .shiftJIS, allowLossyConversion: false))
+
+        let loaded = try #require(try load(bytes))
+        let header = try #require(try loadHeader(of: bytes))
+
+        #expect(loaded.encoding == .shiftJIS)
+        #expect(loaded.content == Self.japaneseScript)
+        #expect(header.encoding == .shiftJIS)
+        #expect(SQLFrontmatter.parse(header.content).name == "在庫一覧")
+    }
+
+    @Test("A UTF-16 script without a byte order mark opens as UTF-16")
+    func readsAnUnmarkedUTF16File() throws {
+        let bytes = try #require(Self.japaneseScript.data(using: .utf16LittleEndian))
+
+        let loaded = try #require(try load(bytes))
+
+        #expect(loaded.encoding == .utf16LittleEndian)
+        #expect(loaded.content == Self.japaneseScript)
+    }
+
+    @Test("A Western script with no recorded encoding still opens as ISO Latin-1")
+    func westernBytesStayLatin1() throws {
+        let bytes = try #require("-- @name: Caf\u{E9}\nSELECT 'cr\u{E8}me br\u{FB}l\u{E9}e';\n".data(using: .isoLatin1))
+
+        let loaded = try #require(try load(bytes))
+
+        #expect(loaded.encoding == .isoLatin1)
+    }
+
+    @Test("A UTF-16 script of plain ASCII with no byte order mark opens as UTF-16, header and body alike")
+    func readsAnUnmarkedASCIIUTF16File() throws {
+        let text = "-- @name: Report\nSELECT id, name FROM customers;\nINSERT INTO t VALUES (1, 'abc');\n"
+        for encoding in [String.Encoding.utf16LittleEndian, .utf16BigEndian] {
+            let bytes = try #require(text.data(using: encoding))
+
+            let loaded = try #require(try load(bytes))
+            let header = try #require(try loadHeader(of: bytes))
+
+            #expect(loaded.encoding == encoding)
+            #expect(loaded.content == text)
+            #expect(header.encoding == encoding)
+            #expect(SQLFrontmatter.parse(header.content).name == "Report")
+        }
+    }
+
+    @Test("Version history reads an older commit in the encoding the working copy resolved to")
+    func resolvedEncodingFollowsDetection() throws {
+        let bytes = try #require(Self.japaneseScript.data(using: .shiftJIS, allowLossyConversion: false))
+        let encoding = try withFile(bytes) { FileTextLoader.resolvedEncoding(of: $0) }
+        #expect(encoding == .shiftJIS)
+        #expect(FileTextLoader.decode(bytes, declaredEncoding: encoding) == Self.japaneseScript)
+    }
+}

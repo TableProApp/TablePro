@@ -51,6 +51,11 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     /// Set only by the bundled bridge's own mint. Never derived from the token's name, which a
     /// pairing request supplies and could therefore claim.
     let isBridgeCredential: Bool
+    let extraScopes: Set<MCPScope>
+
+    var scopes: Set<MCPScope> {
+        permissions.scopes.union(extraScopes)
+    }
 
     var isExpired: Bool {
         guard let expiresAt else { return false }
@@ -71,7 +76,8 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         lastUsedAt: Date?,
         expiresAt: Date?,
         isActive: Bool,
-        isBridgeCredential: Bool = false
+        isBridgeCredential: Bool = false,
+        extraScopes: Set<MCPScope> = []
     ) {
         self.id = id
         self.name = name
@@ -85,6 +91,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.expiresAt = expiresAt
         self.isActive = isActive
         self.isBridgeCredential = isBridgeCredential
+        self.extraScopes = extraScopes.intersection(MCPScope.optionalGrants)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -100,6 +107,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         case expiresAt
         case isActive
         case isBridgeCredential
+        case extraScopes
     }
 
     init(from decoder: Decoder) throws {
@@ -116,6 +124,11 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.isActive = try container.decode(Bool.self, forKey: .isActive)
         self.connectionAccess = try container.decodeIfPresent(ConnectionAccess.self, forKey: .connectionAccess) ?? .all
         self.isBridgeCredential = try container.decodeIfPresent(Bool.self, forKey: .isBridgeCredential) ?? false
+        /// Lenient: a bad value here must cost this grant, not every saved token. Filtering to
+        /// `optionalGrants` keeps a tier scope such as `admin` from ever arriving through this field.
+        let storedExtraScopes = (try? container.decodeIfPresent([String].self, forKey: .extraScopes)) ?? []
+        self.extraScopes = Set(storedExtraScopes.compactMap(MCPScope.init(rawValue:)))
+            .intersection(MCPScope.optionalGrants)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -132,6 +145,9 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
         try container.encode(isBridgeCredential, forKey: .isBridgeCredential)
         try container.encode(isActive, forKey: .isActive)
+        if !extraScopes.isEmpty {
+            try container.encode(extraScopes.map(\.rawValue).sorted(), forKey: .extraScopes)
+        }
     }
 }
 
@@ -205,7 +221,8 @@ actor MCPTokenStore {
         permissions: TokenPermissions,
         connectionAccess: ConnectionAccess,
         expiresAt: Date?,
-        isBridgeCredential: Bool
+        isBridgeCredential: Bool,
+        extraScopes: Set<MCPScope>
     ) throws -> (token: MCPAuthToken, plaintext: String) {
         let name = (!isBridgeCredential && name == Self.stdioBridgeTokenName)
             ? name + " (client)"
@@ -226,29 +243,33 @@ actor MCPTokenStore {
             lastUsedAt: nil,
             expiresAt: expiresAt,
             isActive: true,
-            isBridgeCredential: isBridgeCredential
+            isBridgeCredential: isBridgeCredential,
+            extraScopes: isBridgeCredential ? [] : extraScopes
         )
 
         tokens.append(token)
         save()
 
-        Self.logger.info("Generated MCP token '\(name, privacy: .public)'")
+        Self.logger.info("Generated MCP token '\(name, privacy: .private(mask: .hash))'")
         MCPAuditLogger.logTokenCreated(tokenId: token.id, tokenName: name)
         return (token, plaintext)
     }
 
-    func validate(bearerToken: String) -> MCPAuthToken? {
-        for (index, token) in tokens.enumerated() {
-            guard token.isActive, !token.isExpired else { continue }
-
-            let candidateHash = Self.computeHash(salt: token.salt, plaintext: bearerToken)
-            guard Self.constantTimeCompare(candidateHash, token.tokenHash) else { continue }
-
-            tokens[index].lastUsedAt = Date.now
-            saveIfCooldownElapsed()
-            return tokens[index]
+    func resolve(bearerToken: String) -> Result<MCPAuthToken, MCPTokenValidationError> {
+        let match = tokens.firstIndex { token in
+            Self.constantTimeCompare(Self.computeHash(salt: token.salt, plaintext: bearerToken), token.tokenHash)
         }
-        return nil
+        guard let index = match else { return .failure(.unknownToken) }
+        if tokens[index].isExpired { return .failure(.expired) }
+        if !tokens[index].isActive { return .failure(.revoked) }
+
+        tokens[index].lastUsedAt = Date.now
+        saveIfCooldownElapsed()
+        return .success(tokens[index])
+    }
+
+    func validate(bearerToken: String) -> MCPAuthToken? {
+        try? resolve(bearerToken: bearerToken).get()
     }
 
     func revoke(tokenId: UUID) {
@@ -279,7 +300,7 @@ actor MCPTokenStore {
         save()
         notifyRevocationObservers(tokenId: tokenId, wasBridgeCredential: wasBridge)
 
-        Self.logger.info("Deleted MCP token '\(name, privacy: .public)'")
+        Self.logger.info("Deleted MCP token '\(name, privacy: .private(mask: .hash))'")
     }
 
     private func notifyRevocationObservers(tokenId: UUID, wasBridgeCredential: Bool) {
@@ -322,7 +343,7 @@ actor MCPTokenStore {
             Self.logger.info("Loaded \(decoded.count) MCP tokens from the keychain")
             return decoded
         } catch {
-            Self.logger.error("Failed to decode MCP tokens: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to decode MCP tokens: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }
@@ -341,7 +362,7 @@ actor MCPTokenStore {
             Self.logger.info("Migrated \(decoded.count) MCP tokens from the legacy file into the keychain")
             return decoded
         } catch {
-            Self.logger.error("Failed to read legacy MCP tokens: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to read legacy MCP tokens: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }
@@ -361,7 +382,7 @@ actor MCPTokenStore {
                 return
             }
         } catch {
-            Self.logger.error("Failed to encode MCP tokens: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to encode MCP tokens: \(error.publicLogShape, privacy: .public)")
         }
     }
 

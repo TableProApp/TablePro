@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ElastiCache IAM auth token")
 struct ElastiCacheAuthTokenTests {
     private let credentials = AWSCredentials(
         accessKeyId: "AKIDEXAMPLE",

@@ -9,6 +9,12 @@
 
 import Foundation
 
+enum DuckDBTableListingScope: Sendable, Equatable {
+    case schema
+    case schemas([String])
+    case allSchemas
+}
+
 /// DuckDB's namespace is `catalog.schema.table`, and the `duckdb_*` table functions span
 /// every attached catalog. A predicate on the schema alone therefore matches same-named
 /// schemas in other catalogs: with a second database attached, `WHERE schema_name = 'main'`
@@ -23,7 +29,7 @@ import Foundation
 /// `Binder Error: Referenced table "system" not found!`, which left the sidebar with no
 /// databases, schemas, tables or columns at all. The `duckdb_*()` table functions and the
 /// remaining `information_schema` views are part of the core engine and need no download.
-/// `scripts/check-duckdb-offline-metadata.sh` runs every query here against the shipped
+/// `scripts/probes/check-duckdb-offline-metadata.sh` runs every query here against the shipped
 /// static library with the extension directory pointed at an empty folder.
 enum DuckDBSchemaQueries {
     /// `system` and `temp` are DuckDB's built-in catalogs; `internal` marks them and
@@ -54,23 +60,48 @@ enum DuckDBSchemaQueries {
         ORDER BY schema_name
         """
 
-    static let listTables = """
-        SELECT table_name, 'BASE TABLE' AS table_type
-        FROM duckdb_tables()
-        WHERE database_name = $1
-          AND schema_name = $2
-          AND internal = false
-        UNION ALL
-        SELECT view_name, 'VIEW'
-        FROM duckdb_views()
-        WHERE database_name = $1
-          AND schema_name = $2
-          AND internal = false
-        ORDER BY 1
-        """
+    /// One schema's objects, bound to the catalog and the schema; a named set's or every schema's,
+    /// bound to the catalog alone. Every schema's filters by `listSchemas` itself rather than dropping
+    /// the schema predicate, so an object is listed here exactly when its schema is listed there.
+    /// Both multi-schema listings project each row's schema as a third column.
+    static func listTables(in scope: DuckDBTableListingScope) -> String {
+        let schemaFilter: String
+        let schemaColumn: String
+        let orderBy: String
+        switch scope {
+        case .schema:
+            schemaFilter = "schema_name = $2"
+            schemaColumn = ""
+            orderBy = "ORDER BY 1"
+        case .schemas(let schemas):
+            schemaFilter = schemas.isEmpty
+                ? "1 = 0"
+                : "schema_name IN (\(schemas.map(quoteLiteral).joined(separator: ", ")))"
+            schemaColumn = ", schema_name"
+            orderBy = "ORDER BY 3, 1"
+        case .allSchemas:
+            schemaFilter = "schema_name IN (\n\(listSchemas)\n)"
+            schemaColumn = ", schema_name"
+            orderBy = "ORDER BY 3, 1"
+        }
+        return """
+            SELECT table_name, 'BASE TABLE' AS table_type\(schemaColumn)
+            FROM duckdb_tables()
+            WHERE database_name = $1
+              AND \(schemaFilter)
+              AND internal = false
+            UNION ALL
+            SELECT view_name, 'VIEW'\(schemaColumn)
+            FROM duckdb_views()
+            WHERE database_name = $1
+              AND \(schemaFilter)
+              AND internal = false
+            \(orderBy)
+            """
+    }
 
     static let columnsForTable = """
-        SELECT column_name, data_type, is_nullable, column_default, column_index
+        SELECT column_name, data_type, is_nullable, column_default, column_index, comment
         FROM duckdb_columns()
         WHERE database_name = $1
           AND schema_name = $2
@@ -79,7 +110,7 @@ enum DuckDBSchemaQueries {
         """
 
     static let columnsForSchema = """
-        SELECT table_name, column_name, data_type, is_nullable, column_default, column_index
+        SELECT table_name, column_name, data_type, is_nullable, column_default, column_index, comment
         FROM duckdb_columns()
         WHERE database_name = $1
           AND schema_name = $2
@@ -162,6 +193,20 @@ enum DuckDBSchemaQueries {
           AND view_name = $3
         """
 
+    static let objectComment = """
+        SELECT comment
+        FROM duckdb_tables()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND table_name = $3
+        UNION ALL
+        SELECT comment
+        FROM duckdb_views()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND view_name = $3
+        """
+
     /// The app runs this one itself rather than through the driver's parameterized path, so
     /// both values are interpolated.
     ///
@@ -191,6 +236,59 @@ enum DuckDBSchemaQueries {
     static func rowCountProbe(schema: String, table: String, limit: Int) -> String {
         let target = "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
         return "SELECT COUNT(*) FROM (SELECT 1 FROM \(target) LIMIT \(limit)) AS _t"
+    }
+
+    static func objectCommentStatement(objectType: String, schema: String, name: String, comment: String?) -> String? {
+        let keyword: String
+        switch objectType.uppercased() {
+        case "TABLE": keyword = "TABLE"
+        case "VIEW": keyword = "VIEW"
+        default: return nil
+        }
+        return "COMMENT ON \(keyword) \(quoteIdentifier(schema)).\(quoteIdentifier(name)) IS \(commentValue(comment))"
+    }
+
+    static func columnCommentStatement(schema: String, table: String, column: String, comment: String?) -> String {
+        let target = "\(quoteIdentifier(schema)).\(quoteIdentifier(table)).\(quoteIdentifier(column))"
+        return "COMMENT ON COLUMN \(target) IS \(commentValue(comment))"
+    }
+
+    /// `IS ''` stores an empty comment; only `IS NULL` removes one.
+    static func commentValue(_ comment: String?) -> String {
+        guard let comment, !comment.isEmpty else { return "NULL" }
+        return quoteLiteral(comment)
+    }
+
+    /// DuckDB 1.5.2 has no SERIAL or identity column, so an auto-increment column takes `nextval` of
+    /// a sequence of its own. `nextval` cannot resolve a name holding `"`, so none is kept, and the
+    /// hash of the exact pair keeps `a_b.id` and `a.b_id` from sharing one sequence.
+    static func autoIncrementSequenceName(table: String, column: String) -> String {
+        let readable = "\(table)_\(column)".unicodeScalars.filter { $0 != "\"" }
+        return "\(String(String.UnicodeScalarView(readable)))_\(fnv1a32(table + "\u{0}" + column))_seq"
+    }
+
+    private static func fnv1a32(_ text: String) -> String {
+        var hash: UInt32 = 0x811C_9DC5
+        for byte in text.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 0x0100_0193
+        }
+        let hex = String(hash, radix: 16)
+        return String(repeating: "0", count: 8 - hex.count) + hex
+    }
+
+    /// `DROP TABLE` leaves the sequence behind, so a table created again under the same name reuses it.
+    static func createSequenceStatement(schema: String, sequence: String) -> String {
+        "CREATE SEQUENCE IF NOT EXISTS \(quoteIdentifier(schema)).\(quoteIdentifier(sequence))"
+    }
+
+    /// A schema holding `"` is left out for the same reason, and an unqualified sequence resolves in
+    /// the table's own schema, also after the file is reopened.
+    static func nextvalDefault(schema: String, sequence: String) -> String {
+        let name = schema.contains("\"")
+            ? quoteIdentifier(sequence)
+            : "\(quoteIdentifier(schema)).\(quoteIdentifier(sequence))"
+        return "nextval(\(quoteLiteral(name)))"
     }
 
     /// What the session is holding that closing the handle would destroy, in one round trip.
@@ -244,14 +342,16 @@ enum DuckDBSchemaQueries {
         "\"\(escapeIdentifier(name))\""
     }
 
+    /// `.literal` matches by code unit: the default matches grapheme clusters and skips a quote that a
+    /// combining mark follows, which then ends the identifier or literal early.
     static func escapeIdentifier(_ name: String) -> String {
-        name.replacingOccurrences(of: "\"", with: "\"\"")
+        name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     static func quoteLiteral(_ value: String) -> String {
         let escaped = value
-            .replacingOccurrences(of: "\0", with: "")
-            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
         return "'\(escaped)'"
     }
 }

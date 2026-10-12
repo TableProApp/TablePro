@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Object rename eligibility")
 struct ObjectRenameEligibilityTests {
     private func context(
         activeDatabase: String? = "app",
@@ -69,6 +68,16 @@ struct ObjectRenameEligibilityTests {
             table: table("active_users", type: .view), context: context(view: false)
         ))
         #expect(ObjectRenameEligibility.canRename(table: table("orders"), context: context(view: false)))
+    }
+
+    /// Measured on MariaDB 11.4.13: `RENAME TABLE seq1 TO seq2` succeeds on a sequence, so it
+    /// follows the table flag rather than the view one.
+    @Test("A sequence renames where the engine renames a table")
+    func sequenceFollowsTheTableFlag() {
+        #expect(ObjectRenameEligibility.canRename(table: table("order_ids", type: .sequence), context: context()))
+        #expect(!ObjectRenameEligibility.canRename(
+            table: table("order_ids", type: .sequence), context: context(table: false)
+        ))
     }
 
     // MARK: - Containers

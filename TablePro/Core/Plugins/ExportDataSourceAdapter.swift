@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable {
     let databaseTypeId: String
@@ -20,18 +21,26 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     /// construction, on the main actor, because the registry lives there and this is asked for from
     /// the export plugin's own thread.
     let supportsCascadeDrop: Bool
+    let lexicalFeatures: SQLLexicalFeatures
     private let implicitSchemaName: String?
     private let pagination: PaginationCapability
+    private let appliesRowScope: Bool
     private let cappedTables = OSAllocatedUnfairLock<[String]>(initialState: [])
 
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
         let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType)
         self.supportsCascadeDrop = snapshot?.capabilities.supportsCascadeDrop ?? false
+        self.lexicalFeatures = databaseType.lexicalGrammar.pluginFeatures
         self.implicitSchemaName = snapshot?.schema.implicitSchemaName
         self.pagination = PaginationCapability.of(databaseType)
+        self.appliesRowScope = Self.canApplyRowScope(on: databaseType)
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
+    }
+
+    static func canApplyRowScope(on databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect != nil
     }
 
     private var pluginDriver: (any PluginDatabaseDriver)? {
@@ -56,17 +65,38 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
         if let customQuery = pluginDriver.defaultExportQuery(table: table, schema: exportSchema(for: databaseName)) {
-            return pluginDriver.streamRows(query: customQuery)
+            // A table export only reads, whatever the statement the driver chose classifies as.
+            var context = PluginStatementContext()
+            context.readOnly = true
+            return pluginDriver.streamRows(query: customQuery, context: context)
         }
-        let query = "SELECT * FROM \(qualifiedTableRef(table: table, databaseName: databaseName))"
-        return streamLeadingRows(query: limitedToLeadingRows(query, limit: nil, driver: pluginDriver), table: table)
+        let query = leadingRowsQuery(
+            columns: "*",
+            from: qualifiedTableRef(table: table, databaseName: databaseName),
+            where: nil,
+            limit: nil,
+            driver: pluginDriver
+        )
+        return streamLeadingRows(query: query, table: table)
     }
 
     /// An engine that caps its rows answers a statement with no LIMIT with a smaller default of its
     /// own, so every read here states a limit, and a limit past the ceiling is lowered to it.
-    private func limitedToLeadingRows(_ query: String, limit: Int?, driver: any PluginDatabaseDriver) -> String {
-        guard let rowLimit = Self.rowLimit(requested: limit, pagination: pagination) else { return query }
-        return driver.injectRowLimit(query, limit: rowLimit) ?? "\(query) LIMIT \(rowLimit)"
+    private func leadingRowsQuery(
+        columns: String,
+        from source: String,
+        where condition: String?,
+        limit: Int?,
+        driver: any PluginDatabaseDriver
+    ) -> String {
+        SQLRowLimitClause.select(
+            columns: columns,
+            from: source,
+            where: condition,
+            limit: Self.rowLimit(requested: limit, pagination: pagination),
+            driver: driver,
+            databaseType: dbType
+        )
     }
 
     static func rowLimit(requested: Int?, pagination: PaginationCapability) -> Int? {
@@ -105,12 +135,17 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         }
     }
 
-    /// The row limit goes through the driver's own `injectRowLimit`, because `LIMIT` is not the
-    /// spelling on SQL Server or on Oracle before 12c.
     func streamRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let scope = object.rowScope
         guard !scope.isUnrestricted else {
             return streamRows(table: object.name, databaseName: object.databaseName)
+        }
+        guard appliesRowScope else {
+            let reason = String(
+                format: String(localized: "%@ cannot be narrowed to some rows or columns, because this database has no SQL."),
+                object.name
+            )
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed(reason)) }
         }
         guard let pluginDriver else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
@@ -118,13 +153,13 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         let projection = scope.columns.isEmpty
             ? "*"
             : scope.columns.map { driver.quoteIdentifier($0) }.joined(separator: ", ")
-        let reference = qualifiedTableRef(table: object.name, databaseName: object.databaseName)
-        var query = "SELECT \(projection) FROM \(reference)"
-        let filter = scope.sanitizedFilter
-        if !filter.isEmpty {
-            query += " WHERE \(filter)"
-        }
-        query = limitedToLeadingRows(query, limit: scope.rowLimit, driver: pluginDriver)
+        let query = leadingRowsQuery(
+            columns: projection,
+            from: qualifiedTableRef(table: object.name, databaseName: object.databaseName),
+            where: scope.sanitizedFilter.nilIfEmpty,
+            limit: scope.rowLimit,
+            driver: pluginDriver
+        )
         return streamLeadingRows(query: query, table: object.name)
     }
 
@@ -297,6 +332,12 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         ) ?? []
     }
 
+    /// Through the same owner Compare & Sync saves its scripts with, so a dump ends an Oracle unit on a `/` line and
+    /// puts a MySQL routine in a `DELIMITER` block exactly as a saved sync script does.
+    func scriptText(for ddl: String) -> String {
+        SQLScriptText(databaseType: dbType).scriptText(forDriverText: ddl)
+    }
+
     /// `tableType` carries the routine's own kind for a `.routine`, because `DROP FUNCTION` and
     /// `DROP PROCEDURE` are different statements on every engine that has both and MySQL has no
     /// `DROP ROUTINE` to fall back on.
@@ -352,13 +393,18 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     // MARK: - Helpers
 
     /// The export tree names every group after a schema on a schema-aware engine and after a
-    /// database everywhere else, so only a schema-aware driver can read that name as its
-    /// schema. An empty name means the engine's implicit schema where it has one, and the
+    /// database everywhere else. Either way the name is the container the driver has to read in,
+    /// which is what `schema:` means to a driver with no schema layer of its own: withholding it
+    /// there left a MySQL dump reading its DDL and column metadata from whichever database the
+    /// connection happened to be on while `streamRows` qualified the rows by the name the export
+    /// actually named. An empty name means the engine's implicit schema where it has one, and the
     /// driver's own container everywhere else.
     func exportSchema(for databaseName: String) -> String? {
         guard let pluginDriver else { return nil }
-        guard pluginDriver.supportsSchemas else { return pluginDriver.currentSchema }
-        guard !databaseName.isEmpty else { return implicitSchemaName ?? pluginDriver.currentSchema }
+        guard !databaseName.isEmpty else {
+            guard pluginDriver.supportsSchemas else { return pluginDriver.currentSchema }
+            return implicitSchemaName ?? pluginDriver.currentSchema
+        }
         return databaseName
     }
 

@@ -37,30 +37,27 @@ extension TableStructureView {
             tab: selectedTab,
             canEditSchema: connection.type.supportsSchemaEditing,
             hasSelection: !selectedRows.isEmpty,
+            isSaving: structureChangeManager.isHeldForSave,
             resolve: { gate.resolve($0) }
         )
     }
 
-    /// The Columns grid's headings for the fields this object's kind will not let the user change.
-    ///
     /// Name-keyed because that is the only handle the grid has: `isColumnWritable` is asked about a
-    /// column's heading, and the Columns grid's headings are exactly
-    /// `orderedColumnFields.map(\.displayName)`. Empty on every tab but Columns, whose rows are the
-    /// only ones that describe a column.
-    var lockedStructureColumns: Set<String> {
-        guard selectedTab == .columns else { return [] }
-        let editable = editGate.editableColumnFields
-        let locked = StructureColumnField.allCases.filter { !editable.contains($0) }
-        /// `displayName` is a `String(localized:)` lookup per field, and this is read on every body
-        /// evaluation. A table locks nothing, which is the overwhelmingly common case, so it never
-        /// pays for twelve of them.
-        guard !locked.isEmpty else { return [] }
-        return Set(locked.map(\.displayName))
+    /// column's heading.
+    func lockedStructureColumns(for provider: StructureRowProvider) -> Set<String> {
+        let headings = provider.columns
+        let locked = editGate.lockedFieldIndices(
+            on: selectedTab,
+            orderedFields: provider.orderedColumnFields,
+            fieldCount: headings.count
+        )
+        return Set(locked.map { headings[$0] })
     }
 
     /// Why the Columns grid refuses every keystroke, when it does. A grid that will not take an edit
     /// and says nothing reads as broken, so the pointer carries this as the grid's tooltip.
     var structureEditRefusal: String? {
+        if structureChangeManager.isHeldForSave { return StructureFooterPolicy.savingReason }
         guard !editGate.allowsAnyEdit else { return nil }
         return editGate.resolve(.renameColumn).unavailableReason
     }

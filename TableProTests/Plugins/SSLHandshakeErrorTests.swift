@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SSLHandshakeError")
 struct SSLHandshakeErrorTests {
     @Test("serverRejectedPlaintext suggests switching to Required")
     func testServerRejectedPlaintext() {

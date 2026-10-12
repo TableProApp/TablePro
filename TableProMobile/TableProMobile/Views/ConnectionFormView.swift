@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
@@ -7,6 +8,7 @@ import UniformTypeIdentifiers
 struct ConnectionFormView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
+    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
 
     @State private var viewModel: ConnectionFormViewModel
     @State private var activeFilePicker: ActiveFilePicker?
@@ -17,7 +19,7 @@ struct ConnectionFormView: View {
     @State private var pasteTarget: CertificateRole?
     @State private var showPKCS12Password = false
 
-    var onSave: (DatabaseConnection) -> Void
+    var onSaved: (UUID) -> Void
 
     enum ActiveFilePicker: Identifiable, Hashable {
         case sqliteDatabase
@@ -28,9 +30,9 @@ struct ConnectionFormView: View {
         var id: Int { hashValue }
     }
 
-    init(editing connection: DatabaseConnection? = nil, onSave: @escaping (DatabaseConnection) -> Void) {
+    init(editing connection: DatabaseConnection? = nil, onSaved: @escaping (UUID) -> Void) {
         _viewModel = State(wrappedValue: ConnectionFormViewModel(editing: connection))
-        self.onSave = onSave
+        self.onSaved = onSaved
     }
 
     private var showFilePicker: Binding<Bool> {
@@ -59,6 +61,20 @@ struct ConnectionFormView: View {
         )
     }
 
+    private var showFileError: Binding<Bool> {
+        Binding(
+            get: { viewModel.fileError != nil },
+            set: { if !$0 { viewModel.dismissFileError() } }
+        )
+    }
+
+    private var showSSHKeyFileError: Binding<Bool> {
+        Binding(
+            get: { viewModel.sshKeyFileError != nil },
+            set: { if !$0 { viewModel.dismissSSHKeyFileError() } }
+        )
+    }
+
     var body: some View {
         @Bindable var viewModel = viewModel
         return NavigationStack {
@@ -84,17 +100,23 @@ struct ConnectionFormView: View {
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.oracleSSLMode) {
                                 Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
                                 Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
-                                Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                if viewModel.offersOracleVerifyCa {
+                                    Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                }
                                 Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
                             }
                         } else if viewModel.type == .mssql {
-                            // FreeTDS db-lib only honors on/off encryption (DBSETENCRYPT). Per-connection
-                            // cert chain verification is not exposed, so only Disabled and Required are listed.
+                            // The iOS driver encrypts without checking the certificate, because this form collects
+                            // no CA file for FreeTDS, so only Disabled and Required are listed.
                             // See Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift for the FreeTDS contract.
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.mssqlSSLMode) {
                                 Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
                                 Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
                             }
+                        }
+                    } footer: {
+                        if let note = viewModel.oracleSSLModeNote {
+                            Text(note)
                         }
                     }
                     if viewModel.usesCertificateSection {
@@ -111,6 +133,8 @@ struct ConnectionFormView: View {
                 testSection
             }
             .scrollDismissesKeyboard(.interactively)
+            .interactiveDismissDisabled(viewModel.hasChanges)
+            .holdsScene(withUnsavedChanges: viewModel.hasChanges)
             .task {
                 viewModel.loadCertificateSummaries()
                 await viewModel.loadStoredCredentials(secureStore: appState.secureStore)
@@ -119,11 +143,11 @@ struct ConnectionFormView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    CancelButton { dismiss() }
+                    DiscardChangesCancelButton(hasChanges: viewModel.hasChanges) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmButton(title: "Save", action: handleSave)
-                        .disabled(!viewModel.canSave)
+                        .disabled(!viewModel.canSave || viewModel.isSaving)
                 }
             }
             .fileImporter(
@@ -144,6 +168,8 @@ struct ConnectionFormView: View {
                 case nil: break
                 }
             }
+            .connectionPrompts(viewModel.prompts)
+            .onDisappear { viewModel.prompts.cancelAll() }
             .sheet(item: $pasteTarget) { role in
                 CertificatePasteSheet(viewModel: viewModel, role: role)
             }
@@ -171,6 +197,21 @@ struct ConnectionFormView: View {
             } message: {
                 Text(viewModel.credentialError ?? String(localized: "Failed to save credentials."))
             }
+            .alert("Database File", isPresented: showFileError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.fileError ?? "")
+            }
+            .alert("Private Key", isPresented: showSSHKeyFileError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.sshKeyFileError ?? "")
+            }
+            .libraryWriteFailureAlert(
+                viewModel.saveFailure,
+                onDismiss: viewModel.dismissSaveFailure,
+                closeForm: { dismiss() }
+            )
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
         }
@@ -205,17 +246,15 @@ struct ConnectionFormView: View {
     @ViewBuilder
     private func organizationSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
+        let graph = LibraryGroupGraph(groups: appState.groups)
         Section("Organization") {
+            SymbolPickerRow(selection: $viewModel.iconName, subject: .connection(viewModel.type))
+
             Picker("Group", selection: $viewModel.groupId) {
                 Text("None").tag(UUID?.none)
-                ForEach(appState.groups) { group in
-                    HStack {
-                        Circle()
-                            .fill(ConnectionColorPicker.swiftUIColor(for: group.color))
-                            .frame(width: 8, height: 8)
-                        Text(group.name)
-                    }
-                    .tag(Optional(group.id))
+                ForEach(graph.flattened(), id: \.id) { entry in
+                    Text(verbatim: graph.pathNames(to: entry.id).joined(separator: " / "))
+                        .tag(Optional(entry.id))
                 }
             }
             .pickerStyle(.menu)
@@ -223,13 +262,8 @@ struct ConnectionFormView: View {
             Picker("Tag", selection: $viewModel.tagId) {
                 Text("None").tag(UUID?.none)
                 ForEach(appState.tags) { tag in
-                    HStack {
-                        Circle()
-                            .fill(ConnectionColorPicker.swiftUIColor(for: tag.color))
-                            .frame(width: 8, height: 8)
-                        Text(tag.name)
-                    }
-                    .tag(Optional(tag.id))
+                    Text(verbatim: tag.name)
+                        .tag(Optional(tag.id))
                 }
             }
             .pickerStyle(.menu)
@@ -349,6 +383,16 @@ struct ConnectionFormView: View {
                 Text(verbatim: "SYSDBA").tag(OracleConnectionOptions.Role.sysdba)
                 Text(verbatim: "SYSOPER").tag(OracleConnectionOptions.Role.sysoper)
             }
+
+            Picker(
+                String(localized: "Network Encryption"),
+                selection: $viewModel.oracleNetworkEncryption
+            ) {
+                Text(String(localized: "Accepted")).tag(OracleConnectionOptions.NetworkEncryption.accepted)
+                Text(String(localized: "Rejected")).tag(OracleConnectionOptions.NetworkEncryption.rejected)
+                Text(String(localized: "Requested")).tag(OracleConnectionOptions.NetworkEncryption.requested)
+                Text(String(localized: "Required")).tag(OracleConnectionOptions.NetworkEncryption.required)
+            }
         }
     }
 
@@ -393,7 +437,7 @@ struct ConnectionFormView: View {
                 TextField("SSH Host", text: $viewModel.sshHost)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
-                TextField("SSH Port", text: $viewModel.sshPort)
+                TextField("SSH Port", text: $viewModel.sshPort, prompt: Text(verbatim: "22"))
                     .keyboardType(.numberPad)
                 TextField("SSH Username", text: $viewModel.sshUsername)
                     .textInputAutocapitalization(.never)
@@ -515,15 +559,23 @@ struct ConnectionFormView: View {
     // MARK: - Actions
 
     private func handleTest() async {
-        await viewModel.testConnection(appState: appState, secureStore: appState.secureStore)
+        await viewModel.testConnection()
         if let result = viewModel.testResult {
             if result.success { hapticSuccess.toggle() } else { hapticError.toggle() }
         }
     }
 
     private func handleSave() {
-        guard let connection = viewModel.save(appState: appState, secureStore: appState.secureStore) else { return }
-        onSave(connection)
+        let reconnects = viewModel.reconnectsAfterSave
+        Task {
+            guard let savedId = await viewModel.save(appState: appState, secureStore: appState.secureStore) else {
+                return
+            }
+            if reconnects {
+                coordinatorStore.invalidate(savedId)
+            }
+            onSaved(savedId)
+        }
     }
 
     // MARK: - Helpers

@@ -70,7 +70,7 @@ internal class ScriptCommand: NSScriptCommand {
             } catch {
                 let scripting = ScriptingError.from(error)
                 Self.logger.error(
-                    "\(type(of: command), privacy: .public) failed: \(scripting.errorDescription ?? "", privacy: .public)"
+                    "\(type(of: command), privacy: .public) failed: \(error.publicLogShape, privacy: .public) \(scripting.errorDescription ?? "", privacy: .private)"
                 )
                 command.scriptErrorNumber = scripting.number
                 command.scriptErrorString = scripting.errorDescription

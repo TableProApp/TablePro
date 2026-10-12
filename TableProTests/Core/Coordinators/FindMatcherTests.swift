@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("FindMatcher")
 struct FindMatcherTests {
     private let grid: [[String?]] = [
         ["active", "Alice", nil],
@@ -106,7 +105,6 @@ struct FindMatcherTests {
     }
 }
 
-@Suite("TabFindState")
 struct TabFindStateTests {
     private func state(matchCount: Int) -> TabFindState {
         var value = TabFindState(isVisible: true)
@@ -170,7 +168,6 @@ struct TabFindStateTests {
 /// The find bar renders only on table tabs, and a table tab pages through `currentPage`, never
 /// through `hasMoreRows`, which is the query-tab truncation flag. Reading the wrong one made every
 /// table tab report its page as the whole table.
-@Suite("FindScopeFromPagination")
 struct FindScopeFromPaginationTests {
     private func hasUnloadedRows(_ state: PaginationState, loadedRowCount: Int) -> Bool {
         state.hasMoreRows || state.canGoToNextPage(loadedRowCount: loadedRowCount)
@@ -218,7 +215,6 @@ struct FindScopeFromPaginationTests {
     }
 }
 
-@Suite("FindCounterText")
 struct FindCounterTextTests {
     @Test("a paged result always names its scope")
     func pagedCounter() {

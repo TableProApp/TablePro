@@ -14,7 +14,7 @@ final class SettingsWindowTitleUITests: UITestCase {
         let settingsWindow = app.windows["settings"]
         XCTAssertTrue(settingsWindow.waitToExist(timeout: 10))
 
-        for pane in ["Keyboard", "Appearance", "Plugins", "Editor", "General"] {
+        for pane in ["Keyboard", "Appearance", "MCP", "Plugins", "Editor", "General"] {
             let paneButton = app.toolbars.buttons[pane]
             XCTAssertTrue(paneButton.waitToExist(timeout: 10))
             paneButton.click()

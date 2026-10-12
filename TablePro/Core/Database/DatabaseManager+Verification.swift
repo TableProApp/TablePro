@@ -18,6 +18,10 @@ extension DatabaseManager {
     /// would only run a query against a database that cannot have gone away.
     internal func supportsHealthChecks(_ connectionId: UUID) -> Bool {
         guard let session = activeSessions[connectionId] else { return false }
+        /// A remote SQLite session holds a live socket to the server that can drop, so it is checked
+        /// even though the local SQLite engine, a file that cannot go away, is not. The answer is
+        /// per connection here rather than per type, because the same SQLite type is both.
+        if session.connection.opensRemoteDatabaseSession { return true }
         return PluginMetadataRegistry.shared.snapshot(
             for: session.connection.type
         )?.supportsHealthMonitor ?? true
@@ -152,8 +156,11 @@ extension DatabaseManager {
         } catch {
             guard activeSessions[connectionId]?.driver === driver else { return }
             Self.logger.info("Connection \(connectionId) did not answer before use, reconnecting")
-            let outcome = await performHealthMonitorReconnect(connectionId: connectionId)
-            guard outcome != .success else { return }
+            let outcome = await performHealthMonitorReconnect(
+                connectionId: connectionId,
+                failedDriver: ObjectIdentifier(driver)
+            )
+            guard case .retry(let failure) = outcome else { return }
             /// The reconnect disconnected the installed driver before it failed, so the session is
             /// holding a handle that cannot work. Saying so is the whole point: `ensureConnected`
             /// and the window both read liveness, and leaving it `.live` puts the user's own
@@ -165,7 +172,7 @@ extension DatabaseManager {
             markSessionUnreachable(
                 connectionId,
                 startedWith: driver,
-                info: Self.unreachableBeforeUseInfo
+                info: failure ?? Self.unreachableBeforeUseInfo
             )
         }
     }

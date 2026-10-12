@@ -171,7 +171,6 @@ struct DatabaseManagerMultiSessionTests {
 
 // MARK: - Coordinator Connection Isolation
 
-@Suite("Coordinator Connection Isolation")
 @MainActor
 struct CoordinatorConnectionIsolationTests {
     @Test("connectionId matches the connection's id")

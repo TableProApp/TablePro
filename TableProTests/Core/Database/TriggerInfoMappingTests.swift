@@ -59,7 +59,6 @@ private final class StubTriggerDriver: PluginDatabaseDriver, @unchecked Sendable
     }
 }
 
-@Suite("Trigger info mapping")
 struct TriggerInfoMappingTests {
     @Test("PluginTriggerInfo encodes and decodes")
     func codableRoundTrip() throws {
@@ -117,7 +116,6 @@ struct TriggerInfoMappingTests {
     }
 }
 
-@Suite("StructureTab triggers")
 struct StructureTabTriggersTests {
     @Test("Triggers tab is part of the canonical tab set")
     func triggersInAllCases() {
@@ -130,7 +128,6 @@ struct StructureTabTriggersTests {
     }
 }
 
-@Suite("Trigger apply strategy")
 struct TriggerApplyStrategyTests {
     @Test("MySQL edit drops then recreates (no replace, non-transactional)")
     func mysqlEdit() {
@@ -159,7 +156,6 @@ struct TriggerApplyStrategyTests {
     }
 }
 
-@Suite("Trigger editing bridge")
 struct TriggerEditingBridgeTests {
     private func makeAdapter(_ configure: (StubTriggerDriver) -> Void) -> PluginDriverAdapter {
         let driver = StubTriggerDriver()
@@ -199,7 +195,6 @@ struct TriggerEditingBridgeTests {
 }
 
 @MainActor
-@Suite("Trigger apply execution")
 struct TriggerApplyExecutionTests {
     private func makeStubAndAdapter() -> (StubTriggerDriver, PluginDriverAdapter) {
         let stub = StubTriggerDriver()
@@ -262,6 +257,13 @@ struct TriggerApplyExecutionTests {
         let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: "public")
         let pooledStub = StubTriggerDriver()
         pooledStub.transactionalDDL = true
+        /// The drop statement is built on the driver that will run it, because an engine that
+        /// qualifies its DDL with the connection's current database would otherwise write the
+        /// session's database into a statement the pooled connection runs somewhere else. Both
+        /// stubs can produce it, so the assertions below are what say which one was asked: a
+        /// regression back to the session driver shows up as a query it executed rather than as a
+        /// statement nobody could generate.
+        pooledStub.dropToReturn = "DROP TRIGGER t"
         let pooledAdapter = PluginDriverAdapter(connection: connection, pluginDriver: pooledStub)
         try await pooledAdapter.connect()
         MetadataConnectionPool.shared.injectEntry(pooledAdapter, scope: scope)

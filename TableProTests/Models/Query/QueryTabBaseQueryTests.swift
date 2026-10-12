@@ -4,7 +4,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("QueryTab.buildBaseTableQuery")
 struct QueryTabBaseQueryTests {
     init() {
         FakeMSSQLPluginRegistration.registerIfNeeded()
@@ -47,5 +46,27 @@ struct QueryTabBaseQueryTests {
         #expect(query.contains("SELECT * FROM"))
         #expect(!query.uppercased().contains("SUBSTRING"))
         #expect(!query.hasSuffix(";"))
+    }
+
+    /// Their plugins build the browse query. Without one the tab must not be handed another engine's
+    /// command: either the plugin builds it or the build throws.
+    @Test("An engine that highlights like MongoDB or Redis is not browsed with their commands", arguments: [
+        DatabaseType.elasticsearch, .typesense, .weaviate, .etcd
+    ])
+    func otherEnginesNeverGetShellBrowseQueries(databaseType: DatabaseType) {
+        let query = try? QueryTab.buildBaseTableQuery(tableName: "products", databaseType: databaseType)
+        #expect(!(query ?? "").contains(".find("))
+        #expect(!(query ?? "").hasPrefix("SCAN "))
+    }
+
+    @Test("A JavaScript editor's own query reaches the collection through the shared accessor")
+    func javascriptQueryUsesSharedAccessor() throws {
+        let lineTerminators: Set<Unicode.Scalar> = ["\n", "\r", "\u{0B}", "\u{0C}", "\u{85}", "\u{2028}", "\u{2029}"]
+        for name in ["users", "stats", "a\u{2028}b", "c\u{85}d", "e\"f\ng"] {
+            let query = try QueryTab.buildBaseTableQuery(tableName: name, databaseType: .mongodb)
+            #expect(query.hasPrefix("\(MongoCollectionAccessor.expression(for: name)).find({}).limit("), "\(name)")
+            #expect(!query.unicodeScalars.contains { lineTerminators.contains($0) }, "\(name)")
+            #expect(QuerySqlParser.extractTableName(from: query) == name, "\(name)")
+        }
     }
 }

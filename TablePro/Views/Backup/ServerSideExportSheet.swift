@@ -266,7 +266,7 @@ struct ServerSideExportSheet: View {
         }
         let request = ServerSideExport.Request(
             table: selectedTable,
-            schema: DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id),
+            schema: scope.schema,
             destination: destination,
             format: format
         )

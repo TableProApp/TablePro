@@ -24,7 +24,6 @@ private final class PasteMockClipboard: ClipboardProvider {
 }
 
 @MainActor
-@Suite("RowOperationsManager Paste")
 struct RowOperationsManagerPasteTests {
     private static let columns = ["id", "name", "email"]
 
@@ -202,7 +201,6 @@ struct RowOperationsManagerPasteTests {
 /// the cell-edit boundary that refuses them, and `SQLStatementGenerator` drops them without a word,
 /// so the grid showed a pasted identity value the row was never saved with.
 @MainActor
-@Suite("RowOperationsManager Paste - server-owned columns")
 struct RowOperationsManagerPasteServerOwnedTests {
     private static let columns = ["id", "code", "name"]
 

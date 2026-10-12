@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct MQLExportOptionsView: View {
-    @Bindable var plugin: MQLExportPlugin
+    @ObservedObject var plugin: MQLExportPlugin
 
     private static let batchSizeOptions = [100, 500, 1_000, 5_000]
 

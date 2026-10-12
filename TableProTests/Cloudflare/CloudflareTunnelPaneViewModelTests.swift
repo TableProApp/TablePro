@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Cloudflare tunnel pane validation")
 @MainActor
 struct CloudflareTunnelPaneViewModelTests {
     @Test("disabled tunnel reports no validation issues")
@@ -52,5 +51,13 @@ struct CloudflareTunnelPaneViewModelTests {
         viewModel.state.accessHostname = "db.example.com"
         viewModel.state.authMethod = .browserSSO
         #expect(viewModel.validationIssues.isEmpty)
+    }
+
+    @Test("The not-found caption is plain text that names the install command")
+    func binaryNotFoundMessageIsPlainText() {
+        let message = CloudflareTunnelPaneViewModel().binaryNotFoundMessage
+
+        #expect(!message.contains("`"))
+        #expect(message.contains("brew install cloudflared"))
     }
 }

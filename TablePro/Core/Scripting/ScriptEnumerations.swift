@@ -42,6 +42,21 @@ internal enum ScriptEnumerations {
         case .usersRoles: fourCharCode("TPk6")
         case .insights: fourCharCode("TPk7")
         case .objectSource: fourCharCode("TPk8")
+        case .versionHistory: fourCharCode("TPk9")
+        }
+    }
+
+    internal static func code(for color: ConnectionColor) -> FourCharCode {
+        switch color {
+        case .none: fourCharCode("TPc0")
+        case .red: fourCharCode("TPc1")
+        case .orange: fourCharCode("TPc2")
+        case .yellow: fourCharCode("TPc3")
+        case .green: fourCharCode("TPc4")
+        case .blue: fourCharCode("TPc5")
+        case .purple: fourCharCode("TPc6")
+        case .pink: fourCharCode("TPc7")
+        case .gray: fourCharCode("TPc8")
         }
     }
 

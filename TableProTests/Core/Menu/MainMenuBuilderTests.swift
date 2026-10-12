@@ -10,6 +10,7 @@
 
 import AppKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -26,7 +27,6 @@ private func flatten(_ menu: NSMenu) -> [NSMenuItem] {
     }
 }
 
-@Suite("Main menu structure")
 @MainActor
 struct MainMenuStructureTests {
     @Test("What's New stays reachable from Help without an active connection")
@@ -40,14 +40,39 @@ struct MainMenuStructureTests {
         #expect(MainMenuLink.changelog == "https://docs.tablepro.app/changelog")
     }
 
+    @Test("Help opens the integrations directory right after Documentation")
+    func integrationsDirectoryIsReachable() throws {
+        let help = try #require(buildMenu().items.first { $0.title == String(localized: "Help") }?.submenu)
+        let titles = help.items.map(\.title)
+        let documentation = try #require(titles.firstIndex(of: String(localized: "Documentation")))
+        let index = try #require(titles.firstIndex(of: String(localized: "Integrations")))
+        #expect(index == documentation + 1)
+        let item = help.items[index]
+        #expect(item.action == #selector(AppDelegate.openIntegrationsDirectory(_:)))
+        #expect(item.target == nil)
+        #expect(item.keyEquivalent.isEmpty)
+        #expect(AppDelegate().validateMenuItem(item))
+        #expect(MainMenuLink.integrations == "https://tablepro.app/integrations")
+    }
+
+    @Test("The app menu opens MCP Activity without an active connection")
+    func mcpActivityIsReachable() throws {
+        let app = try #require(buildMenu().items.first { $0.title == "TablePro" }?.submenu)
+        let item = try #require(app.items.first { $0.title == String(localized: "MCP Activity…") })
+        #expect(item.action == #selector(AppDelegate.openMCPActivity(_:)))
+        #expect(item.target == nil)
+        #expect(item.keyEquivalent.isEmpty)
+        #expect(AppDelegate().validateMenuItem(item))
+    }
+
     @Test("Top level order follows the macOS HIG")
     func topLevelOrder() {
         let titles = buildMenu().items.map(\.title)
         #expect(titles == [
             "TablePro",
             String(localized: "File"),
-            String(localized: "Edit"),
-            String(localized: "View"),
+            EditMenuBuilder.title,
+            ViewMenuBuilder.title,
             String(localized: "Database"),
             String(localized: "Query"),
             String(localized: "Window"),
@@ -58,11 +83,21 @@ struct MainMenuStructureTests {
     @Test("Custom menus sit between View and Window")
     func customMenuPlacement() {
         let titles = buildMenu().items.map(\.title)
-        let view = try? #require(titles.firstIndex(of: String(localized: "View")))
+        let view = try? #require(titles.firstIndex(of: ViewMenuBuilder.title))
         let window = try? #require(titles.firstIndex(of: String(localized: "Window")))
         let database = try? #require(titles.firstIndex(of: String(localized: "Database")))
         #expect(view ?? 0 < database ?? 0)
         #expect(database ?? 0 < window ?? 0)
+    }
+
+    @Test("Edit Document sits just above Insert Document in the Edit menu")
+    func documentCommandsOrder() throws {
+        let edit = try #require(buildMenu().items.first { $0.title == EditMenuBuilder.title }?.submenu)
+        let titles = edit.items.map(\.title)
+        let editIndex = try #require(titles.firstIndex(of: String(localized: "Edit Document…")))
+        let insertIndex = try #require(titles.firstIndex(of: String(localized: "Insert Document…")))
+        #expect(editIndex + 1 == insertIndex)
+        #expect(edit.items[editIndex].action == #selector(MainSplitViewController.editDocument(_:)))
     }
 
     @Test("No two menu items share a title")
@@ -131,7 +166,6 @@ struct MainMenuStructureTests {
     }
 }
 
-@Suite("Main menu shortcut coverage")
 @MainActor
 struct MainMenuShortcutCoverageTests {
     @Test("Every customizable action reaches exactly one menu item")
@@ -157,10 +191,16 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
 
-    @Test("Find ships on Cmd+F and the filter bar keeps Cmd+Option+F")
+    /// `Cmd+Option+F` is Apple's Find and Replace key, so the filter bar moved off it rather than a
+    /// documented text-editing shortcut landing somewhere users would not look for it.
+    @Test("The find keys are Apple's and the filter bar sits beside them")
     func findAndFilterDefaultsHold() {
         #expect(KeyboardSettings.defaultShortcuts[.find] == .character("f", command: true))
-        #expect(KeyboardSettings.defaultShortcuts[.toggleFilters] == .character("f", command: true, option: true))
+        #expect(KeyboardSettings.defaultShortcuts[.findAndReplace] == .character("f", command: true, option: true))
+        #expect(KeyboardSettings.defaultShortcuts[.findNext] == .character("g", command: true))
+        #expect(KeyboardSettings.defaultShortcuts[.findPrevious] == .character("g", command: true, shift: true))
+        #expect(KeyboardSettings.defaultShortcuts[.useSelectionForFind] == .character("e", command: true))
+        #expect(KeyboardSettings.defaultShortcuts[.toggleFilters] == .character("f", command: true, shift: true))
         #expect(
             KeyboardSettings.defaultShortcuts[.focusSidebarSearch]
                 == .character("f", command: true, option: true, control: true)
@@ -249,9 +289,55 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
 
+    /// The eight commands the revamp made rebindable. Each was reachable only by pointer before:
+    /// two segments of a toolbar control, an Edit menu item with no action identifier at all, and
+    /// five buttons inside Agent mode's rail and the assistant pane's header menu.
+    private static let displacedCommands: [(action: ShortcutAction, title: String)] = [
+        (.showTablesList, String(localized: "Show Tables")),
+        (.showFavoritesList, String(localized: "Show Favorites")),
+        (.restorePreviousValues, String(localized: "Restore Previous Values…")),
+        (.newAgentSession, String(localized: "New Session")),
+        (.openAgentSession, String(localized: "Open Session")),
+        (.closeAgentSession, String(localized: "Close Session")),
+        (.deleteAgentSession, String(localized: "Delete Session…")),
+        (.newAIConversation, String(localized: "New Conversation")),
+    ]
+
+    @Test("Each newly rebindable command is stamped on the menu item that runs it")
+    func displacedCommandsReachTheirMenuItem() {
+        let items = flatten(buildMenu())
+        for command in Self.displacedCommands {
+            let matches = items.filter { $0.identifier == MenuItemFactory.identifier(for: command.action) }
+            #expect(matches.count == 1, "\(command.action.rawValue) is on \(matches.count) items, expected 1")
+            #expect(matches.first?.title == command.title, "\(command.action.rawValue) is on the wrong item")
+        }
+    }
+
+    /// Shipped unbound on purpose. Every combo a reasonable person would reach for is taken, and a
+    /// default that displaced a shipped one would be a worse trade than an unassigned row in
+    /// Settings, which is where these are now visible for the first time.
+    @Test("Each newly rebindable command ships with no key equivalent of its own")
+    func displacedCommandsShipUnbound() {
+        let items = flatten(buildMenu())
+        for command in Self.displacedCommands {
+            #expect(KeyboardSettings.defaultShortcuts[command.action] == nil, "\(command.action.rawValue)")
+            let item = items.first { $0.identifier == MenuItemFactory.identifier(for: command.action) }
+            #expect(item?.keyEquivalent.isEmpty == true, "\(command.action.rawValue) arrived with a binding")
+        }
+    }
+
+    /// Settings lists every action by this name, so two sharing one would offer the user two
+    /// identical rows and no way to tell which command they were rebinding.
+    @Test("No two actions share a display name")
+    func displayNamesAreUnique() {
+        let names = ShortcutAction.allCases.map(\.displayName)
+        let duplicates = Dictionary(grouping: names, by: { $0 }).filter { $0.value.count > 1 }.keys
+        #expect(duplicates.isEmpty, "Two shortcut actions share a name in Settings: \(duplicates)")
+    }
+
     @Test("Jump to Column… sits in the Edit menu's Find submenu on Cmd+Shift+J")
     func jumpToColumnLivesUnderFind() {
-        let edit = buildMenu().items.first { $0.title == String(localized: "Edit") }?.submenu
+        let edit = buildMenu().items.first { $0.title == EditMenuBuilder.title }?.submenu
         let find = edit?.items.first { $0.title == String(localized: "Find") }?.submenu
         let item = find?.items.first { $0.identifier == MenuItemFactory.identifier(for: .jumpToColumn) }
 
@@ -262,7 +348,87 @@ struct MainMenuShortcutCoverageTests {
     }
 }
 
-@Suite("Main menu validation")
+/// Agent mode's sessions and the assistant's conversations had no menu-bar home at all: the rail's
+/// buttons and the trailing pane's header menu were the only routes, so none of the seven commands
+/// could be found by search, rebound, or reached with the rail collapsed or the pane closed.
+@MainActor
+struct FileSessionMenuTests {
+    private func sessionMenu() -> NSMenu? {
+        buildMenu().items.first { $0.title == String(localized: "File") }?
+            .submenu?.items.first { $0.title == String(localized: "Session") }?
+            .submenu
+    }
+
+    @Test("The submenu carries the session lifecycle and the conversation commands, in that order")
+    func sessionMenuOrder() throws {
+        let titles = try #require(sessionMenu()).items.map(\.title)
+        #expect(titles == [
+            String(localized: "New Session"),
+            String(localized: "Open Session"),
+            String(localized: "Recent Sessions"),
+            String(localized: "Close Session"),
+            String(localized: "Delete Session…"),
+            "",
+            String(localized: "New Conversation"),
+            String(localized: "Conversation History"),
+            String(localized: "Clear Recents…"),
+        ])
+    }
+
+    /// The two list rows are exempt: AppKit points a submenu container at its own `submenuAction:`,
+    /// and the rows inside are built by the delegate when the list opens.
+    @Test("Every leaf carries an action and leaves its target nil")
+    func everyLeafIsACommand() throws {
+        let leaves = try #require(sessionMenu()).items.filter { !$0.isSeparatorItem && $0.submenu == nil }
+        #expect(leaves.count == 6)
+        for leaf in leaves {
+            #expect(leaf.action != nil, "\(leaf.title) can never enable")
+            #expect(leaf.target == nil, "\(leaf.title) bypasses responder-chain validation")
+        }
+    }
+
+    /// AppKit ignores a key equivalent on an item that owns a submenu, so the command a user can
+    /// rebind has to be a leaf. Open Session acts on the session the rail has highlighted, and the
+    /// list beside it is how any other session is reached, exactly as Import Data… and Import Data
+    /// From are split.
+    @Test("Open Session is a leaf, so a binding it is given can fire")
+    func openSessionIsALeaf() throws {
+        let item = try #require(
+            sessionMenu()?.items.first { $0.title == String(localized: "Open Session") }
+        )
+        #expect(item.submenu == nil)
+        #expect(item.action == #selector(MainSplitViewController.openAgentSession(_:)))
+        #expect(item.identifier == MenuItemFactory.identifier(for: .openAgentSession))
+    }
+
+    @Test("Both lists fill themselves when they open", arguments: [
+        String(localized: "Recent Sessions"), String(localized: "Conversation History"),
+    ])
+    func listsAreDelegateDriven(title: String) throws {
+        let submenu = try #require(sessionMenu()?.items.first { $0.title == title }?.submenu)
+        #expect(submenu.delegate != nil, "The set changes while the menu is closed, so it is built on open")
+        #expect(submenu.items.isEmpty, "The list is filled when it opens, not at build time")
+    }
+
+    /// `AIChatViewModel` is a plain `ObservableObject` and `AgentSessionRegistry` is not a responder,
+    /// so a command named on either would reach nothing and AppKit would draw it dead. Every one of
+    /// these names a window selector instead, including the two lists' rows.
+    @Test("Each command reaches the window rather than a view model nothing can resolve")
+    func everyCommandIsAWindowSelector() throws {
+        var actions = try #require(sessionMenu()).items
+            .filter { $0.submenu == nil }
+            .compactMap(\.action)
+        #expect(actions.count == 6)
+        actions.append(contentsOf: [AgentSessionMenuDelegate.action, ConversationHistoryMenuDelegate.action])
+        for action in actions {
+            #expect(
+                MainSplitViewController.instancesRespond(to: action),
+                "\(NSStringFromSelector(action)) reaches nothing, so AppKit draws it dead"
+            )
+        }
+    }
+}
+
 @MainActor
 struct MainMenuValidationTests {
     private func enabled(_ selector: Selector, _ context: MenuValidationContext) -> Bool {
@@ -301,6 +467,67 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.executeQuery(_:)), context))
         context.hasQueryText = true
         #expect(enabled(#selector(MainSplitViewController.executeQuery(_:)), context))
+    }
+
+    /// Redis declares no plan, and the menu item used to validate on the query text alone, so
+    /// `Cmd+Option+E` ran a `DEBUG OBJECT` the server refuses while the bar's button was dimmed.
+    @Test("Explain Query needs an engine that declares a plan")
+    func explainNeedsADeclaredPlan() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.hasQueryText = true
+        #expect(!enabled(#selector(MainSplitViewController.explainQuery(_:)), context))
+        context.supportsExplain = true
+        #expect(enabled(#selector(MainSplitViewController.explainQuery(_:)), context))
+    }
+
+    @Test("Format Query needs a language that has a formatter")
+    func formatNeedsAFormatter() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.hasQueryText = true
+        #expect(!enabled(#selector(MainSplitViewController.formatQuery(_:)), context))
+        context.supportsFormatting = true
+        #expect(enabled(#selector(MainSplitViewController.formatQuery(_:)), context))
+    }
+
+    /// `runExplain` returns at its first guard while the tab runs, so a lit item did nothing.
+    @Test("Explain Query dims while the tab is running a query")
+    func explainDimsWhileExecuting() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.hasQueryText = true
+        context.supportsExplain = true
+        context.isQueryExecuting = true
+        #expect(!enabled(#selector(MainSplitViewController.explainQuery(_:)), context))
+    }
+
+    @Test("Explain Query answers exactly what the editor bar's Explain answers")
+    func explainAgreesWithTheEditorBar() {
+        let variant = ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")
+        for isConnected in [true, false] {
+            for hasQueryText in [true, false] {
+                for isExecuting in [true, false] {
+                    for supportsExplain in [true, false] {
+                        var context = MenuValidationContext()
+                        context.isConnected = isConnected
+                        context.hasQueryText = hasQueryText
+                        context.isQueryExecuting = isExecuting
+                        context.supportsExplain = supportsExplain
+                        let bar = QueryCommandAvailability(
+                            isConnected: isConnected,
+                            hasQueryText: hasQueryText,
+                            isExecuting: isExecuting,
+                            isStoppable: true,
+                            hasResults: false,
+                            explainVariants: supportsExplain ? [variant] : [],
+                            shortcutHint: { label, _ in label }
+                        )
+                        #expect(enabled(#selector(MainSplitViewController.explainQuery(_:)), context) == bar.canExplain)
+                    }
+                }
+            }
+        }
     }
 
     /// #2172: `paste:` had no window-level implementation at all, so with focus anywhere that does
@@ -382,10 +609,66 @@ struct MainMenuValidationTests {
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
         context.canTruncateSelectedTables = true
+        context.canCreateTable = true
+        context.canCreateView = true
+        context.canCreateSchema = true
         context.isReadOnly = true
         #expect(!enabled(#selector(MainSplitViewController.addRow(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.truncateTable(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.createSchema(_:)), context))
+    }
+
+    @Test("New Table is disabled for an engine that cannot create a table")
+    func newTableFollowsTheDriver() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.canCreateView = true
+        #expect(!enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+
+        context.canCreateTable = true
+        #expect(enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
+    }
+
+    @Test("New View follows the driver's template")
+    func newViewFollowsTheTemplate() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+
+        context.canCreateView = true
+        #expect(enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+
+        context.isReadOnly = true
+        #expect(!enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+    }
+
+    @Test("New Schema needs an engine that creates schemas")
+    func newSchemaNeedsTheCapability() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.createSchema(_:)), context))
+
+        context.canCreateSchema = true
+        #expect(enabled(#selector(MainSplitViewController.createSchema(_:)), context))
+
+        context.isConnected = false
+        #expect(!enabled(#selector(MainSplitViewController.createSchema(_:)), context))
+    }
+
+    @Test("New Folder needs the flat list on screen and ignores read-only")
+    func newFolderNeedsTheFlatList() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.createTableFolder(_:)), context))
+
+        context.canCreateTableFolder = true
+        #expect(enabled(#selector(MainSplitViewController.createTableFolder(_:)), context))
+
+        context.isReadOnly = true
+        #expect(enabled(#selector(MainSplitViewController.createTableFolder(_:)), context))
     }
 
     /// A view is a valid selection and a hopeless truncate. The menu bar used to ask only whether
@@ -407,7 +690,18 @@ struct MainMenuValidationTests {
         var context = MenuValidationContext()
         #expect(!enabled(#selector(MainSplitViewController.cancelQuery(_:)), context))
         context.isQueryExecuting = true
+        context.isQueryStoppable = true
         #expect(enabled(#selector(MainSplitViewController.cancelQuery(_:)), context))
+    }
+
+    /// A batch whose `COMMIT` is on the wire is executing and unstoppable at the same time, and
+    /// `Cmd+.` has to dim rather than fire into work nothing can interrupt.
+    @Test("Cancel Query dims while a batch is committing")
+    func cancelDimsWhileCommitting() {
+        var context = MenuValidationContext()
+        context.isQueryExecuting = true
+        context.isQueryStoppable = false
+        #expect(!enabled(#selector(MainSplitViewController.cancelQuery(_:)), context))
     }
 
     @Test("Filter bar needs an active table result grid")
@@ -461,6 +755,7 @@ struct MainMenuValidationTests {
         context.isQueryTab = true
         context.hasResultRows = true
         context.hasQueryText = true
+        context.supportsExplain = true
         context.hasPendingChanges = true
         context.hasDataPendingChanges = true
         context.hasImportFormats = true
@@ -472,10 +767,18 @@ struct MainMenuValidationTests {
         context.isCurrentTabEditable = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
+        context.hasRowSelection = true
         context.canTruncateSelectedTables = true
+        context.canDropSelectedTables = true
         context.canShowTableStructure = true
         context.canEditViewDefinition = true
         context.hasMaintenanceOperations = true
+        context.canCreateTable = true
+        context.canCreateView = true
+        context.canCreateSchema = true
+        context.canCreateTableFolder = true
+        context.canInsertDocument = true
+        context.canEditDocument = true
         return context
     }
 
@@ -497,8 +800,12 @@ struct MainMenuValidationTests {
             #selector(MainSplitViewController.backupDatabase(_:)),
             #selector(MainSplitViewController.restoreDatabase(_:)),
             #selector(MainSplitViewController.executeQuery(_:)),
+            #selector(MainSplitViewController.explainQuery(_:)),
             #selector(MainSplitViewController.previewSQL(_:)),
             #selector(MainSplitViewController.createNewTable(_:)),
+            #selector(MainSplitViewController.createNewView(_:)),
+            #selector(MainSplitViewController.createSchema(_:)),
+            #selector(MainSplitViewController.createTableFolder(_:)),
             #selector(MainSplitViewController.openContainerSwitcher(_:)),
             #selector(MainSplitViewController.showServerDashboard(_:)),
             #selector(MainSplitViewController.showUsersAndRoles(_:)),
@@ -513,6 +820,8 @@ struct MainMenuValidationTests {
         [
             #selector(MainSplitViewController.addRow(_:)),
             #selector(MainSplitViewController.duplicateRow(_:)),
+            #selector(MainSplitViewController.editDocument(_:)),
+            #selector(MainSplitViewController.insertDocument(_:)),
             #selector(MainSplitViewController.truncateTable(_:)),
             #selector(MainSplitViewController.delete(_:)),
             #selector(MainSplitViewController.showTableStructure(_:)),
@@ -533,6 +842,54 @@ struct MainMenuValidationTests {
         context.isCurrentTabSchemaResolved = true
         #expect(enabled(#selector(MainSplitViewController.addRow(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.duplicateRow(_:)), context))
+    }
+
+    @Test("Insert Document stays dimmed on an engine without whole-document writes")
+    func insertDocumentNeedsADocumentEngine() {
+        var context = capableContext()
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.insertDocument(_:)), context))
+        context.canInsertDocument = false
+        #expect(!enabled(#selector(MainSplitViewController.insertDocument(_:)), context))
+    }
+
+    @Test("A read-only connection dims Insert Document")
+    func insertDocumentRespectsReadOnly() {
+        var context = capableContext()
+        context.isConnected = true
+        context.isReadOnly = true
+        #expect(!enabled(#selector(MainSplitViewController.insertDocument(_:)), context))
+    }
+
+    @Test("Edit Document needs one row whose document the driver can find, and stays dimmed on a read-only connection")
+    func editDocumentGate() {
+        var context = capableContext()
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.editDocument(_:)), context))
+        context.canEditDocument = false
+        #expect(!enabled(#selector(MainSplitViewController.editDocument(_:)), context))
+        context.canEditDocument = true
+        context.isReadOnly = true
+        #expect(!enabled(#selector(MainSplitViewController.editDocument(_:)), context))
+    }
+
+    /// Agent mode keeps the coordinator, and with it the row and the tab the user last had, so
+    /// only the mode can dim these.
+    @Test("Agent mode dims Edit Document and Insert Document over the row the coordinator still holds")
+    func documentCommandsDimInAgentMode() {
+        var context = capableContext()
+        context.isConnected = true
+        let documentCommands = [
+            #selector(MainSplitViewController.editDocument(_:)),
+            #selector(MainSplitViewController.insertDocument(_:))
+        ]
+        for selector in documentCommands {
+            #expect(enabled(selector, context), "\(selector) is dim while browsing")
+        }
+        context.isAgentMode = true
+        for selector in documentCommands {
+            #expect(!enabled(selector, context), "\(selector) stayed lit in Agent mode")
+        }
     }
 
     @Test("A stale selection does not keep content commands enabled without a connection")
@@ -715,7 +1072,6 @@ struct MainMenuValidationTests {
     }
 }
 
-@Suite("Database menu commands")
 @MainActor
 struct DatabaseMenuCommandTests {
     private func databaseMenu() -> NSMenu? {
@@ -754,6 +1110,18 @@ struct DatabaseMenuCommandTests {
         let submenu = container?.submenu
         #expect(submenu?.delegate != nil, "The current environment must be read on menuNeedsUpdate")
         #expect(submenu?.items.isEmpty == true, "The submenu is filled when it opens, not at build time")
+    }
+
+    @Test("New Folder follows New View and routes through the responder chain")
+    func newFolderFollowsNewView() throws {
+        let items = databaseMenu()?.items ?? []
+        let viewIndex = try #require(items.firstIndex { $0.title == String(localized: "New View…") })
+        try #require(viewIndex + 1 < items.count)
+        let folder = items[viewIndex + 1]
+
+        #expect(folder.title == String(localized: "New Folder"))
+        #expect(folder.action == #selector(MainSplitViewController.createTableFolder(_:)))
+        #expect(folder.target == nil)
     }
 
     @Test("Disconnect and Reconnect route through the responder chain")

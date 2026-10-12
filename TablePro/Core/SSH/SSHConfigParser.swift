@@ -168,14 +168,14 @@ enum SSHConfigParser {
         depth: Int
     ) {
         guard depth <= maxIncludeDepth else {
-            logger.warning("SSH config Include depth exceeded at: \(path, privacy: .public)")
+            logger.warning("SSH config Include depth exceeded at: \(path, privacy: .private(mask: .hash))")
             return
         }
 
         let canonical = (path as NSString).standardizingPath
 
         guard !visited.contains(canonical) else {
-            logger.warning("SSH config circular Include: \(path, privacy: .public)")
+            logger.warning("SSH config circular Include: \(path, privacy: .private(mask: .hash))")
             return
         }
 
@@ -459,7 +459,7 @@ enum SSHConfigParser {
             substituted = try SSHTokenContext().expand(path, scope: .includePath, keyword: "Include")
         } catch {
             logger.warning(
-                "Skipping Include \(path, privacy: .public): TablePro reads ~/.ssh/config once for every connection, so a token that names the target cannot be resolved here"
+                "Skipping Include \(path, privacy: .private(mask: .hash)): TablePro reads ~/.ssh/config once for every connection, so a token that names the target cannot be resolved here"
             )
             return []
         }

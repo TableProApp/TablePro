@@ -1,0 +1,33 @@
+name: SwiftLint
+
+# No paths filter, so the check reports on every pull request and can be required.
+# build.yml calls this workflow for a release tag, so the pin below is the only one.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: swiftlint-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  SWIFTLINT_IMAGE: ghcr.io/realm/swiftlint:0.65.1@sha256:f47e083201e47a136cda5ae847595bfe00226c444ca226fa74fa5dc648a9b057
+
+jobs:
+  swiftlint:
+    name: SwiftLint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run SwiftLint
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work "$SWIFTLINT_IMAGE" \
+            swiftlint lint --strict --reporter github-actions-logging

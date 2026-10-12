@@ -42,7 +42,11 @@ enum SnowflakeRetryPolicy {
 enum SnowflakeHTTPClient {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeHTTPClient")
 
-    static func send(_ request: URLRequest, session: URLSession) async throws -> (Data, HTTPURLResponse) {
+    static func send(
+        _ request: URLRequest,
+        session: URLSession,
+        connectDeadline: PluginConnectDeadline? = nil
+    ) async throws -> (Data, HTTPURLResponse) {
         let clientStartTime = Int(Date().timeIntervalSince1970 * 1_000)
         var generator = SystemRandomNumberGenerator()
         var delay = SnowflakeRetryPolicy.baseDelay
@@ -52,11 +56,18 @@ enum SnowflakeHTTPClient {
         for attempt in 0..<SnowflakeRetryPolicy.maxAttempts {
             var attemptRequest = request
             if attempt > 0, let url = request.url {
+                if let connectDeadline, connectDeadline.remainingMilliseconds() <= 1 {
+                    throw lastError ?? URLError(.timedOut)
+                }
                 attemptRequest.url = SnowflakeRetryPolicy.retriedURL(
                     url, retryCount: attempt, retryReason: lastReason, clientStartTime: clientStartTime
                 )
-                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                let retryDelay = min(delay, connectDeadline?.remainingSeconds() ?? delay)
+                try await Task.sleep(for: .seconds(retryDelay))
                 delay = SnowflakeRetryPolicy.nextDelay(after: delay, using: &generator)
+            }
+            if let connectDeadline {
+                attemptRequest.timeoutInterval = connectDeadline.remainingSeconds()
             }
 
             do {

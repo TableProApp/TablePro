@@ -12,15 +12,15 @@ import Testing
 /// silence and still counted as inserted, so "Import completed" reported more rows than reached the
 /// database. Refusing it makes the count honest: Skip and Continue records the row against its
 /// line, and the stop modes halt on a mapping that matches nothing.
-@Suite("Import sink column mapping")
 @MainActor
 struct ImportDataSinkAdapterMappingTests {
-    private func adapter(mapping: [String: String]) -> ImportDataSinkAdapter {
+    private func adapter(mapping: [String: String], sourceFields: Set<String> = []) -> ImportDataSinkAdapter {
         ImportDataSinkAdapter(
             driver: MockDatabaseDriver(),
             databaseType: .mysql,
             targetTable: "people",
-            columnMapping: mapping
+            columnMapping: mapping,
+            sourceFields: sourceFields
         )
     }
 
@@ -49,12 +49,87 @@ struct ImportDataSinkAdapterMappingTests {
         try await sink.insertRow(["name": .text("Ada")])
     }
 
-    /// The mapping is matched case-insensitively, so a header cased differently to the column still
-    /// reaches it rather than being refused.
+    /// A spelling the mapping was not made from, such as a JSON key cased differently in a row past
+    /// the sample, still reaches the one mapped field it matches ignoring case.
     @Test("Field matching ignores case")
     func fieldMatchingIgnoresCase() async throws {
         let sink = adapter(mapping: ["Name": "name"])
         try await sink.insertRow(["NAME": .text("Ada")])
+    }
+
+    @Test("A field whose twin differing only by case is mapped exactly is left out")
+    func caseTwinOfAMappedFieldStaysUnmapped() {
+        let sink = adapter(mapping: ["Email": "email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["Email": .text("work"), "email": .text("home")])
+
+        #expect(columns == ["email"])
+        #expect(values == [.text("work")])
+    }
+
+    @Test("Two fields that differ only by case reach their own columns")
+    func caseTwinsReachTheirOwnColumns() {
+        let sink = adapter(mapping: ["Email": "work_email", "email": "home_email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["Email": .text("work"), "email": .text("home")])
+
+        #expect(columns == ["home_email", "work_email"])
+        #expect(values == [.text("home"), .text("work")])
+    }
+
+    @Test("A field the sheet listed and the user skipped never folds onto its twin's column")
+    func skippedFieldNeverFolds() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email", "email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["email": .text("home")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("A new spelling of two listed fields that differ only by case reaches neither, mapped or skipped")
+    func newSpellingOfListedCaseTwinsDoesNotFold() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email", "email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["EMAIL": .text("x"), "id": .text("1")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("A new spelling of one listed field still reaches its column")
+    func newSpellingOfOneListedFieldFolds() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["EMAIL": .text("x")])
+
+        #expect(columns == ["email"])
+        #expect(values == [.text("x")])
+    }
+
+    @Test("An unknown spelling beside a skipped field of the same name reaches no column")
+    func unknownSpellingBesideASkippedTwinDoesNotFold() {
+        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "NAME"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("skipped"), "name": .text("unknown")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("A third spelling of two mapped fields that differ only by case reaches neither column")
+    func ambiguousMappingKeysDoNotFold() {
+        let sink = adapter(mapping: ["Email": "work_email", "email": "home_email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["EMAIL": .text("x")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("Two unknown spellings of one mapped field in a row reach neither column")
+    func ambiguousRowKeysDoNotFold() {
+        let sink = adapter(mapping: ["Name": "name"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("a"), "name": .text("b"), "id": .text("1")])
+
+        #expect(columns.isEmpty)
     }
 
     /// A row carrying nothing has nothing to lose, so it passes through. Only a row holding values
@@ -74,5 +149,34 @@ struct ImportDataSinkAdapterMappingTests {
             [:],
             ["name": .text("Grace")],
         ])
+    }
+
+    /// A session connection can already hold the user's own transaction, as a database kept open
+    /// for its rail entry does. Opening one there joined it, and the import's COMMIT then committed
+    /// the user's pending work with it.
+    @Test("An import into a session holding the user's transaction neither opens nor commits one")
+    func importJoinsTheUsersTransaction() async throws {
+        let driver = MockDatabaseDriver()
+        driver.sessionTransactionStateToReturn = .inTransaction
+        let sink = ImportDataSinkAdapter(driver: driver, databaseType: .mysql, targetTable: "people")
+
+        try await sink.beginTransaction()
+        try await sink.commitTransaction()
+
+        #expect(driver.beginTransactionCallCount == 0)
+        #expect(driver.commitTransactionCallCount == 0)
+    }
+
+    @Test("An import into an idle session opens and commits its own transaction")
+    func importOwnsItsTransactionOnAnIdleSession() async throws {
+        let driver = MockDatabaseDriver()
+        driver.sessionTransactionStateToReturn = .idle
+        let sink = ImportDataSinkAdapter(driver: driver, databaseType: .mysql, targetTable: "people")
+
+        try await sink.beginTransaction()
+        try await sink.commitTransaction()
+
+        #expect(driver.beginTransactionCallCount == 1)
+        #expect(driver.commitTransactionCallCount == 1)
     }
 }

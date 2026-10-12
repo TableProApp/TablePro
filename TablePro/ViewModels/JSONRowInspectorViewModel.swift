@@ -5,40 +5,47 @@
 //  Expansion, filtering and foreign key fetching for the JSON inspector.
 //
 
-import AppKit
+import Combine
 import Foundation
 import os
 
 /// The referenced-row lookup a foreign key expansion runs, held as a value so a test can drive the
 /// model's cancellation and generation rules without a database behind it.
 typealias JSONForeignKeyRowFetch = @MainActor (
-    _ connectionId: UUID,
+    _ origin: DatabaseScope,
     _ databaseType: DatabaseType,
     _ reference: JSONForeignKeyRef,
     _ value: String
 ) async throws -> ForeignKeyRowFetcher.FetchedRow?
 
 @MainActor
-@Observable
-final class JSONRowInspectorViewModel {
-    private(set) var root: JSONRowNode?
-    private(set) var states = JSONForeignKeyStates()
+final class JSONRowInspectorViewModel: ObservableObject {
+    @Published private(set) var root: JSONRowNode?
+    @Published private(set) var states = JSONForeignKeyStates()
     /// Session state, not a setting. Following a key costs a query per key, so the tab opens with
     /// them closed however the reader left it last time, and turning it on is a deliberate act.
-    private(set) var alwaysExpandForeignKeys = false
+    @Published private(set) var alwaysExpandForeignKeys = false
 
-    var filterText: String = ""
+    @Published var filterText: String = "" {
+        didSet {
+            guard filterText != oldValue, !closedUnderFilter.isEmpty else { return }
+            closedUnderFilter = []
+        }
+    }
 
-    private var expanded: Set<JSONNodePath> = []
-    private var chains: [JSONNodePath: [JSONForeignKeyVisit]] = [:]
-    private var fetches: [JSONNodePath: Task<Void, Never>] = [:]
-    private var lastSnapshot: JSONRowSnapshot?
+    @Published private var expanded: Set<JSONNodePath> = []
+    /// What the reader shut under the current query. A filter opens everything it kept whatever
+    /// `expanded` says, so a click made there is recorded here and lasts as long as the query does.
+    @Published private var closedUnderFilter: Set<JSONNodePath> = []
+    @Published private var chains: [JSONNodePath: [JSONForeignKeyVisit]] = [:]
+    @Published private var fetches: [JSONNodePath: Task<Void, Never>] = [:]
+    @Published private var lastSnapshot: JSONRowSnapshot?
     /// Bumped by every rebuild and every reset. A fetch that returns after one discards itself,
     /// because `Task.cancel()` cannot interrupt a query already in flight.
-    private var generation = 0
-    private var connectionId: UUID?
-    private var databaseType: DatabaseType?
-    @ObservationIgnored private let fetchRow: JSONForeignKeyRowFetch
+    @Published private var generation = 0
+    @Published private var scope: DatabaseScope?
+    @Published private var databaseType: DatabaseType?
+    private let fetchRow: JSONForeignKeyRowFetch
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "JSONRowInspector")
 
@@ -47,13 +54,13 @@ final class JSONRowInspectorViewModel {
     }
 
     private static func fetchThroughDatabase(
-        connectionId: UUID,
+        origin: DatabaseScope,
         databaseType: DatabaseType,
         reference: JSONForeignKeyRef,
         value: String
     ) async throws -> ForeignKeyRowFetcher.FetchedRow? {
         try await ForeignKeyRowFetcher.fetch(
-            connectionId: connectionId,
+            origin: origin,
             databaseType: databaseType,
             reference: reference,
             value: value,
@@ -77,7 +84,7 @@ final class JSONRowInspectorViewModel {
             reset()
             return
         }
-        connectionId = snapshot.connectionId
+        scope = snapshot.scope
         databaseType = snapshot.databaseType
 
         guard snapshot != lastSnapshot else { return }
@@ -104,6 +111,7 @@ final class JSONRowInspectorViewModel {
             expanded.insert(rebuilt.path)
         } else {
             expanded = [rebuilt.path]
+            closedUnderFilter = []
             expandContainers(in: rebuilt)
         }
 
@@ -117,6 +125,7 @@ final class JSONRowInspectorViewModel {
         lastSnapshot = nil
         root = nil
         expanded = []
+        closedUnderFilter = []
         chains = [:]
         states = JSONForeignKeyStates()
     }
@@ -147,7 +156,9 @@ final class JSONRowInspectorViewModel {
                 root: root,
                 expanded: expanded,
                 states: states,
-                visiblePaths: visible
+                visiblePaths: visible,
+                closedUnderFilter: closedUnderFilter,
+                matcher: matcher
             )
         }
     }
@@ -164,16 +175,26 @@ final class JSONRowInspectorViewModel {
 
     // MARK: - Expansion
 
+    /// A line that offers no control toggles nothing: under a filter that is what keeps a foreign
+    /// key matched by its value from costing a query whose row the filter would hide again.
     func toggle(row: JSONDisplayRow) {
-        guard let root else { return }
+        guard let root, row.isExpandable else { return }
         if row.foreignKey != nil, states.fetched[row.path] == nil {
             expandForeignKey(at: row.path, in: root)
             return
         }
-        if expanded.contains(row.path) {
-            expanded.remove(row.path)
+        guard isFiltering else {
+            if expanded.contains(row.path) {
+                expanded.remove(row.path)
+            } else {
+                expanded.insert(row.path)
+            }
+            return
+        }
+        if row.isExpanded {
+            closedUnderFilter.insert(row.path)
         } else {
-            expanded.insert(row.path)
+            closedUnderFilter.remove(row.path)
         }
     }
 
@@ -181,11 +202,19 @@ final class JSONRowInspectorViewModel {
     /// walking every key in a wide row would fire one query per column on a single click.
     func expandAll() {
         guard let root else { return }
+        guard !isFiltering else {
+            closedUnderFilter = []
+            return
+        }
         expanded = JSONRowFlattener.expandablePaths(root: root, states: states)
     }
 
     func collapseAll() {
-        expanded = []
+        guard isFiltering, let root else {
+            expanded = []
+            return
+        }
+        closedUnderFilter = JSONRowFlattener.expandablePaths(root: root, states: states)
     }
 
     // MARK: - Preferences
@@ -201,9 +230,7 @@ final class JSONRowInspectorViewModel {
     func copyVisible() {
         let text = JSONRowTextRenderer.render(rows: displayRows)
         guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        ClipboardService.shared.writeText(text)
     }
 
     // MARK: - Foreign Keys
@@ -217,7 +244,7 @@ final class JSONRowInspectorViewModel {
 
     private func expandForeignKey(at path: JSONNodePath, in root: JSONRowNode) {
         guard fetches[path] == nil,
-              let connectionId,
+              let scope,
               let databaseType,
               let node = node(at: path, from: root),
               let reference = node.foreignKey,
@@ -228,7 +255,7 @@ final class JSONRowInspectorViewModel {
             path: path,
             reference: reference,
             value: JSONScalarText.unquoted(scalar),
-            connectionId: connectionId,
+            origin: scope,
             databaseType: databaseType
         )
     }
@@ -237,7 +264,7 @@ final class JSONRowInspectorViewModel {
         path: JSONNodePath,
         reference: JSONForeignKeyRef,
         value: String,
-        connectionId: UUID,
+        origin: DatabaseScope,
         databaseType: DatabaseType
     ) {
         let visit = JSONForeignKeyVisit(ref: reference, value: value)
@@ -262,7 +289,7 @@ final class JSONRowInspectorViewModel {
             defer { self?.finishFetch(at: path, generation: generation) }
             do {
                 guard let fetch = self?.fetchRow else { return }
-                let fetched = try await fetch(connectionId, databaseType, reference, value)
+                let fetched = try await fetch(origin, databaseType, reference, value)
                 guard let self, !Task.isCancelled, generation == self.generation else { return }
                 guard let fetched else {
                     self.states.failures[path] = .notFound
@@ -294,6 +321,7 @@ final class JSONRowInspectorViewModel {
         states.fetched[path] = expansion
         chains[path] = chain
         expanded.insert(path)
+        closedUnderFilter.remove(path)
         expandContainers(in: expansion)
     }
 

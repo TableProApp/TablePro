@@ -77,6 +77,11 @@ enum ExportPreselection: Equatable {
         return names.first
     }
 
+    func selectsAllObjects(in container: DatabaseContainerRef) -> Bool {
+        guard case .containers(let refs) = self else { return false }
+        return refs.contains { $0.covers(container) }
+    }
+
     /// Whether a table preselection's scope reaches the given container. An unscoped preselection
     /// reaches everything, which is the behaviour it had before it carried one.
     func scope(covers container: DatabaseContainerRef) -> Bool {
@@ -126,6 +131,47 @@ enum ExportMode {
     case tables(connection: DatabaseConnection, preselection: ExportPreselection)
     case queryResults(connection: DatabaseConnection, tableRows: TableRows, suggestedFileName: String)
     case streamingQuery(connection: DatabaseConnection, query: String, suggestedFileName: String)
+    case dataSource(DataSourceExportRequest)
+}
+
+internal extension ExportMode {
+    var connection: DatabaseConnection? {
+        switch self {
+        case .tables(let connection, _),
+             .queryResults(let connection, _, _),
+             .streamingQuery(let connection, _, _):
+            return connection
+        case .dataSource:
+            return nil
+        }
+    }
+
+    var formatDatabaseTypeId: String {
+        switch self {
+        case .dataSource(let request):
+            return request.databaseTypeId
+        case .tables(let connection, _),
+             .queryResults(let connection, _, _),
+             .streamingQuery(let connection, _, _):
+            return connection.type.rawValue
+        }
+    }
+
+    var listsDatabaseObjects: Bool {
+        guard case .tables = self else { return false }
+        return true
+    }
+
+    var suggestedFileName: String? {
+        switch self {
+        case .tables:
+            return nil
+        case .queryResults(_, _, let name), .streamingQuery(_, _, let name):
+            return name
+        case .dataSource(let request):
+            return request.suggestedFileName
+        }
+    }
 }
 
 // MARK: - Export Configuration
@@ -233,17 +279,62 @@ struct ExportDatabaseItem: Identifiable {
     let name: String
     var objects: [ExportObjectItem]
     var isExpanded: Bool = true
+    /// Kinds the tree has not read for this container yet. A collapsed schema lists its tables
+    /// from one listing and reads the rest when it is expanded or ticked.
+    var unloadedKinds: Set<PluginExportObjectKind>
+    var isLoadingObjects = false
+    /// Set when the container's own checkbox was turned on before its unread kinds arrived, so
+    /// they arrive selected like everything else the click reached.
+    var selectsLoadedObjects = false
 
     init(
         id: UUID = UUID(),
         name: String,
         objects: [ExportObjectItem],
-        isExpanded: Bool = true
+        isExpanded: Bool = true,
+        unloadedKinds: Set<PluginExportObjectKind> = []
     ) {
         self.id = id
         self.name = name
         self.objects = objects
         self.isExpanded = isExpanded
+        self.unloadedKinds = unloadedKinds
+    }
+
+    var hasUnloadedObjects: Bool {
+        !unloadedKinds.isEmpty
+    }
+
+    /// An object that arrives already selected (a restored row) stays so. Any other is selected
+    /// only when the container was ticked whole and nothing in it has been unticked since.
+    func mergingLoadedObjects(_ loaded: [ExportObjectItem]) -> ExportDatabaseItem {
+        let selectsArrivals = selectsLoadedObjects && objects.allSatisfy(\.isSelected)
+        let arrivals = loaded
+            .filter { unloadedKinds.contains($0.kind) }
+            .map { object -> ExportObjectItem in
+                var arrival = object
+                arrival.isSelected = object.isSelected || selectsArrivals
+                return arrival
+            }
+        var merged = self
+        merged.objects = objects + arrivals
+        merged.unloadedKinds = []
+        merged.isLoadingObjects = false
+        merged.selectsLoadedObjects = false
+        return merged
+    }
+
+    func withID(_ id: UUID) -> ExportDatabaseItem {
+        var copy = ExportDatabaseItem(
+            id: id,
+            name: name,
+            objects: objects,
+            isExpanded: isExpanded,
+            unloadedKinds: unloadedKinds
+        )
+        copy.isLoadingObjects = isLoadingObjects
+        copy.selectsLoadedObjects = selectsLoadedObjects
+        return copy
     }
 
     var selectedCount: Int {
@@ -305,9 +396,51 @@ extension ExportObjectItem {
         }
         return masked
     }
+
+    func offersRowScope(on databaseType: DatabaseType) -> Bool {
+        kind.carriesRows && ExportDataSourceAdapter.canApplyRowScope(on: databaseType)
+    }
 }
 
 extension [ExportDatabaseItem] {
+    /// A reload keeps each container's identity by name, so the tree keeps what the user expanded
+    /// and collapsed instead of meeting every row as new.
+    func adoptingIdentities(of prior: [ExportDatabaseItem]) -> [ExportDatabaseItem] {
+        var priorIDs: [String: UUID] = [:]
+        for item in prior where priorIDs[item.name] == nil {
+            priorIDs[item.name] = item.id
+        }
+        return map { item in
+            guard let id = priorIDs[item.name] else { return item }
+            return item.withID(id)
+        }
+    }
+
+    /// An entry whose container has not read its kind yet still counts as present: it is unread,
+    /// not gone.
+    func presentEntryCount(of profile: ExportProfile) -> Int {
+        var unloadedKinds: [String: Set<PluginExportObjectKind>] = [:]
+        for item in self where item.hasUnloadedObjects {
+            unloadedKinds[item.name, default: []].formUnion(item.unloadedKinds)
+        }
+        let unread = profile.entries.count { entry in
+            guard let kind = PluginExportObjectKind(rawValue: entry.kind) else { return false }
+            return unloadedKinds[entry.container]?.contains(kind) == true
+        }
+        return ExportProfileStorage.matchCount(profile, in: self) + unread
+    }
+
+    /// Keeps only what a narrower format can write. A container left with nothing loaded and
+    /// nothing unread is dropped, the rule the tree is built with.
+    func narrowed(to kinds: Set<PluginExportObjectKind>) -> [ExportDatabaseItem] {
+        compactMap { database in
+            var narrowed = database
+            narrowed.objects = database.objects.filter { kinds.contains($0.kind) }
+            narrowed.unloadedKinds = database.unloadedKinds.intersection(kinds)
+            return narrowed.objects.isEmpty && narrowed.unloadedKinds.isEmpty ? nil : narrowed
+        }
+    }
+
     func normalizingOptionValues(optionColumnCount: Int, defaultOptionValues: [Bool]) -> [ExportDatabaseItem] {
         map { database in
             var normalizedDatabase = database
@@ -340,6 +473,19 @@ extension [ExportDatabaseItem] {
                 $0.maskingUnsupportedOptions(columns: columns, supports: supports)
             }
             return maskedDatabase
+        }
+    }
+
+    func clearingRowScopes(unavailableOn databaseType: DatabaseType) -> [ExportDatabaseItem] {
+        map { database in
+            var clearedDatabase = database
+            clearedDatabase.objects = database.objects.map { object in
+                guard !object.offersRowScope(on: databaseType) else { return object }
+                var unscoped = object
+                unscoped.rowScope = .unrestricted
+                return unscoped
+            }
+            return clearedDatabase
         }
     }
 }

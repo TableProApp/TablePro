@@ -2,9 +2,10 @@
 //  ScopedDriverCancellationTests.swift
 //  TableProTests
 //
-//  Who a cancel reaches, and which thread pays for it. A superseded navigation cancels off the
-//  main thread because a PostgreSQL cancel opens a second connection to deliver the request, and
-//  through an SSH tunnel that round trip cost 68-157ms of main-thread stall per click (#2061).
+//  Who a cancel reaches, and which thread pays for it. A cancel names the lease owner whose work it
+//  is ending: keyed by connection alone it reached every tab and every window on that connection, so
+//  starting a query in one tab rolled back the batch another tab was running (#2061 for the thread,
+//  and the tab-cancel defect for the owner).
 //
 
 import Foundation
@@ -15,81 +16,209 @@ import Testing
 @Suite("Scoped driver cancellation", .serialized)
 @MainActor
 struct ScopedDriverCancellationTests {
-    @Test("A superseded navigation never cancels on the main thread")
-    func supersededNavigationCancelsOffTheMainThread() async throws {
+    @Test("A background delivery never cancels on the main thread")
+    func backgroundDeliveryCancelsOffTheMainThread() async throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         let driver = CancelRecordingDriver(connection: connection)
-        Self.seed(driver, policy: .cancellableRead, for: connection.id)
+        let owner = DriverLeaseOwner()
+        Self.seed(driver, policy: .cancellableRead(owner), for: connection.id)
         defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
 
-        try DatabaseManager.shared.cancelRunningQuery(for: connection.id, reach: .supersededNavigation)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
 
         #expect(await Self.awaitCancel(driver))
         #expect(driver.cancelledOnMainThread == false)
-    }
-
-    /// The cancel is fire-and-forget now, so the half that matters is that it still arrives.
-    /// Correctness never depended on it landing first, but the server keeps working until it does.
-    @Test("A superseded navigation still delivers the cancel")
-    func supersededNavigationStillCancels() async throws {
-        let connection = TestFixtures.makeConnection(type: .postgresql)
-        let driver = CancelRecordingDriver(connection: connection)
-        Self.seed(driver, policy: .cancellableRead, for: connection.id)
-        defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
-
-        try DatabaseManager.shared.cancelRunningQuery(for: connection.id, reach: .supersededNavigation)
-
-        #expect(await Self.awaitCancel(driver))
         #expect(driver.cancelCount == 1)
     }
 
     /// Stop is the opposite trade: the user is waiting on it, so it stays synchronous and is
     /// already done by the time the call returns. Nothing here awaits before asserting.
     @Test("Stop cancels inline on the caller's thread")
-    func userStopCancelsSynchronously() throws {
+    func immediateDeliveryCancelsSynchronously() throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         let driver = CancelRecordingDriver(connection: connection)
-        Self.seed(driver, policy: .cancellableRead, for: connection.id)
+        let owner = DriverLeaseOwner()
+        Self.seed(driver, policy: .cancellableRead(owner), for: connection.id)
         defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
 
-        try DatabaseManager.shared.cancelRunningQuery(for: connection.id, reach: .userStop)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
 
         #expect(driver.cancelCount == 1)
         #expect(driver.cancelledOnMainThread == true)
     }
 
+    /// The whole point of the owner. Two tabs queue on one connection, and stopping one of them must
+    /// leave the other's handle alone.
+    @Test("A cancel reaches only the lease that owns it")
+    func cancelReachesOneOwnerOnly() async throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let mine = CancelRecordingDriver(connection: connection)
+        let theirs = CancelRecordingDriver(connection: connection)
+        let myOwner = DriverLeaseOwner()
+        let theirOwner = DriverLeaseOwner()
+        DatabaseManager.shared.runningDrivers[connection.id] = [
+            UUID(): RunningDriver(driver: mine, policy: .cancellableRead(myOwner)),
+            UUID(): RunningDriver(driver: theirs, policy: .cancellableRead(theirOwner)),
+        ]
+        defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
+
+        try DatabaseManager.shared.cancelRunningQuery(owner: myOwner, on: connection.id, delivery: .immediate)
+
+        #expect(mine.cancelCount == 1)
+        #expect(await Self.awaitCancel(theirs) == false)
+        #expect(theirs.cancelCount == 0)
+    }
+
     /// A commit or a DDL statement that is half applied cannot be undone by retrying, so neither
-    /// reach may abort one.
+    /// delivery may abort one.
     @Test("A protected write is never aborted, by Stop or by a supersede")
     func protectedWriteIsNeverCancelled() async throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         let driver = CancelRecordingDriver(connection: connection)
+        let owner = DriverLeaseOwner()
         Self.seed(driver, policy: .protectedWrite, for: connection.id)
         defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
 
-        try DatabaseManager.shared.cancelRunningQuery(for: connection.id, reach: .supersededNavigation)
-        try DatabaseManager.shared.cancelRunningQuery(for: connection.id, reach: .userStop)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
 
         #expect(await Self.awaitCancel(driver) == false)
         #expect(driver.cancelCount == 0)
     }
 
-    /// The session-driver fallback aborts whatever the connection happens to be running without
-    /// knowing what it is, so only an explicit Stop may take it.
-    @Test("A supersede with nothing registered cancels nothing")
-    func supersededNavigationDoesNotFallBackToTheSessionDriver() async throws {
+    /// There is no session-driver fallback any more. An owner with nothing registered has nothing
+    /// running, and aborting whatever the shared driver happened to be doing is how one tab's Run
+    /// stopped another tab's batch.
+    @Test("An owner with nothing registered cancels nothing, at either delivery")
+    func nothingRegisteredCancelsNothing() async throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         let driver = CancelRecordingDriver(connection: connection)
+        let owner = DriverLeaseOwner()
         DatabaseManager.shared.injectSession(
             ConnectionSession(connection: connection, driver: driver),
             for: connection.id
         )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        try DatabaseManager.shared.cancelRunningQuery(for: connection.id, reach: .supersededNavigation)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
 
         #expect(await Self.awaitCancel(driver) == false)
         #expect(driver.cancelCount == 0)
+    }
+
+    /// The shape a committing batch actually has: its statements ran under one `.cancellableRead`
+    /// lease that is still open, and the commit registered the same handle again as a protected
+    /// write. Without the identity check the cancel would reach the commit through the lease.
+    @Test("A cancellable lease over the same handle as a protected write is not cancelled")
+    func protectedHandleIsExcludedFromItsOwnLease() async throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let driver = CancelRecordingDriver(connection: connection)
+        let owner = DriverLeaseOwner()
+        Self.seed(driver, policy: .cancellableRead(owner), for: connection.id)
+        let token = DatabaseManager.shared.beginProtectedWrite(on: driver, for: connection.id)
+        defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
+
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
+
+        #expect(await Self.awaitCancel(driver) == false)
+        #expect(driver.cancelCount == 0)
+
+        DatabaseManager.shared.endProtectedWrite(token, for: connection.id)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
+        #expect(driver.cancelCount == 1)
+    }
+
+    /// The exclusion is by handle, not by connection. The owner's second lease on its own pooled
+    /// driver is still ordinary cancellable work while its first handle commits.
+    @Test("A different handle beside a protected write is still cancelled")
+    func otherHandlesStayCancellable() throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let committing = CancelRecordingDriver(connection: connection)
+        let reading = CancelRecordingDriver(connection: connection)
+        let owner = DriverLeaseOwner()
+        DatabaseManager.shared.runningDrivers[connection.id] = [
+            UUID(): RunningDriver(driver: committing, policy: .cancellableRead(owner)),
+            UUID(): RunningDriver(driver: reading, policy: .cancellableRead(owner)),
+        ]
+        _ = DatabaseManager.shared.beginProtectedWrite(on: committing, for: connection.id)
+        defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
+
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
+
+        #expect(committing.cancelCount == 0)
+        #expect(reading.cancelCount == 1)
+    }
+
+    /// A background cancel outlives the call that issued it, so the lease has to wait it out before
+    /// releasing the handle. Left unawaited it lands on whatever the connection runs next, which on
+    /// MariaDB is a `KILL QUERY` arriving at the following statement.
+    @Test("Releasing a lease hands back the pending background cancel")
+    func releaseHandsBackThePendingCancel() async throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let driver = CancelRecordingDriver(connection: connection)
+        let owner = DriverLeaseOwner()
+        let token = UUID()
+        DatabaseManager.shared.runningDrivers[connection.id] = [
+            token: RunningDriver(driver: driver, policy: .cancellableRead(owner))
+        ]
+        defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
+
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
+        let pending = try #require(DatabaseManager.shared.releaseRunningDriver(token, for: connection.id))
+        await pending.value
+
+        #expect(driver.cancelCount == 1)
+        #expect(DatabaseManager.shared.runningDrivers[connection.id] == nil)
+    }
+
+    /// The other half: once the lease is gone, a cancel for its owner reaches nothing at all.
+    @Test("A cancel issued after the lease was released reaches nothing")
+    func cancelAfterReleaseReachesNothing() async throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let driver = CancelRecordingDriver(connection: connection)
+        let owner = DriverLeaseOwner()
+        let token = UUID()
+        DatabaseManager.shared.runningDrivers[connection.id] = [
+            token: RunningDriver(driver: driver, policy: .cancellableRead(owner))
+        ]
+        defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
+
+        _ = DatabaseManager.shared.releaseRunningDriver(token, for: connection.id)
+        try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
+
+        #expect(await Self.awaitCancel(driver) == false)
+        #expect(driver.cancelCount == 0)
+    }
+
+    /// A lease whose task was cancelled before its turn came never runs its body, so nothing lands
+    /// on the driver for a cancel to have to chase. `trackedLease` re-asks after registering too, so
+    /// the pooled route answers the same as the session route does here.
+    @Test("A lease cancelled before its turn never runs its body")
+    func cancelledLeaseNeverRunsTheBody() async throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let driver = CancelRecordingDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let scope = DatabaseScope(connectionId: connection.id, database: connection.database, schema: nil)
+        let ran = LockedFlag()
+        let task = Task { @MainActor in
+            try await DatabaseManager.shared.withScopedDriver(
+                scope: scope,
+                route: .sessionDriver,
+                cancellation: .cancellableRead(DriverLeaseOwner())
+            ) { _ in
+                ran.raise()
+            }
+        }
+        task.cancel()
+
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(ran.isRaised == false)
     }
 
     private static func seed(
@@ -208,5 +337,23 @@ private final class CancelRecordingDriver: DatabaseDriver, @unchecked Sendable {
 
     private static var emptyResult: QueryResult {
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
+    }
+}
+
+/// Raised from inside a `@Sendable` lease body and read from the test, so it needs its own lock.
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var raised = false
+
+    func raise() {
+        lock.lock()
+        raised = true
+        lock.unlock()
+    }
+
+    var isRaised: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return raised
     }
 }

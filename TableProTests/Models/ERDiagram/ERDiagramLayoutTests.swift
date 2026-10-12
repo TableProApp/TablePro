@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ER diagram layout")
 struct ERDiagramLayoutTests {
     private func column(_ name: String) -> ERColumnDisplay {
         ERColumnDisplay(id: name, name: name, dataType: "int", isPrimaryKey: false, isForeignKey: false, isNullable: true)

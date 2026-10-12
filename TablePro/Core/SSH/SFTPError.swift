@@ -38,7 +38,7 @@ enum SFTPError: LocalizedError, Equatable {
             )
         case .remoteCommandFailed(let command, let status, let output):
             return String(
-                format: String(localized: "`%1$@` exited with status %2$d on the server: %3$@"),
+                format: String(localized: "“%1$@” exited with status %2$d on the server: %3$@"),
                 command, status, output
             )
         case .cancelled:

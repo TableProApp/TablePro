@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Clause Detection")
 struct SQLClauseDetectionTests {
     private let analyzer = SQLContextAnalyzer()
 

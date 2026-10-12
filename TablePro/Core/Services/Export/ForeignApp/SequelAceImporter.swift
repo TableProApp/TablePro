@@ -5,21 +5,15 @@
 
 import AppKit
 import Foundation
-import os
 import TableProImport
 
 struct SequelAceImporter: ForeignAppImporter {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SequelAceImporter")
-
     let id = "sequelace"
     let displayName = "Sequel Ace"
     let symbolName = "cylinder.split.1x2"
     let appBundleIdentifier = "com.sequel-ace.sequel-ace"
     let readsPasswordsFromKeychain = true
 
-    /// Injectable for the same reason `TablePlusImporter` carries one: `isAvailable()` answers
-    /// "is the app installed", and a test cannot install an app. The default is exactly what the
-    /// protocol does on its own, so this changes no behaviour.
     var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
     }
@@ -30,18 +24,27 @@ struct SequelAceImporter: ForeignAppImporter {
                 + "Sequel Ace/Data/Favorites.plist"
         )
 
+    // Query favorites live in the app's sandboxed preferences, not beside the connections.
+    var queryFavoritesFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(
+            "Library/Containers/com.sequel-ace.sequel-ace/Data/Library/Preferences/com.sequel-ace.sequel-ace.plist"
+        )
+
+    var savedQuerySupport: ForeignSavedQuerySupport { .globalFolder(named: displayName) }
+
     func installedAppURL() -> URL? {
         resolveAppURL(appBundleIdentifier)
     }
 
-    func connectionCount() -> Int {
-        guard let root = loadRootDict() else { return 0 }
-        guard let favoritesRoot = root["Favorites Root"] as? [String: Any],
-              let children = favoritesRoot["Children"] as? [[String: Any]] else { return 0 }
-        return countConnections(in: children)
+    func inventory() -> ForeignAppInventory {
+        let children = (loadRootDict()?["Favorites Root"] as? [String: Any])?["Children"] as? [[String: Any]]
+        return ForeignAppInventory(
+            connections: children.map { countConnections(in: $0) } ?? 0,
+            savedQueries: SequelAceQueryFavoritesReader.count(preferencesURL: queryFavoritesFileURL)
+        )
     }
 
-    func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
+    func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
         guard FileManager.default.fileExists(atPath: favoritesFileURL.path) else {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
@@ -55,42 +58,27 @@ struct SequelAceImporter: ForeignAppImporter {
             throw ForeignAppImportError.unsupportedFormat("Missing Favorites Root or Children key")
         }
 
-        var exportableConnections: [ExportableConnection] = []
-        var groupNames: Set<String> = []
-        var credentials: [String: ExportableCredentials] = [:]
+        var records: [ForeignConnectionRecord] = []
         var credentialsAborted = false
-
         try parseChildren(
             children,
-            groupName: nil,
-            connections: &exportableConnections,
-            groupNames: &groupNames,
-            credentials: &credentials,
-            includePasswords: includePasswords,
+            groupPath: [],
+            includePasswords: request.includePasswords,
+            records: &records,
             credentialsAborted: &credentialsAborted
         )
 
-        guard !exportableConnections.isEmpty else {
-            throw ForeignAppImportError.noConnectionsFound
-        }
+        let savedQueries = request.includeSavedQueries
+            ? try SequelAceQueryFavoritesReader.savedQueries(
+                preferencesURL: queryFavoritesFileURL,
+                limit: SavedQuerySize.maximumSyncableByteCount
+            )
+            : []
 
-        let groups: [ExportableGroup]? = groupNames.isEmpty ? nil : groupNames.map {
-            ExportableGroup(name: $0, color: nil)
-        }
-
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: "Sequel Ace Import",
-            connections: exportableConnections,
-            groups: groups,
-            tags: nil,
-            credentials: credentials.isEmpty ? nil : credentials
-        )
-
-        return ForeignAppImportResult(
-            envelope: envelope,
-            sourceName: displayName,
+        return try ForeignBundleAssembly.collect(
+            appName: displayName,
+            connections: records,
+            savedQueries: savedQueries,
             credentialsAborted: credentialsAborted
         )
     }
@@ -118,54 +106,37 @@ struct SequelAceImporter: ForeignAppImporter {
 
     private func parseChildren(
         _ children: [[String: Any]],
-        groupName: String?,
-        connections: inout [ExportableConnection],
-        groupNames: inout Set<String>,
-        credentials: inout [String: ExportableCredentials],
+        groupPath: [String],
         includePasswords: Bool,
+        records: inout [ForeignConnectionRecord],
         credentialsAborted: inout Bool
     ) throws {
         for child in children {
             try Task.checkCancellation()
             if let subChildren = child["Children"] as? [[String: Any]] {
-                let name = child["Name"] as? String ?? "Untitled Group"
-                groupNames.insert(name)
                 try parseChildren(
                     subChildren,
-                    groupName: name,
-                    connections: &connections,
-                    groupNames: &groupNames,
-                    credentials: &credentials,
+                    groupPath: groupPath + [child["Name"] as? String ?? "Untitled Group"],
                     includePasswords: includePasswords,
+                    records: &records,
                     credentialsAborted: &credentialsAborted
                 )
-            } else {
-                do {
-                    let conn = try parseConnection(child, groupName: groupName)
-                    let index = connections.count
-                    connections.append(conn)
-
-                    if let gn = groupName {
-                        groupNames.insert(gn)
-                    }
-
-                    if includePasswords, !credentialsAborted {
-                        let creds = readCredentials(from: child, abortFlag: &credentialsAborted)
-                        if creds.password != nil || creds.sshPassword != nil {
-                            credentials[String(index)] = creds
-                        }
-                    }
-                } catch {
-                    Self.logger.warning("Skipping Sequel Ace connection: \(error.localizedDescription)")
-                }
+                continue
             }
+            var credentials: ExportableCredentials?
+            if includePasswords, !credentialsAborted {
+                credentials = readCredentials(from: child, abortFlag: &credentialsAborted)
+            }
+            records.append(ForeignConnectionRecord(
+                sourceId: (child["id"] as? NSNumber)?.stringValue ?? child["id"] as? String,
+                settings: parseConnection(child),
+                groupPath: groupPath,
+                credentials: credentials
+            ))
         }
     }
 
-    private func parseConnection(
-        _ entry: [String: Any],
-        groupName: String?
-    ) throws -> ExportableConnection {
+    private func parseConnection(_ entry: [String: Any]) -> ExportableConnection {
         let name = entry["name"] as? String ?? "Untitled"
         let host = entry["host"] as? String ?? "localhost"
         let port: Int
@@ -183,9 +154,6 @@ struct SequelAceImporter: ForeignAppImporter {
         let sshConfig = parseSSHConfig(entry, connectionType: connectionType)
         let sslConfig = parseSSLConfig(entry)
 
-        let colorIndex = entry["colorIndex"] as? Int ?? -1
-        let color = mapColorIndex(colorIndex)
-
         return ExportableConnection(
             name: name,
             host: host,
@@ -195,16 +163,7 @@ struct SequelAceImporter: ForeignAppImporter {
             type: "MySQL",
             sshConfig: sshConfig,
             sslConfig: sslConfig,
-            color: color,
-            tagName: nil,
-            groupName: groupName,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            color: mapColorIndex(entry["colorIndex"] as? Int ?? -1)
         )
     }
 
@@ -259,7 +218,7 @@ struct SequelAceImporter: ForeignAppImporter {
         )
     }
 
-    private func readCredentials(from entry: [String: Any], abortFlag: inout Bool) -> ExportableCredentials {
+    private func readCredentials(from entry: [String: Any], abortFlag: inout Bool) -> ExportableCredentials? {
         let name = entry["name"] as? String ?? ""
         let connId = entry["id"] ?? 0
         let user = entry["user"] as? String ?? ""
@@ -295,6 +254,7 @@ struct SequelAceImporter: ForeignAppImporter {
             )
         }
 
+        guard dbPassword != nil || sshPassword != nil else { return nil }
         return ExportableCredentials(
             password: dbPassword,
             sshPassword: sshPassword,

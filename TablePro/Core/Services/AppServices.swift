@@ -17,14 +17,18 @@ struct AppServices {
     let schemaService: SchemaService
     let schemaRefreshService: SchemaRefreshService
     let schemaProviderRegistry: SchemaProviderRegistry
+    let catalogChangeService: CatalogChangeService
     let sqlFavoriteManager: SQLFavoriteManager
     let favoriteTablesStorage: FavoriteTablesStorage
     let favoriteDatabasesStorage: FavoriteDatabasesStorage
+    let tableFolderStorage: TableFolderStorage
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
+    let aiAccessApprovals: AIAccessApprovals
     let groupStorage: GroupStorage
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
+    let credentialProfileStorage: CredentialProfileStorage
     let licenseManager: LicenseManager
     let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
@@ -47,16 +51,20 @@ struct AppServices {
         schemaService: .shared,
         schemaRefreshService: .shared,
         schemaProviderRegistry: .shared,
+        catalogChangeService: .shared,
         sqlFavoriteManager: .shared,
         favoriteTablesStorage: .shared,
         favoriteDatabasesStorage: .shared,
+        tableFolderStorage: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
+        aiAccessApprovals: .shared,
         groupStorage: .shared,
         tagStorage: .shared,
         sshProfileStorage: .shared,
+        credentialProfileStorage: .shared,
         licenseManager: .shared,
-        syncMetadataStorage: .shared,
+        syncMetadataStorage: .appDefault,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
         queryHistoryManager: .shared,

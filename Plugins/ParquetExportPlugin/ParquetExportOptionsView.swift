@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct ParquetExportOptionsView: View {
-    @Bindable var plugin: ParquetExportPlugin
+    @ObservedObject var plugin: ParquetExportPlugin
 
     private static let rowGroupSizes = [10_000, 50_000, 122_880, 500_000, 1_000_000]
 

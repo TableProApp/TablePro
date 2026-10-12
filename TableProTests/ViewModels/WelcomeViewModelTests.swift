@@ -4,6 +4,7 @@
 //
 
 @testable import TablePro
+import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 import TableProSyncTransport
@@ -19,6 +20,8 @@ final class WelcomeViewModelTests: XCTestCase {
     private var groupStorage: GroupStorage!
     private var connectionStorage: ConnectionStorage!
     private var welcomeRouter: WelcomeRouter!
+    private var recents: RecentConnectionsStore!
+    private var preferences: ConnectionListPreferences!
     private var viewModel: WelcomeViewModel!
 
     override func setUp() async throws {
@@ -36,7 +39,8 @@ final class WelcomeViewModelTests: XCTestCase {
         let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults))
         connectionFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("welcome-connections_\(unique).json")
+            .appendingPathComponent("welcome-\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: connectionFileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -52,22 +56,28 @@ final class WelcomeViewModelTests: XCTestCase {
             connectionStorage: self.connectionStorage
         )
         welcomeRouter = WelcomeRouter()
+        recents = RecentConnectionsStore(defaults: defaults, appEvents: AppEvents())
+        preferences = ConnectionListPreferences(defaults: defaults, appEvents: AppEvents())
         viewModel = makeViewModel()
     }
 
-    private func makeViewModel() -> WelcomeViewModel {
+    private func makeViewModel(importableAppDetector: @escaping @MainActor () -> Bool = { false }) -> WelcomeViewModel {
         WelcomeViewModel(
             services: makeServices(),
-            importableAppDetector: { false },
-            groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults)
+            importableAppDetector: importableAppDetector,
+            groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults),
+            recentConnections: recents,
+            listPreferences: preferences
         )
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         syncDefaults.removePersistentDomain(forName: syncSuiteName)
-        try? FileManager.default.removeItem(at: connectionFileURL)
+        try? FileManager.default.removeItem(at: connectionFileURL.deletingLastPathComponent())
         viewModel = nil
+        preferences = nil
+        recents = nil
         welcomeRouter = nil
         groupStorage = nil
         connectionStorage = nil
@@ -91,14 +101,18 @@ final class WelcomeViewModelTests: XCTestCase {
             schemaService: live.schemaService,
             schemaRefreshService: live.schemaRefreshService,
             schemaProviderRegistry: live.schemaProviderRegistry,
+            catalogChangeService: live.catalogChangeService,
             sqlFavoriteManager: live.sqlFavoriteManager,
             favoriteTablesStorage: live.favoriteTablesStorage,
             favoriteDatabasesStorage: live.favoriteDatabasesStorage,
+            tableFolderStorage: live.tableFolderStorage,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
+            aiAccessApprovals: live.aiAccessApprovals,
             groupStorage: groupStorage,
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,
+            credentialProfileStorage: live.credentialProfileStorage,
             licenseManager: live.licenseManager,
             syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
@@ -113,47 +127,180 @@ final class WelcomeViewModelTests: XCTestCase {
         )
     }
 
-    private func groupIds(in nodes: [ConnectionGroupTreeNode]) -> [UUID] {
-        nodes.flatMap { node -> [UUID] in
-            guard case .group(let group, let children) = node else { return [] }
-            return [group.id] + groupIds(in: children)
-        }
+    private func save(_ connections: [DatabaseConnection]) {
+        XCTAssertTrue(connectionStorage.saveConnections(connections))
     }
 
-    func testCreateGroupShowsImmediatelyInTree() throws {
-        XCTAssertTrue(groupIds(in: viewModel.treeItems).isEmpty)
+    private func groupIds(in outline: LibraryOutline) -> [UUID] {
+        func walk(_ nodes: [LibraryNode]) -> [UUID] {
+            nodes.flatMap { node -> [UUID] in
+                guard case .group(let id, let children, _) = node else { return [] }
+                return [id] + walk(children)
+            }
+        }
+        return walk(outline.section(.connections)?.nodes ?? [])
+    }
 
-        try viewModel.createGroup(name: "Production", color: .red, parentId: nil)
+    private func token(_ id: UUID) -> WelcomeTagToken {
+        WelcomeTagToken(id: id, name: id.uuidString, color: .none)
+    }
+
+    // MARK: - Groups
+
+    func testCreateGroupShowsImmediatelyInTheOutline() throws {
+        XCTAssertTrue(groupIds(in: viewModel.outline).isEmpty)
+
+        try viewModel.createGroup(name: "Production", color: .red, iconName: nil, parentId: nil, moving: [])
 
         let created = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Production" })
-        XCTAssertTrue(groupIds(in: viewModel.treeItems).contains(created.id))
+        XCTAssertTrue(groupIds(in: viewModel.outline).contains(created.id))
         XCTAssertTrue(viewModel.expandedGroupIds.contains(created.id))
     }
 
     func testCreateSubgroupExpandsParentAndChild() throws {
-        try viewModel.createGroup(name: "Parent", color: .none, parentId: nil)
+        try viewModel.createGroup(name: "Parent", color: .none, iconName: nil, parentId: nil, moving: [])
         let parentId = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Parent" }?.id)
 
-        try viewModel.createGroup(name: "Child", color: .none, parentId: parentId)
+        try viewModel.createGroup(name: "Child", color: .none, iconName: nil, parentId: parentId, moving: [])
         let childId = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Child" }?.id)
 
-        XCTAssertTrue(groupIds(in: viewModel.treeItems).contains(parentId))
-        XCTAssertTrue(groupIds(in: viewModel.treeItems).contains(childId))
+        XCTAssertTrue(groupIds(in: viewModel.outline).contains(parentId))
+        XCTAssertTrue(groupIds(in: viewModel.outline).contains(childId))
         XCTAssertTrue(viewModel.expandedGroupIds.contains(parentId))
         XCTAssertTrue(viewModel.expandedGroupIds.contains(childId))
     }
 
     func testCreateDuplicateNameReportsWhyAndAddsNoSecondNode() throws {
-        try viewModel.createGroup(name: "Staging", color: .orange, parentId: nil)
+        try viewModel.createGroup(name: "Staging", color: .orange, iconName: nil, parentId: nil, moving: [])
 
-        XCTAssertThrowsError(try viewModel.createGroup(name: "staging", color: .blue, parentId: nil)) { error in
+        XCTAssertThrowsError(
+            try viewModel.createGroup(name: "staging", color: .blue, iconName: nil, parentId: nil, moving: [])
+        ) { error in
             XCTAssertEqual(error as? GroupStorageError, .duplicateName("staging"))
         }
 
-        let stagingNodes = groupIds(in: viewModel.treeItems).filter { id in
-            viewModel.groups.first { $0.id == id }?.name.lowercased() == "staging"
+        XCTAssertEqual(groupIds(in: viewModel.outline).count, 1)
+    }
+
+    func testANewGroupTakesTheConnectionsItWasRequestedFor() throws {
+        let prod = DatabaseConnection(name: "Prod", type: .mysql)
+        save([prod])
+        viewModel.loadConnections()
+
+        viewModel.requestNewGroup(parentId: nil, movingConnectionIds: [prod.id])
+        guard case .newGroup(let request) = viewModel.activeSheet else {
+            return XCTFail("Move to Group > New Group must open the new group sheet")
         }
-        XCTAssertEqual(stagingNodes.count, 1)
+        try viewModel.createGroup(name: "Acme", color: .none, iconName: nil, parentId: nil, moving: request.movingConnectionIds)
+
+        let group = try XCTUnwrap(groupStorage.loadGroups().first)
+        XCTAssertEqual(connectionStorage.loadConnection(id: prod.id)?.groupId, group.id)
+    }
+
+    func testACancelledMoveToNewGroupIsNotReplayedByALaterSubgroup() throws {
+        let archive = ConnectionGroup(name: "Archive")
+        try groupStorage.addGroup(archive)
+        let prod = DatabaseConnection(name: "Prod", type: .mysql)
+        save([prod])
+        viewModel.loadConnections()
+
+        viewModel.requestNewGroup(parentId: nil, movingConnectionIds: [prod.id])
+        viewModel.activeSheet = nil
+        viewModel.perform(.newSubgroup(archive.id))
+        guard case .newGroup(let request) = viewModel.activeSheet else {
+            return XCTFail("New Subgroup must open the new group sheet")
+        }
+        try viewModel.createGroup(
+            name: "2024",
+            color: .none,
+            iconName: nil,
+            parentId: request.parentId,
+            moving: request.movingConnectionIds
+        )
+
+        XCTAssertNil(connectionStorage.loadConnection(id: prod.id)?.groupId)
+    }
+
+    func testRenamingAGroupToASiblingsNameReportsWhy() throws {
+        try viewModel.createGroup(name: "Production", color: .none, iconName: nil, parentId: nil, moving: [])
+        try viewModel.createGroup(name: "Staging", color: .none, iconName: nil, parentId: nil, moving: [])
+        let staging = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Staging" })
+
+        viewModel.commitRename(.group(staging.id), to: "production")
+
+        XCTAssertNotNil(viewModel.libraryErrorMessage)
+        XCTAssertEqual(groupStorage.group(for: staging.id)?.name, "Staging")
+    }
+
+    func testANewGroupKeepsTheIconItWasCreatedWith() throws {
+        try viewModel.createGroup(name: "Production", color: .red, iconName: "server.rack", parentId: nil, moving: [])
+
+        XCTAssertEqual(groupStorage.loadGroups().first?.iconName, "server.rack")
+    }
+
+    func testEditGroupOpensTheEditSheetForThatGroup() throws {
+        let group = ConnectionGroup(name: "Production", iconName: "server.rack")
+        try groupStorage.addGroup(group)
+        viewModel.loadConnections()
+
+        viewModel.perform(.editGroup(group.id))
+
+        guard case .editGroup(let editing) = viewModel.activeSheet else {
+            return XCTFail("Edit Group… must open the group editor")
+        }
+        XCTAssertEqual(editing.id, group.id)
+        XCTAssertEqual(editing.iconName, "server.rack")
+    }
+
+    func testEditGroupForAGroupThatIsGoneOpensNothing() {
+        viewModel.loadConnections()
+
+        viewModel.requestEditGroup(UUID())
+
+        XCTAssertNil(viewModel.activeSheet)
+    }
+
+    func testSavingAGroupEditMovesItAndShowsItUnderItsNewParent() throws {
+        let clients = ConnectionGroup(name: "Clients")
+        let acme = ConnectionGroup(name: "Acme")
+        try groupStorage.addGroup(clients)
+        try groupStorage.addGroup(acme)
+        viewModel.loadConnections()
+        viewModel.expandedGroupIds = []
+
+        try viewModel.saveGroup(
+            id: acme.id,
+            from: ConnectionGroupFields(acme),
+            to: ConnectionGroupFields(name: "Acme Corp", color: .blue, iconName: "building.2", parentId: clients.id)
+        )
+
+        let saved = try XCTUnwrap(groupStorage.group(for: acme.id))
+        XCTAssertEqual(saved.name, "Acme Corp")
+        XCTAssertEqual(saved.color, .blue)
+        XCTAssertEqual(saved.iconName, "building.2")
+        XCTAssertEqual(saved.parentId, clients.id)
+        XCTAssertTrue(viewModel.expandedGroupIds.contains(clients.id))
+        XCTAssertEqual(viewModel.groupsById[acme.id]?.name, "Acme Corp")
+    }
+
+    func testSavingAGroupEditUnderItsOwnSubgroupReportsWhyAndChangesNothing() throws {
+        let parent = ConnectionGroup(name: "Parent")
+        let child = ConnectionGroup(name: "Child", parentId: parent.id)
+        try groupStorage.addGroup(parent)
+        try groupStorage.addGroup(child)
+        viewModel.loadConnections()
+
+        XCTAssertThrowsError(
+            try viewModel.saveGroup(
+                id: parent.id,
+                from: ConnectionGroupFields(parent),
+                to: ConnectionGroupFields(name: "Renamed", parentId: child.id)
+            )
+        ) { error in
+            XCTAssertEqual(error as? GroupStorageError, .wouldCreateCycle)
+        }
+        XCTAssertEqual(groupStorage.group(for: parent.id)?.name, "Parent")
+        XCTAssertNil(groupStorage.group(for: parent.id)?.parentId)
     }
 
     // MARK: - List State
@@ -166,7 +313,7 @@ final class WelcomeViewModelTests: XCTestCase {
     }
 
     func testASavedConnectionReplacesTheFirstRunState() {
-        connectionStorage.saveConnections([DatabaseConnection(name: "Local", type: .postgresql, sortOrder: 0)])
+        save([DatabaseConnection(name: "Local", type: .postgresql, sortOrder: 0)])
         viewModel.loadConnections()
 
         XCTAssertEqual(viewModel.listState, .content)
@@ -176,7 +323,7 @@ final class WelcomeViewModelTests: XCTestCase {
     func testASearchMissIsReportedWhenAFavoriteIsStored() {
         var favorite = DatabaseConnection(name: "Alpha", type: .mysql, sortOrder: 0)
         favorite.isFavorite = true
-        connectionStorage.saveConnections([favorite])
+        save([favorite])
         viewModel.loadConnections()
 
         viewModel.searchText = "zzz"
@@ -191,17 +338,18 @@ final class WelcomeViewModelTests: XCTestCase {
         alpha.tagIds = [first]
         var beta = DatabaseConnection(name: "Beta", type: .mysql, sortOrder: 1)
         beta.tagIds = [second]
-        connectionStorage.saveConnections([alpha, beta])
+        save([alpha, beta])
         viewModel.loadConnections()
 
-        viewModel.tagFilter = TagFilter(selectedIds: [first, second], mode: .all)
+        viewModel.tagMatch = .all
+        viewModel.searchTokens = [token(first), token(second)]
 
         XCTAssertEqual(viewModel.listState, .noFilterMatch)
     }
 
     func testDeletingTheLastConnectionClearsTheSearchItCanNoLongerRun() {
         let only = DatabaseConnection(name: "Only", type: .mysql, sortOrder: 0)
-        connectionStorage.saveConnections([only])
+        save([only])
         viewModel.loadConnections()
         viewModel.searchText = "On"
 
@@ -213,16 +361,24 @@ final class WelcomeViewModelTests: XCTestCase {
     }
 
     func testTheImportOfferFollowsTheInstalledAppDetector() {
-        let offering = WelcomeViewModel(
-            services: makeServices(),
-            importableAppDetector: { true },
-            groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults)
-        )
+        let offering = makeViewModel(importableAppDetector: { true })
 
         offering.setUp()
 
         XCTAssertTrue(offering.hasImportableApp)
         XCTAssertFalse(viewModel.hasImportableApp)
+    }
+
+    func testRefreshingTheImportOfferPicksUpANewlyInstalledApp() {
+        let installed = InstalledAppFlag()
+        let offering = makeViewModel(importableAppDetector: { installed.value })
+        offering.refreshImportableApp()
+        XCTAssertFalse(offering.hasImportableApp)
+
+        installed.value = true
+        offering.refreshImportableApp()
+
+        XCTAssertTrue(offering.hasImportableApp)
     }
 
     // MARK: - Welcome Sheet
@@ -268,9 +424,9 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.presentsWelcomeSheet, "A second sheet can never stack, so the request must not wait stuck")
     }
 
-    // MARK: - Favorites, Tags and Groups
+    // MARK: - Favorites, Recent, Tags and Groups
 
-    func testAFavoriteInsideAGroupIsListedOnlyUnderFavorites() throws {
+    func testAFavoriteAppearsInFavoritesAndStaysInItsGroup() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
         var favorite = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
@@ -278,50 +434,62 @@ final class WelcomeViewModelTests: XCTestCase {
         favorite.isFavorite = true
         var other = DatabaseConnection(name: "Staging", type: .mysql, sortOrder: 1)
         other.groupId = group.id
-        connectionStorage.saveConnections([favorite, other])
+        save([favorite, other])
 
         viewModel.loadConnections()
 
-        guard case .group(_, let children)? = viewModel.treeItems.first else {
-            XCTFail("The group is missing from the tree")
-            return
-        }
-        XCTAssertEqual(renderedConnectionIds(children), [other.id])
-        XCTAssertEqual(viewModel.favoriteConnections.map(\.id), [favorite.id])
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .favorites), [favorite.id])
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [favorite.id, other.id])
     }
 
-    func testASearchListsAGroupedFavoriteInsideItsGroup() throws {
+    func testASearchHidesFavoritesAndOpensTheCollapsedGroupHoldingTheMatch() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
-        var favorite = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
+        var favorite = DatabaseConnection(name: "Orders", type: .mysql)
         favorite.groupId = group.id
         favorite.isFavorite = true
-        connectionStorage.saveConnections([favorite])
+        save([favorite])
         viewModel.loadConnections()
+        viewModel.expandedGroupIds = []
 
-        viewModel.searchText = "Prod"
+        viewModel.searchText = "Orders"
 
-        guard case .group(_, let children)? = viewModel.treeItems.first else {
-            XCTFail("A search must still reach a favorite through its group")
-            return
-        }
-        XCTAssertEqual(renderedConnectionIds(children), [favorite.id])
+        XCTAssertNil(viewModel.outline.section(.favorites))
+        XCTAssertTrue(viewModel.isGroupExpanded(group.id))
+        XCTAssertTrue(viewModel.visibleRowIds().contains(.connection(favorite.id, section: .connections)))
+        XCTAssertTrue(viewModel.expandedGroupIds.isEmpty, "A search must not rewrite the groups the user collapsed")
     }
 
-    func testDeletingTheLastTaggedConnectionDropsItsTagFromTheFilter() {
+    func testCollapsingAGroupDropsTheSelectionInsideIt() throws {
+        let group = ConnectionGroup(name: "Acme")
+        try groupStorage.addGroup(group)
+        var member = DatabaseConnection(name: "Prod", type: .mysql)
+        member.groupId = group.id
+        save([member])
+        viewModel.expandedGroupIds = [group.id]
+        viewModel.loadConnections()
+        viewModel.selection = [.connection(member.id, section: .connections)]
+
+        viewModel.expandedGroupIds = []
+        viewModel.rebuildOutline()
+
+        XCTAssertTrue(viewModel.selection.isEmpty, "A row the list no longer shows must not stay selected")
+    }
+
+    func testDeletingTheLastTaggedConnectionDropsItsTokenFromTheSearch() {
         let tagId = UUID()
         var tagged = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
         tagged.tagIds = [tagId]
         let plain = DatabaseConnection(name: "Dev", type: .mysql, sortOrder: 1)
-        connectionStorage.saveConnections([tagged, plain])
+        save([tagged, plain])
         viewModel.loadConnections()
-        viewModel.tagFilter = TagFilter(selectedIds: [tagId])
+        viewModel.searchTokens = [token(tagId)]
 
         viewModel.connectionsToDelete = [tagged]
         viewModel.deleteSelectedConnections()
 
-        XCTAssertFalse(viewModel.tagFilter.isActive, "A filter on a tag nothing carries hides every connection")
-        XCTAssertEqual(renderedConnectionIds(viewModel.treeItems), [plain.id])
+        XCTAssertTrue(viewModel.searchTokens.isEmpty, "A token for a tag nothing carries hides every connection")
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [plain.id])
         XCTAssertEqual(viewModel.listState, .content)
     }
 
@@ -338,155 +506,173 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertTrue(reopened.expandedGroupIds.isEmpty, "Collapsing every group must be remembered")
     }
 
-    func testATaggedFavoriteLeavesNoEmptyGroupUnderTheTagFilter() throws {
+    func testRecentConnectionsFillTheRecentSection() {
+        let first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 0)
+        let second = DatabaseConnection(name: "Second", type: .mysql, sortOrder: 1)
+        save([first, second])
+        recents.record(first.id, at: Date(timeIntervalSince1970: 1))
+        recents.record(second.id, at: Date(timeIntervalSince1970: 2))
+
+        viewModel.loadConnections()
+
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .recent), [second.id, first.id])
+    }
+
+    func testHidingRecentTakesEffectInTheOpenWindowAndKeepsTheHistory() {
+        let first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 0)
+        save([first])
+        recents.record(first.id, at: Date(timeIntervalSince1970: 1))
+        viewModel.setUp()
+        viewModel.loadConnections()
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .recent), [first.id])
+
+        preferences.setShowsRecent(false)
+
+        XCTAssertNil(viewModel.outline.section(.recent), "Hiding Recent must rebuild the open list")
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [first.id])
+        XCTAssertFalse(recents.ledger.isEmpty, "Hiding Recent must not clear the history")
+
+        preferences.setShowsRecent(true)
+
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .recent), [first.id])
+    }
+
+    func testAListOpenedWhileRecentIsHiddenStartsWithoutIt() {
+        let first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 0)
+        save([first])
+        recents.record(first.id, at: Date(timeIntervalSince1970: 1))
+        preferences.setShowsRecent(false)
+
+        let reopened = makeViewModel()
+        reopened.loadConnections()
+
+        XCTAssertNil(reopened.outline.section(.recent))
+    }
+
+    func testChangingTheSortModeReordersTheTree() {
+        let zulu = DatabaseConnection(name: "Zulu", type: .mysql, sortOrder: 0)
+        let alpha = DatabaseConnection(name: "Alpha", type: .mysql, sortOrder: 1)
+        save([zulu, alpha])
+        viewModel.loadConnections()
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [zulu.id, alpha.id])
+
+        viewModel.setSortMode(.name)
+
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [alpha.id, zulu.id])
+        XCTAssertEqual(preferences.sortMode, .name)
+    }
+
+    // MARK: - Mutations
+
+    func testAddingAFavoriteKeepsASafeModeLevelSetElsewhere() throws {
+        let prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        save([prod])
+        viewModel.loadConnections()
+        XCTAssertTrue(connectionStorage.updateSafeModeLevel(.readOnly, for: prod.id))
+
+        viewModel.setFavorite([prod.id], true, undoManager: nil)
+
+        let stored = try XCTUnwrap(connectionStorage.loadConnection(id: prod.id))
+        XCTAssertTrue(stored.isFavorite)
+        XCTAssertEqual(stored.preferredSafeModeLevel, .readOnly)
+    }
+
+    func testRenamingAConnectionKeepsASafeModeLevelSetElsewhere() throws {
+        let prod = DatabaseConnection(name: "Prod", type: .postgresql)
+        save([prod])
+        viewModel.loadConnections()
+        XCTAssertTrue(connectionStorage.updateSafeModeLevel(.readOnly, for: prod.id))
+
+        viewModel.commitRename(.connection(prod.id, section: .connections), to: "  Production  ")
+
+        let stored = try XCTUnwrap(connectionStorage.loadConnection(id: prod.id))
+        XCTAssertEqual(stored.name, "Production")
+        XCTAssertEqual(stored.preferredSafeModeLevel, .readOnly)
+    }
+
+    func testMovingAConnectionIntoAGroupPlacesItAfterTheOnesAlreadyThere() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
-        let tagId = UUID()
-        var favorite = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
-        favorite.groupId = group.id
-        favorite.isFavorite = true
-        favorite.tagIds = [tagId]
-        var untagged = DatabaseConnection(name: "Dev", type: .mysql, sortOrder: 1)
-        untagged.groupId = group.id
-        connectionStorage.saveConnections([favorite, untagged])
+        var first = DatabaseConnection(name: "Zeta", type: .mysql, sortOrder: 4)
+        first.groupId = group.id
+        let moving = DatabaseConnection(name: "Alpha", type: .mysql, sortOrder: 0)
+        save([first, moving])
         viewModel.loadConnections()
 
-        viewModel.tagFilter = TagFilter(selectedIds: [tagId])
+        viewModel.moveConnections([moving.id], toGroup: group.id, before: nil, undoManager: nil)
 
-        XCTAssertTrue(viewModel.treeItems.isEmpty, "A group whose only match moved to Favorites must not stay behind empty")
-        XCTAssertEqual(viewModel.favoriteConnections.map(\.id), [favorite.id])
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [first.id, moving.id])
     }
 
-    func testReplacingLinkedConnectionsReappliesTheFilters() {
-        let tagId = UUID()
-        var tagged = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
-        tagged.tagIds = [tagId]
-        let plain = DatabaseConnection(name: "Dev", type: .mysql, sortOrder: 1)
-        connectionStorage.saveConnections([tagged, plain])
-        viewModel.loadConnections()
-        viewModel.tagFilter = TagFilter(selectedIds: [tagId])
-        connectionStorage.saveConnections([plain])
-        viewModel.connections = connectionStorage.loadConnections()
-
-        viewModel.linkedConnections = []
-
-        XCTAssertFalse(viewModel.tagFilter.isActive, "A change to the linked rows must re-run the list's rules")
-    }
-
-    func testRefreshingTheImportOfferPicksUpANewlyInstalledApp() {
-        let installed = InstalledAppFlag()
-        let offering = WelcomeViewModel(
-            services: makeServices(),
-            importableAppDetector: { installed.value },
-            groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults)
-        )
-        offering.refreshImportableApp()
-        XCTAssertFalse(offering.hasImportableApp)
-
-        installed.value = true
-        offering.refreshImportableApp()
-
-        XCTAssertTrue(offering.hasImportableApp)
-    }
-
-    func testLinkedConnectionsFollowTheSearchAndStepAsideForATagFilter() {
-        let folderId = UUID()
-        let external = ["Analytics", "Billing"].map { name in
-            let payload = makeExportable(name: name)
-            return LinkedConnection(
-                id: LinkedFolderWatcher.stableId(folderId: folderId, connection: payload),
-                connection: payload,
-                folderId: folderId,
-                sourceFileURL: URL(fileURLWithPath: "/tmp/\(name).tablepro")
-            )
-        }
-
-        let searched = WelcomeViewModel.visibleExternalConnections(
-            external,
-            searchText: "bill",
-            tagFilter: TagFilter()
-        )
-        let tagged = WelcomeViewModel.visibleExternalConnections(
-            external,
-            searchText: "",
-            tagFilter: TagFilter(selectedIds: [UUID()])
-        )
-
-        XCTAssertEqual(searched.map(\.connection.name), ["Billing"])
-        XCTAssertTrue(tagged.isEmpty, "A connection with no tags can never match a tag filter")
-    }
-
-    // MARK: - Reorder
-
-    private func renderedConnectionIds(_ nodes: [ConnectionGroupTreeNode]) -> [UUID] {
-        nodes.compactMap { node in
-            guard case .connection(let conn) = node else { return nil }
-            return conn.id
-        }
-    }
-
-    /// The favorite is drawn in its own section, so the tree hands `.onMove` three rows while the
-    /// stored array still holds four. Mapping those offsets into the array moved the connection
-    /// one slot over from the one the user dragged.
-    func testReorderMovesTheRowTheListDrewWhenAFavoriteIsHidden() {
-        var favorite = DatabaseConnection(name: "A", type: .mysql, sortOrder: 0)
-        favorite.isFavorite = true
+    func testAManualDropPlacesTheConnectionBeforeTheTarget() {
+        let a = DatabaseConnection(name: "A", type: .mysql, sortOrder: 0)
         let b = DatabaseConnection(name: "B", type: .mysql, sortOrder: 1)
         let c = DatabaseConnection(name: "C", type: .mysql, sortOrder: 2)
-        let d = DatabaseConnection(name: "D", type: .mysql, sortOrder: 3)
-        connectionStorage.saveConnections([favorite, b, c, d])
+        save([a, b, c])
         viewModel.loadConnections()
 
-        let rendered = renderedConnectionIds(viewModel.treeItems)
-        XCTAssertEqual(rendered, [b.id, c.id, d.id])
+        viewModel.applyDrop(.moveConnections([c.id], toGroup: nil, before: a.id), undoManager: nil)
 
-        viewModel.moveConnections(renderedIds: rendered, from: IndexSet(integer: 2), to: 0, inGroup: nil)
-
-        XCTAssertEqual(renderedConnectionIds(viewModel.treeItems), [d.id, b.id, c.id])
-        XCTAssertEqual(
-            viewModel.connections.first { $0.id == favorite.id }?.sortOrder,
-            0,
-            "A row the list did not draw keeps the slot it held"
-        )
+        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [c.id, a.id, b.id])
     }
 
-    func testReorderInsideAGroupIgnoresRowsATagFilterHid() throws {
+    func testUndoPutsAMovedConnectionBack() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
-        let tagId = UUID()
-
-        var hidden = DatabaseConnection(name: "Hidden", type: .mysql, sortOrder: 0)
-        hidden.groupId = group.id
-        var first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 1)
-        first.groupId = group.id
-        first.tagIds = [tagId]
-        var second = DatabaseConnection(name: "Second", type: .mysql, sortOrder: 2)
-        second.groupId = group.id
-        second.tagIds = [tagId]
-        connectionStorage.saveConnections([hidden, first, second])
-
+        let moving = DatabaseConnection(name: "Prod", type: .mysql)
+        save([moving])
         viewModel.loadConnections()
-        viewModel.tagFilter = TagFilter(selectedIds: [tagId])
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
 
-        guard case .group(_, let children)? = viewModel.treeItems.first else {
-            XCTFail("The group is missing from the tree")
-            return
-        }
-        let rendered = renderedConnectionIds(children)
-        XCTAssertEqual(rendered, [first.id, second.id])
+        undoManager.beginUndoGrouping()
+        viewModel.moveConnections([moving.id], toGroup: group.id, before: nil, undoManager: undoManager)
+        undoManager.endUndoGrouping()
+        XCTAssertEqual(connectionStorage.loadConnection(id: moving.id)?.groupId, group.id)
 
-        viewModel.moveConnections(renderedIds: rendered, from: IndexSet(integer: 1), to: 0, inGroup: group.id)
+        undoManager.undo()
 
-        guard case .group(_, let reordered)? = viewModel.treeItems.first else {
-            XCTFail("The group is missing from the tree")
-            return
-        }
-        XCTAssertEqual(renderedConnectionIds(reordered), [second.id, first.id])
+        XCTAssertNil(connectionStorage.loadConnection(id: moving.id)?.groupId)
+    }
+
+    func testDeleteMeansWhatTheSectionHolds() throws {
+        let group = ConnectionGroup(name: "Acme")
+        try groupStorage.addGroup(group)
+        var favorite = DatabaseConnection(name: "Prod", type: .mysql)
+        favorite.isFavorite = true
+        let recent = DatabaseConnection(name: "Stage", type: .mysql)
+        save([favorite, recent])
+        viewModel.loadConnections()
+
         XCTAssertEqual(
-            viewModel.connections.first { $0.id == hidden.id }?.sortOrder,
-            0,
-            "The filtered-out connection keeps the slot it held"
+            viewModel.deleteIntent(for: [.connection(favorite.id, section: .favorites)]),
+            .removeFavorites([favorite.id])
         )
+        XCTAssertEqual(
+            viewModel.deleteIntent(for: [.connection(recent.id, section: .recent)]),
+            .removeRecent([recent.id])
+        )
+        XCTAssertEqual(
+            viewModel.deleteIntent(for: [.connection(favorite.id, section: .connections)]),
+            .connections([favorite.id])
+        )
+        XCTAssertEqual(viewModel.deleteIntent(for: [.group(group.id)]), .group(group.id))
+        XCTAssertNil(viewModel.deleteIntent(for: [
+            .connection(favorite.id, section: .favorites),
+            .connection(recent.id, section: .connections),
+        ]))
+    }
+
+    func testRemovingAFavoriteRowKeepsTheConnection() {
+        var favorite = DatabaseConnection(name: "Prod", type: .mysql)
+        favorite.isFavorite = true
+        save([favorite])
+        viewModel.loadConnections()
+
+        viewModel.performDelete(rows: [.connection(favorite.id, section: .favorites)])
+
+        XCTAssertEqual(connectionStorage.loadConnection(id: favorite.id)?.isFavorite, false)
+        XCTAssertFalse(viewModel.showDeleteConfirmation)
     }
 
     // MARK: - Welcome Router Requests
@@ -561,10 +747,14 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertEqual(welcomeRouter.pendingPluginInstall?.id, connection.id)
     }
 
+    // MARK: - Delete
+
     func testDeleteConfirmationIsNotPresentedBeforeTheFavoritesCheckFinishes() async throws {
         let connection = DatabaseConnection(name: "Prod", type: .mysql)
+        save([connection])
+        viewModel.loadConnections()
 
-        viewModel.requestDeleteConnections([connection])
+        viewModel.requestDeleteConnections([connection.id])
 
         XCTAssertFalse(
             viewModel.showDeleteConfirmation,
@@ -586,9 +776,11 @@ final class WelcomeViewModelTests: XCTestCase {
     func testASecondDeleteRequestSupersedesTheFirst() async throws {
         let first = DatabaseConnection(name: "First", type: .mysql)
         let second = DatabaseConnection(name: "Second", type: .mysql)
+        save([first, second])
+        viewModel.loadConnections()
 
-        viewModel.requestDeleteConnections([first])
-        viewModel.requestDeleteConnections([second])
+        viewModel.requestDeleteConnections([first.id])
+        viewModel.requestDeleteConnections([second.id])
 
         try await waitUntil { self.viewModel.showDeleteConfirmation }
         XCTAssertEqual(
@@ -598,56 +790,7 @@ final class WelcomeViewModelTests: XCTestCase {
         )
     }
 
-    private func waitUntil(
-        timeout: TimeInterval = 5,
-        _ condition: @MainActor () -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            if Date() >= deadline {
-                XCTFail("Condition never became true within \(timeout)s", file: file, line: line)
-                return
-            }
-            try await Task.sleep(nanoseconds: 5_000_000)
-        }
-    }
-    func testAFavoritedUngroupedConnectionStaysReachableFromTheKeyboard() {
-        var favorited = DatabaseConnection(name: "Starred", type: .mysql)
-        favorited.isFavorite = true
-        let plain = DatabaseConnection(name: "Plain", type: .mysql)
-        connectionStorage.saveConnections([favorited, plain])
-
-        viewModel.loadConnections()
-
-        XCTAssertEqual(viewModel.favoriteConnections.map(\.id), [favorited.id])
-        XCTAssertFalse(
-            viewModel.treeItems.contains { node in
-                if case .connection(let conn) = node { return conn.id == favorited.id }
-                return false
-            },
-            "A favorited ungrouped connection is rendered in the Favorites section, not the tree"
-        )
-        XCTAssertEqual(
-            Set(viewModel.flatVisibleConnections.map(\.id)),
-            [favorited.id, plain.id],
-            "Select All and Ctrl+J walk flatVisibleConnections, so it must include the Favorites section"
-        )
-    }
-
-    func testFlatVisibleConnectionsListsEachConnectionOnce() {
-        var favorited = DatabaseConnection(name: "Starred", type: .mysql)
-        favorited.isFavorite = true
-        connectionStorage.saveConnections([favorited])
-
-        viewModel.loadConnections()
-
-        let ids = viewModel.flatVisibleConnections.map(\.id)
-        XCTAssertEqual(ids.count, Set(ids).count, "Ctrl+J must never visit the same connection twice")
-    }
-
-    func testDeleteKeepsTheConnectionWhenPersistenceFails() throws {
+    func testDeleteKeepsTheConnectionAndReportsWhenPersistenceFails() throws {
         let connection = DatabaseConnection(name: "Prod", type: .mysql)
         XCTAssertTrue(connectionStorage.saveConnections([connection]))
         viewModel.loadConnections()
@@ -669,7 +812,26 @@ final class WelcomeViewModelTests: XCTestCase {
             "A connection that could not be persisted as deleted must not disappear from the list"
         )
         XCTAssertTrue(viewModel.connectionsToDelete.isEmpty)
+        XCTAssertNotNil(viewModel.libraryErrorMessage, "A refused delete must say so")
     }
+
+    private func waitUntil(
+        timeout: TimeInterval = 5,
+        _ condition: @MainActor () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() >= deadline {
+                XCTFail("Condition never became true within \(timeout)s", file: file, line: line)
+                return
+            }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    // MARK: - Shared Connections
 
     func testSharedRowIdsAreDerivedFromThePayloadAndAreStable() {
         let folderId = UUID()
@@ -688,31 +850,77 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertNotEqual(first, otherPayload)
     }
 
+    func testSharedConnectionsThatDifferOnlyByDatabaseAreDifferentRows() {
+        let folderId = UUID()
+        let production = makeExportable(name: "Analytics", database: "prod")
+        let staging = makeExportable(name: "Analytics", database: "staging")
+
+        XCTAssertNotEqual(
+            LinkedFolderWatcher.stableId(folderId: folderId, connection: production),
+            LinkedFolderWatcher.stableId(folderId: folderId, connection: staging)
+        )
+    }
+
+    func testASharedConnectionOpensWithoutItsTunnelCommandOrStartupSQL() {
+        let base = makeExportable(name: "Shared")
+        let hostile = ExportableConnection(
+            name: base.name,
+            host: base.host,
+            port: base.port,
+            database: base.database,
+            username: base.username,
+            type: base.type,
+            startupCommands: "DROP TABLE users",
+            tunnelCommand: ExportableTunnelCommand(
+                method: "custom",
+                command: "/bin/sh -c 'touch /tmp/shared-file-ran'",
+                executablePath: nil,
+                kubernetesNamespace: nil,
+                kubernetesResource: nil,
+                kubernetesContext: nil,
+                awsTarget: nil,
+                awsProfile: nil,
+                awsRegion: nil
+            )
+        )
+
+        let linked = LinkedFolderWatcher.linkedConnection(
+            folderId: UUID(),
+            sourceFileURL: URL(fileURLWithPath: "/tmp/shared.tablepro"),
+            exportable: hostile
+        )
+        let opened = DatabaseConnection(
+            importing: linked.connection,
+            id: linked.id,
+            groupId: nil,
+            tagIds: [],
+            credentialProfileId: nil,
+            resolvesSSHProfile: { _ in false }
+        )
+
+        XCTAssertEqual(opened.tunnelCommandMode, .disabled, "A shared file must never start a process on connect")
+        XCTAssertNil(opened.startupCommands, "A shared file must never run SQL on connect")
+        XCTAssertEqual(opened.host, base.host)
+        XCTAssertEqual(
+            linked.id,
+            LinkedFolderWatcher.stableId(folderId: linked.folderId, connection: hostile),
+            "Dropping the command must not change the row's identity"
+        )
+    }
+
     @MainActor
     private final class InstalledAppFlag {
         var value = false
     }
 
-    private func makeExportable(name: String) -> ExportableConnection {
+    private func makeExportable(name: String, database: String = "app") -> ExportableConnection {
         ExportableConnection(
             name: name,
             host: "db.example.com",
             port: 3_306,
-            database: "app",
+            database: database,
             username: "reader",
-            type: DatabaseType.mysql.rawValue,
-            sshConfig: nil,
-            sslConfig: nil,
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            type: DatabaseType.mysql.rawValue
         )
     }
 }

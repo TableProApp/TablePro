@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import CodeEditSourceEditor
+import TableProEditorKit
 
 /// Builds the gutter and rail settings every code editor in the app shares.
 ///
@@ -66,7 +66,6 @@ enum EditorPeripherals {
         .init(
             showGutter: lineNumbers,
             showLineNumbers: lineNumbers,
-            showMinimap: false,
             showFoldingRibbon: folding,
             showStatementRunControls: lineNumbers && statementRunControls,
             gutterFitsContent: fitsContent,

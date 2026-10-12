@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Databend catalog")
 struct DatabendCatalogTests {
     @Test("Names are backtick-quoted, and a name holding a backtick switches to double quotes")
     func identifierQuoting() {

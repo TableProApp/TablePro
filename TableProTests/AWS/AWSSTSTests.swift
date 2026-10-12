@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AWS STS AssumeRole response parsing")
 struct AWSSTSTests {
     private let validResponse = """
     <AssumeRoleResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">

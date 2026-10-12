@@ -22,7 +22,7 @@ struct MainWindowToolbarShortcutHintTests {
         )
     }
 
-    /// Most commands ride a group, so the delegate vends no standalone item for them. Resolving
+    /// Back and Forward ride a group, so the delegate vends no standalone item for either. Resolving
     /// through the group is what the tests have to do, and it is also what the overflow menu and
     /// the customization palette do.
     private func vendSubitem(
@@ -52,11 +52,7 @@ struct MainWindowToolbarShortcutHintTests {
     @Test("A vended item takes its key equivalent from the user's binding, not a literal")
     func vendedItemFollowsCustomBinding() {
         withKeyboard(.character("j", command: true, control: true), for: .quickSwitcher) { owner in
-            let item = vendSubitem(
-                MainWindowToolbar.quickSwitcher,
-                of: MainWindowToolbar.editorGroup,
-                from: owner
-            )
+            let item = vend(MainWindowToolbar.quickSwitcher, from: owner)
             let menuItem = item?.menuFormRepresentation
             #expect(menuItem?.keyEquivalent == "j")
             #expect(menuItem?.keyEquivalentModifierMask == [.command, .control])
@@ -66,11 +62,7 @@ struct MainWindowToolbarShortcutHintTests {
     @Test("A vended item's tooltip names the user's binding")
     func vendedItemTooltipNamesCustomBinding() {
         withKeyboard(.character("j", command: true, control: true), for: .quickSwitcher) { owner in
-            let item = vendSubitem(
-                MainWindowToolbar.quickSwitcher,
-                of: MainWindowToolbar.editorGroup,
-                from: owner
-            )
+            let item = vend(MainWindowToolbar.quickSwitcher, from: owner)
             #expect(item?.toolTip?.contains("⌃⌘J") == true)
         }
     }
@@ -87,25 +79,24 @@ struct MainWindowToolbarShortcutHintTests {
             return keyboard
         }()
 
-        let owner = MainWindowToolbar()
-        guard let item = vendSubitem(
-            MainWindowToolbar.quickSwitcher,
-            of: MainWindowToolbar.editorGroup,
-            from: owner
-        ) else {
+        /// A private identifier with autosave off. Inserting into a toolbar named like the app's own
+        /// writes an arrangement into the test host's defaults, which are the app's.
+        let identifier = NSToolbar.Identifier("com.TablePro.tests.\(UUID().uuidString)")
+        let owner = MainWindowToolbar(managedToolbar: NSToolbar(identifier: identifier))
+        owner.managedToolbar.autosavesConfiguration = false
+        guard let item = vend(MainWindowToolbar.quickSwitcher, from: owner) else {
             Issue.record("Toolbar did not vend the Open Quickly item")
             return
         }
-        owner.managedToolbar.insertItem(withItemIdentifier: MainWindowToolbar.editorGroup, at: 0)
+        owner.managedToolbar.insertItem(withItemIdentifier: MainWindowToolbar.quickSwitcher, at: 0)
 
         var keyboard = AppSettingsManager.shared.keyboard
         keyboard.setShortcut(.character("j", command: true, control: true), for: .quickSwitcher)
         AppSettingsManager.shared.keyboard = keyboard
 
-        let group = owner.managedToolbar.items.first {
-            $0.itemIdentifier == MainWindowToolbar.editorGroup
-        } as? NSToolbarItemGroup
-        let vendedItem = group?.subitems.first { $0.itemIdentifier == MainWindowToolbar.quickSwitcher }
+        let vendedItem = owner.managedToolbar.items.first {
+            $0.itemIdentifier == MainWindowToolbar.quickSwitcher
+        }
         /// The toolbar refreshes off the settings write rather than inside it, so the hop through
         /// the main run loop has to complete before the item can be read.
         #expect(spinRunLoopUntil { vendedItem?.menuFormRepresentation?.keyEquivalent == "j" })
@@ -155,12 +146,10 @@ struct MainWindowToolbarShortcutHintTests {
 
     /// The Import item opens a submenu, so its menu form carries the submenu rather than a key.
     /// Writing a key equivalent onto it would put a shortcut on a row that only opens a menu.
-    /// It is only ever vended inside the Export & Import group, never on its own.
     @Test("The Import item keeps its submenu and takes no key equivalent")
     func submenuItemTakesNoKeyEquivalent() {
         let owner = MainWindowToolbar()
-        let group = vend(MainWindowToolbar.exportImportGroup, from: owner) as? NSToolbarItemGroup
-        let item = group?.subitems.first { $0.itemIdentifier == MainWindowToolbar.importTables }
+        let item = vend(MainWindowToolbar.importTables, from: owner)
         #expect(item?.menuFormRepresentation?.submenu != nil)
         #expect(item?.menuFormRepresentation?.keyEquivalent == "")
         #expect(item?.toolTip?.isEmpty == false)

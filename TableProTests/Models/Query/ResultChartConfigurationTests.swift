@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("ResultChartConfiguration")
 struct ResultChartConfigurationTests {
     @Test("A result defaults to row number and its first typed numeric column")
     func defaultConfiguration() throws {

@@ -53,6 +53,12 @@ extension TableViewCoordinator {
         return !immutable.contains(columnName)
     }
 
+    /// Whether a row here can lack a field, apart from holding NULL, which is what offers Remove
+    /// Field. Only a data grid's rows can; a structure grid edits definitions.
+    var supportsFieldRemoval: Bool {
+        changeManager.supportsFieldRemoval
+    }
+
     func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {
         if case .editable = editEligibility(row: row, columnIndex: columnIndex) {
             return true
@@ -114,9 +120,7 @@ extension TableViewCoordinator {
         }
         guard let editor = overlayEditor else { return }
 
-        editor.onRemove = { [weak self] in
-            self?.flushPendingCellPresentationRefresh()
-        }
+        observeRemoval(of: editor)
         editor.onCommit = { [weak self] row, columnIndex, newValue in
             self?.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
@@ -132,11 +136,20 @@ extension TableViewCoordinator {
             overlayViewer = CellOverlayViewer()
         }
         guard let viewer = overlayViewer else { return }
-        viewer.onRemove = { [weak self] in
-            self?.flushPendingCellPresentationRefresh()
-        }
+        observeRemoval(of: viewer)
         overlayEditor?.dismiss(commit: false)
         viewer.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
+    }
+
+    /// Cell presentation work and a reload put off while the overlay was open both wait for it to
+    /// close.
+    func observeRemoval(of overlay: CellOverlayBase) {
+        overlay.onRemove = { [weak self] in
+            self?.flushPendingCellPresentationRefresh()
+            Task { @MainActor [weak self] in
+                self?.delegate?.dataGridDidCloseCellOverlay()
+            }
+        }
     }
 
     /// The cell cursor moves with the editor, through the same `focusCell` the grid's own Tab uses.

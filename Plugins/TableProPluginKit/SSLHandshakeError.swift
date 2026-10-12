@@ -86,22 +86,22 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
     public var recoverySuggestion: String? {
         switch self {
         case .serverRejectedPlaintext:
-            return String(localized: "Open the connection editor, switch to the SSL tab, and set Mode to Required (or stricter).")
+            return String(localized: "On the connection's Network tab, set SSL Mode to Verify Identity, or to Required to skip the certificate check.")
         case .serverRequiresPlaintext:
-            return String(localized: "Open the connection editor, switch to the SSL tab, and set Mode to Disabled.")
+            return String(localized: "On the connection's Network tab, set SSL Mode to Disabled.")
         case .untrustedCertificate:
             return String(localized: """
-                Switch SSL Mode to Verify CA and provide the server's CA certificate path. \
-                Required mode also connects, but does not validate the certificate chain.
+                On the connection's Network tab, choose the server's CA certificate under Verify Identity \
+                or Verify CA. Required (skip verify) also connects, but does not check the certificate.
                 """)
         case .hostnameMismatch:
-            return String(localized: "Switch SSL Mode to Verify CA (validates the CA chain but skips hostname check), or update the host field to match the certificate.")
+            return String(localized: "Change Host to a name the certificate covers.")
         case .clientCertRequired:
-            return String(localized: "Provide the client certificate and key paths in the SSL tab.")
+            return String(localized: "Choose the client certificate and key on the connection's Network tab.")
         case .clientKeyPassphraseRequired:
-            return String(localized: "Open the connection editor, switch to the SSL tab, and enter the Key Passphrase.")
+            return String(localized: "Enter the Key Passphrase on the connection's Network tab.")
         case .clientKeyPassphraseIncorrect:
-            return String(localized: "Open the connection editor, switch to the SSL tab, and correct the Key Passphrase.")
+            return String(localized: "Correct the Key Passphrase on the connection's Network tab.")
         case .clientKeyInvalid:
             return String(localized: "Check that the Client Key path points to a valid PEM private key.")
         case .cipherMismatch:

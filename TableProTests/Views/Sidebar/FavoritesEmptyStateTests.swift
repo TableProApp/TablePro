@@ -8,21 +8,24 @@ import Testing
 
 @testable import TablePro
 
-@Suite("FavoritesEmptyState")
 struct FavoritesEmptyStateTests {
     private func input(
         isInitialLoadComplete: Bool = true,
         hasAnyFavorite: Bool = true,
         hasVisibleContent: Bool = false,
         searchText: String = "",
-        isEnvironmentFiltered: Bool = false
+        isEnvironmentFiltered: Bool = false,
+        favoriteTablesInOtherDatabases: Int = 0,
+        missingFavoriteTables: Int = 0
     ) -> FavoritesEmptyState.Input {
         FavoritesEmptyState.Input(
             isInitialLoadComplete: isInitialLoadComplete,
             hasAnyFavorite: hasAnyFavorite,
             hasVisibleContent: hasVisibleContent,
             searchText: searchText,
-            isEnvironmentFiltered: isEnvironmentFiltered
+            isEnvironmentFiltered: isEnvironmentFiltered,
+            favoriteTablesInOtherDatabases: favoriteTablesInOtherDatabases,
+            missingFavoriteTables: missingFavoriteTables
         )
     }
 
@@ -77,5 +80,115 @@ struct FavoritesEmptyStateTests {
     @Test("Favorites exist, nothing is narrowing, and nothing shows: still the onboarding state")
     func neitherNarrowing() {
         #expect(FavoritesEmptyState.resolve(input()) == .noFavorites)
+    }
+
+    @Test("Favorite tables that all live in other databases say so, not the onboarding state")
+    func favoriteTablesElsewhere() {
+        #expect(
+            FavoritesEmptyState.resolve(input(favoriteTablesInOtherDatabases: 2))
+                == .favoriteTablesInOtherDatabases
+        )
+    }
+
+    @Test("Favorite tables whose tables are all gone say so, not the onboarding state")
+    func favoriteTablesMissing() {
+        #expect(FavoritesEmptyState.resolve(input(missingFavoriteTables: 1)) == .favoriteTablesMissing)
+    }
+
+    @Test("Favorites in other databases outrank missing ones")
+    func otherDatabasesOutrankMissing() {
+        #expect(
+            FavoritesEmptyState.resolve(input(favoriteTablesInOtherDatabases: 1, missingFavoriteTables: 3))
+                == .favoriteTablesInOtherDatabases
+        )
+    }
+
+    @Test("A search that matches nothing stays a search miss while favorites sit elsewhere")
+    func searchMissWinsOverElsewhere() {
+        #expect(
+            FavoritesEmptyState.resolve(input(searchText: "orders", favoriteTablesInOtherDatabases: 1))
+                == .noSearchMatch("orders")
+        )
+    }
+
+    @Test("Visible content wins over favorites elsewhere")
+    func contentWinsOverElsewhere() {
+        #expect(
+            FavoritesEmptyState.resolve(input(hasVisibleContent: true, favoriteTablesInOtherDatabases: 1))
+                == .content
+        )
+    }
+
+    // MARK: - hasAnyFavorite
+
+    /// The question is whether the user owns a favorite at all. A list the filter field or the
+    /// browsed database has already narrowed cannot answer it, and reading "nothing matched" as
+    /// "you own nothing" put the onboarding view over a full Team Library.
+    @Test("A Team Library query counts as owning a favorite")
+    func teamLibraryQueriesCountAsFavorites() {
+        #expect(FavoritesEmptyState.hasAnyFavorite(
+            hasQueries: false,
+            favoriteTableCount: 0,
+            favoriteDatabaseCount: 0,
+            teamLibraryQueryCount: 1
+        ))
+    }
+
+    @Test("A favorite table counts even while another database is browsed")
+    func favoriteTablesCountAcrossDatabases() {
+        #expect(FavoritesEmptyState.hasAnyFavorite(
+            hasQueries: false,
+            favoriteTableCount: 3,
+            favoriteDatabaseCount: 0,
+            teamLibraryQueryCount: 0
+        ))
+    }
+
+    @Test("A saved query counts on its own")
+    func savedQueriesCount() {
+        #expect(FavoritesEmptyState.hasAnyFavorite(
+            hasQueries: true,
+            favoriteTableCount: 0,
+            favoriteDatabaseCount: 0,
+            teamLibraryQueryCount: 0
+        ))
+    }
+
+    @Test("A favorite database counts on its own")
+    func favoriteDatabasesCount() {
+        #expect(FavoritesEmptyState.hasAnyFavorite(
+            hasQueries: false,
+            favoriteTableCount: 0,
+            favoriteDatabaseCount: 2,
+            teamLibraryQueryCount: 0
+        ))
+    }
+
+    @Test("Owning nothing at all is the only way to reach the onboarding state")
+    func nothingOwnedIsFalse() {
+        #expect(FavoritesEmptyState.hasAnyFavorite(
+            hasQueries: false,
+            favoriteTableCount: 0,
+            favoriteDatabaseCount: 0,
+            teamLibraryQueryCount: 0
+        ) == false)
+    }
+
+    /// The two halves together: owning a Team Library query and typing a term that matches nothing
+    /// is a search miss, not an empty account.
+    @Test("A Team Library user whose filter matches nothing gets the search miss")
+    func aTeamLibraryFilterMissIsASearchMiss() {
+        let owns = FavoritesEmptyState.hasAnyFavorite(
+            hasQueries: false,
+            favoriteTableCount: 0,
+            favoriteDatabaseCount: 0,
+            teamLibraryQueryCount: 4
+        )
+
+        #expect(FavoritesEmptyState.resolve(input(
+            hasAnyFavorite: owns,
+            hasVisibleContent: false,
+            searchText: "zzz"
+        )) == .noSearchMatch("zzz"))
     }
 }

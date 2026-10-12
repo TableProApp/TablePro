@@ -7,7 +7,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("Dameng Plan Parser")
 struct DamengPlanParserTests {
     private let parser = DamengPlanParser()
 

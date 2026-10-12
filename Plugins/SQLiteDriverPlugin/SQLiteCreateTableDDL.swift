@@ -94,16 +94,3 @@ internal func sqliteForeignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefini
     }
     return definition
 }
-
-/// The `WHERE` predicate is written, because a partial index without it is a different index: a
-/// unique partial index that loses its condition rejects the rows the user meant to exclude.
-internal func sqliteAddIndexSQL(table: String, index: PluginIndexDefinition) -> String {
-    let columns = index.columns.map(sqliteQuoteIdentifier).joined(separator: ", ")
-    let unique = index.isUnique ? "UNIQUE " : ""
-    var statement = "CREATE \(unique)INDEX \(sqliteQuoteIdentifier(index.name)) "
-        + "ON \(sqliteQuoteIdentifier(table)) (\(columns))"
-    if let predicate = index.whereClause?.nilIfEmpty {
-        statement += " WHERE \(predicate)"
-    }
-    return statement
-}

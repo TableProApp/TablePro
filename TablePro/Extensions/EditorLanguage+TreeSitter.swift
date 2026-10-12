@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import CodeEditLanguages
+import TableProGrammars
 import TableProPluginKit
 
 extension EditorLanguage {
@@ -14,6 +14,12 @@ extension EditorLanguage {
         case .bash: return .bash
         case .custom: return .default
         }
+    }
+
+    /// What starts a line comment in a query tab of this language, or an empty string when the
+    /// language has none.
+    var lineCommentMarker: String {
+        treeSitterLanguage.lineCommentString
     }
 
     var codeBlockTag: String {

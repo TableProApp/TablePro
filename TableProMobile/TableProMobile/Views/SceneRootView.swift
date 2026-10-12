@@ -1,29 +1,81 @@
+import CoreSpotlight
 import SwiftUI
 import TableProDatabase
+import TableProModels
 
-/// One per scene, because a coordinator carries the screen's own tab, navigation path and connect
-/// attempt. Two iPad windows on the same connection are two screens, not one.
 struct SceneRootView: View {
     @Environment(AppState.self) private var appState
+    @Environment(AppLockState.self) private var lockState
+    @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var sceneDelegate: TableProSceneDelegate
     @State private var coordinatorStore: ConnectionCoordinatorStore
+    @State private var presenter: ScenePresenter
 
-    init(connectionManager: ConnectionManager) {
+    /// The launch lock arrives through the initializer rather than the environment because the
+    /// restore binding's getter runs before any `.task`, so the hold has to exist before the first
+    /// body. Only the hold is seeded here; every later question about the lock reads `lockState`.
+    init(connectionManager: ConnectionManager, isLockedAtLaunch: Bool) {
         _coordinatorStore = State(
             initialValue: ConnectionCoordinatorStore(connectionManager: connectionManager)
         )
+        _presenter = State(initialValue: ScenePresenter(isLockedAtLaunch: isLockedAtLaunch))
     }
 
     var body: some View {
-        Group {
-            if appState.hasCompletedOnboarding {
-                ConnectionListView()
-            } else {
-                OnboardingView()
+        ConnectionListView()
+            .environment(coordinatorStore)
+            .environment(presenter)
+            .onChange(of: appState.connections) { previous, current in
+                coordinatorStore.reconcile(from: previous, to: current)
             }
+            .onChange(of: presenter.isHeldByEditor, initial: true) { _, isHeld in
+                coordinatorStore.holdRebuilds(isHeld)
+            }
+            .onChange(of: appState.sampleResetRevision) { _, _ in
+                for sample in appState.connections where sample.isSample {
+                    coordinatorStore.invalidate(sample.id, droppingSession: false)
+                }
+            }
+            .onOpenURL { url in
+                guard let intent = SceneIntent.parse(url: url) else { return }
+                presenter.receive(intent)
+            }
+            .onContinueUserActivity(CSSearchableItemActionType, perform: receive)
+            .onContinueUserActivity(SceneIntent.viewConnectionActivity, perform: receive)
+            .onContinueUserActivity(SceneIntent.viewTableActivity, perform: receive)
+            .onAppear {
+                sceneDelegate.onDisconnect = { [presenter, appState] in
+                    presenter.releaseLaunchClaim(appState: appState)
+                }
+                updateLockCover()
+            }
+            .onChange(of: lockState.isLocked) { _, _ in
+                updateLockCover()
+            }
+            .onChange(of: scenePhase) { _, _ in
+                updateLockCover()
+            }
+    }
+
+    private func receive(_ activity: NSUserActivity) {
+        guard let intent = SceneIntent.parse(activityType: activity.activityType, userInfo: activity.userInfo) else {
+            return
         }
-        .environment(coordinatorStore)
-        .onChange(of: appState.connections) { previous, current in
-            coordinatorStore.reconcile(from: previous, to: current)
+        presenter.receive(intent)
+    }
+
+    private func updateLockCover() {
+        guard !TestRuntime.isActive else { return }
+        sceneDelegate.showCover(lockCoverMode, lockState: lockState)
+    }
+
+    private var lockCoverMode: LockCoverMode? {
+        if lockState.isLocked {
+            return .locked
         }
+        guard scenePhase != .active, AppLockState.isLockEnabled, lockState.biometry != .unavailable else {
+            return nil
+        }
+        return .obscured
     }
 }

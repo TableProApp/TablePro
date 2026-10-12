@@ -4,6 +4,7 @@ import TableProPluginKit
 
 struct AWSProfileField: NSViewRepresentable {
     let placeholder: String
+    var accessibilityIdentifier: String?
     @Binding var value: String
 
     func makeCoordinator() -> Coordinator {
@@ -19,6 +20,9 @@ struct AWSProfileField: NSViewRepresentable {
         comboBox.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
         if !placeholder.isEmpty {
             comboBox.placeholderString = placeholder
+        }
+        if let accessibilityIdentifier {
+            comboBox.setAccessibilityIdentifier(accessibilityIdentifier)
         }
         comboBox.addItems(withObjectValues: Self.discoveredProfiles())
         comboBox.stringValue = value

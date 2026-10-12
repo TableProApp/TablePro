@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("QueryTab.hasUserActiveSort")
 @MainActor
 struct QueryTabHasUserActiveSortTests {
     @Test("Empty sortState is not user-active")
@@ -43,7 +42,6 @@ struct QueryTabHasUserActiveSortTests {
     }
 }
 
-@Suite("A user-cleared sort is distinguishable from a tab that has not sorted")
 @MainActor
 struct UserClearedSortIsDistinctTests {
     @Test("A fresh sort state is unset, not user")
@@ -106,7 +104,6 @@ struct UserClearedSortIsDistinctTests {
     }
 }
 
-@Suite("QueryTabManager.replaceTabContent resets sort state")
 @MainActor
 struct ReplaceTabContentDefaultSortResetTests {
     @Test("replaceTabContent clears sortState back to unset, so the new table gets the app default")
@@ -132,7 +129,6 @@ struct ReplaceTabContentDefaultSortResetTests {
     }
 }
 
-@Suite("DataGridSettings.defaultSortBehavior decoder")
 struct DataGridSettingsDefaultSortDecoderTests {
     @Test("Missing direction key falls back to ascending, so a shipped user sees no change")
     func missingDirectionFallsBackToAscending() throws {

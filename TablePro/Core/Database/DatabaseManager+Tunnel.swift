@@ -12,7 +12,7 @@ import TableProPluginKit
 extension DatabaseManager {
     /// Rewrite a connection to point at the local tunnel endpoint. A 127.0.0.1
     /// certificate can't satisfy hostname verification, so verify modes drop to
-    /// `.required` while keeping encryption; cert paths are cleared and the pre-tunnel
+    /// `.required` while keeping encryption and the CA path is cleared. The pre-tunnel
     /// endpoint is recorded for the callers that must name the real server rather than
     /// the local forward. A tunnel forwards a single local port, so MongoDB's
     /// seed list is collapsed to that endpoint and a direct connection is forced,
@@ -26,7 +26,8 @@ extension DatabaseManager {
     func tunneledConnection(
         from connection: DatabaseConnection,
         localPort: Int,
-        forwardsToUnixSocket: Bool = false
+        forwardsToUnixSocket: Bool = false,
+        securesTransport: Bool = false
     ) -> DatabaseConnection {
         var tunnelSSL = connection.sslConfig
         if forwardsToUnixSocket {
@@ -42,15 +43,18 @@ extension DatabaseManager {
                 tunnelSSL.mode = .required
             }
             tunnelSSL.caCertificatePath = ""
-            tunnelSSL.clientCertificatePath = ""
-            tunnelSSL.clientKeyPath = ""
+        } else if connection.tunnelForwardUsesHTTPS {
+            tunnelSSL.mode = .required
         }
 
         var effectiveFields = connection.additionalFields
         effectiveFields[DatabaseConnection.sshForwardUnixSocketPathKey] = nil
+        // The MySQL driver dials this Mac's socket instead of the forwarded port when the key is set.
+        effectiveFields[MySQLLocalSocket.fieldKey] = nil
         let forwardEndpoint = connection.tunnelForwardEndpoint
         effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
         effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
+        effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = securesTransport ? "true" : nil
         /// A host list names the servers the driver would reach for itself, and behind a tunnel
         /// there is one forwarded endpoint instead, so the list has to go. An SRV connection is
         /// the exception: its host is a lookup name rather than a server to dial, the driver
@@ -67,6 +71,7 @@ extension DatabaseManager {
             effectiveFields["mongoParam_directConnection"] = "true"
         }
         if connection.type.pluginTypeId == "Redis" {
+            effectiveFields[RedisDatabaseIndex.fieldName] = String(connection.redisDatabaseIndex)
             effectiveFields["redisMode"] = "standalone"
         }
         /// Kafka's Metadata reply names every broker by its ADVERTISED address, and a client is
@@ -101,16 +106,33 @@ extension DatabaseManager {
         case .socksProxy: return SOCKSProxyManager.shared
         case .tunnelCommand: return TunnelCommandManager.shared
         case .remoteFile: return RemoteFileTransportManager.shared
+        case .remoteDatabaseSession: return RemoteSQLiteTransportManager.shared
         case .none: return nil
         }
     }
 
-    /// The SSH-layer reason a tunneled connect failed, when the tunnel recorded one. The driver
+    /// The transport-layer reason a tunneled connect failed, when the tunnel recorded one. The driver
     /// only ever sees a local socket that was accepted and then stayed silent, so its own error
     /// names a read timeout and never the cause. Read before the tunnel is torn down.
-    func attributedTunnelFailure(for connection: DatabaseConnection) async -> SSHTunnelError? {
-        guard let manager = activeTunnelManager(for: connection) as? SSHTunnelManager else { return nil }
-        return await manager.consumeLastForwardFailure(connectionId: connection.id)
+    func attributedTunnelFailure(for connection: DatabaseConnection) async -> (any Error)? {
+        if let manager = activeTunnelManager(for: connection) as? SSHTunnelManager {
+            return await manager.consumeLastForwardFailure(connectionId: connection.id)
+        }
+        if let manager = activeTunnelManager(for: connection) as? SOCKSProxyManager {
+            return await manager.consumeLastConnectionFailure(connectionId: connection.id)
+        }
+        if let manager = activeTunnelManager(for: connection) as? RemoteSQLiteTransportManager {
+            return await manager.consumeLastConnectionFailure(connectionId: connection.id)
+        }
+        return nil
+    }
+
+    static func preferredTunnelFailure(
+        replacing error: any Error,
+        attributedFailure: () async -> (any Error)?
+    ) async -> any Error {
+        guard !Task.isCancelled, !DatabaseCancellationDiagnosis.isCancellation(error) else { return error }
+        return await attributedFailure() ?? error
     }
 
     func closeActiveTunnel(for connection: DatabaseConnection) {
@@ -145,6 +167,7 @@ extension DatabaseManager {
 
         await stopHealthMonitor(for: connectionId)
 
+        await sessionLanes.closeAllNotingLostTransactions(for: connectionId)
         activeSessions[connectionId]?.driver?.disconnect()
         updateSession(connectionId) { session in
             session.driver = nil

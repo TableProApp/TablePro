@@ -3,13 +3,13 @@
 //  HTMLExportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class HTMLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class HTMLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "HTML Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to an HTML table"
@@ -21,7 +21,7 @@ final class HTMLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sen
     typealias Settings = HTMLExportOptions
     static let settingsStorageId = "html"
 
-    var settings = HTMLExportOptions() {
+    @Published var settings = HTMLExportOptions() {
         didSet { saveSettings() }
     }
 

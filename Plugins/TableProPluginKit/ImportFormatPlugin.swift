@@ -14,6 +14,7 @@ public protocol ImportFormatPlugin: TableProPlugin, Sendable {
     static var supportedDatabaseTypeIds: [String] { get }
     static var excludedDatabaseTypeIds: [String] { get }
     static var requiresTargetTable: Bool { get }
+    static var sourceFieldsFollowFileOrder: Bool { get }
 
     var fieldDetectionSignature: String { get }
 
@@ -31,6 +32,7 @@ public extension ImportFormatPlugin {
     static var supportedDatabaseTypeIds: [String] { [] }
     static var excludedDatabaseTypeIds: [String] { [] }
     static var requiresTargetTable: Bool { false }
+    static var sourceFieldsFollowFileOrder: Bool { false }
 
     var fieldDetectionSignature: String { "" }
 

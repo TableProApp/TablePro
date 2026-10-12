@@ -23,7 +23,6 @@ private final class BodyChromeLayoutPersister: ColumnLayoutPersisting {
 ///
 /// These measure through `rect(ofColumn:)` and through the rendered pixels, never through the chrome
 /// type's own arithmetic, so they cannot pass by agreeing with themselves.
-@Suite("Data grid body chrome")
 @MainActor
 struct DataGridBodyChromeTests {
     private struct Grid {
@@ -166,6 +165,15 @@ struct DataGridBodyChromeTests {
 
         #expect(rowNumber >= 0)
         #expect(!grid.coordinator.presentsColumn(atTableColumnIndex: rowNumber))
+    }
+
+    @Test("The theme's grid line becomes the table's grid colour, which the separators draw in")
+    func themeGridLineBecomesTheTableGridColor() {
+        let tableView = NSTableView()
+        DataGridBodyChrome.applyThemeColors(to: tableView)
+
+        #expect(tableView.gridColor == ThemeEngine.shared.palette[.gridLine])
+        #expect(tableView.backgroundColor == ThemeEngine.shared.palette[.gridBackground])
     }
 
     /// The colour has to come from `tableView.gridColor`, which is the dynamic catalog colour AppKit

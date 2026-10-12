@@ -31,7 +31,7 @@ extension PluginManager {
                 try assertLoadable(plugins[index].bundle, source: plugins[index].source)
             } catch {
                 Self.logger.error(
-                    "Refusing to enable plugin '\(pluginId, privacy: .public)': failed the load gate: \(error.localizedDescription, privacy: .public)"
+                    "Refusing to enable plugin '\(pluginId, privacy: .public)': failed the load gate: \(error.publicLogShape, privacy: .public)"
                 )
                 plugins[index].isEnabled = false
                 disabled.insert(pluginId)

@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Postgres Column Type Resolver")
 struct PostgresColumnTypeResolverTests {
     private let enumLabels = [
         "app.mood": ["sad", "ok", "happy"],
@@ -99,11 +98,38 @@ struct PostgresColumnTypeResolverTests {
 
     /// The catalog read has to list an enum with no labels, or the resolver could not tell it
     /// from a composite.
-    @Test("The enum label query lists every enum, labels or not")
+    @Test("The enum label query lists every enum the read uses, labels or not")
     func enumLabelQueryListsLabellessEnums() {
-        let sql = PostgreSQLSchemaQueries.enumLabelQuery
+        let sql = PostgreSQLSchemaQueries.enumLabelQuery(schema: "app", table: nil)
         #expect(sql.contains("LEFT JOIN pg_catalog.pg_enum"))
         #expect(sql.contains("WHERE t.typtype = 'e'"))
+    }
+
+    @Test("Both type reads cover only the types the read's own columns use")
+    func typeReadsAreScopedToTheReadsColumns() {
+        let reads = [
+            PostgreSQLSchemaQueries.enumLabelQuery(schema: "app", table: "orders"),
+            PostgreSQLSchemaQueries.arrayTypeQuery(schema: "app", table: "orders")
+        ]
+        for sql in reads {
+            #expect(sql.contains("FROM pg_catalog.pg_attribute a"))
+            #expect(sql.contains("WHERE cn.nspname = 'app'"))
+            #expect(sql.contains("AND c.relname = 'orders'"))
+            #expect(sql.contains("AND NOT a.attisdropped"))
+            #expect(sql.contains("typbasetype"))
+        }
+        let schemaWide = PostgreSQLSchemaQueries.arrayTypeQuery(schema: "app", table: nil)
+        #expect(schemaWide.contains("WHERE cn.nspname = 'app'"))
+        #expect(!schemaWide.contains("c.relname ="))
+    }
+
+    @Test("The enum read reaches an enum through a domain, an array and a domain over an array")
+    func enumReadFollowsDomainsAndArrays() {
+        let sql = PostgreSQLSchemaQueries.enumLabelQuery(schema: "app", table: nil)
+        #expect(sql.contains("SELECT u.oid FROM used u"))
+        #expect(sql.contains("UNION SELECT ut.typbasetype FROM pg_catalog.pg_type ut JOIN used u ON u.oid = ut.oid"))
+        #expect(sql.contains("UNION SELECT ut.typelem FROM pg_catalog.pg_type ut JOIN used u ON u.oid = ut.oid"))
+        #expect(sql.contains("JOIN pg_catalog.pg_type b ON b.oid = ut.typbasetype"))
     }
 
     @Test("Ordinary columns pass through unchanged")

@@ -11,7 +11,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH config resolver tokens")
 struct SSHConfigResolverTokenTests {
     private static let env = ResolverEnvironment(
         runShell: { _ in true },

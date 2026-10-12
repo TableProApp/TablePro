@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Sidebar menu builder")
 @MainActor
 struct SidebarMenuBuilderTests {
     private func build(_ sections: [DatabaseTreeMenuSection]) -> NSMenu {
@@ -133,6 +132,8 @@ struct SidebarMenuBuilderTests {
         let fromContext = SidebarViewOptionsMenu.sections(
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
+            showSystemContainers: settings.showSystemContainers,
+            showPartitions: settings.showPartitions,
             rowSize: settings.sidebarRowSize
         )
 

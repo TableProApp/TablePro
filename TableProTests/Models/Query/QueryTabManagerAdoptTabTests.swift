@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryTabManager.adoptTab")
 @MainActor
 struct QueryTabManagerAdoptTabTests {
     @Test("An adopted tab keeps its identity and content instead of being rebuilt")

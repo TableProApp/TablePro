@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ChaCha20Cipher")
 struct ChaCha20CipherTests {
     /// RFC 8439 A.1 Test Vector #1: key = 0, nonce = 0, counter starts at 0.
     @Test("RFC 8439 keystream block 0")

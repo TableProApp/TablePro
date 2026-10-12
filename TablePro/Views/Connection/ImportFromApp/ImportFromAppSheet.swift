@@ -8,26 +8,32 @@ import SwiftUI
 import TableProImport
 
 struct ImportFromAppSheet: View {
-    var onImported: ((Int) -> Void)?
+    let onFinished: (ImportOutcome) -> Void
+
     @Environment(\.dismiss) private var dismiss
+    @State private var step: Step = .sourcePicker
+    @State private var pendingCollect: PendingCollect?
 
     private enum Step {
         case sourcePicker
         case loading(sourceName: String)
-        case preview(ConnectionImportPreview, String, Bool)
+        case review(ImportPreview, title: String, banner: ImportReviewBanner?)
         case error(String)
     }
 
-    @State private var step: Step = .sourcePicker
-    @State private var importTask: Task<Void, Never>?
+    private struct PendingCollect {
+        let id = UUID()
+        let importer: any ForeignAppImporter
+        let request: ForeignImportRequest
+    }
 
     var body: some View {
         Group {
             switch step {
             case .sourcePicker:
                 ImportFromAppSourcePicker(
-                    onSelect: { importer, includePasswords in
-                        beginImport(importer: importer, includePasswords: includePasswords)
+                    onSelect: { importer, request, inventory in
+                        beginImport(importer: importer, request: request, inventory: inventory)
                     },
                     onCancel: { dismiss() }
                 )
@@ -35,23 +41,25 @@ struct ImportFromAppSheet: View {
             case .loading(let sourceName):
                 loadingView(sourceName: sourceName)
 
-            case .preview(let preview, let sourceName, let credentialsAborted):
-                ImportFromAppPreviewStep(
+            case .review(let preview, let title, let banner):
+                ImportReviewStep(
+                    title: title,
+                    banner: banner,
                     preview: preview,
-                    sourceName: sourceName,
-                    credentialsAborted: credentialsAborted,
                     onBack: { step = .sourcePicker },
-                    onImported: onImported
+                    onFinished: onFinished
                 )
 
             case .error(let message):
                 errorView(message)
             }
         }
-        .frame(width: 520, height: 440)
+        .importSheetFrame()
+        .task(id: pendingCollect?.id) {
+            guard let pending = pendingCollect else { return }
+            await collect(pending)
+        }
     }
-
-    // MARK: - Loading View
 
     private func loadingView(sourceName: String) -> some View {
         VStack(spacing: 12) {
@@ -76,8 +84,6 @@ struct ImportFromAppSheet: View {
         }
     }
 
-    // MARK: - Error View
-
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
             Spacer()
@@ -100,22 +106,20 @@ struct ImportFromAppSheet: View {
         }
     }
 
-    // MARK: - Actions
-
     nonisolated static func requiresKeychainConfirmation(includePasswords: Bool, importer: any ForeignAppImporter) -> Bool {
         includePasswords && importer.readsPasswordsFromKeychain
     }
 
-    private func beginImport(importer: any ForeignAppImporter, includePasswords: Bool) {
-        if Self.requiresKeychainConfirmation(includePasswords: includePasswords, importer: importer),
-           !confirmKeychainPrompts(for: importer) {
+    private func beginImport(importer: any ForeignAppImporter, request: ForeignImportRequest, inventory: ForeignAppInventory) {
+        if Self.requiresKeychainConfirmation(includePasswords: request.includePasswords, importer: importer),
+           !confirmKeychainPrompts(for: importer, connectionCount: inventory.connections) {
             return
         }
-        startImport(importer: importer, includePasswords: includePasswords)
+        step = .loading(sourceName: importer.displayName)
+        pendingCollect = PendingCollect(importer: importer, request: request)
     }
 
-    private func confirmKeychainPrompts(for importer: any ForeignAppImporter) -> Bool {
-        let count = importer.connectionCount()
+    private func confirmKeychainPrompts(for importer: any ForeignAppImporter, connectionCount: Int) -> Bool {
         let template = String(
             localized: """
                 Importing passwords from %1$@ reads up to %2$d keychain items. \
@@ -126,40 +130,46 @@ struct ImportFromAppSheet: View {
         )
         let alert = NSAlert()
         alert.messageText = String(localized: "macOS will ask for your login password")
-        alert.informativeText = String(format: template, importer.displayName, count)
+        alert.informativeText = String(format: template, importer.displayName, connectionCount)
         alert.alertStyle = .informational
         alert.addButton(withTitle: String(localized: "Continue"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    private func startImport(importer: any ForeignAppImporter, includePasswords: Bool) {
-        step = .loading(sourceName: importer.displayName)
-
-        importTask = Task.detached(priority: .userInitiated) {
-            do {
-                let result = try importer.importConnections(includePasswords: includePasswords)
-                try Task.checkCancellation()
-                let preview = await ConnectionExportService.analyzeImport(result.envelope)
-                try Task.checkCancellation()
-                await MainActor.run {
-                    step = .preview(preview, result.sourceName, result.credentialsAborted)
-                    importTask = nil
-                }
-            } catch is CancellationError {
-                await MainActor.run { importTask = nil }
-            } catch {
-                await MainActor.run {
-                    step = .error(error.localizedDescription)
-                    importTask = nil
-                }
+    private func collect(_ pending: PendingCollect) async {
+        defer {
+            if pendingCollect?.id == pending.id {
+                pendingCollect = nil
             }
+        }
+        do {
+            let collected = try await Self.collect(from: pending.importer, request: pending.request)
+            try Task.checkCancellation()
+            let preview = try await ImportReviewLoader.preview(of: collected)
+            try Task.checkCancellation()
+            step = .review(
+                preview,
+                title: String(format: String(localized: "Import from %@"), pending.importer.displayName),
+                banner: collected.credentialsAborted ? .credentialsNotRead : nil
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            step = .error(ImportReviewLoader.message(for: error))
         }
     }
 
+    @concurrent
+    nonisolated private static func collect(
+        from importer: any ForeignAppImporter,
+        request: ForeignImportRequest
+    ) async throws -> CollectedImport {
+        try importer.collect(request)
+    }
+
     private func cancelImport() {
-        importTask?.cancel()
-        importTask = nil
+        pendingCollect = nil
         dismiss()
     }
 }

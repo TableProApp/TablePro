@@ -8,58 +8,56 @@ import TableProPluginKit
 
 extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let catalog = try await fetchTypeCatalog()
+        let resolvedSchema = schema ?? core.currentSchema
+        let catalog = try await fetchTypeCatalog(schema: resolvedSchema, table: table)
         let query = PostgreSQLSchemaQueries.columnsQuery(
-            schema: schema ?? core.currentSchema,
+            schema: resolvedSchema,
             table: table,
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
-        let result = try await execute(query: query)
+        let result = try await executeSchemaRelativeRead(query, schema: resolvedSchema)
+        let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: table)[table] ?? [:]
         return result.rows.compactMap { row in
-            mapPgColumnRow(row, tableNameOffset: 0, catalog: catalog)
+            mapPgColumnRow(row, tableNameOffset: 0, catalog: catalog, columnDDL: columnDDL)
         }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let catalog = try await fetchTypeCatalog()
+        let resolvedSchema = schema ?? core.currentSchema
+        let catalog = try await fetchTypeCatalog(schema: resolvedSchema, table: nil)
         let query = PostgreSQLSchemaQueries.columnsQuery(
-            schema: schema ?? core.currentSchema,
+            schema: resolvedSchema,
             table: nil,
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
-        let result = try await execute(query: query)
+        let result = try await executeSchemaRelativeRead(query, schema: resolvedSchema)
+        let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: nil)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard row.count >= 5, let tableName = row[0].asText else { continue }
-            if let column = mapPgColumnRow(row, tableNameOffset: 1, catalog: catalog) {
+            let tableDDL = columnDDL[tableName] ?? [:]
+            if let column = mapPgColumnRow(row, tableNameOffset: 1, catalog: catalog, columnDDL: tableDDL) {
                 allColumns[tableName, default: []].append(column)
             }
         }
         return allColumns
     }
 
-    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(
-            schema: schema ?? core.currentSchema,
-            table: table
+    fileprivate func fetchColumnDDL(
+        schema: String,
+        table: String?
+    ) async throws -> [String: [String: PostgreSQLCatalogColumnDDL]] {
+        let query = PostgreSQLSchemaQueries.columnDDLQuery(
+            schema: schema, table: table, capabilities: versionedCapabilities
         )
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row in
-            guard let name = row[safe: 0]?.asText,
-                  let definition = row[safe: 1]?.asText else { return nil }
-            return PluginCheckConstraintInfo(
-                name: name,
-                expression: PostgreSQLCheckConstraintDefinition.expression(fromConstraintDef: definition),
-                columns: PostgreSQLTextArray.values(row[safe: 3]?.asText),
-                isValidated: PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText)
-            )
-        }
+        let result = try await executeQualifiedRead(query)
+        return PostgreSQLSchemaQueries.columnDDL(rows: result.rows)
     }
 
-    fileprivate func fetchEnumLabelMap() async throws -> [String: [String]] {
-        let result = try await execute(query: PostgreSQLSchemaQueries.enumLabelQuery)
+    fileprivate func fetchEnumLabelMap(schema: String, table: String?) async throws -> [String: [String]] {
+        let result = try await execute(query: PostgreSQLSchemaQueries.enumLabelQuery(schema: schema, table: table))
         var map: [String: [String]] = [:]
         for row in result.rows {
             guard let schemaName = row[safe: 0]?.asText,
@@ -74,8 +72,8 @@ extension PostgreSQLPluginDriver {
         return map
     }
 
-    fileprivate func fetchArrayTypeMap() async throws -> [String: PostgresArrayTypeInfo] {
-        let result = try await execute(query: PostgreSQLSchemaQueries.arrayTypeQuery)
+    fileprivate func fetchArrayTypeMap(schema: String, table: String?) async throws -> [String: PostgresArrayTypeInfo] {
+        let result = try await execute(query: PostgreSQLSchemaQueries.arrayTypeQuery(schema: schema, table: table))
         var map: [String: PostgresArrayTypeInfo] = [:]
         for row in result.rows {
             guard let schemaName = row[safe: 0]?.asText,
@@ -88,16 +86,19 @@ extension PostgreSQLPluginDriver {
         return map
     }
 
-    fileprivate func fetchTypeCatalog() async throws -> PostgresTypeCatalog {
-        let enumLabels = try await fetchEnumLabelMap()
-        let arrayTypes = try await fetchArrayTypeMap()
+    /// Scoped to the types the read's own columns use, and read fresh each time: a cache would go
+    /// stale on the next `CREATE TYPE`, and the scoped read costs about 0.4 ms for one table.
+    fileprivate func fetchTypeCatalog(schema: String, table: String?) async throws -> PostgresTypeCatalog {
+        let enumLabels = try await fetchEnumLabelMap(schema: schema, table: table)
+        let arrayTypes = try await fetchArrayTypeMap(schema: schema, table: table)
         return PostgresTypeCatalog(enumLabels: enumLabels, arrayTypes: arrayTypes)
     }
 
     fileprivate func mapPgColumnRow(
         _ row: [PluginCellValue],
         tableNameOffset: Int,
-        catalog: PostgresTypeCatalog
+        catalog: PostgresTypeCatalog,
+        columnDDL: [String: PostgreSQLCatalogColumnDDL]
     ) -> PluginColumnInfo? {
         let nameIdx = tableNameOffset
         let typeIdx = tableNameOffset + 1
@@ -111,6 +112,8 @@ extension PostgreSQLPluginDriver {
         let generatedIdx = tableNameOffset + 9
         let udtSchemaIdx = tableNameOffset + 10
         let generationExpressionIdx = tableNameOffset + 11
+        let declaredTypeIdx = tableNameOffset + 12
+        let domainNameIdx = tableNameOffset + 13
 
         guard row.count > typeIdx,
               let name = row[nameIdx].asText,
@@ -127,7 +130,13 @@ extension PostgreSQLPluginDriver {
             arrayTypesByQualifiedName: catalog.arrayTypes
         )
         let allowedValues = resolution.allowedValues
-        let dataType = resolution.dataType
+        let spelling = PostgreSQLColumnTypeSpelling.resolve(
+            declaredType: row.count > declaredTypeIdx ? row[declaredTypeIdx].asText : nil,
+            informationSchemaType: rawDataType,
+            domainName: row.count > domainNameIdx ? row[domainNameIdx].asText : nil,
+            udtSchema: udtSchema,
+            resolved: resolution
+        )
 
         let isNullable = row.count > nullableIdx && row[nullableIdx].asText == "YES"
         let defaultValue = row.count > defaultIdx ? row[defaultIdx].asText : nil
@@ -144,7 +153,7 @@ extension PostgreSQLPluginDriver {
 
         return PluginColumnInfo(
             name: name,
-            dataType: dataType,
+            dataType: spelling.dataType,
             isNullable: isNullable,
             isPrimaryKey: isPk,
             defaultValue: defaultValue,
@@ -156,7 +165,12 @@ extension PostgreSQLPluginDriver {
             allowedValues: allowedValues,
             generationExpression: row.count > generationExpressionIdx
                 ? row[generationExpressionIdx].asText.flatMap { $0.nilIfEmpty } : nil,
-            generationKind: pgGenerationKind(attgenerated)
+            generationKind: pgGenerationKind(attgenerated),
+            ddlSpelling: columnDDL[name]?.typeSpelling,
+            ddlDefault: columnDDL[name]?.defaultExpression,
+            ddlGenerationExpression: columnDDL[name]?.generationExpression,
+            ddlCollation: columnDDL[name]?.collation,
+            classificationTypeName: spelling.classificationTypeName
         )
     }
 

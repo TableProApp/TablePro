@@ -97,26 +97,13 @@ extension MainContentCommandActions {
         let everything = Set(victims.map(\.id))
         guard hasUnsavedWork(among: victims) else { return .close(everything) }
 
-        switch await AlertHelper.confirmSaveChanges(message: unsavedWorkMessage(for: victims), window: closeAnchorWindow) {
+        switch await confirmSaveChanges(unsavedWorkMessage(for: victims), closeAnchorWindow) {
         case .save:
             return .close(await saveVictims(victims))
         case .dontSave:
             return .close(everything)
         case .cancel:
             return .cancel
-        }
-    }
-
-    /// For the paths that close everything whatever the answer: a window closing, a connection
-    /// closing, a disconnect. They have nowhere to leave a tab open, so a save that could not take
-    /// every victim stops them, the way a failed apply of staged ALTERs always did. Answering true
-    /// on a partial save would close exactly the tabs the save refused.
-    func confirmDiscardingUnsavedWork(victims: [QueryTab] = []) async -> Bool {
-        switch await resolveUnsavedWork(in: victims) {
-        case .cancel:
-            return false
-        case .close(let closable):
-            return closable.isSuperset(of: Set(victims.map(\.id)))
         }
     }
 
@@ -150,6 +137,7 @@ extension MainContentCommandActions {
         guard await saveWorkOnScreen(among: victims) else { return [] }
 
         var closable: Set<UUID> = []
+        var files: [(tab: QueryTab, url: URL)] = []
         for victim in victims where !coordinator.isSelectedTab(victim) {
             switch coordinator.savability(of: victim) {
             case .nothingAtRisk:
@@ -161,9 +149,10 @@ extension MainContentCommandActions {
                     closable.insert(victim.id)
                     continue
                 }
-                if await saveFile(of: victim, to: url) { closable.insert(victim.id) }
+                files.append((tab: victim, url: url))
             }
         }
+        closable.formUnion(await saveFiles(files))
         if let selected = coordinator.tabManager.selectedTab, victims.contains(where: { $0.id == selected.id }) {
             closable.insert(selected.id)
         }

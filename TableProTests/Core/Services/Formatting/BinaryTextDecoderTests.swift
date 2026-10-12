@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("BinaryTextDecoder")
 struct BinaryTextDecoderTests {
     @Test("ASCII bytes decode to their text")
     func asciiDecodes() {

@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Explain Variant Format")
 struct ExplainVariantFormatTests {
     @Test("The legacy initializer still compiles and defaults to plain text")
     func legacyInitializerDefaultsToPlainText() {

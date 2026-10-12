@@ -13,10 +13,15 @@ final class OpenAICompatibleProvider: ChatTransport {
     )
 
     private let endpoint: String
+    private let style: AIEndpointStyle
+    private let resolvedEndpoint: AIEndpoint?
     private let apiKey: String?
     private let providerType: AIProviderType
     private let model: String
     private let maxOutputTokens: Int?
+    private let treatsForbiddenAsAuthFailure: Bool
+    private let providerID: UUID?
+    private let catalog: AIModelCatalog
     private let session: URLSession
     private var testConnectionModel: String {
         model.isEmpty ? "test" : model
@@ -28,14 +33,47 @@ final class OpenAICompatibleProvider: ChatTransport {
         providerType: AIProviderType,
         model: String = "",
         maxOutputTokens: Int? = nil,
+        treatsForbiddenAsAuthFailure: Bool = false,
+        providerID: UUID? = nil,
+        catalog: AIModelCatalog = .shared,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
-        self.endpoint = endpoint.normalizedEndpoint()
+        let style = providerType.endpointStyle
+        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.style = style
+        self.resolvedEndpoint = AIEndpoint(endpoint, style: style)
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.providerType = providerType
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
+        self.treatsForbiddenAsAuthFailure = treatsForbiddenAsAuthFailure
+        self.providerID = providerID
+        self.catalog = catalog
         self.session = session
+    }
+
+    convenience init(
+        config: AIProviderConfig,
+        apiKey: String?,
+        session: URLSession = URLSession(configuration: .ephemeral)
+    ) {
+        self.init(
+            endpoint: config.endpoint,
+            apiKey: apiKey,
+            providerType: config.type,
+            model: config.model,
+            maxOutputTokens: config.maxOutputTokens,
+            treatsForbiddenAsAuthFailure: config.preset?.rejectsBadKeyWithForbidden ?? false,
+            providerID: config.id,
+            session: session
+        )
+    }
+
+    private func requestURL(_ resource: String) throws -> URL {
+        guard let url = resolvedEndpoint?.url(appending: resource) else {
+            throw AIProviderError.invalidEndpoint(endpoint)
+        }
+        return url
     }
 
     func streamChat(
@@ -45,6 +83,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         let providerType = self.providerType
         return SSEEventStream.make(
             session: session,
+            treatForbiddenAsAuthFailure: treatsForbiddenAsAuthFailure,
             buildRequest: { [self] in try buildChatCompletionRequest(turns: turns, options: options) },
             decodeLine: { Self.decodeStreamLine($0, providerType: providerType) },
             makeState: { OpenAIStreamState() },
@@ -197,16 +236,8 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        try await fetchModelIDs().map { AIModelInfo(id: $0) }
-    }
-
-    private func fetchModelIDs() async throws -> [String] {
-        switch providerType {
-        case .ollama:
-            return try await fetchOllamaModels()
-        default:
-            return try await fetchOpenAIModels()
-        }
+        guard providerType == .ollama else { return try await fetchOpenAIModels() }
+        return try await fetchOllamaModels().map { AIModelInfo(id: $0) }
     }
 
     func testConnection() async throws -> Bool {
@@ -232,9 +263,7 @@ final class OpenAICompatibleProvider: ChatTransport {
                 )
             }
         default:
-            guard let url = URL(string: endpoint.openAIPath("chat/completions")) else {
-                throw AIProviderError.invalidEndpoint(endpoint)
-            }
+            let url = try requestURL(style.chatResource(model: testConnectionModel))
 
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -261,32 +290,41 @@ final class OpenAICompatibleProvider: ChatTransport {
                 return false
             }
 
-            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? ""
-            let isJSON = contentType.contains("application/json")
-                || (try? JSONSerialization.jsonObject(with: data)) != nil
+            let statusCode = httpResponse.statusCode
 
-            if httpResponse.statusCode == 401 {
+            if statusCode == 401 || (statusCode == 403 && treatsForbiddenAsAuthFailure) {
                 throw AIProviderError.authenticationFailed("")
             }
 
-            if !isJSON {
-                return false
+            if statusCode == 200 || statusCode == 400 {
+                return Self.looksLikeAnAPIResponse(data: data, response: httpResponse)
             }
 
-            return true
+            let errorBody = String(data: data, encoding: .utf8) ?? ""
+            throw AIProviderError.mapHTTPError(
+                statusCode: statusCode,
+                body: errorBody,
+                treatForbiddenAsAuthFailure: treatsForbiddenAsAuthFailure,
+                requestURL: url
+            )
         }
     }
 
-    private func buildChatCompletionRequest(
+    /// A wrong Base URL often lands on a reverse proxy's login page or a single-page app's
+    /// fallback route, both of which answer 200 with HTML that the chat stream cannot read.
+    private static func looksLikeAnAPIResponse(data: Data, response: HTTPURLResponse) -> Bool {
+        let contentType = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+        if contentType.contains("application/json") || contentType.contains("text/event-stream") {
+            return true
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) != nil
+    }
+
+    func buildChatCompletionRequest(
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
-        let urlString = providerType == .ollama
-            ? "\(endpoint)/api/chat"
-            : endpoint.openAIPath("chat/completions")
-        guard let url = URL(string: urlString) else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(style.chatResource(model: options.model))
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -315,11 +353,21 @@ final class OpenAICompatibleProvider: ChatTransport {
 
         let resolvedMaxTokens = options.maxOutputTokens ?? maxOutputTokens
         if let resolvedMaxTokens {
-            body["max_tokens"] = resolvedMaxTokens
+            /// Ollama's native route reads the limit from `options` and ignores a top-level
+            /// `max_tokens`.
+            if providerType == .ollama {
+                body["options"] = ["num_predict": resolvedMaxTokens]
+            } else {
+                body["max_tokens"] = resolvedMaxTokens
+            }
         }
 
         if providerType != .ollama {
             body["stream_options"] = ["include_usage": true]
+        }
+
+        if let effort = options.reasoningEffort, acceptsReasoningEffort(model: options.model) {
+            body["reasoning_effort"] = effort.openAIWireValue
         }
 
         if !options.tools.isEmpty {
@@ -328,6 +376,16 @@ final class OpenAICompatibleProvider: ChatTransport {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
+    }
+
+    /// The effort is withheld only from a model its own server lists as non-reasoning. A server
+    /// that says nothing about its models is taken at the user's word.
+    private func acceptsReasoningEffort(model: String) -> Bool {
+        guard providerType != .ollama else { return false }
+        guard let reasoning = catalog.fetchedInfo(providerID: providerID, modelID: model)?.reasoning else {
+            return true
+        }
+        return reasoning.sendsEffortParameter
     }
 
     func encodeTurn(_ turn: ChatTurnWire) -> [[String: Any]] {
@@ -393,6 +451,10 @@ final class OpenAICompatibleProvider: ChatTransport {
             return messages
         }
 
+        if turn.role == .user, !imageBlocks.isEmpty, providerType == .ollama {
+            return ollamaImageMessage(text: textContent, images: imageBlocks)
+        }
+
         if turn.role == .user, !imageBlocks.isEmpty {
             var parts: [[String: Any]] = []
             if !textContent.isEmpty {
@@ -433,6 +495,18 @@ final class OpenAICompatibleProvider: ChatTransport {
         }.joined()
     }
 
+    /// Ollama's native route takes a string `content` with the images beside it as base64. It
+    /// rejects the content-part array the OpenAI wire format uses.
+    private func ollamaImageMessage(text: String, images: [ChatImageInput]) -> [[String: Any]] {
+        let payloads = images.compactMap { $0.base64Payload() }
+        guard !text.isEmpty || !payloads.isEmpty else { return [] }
+        var message: [String: Any] = ["role": "user", "content": text]
+        if !payloads.isEmpty {
+            message["images"] = payloads
+        }
+        return [message]
+    }
+
     private func chatCompletionsImagePart(_ input: ChatImageInput) -> [String: Any]? {
         guard let url = input.imageURLString() else { return nil }
         return [
@@ -456,10 +530,8 @@ final class OpenAICompatibleProvider: ChatTransport {
         ]
     }
 
-    private func fetchOpenAIModels() async throws -> [String] {
-        guard let url = URL(string: endpoint.openAIPath("models")) else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+    private func fetchOpenAIModels() async throws -> [AIModelInfo] {
+        let url = try requestURL(style.modelsResource)
 
         var request = URLRequest(url: url)
         request.timeoutInterval = AIProvider.modelListTimeout
@@ -475,30 +547,45 @@ final class OpenAICompatibleProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("OpenAI-compatible model fetch failed: \(error.localizedDescription, privacy: .public)")
-            throw AIProviderError.networkError("Failed to fetch models")
+            Self.logger.warning("OpenAI-compatible model fetch failed: \(error.publicLogShape, privacy: .public)")
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
         }
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200
-        else {
-            throw AIProviderError.networkError("Failed to fetch models")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data)
-                  as? [String: Any],
-              let modelsArray = json["data"] as? [[String: Any]]
-        else {
-            return []
+        guard httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIProviderError.mapHTTPError(
+                statusCode: httpResponse.statusCode,
+                body: body,
+                treatForbiddenAsAuthFailure: treatsForbiddenAsAuthFailure,
+                requestURL: url
+            )
         }
 
-        return modelsArray.compactMap { $0["id"] as? String }.sorted()
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
+        }
+
+        guard let modelsArray = json["data"] as? [[String: Any]] else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
+        }
+
+        return modelsArray.compactMap(Self.decodeModel(_:)).sorted { $0.id < $1.id }
     }
 
     private func fetchOllamaModels() async throws -> [String] {
-        guard let url = URL(string: "\(endpoint)/api/tags") else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
+        let url = try requestURL(style.modelsResource)
 
         var request = URLRequest(url: url)
         request.timeoutInterval = AIProvider.modelListTimeout
@@ -507,7 +594,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("Ollama model fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Ollama model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError(
                 String(format: String(localized: "Failed to fetch models from %@"), endpoint)
             )
@@ -522,11 +609,16 @@ final class OpenAICompatibleProvider: ChatTransport {
             )
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data)
-                  as? [String: Any],
-              let models = json["models"] as? [[String: Any]]
-        else {
-            return []
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
+        }
+
+        guard let models = json["models"] as? [[String: Any]] else {
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@"), url.absoluteString)
+            )
         }
 
         return models.compactMap { $0["name"] as? String }.sorted()

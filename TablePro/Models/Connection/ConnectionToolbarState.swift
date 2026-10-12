@@ -6,7 +6,7 @@
 //
 
 import AppKit
-import Observation
+import Combine
 import SwiftUI
 import TableProPluginKit
 
@@ -45,25 +45,29 @@ enum ToolbarConnectionState: Equatable {
 /// Whether anything is running is NOT here. That is derived from `TabExecutionRegistry`, which is
 /// the only thing that knows, and a stored copy of it on this object is what let the titlebar
 /// report a query that had already ended (#2342). Do not reintroduce one.
-@Observable
 @MainActor
-final class ConnectionToolbarState {
+final class ConnectionToolbarState: ObservableObject {
     // MARK: - Connection Info
 
     /// Database type (MySQL, MariaDB, PostgreSQL, SQLite)
-    var databaseType: DatabaseType = .mysql
+    @Published var databaseType: DatabaseType = .mysql
+
+    /// Held here because the coordinator's `connection` is fixed at connect, and the toolbar item
+    /// has to follow a rename or a new icon while the window stays open.
+    @Published var connectionName: String = ""
+    @Published var iconName: String?
 
     /// Active database (always meaningful). For schema-grouped engines like SQL Server,
     /// this is the SQL Server database (e.g. "Sales"); the active schema lives in
     /// `currentSchema`, and the toolbar shows both.
-    var currentDatabase: String = ""
+    @Published var currentDatabase: String = ""
 
     /// Active schema for engines that browse one schema at a time. Nil for `.byDatabase` and
     /// `.flat` engines, where the database is the only unit, and until the schema resolves.
-    var currentSchema: String?
+    @Published var currentSchema: String?
 
     /// Current connection state
-    var connectionState: ToolbarConnectionState = .disconnected
+    @Published var connectionState: ToolbarConnectionState = .disconnected
 
     // MARK: - Query Execution
 
@@ -76,7 +80,7 @@ final class ConnectionToolbarState {
     /// One entry per tab, not one slot. A single slot meant any tab finishing a query erased the
     /// duration another tab was still showing, because the reader asks per tab and a slot tagged
     /// with someone else answers nil.
-    private(set) var queryTimings: [UUID: PluginQueryTiming] = [:]
+    @Published private(set) var queryTimings: [UUID: PluginQueryTiming] = [:]
 
     /// The one writer, so a duration and the tab that produced it cannot drift apart.
     func recordQueryTiming(_ timing: PluginQueryTiming?, for tabId: UUID?) {
@@ -102,35 +106,44 @@ final class ConnectionToolbarState {
     // MARK: - Future Expansion
 
     /// Safe mode level for this connection
-    var safeModeLevel: SafeModeLevel = .silent
+    @Published var safeModeLevel: SafeModeLevel = .silent
 
     var isReadOnly: Bool { safeModeLevel == .readOnly }
 
     /// Whether the current tab is a table tab (enables filter/sort actions)
-    var isTableTab: Bool = false
+    @Published var isTableTab: Bool = false
 
     /// Whether the results panel is collapsed
-    var isResultsCollapsed: Bool = false
+    @Published var isResultsCollapsed: Bool = false
 
     /// Whether there are pending changes (data grid or file)
-    var hasPendingChanges: Bool = false
+    @Published var hasPendingChanges: Bool = false
+
+    /// What the commit would commit, which is what decides the verb it says. `hasPendingChanges`
+    /// stays as the answer to "is anything staged" that its thirty-odd readers already ask; this is
+    /// the same question answered with the kind attached, written by the same one function.
+    @Published var pendingChange: PendingChangeKind?
 
     /// Whether there are pending data grid changes (for SQL preview button)
-    var hasDataPendingChanges: Bool = false
+    @Published var hasDataPendingChanges: Bool = false
 
     /// Whether the structure view has pending schema changes
-    var hasStructureChanges: Bool = false
+    @Published var hasStructureChanges: Bool = false
 
     /// Whether the Create Table tab has a committable definition (name + valid column)
-    var hasCreateTablePending: Bool = false
+    @Published var hasCreateTablePending: Bool = false
 
-    var hasPrincipalChanges: Bool = false
+    @Published var hasPrincipalChanges: Bool = false
 
     /// Whether the current editor has non-empty query text
-    var hasQueryText: Bool = false
+    @Published var hasQueryText: Bool = false
+
+    /// Whether the selected tab is a query tab. `isTableTab` cannot answer this: a structure,
+    /// dashboard or diagram tab is neither, and the Run item has to be disabled on all of them.
+    var isQueryTab: Bool = false
 
     /// SQL statements rendered in the SQL preview sheet
-    var previewStatements: [String] = []
+    @Published var previewStatements: [String] = []
 
     // MARK: - Initialization
 
@@ -151,6 +164,8 @@ final class ConnectionToolbarState {
     /// touched nothing it displays.
     func update(from connection: DatabaseConnection) {
         if databaseType != connection.type { databaseType = connection.type }
+        if connectionName != connection.name { connectionName = connection.name }
+        if iconName != connection.iconName { iconName = connection.iconName }
 
         syncFromSession(for: connection)
     }
@@ -197,6 +212,8 @@ final class ConnectionToolbarState {
     /// Reset to default disconnected state
     func reset() {
         databaseType = .mysql
+        connectionName = ""
+        iconName = nil
         currentDatabase = ""
         currentSchema = nil
         connectionState = .disconnected

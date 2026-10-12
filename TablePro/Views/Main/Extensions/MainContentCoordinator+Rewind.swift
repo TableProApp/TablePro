@@ -146,7 +146,7 @@ extension MainContentCoordinator {
             rewindPlan = plan
             activeSheet = .rewind
         } catch {
-            Self.rewindLogger.error("Could not plan a rewind: \(error.localizedDescription, privacy: .public)")
+            Self.rewindLogger.error("Could not plan a rewind: \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(localized: "Could Not Prepare the Restore"),
                 message: error.localizedDescription,
@@ -163,7 +163,7 @@ extension MainContentCoordinator {
             Self.rewindLogger.info("Rewind restored \(result.restoredRows, privacy: .public) rows")
             rewindPlan = nil
             if tabManager.selectedTab?.tableContext.tableName == plan.record.target.table {
-                runQuery()
+                reloadActiveResult()
             }
         } catch {
             let writeError = error as? DataWriteError
@@ -187,8 +187,10 @@ extension MainContentCoordinator {
             columns: operation?.columns ?? [],
             primaryKeyColumns: operation?.primaryKeyColumns ?? [],
             generatedColumns: Set(record.generatedColumns),
+            columnTypeNames: record.columnTypeNames ?? [:],
             databaseType: record.databaseType,
-            pluginDriver: changeManager.pluginDriver
+            pluginDriver: changeManager.pluginDriver,
+            identityColumns: record.identityColumns.map(Set.init)
         )
     }
 }

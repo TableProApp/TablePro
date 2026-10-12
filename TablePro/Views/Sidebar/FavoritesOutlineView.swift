@@ -15,12 +15,13 @@ internal struct FavoritesOutlineInput {
     internal let databaseEntityName: String
     internal let databaseEntityNamePlural: String
     internal let isNarrowingDatabases: Bool
-    internal let tables: [TableInfo]
+    internal let tables: [FavoriteTableRow]
     internal let queryNodes: [FavoriteNode]
     internal let teamQueries: [FavoritesOutlineTeamQuery]
     internal let renamingFolderId: UUID?
     internal let allFolders: [SQLFavoriteFolder]
     internal let teamLibraryAvailable: Bool
+    internal var linkedFileGitStates: [UUID: LinkedFileGitState] = [:]
 }
 
 internal struct FavoritesOutlineTeamQuery {

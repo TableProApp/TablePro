@@ -2,7 +2,7 @@
 //  CockroachRelationSQL.swift
 //  PostgreSQLDriverPlugin
 //
-//  CockroachDB's SHOW statements for one relation. Pure, so it is testable without a server.
+//  CockroachDB catalog statements. Pure, so they are testable without a server.
 //
 
 import Foundation
@@ -27,5 +27,11 @@ public enum CockroachRelationSQL {
 
     public static func showIndexes(table: String, schema: String) -> String {
         "SHOW INDEXES FROM \(PostgreSQLObjectQueries.qualifiedName(schema: schema, name: table))"
+    }
+
+    /// The key subquery pairs a constraint with its own table: CockroachDB names constraints per
+    /// table, so pairing on name and schema alone joined every table's `primary` to every other's.
+    static func columnsQuery(schema: String, table: String?) -> String {
+        ColumnQueryShape.informationSchemaColumnsQuery(schema: schema, table: table)
     }
 }

@@ -1,27 +1,32 @@
 import Foundation
 
 internal enum GoogleRefreshTokenGrant {
-    static func request(client: GoogleOAuthClient, refreshToken: String) -> URLRequest {
-        GoogleTokenEndpoint.formRequest(
-            url: GoogleOAuthClient.tokenEndpoint,
-            fields: [
-                (name: "grant_type", value: "refresh_token"),
-                (name: "client_id", value: client.clientId),
-                (name: "client_secret", value: client.clientSecret),
-                (name: "refresh_token", value: refreshToken)
-            ]
-        )
+    /// Without `scopes` the token carries every scope the login granted, which for a gcloud login
+    /// includes `cloud-platform`. With them Google narrows the token, and refuses with
+    /// `invalid_scope` a scope the login never granted.
+    static func request(client: GoogleOAuthClient, refreshToken: String, scopes: [String] = []) -> URLRequest {
+        var fields = [
+            (name: "grant_type", value: "refresh_token"),
+            (name: "client_id", value: client.clientId),
+            (name: "client_secret", value: client.clientSecret),
+            (name: "refresh_token", value: refreshToken)
+        ]
+        if !scopes.isEmpty {
+            fields.append((name: "scope", value: scopes.joined(separator: " ")))
+        }
+        return GoogleTokenEndpoint.formRequest(url: GoogleOAuthClient.tokenEndpoint, fields: fields)
     }
 }
 
 internal struct GoogleAuthorizedUserTokenSource: GoogleAccessTokenSource {
     let client: GoogleOAuthClient
     let refreshToken: String
+    var scopes: [String] = []
     let http: any GoogleHTTPClient
     let now: GoogleClock
 
     func fetchAccessToken() async throws -> GoogleAccessToken {
-        let request = GoogleRefreshTokenGrant.request(client: client, refreshToken: refreshToken)
+        let request = GoogleRefreshTokenGrant.request(client: client, refreshToken: refreshToken, scopes: scopes)
         let response = try await GoogleTokenEndpoint.requestToken(request, http: http, now: now)
         return GoogleAccessToken(value: response.accessToken, expiresAt: response.expiresAt)
     }

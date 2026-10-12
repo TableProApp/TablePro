@@ -10,7 +10,7 @@ import Testing
 struct FieldLevelMergeTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 
-    private func makeConnection(name: String = "Production", port: Int = 5432) -> DatabaseConnection {
+    private func makeConnection(name: String = "Production", port: Int = 5_432) -> DatabaseConnection {
         DatabaseConnection(
             id: UUID(),
             name: name,
@@ -46,7 +46,7 @@ struct FieldLevelMergeTests {
     @Test("An equal value is recognised so the field is left untouched")
     func equalValuesAreRecognised() {
         #expect(CKRecord.isEqualRecordValue("Production" as CKRecordValue, "Production" as CKRecordValue))
-        #expect(CKRecord.isEqualRecordValue(Int64(5432) as CKRecordValue, Int64(5432) as CKRecordValue))
+        #expect(CKRecord.isEqualRecordValue(Int64(5_432) as CKRecordValue, Int64(5_432) as CKRecordValue))
         #expect(CKRecord.isEqualRecordValue(nil, nil))
         #expect(CKRecord.isEqualRecordValue(
             ["a", "b"] as CKRecordValue,
@@ -61,7 +61,7 @@ struct FieldLevelMergeTests {
     @Test("A differing value is recognised so the field is rewritten")
     func differingValuesAreRecognised() {
         #expect(CKRecord.isEqualRecordValue("Production" as CKRecordValue, "Staging" as CKRecordValue) == false)
-        #expect(CKRecord.isEqualRecordValue(Int64(5432) as CKRecordValue, Int64(6543) as CKRecordValue) == false)
+        #expect(CKRecord.isEqualRecordValue(Int64(5_432) as CKRecordValue, Int64(6_543) as CKRecordValue) == false)
         #expect(CKRecord.isEqualRecordValue(nil, "Production" as CKRecordValue) == false)
         #expect(CKRecord.isEqualRecordValue("Production" as CKRecordValue, nil) == false)
         #expect(CKRecord.isEqualRecordValue(
@@ -85,6 +85,69 @@ struct FieldLevelMergeTests {
         #expect(serverRecord.fields(ConnectionSyncField.self)[.groupId] == nil)
     }
 
+    @Test("A field with no value is left out of the push by default")
+    func anAbsentValueIsNotNamedByDefault() {
+        let record = CKRecord(
+            recordType: "Connection",
+            recordID: CKRecord.ID(recordName: "Connection_A", zoneID: zoneID)
+        )
+
+        record.fields(ConnectionSyncField.self)[.groupId] = nil
+
+        #expect(record.changedKeys().contains("groupId") == false)
+        #expect(record.allKeys().contains("groupId") == false)
+    }
+
+    /// Issue #3045. Under `.changedKeys` the server keeps any key the push does not name, so a
+    /// mapper that builds the whole record from the local model has to name the empty ones too or
+    /// a field the user cleared is never cleared anywhere else. Measured on the macOS 27 SDK:
+    /// naming it puts it in `changedKeys()` and leaves it out of `allKeys()`.
+    @Test("A field with no value is named when the record is the whole truth")
+    func anAbsentValueIsNamedWhenClearing() {
+        let record = CKRecord(
+            recordType: "Connection",
+            recordID: CKRecord.ID(recordName: "Connection_A", zoneID: zoneID)
+        )
+
+        record.fields(ConnectionSyncField.self, absentValues: .clear)[.groupId] = nil
+
+        #expect(record.changedKeys().contains("groupId"))
+        #expect(record.allKeys().contains("groupId") == false)
+    }
+
+    @Test("Clearing an absent value still writes the fields that hold one")
+    func clearingAbsentValuesKeepsRealOnes() {
+        let record = CKRecord(
+            recordType: "Connection",
+            recordID: CKRecord.ID(recordName: "Connection_A", zoneID: zoneID)
+        )
+
+        let fields = record.fields(ConnectionSyncField.self, absentValues: .clear)
+        fields[.name] = "Production"
+        fields[.groupId] = nil
+
+        #expect(record["name"] as? String == "Production")
+        #expect(record.allKeys().contains("name"))
+    }
+
+    /// The production-schema gate outranks the clear. A field that is not deployed must stay out of
+    /// the push whichever answer the record wants for its empty fields, or naming it would have
+    /// CloudKit reject the whole record.
+    @Test("An unverified field is refused even when absent values are cleared")
+    func anUnverifiedFieldIsStillRefused() {
+        let record = CKRecord(
+            recordType: "Probe",
+            recordID: CKRecord.ID(recordName: "Probe_A", zoneID: zoneID)
+        )
+
+        let fields = record.fields(ProbeSyncField.self, absentValues: .clear)
+        fields[.undeployed] = nil
+        fields[.deployed] = nil
+
+        #expect(record.changedKeys().contains("undeployed") == false)
+        #expect(record.changedKeys().contains("deployed"))
+    }
+
     @Test("Clearing a field that had a value removes it")
     func clearingAPopulatedFieldRemovesIt() throws {
         var connection = makeConnection()
@@ -95,6 +158,79 @@ struct FieldLevelMergeTests {
         SyncRecordMapper.updateRecord(serverRecord, with: connection)
 
         #expect(serverRecord.fields(ConnectionSyncField.self)[.groupId] == nil)
+    }
+
+    private func macServerRecord(safeModeLevel macLevel: String) throws -> CKRecord {
+        let record = SyncRecordMapper.toRecord(makeConnection(), zoneID: zoneID)
+        record["safeModeLevel"] = macLevel as CKRecordValue
+        return try roundTripped(record)
+    }
+
+    @Test(
+        "A rename keeps a Safe Mode level the Mac set and this platform cannot name",
+        arguments: ["silent", "alert", "alertFull", "safeMode", "safeModeFull"]
+    )
+    func renameKeepsMacSafeModeLevel(_ macLevel: String) throws {
+        let serverRecord = try macServerRecord(safeModeLevel: macLevel)
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.name = "Renamed"
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == macLevel)
+        #expect(serverRecord["name"] as? String == "Renamed")
+    }
+
+    @Test(
+        "A reorder keeps a Safe Mode level the Mac set and this platform cannot name",
+        arguments: ["alert", "alertFull", "safeMode", "safeModeFull"]
+    )
+    func reorderKeepsMacSafeModeLevel(_ macLevel: String) throws {
+        let serverRecord = try macServerRecord(safeModeLevel: macLevel)
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.sortOrder = 7
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == macLevel)
+    }
+
+    @Test(
+        "Changing the Safe Mode level on this platform replaces the Mac's level",
+        arguments: ["alert", "alertFull", "safeMode", "safeModeFull"]
+    )
+    func changedSafeModeLevelReplacesMacLevel(_ macLevel: String) throws {
+        let serverRecord = try macServerRecord(safeModeLevel: macLevel)
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.safeModeLevel = .off
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == "off")
+        #expect(SyncRecordMapper.toConnection(serverRecord)?.safeModeLevel == .off)
+    }
+
+    @Test("Raising the level to Read-Only replaces a Mac confirmation level")
+    func readOnlyReplacesMacConfirmationLevel() throws {
+        let serverRecord = try macServerRecord(safeModeLevel: "safeModeFull")
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.safeModeLevel = .readOnly
+        connection.isReadOnly = true
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == "readOnly")
+    }
+
+    @Test("Raising the level from the Mac's Silent replaces it")
+    func raisingFromSilentReplacesMacLevel() throws {
+        let serverRecord = try macServerRecord(safeModeLevel: "silent")
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.safeModeLevel = .confirmWrites
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == "confirmWrites")
     }
 }
 
@@ -173,10 +309,52 @@ struct SyncRecordCacheTests {
         #expect(defaults.object(forKey: "recordCache") == nil, "The oversized key must be released")
     }
 
+    @Test("Removing everything forgets every record, and storing works again afterwards")
+    func removeAllForgetsEveryRecord() throws {
+        let cache = try makeCache()
+        let first = makeRecord("Connection_A")
+        let second = makeRecord("Connection_B")
+        cache.store([first, second])
+
+        cache.removeAll()
+
+        #expect(cache.record(for: first.recordID) == nil)
+        #expect(cache.record(for: second.recordID) == nil)
+        cache.store([first])
+        #expect(cache.record(for: first.recordID)?["name"] as? String == "Production")
+    }
+
+    @Test("Removing everything drops a legacy UserDefaults cache, and a later read never brings it back")
+    func removeAllDropsLegacyCache() throws {
+        let suite = "com.TablePro.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let record = makeRecord("Connection_Legacy")
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: record, requiringSecureCoding: true)
+        defaults.set(["Connection_Legacy": archived], forKey: "recordCache")
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SyncRecordCacheTests/\(UUID().uuidString)", isDirectory: true)
+        let cache = SyncRecordCache(directory: directory, defaults: defaults, storageKey: "recordCache")
+
+        cache.removeAll()
+
+        #expect(defaults.object(forKey: "recordCache") == nil)
+        #expect(cache.record(for: record.recordID) == nil)
+    }
+
     @Test("An unknown record is absent")
     func unknownRecordIsAbsent() throws {
         let cache = try makeCache()
 
         #expect(cache.record(for: CKRecord.ID(recordName: "Connection_Z", zoneID: zoneID)) == nil)
     }
+}
+
+/// A schema with one deployed field and one that is not, so the gate can be tested against both
+/// without waiting for a real type to be mid-deployment.
+private enum ProbeSyncField: String, SyncSchemaField {
+    case deployed
+    case undeployed
+
+    static let verifiedInProduction: Set<Self> = [.deployed]
 }

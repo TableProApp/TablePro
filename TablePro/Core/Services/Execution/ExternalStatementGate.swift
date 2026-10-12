@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal enum ExternalStatementGateError: LocalizedError, Equatable {
     case denied(String)
@@ -33,6 +34,7 @@ internal enum ExternalStatementGate {
         internal let connectionId: UUID
         internal let databaseType: DatabaseType
         internal let externalAccess: ExternalAccessLevel
+        internal let loadsExtensions: Bool
         internal let allowsDestructive: Bool
         internal let allowsMultiStatement: Bool
         /// What this transport offers instead, appended to the destructive refusal. MCP has a tool
@@ -44,6 +46,7 @@ internal enum ExternalStatementGate {
             connectionId: UUID,
             databaseType: DatabaseType,
             externalAccess: ExternalAccessLevel,
+            loadsExtensions: Bool,
             allowsDestructive: Bool,
             allowsMultiStatement: Bool = false,
             destructiveAlternative: String? = nil
@@ -52,6 +55,7 @@ internal enum ExternalStatementGate {
             self.connectionId = connectionId
             self.databaseType = databaseType
             self.externalAccess = externalAccess
+            self.loadsExtensions = loadsExtensions
             self.allowsDestructive = allowsDestructive
             self.allowsMultiStatement = allowsMultiStatement
             self.destructiveAlternative = destructiveAlternative
@@ -72,6 +76,14 @@ internal enum ExternalStatementGate {
                     """
                 )
             )
+        }
+
+        if let refusal = extensionCallRefusal(
+            sql: statement.sql,
+            databaseType: statement.databaseType,
+            loadsExtensions: statement.loadsExtensions
+        ) {
+            throw ExternalStatementGateError.denied(refusal)
         }
 
         if !statement.allowsMultiStatement,
@@ -97,6 +109,44 @@ internal enum ExternalStatementGate {
         return classification
     }
 
+    /// Whether a caller that takes scripts may send several statements in one call to this engine.
+    ///
+    /// Only where a script is cut into batches at `GO` lines, as on SQL Server. There the server runs whatever one
+    /// request carries as one batch whether or not its statements end in `;`, and a local variable exists only inside
+    /// the batch that declares it, so one statement per call is neither enforceable nor useful. Every other engine
+    /// keeps one statement per call.
+    internal static func acceptsScripts(on databaseType: DatabaseType) -> Bool {
+        databaseType.lexicalGrammar.contains(.batchSeparatorLines)
+    }
+
+    /// `capabilities`, plus leave to run several statements in one call where the engine takes scripts.
+    ///
+    /// The execution gate refuses a text of several statements to a caller without that leave, before Safe Mode is
+    /// asked anything, so a caller that lets a script past `classify` has to claim it there as well.
+    internal static func capabilities(
+        _ capabilities: CallerCapabilities,
+        takingScriptsOn databaseType: DatabaseType
+    ) -> CallerCapabilities {
+        guard acceptsScripts(on: databaseType) else { return capabilities }
+        return capabilities.union(.mayRunMultiStatement)
+    }
+
+    /// A loaded SQLite extension can add functions that write files or run a nested statement, and
+    /// the classifier reads `SELECT BlobToFile(...)` as a read. So on a connection that loads
+    /// extensions, a statement from outside the app may call only what SQLite itself provides. Nil
+    /// when the statement may go ahead.
+    internal static func extensionCallRefusal(sql: String, databaseType: DatabaseType, loadsExtensions: Bool) -> String? {
+        guard loadsExtensions,
+              !SQLiteExtensionCallScanner.callsOnlyBuiltins(sql, readings: databaseType.lexicalReadings)
+        else { return nil }
+        return String(
+            localized: """
+            This connection loads SQLite extensions, and their functions can read and write files. \
+            A statement from outside TablePro can call only the functions built into SQLite. Run this one in TablePro instead.
+            """
+        )
+    }
+
     /// Safe Mode, and the confirmation or biometric prompt it asks for.
     internal static func authorizeExecution(
         sql: String,
@@ -118,7 +168,7 @@ internal enum ExternalStatementGate {
                 operationDescription: operationDescription
             )
         )
-        if case .denied(let reason) = decision {
+        if case .denied(let reason, _) = decision {
             throw ExternalStatementGateError.denied(reason)
         }
     }

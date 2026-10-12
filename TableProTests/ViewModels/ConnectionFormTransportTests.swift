@@ -14,7 +14,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Connection form transport")
 struct ConnectionFormTransportTests {
     private func coordinator(type: DatabaseType = .mysql) -> ConnectionFormCoordinator {
         let coordinator = ConnectionFormCoordinator(connectionId: nil)
@@ -161,6 +160,26 @@ struct ConnectionFormTransportTests {
         }
     }
 
+    @Test("Weaviate offers the SSH tunnel and every other transport that forwards a port")
+    func weaviateOffersPortForwards() {
+        let available = coordinator(type: .weaviate).availableTransports
+        #expect(available == [nil, .ssh, .cloudflare, .socksProxy, .tunnelCommand])
+    }
+
+    /// The built-in entry of a registry type is what the form reads until its plugin is installed,
+    /// and BigQuery or DuckDB offered Cloudflare Tunnel from it with nothing to forward to.
+    @Test("a type with no port forward and no remote file connects directly only")
+    func typeWithoutPortForwardIsDirectOnly() {
+        let manager = PluginManager.shared
+        for type in DatabaseType.allKnownTypes
+        where !manager.supportsSSH(for: type) && !manager.supportsRemoteDatabaseFile(for: type) {
+            #expect(
+                coordinator(type: type).availableTransports == [nil],
+                "\(type.rawValue) offers a transport it has no port to forward through"
+            )
+        }
+    }
+
     @Test("changing the database type returns the connection to direct")
     func typeChangeResetsTransport() {
         let coordinator = coordinator()
@@ -243,14 +262,14 @@ struct ConnectionFormTransportTests {
     @Test("a driver with no SSL section cannot be blocked by an SSL rule")
     func sslIssuesAreSilentWhereThereIsNoSSLSection() {
         let coordinator = coordinator(type: .sqlite)
-        coordinator.ssl.mode = .verifyCa
+        coordinator.ssl.select(.verifyCa)
         coordinator.ssl.caCertPath = ""
 
         #expect(!coordinator.supportsSSL)
         #expect(coordinator.ssl.validationIssues.isEmpty)
 
         let networked = self.coordinator()
-        networked.ssl.mode = .verifyCa
+        networked.ssl.select(.verifyCa)
         networked.ssl.caCertPath = ""
         #expect(networked.supportsSSL)
         #expect(!networked.ssl.validationIssues.isEmpty, "A driver that shows the field still requires it")
@@ -270,6 +289,98 @@ struct ConnectionFormTransportTests {
         #expect(coordinator.transport == .ssh)
         #expect(enabledFlags(coordinator) == [.ssh])
         #expect(coordinator.ssh.state.host == "bastion.example.com")
+    }
+
+    @Test("choosing Socket clears the transport and leaves only Direct")
+    func socketClearsTheTransport() {
+        let coordinator = coordinator()
+        coordinator.transport = .ssh
+        coordinator.ssh.state.host = "bastion.example.com"
+
+        coordinator.selectEndpoint(.localSocket)
+
+        #expect(coordinator.transport == nil)
+        #expect(enabledFlags(coordinator).isEmpty)
+        #expect(coordinator.availableTransports == [nil])
+        #expect(coordinator.visibleTabs.contains(.network), "SSL Mode still applies over a socket")
+        #expect(coordinator.ssh.state.host == "bastion.example.com", "The server itself is kept")
+    }
+
+    @Test("going back to Host and Port offers the transports again")
+    func hostAndPortRestoresTransports() {
+        let coordinator = coordinator()
+        let offered = coordinator.availableTransports
+
+        coordinator.selectEndpoint(.localSocket)
+        coordinator.selectEndpoint(.hostAndPort)
+
+        #expect(coordinator.availableTransports == offered)
+        #expect(offered.contains(.ssh))
+    }
+
+    @Test("choosing an endpoint clears a passing test result")
+    func endpointInvalidatesTestResult() {
+        let coordinator = coordinator()
+        coordinator.testSucceeded = true
+        coordinator.selectEndpoint(.localSocket)
+        #expect(!coordinator.testSucceeded)
+    }
+
+    @Test("a stored socket under an SSH tunnel loads as Host and Port and keeps the tunnel")
+    func storedSocketUnderSSHKeepsTheTunnel() {
+        var stored = DatabaseConnection(name: "Mixed", host: "db.internal", port: 3_306, type: .mysql)
+        stored.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/mysql.sock"
+        stored.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "bastion.example.com"))
+
+        let coordinator = coordinator()
+        coordinator.network.load(from: stored)
+        coordinator.ssh.state.enabled = true
+        coordinator.normalizeTransport()
+
+        #expect(coordinator.network.endpoint == .hostAndPort)
+        #expect(coordinator.transport == .ssh)
+        #expect(coordinator.buildEdits().additionalFields[MySQLLocalSocket.fieldKey] == nil)
+    }
+
+    @Test("a URL pasted onto a Socket form returns it to Host and Port with the URL's SSH server")
+    func urlImportLeavesSocketMode() throws {
+        let candidate = try #require(ClipboardConnectionCandidate(
+            clipboardText: "mysql+ssh://deploy@bastion.example.com:22/dbuser@db.internal:3306/app"
+        ))
+        let coordinator = coordinator()
+        coordinator.start()
+        coordinator.selectEndpoint(.localSocket)
+
+        coordinator.applyClipboardCandidate(candidate)
+
+        #expect(coordinator.network.endpoint == .hostAndPort)
+        #expect(coordinator.transport == .ssh)
+        #expect(coordinator.ssh.state.host == "bastion.example.com")
+    }
+
+    @Test("a socket connection saves its path and no transport")
+    func socketEditsCarryThePath() {
+        let coordinator = coordinator()
+        coordinator.network.name = "Local"
+        coordinator.selectEndpoint(.localSocket)
+        coordinator.network.localSocketPath = "/tmp/mysql.sock"
+
+        let edits = coordinator.buildEdits()
+
+        #expect(edits.additionalFields[MySQLLocalSocket.fieldKey] == "/tmp/mysql.sock")
+        #expect(edits.ownedAdditionalFieldIDs.contains(MySQLLocalSocket.fieldKey))
+        #expect(edits.applied(to: DatabaseConnection(name: "")).localSocketPath == "/tmp/mysql.sock")
+        #expect(coordinator.isFormValid)
+    }
+
+    @Test("an empty socket blocks Save from the General tab")
+    func emptySocketIsClaimedByGeneral() {
+        let coordinator = coordinator()
+        coordinator.network.name = "Local"
+        coordinator.selectEndpoint(.localSocket)
+
+        #expect(!coordinator.isFormValid)
+        #expect(coordinator.firstTabWithIssue == .general)
     }
 
     @Test("every issue that blocks Save is claimed by a visible tab")

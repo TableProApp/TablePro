@@ -9,7 +9,6 @@ import Testing
 @testable import TablePro
 
 /// The one thing that still differs between the three sidebar modes now that they share an outline.
-@Suite("Sidebar root shape")
 struct SidebarRootShapeResolverTests {
     /// Oracle, Snowflake, BigQuery and Trino. They have no database dimension, so the layout
     /// preference cannot apply and the schema shape wins outright.

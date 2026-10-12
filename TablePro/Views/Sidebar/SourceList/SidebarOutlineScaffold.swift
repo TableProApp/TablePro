@@ -17,6 +17,7 @@ internal enum SidebarOutlineScaffold {
         internal let columnIdentifier: String
         internal let allowsMultipleSelection: Bool
         internal let rowSizePreference: SidebarRowSizePreference
+        internal var style: NSTableView.Style = .sourceList
     }
 
     internal static func makeScrollView(
@@ -39,10 +40,12 @@ internal enum SidebarOutlineScaffold {
 
     private static func configure(_ outlineView: NSOutlineView, with configuration: Configuration) {
         outlineView.headerView = nil
-        outlineView.style = .sourceList
+        outlineView.style = configuration.style
         /// `.sourceList` already supplies the row height and the indent per level, and `.default`
         /// is how a table says "the size the user picked in Appearance".
-        outlineView.rowSizeStyle = SidebarRowSizeResolver.rowSizeStyle(for: configuration.rowSizePreference)
+        outlineView.rowSizeStyle = configuration.style == .sourceList
+            ? SidebarRowSizeResolver.rowSizeStyle(for: configuration.rowSizePreference)
+            : .custom
         outlineView.allowsMultipleSelection = configuration.allowsMultipleSelection
         outlineView.allowsEmptySelection = true
         outlineView.floatsGroupRows = false
@@ -63,7 +66,8 @@ internal enum SidebarOutlineScaffold {
         _ preference: SidebarRowSizePreference,
         to scrollView: NSScrollView
     ) {
-        guard let outlineView = scrollView.documentView as? NSOutlineView else { return }
+        guard let outlineView = scrollView.documentView as? NSOutlineView,
+              outlineView.style == .sourceList else { return }
         let style = SidebarRowSizeResolver.rowSizeStyle(for: preference)
         guard outlineView.rowSizeStyle != style else { return }
         outlineView.rowSizeStyle = style

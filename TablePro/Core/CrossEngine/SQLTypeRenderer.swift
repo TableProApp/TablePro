@@ -86,20 +86,55 @@ internal enum SQLTypeRenderer {
     /// crossing to any of them loses 27 of them. Reported as exact, the review step said nothing
     /// and the copy failed part way through the data phase on the first row that needed the digits
     /// the target no longer had.
+    ///
+    /// A scale below zero or above the precision is PostgreSQL's, from 15, and Oracle's.
+    /// `numeric(5,-2)` holds whole hundreds up to 9,999,900 and `numeric(3,5)` fractions under
+    /// 0.01, and MySQL refuses both spellings, with ERROR 1064 and ERROR 1427. So the column takes
+    /// the digits its values have on each side of the point, `DECIMAL(7, 0)` and `DECIMAL(5, 5)`,
+    /// which hold every value and accept more. MySQL also keeps at most 30 digits after the point
+    /// and refuses a larger scale with ERROR 1425, which is what `scaleCeiling` carries.
     internal static func decimalSpelling(
         _ name: String,
         precision: Int?,
         scale: Int?,
-        precisionCeiling: Int
+        precisionCeiling: Int,
+        scaleCeiling: Int? = nil
     ) -> RenderedColumnType {
-        let requested = precision ?? 38
-        let resolved = min(requested, precisionCeiling)
-        let spelling: String
-        if let scale {
-            spelling = "\(name)(\(resolved), \(min(scale, resolved)))"
-        } else {
-            spelling = "\(name)(\(resolved))"
+        guard let requested = precision else {
+            return unconstrainedDecimal(name, precisionCeiling: precisionCeiling)
         }
+        guard let scale else {
+            let resolved = min(requested, precisionCeiling)
+            return precisionCut("\(name)(\(resolved))", resolved: resolved, requested: requested)
+        }
+
+        let integerDigits = max(0, requested - scale)
+        let fractionDigits = max(0, scale)
+        let digits = integerDigits + fractionDigits
+        let keptFraction = min(fractionDigits, scaleCeiling ?? precisionCeiling, precisionCeiling)
+        guard digits <= precisionCeiling else {
+            return precisionCut(
+                "\(name)(\(precisionCeiling), \(keptFraction))", resolved: precisionCeiling, requested: digits
+            )
+        }
+        guard keptFraction == fractionDigits else {
+            return RenderedColumnType(
+                spelling: "\(name)(\(integerDigits + keptFraction), \(keptFraction))",
+                fidelity: .approximated,
+                reason: String(
+                    format: String(
+                        localized: "The column keeps %1$lld of its %2$lld digits after the point, so a longer fraction is rounded."
+                    ),
+                    keptFraction, fractionDigits
+                )
+            )
+        }
+        let spelling = "\(name)(\(digits), \(fractionDigits))"
+        guard scale < 0 || scale > requested else { return RenderedColumnType(spelling: spelling) }
+        return RenderedColumnType(spelling: spelling, fidelity: .widened, reason: widenedTo(spelling))
+    }
+
+    private static func precisionCut(_ spelling: String, resolved: Int, requested: Int) -> RenderedColumnType {
         guard resolved < requested else { return RenderedColumnType(spelling: spelling) }
         return RenderedColumnType(
             spelling: spelling,
@@ -109,6 +144,26 @@ internal enum SQLTypeRenderer {
                     localized: "This engine holds %1$lld digits, not %2$lld, so the extra ones are lost."
                 ),
                 resolved, requested
+            )
+        )
+    }
+
+    /// A decimal with no declared limit, on an engine whose decimals all have one.
+    ///
+    /// The engine's widest, with room for 20 digits before the point so every 64-bit integer fits,
+    /// and at most 30 after it, which is MySQL's ceiling and more than the 20 PostgreSQL's own
+    /// division produces. A narrower guess rounds silently: MariaDB stores `1234.56` in a
+    /// `DECIMAL(38)` as `1235` with only a note, even in strict mode.
+    internal static func unconstrainedDecimal(_ name: String, precisionCeiling: Int) -> RenderedColumnType {
+        let scale = min(30, precisionCeiling - 20)
+        return RenderedColumnType(
+            spelling: "\(name)(\(precisionCeiling), \(scale))",
+            fidelity: .approximated,
+            reason: String(
+                format: String(
+                    localized: "With no precision on the source, the column keeps %1$lld digits, %2$lld after the point. A value with more is rounded or refused."
+                ),
+                precisionCeiling, scale
             )
         )
     }

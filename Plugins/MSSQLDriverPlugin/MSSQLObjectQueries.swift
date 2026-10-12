@@ -13,18 +13,54 @@ public enum MSSQLObjectQueries {
         MSSQLStringLiteral.escaped(value)
     }
 
+    /// `sys.objects.type` for everything that is a routine. The three CLR codes and the extended
+    /// procedure were missing, so a database that has them listed fewer routines than it holds with
+    /// nothing saying so. `AF` is a CLR aggregate, which is called like a function and belongs with
+    /// them.
+    public static let routineObjectTypes = ["P", "PC", "X", "FN", "IF", "TF", "FS", "FT", "AF"]
+
+    private static let procedureObjectTypes: Set<String> = ["P", "PC", "X"]
+
+    /// A CLR routine's body lives in sys.assembly_modules and an extended procedure's lives in a
+    /// DLL, so neither has a sys.sql_modules row. Without this the reader is told the source was
+    /// withheld by permissions, which is a different thing and sends them to the wrong fix.
+    private static let nonSQLObjectTypes: Set<String> = ["PC", "FS", "FT", "AF", "X"]
+
+    public static func routineHasSQLSource(forObjectType type: String) -> Bool {
+        !nonSQLObjectTypes.contains(normalizedObjectType(type))
+    }
+
+    public static func routineLanguage(forObjectType type: String) -> String {
+        let code = normalizedObjectType(type)
+        if code == "X" { return "Extended" }
+        return nonSQLObjectTypes.contains(code) ? "CLR" : "T-SQL"
+    }
+
+    private static func normalizedObjectType(_ type: String) -> String {
+        type.trimmingCharacters(in: .whitespaces).uppercased()
+    }
+
     /// Reads sys.sql_modules, never INFORMATION_SCHEMA.ROUTINES.ROUTINE_DEFINITION. That column is
     /// nvarchar(4000) and silently returns the first 4000 characters of a longer body, which looks
     /// like a routine that ends mid-statement.
+    ///
+    /// The body itself is deliberately not selected. A listing needs a name, a kind and a
+    /// signature; fetching every body to show a row per routine pulls a whole schema's source over
+    /// the wire and drops it, and `routineDefinition` reads the one the reader opens anyway.
+    ///
+    /// This query uses an XML data type method, so it needs the session `MSSQLSessionOptions`
+    /// establishes. Against db-lib's own defaults the server answers `Msg 1934` and the whole list
+    /// comes back empty.
     public static func routineList(schema: String) -> String {
         let schemaLiteral = MSSQLStringLiteral.quoted(schema)
+        let typeList = routineObjectTypes.map { "'\($0)'" }.joined(separator: ", ")
         return """
             SELECT
                 o.name,
                 s.name AS schema_name,
                 o.type,
-                m.definition,
-                CASE WHEN m.definition IS NULL THEN 1 ELSE 0 END AS is_encrypted,
+                OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS is_encrypted,
+                CASE WHEN m.definition IS NULL THEN 1 ELSE 0 END AS definition_withheld,
                 (
                     SELECT STUFF((
                         SELECT ', ' + p.name + ' ' + TYPE_NAME(p.user_type_id)
@@ -43,18 +79,30 @@ public enum MSSQLObjectQueries {
             JOIN sys.schemas s ON s.schema_id = o.schema_id
             LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id
             WHERE s.name = \(schemaLiteral)
-                AND o.type IN ('P', 'FN', 'IF', 'TF')
+                AND o.type IN (\(typeList))
                 AND o.is_ms_shipped = 0
             ORDER BY o.type, o.name
             """
     }
 
+    /// `definition` is NULL for two unrelated reasons, and the second one is the common one:
+    /// `WITH ENCRYPTION`, and a caller without VIEW DEFINITION. Measured on SQL Server 2022, a user
+    /// with only SELECT and EXECUTE still sees the `sys.sql_modules` row, so the row's presence
+    /// cannot tell them apart. `OBJECTPROPERTY(..., 'IsEncrypted')` can, and answers for a
+    /// low-privilege caller too, so it comes back beside the definition and decides which of the
+    /// two the reader is told.
+    ///
+    /// Driven from sys.objects with sys.sql_modules joined on the outside, because a CLR routine
+    /// and an extended procedure have no row there at all. Measured: the inner join this replaced
+    /// returned zero rows for such an object, which the caller read as "no longer exists" for a
+    /// routine sitting in the list in front of the reader. The object type comes back so the caller
+    /// can say the source is not T-SQL rather than guess at a cause.
     public static func routineDefinition(schema: String, name: String) -> String {
         """
-        SELECT m.definition
-        FROM sys.sql_modules m
-        JOIN sys.objects o ON o.object_id = m.object_id
+        SELECT m.definition, OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS is_encrypted, o.type
+        FROM sys.objects o
         JOIN sys.schemas s ON s.schema_id = o.schema_id
+        LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id
         WHERE s.name = \(MSSQLStringLiteral.quoted(schema)) AND o.name = \(MSSQLStringLiteral.quoted(name))
         """
     }
@@ -85,7 +133,9 @@ public enum MSSQLObjectQueries {
             """
     }
 
+    /// `sys.objects.type` is `char(2)`, so a one-letter code arrives padded. Anything unrecognised
+    /// reads as a function, which is what a future routine code is far more likely to be.
     public static func routineKind(forObjectType type: String) -> String {
-        type.trimmingCharacters(in: .whitespaces).uppercased() == "P" ? "PROCEDURE" : "FUNCTION"
+        procedureObjectTypes.contains(normalizedObjectType(type)) ? "PROCEDURE" : "FUNCTION"
     }
 }

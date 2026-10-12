@@ -6,6 +6,7 @@
 import CryptoKit
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Collapses a statement to the shape it was asked in, so `WHERE id = 1` and `WHERE id = 2` count
 /// as one query the user ran twice rather than two they ran once.

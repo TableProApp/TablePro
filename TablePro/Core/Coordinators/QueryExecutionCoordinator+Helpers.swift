@@ -7,6 +7,7 @@ import AppKit
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 private let helpersLogger = Logger(subsystem: "com.TablePro", category: "QueryExecutionCoordinator")
 
@@ -22,7 +23,7 @@ extension QueryExecutionCoordinator {
         guard !SQLLimitDetector.hasExplicitRowLimit(
             sql,
             autoLimitStyle: PluginManager.shared.autoLimitStyle(for: parent.connection.type),
-            lexicalDialect: parent.sqlDialect
+            grammar: parent.lexicalGrammar
         ) else {
             return nil
         }
@@ -41,7 +42,12 @@ extension QueryExecutionCoordinator {
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         QueryExecutor.parseSchemaMetadata(
             schema,
-            rowMatchExcludedTypePrefixes: PluginManager.shared.rowMatchExcludedTypePrefixes(for: parent.connection.type)
+            rowMatchExcludedTypePrefixes: PluginManager.shared.rowMatchExcludedTypePrefixes(
+                for: parent.connection.type
+            ),
+            rowMatchTextTypePrefixes: PluginManager.shared.rowMatchTextTypePrefixes(
+                for: parent.connection.type
+            )
         )
     }
 
@@ -66,8 +72,13 @@ extension QueryExecutionCoordinator {
         return tab.tabType == .table ? .tableBrowse : .editor
     }
 
+    /// Never after the table's definition changed: the keys, defaults, generated columns and row
+    /// match policy the tab holds describe the table before the change, and reusing them builds the
+    /// next edit against the old definition.
     func isMetadataCached(tabId: UUID, tableName: String) -> Bool {
-        guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+        guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              !parent.tabSessionRegistry.needsDefinition(tabId)
+        else {
             return false
         }
         let tab = parent.tabManager.tabs[idx]
@@ -84,7 +95,7 @@ extension QueryExecutionCoordinator {
             && tableRows.foreignKeysFetched
             && enumsReady
         helpersLogger.info(
-            "[fk] cache check table=\(tableName, privacy: .public) defaults=\(tableRows.columnDefaults.count) pks=\(tab.tableContext.primaryKeyColumns.count) fkFetched=\(tableRows.foreignKeysFetched) fks=\(tableRows.columnForeignKeys.count) enumsReady=\(enumsReady) cached=\(cached)"
+            "[fk] cache check table=\(tableName, privacy: .private(mask: .hash)) defaults=\(tableRows.columnDefaults.count) pks=\(tab.tableContext.primaryKeyColumns.count) fkFetched=\(tableRows.foreignKeysFetched) fks=\(tableRows.columnForeignKeys.count) enumsReady=\(enumsReady) cached=\(cached)"
         )
         return cached
     }
@@ -94,8 +105,7 @@ extension QueryExecutionCoordinator {
     /// still come from the table's own metadata fetch, and claiming they had arrived would let
     /// `isMetadataCached` skip it.
     ///
-    /// A miss starts the fetch for this scope, so the store refills itself after a schema refresh
-    /// or a database switch cleared it. Only this table pays the wait; the next one is answered.
+    /// The table load started this scope's read beside its rows; a miss here starts it for a load that did not.
     private func prefetchedForeignKeys(tabIndex: Int, tableName: String) -> [String: ForeignKeyInfo]? {
         guard tabIndex < parent.tabManager.tabs.count,
               let scope = parent.scope(for: parent.tabManager.tabs[tabIndex])
@@ -115,7 +125,7 @@ extension QueryExecutionCoordinator {
         var columnComments: [String: String] = [:]
         var columnIdentity: [String: IdentityKind] = [:]
         var generatedColumns: Set<String> = []
-        var rowMatchExcludedColumns: Set<String> = []
+        var rowMatchPolicy: RowMatchPolicy = .none
         var hasAuthoritativeSchema = false
         var foreignKeysFetched = false
     }
@@ -148,7 +158,7 @@ extension QueryExecutionCoordinator {
             resolved.columnComments = metadata.columnComments
             resolved.columnIdentity = metadata.columnIdentity
             resolved.generatedColumns = metadata.generatedColumns
-            resolved.rowMatchExcludedColumns = metadata.rowMatchExcludedColumns
+            resolved.rowMatchPolicy = metadata.rowMatchPolicy
             resolved.hasAuthoritativeSchema = metadata.isAuthoritative
             resolved.foreignKeysFetched = metadata.columnForeignKeys != nil
             for (col, vals) in metadata.columnEnumValues {
@@ -160,6 +170,24 @@ extension QueryExecutionCoordinator {
             resolved.columnForeignKeys = prefetchedForeignKeys(tabIndex: tabIndex, tableName: tableName) ?? [:]
         }
         return resolved
+    }
+
+    /// The keys a committed result is edited by. Keys the tab held for the same table carry over
+    /// while its definition is unchanged, until phase 2 reports them. After a definition change they
+    /// describe the table as it was, so they are never carried into the new result.
+    static func resolvedPrimaryKeys(
+        reported: [String]?,
+        engineDefault: String?,
+        previous: [String],
+        definitionChanged: Bool
+    ) -> [String] {
+        if let reported, !reported.isEmpty {
+            return reported
+        }
+        if let engineDefault {
+            return [engineDefault]
+        }
+        return definitionChanged ? [] : previous
     }
 
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
@@ -174,13 +202,19 @@ extension QueryExecutionCoordinator {
         isEditable: Bool,
         metadata: ParsedSchemaMetadata?,
         hasSchema: Bool,
+        read: TableFreshness.Read,
         sql: String,
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
         queryParameterValues: [QueryParameter]? = nil,
         historySQL: String? = nil,
         anchor: StatementAnchor? = nil,
-        timing: PluginQueryTiming? = nil
+        timing: PluginQueryTiming? = nil,
+        viewport: GridReloadIntent = .firstRow,
+        source: ResultSourceChange = .newSource,
+        serverOutput: PluginServerOutput = .none,
+        rowLocators: [String?]? = nil,
+        absentCells: [Int: Set<Int>] = [:]
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -227,13 +261,21 @@ extension QueryExecutionCoordinator {
             columnComments: resolved.columnComments,
             columnIdentity: resolved.columnIdentity,
             generatedColumns: generatedColumns,
-            rowMatchExcludedColumns: resolved.rowMatchExcludedColumns,
+            rowMatchPolicy: resolved.rowMatchPolicy,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
-            foreignKeysFetched: resolved.foreignKeysFetched
+            foreignKeysFetched: resolved.foreignKeysFetched,
+            rowLocators: rowLocators,
+            absentCells: absentCells
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
+        let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)
         parent.flushBufferToActiveResult(tabId: existingTabId, pinnedOnly: true)
-        parent.setActiveTableRows(newTableRows, for: existingTabId)
+        parent.setActiveTableRows(newTableRows, for: existingTabId, viewport: viewport, source: source)
+        /// A count that started before the change can land after it, while the tab is out of sight,
+        /// and put the old total back. Kept, a total above the automatic-count threshold stops the
+        /// count this read launches, so paging stays bounded by the table as it was.
+        let answeredRowsChange = parent.tabSessionRegistry.recordRead(read, for: existingTabId)
+        let usesBrowseSearch = parent.filterCoordinator.usesBrowseSearch
 
         parent.tabManager.mutate(at: idx) { tab in
             tab.schemaVersion += 1
@@ -245,8 +287,11 @@ extension QueryExecutionCoordinator {
             tab.tableContext.isEditable = isEditable
             tab.pagination.isLoading = false
 
+            if answeredRowsChange {
+                tab.pagination.retireDerivedRowCount()
+            }
             if let metadata, let approxCount = metadata.approximateRowCount, approxCount > 0,
-               !tab.filterState.hasAppliedFilters {
+               !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) {
                 tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
             }
             if hasSchema {
@@ -263,8 +308,14 @@ extension QueryExecutionCoordinator {
             rs.statusMessage = tab.execution.statusMessage
             rs.isTruncated = isTruncated
             rs.baseQuery = sql
+            rs.serverOutput = serverOutput
 
-            tab.display.replaceUnpinnedResults(with: [rs])
+            if case .reread(let target) = source, let outgoingId = target.resultId,
+               tab.display.resultSets.contains(where: { $0.id == outgoingId }) {
+                tab.display.replaceResult(outgoingId, with: rs)
+            } else {
+                tab.display.replaceUnpinnedResults(with: [rs])
+            }
 
             if isTruncated {
                 tab.pagination.hasMoreRows = true
@@ -280,16 +331,12 @@ extension QueryExecutionCoordinator {
         }
         parent.toolbarState.isResultsCollapsed = false
 
-        let resolvedPKs: [String]
-        if let pks = metadata?.primaryKeyColumns, !pks.isEmpty {
-            resolvedPKs = pks
-        } else if let defaultPK = PluginManager.shared.defaultPrimaryKeyColumn(for: conn.type) {
-            resolvedPKs = [defaultPK]
-        } else if tableName == previousTableName {
-            resolvedPKs = parent.tabManager.tabs[idx].tableContext.primaryKeyColumns
-        } else {
-            resolvedPKs = []
-        }
+        let resolvedPKs = Self.resolvedPrimaryKeys(
+            reported: metadata?.primaryKeyColumns,
+            engineDefault: PluginManager.shared.defaultPrimaryKeyColumn(for: conn.type),
+            previous: tableName == previousTableName ? parent.tabManager.tabs[idx].tableContext.primaryKeyColumns : [],
+            definitionChanged: definitionChanged
+        )
 
         parent.tabManager.mutate(at: idx) { $0.tableContext.primaryKeyColumns = resolvedPKs }
         captureOrigin(
@@ -308,7 +355,8 @@ extension QueryExecutionCoordinator {
                 primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type,
                 generatedColumns: generatedColumns,
-                rowMatchExcludedColumns: resolved.rowMatchExcludedColumns
+                rowMatchPolicy: resolved.rowMatchPolicy,
+                columnTypeNames: newTableRows.columnTypeNames
             )
         }
 
@@ -426,7 +474,7 @@ extension QueryExecutionCoordinator {
 
             let schema = try? await schemaTask?.value
             if schemaTask != nil, schema == nil {
-                helpersLogger.error("[fk] phase2 schema fetch failed or cancelled table=\(tableName, privacy: .public)")
+                helpersLogger.error("[fk] phase2 schema fetch failed or cancelled table=\(tableName, privacy: .private(mask: .hash))")
             }
 
             await MainActor.run { [weak self] in
@@ -515,7 +563,7 @@ extension QueryExecutionCoordinator {
             /// one. Dropping the metadata left it with no account of which columns the server owns,
             /// and nothing re-fetches on the way back, so the result stayed that way for good.
             applyPhase2MetadataToInactiveResult(parsed: parsed, tabId: tabId, resultSetId: resultSetId)
-            helpersLogger.info("[fk] phase2 applied to an inactive result table=\(tableName, privacy: .public)")
+            helpersLogger.info("[fk] phase2 applied to an inactive result table=\(tableName, privacy: .private(mask: .hash))")
             return
         }
         applyPhase2Metadata(parsed: parsed, tabId: tabId)
@@ -538,7 +586,7 @@ extension QueryExecutionCoordinator {
             columnComments: parsed.columnComments,
             columnIdentity: parsed.columnIdentity,
             generatedColumns: parsed.generatedColumns,
-            rowMatchExcludedColumns: parsed.rowMatchExcludedColumns,
+            rowMatchPolicy: parsed.rowMatchPolicy,
             hasAuthoritativeSchema: parsed.isAuthoritative
         )
         if !parsed.primaryKeyColumns.isEmpty {
@@ -583,11 +631,12 @@ extension QueryExecutionCoordinator {
                 columnComments: parsed.columnComments,
                 columnIdentity: parsed.columnIdentity,
                 generatedColumns: parsed.generatedColumns,
-                rowMatchExcludedColumns: parsed.rowMatchExcludedColumns,
+                rowMatchPolicy: parsed.rowMatchPolicy,
                 hasAuthoritativeSchema: parsed.isAuthoritative
             )
         }
 
+        let usesBrowseSearch = parent.filterCoordinator.usesBrowseSearch
         parent.tabManager.mutate(tabId: tabId) { tab in
             if !parsed.primaryKeyColumns.isEmpty {
                 tab.tableContext.primaryKeyColumns = parsed.primaryKeyColumns
@@ -595,7 +644,7 @@ extension QueryExecutionCoordinator {
                 tab.display.activeResultSet?.origin?.keysResolved = true
             }
             if let approxCount = parsed.approximateRowCount, approxCount > 0,
-               !tab.filterState.hasAppliedFilters {
+               !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) {
                 tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
             }
             tab.metadataVersion += 1
@@ -607,7 +656,7 @@ extension QueryExecutionCoordinator {
 
         if parent.tabManager.selectedTabId == tabId {
             parent.changeManager.setGeneratedColumns(parsed.generatedColumns)
-            parent.changeManager.setRowMatchExcludedColumns(parsed.rowMatchExcludedColumns)
+            parent.changeManager.setRowMatchPolicy(parsed.rowMatchPolicy)
         }
 
         let refreshed = isActiveTab(tabId)
@@ -640,7 +689,7 @@ extension QueryExecutionCoordinator {
         connectionType: DatabaseType
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
-        let countsAutomatically = PluginManager.shared.paginationCapability(for: connectionType).allowsSeeking
+        let countsAutomatically = PluginManager.shared.countsRowsAutomatically(for: connectionType)
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
 
@@ -660,7 +709,8 @@ extension QueryExecutionCoordinator {
                     filterState: tab.filterState,
                     approximateRowCount: tab.pagination.totalRowCount,
                     threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan,
-                    countsAutomatically: countsAutomatically
+                    countsAutomatically: countsAutomatically,
+                    browseSearch: parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)
                 )
                 guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
                 let queryColumns = parent.queryColumns(for: tab)
@@ -727,6 +777,18 @@ extension QueryExecutionCoordinator {
                 try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
             }) else { return .clear }
             return .count(count, isApproximate: false)
+        case let .browseSearch(search, tableSizeLimit):
+            do {
+                let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+                    try await ExactRowCounter.countBrowseSearch(
+                        on: driver, table: tableName, search: search, tableSizeLimit: tableSizeLimit
+                    )
+                }
+                return count.map { RowCountOutcome.count($0, isApproximate: false) }
+            } catch {
+                helpersLogger.warning("Browse search count failed for \(tableName): \(error.localizedDescription)")
+                return nil
+            }
         case .exactCount:
             guard let exactCount, let sql = exactCount.sql else { return nil }
             do {
@@ -747,15 +809,24 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    /// An engine that cannot skip rows has no pages for a total to bound, so it is only counted
-    /// when the user asks: each automatic count would be a full scan the engine may bill for.
+    /// `countsAutomatically` is `PluginManager.countsRowsAutomatically(for:)`: an engine that cannot skip rows, or
+    /// whose count is a billed scan, is only counted when the user asks.
+    ///
+    /// `browseSearch` is the search the browse runs in place of the table filters, such as a Redis key
+    /// pattern. The table's estimate measures the whole database, not the keys that search lists, so it is
+    /// never the answer. A search change retires the total, which is why nothing is cleared here: a page
+    /// turn after `Count Exactly` keeps that count.
     static func rowCountPlan(
         isNonSQL: Bool,
         filterState: TabFilterState,
         approximateRowCount: Int?,
         threshold: Int,
-        countsAutomatically: Bool = true
+        countsAutomatically: Bool = true,
+        browseSearch: BrowseSearchState? = nil
     ) -> RowCountPlan {
+        if let browseSearch {
+            return countsAutomatically ? .browseSearch(browseSearch, tableSizeLimit: threshold) : .skip
+        }
         guard countsAutomatically else {
             return filterState.hasAppliedFilters ? .clear : .skip
         }
@@ -777,31 +848,18 @@ extension QueryExecutionCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection
+        connection conn: DatabaseConnection,
+        serverOutput: PluginServerOutput = .none
     ) {
-        let message = DatabaseWriteRejectionDiagnosis.formatted(error)
+        let diagnosis = DatabaseWriteRejectionDiagnosis.formatted(error)
+        let message = ServerOutputCapture.failureMessage(diagnosis, output: serverOutput)
         helpersLogger.error(
-            "Query failed on tab \(tabId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            "Query failed on tab \(tabId, privacy: .public): \(error.publicLogShape, privacy: .public)"
         )
-        parent.tabManager.mutate(tabId: tabId) { tab in
-            tab.execution.errorMessage = message
+        presentTabFailure(message, announcing: diagnosis, onTab: tabId) { tab in
             tab.execution.errorQuery = sql
             tab.execution.lastExecutedAt = Date()
             tab.execution.executionTime = nil
-            tab.pagination.isLoading = false
-
-            // The banner lives at the top of the results pane, so a collapsed pane hides the only
-            // thing telling the user their query failed. Every success path opens it the same way.
-            if tab.display.isResultsCollapsed {
-                tab.display.isResultsCollapsed = false
-            }
-        }
-        // The toolbar mirrors the selected tab, so a failure on a tab in the background describes
-        // itself on its own tab and leaves the window chrome to whatever is actually on screen.
-        if parent.tabManager.selectedTabId == tabId {
-            parent.toolbarState.isResultsCollapsed = false
-            parent.toolbarState.clearQueryTiming(forTab: tabId)
-            parent.announceQueryError(message)
         }
 
         recordHistory(
@@ -821,6 +879,37 @@ extension QueryExecutionCoordinator {
     }
 }
 
+extension QueryExecutionCoordinator {
+    /// Shows a failure on the tab it belongs to without recording a statement that never ran, so a
+    /// step that fails before the tab's query, such as the database switch in front of it, leaves
+    /// no history row and nothing for Fix with AI to rewrite.
+    func presentTabFailure(
+        _ message: String,
+        announcing diagnosis: String,
+        onTab tabId: UUID,
+        recordingExecution: (inout QueryTab) -> Void = { _ in }
+    ) {
+        parent.tabManager.mutate(tabId: tabId) { tab in
+            tab.execution.errorMessage = message
+            tab.pagination.isLoading = false
+            recordingExecution(&tab)
+
+            // The banner lives at the top of the results pane, so a collapsed pane hides the only
+            // thing telling the user their query failed. Every success path opens it the same way.
+            if tab.display.isResultsCollapsed {
+                tab.display.isResultsCollapsed = false
+            }
+        }
+        // The toolbar mirrors the selected tab, so a failure on a tab in the background describes
+        // itself on its own tab and leaves the window chrome to whatever is actually on screen.
+        if parent.tabManager.selectedTabId == tabId {
+            parent.toolbarState.isResultsCollapsed = false
+            parent.toolbarState.clearQueryTiming(forTab: tabId)
+            parent.announceQueryError(diagnosis)
+        }
+    }
+}
+
 internal struct ExactCountInput: Sendable {
     internal let sql: String?
     internal let filters: [TableFilter]
@@ -831,6 +920,7 @@ enum RowCountPlan: Equatable {
     case skip
     case clear
     case approximate
+    case browseSearch(BrowseSearchState, tableSizeLimit: Int)
     case exactCount(filtered: Bool)
     case filteredNonSQL(filters: [TableFilter], logicMode: FilterLogicMode)
 }

@@ -6,7 +6,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("Theme slot validation")
 struct ThemeSlotValidationTests {
     @Test("A matching theme fits its slot")
     func matchingThemeFits() {

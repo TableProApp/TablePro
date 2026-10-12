@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryHistoryInsights")
 struct QueryHistoryInsightsTests {
     private let storage: QueryHistoryStorage
     private let connectionId = UUID()

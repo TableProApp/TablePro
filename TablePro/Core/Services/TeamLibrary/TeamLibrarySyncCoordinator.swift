@@ -2,10 +2,6 @@
 //  TeamLibrarySyncCoordinator.swift
 //  TablePro
 //
-//  Owns the app-side team library lifecycle: pulls the shared set on the license revalidation cadence,
-//  caches it, and publishes secret-free content through the existing export envelope. License access
-//  and credentials are injected so the coordinator is unit-testable without the license singleton.
-//
 
 import Combine
 import Foundation
@@ -13,8 +9,7 @@ import os
 import TableProImport
 
 @MainActor
-@Observable
-final class TeamLibrarySyncCoordinator {
+final class TeamLibrarySyncCoordinator: ObservableObject {
     static let shared = TeamLibrarySyncCoordinator()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibrarySyncCoordinator")
@@ -23,9 +18,13 @@ final class TeamLibrarySyncCoordinator {
     private let store: TeamLibraryStore
     private let isFeatureAvailable: @MainActor () -> Bool
     private let credentialsProvider: @MainActor () -> (key: String, machineId: String)?
+    private let licenseStatusChanges: AnyPublisher<Void, Never>
+    private let makeExporter: @MainActor () -> ConnectionBundleExporter
+    private var licenseCancellable: AnyCancellable?
+    private var wasFeatureAvailable = false
 
-    private(set) var library: TeamLibraryPullResponse = .empty
-    private(set) var isPublishing = false
+    @Published private(set) var library: TeamLibraryPullResponse = .empty
+    @Published private(set) var isPublishing = false
 
     init(
         apiClient: TeamLibraryAPIClient = LiveTeamLibraryAPIClient.shared,
@@ -34,15 +33,22 @@ final class TeamLibrarySyncCoordinator {
         credentialsProvider: @escaping @MainActor () -> (key: String, machineId: String)? = {
             guard let key = LicenseManager.shared.license?.key else { return nil }
             return (key, LicenseStorage.shared.machineId)
-        }
+        },
+        licenseStatusChanges: AnyPublisher<Void, Never> = AppEvents.shared.licenseStatusDidChange
+            .receive(on: RunLoop.main)
+            .eraseToAnyPublisher(),
+        makeExporter: @escaping @MainActor () -> ConnectionBundleExporter = { ConnectionBundleExporter() }
     ) {
         self.apiClient = apiClient
         self.store = store
         self.isFeatureAvailable = isFeatureAvailable
         self.credentialsProvider = credentialsProvider
+        self.licenseStatusChanges = licenseStatusChanges
+        self.makeExporter = makeExporter
     }
 
     func start() {
+        observeLicenseChanges()
         guard isFeatureAvailable() else { return }
         Task {
             if let cached = await store.load() {
@@ -75,6 +81,21 @@ final class TeamLibrarySyncCoordinator {
         Task { await pull() }
     }
 
+    private func observeLicenseChanges() {
+        wasFeatureAvailable = isFeatureAvailable()
+        licenseCancellable = licenseStatusChanges.sink { [weak self] in
+            self?.licenseStatusDidChange()
+        }
+    }
+
+    private func licenseStatusDidChange() {
+        let isAvailable = isFeatureAvailable()
+        let becameAvailable = isAvailable && !wasFeatureAvailable
+        wasFeatureAvailable = isAvailable
+        guard becameAvailable else { return }
+        refresh()
+    }
+
     /// Drop the team's shared set, on disk and in the copy every view reads.
     ///
     /// Clearing the store alone is not enough: `library` is what the welcome window and the
@@ -100,9 +121,12 @@ final class TeamLibrarySyncCoordinator {
         isPublishing = true
         defer { isPublishing = false }
 
-        let envelope = ConnectionExportService.buildEnvelope(for: connections)
-        let connectionPayloads = zip(connections, envelope.connections).map { connection, exportable in
-            TeamLibraryConnectionPayload(sourceConnectionId: connection.id.uuidString, payload: exportable)
+        let exporter = makeExporter()
+        let connectionPayloads = connections.map { connection in
+            TeamLibraryConnectionPayload(
+                sourceConnectionId: connection.id.uuidString,
+                payload: exporter.portableSettings(for: connection)
+            )
         }
         let folderPayloads = folders.map { folder in
             TeamLibraryQueryFolderPayload(

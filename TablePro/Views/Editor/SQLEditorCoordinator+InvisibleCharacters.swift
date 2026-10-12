@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 extension SQLEditorCoordinator {
     func performRemoveInvisibleCharacters() {
@@ -18,10 +18,7 @@ extension SQLEditorCoordinator {
             in: string as NSString,
             scope: scope.range,
             skippingLiteralsAndComments: !scope.isSelection,
-            rules: SQLLexicalRules(
-                databaseType: resolvedType,
-                descriptor: PluginManager.shared.sqlDialect(for: resolvedType)
-            ),
+            grammar: resolvedType.lexicalGrammar,
             lineEnding: textView.layoutManager.detectedLineEnding.rawValue
         )
         guard !replacements.isEmpty else { return }

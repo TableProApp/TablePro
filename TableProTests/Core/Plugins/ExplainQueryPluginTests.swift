@@ -48,7 +48,6 @@ private final class StubExplainDriver: PluginDatabaseDriver, @unchecked Sendable
     }
 }
 
-@Suite("buildExplainQuery plugin protocol")
 struct ExplainQueryPluginTests {
     @Test("Default implementation returns nil")
     func defaultReturnsNil() {

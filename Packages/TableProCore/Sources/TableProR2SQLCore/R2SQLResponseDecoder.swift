@@ -20,7 +20,11 @@ public enum R2SQLResponseDecoder {
         return envelope.result ?? R2SQLResult(schema: [], rows: [])
     }
 
+    /// The body of a response that failed to decode, shown to the reader as a diagnostic. It can be anything the
+    /// endpoint sent, so it is decoded leniently on purpose: a failable initializer would answer nil for exactly the
+    /// malformed body the reader needs to see.
     private static func snippet(_ body: Data) -> String {
+        // swiftlint:disable:next optional_data_string_conversion
         let text = String(decoding: body.prefix(300), as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? "empty body" : text

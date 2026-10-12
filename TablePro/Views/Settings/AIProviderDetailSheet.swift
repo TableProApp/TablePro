@@ -14,9 +14,13 @@ struct AIProviderDetailSheet: View {
     let onDelete: (() -> Void)?
     let onCancel: () -> Void
 
+    private let savedEndpoint: String
+    private let savedAPIKey: String
+
     @State private var draft: AIProviderConfig
     @State private var apiKey: String
-    @State private var fetchedModels: [String] = []
+    @State private var fetched: [AIModelInfo] = []
+    @State private var fetchedListIsCurrent = false
     @State private var isFetchingModels = false
     @State private var modelFetchError: String?
     @State private var modelFetchTask: Task<Void, Never>?
@@ -25,15 +29,15 @@ struct AIProviderDetailSheet: View {
     @State private var testResult: TestResult?
     @State private var testTask: Task<Void, Never>?
 
-    @State private var copilotService = CopilotService.shared
+    @ObservedObject private var copilotService = CopilotService.shared
     @State private var copilotErrorMessage: String?
 
-    @State private var chatGPTCodexService = ChatGPTCodexService.shared
+    @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
 
-    @State private var cursorAgentService = CursorAgentService.shared
-    @State private var claudeAgentService = ClaudeAgentService.shared
+    @ObservedObject private var cursorAgentService = CursorAgentService.shared
+    @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
 
-    @State private var xaiService = XAIService.shared
+    @ObservedObject private var xaiService = XAIService.shared
 
     @State private var showRemoveConfirmation = false
 
@@ -50,6 +54,8 @@ struct AIProviderDetailSheet: View {
         onDelete: (() -> Void)? = nil,
         onCancel: @escaping () -> Void
     ) {
+        self.savedEndpoint = provider.endpoint
+        self.savedAPIKey = initialAPIKey
         self._draft = State(initialValue: provider)
         self._apiKey = State(initialValue: initialAPIKey)
         self.isNew = isNew
@@ -82,10 +88,12 @@ struct AIProviderDetailSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "Save")) {
                         cancelTasks()
+                        commitModelList()
                         onSave(normalizedDraft, apiKey)
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isSaveEnabled)
+                    .accessibilityIdentifier("ai-provider-save")
                 }
             }
             .onAppear {
@@ -131,13 +139,18 @@ struct AIProviderDetailSheet: View {
 
     private var navigationTitle: String {
         if isNew {
-            return String(format: String(localized: "Add %@"), draft.type.displayName)
+            return String(format: String(localized: "Add %@"), draft.kindName)
         }
         return draft.displayName
     }
 
+    private var needsModelChoice: Bool {
+        AIProviderDraftRules.needsModelChoice(model: draft.model, fetched: fetched)
+    }
+
     private var isSaveEnabled: Bool {
-        switch draft.type.authStyle {
+        guard !needsModelChoice else { return false }
+        switch draft.authStyle {
         case .apiKey:
             return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .optionalApiKey, .oauth, .none:
@@ -148,6 +161,7 @@ struct AIProviderDetailSheet: View {
     private var normalizedDraft: AIProviderConfig {
         var provider = draft
         provider.model = draft.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        provider.endpoint = AIProviderDraftRules.endpoint(draft.endpoint, defaultEndpoint: draft.defaultEndpoint)
         return provider
     }
 
@@ -155,7 +169,7 @@ struct AIProviderDetailSheet: View {
 
     @ViewBuilder
     private var authSection: some View {
-        switch draft.type.authStyle {
+        switch draft.authStyle {
         case .apiKey, .optionalApiKey:
             if draft.type == .cursor {
                 cursorAuthSection
@@ -212,7 +226,7 @@ struct AIProviderDetailSheet: View {
         } header: {
             Text("Claude Code")
         } footer: {
-            Text("Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > Integrations.")
+            Text("Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > MCP.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -223,7 +237,8 @@ struct AIProviderDetailSheet: View {
     private var apiKeyAuthSection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) {
+                .onChange(of: apiKey) { _ in
+                    scheduleFetchModels()
                     testResult = nil
                 }
             HStack {
@@ -238,7 +253,7 @@ struct AIProviderDetailSheet: View {
                         Text("Test Connection")
                     }
                 }
-                .disabled(isTesting || (draft.type.authStyle == .apiKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                .disabled(isTesting || (draft.authStyle == .apiKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }
             if case .success = testResult {
                 Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")
@@ -264,7 +279,10 @@ struct AIProviderDetailSheet: View {
     private var cursorAPIKeySection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { testResult = nil }
+                .onChange(of: apiKey) { _ in
+                    scheduleFetchModels()
+                    testResult = nil
+                }
             HStack {
                 Spacer()
                 Button {
@@ -327,6 +345,7 @@ struct AIProviderDetailSheet: View {
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "Copy install command"))
+                .accessibilityLabel(String(localized: "Copy install command"))
             } label: {
                 Text(CursorAgentCLI.installCommand)
                     .font(.system(.body, design: .monospaced))
@@ -395,7 +414,10 @@ struct AIProviderDetailSheet: View {
     private var xaiAPIKeySection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { testResult = nil }
+                .onChange(of: apiKey) { _ in
+                    scheduleFetchModels()
+                    testResult = nil
+                }
             HStack {
                 Spacer()
                 Button {
@@ -662,13 +684,20 @@ struct AIProviderDetailSheet: View {
             Section {
                 if allowsNameField {
                     TextField(String(localized: "Name"), text: $draft.name)
+                        .accessibilityIdentifier("ai-provider-name")
                 }
                 if allowsEndpointField {
-                    TextField(String(localized: "Endpoint"), text: $draft.endpoint)
-                        .onChange(of: draft.endpoint) {
-                            scheduleFetchModels()
-                            testResult = nil
-                        }
+                    TextField(
+                        String(localized: "Base URL"),
+                        text: $draft.endpoint,
+                        prompt: Text(draft.defaultEndpoint)
+                    )
+                    .accessibilityIdentifier("ai-provider-base-url")
+                    .onChange(of: draft.endpoint) { _ in
+                        scheduleFetchModels()
+                        testResult = nil
+                    }
+                    endpointFootnote
                 }
             } header: {
                 Text("Connection")
@@ -676,12 +705,69 @@ struct AIProviderDetailSheet: View {
         }
     }
 
+    /// Placeholder text disappears as soon as the field is typed in, so the rule the server's own
+    /// documentation follows is spelled out beside the field, and the URL it resolves to is shown
+    /// back rather than left to be inferred.
+    @ViewBuilder
+    private var endpointFootnote: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Include the version segment your server uses, such as /v1 or /v4.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let resolvedChatURL {
+                Text(resolvedChatURL)
+                    .textSelection(.enabled)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if resolvedEndpoint?.isPlaintextToRemoteHost == true {
+                Label(cleartextCaution, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var modelListBlocker: AIModelListFetchGate.Blocker? {
+        AIProviderDraftRules.modelListBlocker(descriptor: descriptor, draft: draft, apiKey: apiKey)
+    }
+
+    /// Ollama, llama.cpp, MLX and a keyless Custom server send no authorization header at all, so
+    /// naming the key there would warn about something that is not happening.
+    private var cleartextCaution: String {
+        guard draft.authStyle.usesAPIKey,
+              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return String(localized: "Requests to this host are sent unencrypted over http.")
+        }
+        return String(localized: "Your API key is sent unencrypted over http to this host.")
+    }
+
+    private var resolvedEndpoint: AIEndpoint? {
+        AIEndpoint(normalizedDraft.endpoint, style: draft.type.endpointStyle)
+    }
+
+    private var resolvedChatURL: String? {
+        let style = draft.type.endpointStyle
+        guard let url = resolvedEndpoint?.chatURL(model: draft.model, style: style) else { return nil }
+        return url.absoluteString
+    }
+
     private var allowsNameField: Bool {
         descriptor?.allowsNameConfiguration == true
     }
 
     private var allowsEndpointField: Bool {
-        descriptor?.allowsEndpointConfiguration == true
+        descriptor?.allowsEndpointConfiguration == true && endpointDrivesRequests
+    }
+
+    /// xAI reaches its own proxy rather than the configured base while it is running on a
+    /// subscription sign-in, so the field and the URL under it would both describe a request the
+    /// app is not going to make.
+    private var endpointDrivesRequests: Bool {
+        guard draft.type == .xai else { return true }
+        return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var shouldShowConnectionSection: Bool {
@@ -698,8 +784,15 @@ struct AIProviderDetailSheet: View {
         descriptor?.curatedModels ?? []
     }
 
+    private var fetchedModels: [String] {
+        fetched.map(\.id)
+    }
+
     private var effortLevelsForCurrentModel: [ReasoningEffort] {
-        descriptor?.supportedEffortLevels(forModelID: draft.model) ?? []
+        descriptor?.supportedEffortLevels(
+            forModelID: draft.model,
+            fetched: fetched.first(where: { $0.id == draft.model })
+        ) ?? []
     }
 
     private var showsReasoningPicker: Bool {
@@ -784,6 +877,9 @@ struct AIProviderDetailSheet: View {
                     }
                 case .fetched(let id):
                     draft.model = id
+                    if let effort = draft.reasoningEffort, !effortLevelsForCurrentModel.contains(effort) {
+                        draft.reasoningEffort = nil
+                    }
                 case .custom:
                     if curatedModels.contains(where: { $0.id == draft.model }) || fetchedModels.contains(draft.model) {
                         draft.model = ""
@@ -827,6 +923,16 @@ struct AIProviderDetailSheet: View {
                 .controlSize(.small)
             }
         }
+        if modelListBlocker == .missingAPIKey {
+            Text("Enter an API key to load this provider's models.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        if needsModelChoice {
+            Text("Pick a model to save this provider.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Advanced
@@ -836,9 +942,7 @@ struct AIProviderDetailSheet: View {
         if showsMaxOutputTokens || showsTelemetryToggle {
             Section {
                 if showsMaxOutputTokens {
-                    HStack {
-                        Text("Max output tokens")
-                        Spacer()
+                    LabeledContent("Max output tokens") {
                         TextField("", text: maxOutputTokensBinding)
                             .frame(width: 100)
                             .multilineTextAlignment(.trailing)
@@ -924,7 +1028,30 @@ struct AIProviderDetailSheet: View {
         }
     }
 
+    private func commitModelList() {
+        let update = AIProviderDraftRules.catalogUpdate(
+            listIsCurrent: fetchedListIsCurrent,
+            listIsEmpty: fetched.isEmpty,
+            connectionChanged: normalizedDraft.endpoint != savedEndpoint || apiKey != savedAPIKey
+        )
+        switch update {
+        case .store:
+            AIModelCatalog.shared.store(providerID: draft.id, models: fetched)
+        case .remove:
+            AIModelCatalog.shared.remove(providerID: draft.id)
+        case .refetch:
+            AIModelCatalog.shared.remove(providerID: draft.id)
+            guard descriptor?.fetchesModelList == true else { return }
+            let providerID = draft.id
+            let transport = AIProviderFactory.makeUncachedProvider(for: normalizedDraft, apiKey: apiKey)
+            Task { await AIModelCatalog.shared.refresh(providerID: providerID, using: transport) }
+        case .keep:
+            break
+        }
+    }
+
     private func scheduleFetchModels() {
+        fetchedListIsCurrent = false
         modelFetchTask?.cancel()
         modelFetchTask = Task {
             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -934,22 +1061,25 @@ struct AIProviderDetailSheet: View {
     }
 
     private func fetchModels() {
-        guard descriptor?.fetchesModelList == true else {
-            fetchedModels = []
+        switch modelListBlocker {
+        case .notFetchable:
+            fetched = []
+            fetchedListIsCurrent = false
             modelFetchError = nil
-            if draft.model.isEmpty, let first = curatedModels.first {
-                draft.model = first.id
-            }
+            isFetchingModels = false
+            selectInitialModel()
             return
-        }
-        if draft.type.authStyle == .apiKey,
-           apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            fetchedModels = []
+        case .missingEndpoint, .missingAPIKey:
+            fetched = []
+            fetchedListIsCurrent = false
             modelFetchError = nil
+            isFetchingModels = false
             return
+        case nil:
+            break
         }
 
-        let provider = AIProviderFactory.createProvider(for: normalizedDraft, apiKey: apiKey)
+        let provider = AIProviderFactory.makeUncachedProvider(for: normalizedDraft, apiKey: apiKey)
         isFetchingModels = true
         modelFetchError = nil
 
@@ -958,28 +1088,37 @@ struct AIProviderDetailSheet: View {
             do {
                 let models = try await provider.fetchAvailableModels()
                 guard !Task.isCancelled else { return }
-                AIModelCatalog.shared.store(providerTypeID: draft.type.rawValue, models: models)
-                fetchedModels = models.map(\.id)
-                if draft.model.isEmpty, let first = fetchedModels.first {
-                    draft.model = first
-                }
+                fetched = models
+                fetchedListIsCurrent = true
+                selectInitialModel()
                 isFetchingModels = false
             } catch {
                 guard !Task.isCancelled else { return }
+                /// The list on screen was fetched with the previous key or Base URL, so it does not
+                /// describe the server that just failed.
+                fetched = []
+                fetchedListIsCurrent = false
                 modelFetchError = error.localizedDescription
                 isFetchingModels = false
             }
         }
     }
 
+    private func selectInitialModel() {
+        guard draft.model.isEmpty,
+              let initial = AIProviderDraftRules.initialModel(curated: curatedModels, fetched: fetched)
+        else { return }
+        draft.model = initial
+    }
+
     func testProvider() {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if draft.type.authStyle == .apiKey, trimmed.isEmpty {
+        if draft.authStyle == .apiKey, trimmed.isEmpty {
             testResult = .failure(String(localized: "API key is required"))
             return
         }
 
-        let provider = AIProviderFactory.createProvider(for: normalizedDraft, apiKey: apiKey)
+        let provider = AIProviderFactory.makeUncachedProvider(for: normalizedDraft, apiKey: apiKey)
         isTesting = true
         testResult = nil
 

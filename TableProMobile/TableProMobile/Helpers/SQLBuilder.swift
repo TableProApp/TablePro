@@ -28,9 +28,11 @@ nonisolated enum SQLBuilder {
         case .mssql:
             let order = orderBy.isEmpty ? "ORDER BY (SELECT NULL)" : orderBy
             return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        /// Oracle pages without an `ORDER BY`. The `ORDER BY 1` this used to add fails with ORA-22848 when the first
+        /// column is a LOB, so such a table never opened.
         case .oracle:
-            let order = orderBy.isEmpty ? "ORDER BY 1" : orderBy
-            return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+            let trailing = "OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+            return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
         default:
             let trailing = "LIMIT \(limit) OFFSET \(offset)"
             return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
@@ -46,6 +48,27 @@ nonisolated enum SQLBuilder {
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
         return "SELECT * FROM \(quoted) \(pagination)"
+    }
+
+    /// The single row a foreign key points at.
+    ///
+    /// The value reaches the literal through the driver's own escaper, like every other predicate
+    /// here. Doubling the quote by hand is not enough on a MySQL-family server, where a backslash
+    /// escapes the quote that follows it, so `a\' OR 1=1 -- ` closed the literal and returned an
+    /// unrelated row as the referenced one.
+    static func buildSingleRowLookup(
+        table: String,
+        schema: String?,
+        column: String,
+        value: String,
+        type: DatabaseType,
+        driver: any DatabaseDriver
+    ) -> String {
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let quotedColumn = quoteIdentifier(column, for: type)
+        let literal = driver.escapeStringLiteral(value)
+        let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
+        return "SELECT * FROM \(quotedTable) WHERE \(quotedColumn) = '\(literal)' \(pagination)"
     }
 
     static func buildDelete(

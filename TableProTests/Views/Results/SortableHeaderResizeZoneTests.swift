@@ -137,6 +137,23 @@ struct SortableHeaderResizeZoneTests {
         #expect(grid.header.isInResizeZone(point: point(x: edge, in: grid)))
     }
 
+    /// AppKit resizes only from a press 3pt before a column's edge up to 2pt after it, measured on
+    /// macOS 27. Past that band AppKit takes the press as a reorder, so a zone reaching further
+    /// showed the resize cursor where a drag moved the column and a click sorted nothing.
+    @Test("The resize zone is AppKit's divider band, from 3pt before a column's edge to under 2pt after it")
+    func theResizeZoneIsAppKitsDividerBand() throws {
+        let grid = makeGrid(columns: ["id", "name", "email"])
+        let firstData = try #require(grid.coordinator.firstPresentedColumnIndex())
+        let edge = grid.header.headerRect(ofColumn: firstData).maxX
+
+        for offset: CGFloat in [-3, -1, 0, 1, 1.5] {
+            #expect(grid.header.isInResizeZone(point: point(x: edge + offset, in: grid)), "offset \(offset)")
+        }
+        for offset: CGFloat in [-4, -3.25, 2, 3, 4] {
+            #expect(!grid.header.isInResizeZone(point: point(x: edge + offset, in: grid)), "offset \(offset)")
+        }
+    }
+
     /// The middle of a heading is where a click sorts.
     @Test("The middle of a column heading is not a resize zone")
     func theMiddleOfAHeadingIsNotAResizeZone() throws {

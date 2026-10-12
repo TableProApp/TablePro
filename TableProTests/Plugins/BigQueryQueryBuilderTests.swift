@@ -2,7 +2,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("BigQueryQueryBuilder - Browse Query")
+@testable import TablePro
+
 struct BigQueryQueryBuilderBrowseTests {
     @Test("Browse query returns tagged string")
     func browseReturnsTag() {
@@ -29,7 +30,6 @@ struct BigQueryQueryBuilderBrowseTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Filtered Query")
 struct BigQueryQueryBuilderFilteredTests {
     @Test("Filtered query returns filter tag")
     func filteredReturnsTag() {
@@ -62,7 +62,6 @@ struct BigQueryQueryBuilderFilteredTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Search Query")
 struct BigQueryQueryBuilderSearchTests {
     @Test("Search query returns search tag")
     func searchReturnsTag() {
@@ -85,7 +84,6 @@ struct BigQueryQueryBuilderSearchTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Combined Query")
 struct BigQueryQueryBuilderCombinedTests {
     @Test("Combined query returns combined tag")
     func combinedReturnsTag() {
@@ -113,7 +111,6 @@ struct BigQueryQueryBuilderCombinedTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - isTaggedQuery")
 struct BigQueryQueryBuilderIsTaggedTests {
     @Test("Tagged queries return true")
     func taggedQueriesDetected() {
@@ -140,7 +137,6 @@ struct BigQueryQueryBuilderIsTaggedTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - SQL Generation")
 struct BigQueryQueryBuilderSQLTests {
     private func params(
         table: String = "users",
@@ -281,15 +277,51 @@ struct BigQueryQueryBuilderSQLTests {
         #expect(sql.contains("WHERE (`a` = 1 OR `b` = 2) AND (CAST(`c` AS STRING) LIKE '%z%')"))
     }
 
-    @Test("BETWEEN uses the separate upper bound")
-    func betweenUsesSecondValue() {
+    @Test("A filter-bar BETWEEN takes its lower bound off the value the app joins with the upper bound")
+    func betweenFromAppEncoding() {
+        let filter = TableFilter(
+            columnName: "n", filterOperator: .between, value: "1", secondValue: "9"
+        ).asPluginQueryFilter
+        #expect(filter.value == "1,9")
+
         let sql = BigQueryQueryBuilder.buildSQL(
-            from: params(filters: [
-                BigQueryFilterSpec(column: "n", op: "BETWEEN", value: "1", kind: "integer", secondValue: "9")
-            ]),
+            from: params(filters: [BigQueryFilterSpec(filter, kind: .integer)]),
             projectId: "proj"
         )
-        #expect(sql.contains("`n` BETWEEN 1 AND 9"))
+        #expect(sql.contains("WHERE (`n` BETWEEN 1 AND 9)"))
+    }
+
+    @Test("A filter-bar BETWEEN keeps a comma inside a bound")
+    func betweenFromAppEncodingWithComma() {
+        let filter = TableFilter(
+            columnName: "name", filterOperator: .between, value: "Smith, John", secondValue: "Zed, Ann"
+        ).asPluginQueryFilter
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(filter, kind: .text)]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("WHERE (`name` BETWEEN 'Smith, John' AND 'Zed, Ann')"))
+    }
+
+    @Test("A filter-bar BETWEEN keeps a lower bound whose last scalar joins the comma into one character")
+    func betweenFromAppEncodingWithPrependScalar() {
+        let filter = TableFilter(
+            columnName: "name", filterOperator: .between, value: "x\u{0600}", secondValue: "y"
+        ).asPluginQueryFilter
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(filter, kind: .text)]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("WHERE (`name` BETWEEN 'x\u{0600}' AND 'y')"))
+    }
+
+    @Test("A BETWEEN with no separate upper bound splits the joined value")
+    func betweenFromJoinedValueAlone() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "n", op: "BETWEEN", value: "1, 9", kind: "integer")]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("WHERE (`n` BETWEEN 1 AND 9)"))
     }
 
     @Test("A raw SQL filter is wrapped in parentheses")
@@ -313,7 +345,6 @@ struct BigQueryQueryBuilderSQLTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Column names in the tag")
 struct BigQueryQueryBuilderTagColumnTests {
     @Test("Browse tags carry the column names")
     func browseCarriesColumns() {
@@ -328,15 +359,20 @@ struct BigQueryQueryBuilderTagColumnTests {
     }
 
     @Test("Filter tags carry the column names and the upper bound")
-    func filterCarriesColumns() {
+    func filterCarriesColumns() throws {
+        let filter = TableFilter(
+            columnName: "n", filterOperator: .between, value: "1", secondValue: "5"
+        ).asPluginQueryFilter
         let query = BigQueryQueryBuilder.encodeFilteredQuery(
             table: "t", dataset: "d",
-            filters: [PluginQueryFilter(column: "n", op: "BETWEEN", value: "1", secondValue: "5", elementScope: nil)],
+            filters: [filter],
             logicMode: "AND", sortColumns: [], limit: 10, offset: 0, columns: ["n"]
         )
-        let params = BigQueryQueryBuilder.decode(query)
-        #expect(params?.columns == ["n"])
-        #expect(params?.filters?.first?.secondValue == "5")
+        let params = try #require(BigQueryQueryBuilder.decode(query))
+        #expect(params.columns == ["n"])
+        #expect(params.filters?.first?.secondValue == "5")
+        let sql = BigQueryQueryBuilder.buildSQL(from: params, projectId: "p")
+        #expect(sql.contains("WHERE (`n` BETWEEN 1 AND 5)"))
     }
 
     @Test("A tag written before column names existed still decodes")
@@ -350,7 +386,6 @@ struct BigQueryQueryBuilderTagColumnTests {
     }
 }
 
-@Suite("BigQueryQueryBuilder - Exact Count")
 struct BigQueryQueryBuilderExactCountTests {
     @Test("A count without filters has no WHERE clause")
     func countWithoutFilters() {
@@ -388,5 +423,71 @@ struct BigQueryQueryBuilderExactCountTests {
             columnKinds: ["code": .text, "age": .integer]
         )
         #expect(sql == "SELECT COUNT(*) FROM `proj`.`main`.`users` WHERE (`code` = '42' OR `age` > 30)")
+    }
+}
+
+struct BigQueryDescriptionStatementTests {
+    private let target = "`proj`.`sales`.`orders`"
+
+    @Test("A comment sets the description option with the keyword for the kind")
+    func setsDescriptionPerKind() {
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "TABLE", comment: "Orders")
+            == "ALTER TABLE `proj`.`sales`.`orders` SET OPTIONS (description = 'Orders')")
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "VIEW", comment: "Orders")
+            == "ALTER VIEW `proj`.`sales`.`orders` SET OPTIONS (description = 'Orders')")
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "MATERIALIZED VIEW", comment: "x")
+            == "ALTER MATERIALIZED VIEW `proj`.`sales`.`orders` SET OPTIONS (description = 'x')")
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "MATERIALIZED_VIEW", comment: "x")
+            == "ALTER MATERIALIZED VIEW `proj`.`sales`.`orders` SET OPTIONS (description = 'x')")
+    }
+
+    @Test("A nil or empty comment sets the description to NULL")
+    func clearsDescription() {
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "TABLE", comment: nil)
+            == "ALTER TABLE `proj`.`sales`.`orders` SET OPTIONS (description = NULL)")
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "VIEW", comment: "")
+            == "ALTER VIEW `proj`.`sales`.`orders` SET OPTIONS (description = NULL)")
+    }
+
+    @Test("A quote in the comment is escaped the GoogleSQL way")
+    func escapesDescription() {
+        let sql = BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "TABLE", comment: "O'Brien's")
+        #expect(sql == "ALTER TABLE `proj`.`sales`.`orders` SET OPTIONS (description = 'O\\'Brien\\'s')")
+    }
+
+    @Test("Kinds without a description option return nil")
+    func refusesOtherKinds() {
+        for kind in ["SEQUENCE", "FOREIGN TABLE", "SYSTEM TABLE", "PARTITIONED TABLE", "EXTERNAL TABLE"] {
+            #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: kind, comment: nil) == nil)
+        }
+    }
+}
+
+struct BigQueryTableMetadataTests {
+    @Test("The comment is the description alone, without partitioning, labels or dates")
+    func commentIsTheDescription() throws {
+        let json = """
+            {"description":"Daily orders","numRows":"10","numBytes":"2048","type":"TABLE",
+             "creationTime":"1700000000000","lastModifiedTime":"1700000100000",
+             "timePartitioning":{"type":"DAY","field":"created"},"labels":{"team":"data"},
+             "expirationTime":"1800000000000"}
+            """
+        let resource = try JSONDecoder().decode(BQTableResource.self, from: Data(json.utf8))
+        let metadata = BigQueryPluginDriver.tableMetadata(table: "orders", resource: resource)
+        #expect(metadata.comment == "Daily orders")
+        #expect(metadata.rowCount == 10)
+        #expect(metadata.dataSize == 2_048)
+        #expect(metadata.engine == "TABLE")
+        #expect(metadata.createTime == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(metadata.updateTime == Date(timeIntervalSince1970: 1_700_000_100))
+    }
+
+    @Test("A table without a description has no comment, whatever else it carries")
+    func noDescriptionMeansNoComment() throws {
+        let json = #"{"description":"","timePartitioning":{"type":"DAY"},"labels":{"team":"data"}}"#
+        let resource = try JSONDecoder().decode(BQTableResource.self, from: Data(json.utf8))
+        #expect(BigQueryPluginDriver.tableMetadata(table: "t", resource: resource).comment == nil)
+        let bare = try JSONDecoder().decode(BQTableResource.self, from: Data("{}".utf8))
+        #expect(BigQueryPluginDriver.tableMetadata(table: "t", resource: bare).comment == nil)
     }
 }

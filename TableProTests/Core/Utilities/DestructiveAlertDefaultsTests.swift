@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Destructive alert defaults")
 @MainActor
 struct DestructiveAlertDefaultsTests {
     private static let escape = "\u{1B}"
@@ -17,11 +16,11 @@ struct DestructiveAlertDefaultsTests {
         alert.buttons.filter { $0.keyEquivalent == key }.count
     }
 
-    // MARK: - Inspector Delete
+    // MARK: - Data File Delete
 
-    @Test("Inspector delete alert keeps Escape on cancel and takes Return off delete")
-    func inspectorDeleteBindings() {
-        let alert = InspectorDeleteConfirmation.makeAlert(messageText: "Delete this row?")
+    @Test("Data file delete alert keeps Escape on cancel and takes Return off delete")
+    func dataFileDeleteBindings() {
+        let alert = DataFileDeleteConfirmation.makeAlert(messageText: "Delete this row?")
         #expect(alert.buttons.count == 2)
         #expect(alert.buttons[0].keyEquivalent != Self.returnKey)
         #expect(alert.buttons[1].keyEquivalent == Self.escape)
@@ -29,9 +28,9 @@ struct DestructiveAlertDefaultsTests {
         #expect(buttonCount(alert, withKeyEquivalent: Self.escape) == 1)
     }
 
-    @Test("Inspector delete alert marks the delete button destructive")
-    func inspectorDeleteIsDestructive() {
-        let alert = InspectorDeleteConfirmation.makeAlert(messageText: "Delete this column?")
+    @Test("Data file delete alert marks the delete button destructive")
+    func dataFileDeleteIsDestructive() {
+        let alert = DataFileDeleteConfirmation.makeAlert(messageText: "Delete this column?")
         #expect(alert.buttons[0].hasDestructiveAction)
     }
 

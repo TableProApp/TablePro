@@ -3,26 +3,18 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@Observable
 @MainActor
-final class TunnelCommandPaneViewModel {
-    var state = TunnelCommandFormState()
+final class TunnelCommandPaneViewModel: ObservableObject {
+    @Published var state = TunnelCommandFormState()
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }
         return TunnelCommandBuilder.validationIssues(for: state.buildConfig())
-    }
-
-    func previewCommand(remoteHost: String, remotePort: Int) -> String? {
-        TunnelCommandBuilder.previewCommand(
-            for: state.buildConfig(),
-            remoteHost: remoteHost.isEmpty ? "localhost" : remoteHost,
-            remotePort: remotePort
-        )
     }
 
     func load(from connection: DatabaseConnection) {

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMSSQLCore
 import TableProPluginKit
 
 extension MSSQLPluginDriver {
@@ -17,11 +18,7 @@ extension MSSQLPluginDriver {
     func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
         let qualified = [schema, name].compactMap { $0 }.map(quoteIdentifier).joined(separator: ".")
         _ = try await execute(
-            query: "EXEC sp_rename \(literal(qualified)), \(literal(newName)), 'OBJECT'"
+            query: "EXEC sp_rename \(MSSQLStringLiteral.quoted(qualified)), \(MSSQLStringLiteral.quoted(newName)), 'OBJECT'"
         )
-    }
-
-    private func literal(_ value: String) -> String {
-        "N'\(value.replacingOccurrences(of: "'", with: "''"))'"
     }
 }

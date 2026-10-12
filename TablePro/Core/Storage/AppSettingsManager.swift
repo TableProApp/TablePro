@@ -1,15 +1,14 @@
 import AppKit
 import Combine
 import Foundation
-import Observation
 import os
+import TableProSyncTransport
 
-@Observable
 @MainActor
-final class AppSettingsManager {
+final class AppSettingsManager: ObservableObject {
     static let shared = AppSettingsManager()
 
-    var general: GeneralSettings {
+    @Published var general: GeneralSettings {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
@@ -23,7 +22,7 @@ final class AppSettingsManager {
         }
     }
 
-    var appearance: AppearanceSettings {
+    @Published var appearance: AppearanceSettings {
         didSet {
             storage.saveAppearance(appearance)
             themeEngine.apply(
@@ -35,7 +34,7 @@ final class AppSettingsManager {
         }
     }
 
-    var editor: EditorSettings {
+    @Published var editor: EditorSettings {
         didSet {
             storage.saveEditor(editor)
             appEvents.editorSettingsChanged.send(())
@@ -45,7 +44,7 @@ final class AppSettingsManager {
 
     /// Device-local: it is deliberately absent from `AppSettingsCategory.synced`, so a zoom press
     /// never pushes an iCloud record and a Mac on an older build cannot reset it.
-    var typography: TypographySettings {
+    @Published var typography: TypographySettings {
         didSet {
             guard typography != oldValue else { return }
             storage.saveTypography(typography)
@@ -53,7 +52,7 @@ final class AppSettingsManager {
         }
     }
 
-    var notifications: NotificationSettings {
+    @Published var notifications: NotificationSettings {
         didSet {
             guard !isValidating else { return }
             var validated = notifications
@@ -68,7 +67,7 @@ final class AppSettingsManager {
         }
     }
 
-    var dataGrid: DataGridSettings {
+    @Published var dataGrid: DataGridSettings {
         didSet {
             guard !isValidating else { return }
             var validated = dataGrid
@@ -88,7 +87,7 @@ final class AppSettingsManager {
         }
     }
 
-    var history: HistorySettings {
+    @Published var history: HistorySettings {
         didSet {
             guard !isValidating else { return }
             var validated = history
@@ -107,14 +106,14 @@ final class AppSettingsManager {
         }
     }
 
-    var tabs: TabSettings {
+    @Published var tabs: TabSettings {
         didSet {
             storage.saveTabs(tabs)
             syncTracker.markDirty(.settings, id: AppSettingsCategory.tabs)
         }
     }
 
-    var keyboard: KeyboardSettings {
+    @Published var keyboard: KeyboardSettings {
         didSet {
             storage.saveKeyboard(keyboard)
             syncTracker.markDirty(.settings, id: AppSettingsCategory.keyboard)
@@ -123,7 +122,7 @@ final class AppSettingsManager {
         }
     }
 
-    var ai: AISettings {
+    @Published var ai: AISettings {
         didSet {
             storage.saveAI(ai)
             syncTracker.markDirty(.settings, id: AppSettingsCategory.ai)
@@ -142,13 +141,13 @@ final class AppSettingsManager {
         }
     }
 
-    var sync: SyncSettings {
+    @Published var sync: SyncSettings {
         didSet {
             storage.saveSync(sync)
         }
     }
 
-    var mcp: MCPSettings {
+    @Published var mcp: MCPSettings {
         didSet {
             guard !isValidating else { return }
             var validated = mcp
@@ -198,21 +197,23 @@ final class AppSettingsManager {
             permissions: .readWrite,
             connectionAccess: .all,
             expiresAt: nil,
-            isBridgeCredential: false
+            isBridgeCredential: false,
+            extraScopes: []
         )
         mcp.requireAuthentication = value
         return result
     }
 
-    @ObservationIgnored private let storage: AppSettingsStorage
-    @ObservationIgnored private let themeEngine: ThemeEngine
-    @ObservationIgnored private let syncTracker: SyncChangeTracker
-    @ObservationIgnored private let appEvents: AppEvents
-    @ObservationIgnored private let dateFormattingService: DateFormattingService
-    @ObservationIgnored private let queryHistoryManager: QueryHistoryManager
-    @ObservationIgnored private let mcpServerManager: MCPServerManager
-    @ObservationIgnored private let copilotService: CopilotService
-    @ObservationIgnored private var isValidating = false
+    private let storage: AppSettingsStorage
+    private let themeEngine: ThemeEngine
+    private let syncTracker: SyncChangeTracker
+    private let appEvents: AppEvents
+    private let dateFormattingService: DateFormattingService
+    private let queryHistoryManager: QueryHistoryManager
+    private let mcpServerManager: MCPServerManager
+    private let copilotService: CopilotService
+    private let connectionListPreferences: ConnectionListPreferences
+    private var isValidating = false
 
     init(
         storage: AppSettingsStorage = .shared,
@@ -222,7 +223,8 @@ final class AppSettingsManager {
         dateFormattingService: DateFormattingService = .shared,
         queryHistoryManager: QueryHistoryManager = .shared,
         mcpServerManager: MCPServerManager = .shared,
-        copilotService: CopilotService = .shared
+        copilotService: CopilotService = .shared,
+        connectionListPreferences: ConnectionListPreferences = .shared
     ) {
         self.storage = storage
         self.themeEngine = themeEngine
@@ -232,6 +234,7 @@ final class AppSettingsManager {
         self.queryHistoryManager = queryHistoryManager
         self.mcpServerManager = mcpServerManager
         self.copilotService = copilotService
+        self.connectionListPreferences = connectionListPreferences
 
         self.general = storage.loadGeneral()
         self.appearance = storage.loadAppearance()
@@ -281,6 +284,9 @@ final class AppSettingsManager {
         await queryHistoryManager.applySettingsChange()
     }
 
+    /// The update preferences belong to Sparkle rather than to the structs reassigned above, so
+    /// they are cleared here and not by the caller: the alert promises every section, and a second
+    /// reset entry point would otherwise skip them silently.
     func resetToDefaults() {
         general = .default
         appearance = .default
@@ -294,5 +300,7 @@ final class AppSettingsManager {
         mcp = .default
         typography = .default
         storage.resetToDefaults()
+        connectionListPreferences.resetShowsRecent()
+        SoftwareUpdater.shared.resetUpdatePreferences()
     }
 }

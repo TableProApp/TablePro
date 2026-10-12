@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct PostgreSQLCatalogPresence: Sendable, Equatable {
+nonisolated struct PostgreSQLCatalogPresence: Sendable, Equatable {
     let hasMaterializedViews: Bool
     let hasForeignTables: Bool
     let hasSequences: Bool

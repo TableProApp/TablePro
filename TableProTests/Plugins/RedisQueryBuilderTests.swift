@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Redis Query Builder")
 struct RedisQueryBuilderTests {
     private let builder = RedisQueryBuilder()
 

@@ -9,9 +9,11 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Connection form edits")
 struct ConnectionFormEditsTests {
     private func edits(
+        iconName: String? = nil,
+        connectTimeoutSeconds: Int? = nil,
+        queryTimeoutSeconds: Int? = nil,
         additionalFields: [String: String] = [:],
         ownedAdditionalFieldIDs: Set<String> = []
     ) -> ConnectionFormEdits {
@@ -25,10 +27,12 @@ struct ConnectionFormEditsTests {
             sshConfig: SSHConfiguration(),
             sslConfig: SSLConfiguration(),
             color: .blue,
+            iconName: iconName,
             tagIds: [],
             groupId: nil,
             sshProfileId: nil,
             sshTunnelMode: .disabled,
+            credentialMode: .inline,
             cloudflareTunnelMode: .disabled,
             cloudSQLProxyMode: .disabled,
             socksProxyMode: .disabled,
@@ -37,6 +41,8 @@ struct ConnectionFormEditsTests {
             aiPolicy: nil,
             aiRules: nil,
             externalAccess: .readOnly,
+            connectTimeoutSeconds: connectTimeoutSeconds,
+            queryTimeoutSeconds: queryTimeoutSeconds,
             redisDatabase: nil,
             startupCommands: nil,
             localOnly: false,
@@ -88,6 +94,64 @@ struct ConnectionFormEditsTests {
         #expect(result.username == "edited_user")
         #expect(result.type == .postgresql)
         #expect(result.color == .blue)
+    }
+
+    @Test("Applying edits stores the picked icon")
+    func storesIcon() {
+        let result = edits(iconName: "server.rack").applied(to: populatedConnection())
+
+        #expect(result.iconName == "server.rack")
+    }
+
+    @Test("Picking Default clears a stored icon")
+    func clearsIcon() {
+        var original = populatedConnection()
+        original.iconName = "server.rack"
+
+        let result = edits(iconName: nil).applied(to: original)
+
+        #expect(result.iconName == nil)
+    }
+
+    /// A Mac on an older release cannot draw a symbol a newer device picked. Dropping it on load
+    /// would write nil back on the next save and erase the icon on every device.
+    @Test("An icon this Mac cannot draw survives loading the form and saving it")
+    @MainActor
+    func keepsAnUndrawableIconThroughLoadAndSave() {
+        var original = populatedConnection()
+        original.iconName = "made.up.symbol"
+        let customization = CustomizationPaneViewModel()
+
+        customization.load(from: original)
+        let result = edits(iconName: customization.iconName).applied(to: original)
+
+        #expect(customization.iconName == "made.up.symbol")
+        #expect(result.iconName == "made.up.symbol")
+    }
+
+    @Test("Applying edits stores both connection timeout overrides")
+    func storesTimeoutOverrides() {
+        let result = edits(connectTimeoutSeconds: 45, queryTimeoutSeconds: 0)
+            .applied(to: populatedConnection())
+
+        #expect(result.connectTimeoutSeconds == 45)
+        #expect(result.queryTimeoutSeconds == 0)
+        #expect(result.additionalFields[DatabaseConnection.connectTimeoutSecondsKey] == "45")
+        #expect(result.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == "0")
+    }
+
+    @Test("Clearing timeout overrides removes their reserved fields")
+    func removesClearedTimeoutOverrides() {
+        var original = populatedConnection()
+        original.connectTimeoutSeconds = 45
+        original.queryTimeoutSeconds = 120
+
+        let result = edits().applied(to: original)
+
+        #expect(result.connectTimeoutSeconds == nil)
+        #expect(result.queryTimeoutSeconds == nil)
+        #expect(result.additionalFields[DatabaseConnection.connectTimeoutSecondsKey] == nil)
+        #expect(result.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == nil)
     }
 
     @Test("An additional field the form does not own is carried over")
@@ -147,7 +211,30 @@ struct ConnectionFormEditsTests {
         #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains("promptForPassword"))
         #expect(
             ConnectionFormEdits.appManagedAdditionalFieldIDs
+                .contains(DatabaseConnection.connectTimeoutSecondsKey)
+        )
+        #expect(
+            ConnectionFormEdits.appManagedAdditionalFieldIDs
+                .contains(DatabaseConnection.queryTimeoutSecondsKey)
+        )
+        #expect(
+            ConnectionFormEdits.appManagedAdditionalFieldIDs
                 .contains(DatabaseConnection.sshForwardUnixSocketPathKey)
         )
+        #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains(MySQLLocalSocket.fieldKey))
+    }
+
+    @Test("Switching a socket connection back to Host and Port removes the socket")
+    func hostAndPortRemovesTheSocket() {
+        var original = populatedConnection()
+        original.type = .mysql
+        original.additionalFields = [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+
+        let result = edits(
+            additionalFields: [:],
+            ownedAdditionalFieldIDs: ConnectionFormEdits.appManagedAdditionalFieldIDs
+        ).applied(to: original)
+
+        #expect(result.additionalFields[MySQLLocalSocket.fieldKey] == nil)
     }
 }

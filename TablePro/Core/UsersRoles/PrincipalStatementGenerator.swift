@@ -2,6 +2,15 @@ import Foundation
 import TableProPluginKit
 
 struct PrincipalStatementGenerator {
+    struct EditorScript: Equatable {
+        static let empty = EditorScript(text: "", hidesPasswords: false)
+
+        let text: String
+        let hidesPasswords: Bool
+    }
+
+    static let passwordPlaceholder = "<password>"
+
     private let driver: any PluginPrincipalManagement
 
     init(driver: any PluginPrincipalManagement) {
@@ -12,6 +21,18 @@ struct PrincipalStatementGenerator {
         try changes
             .sorted { $0.executionRank < $1.executionRank }
             .flatMap { try statements(for: $0) }
+    }
+
+    func editorScript(changes: [PrincipalChange]) throws -> EditorScript {
+        let masked = try generate(changes: changes.map { $0.maskingPassword(with: Self.passwordPlaceholder) })
+            .map(\.sql)
+        let actual = try generate(changes: changes).map(\.sql)
+        return EditorScript(
+            text: masked
+                .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
+                .joined(separator: "\n\n"),
+            hidesPasswords: masked != actual
+        )
     }
 
     private func statements(for change: PrincipalChange) throws -> [SchemaStatement] {

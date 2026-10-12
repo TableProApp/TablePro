@@ -23,7 +23,7 @@ final class QueryHistoryPanelUITests: UITestCase {
 
         XCTAssertTrue(
             waitForPredicate(timeout: 10) {
-                list.descendants(matching: .any)
+                list.staticTexts
                     .matching(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", "Genre", "Genre"))
                     .firstMatch.exists
             },
@@ -43,8 +43,7 @@ final class QueryHistoryPanelUITests: UITestCase {
         XCTAssertTrue(date.exists, "The drawer must expose the date range")
         XCTAssertEqual(scope.value as? String, "This Connection", "History starts scoped to this connection")
 
-        let detail = window.descendants(matching: .any)
-            .matching(identifier: "query-history-detail").firstMatch
+        let detail = window.groups.matching(identifier: "query-history-detail").firstMatch
         XCTAssertTrue(detail.waitToExist(timeout: 10), "The drawer is master-detail")
 
         app.typeKey("y", modifierFlags: .command)
@@ -59,8 +58,7 @@ final class QueryHistoryPanelUITests: UITestCase {
     @discardableResult
     private func showHistoryDrawer(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("y", modifierFlags: .command)
-        let list = app.windows.firstMatch.descendants(matching: .any)
-            .matching(identifier: "query-history-list").firstMatch
+        let list = app.windows.firstMatch.tables.matching(identifier: "query-history-list").firstMatch
         XCTAssertTrue(list.waitToExist(timeout: 10), "Cmd+Y must show the query history drawer")
         return list
     }

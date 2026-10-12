@@ -6,6 +6,8 @@
 import Foundation
 import os
 
+import TableProSSHTransport
+
 /// Bytes a connection's transport has carried since it was opened, in each direction.
 ///
 /// Totals rather than a rate, because a total is the only figure that stays true whatever the
@@ -44,3 +46,5 @@ final class TransportByteCounter: Sendable {
         state.withLock { $0.sent &+= UInt64(count) }
     }
 }
+
+extension TransportByteCounter: RelayByteObserver {}

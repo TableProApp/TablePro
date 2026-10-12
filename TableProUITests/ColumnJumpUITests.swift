@@ -18,7 +18,10 @@ final class ColumnJumpUITests: UITestCase {
         let grid = runWideQuery(in: app)
         let lastColumnHeader = grid.buttons["Column: col_60"]
         XCTAssertTrue(lastColumnHeader.waitToExist(timeout: 10), "The result must expose its last column's header")
-        XCTAssertFalse(lastColumnHeader.isHittable, "Sixty columns must push the last one past the viewport")
+        XCTAssertFalse(
+            isInView(lastColumnHeader, of: grid),
+            "Sixty columns must push the last one past the viewport"
+        )
 
         app.typeKey("j", modifierFlags: [.command, .shift])
         let panel = switcherPanel(in: app)
@@ -36,7 +39,7 @@ final class ColumnJumpUITests: UITestCase {
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5), "Return must close the panel")
         XCTAssertTrue(
-            waitForPredicate(timeout: 10) { lastColumnHeader.isHittable },
+            waitForPredicate(timeout: 10) { isInView(lastColumnHeader, of: grid) },
             "The jump must scroll the column into view"
         )
 
@@ -72,15 +75,28 @@ final class ColumnJumpUITests: UITestCase {
 
     // MARK: - Helpers
 
+    /// Whether the header's centre lies inside the grid's frame, which is what scrolling a column
+    /// into view changes.
+    ///
+    /// Not `isHittable`: a data grid header never reports it, even when published, enabled, correctly
+    /// placed and unobstructed, so a wait on it times out after a jump that did scroll. Measured after
+    /// the jump, `col_60` sat at x 1795 to 1880 inside a grid spanning 959 to 1881 and still read as
+    /// not hittable.
+    private func isInView(_ header: XCUIElement, of grid: XCUIElement) -> Bool {
+        guard header.exists, grid.exists else { return false }
+        let frame = header.frame
+        return grid.frame.contains(CGPoint(x: frame.midX, y: frame.midY))
+    }
+
+    /// Through `typeQuery`, because sixty columns is a long run of keystrokes to send straight after
+    /// a click: the first ones can land before the editor takes them, and a query that lost its
+    /// `SELECT` produces no header to find and no result for Command Shift J to act on.
     private func runWideQuery(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
-        let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitToExist(timeout: 10))
-        editor.click()
         let columns = (1...Self.columnCount)
             .map { String(format: "%d AS col_%02d", $0, $0) }
             .joined(separator: ", ")
-        app.typeText("SELECT \(columns) FROM Track LIMIT 3;")
+        typeQuery("SELECT \(columns) FROM Track LIMIT 3;", in: app)
         app.typeKey(.return, modifierFlags: .command)
 
         let grid = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch

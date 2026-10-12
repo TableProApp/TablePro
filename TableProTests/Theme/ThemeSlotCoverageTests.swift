@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Theme slot coverage")
 struct ThemeSlotCoverageTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

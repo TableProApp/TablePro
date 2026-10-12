@@ -3,20 +3,10 @@
 //  TablePro
 //
 
+import CSQLite
 import Foundation
 import os
-import SQLite3
 import TableProPluginKit
-
-// MARK: - Error
-
-struct LibSQLError: Error, PluginDriverError {
-    let message: String
-
-    var pluginErrorMessage: String { message }
-
-    static let notConnected = LibSQLError(message: String(localized: "Not connected to database"))
-}
 
 // MARK: - Plugin Driver
 
@@ -27,6 +17,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private let config: DriverConnectionConfig
+    private let localDatabaseRuntime: any LibSQLLocalDatabaseRuntime
     private var backend: Backend?
     private var _serverVersion: String?
     nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
@@ -61,8 +52,12 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return base
     }
 
-    init(config: DriverConnectionConfig) {
+    init(
+        config: DriverConnectionConfig,
+        localDatabaseRuntime: any LibSQLLocalDatabaseRuntime
+    ) {
         self.config = config
+        self.localDatabaseRuntime = localDatabaseRuntime
     }
 
     private var isLocalMode: Bool {
@@ -90,8 +85,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         }
 
-        let localBackend = SQLiteLocalBackend()
-        try await localBackend.open(path: path)
+        let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
+        let localBackend = SQLiteLocalBackend(runtime: localDatabaseRuntime)
+        try await localBackend.open(path: path, loading: extensions)
         let rawHandle = await localBackend.dbHandleForInterrupt
         let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
         let version = versionResult.rows.first?.first?.asText ?? "SQLite"
@@ -118,12 +114,23 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let token = config.password
         let authToken: String? = token.isEmpty ? nil : token
 
+        let connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout.sessionBootstrapRequestTimeout * 1_000)
+        )
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeoutMilliseconds)
         let client = HranaHttpClient(baseUrl: baseUrl, authToken: authToken)
-        client.createSession()
+        client.createSession(connectTimeout: TimeInterval(connectTimeoutMilliseconds) / 1_000)
 
         do {
-            let libsqlVersion = try? await client.execute(sql: "SELECT libsql_version()")
-            let sqliteVersion = try await client.execute(sql: "SELECT sqlite_version()")
+            let libsqlVersion = try? await client.execute(
+                sql: "SELECT libsql_version()",
+                requestTimeout: deadline.remainingSeconds()
+            )
+            let sqliteVersion = try await client.execute(
+                sql: "SELECT sqlite_version()",
+                requestTimeout: deadline.remainingSeconds()
+            )
             let version = libsqlVersion?.rows.first?.first?.stringValue
                 ?? sqliteVersion.rows.first?.first?.stringValue
                 ?? "libSQL"
@@ -190,14 +197,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch getBackend() {
         case .remote(let client):
             let startTime = Date()
-            let stringArgs: [String?] = parameters.map { param -> String? in
-                switch param {
-                case .null: return nil
-                case .text(let s): return s
-                case .bytes(let d): return "X'" + d.map { String(format: "%02X", $0) }.joined() + "'"
-                }
-            }
-            let result = try await client.execute(sql: trimmed, args: stringArgs)
+            let result = try await client.execute(sql: trimmed, args: parameters)
             let executionTime = Date().timeIntervalSince(startTime)
             return mapExecuteResult(result, executionTime: executionTime)
         case .local(let localBackend):
@@ -212,7 +212,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch getBackend() {
         case .remote(let client):
             let startTime = Date()
-            let statements = queries.map { (sql: $0, args: [] as [String?]) }
+            let statements = queries.map { HranaStatement(sql: $0) }
             let results = try await client.executeBatch(statements: statements)
             let elapsed = Date().timeIntervalSince(startTime)
 
@@ -234,8 +234,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func cancelQuery() throws {
         lock.lock()
         let current = backend
-        if let interruptHandle = _dbHandleForInterrupt {
-            sqlite3_interrupt(interruptHandle)
+        if case .local(let localBackend) = current {
+            localBackend.cancelBusyWait()
+            if let interruptHandle = _dbHandleForInterrupt {
+                sqlite3_interrupt(interruptHandle)
+            }
         }
         lock.unlock()
 
@@ -244,13 +247,18 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    var hasRetriedLocalBusyWait: Bool {
+        guard case .local(let localBackend) = getBackend() else { return false }
+        return localBackend.hasRetriedBusyWait
+    }
+
     func applyQueryTimeout(_ seconds: Int) async throws {
+        let boundedSeconds = PluginQueryTimeout.boundedSeconds(seconds)
         switch getBackend() {
         case .remote(let client):
-            client.setQueryTimeout(seconds)
+            client.setQueryTimeout(boundedSeconds)
         case .local(let localBackend):
-            guard seconds > 0 else { return }
-            await localBackend.applyBusyTimeout(Int32(seconds * 1_000))
+            await localBackend.applyBusyTimeout(PluginQueryTimeout.int32Milliseconds(boundedSeconds))
         case nil:
             break
         }
@@ -433,50 +441,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT il.name, il."unique", il.origin, ii.name AS col_name
-            FROM pragma_index_list('\(safeTable)') il
-            LEFT JOIN pragma_index_info(il.name) ii ON 1=1
-            ORDER BY il.seq, ii.seqno
-            """
-        let result = try await execute(query: query)
-
-        var indexMap: [(name: String, isUnique: Bool, isPrimary: Bool, columns: [String])] = []
-        var indexLookup: [String: Int] = [:]
-
-        for row in result.rows {
-            guard row.count >= 4,
-                  let indexName = row[0].asText else { continue }
-
-            let isUnique = row[1].asText == "1"
-            let origin = row[2].asText ?? "c"
-
-            if let idx = indexLookup[indexName] {
-                if let colName = row[3].asText {
-                    indexMap[idx].columns.append(colName)
-                }
-            } else {
-                let columns: [String] = row[3].asText.map { [$0] } ?? []
-                indexLookup[indexName] = indexMap.count
-                indexMap.append((
-                    name: indexName,
-                    isUnique: isUnique,
-                    isPrimary: origin == "pk",
-                    columns: columns
-                ))
-            }
-        }
-
-        return indexMap.map { entry in
-            PluginIndexInfo(
-                name: entry.name,
-                columns: entry.columns,
-                isUnique: entry.isUnique,
-                isPrimary: entry.isPrimary,
-                type: "BTREE"
-            )
-        }.sorted { $0.isPrimary && !$1.isPrimary }
+        let result = try await execute(query: SQLiteIndexCatalog.indexesQuery(table: table))
+        return SQLiteIndexCatalog.indexes(fromRows: result.rows)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
@@ -802,14 +768,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        let uniqueStr = index.isUnique ? "UNIQUE " : ""
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var statement = "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) "
-            + "ON \(quoteIdentifier(table)) (\(cols))"
-        if let predicate = index.whereClause?.nilIfEmpty {
-            statement += " WHERE \(predicate)"
-        }
-        return statement
+        SQLiteIndexCatalog.createStatement(for: index, table: table, quote: quoteIdentifier)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -821,10 +780,12 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
-        let uniqueStr = index.isUnique ? "UNIQUE " : ""
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let onClause = tableName.map { " ON \(quoteIdentifier($0))" } ?? ""
-        return "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name))\(onClause) (\(cols))"
+        guard let tableName else {
+            let unique = index.isUnique ? "UNIQUE " : ""
+            let keys = SQLiteIndexCatalog.keyList(for: index, quote: quoteIdentifier)
+            return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) \(keys)"
+        }
+        return SQLiteIndexCatalog.createStatement(for: index, table: tableName, quote: quoteIdentifier)
     }
 
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {

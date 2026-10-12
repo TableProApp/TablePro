@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCPCacheHint")
 struct MCPCacheHintTests {
     private let serverInfo = MCPImplementation(name: "tablepro", version: "1.2.3")
 

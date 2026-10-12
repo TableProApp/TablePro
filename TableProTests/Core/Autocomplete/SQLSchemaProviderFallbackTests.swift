@@ -7,8 +7,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 // MARK: - Mock Driver
@@ -357,10 +357,63 @@ struct SQLSchemaProviderFallbackTests {
         #expect(item.detail?.contains("INT") == true)
     }
 
+    @Test("A cached table outside the current schema keeps its schema in the fallback label")
+    func fallbackLabelKeepsSchemaOutsideCurrentSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        driver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db",
+            tables: [
+                TestFixtures.makeTableInfo(name: "orders", schema: "public"),
+                TestFixtures.makeTableInfo(name: "orders", schema: "hr")
+            ],
+            driver: driver
+        )
+        await provider.requestColumnPreload()
+        await provider.waitForEagerColumnLoad()
+        _ = await provider.getColumns(for: "orders", schema: "hr")
+
+        let items = await provider.allColumnsFromCachedTables()
+
+        #expect(Set(items.map(\.label)) == ["orders.id", "hr.orders.id"])
+        #expect(Set(items.map(\.insertText)) == ["orders.id", "hr.orders.id"])
+    }
+
+    /// On an engine with an implicit schema a bare name means that schema, not the one being
+    /// browsed, so the browsed schema's table is the one that needs its schema in the label.
+    @Test("The fallback label leaves out only the engine's implicit schema")
+    func fallbackLabelLeavesOutOnlyTheImplicitSchema() async throws {
+        let connection = TestFixtures.makeConnection(type: .spanner)
+        let implicitSchema = try #require(connection.type.implicitSchemaName)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.currentSchema = "sales"
+        driver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db",
+            tables: [
+                TestFixtures.makeTableInfo(name: "orders", schema: implicitSchema),
+                TestFixtures.makeTableInfo(name: "orders", schema: "sales")
+            ],
+            driver: driver,
+            connection: connection
+        )
+        await provider.waitForEagerColumnLoad()
+        _ = await provider.getColumns(for: "orders", schema: implicitSchema)
+        _ = await provider.getColumns(for: "orders", schema: "sales")
+
+        let items = await provider.allColumnsFromCachedTables()
+
+        #expect(Set(items.map(\.label)) == ["orders.id", "sales.orders.id"])
+    }
+
     // MARK: - Eager Column Loading
 
-    @Test("resetForDatabase triggers eager column load via fetchAllColumns")
-    func resetForDatabaseTriggersEagerLoad() async throws {
+    @Test("An editor's request after resetForDatabase fills the cache via fetchAllColumns")
+    func editorRequestAfterResetFillsTheCache() async {
         let driver = MockFallbackDriver()
         driver.tablesToReturn = [
             TestFixtures.makeTableInfo(name: "users"),
@@ -377,14 +430,10 @@ struct SQLSchemaProviderFallbackTests {
             tables: driver.tablesToReturn,
             driver: driver
         )
+        await provider.requestColumnPreload()
+        await provider.waitForEagerColumnLoad()
 
-        // Wait for the background eager load task to complete
-        try await Task.sleep(nanoseconds: 300_000_000)
-
-        // Eager load should have called fetchAllColumns
-        #expect(driver.fetchAllColumnsCallCount >= 1)
-
-        // The cache should now be populated -- getColumns should NOT trigger fetchColumns
+        #expect(driver.fetchAllColumnsCallCount == 1)
         let fetchCountBefore = driver.fetchColumnsCallCount
         let columns = await provider.getColumns(for: "users")
         #expect(!columns.isEmpty)
@@ -392,7 +441,7 @@ struct SQLSchemaProviderFallbackTests {
     }
 
     @Test("Eager load does not overwrite manually cached columns")
-    func eagerLoadDoesNotOverwriteCache() async throws {
+    func eagerLoadDoesNotOverwriteCache() async {
         let driver = MockFallbackDriver()
         driver.tablesToReturn = [
             TestFixtures.makeTableInfo(name: "users"),
@@ -409,15 +458,13 @@ struct SQLSchemaProviderFallbackTests {
         let provider = SQLSchemaProvider()
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
 
-        // Manually cache "users" columns via getColumns
         let manualColumns = await provider.getColumns(for: "users")
         #expect(manualColumns.count == 2)
 
-        // Now trigger eager load -- it should NOT overwrite "users" cache entry
         await provider.resetForDatabase("testdb", tables: driver.tablesToReturn, driver: driver)
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await provider.requestColumnPreload()
+        await provider.waitForEagerColumnLoad()
 
-        // "users" should still be the original cached version
         let cachedColumns = await provider.getColumns(for: "users")
         #expect(cachedColumns.count == 2)
     }
@@ -437,6 +484,7 @@ struct SQLSchemaProviderFallbackTests {
 
         let provider = SQLSchemaProvider()
         await provider.resetForDatabase("testdb", tables: tables, driver: driver)
+        await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
 
         let items = await provider.allColumnsFromCachedTables()
@@ -458,6 +506,7 @@ struct SQLSchemaProviderFallbackTests {
 
         let provider = SQLSchemaProvider()
         await provider.resetForDatabase("testdb", tables: listed, driver: driver)
+        await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
 
         let items = await provider.allColumnsFromCachedTables()

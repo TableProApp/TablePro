@@ -8,7 +8,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Fold preview metrics")
 struct FoldPreviewMetricsTests {
     private let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 

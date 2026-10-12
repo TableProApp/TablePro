@@ -16,6 +16,7 @@ extension MainContentCoordinator {
         action: DiscardAction,
         completion: @escaping (Bool) -> Void
     ) {
+        dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
         guard changeManager.hasChanges else {
             completion(true)
             return

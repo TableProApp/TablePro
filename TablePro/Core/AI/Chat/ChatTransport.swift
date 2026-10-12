@@ -23,6 +23,14 @@ struct ChatTransportOptions: Sendable {
     var temperature: Double?
     var tools: [ChatToolSpec]
     var reasoningEffort: ReasoningEffort?
+    /// Which agent session this turn belongs to.
+    ///
+    /// A stateful transport keeps conversation state per session rather than per provider
+    /// configuration. `AIProviderFactory` caches one provider per configuration, so two sessions on
+    /// one Copilot configuration appended their turns to a single server-side conversation and each
+    /// was answered with the other's context, across connections included, while their local
+    /// transcripts stayed correctly separate.
+    var sessionId: UUID
 
     init(
         model: String,
@@ -30,7 +38,8 @@ struct ChatTransportOptions: Sendable {
         maxOutputTokens: Int? = nil,
         temperature: Double? = nil,
         tools: [ChatToolSpec] = [],
-        reasoningEffort: ReasoningEffort? = nil
+        reasoningEffort: ReasoningEffort? = nil,
+        sessionId: UUID = UUID()
     ) {
         self.model = model
         self.systemPrompt = systemPrompt
@@ -38,6 +47,7 @@ struct ChatTransportOptions: Sendable {
         self.temperature = temperature
         self.tools = tools
         self.reasoningEffort = reasoningEffort
+        self.sessionId = sessionId
     }
 }
 

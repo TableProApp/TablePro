@@ -5,6 +5,7 @@
 
 import SwiftUI
 
+@available(macOS 14.0, *)
 private struct SelectionAwareForeground: ViewModifier {
     let standard: Color
     @Environment(\.backgroundProminence) private var backgroundProminence
@@ -17,7 +18,13 @@ private struct SelectionAwareForeground: ViewModifier {
 }
 
 extension View {
+    /// `backgroundProminence` is macOS 14; before it the standard colour is the only answer.
+    @ViewBuilder
     func selectionAwareForeground(_ standard: Color) -> some View {
-        modifier(SelectionAwareForeground(standard: standard))
+        if #available(macOS 14.0, *) {
+            modifier(SelectionAwareForeground(standard: standard))
+        } else {
+            foregroundStyle(standard)
+        }
     }
 }

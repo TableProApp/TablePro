@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Project Folder Scanner")
 struct ProjectFolderScannerTests {
     private let root: URL
 

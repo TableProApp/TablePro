@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("PluginSettingsStorage")
 struct PluginSettingsStorageTests {
 
     private let testPluginId = "test.settings.\(UUID().uuidString)"
@@ -217,7 +216,6 @@ struct SettablePluginSnapshotTests {
     }
 }
 
-@Suite("PluginCapability")
 struct PluginCapabilityTests {
 
     @Test("only has 3 cases: databaseDriver, exportFormat, importFormat")

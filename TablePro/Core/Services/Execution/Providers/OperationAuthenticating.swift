@@ -18,7 +18,7 @@ internal struct BiometricOperationAuthenticating: OperationAuthenticating {
         do {
             return try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
         } catch {
-            Self.logger.warning("Biometric authentication failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Biometric authentication failed: \(error.publicLogShape, privacy: .public)")
             return false
         }
     }

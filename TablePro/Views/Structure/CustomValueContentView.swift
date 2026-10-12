@@ -13,6 +13,7 @@ import SwiftUI
 /// `pending` is a column reference, `'pending'` is a string. Guessing which one was meant is what
 /// made a default of `gen_random_uuid()` arrive at the server as the eleven-character string.
 internal struct CustomValueContentView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     internal enum Mode: Hashable {
         case text
         case expression
@@ -69,7 +70,7 @@ internal struct CustomValueContentView: View {
 
             TextField(placeholder, text: $text)
                 .textFieldStyle(.roundedBorder)
-                .font(mode == .expression ? ThemeEngine.shared.valueFontSwiftUI : nil)
+                .font(mode == .expression ? themeEngine.valueFontSwiftUI : nil)
                 .focused($isFieldFocused)
                 .onSubmit(commit)
 

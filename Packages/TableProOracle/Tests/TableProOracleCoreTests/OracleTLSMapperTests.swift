@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProOracleCore
+import XCTest
 
 final class OracleTLSMapperTests: XCTestCase {
     private let missingPath = "/nonexistent/tablepro-oracle-tests/ca.pem"
@@ -49,6 +49,43 @@ final class OracleTLSMapperTests: XCTestCase {
         XCTAssertNil(description.clientCertificatePath)
         XCTAssertNil(description.clientKeyPath)
         XCTAssertNoThrow(try OracleTLSMapper.tls(for: description))
+    }
+
+    func testVerifyCAWithNoCAPathThrowsCertificateAuthorityRequired() {
+        for path in [nil, "", "   "] {
+            let description = OracleTLSDescription(mode: .verifyCA, caCertificatePath: path)
+            XCTAssertThrowsError(try OracleTLSMapper.tls(for: description)) { error in
+                XCTAssertEqual(error as? OracleCoreError, .certificateAuthorityRequired)
+            }
+        }
+    }
+
+    func testVerifyCANoCARefusalWinsOverUnreadableClientMaterial() {
+        let description = OracleTLSDescription(
+            mode: .verifyCA,
+            clientCertificatePath: missingPath,
+            clientKeyPath: missingPath
+        )
+        XCTAssertThrowsError(try OracleTLSMapper.tls(for: description)) { error in
+            XCTAssertEqual(error as? OracleCoreError, .certificateAuthorityRequired)
+        }
+    }
+
+    func testVerifyIdentityWithNoCAPathStillConnectsOverTLS() throws {
+        let description = OracleTLSDescription(mode: .verifyIdentity)
+        XCTAssertNotNil(try OracleTLSMapper.tls(for: description).sslContext)
+    }
+
+    func testWhitespaceOnlyPathsAreTreatedAsAbsent() {
+        let description = OracleTLSDescription(
+            mode: .verifyIdentity,
+            caCertificatePath: "  ",
+            clientCertificatePath: " ",
+            clientKeyPath: "\t"
+        )
+        XCTAssertNil(description.caCertificatePath)
+        XCTAssertNil(description.clientCertificatePath)
+        XCTAssertNil(description.clientKeyPath)
     }
 
     func testCertificateVerificationPerMode() {

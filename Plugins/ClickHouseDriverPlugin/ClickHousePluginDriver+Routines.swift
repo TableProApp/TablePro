@@ -16,7 +16,7 @@ public enum ClickHouseObjectQueries {
     }
 
     public static func quoteIdentifier(_ value: String) -> String {
-        "`\(value.replacingOccurrences(of: "`", with: "``"))`"
+        clickHouseQuotedIdentifier(value)
     }
 
     /// `origin` separates the server's own catalogue of built-ins from what a user created. Without

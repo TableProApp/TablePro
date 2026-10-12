@@ -3,8 +3,8 @@
 //  TablePro
 //
 
-import CodeEditTextView
 import Foundation
+import TableProTextEngine
 
 extension VimEngine {
     func executeOperatorWithMotion(

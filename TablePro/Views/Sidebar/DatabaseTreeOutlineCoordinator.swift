@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import Observation
 import os
 import SwiftUI
@@ -16,6 +17,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("DatabaseTreeCell")
     private let favoriteTablesStorage: FavoriteTablesStorage
     internal let favoriteDatabasesStorage: FavoriteDatabasesStorage
+    internal let tableFolderStorage: TableFolderStorage
 
     internal var connectionId = UUID()
     internal var databaseType: DatabaseType = .mysql
@@ -23,21 +25,40 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal var windowState: WindowSidebarState?
     internal var sidebarState: SharedSidebarState?
     internal weak var viewModel: SidebarViewModel?
-    internal var searchText = ""
+    internal var searchText = "" {
+        didSet { if searchText.isEmpty { schemasOpenedDuringSearch.removeAll() } }
+    }
+    internal var schemasOpenedDuringSearch: Set<DatabaseSchemaKey> = []
     private var isConnected = false
     internal var activeDatabase: String?
     internal var activeSchema: String?
     private var pendingTruncates: Set<DatabaseTreeTableRef> = []
     private var pendingDeletes: Set<DatabaseTreeTableRef> = []
     internal var showRecentTables = true
+    internal var showSystemContainers = false
+    internal var showsPartitions = true
     private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
     internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
     internal var objectBucketsCache: [DatabaseTreeContainerKey: DatabaseTreeObjectBuckets] = [:]
+    internal var listingMatchesCache: [DatabaseTreeContainerKey: DatabaseTreeFilter.SchemaListingMatches] = [:]
     /// Whether a routine row shows its signature depends on the other rows in its own section, so
     /// the label is decided where the section is built and looked up here when the row draws.
     internal var routineDisplayLabels: [String: String] = [:]
+    /// Built once per refresh for each container, because the container, its folders and its kind
+    /// sections all read the same plan and AppKit asks for each of them separately.
+    internal var flatFolderPlan: TableFolderPlan?
+    internal var containerFolderPlans: [DatabaseTreeContainerKey: TableFolderPlan] = [:]
+    /// The folder whose name is being typed, which a search must not hide out from under the field.
+    internal var revealedFolderId: UUID?
+    /// A reload ends a drag in flight and drops the field a name is being typed into, so one asked
+    /// for during either waits for it to finish. The Welcome list holds its reloads the same way.
+    internal var isDragging = false
+    internal var isReloadDeferred = false
+    /// The tables and views a drag carries, resolved once when it starts rather than on every move
+    /// of the pointer. Nil for a drag that started in another window.
+    internal var draggedFolderItems: [TableFolderDragItem]?
 
     /// A rename in progress, held as identity only. See `DatabaseTreeOutlineCoordinator+Rename`.
     internal var renameSession: DatabaseTreeRenameSession?
@@ -59,6 +80,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var hasRenderedOnce = false
     private var reconcileScheduled = false
     private var observationGeneration = 0
+    private var appearanceObservation: AnyCancellable?
+    private var treeObservations: [AnyCancellable] = []
 
     internal let schemaService = SchemaService.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
@@ -68,11 +91,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
 
     init(
         favoriteTablesStorage: FavoriteTablesStorage = .shared,
-        favoriteDatabasesStorage: FavoriteDatabasesStorage = .shared
+        favoriteDatabasesStorage: FavoriteDatabasesStorage = .shared,
+        tableFolderStorage: TableFolderStorage = .shared
     ) {
         self.favoriteTablesStorage = favoriteTablesStorage
         self.favoriteDatabasesStorage = favoriteDatabasesStorage
+        self.tableFolderStorage = tableFolderStorage
         super.init()
+    }
+
+    internal var pendingTableOperations: Set<DatabaseTreeTableRef> {
+        pendingTruncates.union(pendingDeletes)
     }
 
     internal var supportsSchemaLevel: Bool {
@@ -108,6 +137,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             }
         }
         favoritesObservers.withLockUnchecked { $0.append(databaseObserver) }
+
+        let folderObserver = NotificationCenter.default.addObserver(
+            forName: .tableFoldersDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            let changed = notification.userInfo?[TableFolderStorage.connectionIdUserInfoKey] as? UUID
+            MainActor.assumeIsolated {
+                guard let self, changed == self.connectionId else { return }
+                self.scheduleReconcile()
+            }
+        }
+        favoritesObservers.withLockUnchecked { $0.append(folderObserver) }
         observeObjectListAppearance()
     }
 
@@ -123,18 +163,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     /// sync write-back included. `refreshVisibleRows` reconfigures every row of every open window,
     /// so the two values are compared before it runs.
     private func observeObjectListAppearance() {
-        withObservationTracking {
-            _ = AppSettingsManager.shared.general
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                let appearance = Self.objectListAppearance()
-                if appearance != self.observedAppearance {
-                    self.observedAppearance = appearance
-                    self.refreshVisibleRows()
-                }
-                self.observeObjectListAppearance()
-            }
+        appearanceObservation = AppSettingsManager.shared.onMainActorChange { [weak self] in
+            guard let self else { return }
+            let appearance = Self.objectListAppearance()
+            guard appearance != self.observedAppearance else { return }
+            self.observedAppearance = appearance
+            self.refreshVisibleRows()
         }
     }
 
@@ -173,6 +207,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
+            || showSystemContainers != view.showSystemContainers
+            || showsPartitions != view.showsPartitions
             || rowSize != view.resolvedRowSize
 
         searchText = view.searchText
@@ -182,6 +218,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         pendingTruncates = view.pendingTruncates
         pendingDeletes = view.pendingDeletes
         showRecentTables = view.showRecentTables
+        showSystemContainers = view.showSystemContainers
+        showsPartitions = view.showsPartitions
         rowSize = view.resolvedRowSize
 
         if !hasRenderedOnce || activeChanged {
@@ -214,14 +252,19 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private func beginObserving() {
         observationGeneration += 1
         let generation = observationGeneration
-        withObservationTracking { [weak self] in
-            self?.snapshotDependencies()
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self, generation == self.observationGeneration else { return }
-                self.scheduleReconcile()
-            }
+        /// `snapshotDependencies` read across four objects, and `objectWillChange` is per
+        /// object, so each one gets its own sink. `scheduleReconcile` already coalesces, which
+        /// is what absorbs the wider wake set.
+        let reconcile: () -> Void = { [weak self] in
+            guard let self, generation == self.observationGeneration else { return }
+            self.scheduleReconcile()
         }
+        treeObservations = [
+            service.onMainActorChange(reconcile),
+            schemaService.onMainActorChange(reconcile),
+            sidebarState?.onMainActorChange(reconcile),
+            sidebarState?.redisKeyTreeViewModel?.onMainActorChange(reconcile),
+        ].compactMap { $0 }
     }
 
     private func scheduleReconcile() {
@@ -241,14 +284,11 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         /// changed nothing until some other edit happened to rebuild the tree.
         _ = sidebarState?.sidebarLayout
         _ = sidebarState?.databaseFilterSelected
+        _ = sidebarState?.schemaFilterSelected
         /// One token covers every table, routine and per-schema load for this connection, which is
         /// the whole reactive surface the flat and hierarchical shapes read.
         _ = schemaService.generationToken(for: connectionId)
-        if let keyTree = sidebarState?.redisKeyTreeViewModel {
-            _ = keyTree.isLoading
-            _ = keyTree.isTruncated
-            _ = keyTree.allKeys.count
-        }
+        _ = sidebarState?.redisKeyTreeViewModel?.state
         for node in nodeCache.values {
             switch node.kind {
             case .database(let metadata):
@@ -268,27 +308,49 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 _ = service.partitionsLoadState(
                     connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
                 )
-            case .recentSection, .recentTable, .table, .routine, .trigger, .userType, .status,
-                 .objectKindSection, .containerObjectKindSection,
+            case .partition(let ref):
+                let source = ref.tableRef ?? ref.parent
+                _ = service.partitionsLoadState(
+                    connectionId: connectionId,
+                    database: source.database ?? "",
+                    schema: source.schema,
+                    table: source.table.name
+                )
+            case .recentSection, .recentTable, .foldersSection, .tableFolder, .table, .routine, .trigger,
+                 .userType, .status, .objectKindSection, .containerObjectKindSection,
                  .redisKeysSection, .redisNode:
                 break
             }
         }
     }
 
-    private func refresh() {
+    internal func refresh() {
         guard let outlineView else { return }
+        guard !isDragging, renameSession == nil else {
+            isReloadDeferred = true
+            return
+        }
         isReloading = true
         childrenCache.removeAll()
         objectBucketsCache.removeAll()
+        listingMatchesCache.removeAll()
         routineDisplayLabels.removeAll()
+        flatFolderPlan = nil
+        containerFolderPlans.removeAll()
         invalidateRowConfiguration()
         outlineView.reloadData()
         applyDesiredExpansion()
         syncSelectionToModel()
-        restoreRenameAfterReload()
         isReloading = false
         beginObserving()
+    }
+
+    /// Coalesced with any reload already scheduled, because the edit that ended the hold usually
+    /// posts a change of its own that asks for one too.
+    internal func applyDeferredReloadIfNeeded() {
+        guard isReloadDeferred, !isDragging, renameSession == nil else { return }
+        isReloadDeferred = false
+        scheduleReconcile()
     }
 
     /// A star toggling on or off changes no row and no ordering, so the rows are reconfigured in
@@ -317,7 +379,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         FavoriteTablesStorage.FavoriteEntry(
             connectionId: connectionId,
             database: ref.database,
-            schema: ref.table.schema,
+            schema: ref.favoriteSchema,
             name: ref.table.name
         )
     }
@@ -424,7 +486,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         let selectedObjects = Set(selectedTables.map(\.table))
         var nodes: [DatabaseTreeNode] = []
         for node in nodeCache.values {
-            guard case .table(let ref) = node.kind, selectedObjects.contains(ref.table) else { continue }
+            guard let ref = node.tableRef, selectedObjects.contains(ref.table) else { continue }
             guard selectionDatabase == nil || ref.database == selectionDatabase else { continue }
             nodes.append(node)
         }
@@ -463,7 +525,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 forceNonPreview: forceNonPreview,
                 activateGridFocus: activateGridFocus
             )
-            FeatureTipSignals.sidebarTableOpened()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.sidebarTableOpened()
+            }
             publishSelection()
         }
     }
@@ -564,7 +628,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             },
             routineDisplayLabel: { [weak self] ref in
                 self?.routineDisplayLabels[ref.id] ?? ref.routine.name
-            }
+            },
+            showsPartitions: showsPartitions
         )
     }
 
@@ -586,13 +651,20 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
     }
 
+    /// A table kind is refreshed as a catalog change, as Cmd+R is, so the partition lists the tree
+    /// holds under the section are marked stale along with the browsed list.
     internal func refreshObjectKind(_ kind: SidebarObjectKind) {
         guard let mainCoordinator else { return }
         switch kind {
         case .procedure, .function: Task { await mainCoordinator.refreshRoutines() }
         case .trigger: Task { await mainCoordinator.refreshTriggers() }
         case .type: Task { await mainCoordinator.refreshUserDefinedTypes() }
-        case .table, .view, .materializedView, .foreignTable: Task { await mainCoordinator.refreshTables() }
+        case .table, .view, .materializedView, .foreignTable:
+            CatalogChangeService.shared.record(.changed(CatalogChange(
+                connectionId: connectionId,
+                database: mainCoordinator.browseDatabaseName,
+                kinds: .tables
+            )))
         }
     }
 
@@ -669,7 +741,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     ) {
         switch intent {
         case .openPermanently(let ref):
-            FeatureTipSignals.tableKeptOpen()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.tableKeptOpen()
+            }
             pendingOpenWork?.cancel()
             pendingOpenWork = nil
             open(ref, activateGridFocus: true, forceNonPreview: true)
@@ -705,8 +779,19 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDataSource {
         resolvedChildren(of: item)[index]
     }
 
+    /// `DatabaseTreeNode.isExpandable` answers from the node's kind alone and has no settings to
+    /// read, so the hide-partitions gate has to be applied here as well as in the node builder.
+    /// Without it a hidden table kept a disclosure triangle that opened on nothing.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        (item as? DatabaseTreeNode)?.isExpandable ?? false
+        guard let node = item as? DatabaseTreeNode, node.isExpandable else { return false }
+        switch node.kind {
+        case .table(let ref) where ref.table.type == .partitionedTable:
+            return showsPartitions
+        case .partition:
+            return showsPartitions
+        default:
+            return true
+        }
     }
 }
 
@@ -799,6 +884,8 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         if isRecordingExpansion {
             recordExpansion(node, expanded: true)
             restoreDescendantExpansion(afterExpanding: node)
+        } else if !isApplyingExpansion, case .schema(let database, let schema) = node.kind {
+            schemasOpenedDuringSearch.insert(DatabaseSchemaKey(database: database, schema: schema))
         }
         scheduleSelectionSync()
     }
@@ -828,8 +915,12 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
         isCollapsingItem = true
-        if let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode, isRecordingExpansion {
-            recordExpansion(node, expanded: false)
+        if let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode {
+            if isRecordingExpansion {
+                recordExpansion(node, expanded: false)
+            } else if case .schema(let database, let schema) = node.kind {
+                schemasOpenedDuringSearch.remove(DatabaseSchemaKey(database: database, schema: schema))
+            }
         }
         scheduleSelectionSync(force: true)
     }

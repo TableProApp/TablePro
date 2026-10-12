@@ -14,7 +14,6 @@ import Testing
 
 /// The two sidebar lists are configured from one place now. They had drifted apart on exactly the
 /// settings nobody looks at twice, so these assert the settings rather than the drift.
-@Suite("Sidebar outline scaffold")
 @MainActor
 struct SidebarOutlineScaffoldTests {
     private func makeScrollView(
@@ -102,7 +101,6 @@ struct SidebarOutlineScaffoldTests {
     }
 }
 
-@Suite("Database tree object group hierarchy")
 @MainActor
 struct DatabaseTreeObjectGroupHierarchyTests {
     /// The outline coalesces its selection sync onto the next main-actor hop, so the assertion waits
@@ -557,7 +555,6 @@ private final class WriteCountingDefaults: UserDefaults {
 
 /// Both lists host their rows through one base now. They used to inset by different amounts, so the
 /// two tabs of a single sidebar drew rows at different heights.
-@Suite("Sidebar hosting cell")
 @MainActor
 struct SidebarHostingCellViewTests {
     @Test("A row is hosted once and its content swapped on reuse")

@@ -20,7 +20,7 @@ extension RowEditingCoordinator {
 
         let sqlPreview = statements.map(\.sql).joined(separator: "\n")
         let kind = OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type))
-        let decision = await ExecutionGateProvider.shared.authorize(
+        let decision = await parent.executionGate.authorize(
             OperationRequest(
                 connectionId: parent.connectionId,
                 databaseType: parent.connection.type,
@@ -53,8 +53,8 @@ extension RowEditingCoordinator {
     ) {
         restoreRowBufferToOriginals()
 
-        if let tableName = parent.tabManager.selectedTab?.tableContext.tableName {
-            parent.saveLastFilters(for: tableName)
+        if let tab = parent.tabManager.selectedTab {
+            parent.saveLastFilters(of: tab)
         }
 
         pendingTruncates.removeAll()
@@ -64,8 +64,7 @@ extension RowEditingCoordinator {
         if let (_, index) = parent.tabManager.selectedTabAndIndex {
             parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
         }
-
-        Task { [parent] in await parent.refreshTables() }
+        parent.resumeDeferredTableRefresh()
     }
 
     /// Puts the loaded rows back the way the server last reported them.
@@ -80,17 +79,25 @@ extension RowEditingCoordinator {
            let tableRows = parent.tabSessionRegistry.existingTableRows(for: tab.id) {
             let tabId = tab.id
             let insertedIDs = parent.changeManager.insertedRowIDs
+            var restoredCells: [(rowID: RowID, columnIndex: Int)] = []
+            var absentCells: Set<CellPosition> = []
             let edits = parent.changeManager.getOriginalValues().compactMap { original in
-                tableRows.index(of: original.rowID).map {
-                    (row: $0, column: original.columnIndex, value: original.value)
+                tableRows.index(of: original.rowID).map { storageRow -> (row: Int, column: Int, value: PluginCellValue) in
+                    restoredCells.append((rowID: original.rowID, columnIndex: original.columnIndex))
+                    if original.isAbsent {
+                        absentCells.insert(CellPosition(row: storageRow, column: original.columnIndex))
+                    }
+                    return (row: storageRow, column: original.columnIndex, value: original.value)
                 }
             }
             if !edits.isEmpty {
                 let editDelta = parent.mutateActiveTableRows(for: tabId) { rows in
-                    rows.editMany(edits)
+                    rows.editMany(edits, absentCells: absentCells)
                 }
+                /// `editMany` names the rows it changed by their position in storage, and the grid
+                /// reads a delta's rows as display positions.
                 if editDelta != .none {
-                    deltas.append(editDelta)
+                    deltas.append(restoredCellsDelta(restoredCells, in: tableRows))
                 }
             }
             if !insertedIDs.isEmpty {
@@ -106,5 +113,25 @@ extension RowEditingCoordinator {
         for delta in deltas {
             parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
         }
+        /// The row inspector reads its fields from the buffer this just rewrote, and nothing else
+        /// in `InspectorTrigger` moves on a discard.
+        parent.gridDisplayRevision &+= 1
+    }
+
+    private func restoredCellsDelta(
+        _ cells: [(rowID: RowID, columnIndex: Int)],
+        in tableRows: TableRows
+    ) -> Delta {
+        let displayIDs = parent.activeGridDisplayIDs
+        var positions: Set<CellPosition> = []
+        for cell in cells {
+            guard let displayRow = DisplayRowMapping.displayIndex(
+                forRowID: cell.rowID,
+                displayIDs: displayIDs,
+                in: tableRows
+            ) else { continue }
+            positions.insert(CellPosition(row: displayRow, column: cell.columnIndex))
+        }
+        return positions.isEmpty ? .none : .cellsChanged(positions)
     }
 }

@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct SessionsTableView: View {
-    @Bindable var viewModel: ServerDashboardViewModel
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @ObservedObject var viewModel: ServerDashboardViewModel
     @State private var selection: Set<String> = []
 
     var body: some View {
@@ -19,7 +20,7 @@ struct SessionsTableView: View {
                         Image(systemName: "exclamationmark.triangle")
                     }
                     .font(.caption)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                    .foregroundStyle(themeEngine.palette.color(.statusError))
                 }
             }
             .padding(.horizontal, 12)
@@ -57,7 +58,7 @@ struct SessionsTableView: View {
 
                 TableColumn("") { session in
                     HStack(spacing: 4) {
-                        if session.canCancel, viewModel.canCancelQueries {
+                        if viewModel.canCancel(session) {
                             Button { viewModel.confirmCancelQuery(processId: session.id) } label: {
                                 Image(systemName: "stop.circle")
                             }
@@ -65,7 +66,7 @@ struct SessionsTableView: View {
                             .help(String(localized: "Cancel Query"))
                             .accessibilityLabel(String(format: String(localized: "Cancel query for session %@"), session.id))
                         }
-                        if session.canKill, viewModel.canKillSessions {
+                        if viewModel.canKill(session) {
                             Button { viewModel.confirmKillSession(processId: session.id) } label: {
                                 Image(systemName: "xmark.circle")
                                     .foregroundStyle(.red)
@@ -78,7 +79,7 @@ struct SessionsTableView: View {
                 }
                 .width(60)
             }
-            .onChange(of: viewModel.sessionSortOrder) { _, newOrder in
+            .onChange(of: viewModel.sessionSortOrder) { newOrder in
                 viewModel.sessions.sort(using: newOrder)
             }
         }
@@ -86,10 +87,10 @@ struct SessionsTableView: View {
 
     private func stateColor(_ state: String) -> Color {
         switch state.lowercased() {
-        case "active", "running": return ThemeEngine.shared.palette.color(.statusSuccess)
+        case "active", "running": return themeEngine.palette.color(.statusSuccess)
         case "idle": return .secondary
-        case "idle in transaction": return ThemeEngine.shared.palette.color(.statusWarning)
-        case "waiting", "locked": return ThemeEngine.shared.palette.color(.statusError)
+        case "idle in transaction": return themeEngine.palette.color(.statusWarning)
+        case "waiting", "locked": return themeEngine.palette.color(.statusError)
         default: return .primary
         }
     }

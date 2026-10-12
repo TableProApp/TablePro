@@ -16,7 +16,6 @@ import Testing
 /// Three cases used to assert the ClickHouse shape through `DataChangeManager` with no driver
 /// connected, which the app layer cannot produce and never could, so they sat in the quarantine
 /// file. Asserted here against the driver, they hold.
-@Suite("ClickHouse DML statements")
 struct ClickHouseDMLStatementTests {
     private let table = "users"
     private let columns = ["id", "name"]

@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MCP Identity Ledgers")
 struct MCPIdentityLedgerTests {
     private func principal(tokenId: UUID?, fingerprint: String = "fp") -> MCPPrincipal {
         MCPPrincipal(

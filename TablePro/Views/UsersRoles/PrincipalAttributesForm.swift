@@ -2,7 +2,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct PrincipalAttributesForm: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     let principal: PluginPrincipalInfo
 
     private var draft: PluginPrincipalDefinition {

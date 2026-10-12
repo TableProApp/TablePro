@@ -24,6 +24,7 @@ internal final class QuickSwitcherCatalogStore {
         internal let schemaGeneration: Int
         internal let isRefreshing: Bool
         internal let databaseFilter: [String]
+        internal let schemaFilter: [String]
         internal let contentRevision: Int
         /// The database and schema names the catalog listed, taken from the same metadata service
         /// the sidebar tree reads. Dropping or creating a container refreshes that service and
@@ -93,9 +94,9 @@ internal final class QuickSwitcherCatalogStore {
         return items[connectionId]
     }
 
-    /// Stored without any open-tab state. Which tables have a tab changes between presentations
-    /// while none of the version's inputs move, so a cached `isOpenInTab` would badge a table the
-    /// user has since closed.
+    /// The panel keeps no tables here. They change without any of the version's inputs moving, a
+    /// schema listed after the panel opened or a tab opened since, so it merges them in live. Open
+    /// state is stripped all the same, so nothing stored can badge a tab the user has closed.
     internal func store(_ catalog: [QuickSwitcherItem], for connectionId: UUID, version: Version) {
         items[connectionId] = catalog.map { item in
             var stored = item

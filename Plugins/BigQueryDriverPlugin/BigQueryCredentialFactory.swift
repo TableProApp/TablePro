@@ -27,14 +27,20 @@ internal struct BigQueryCredentials: Sendable {
 internal enum BigQueryCredentialFactory {
     static let scopes = ["https://www.googleapis.com/auth/bigquery"]
 
-    static func credentials(config: DriverConnectionConfig) throws -> BigQueryCredentials {
+    static func credentials(
+        config: DriverConnectionConfig,
+        http: any GoogleHTTPClient,
+        refreshTokenStore: any GoogleRefreshTokenStore,
+        connectTimeoutPhase: PluginConnectTimeoutPhase? = nil
+    ) throws -> BigQueryCredentials {
         try credentials(
             fields: config.additionalFields,
             password: config.password,
             readFile: { FileManager.default.contents(atPath: $0) },
             environment: ProcessInfo.processInfo.environment,
-            http: URLSessionGoogleHTTPClient(),
-            refreshTokenStore: GoogleKeychainRefreshTokenStore()
+            http: http,
+            refreshTokenStore: refreshTokenStore,
+            connectTimeoutPhase: connectTimeoutPhase
         )
     }
 
@@ -44,27 +50,31 @@ internal enum BigQueryCredentialFactory {
         readFile: (String) -> Data?,
         environment: [String: String],
         http: any GoogleHTTPClient,
-        refreshTokenStore: any GoogleRefreshTokenStore
+        refreshTokenStore: any GoogleRefreshTokenStore,
+        connectTimeoutPhase: PluginConnectTimeoutPhase? = nil
     ) throws -> BigQueryCredentials {
-        switch try authMethod(fields: fields) {
-        case .serviceAccount:
-            let key = try GoogleServiceAccountKey.parse(
-                fieldValue: try serviceAccountValue(fields: fields, password: password),
-                readFile: readFile
-            )
-            return BigQueryCredentials(
-                projectId: try projectId(fields: fields, hint: key.projectId),
-                tokenProvider: GoogleTokenProviders.serviceAccount(key, scopes: scopes, http: http)
-            )
-        case .applicationDefault:
-            let credentials = try GoogleApplicationDefaultCredentials.load(
-                path: nil,
+        let effectiveHTTP: any GoogleHTTPClient
+        if let connectTimeoutPhase {
+            effectiveHTTP = GoogleDeadlineHTTPClient(base: http) { connectTimeoutPhase.remainingSeconds(or: $0) }
+        } else {
+            effectiveHTTP = http
+        }
+        let method = try authMethod(fields: fields)
+        switch method {
+        case .serviceAccount, .applicationDefault:
+            let source: GoogleCredentialSource = method == .serviceAccount
+                ? .serviceAccountKey(try serviceAccountValue(fields: fields, password: password))
+                : .applicationDefault
+            let credentials = try GoogleTokenProviders.credentials(
+                from: source,
+                scopes: scopes,
                 readFile: readFile,
-                environment: environment
+                environment: environment,
+                http: effectiveHTTP
             )
             return BigQueryCredentials(
                 projectId: try projectId(fields: fields, hint: credentials.projectHint),
-                tokenProvider: GoogleTokenProviders.applicationDefault(credentials, scopes: scopes, http: http)
+                tokenProvider: credentials.tokenProvider
             )
         case .oauth:
             let client = GoogleOAuthClient(
@@ -77,7 +87,7 @@ internal enum BigQueryCredentialFactory {
                     client,
                     pastedRefreshToken: trimmed(fields[BigQueryConnectionFields.oauthRefreshToken]),
                     store: refreshTokenStore,
-                    http: http
+                    http: effectiveHTTP
                 )
             )
         }

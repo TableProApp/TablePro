@@ -414,7 +414,6 @@ private struct ThrowingAuthenticator: SSHAuthenticator {
     }
 }
 
-@Suite("CompositeAuthenticator failure reporting")
 struct CompositeAuthenticatorFailureReportingTests {
     private func failureReason(
         of authenticators: [any SSHAuthenticator],
@@ -500,7 +499,6 @@ struct CompositeAuthenticatorFailureReportingTests {
     }
 }
 
-@Suite("KeyboardInteractiveContext failure reason")
 struct KeyboardInteractiveFailureReasonTests {
     private final class SilentPromptProvider: KeyboardInteractivePromptProvider, @unchecked Sendable {
         func provideResponses(for challenge: KeyboardInteractiveChallenge, attempt: Int) throws -> [String] {

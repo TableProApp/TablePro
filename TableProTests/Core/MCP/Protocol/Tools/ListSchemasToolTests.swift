@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ListSchemasTool")
 struct ListSchemasToolTests {
     private let tool = ListSchemasTool()
 

@@ -74,6 +74,11 @@ enum TriggerEditing {
         }
 
         let startedAt = Date()
+        defer {
+            CatalogChangeService.shared.record(
+                .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .triggers))
+            )
+        }
         try await withSchemaChangeDriver(scope: scope) { driver in
             let strategy = TriggerApplyStrategy.resolve(
                 isEdit: isEdit,
@@ -93,7 +98,9 @@ enum TriggerEditing {
         }
 
         await recordHistory(sql, scope: scope, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: connection.id, scope: scope, name: tableName, kind: .structure)
+        )
     }
 
     static func drop(
@@ -103,10 +110,14 @@ enum TriggerEditing {
         name: String,
         gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            throw TriggerEditingError.notConnected
+        /// Built on a driver in the scope that will run it, the way `apply` builds its own inside
+        /// the lease. The session driver is wherever the sidebar last went, and an engine that
+        /// qualifies its DDL with the connection's current database writes that name into a
+        /// statement the pooled connection then runs somewhere else.
+        let generated = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            driver.generateDropTriggerSQL(name: name, table: tableName)
         }
-        guard let dropSQL = driver.generateDropTriggerSQL(name: name, table: tableName) else {
+        guard let dropSQL = generated else {
             throw TriggerEditingError.dropUnavailable
         }
 
@@ -130,7 +141,12 @@ enum TriggerEditing {
             _ = try await driver.execute(query: dropSQL)
         }
         await recordHistory(dropSQL, scope: scope, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: connection.id, scope: scope, name: tableName, kind: .structure)
+        )
+        CatalogChangeService.shared.record(
+            .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .triggers))
+        )
     }
 
     private static func withSchemaChangeDriver(
@@ -165,9 +181,15 @@ enum TriggerEditing {
             if let rollback {
                 do {
                     _ = try await driver.execute(query: rollback)
-                    logger.error("Trigger edit failed; restored original definition: \(error.localizedDescription, privacy: .public)")
+                    logger.error("Trigger edit failed; restored original definition: \(error.publicLogShape, privacy: .public)")
                 } catch let rollbackError {
-                    logger.error("Trigger edit failed and rollback failed, trigger may be missing: edit=\(error.localizedDescription, privacy: .public) rollback=\(rollbackError.localizedDescription, privacy: .public)")
+                    logger.error(
+                        """
+                        Trigger edit failed and rollback failed, trigger may be missing: \
+                        edit=\(error.publicLogShape, privacy: .public) \
+                        rollback=\(rollbackError.publicLogShape, privacy: .public)
+                        """
+                    )
                 }
             }
             throw error

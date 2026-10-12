@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DashboardToolbarView: View {
-    @Bindable var viewModel: ServerDashboardViewModel
+    @ObservedObject var viewModel: ServerDashboardViewModel
 
     var body: some View {
         HStack(spacing: 12) {
@@ -22,7 +22,8 @@ struct DashboardToolbarView: View {
                 Label(viewModel.refreshInterval.displayLabel, systemImage: "arrow.clockwise")
                     .monospacedDigit()
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
             .fixedSize()
 
             Button {
@@ -32,6 +33,7 @@ struct DashboardToolbarView: View {
             }
             .buttonStyle(.borderless)
             .help(viewModel.isPaused ? String(localized: "Resume") : String(localized: "Pause"))
+            .accessibilityLabel(viewModel.isPaused ? String(localized: "Resume") : String(localized: "Pause"))
             .disabled(viewModel.refreshInterval == .off)
 
             Button {
@@ -41,6 +43,7 @@ struct DashboardToolbarView: View {
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Refresh Now"))
+            .accessibilityLabel(String(localized: "Refresh Now"))
             .disabled(viewModel.isRefreshing)
 
             Spacer()

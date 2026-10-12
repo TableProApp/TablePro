@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQLContextAnalyzer Case-Insensitive Clause Detection")
 struct SQLContextAnalyzerCaseInsensitiveTests {
     private let analyzer = SQLContextAnalyzer()
 

@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQL Formatter Service")
 @MainActor
 struct SQLFormatterServiceTests {
     let formatter = SQLFormatterService()
@@ -330,7 +329,7 @@ struct SQLFormatterServiceTests {
     @Test("Keywords not uppercased when option is false")
     func keywordsNotUppercased() throws {
         var options = SQLFormatterOptions.default
-        options.uppercaseKeywords = false
+        options.keywordCase = .preserve
         let result = try formatter.format("select * from users", dialect: .mysql, options: options).formattedSQL
         #expect(result.contains("select"))
         #expect(result.contains("from"))

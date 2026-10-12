@@ -89,7 +89,7 @@ extension TableViewCoordinator {
             content: DataGridCellContent(
                 displayText: formattedValue ?? "",
                 rawValue: rawValue.asText,
-                placeholder: DataGridCellContent.placeholder(for: rawValue)
+                placeholder: DataGridCellContent.placeholder(for: rawValue, isAbsent: displayRow.isAbsent(columnIndex))
             ),
             state: DataGridCellState(
                 visualState: visualState(of: displayRow, atDisplayRow: row),
@@ -103,7 +103,8 @@ extension TableViewCoordinator {
             palette: cellRegistry.palette,
             nullDisplayString: cellRegistry.nullDisplayString,
             onEmphasizedSelection: onEmphasizedSelection,
-            hasOverlay: overlayCell == CellPosition(row: row, column: columnIndex)
+            hasOverlay: overlayCell == CellPosition(row: row, column: columnIndex),
+            checkboxMark: checkboxMark(row: row, columnIndex: columnIndex)
         )
     }
 
@@ -123,10 +124,11 @@ extension TableViewCoordinator {
         ) ?? ""
         guard text.isEmpty else { return text }
 
-        switch DataGridCellContent.placeholder(for: rawValue) {
+        switch DataGridCellContent.placeholder(for: rawValue, isAbsent: displayRow.isAbsent(columnIndex)) {
         case .null: return String(localized: "NULL")
         case .empty: return String(localized: "Empty")
         case .defaultMarker: return String(localized: "DEFAULT")
+        case .absent: return DataGridCellContent.absentFieldText
         case .none: return text
         }
     }

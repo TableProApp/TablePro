@@ -21,15 +21,16 @@ public final class SyncRecordCache {
     private let migration = OSAllocatedUnfairLock(initialState: false)
 
     /// - Parameters:
-    ///   - directory: where the archives live. Defaults to Application Support.
+    ///   - directory: where the archives live. The host resolves it, because a package cannot see the app's
+    ///     storage environment and a cache that picks its own path writes into the developer's store under a UI test.
     ///   - defaults: the store a pre-file cache was written to, read once and then cleared.
     ///   - storageKey: the key that cache used.
     public init(
-        directory: URL? = nil,
-        defaults: UserDefaults? = .standard,
+        directory: URL,
+        defaults: UserDefaults?,
         storageKey: String = "com.TablePro.sync.recordCache"
     ) {
-        self.directory = directory ?? Self.defaultDirectory()
+        self.directory = directory
         self.legacyDefaults = defaults
         self.legacyStorageKey = storageKey
     }
@@ -76,7 +77,12 @@ public final class SyncRecordCache {
     public func removeAll() {
         migration.withLock { $0 = true }
         legacyDefaults?.removeObject(forKey: legacyStorageKey)
-        try? FileManager.default.removeItem(at: directory)
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: directory)
+        } catch {
+            Self.logger.error("Failed to clear the sync record cache: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Migration
@@ -105,12 +111,6 @@ public final class SyncRecordCache {
     }
 
     // MARK: - Paths
-
-    private static func defaultDirectory() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base.appendingPathComponent("TablePro/SyncRecordCache", isDirectory: true)
-    }
 
     private func createDirectoryIfNeeded() {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

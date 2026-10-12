@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Window host selection")
 struct WindowHostSelectionTests {
     private static let alpha = UUID()
     private static let beta = UUID()

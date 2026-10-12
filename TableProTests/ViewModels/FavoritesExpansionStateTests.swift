@@ -9,7 +9,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("FavoritesExpansionState")
 struct FavoritesExpansionStateTests {
     private func makeState() throws -> (FavoritesExpansionState, UserDefaults, String) {
         let suite = "FavoritesExpansionStateTests.\(UUID().uuidString)"

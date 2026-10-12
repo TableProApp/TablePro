@@ -8,7 +8,6 @@
 import Foundation
 import Testing
 
-@Suite("Snowflake Type Mapper")
 struct SnowflakeTypeMapperTests {
     private func column(
         _ type: String,

@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("KeywordUppercaseHelper")
 struct KeywordUppercaseHelperTests {
 
     // MARK: - isWordBoundary

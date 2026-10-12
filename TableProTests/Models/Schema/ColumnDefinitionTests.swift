@@ -6,11 +6,10 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
-@Suite("Editable Column Definition")
 struct ColumnDefinitionTests {
     // MARK: - placeholder Tests
 
@@ -87,6 +86,92 @@ struct ColumnDefinitionTests {
             isPrimaryKey: false
         )
         #expect(column.isValid == false)
+    }
+
+    // MARK: - Completeness against the loaded column
+
+    private func column(name: String, dataType: String) -> EditableColumnDefinition {
+        var column = EditableColumnDefinition.placeholder()
+        column.name = name
+        column.dataType = dataType
+        return column
+    }
+
+    @Test("A blank or whitespace-only name is no name, and the same for a type")
+    func nameAndTypeIgnoreWhitespace() {
+        #expect(!column(name: "", dataType: "INT").hasName)
+        #expect(!column(name: "   ", dataType: "INT").hasName)
+        #expect(column(name: "a", dataType: "INT").hasName)
+        #expect(!column(name: "a", dataType: "").hasDataType)
+        #expect(!column(name: "a", dataType: "  ").hasDataType)
+        #expect(column(name: "a", dataType: "INT").hasDataType)
+    }
+
+    @Test("A column with nothing loaded behind it needs a name and a type")
+    func addedColumnNeedsBoth() {
+        #expect(EditableColumnDefinition.placeholder().isIncomplete(over: nil))
+        #expect(column(name: "a", dataType: "").isIncomplete(over: nil))
+        #expect(column(name: "", dataType: "INT").isIncomplete(over: nil))
+        #expect(!column(name: "a", dataType: "INT").isIncomplete(over: nil))
+    }
+
+    /// SQLite reports a column declared without a type as type `''`.
+    @Test("A loaded column with no type is not asked for one")
+    func typelessLoadedColumnStaysComplete() {
+        let loaded = column(name: "body", dataType: "")
+        var renamed = loaded
+        renamed.name = "content"
+        #expect(!loaded.isIncomplete(over: loaded))
+        #expect(!renamed.isIncomplete(over: loaded))
+    }
+
+    /// SQLite accepts `CREATE TABLE e("" TEXT)`, and MongoDB stores a field named `""`.
+    @Test("A loaded column with no name is not asked for one")
+    func namelessLoadedColumnStaysComplete() {
+        let loaded = column(name: "", dataType: "TEXT")
+        var retyped = loaded
+        retyped.dataType = "INTEGER"
+        #expect(!loaded.isIncomplete(over: loaded))
+        #expect(!retyped.isIncomplete(over: loaded))
+    }
+
+    @Test("Clearing a type or a name the loaded column had is incomplete")
+    func clearingWhatWasLoadedIsIncomplete() {
+        let loaded = column(name: "tag", dataType: "INTEGER")
+        var untyped = loaded
+        untyped.dataType = ""
+        var unnamed = loaded
+        unnamed.name = "   "
+        #expect(untyped.isIncomplete(over: loaded))
+        #expect(unnamed.isIncomplete(over: loaded))
+    }
+
+    /// SQLite keeps `""` and `"   "` as two columns, and renaming one onto the other fails with
+    /// "duplicate column name", so a blank name read from the table is compared like any other.
+    @Test("A blank name is a savable name only where the column was read with one")
+    func blankNameIsSavableOnlyOverALoadedBlankName() {
+        let loadedBlank = column(name: "   ", dataType: "TEXT")
+        var renamedBlank = loadedBlank
+        renamedBlank.name = ""
+        let loadedNamed = column(name: "tag", dataType: "TEXT")
+        var cleared = loadedNamed
+        cleared.name = ""
+        #expect(renamedBlank.hasSavableName(over: loadedBlank))
+        #expect(!cleared.hasSavableName(over: loadedNamed))
+        #expect(!EditableColumnDefinition.placeholder().hasSavableName(over: nil))
+        #expect(column(name: "a", dataType: "").hasSavableName(over: nil))
+    }
+
+    @Test("A missing type is savable only where the column was read without one")
+    func missingTypeIsSavableOnlyOverATypelessLoadedColumn() {
+        let typeless = column(name: "body", dataType: "")
+        let typed = column(name: "tag", dataType: "TEXT")
+        var untyped = typed
+        untyped.dataType = " "
+        #expect(typeless.hasSavableDataType(over: typeless))
+        #expect(!untyped.hasSavableDataType(over: typed))
+        #expect(!column(name: "a", dataType: "").hasSavableDataType(over: nil))
+        #expect(column(name: "a", dataType: "INT").hasSavableDataType(over: nil))
     }
 
     // MARK: - Round-trip Conversion Tests
@@ -267,5 +352,129 @@ struct ColumnDefinitionTests {
     @Test("A placeholder column carries no on-update attribute")
     func placeholderHasNoOnUpdate() {
         #expect(EditableColumnDefinition.placeholder().onUpdate == nil)
+    }
+
+    // MARK: - ddlSpelling
+
+    private func spatialColumn() -> EditableColumnDefinition {
+        EditableColumnDefinition(
+            id: UUID(),
+            name: "shape",
+            dataType: "geometry",
+            isNullable: true,
+            defaultValue: "st_geomfromtext('POINT(0 0)'::text, 4326)",
+            autoIncrement: false,
+            unsigned: false,
+            comment: nil,
+            collation: nil,
+            onUpdate: nil,
+            charset: nil,
+            extra: nil,
+            generationExpression: "st_x(shape)",
+            generationKind: .stored,
+            isPrimaryKey: false,
+            ddlSpelling: "public.geometry(Point,4326)",
+            ddlDefault: "public.st_geomfromtext('POINT(0 0)'::text, 4326)",
+            ddlGenerationExpression: "public.st_x(shape)"
+        )
+    }
+
+    @Test("The server's spellings survive construction")
+    func ddlSpellingSurvivesInit() {
+        let column = spatialColumn()
+        #expect(column.ddlSpelling == "public.geometry(Point,4326)")
+        #expect(column.ddlDefault == "public.st_geomfromtext('POINT(0 0)'::text, 4326)")
+        #expect(column.ddlGenerationExpression == "public.st_x(shape)")
+    }
+
+    @Test("Changing a field sets aside only the spelling that described its old value")
+    func changingFieldClearsItsOwnSpelling() {
+        var retyped = spatialColumn()
+        retyped.dataType = "geography"
+        #expect(retyped.ddlSpelling == nil)
+        #expect(retyped.ddlDefault != nil)
+        #expect(retyped.ddlGenerationExpression != nil)
+
+        var redefaulted = spatialColumn()
+        redefaulted.defaultValue = nil
+        #expect(redefaulted.ddlDefault == nil)
+        #expect(redefaulted.ddlSpelling != nil)
+
+        var regenerated = spatialColumn()
+        regenerated.generationExpression = "st_y(shape)"
+        #expect(regenerated.ddlGenerationExpression == nil)
+        #expect(regenerated.ddlSpelling != nil)
+    }
+
+    @Test("Changing a field and changing it back restores its spelling and the loaded column")
+    func editingAwayAndBackRestoresSpellingAndEquality() {
+        let loaded = spatialColumn()
+        var edited = loaded
+        edited.dataType = "text"
+        edited.defaultValue = nil
+        edited.generationExpression = "st_y(shape)"
+        #expect(edited != loaded)
+        edited.dataType = "geometry"
+        edited.defaultValue = "st_geomfromtext('POINT(0 0)'::text, 4326)"
+        edited.generationExpression = "st_x(shape)"
+        #expect(edited == loaded)
+        #expect(edited.ddlSpelling == "public.geometry(Point,4326)")
+        #expect(edited.ddlDefault == "public.st_geomfromtext('POINT(0 0)'::text, 4326)")
+        #expect(edited.ddlGenerationExpression == "public.st_x(shape)")
+    }
+
+    @Test("A spelling for a field with no value is not kept")
+    func spellingWithoutValueIsDropped() {
+        let column = EditableColumnDefinition(
+            id: UUID(), name: "id", dataType: "integer", isNullable: false, defaultValue: nil,
+            autoIncrement: false, unsigned: false, comment: nil, collation: nil, onUpdate: nil,
+            charset: nil, extra: nil, isPrimaryKey: true, ddlSpelling: "integer", ddlDefault: "0"
+        )
+        #expect(column.ddlDefault == nil)
+        #expect(column.ddlSpelling == "integer")
+    }
+
+    @Test("Assigning a field its current value keeps its spelling")
+    func reassigningSameValueKeepsSpellings() {
+        var column = spatialColumn()
+        column.dataType = "geometry"
+        column.defaultValue = "st_geomfromtext('POINT(0 0)'::text, 4326)"
+        column.generationExpression = "st_x(shape)"
+        #expect(column.ddlSpelling == "public.geometry(Point,4326)")
+        #expect(column.ddlDefault == "public.st_geomfromtext('POINT(0 0)'::text, 4326)")
+        #expect(column.ddlGenerationExpression == "public.st_x(shape)")
+    }
+
+    @Test("The spelling travels from the column read to the DDL writer")
+    func ddlSpellingCarriesThroughConversions() {
+        let columnInfo = ColumnInfo(
+            name: "status",
+            dataType: "ENUM",
+            isNullable: true,
+            isPrimaryKey: false,
+            defaultValue: "'new'::status",
+            ddlSpelling: "public.status",
+            ddlDefault: "'new'::public.status",
+            ddlGenerationExpression: nil
+        )
+        let editable = EditableColumnDefinition.from(columnInfo)
+        let plugin = editable.toPlugin()
+        #expect(plugin.ddlSpelling == "public.status")
+        #expect(plugin.ddlDefault == "'new'::public.status")
+        let roundTripped = editable.toColumnInfo()
+        #expect(roundTripped.ddlSpelling == "public.status")
+        #expect(roundTripped.ddlDefault == "'new'::public.status")
+        #expect(editable.withNewIdentity().ddlDefault == "'new'::public.status")
+    }
+
+    @Test("A column decoded from the clipboard carries no spelling from the connection it was copied on")
+    func decodingDropsDDLSpelling() throws {
+        let data = try JSONEncoder().encode([spatialColumn()])
+        let decoded = try JSONDecoder().decode([EditableColumnDefinition].self, from: data)
+        #expect(decoded.first?.dataType == "geometry")
+        #expect(decoded.first?.defaultValue == "st_geomfromtext('POINT(0 0)'::text, 4326)")
+        #expect(decoded.first?.ddlSpelling == nil)
+        #expect(decoded.first?.ddlDefault == nil)
+        #expect(decoded.first?.ddlGenerationExpression == nil)
     }
 }

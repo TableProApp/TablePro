@@ -189,7 +189,8 @@ enum MCPToolTestHarness {
         externalAccess: ExternalAccessLevel = .readWrite,
         databaseName: String = "shop",
         connectionName: String = "Primary",
-        redactionSecrets: [String] = []
+        redactionSecrets: [String] = [],
+        loadsExtensions: Bool = false
     ) -> ToolConnectionMetadata {
         ToolConnectionMetadata(
             connectionId: connectionId,
@@ -198,7 +199,8 @@ enum MCPToolTestHarness {
             externalAccess: externalAccess,
             databaseName: databaseName,
             connectionName: connectionName,
-            redactionSecrets: redactionSecrets
+            redactionSecrets: redactionSecrets,
+            loadsExtensions: loadsExtensions
         )
     }
 

@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQLite Table DDL")
 struct SQLiteTableDDLTests {
     /// The statement SQLite stores for a table carrying every trap the splitter has to survive: a
     /// comma inside a string default, a comma inside a type's parentheses, a comma inside a

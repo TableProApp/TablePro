@@ -4,13 +4,12 @@
 //
 
 import Foundation
-import Testing
 import TableProPluginKit
+import Testing
 
 @testable import TablePro
 
 @MainActor
-@Suite("Create Table draft builder")
 struct CreateTableDraftBuilderTests {
     private func column(
         _ name: String,
@@ -64,6 +63,37 @@ struct CreateTableDraftBuilderTests {
             dialect: ForeignKeyDialect.forType(databaseType),
             includesEngineOptions: false
         )
+    }
+
+    // MARK: - Engines that key every row themselves
+
+    private func namedOnlyPlan(suppliesItsOwnKey: Bool) -> CreateTablePlan {
+        CreateTableDraftBuilder.plan(
+            tableName: "events",
+            options: CreateTableOptions(),
+            columns: [column("", "")],
+            indexes: [],
+            foreignKeys: [],
+            dialect: ForeignKeyDialect.forType(.sqlite),
+            includesEngineOptions: false,
+            suppliesItsOwnKey: suppliesItsOwnKey
+        )
+    }
+
+    @Test("A table with only a name is planned on an engine that supplies its own key")
+    func nameOnlyTableOnAnEngineWithItsOwnKey() throws {
+        let result = namedOnlyPlan(suppliesItsOwnKey: true)
+        #expect(result.issues.isEmpty)
+        let definition = try #require(result.definition)
+        #expect(definition.tableName == "events")
+        #expect(definition.columns.isEmpty)
+    }
+
+    @Test("A table with only a name still needs a column everywhere else")
+    func nameOnlyTableNeedsAColumnOtherwise() {
+        let result = namedOnlyPlan(suppliesItsOwnKey: false)
+        #expect(result.definition == nil)
+        #expect(!result.issues.isEmpty)
     }
 
     // MARK: - The reported bug
@@ -237,6 +267,25 @@ struct CreateTableDraftBuilderTests {
         #expect(definition.columns.first?.isPrimaryKey == true)
     }
 
+    @Test("an auto-increment column made the primary key drops a NULL default with its nullability")
+    func promotedPrimaryKeyDropsNullDefault() throws {
+        var id = column("id", autoIncrement: true)
+        id.defaultValue = "NULL"
+        let result = plan(columns: [id, column("parent_id")])
+        let definition = try #require(result.definition)
+        #expect(definition.columns.first?.isNullable == false)
+        #expect(definition.columns.first?.defaultValue == nil)
+    }
+
+    @Test("a NOT NULL column with a NULL default is reported rather than sent")
+    func notNullColumnWithNullDefaultIsReported() {
+        var name = column("name", "VARCHAR(255)")
+        name.isNullable = false
+        name.defaultValue = "NULL"
+        let result = plan(columns: [column("id", primaryKey: true), name])
+        #expect(result.issues.contains { $0.row == 1 })
+    }
+
     @Test("an explicit primary key is left alone")
     func explicitPrimaryKeyWins() throws {
         let result = plan(columns: [column("id", primaryKey: true), column("parent_id", autoIncrement: true)])
@@ -252,5 +301,32 @@ struct CreateTableDraftBuilderTests {
         let definition = try #require(result.definition)
         #expect(definition.indexes.isEmpty)
         #expect(result.indexes.count == 1)
+    }
+
+    // MARK: - Table comment
+
+    private func plan(comment: String) -> CreateTablePlan {
+        var options = CreateTableOptions()
+        options.comment = comment
+        return CreateTableDraftBuilder.plan(
+            tableName: "child",
+            options: options,
+            columns: [column("id")],
+            indexes: [],
+            foreignKeys: [],
+            dialect: ForeignKeyDialect.forType(.postgresql),
+            includesEngineOptions: false
+        )
+    }
+
+    @Test("the plan carries the typed comment as typed")
+    func planCarriesTheComment() {
+        #expect(plan(comment: "Child rows").tableComment == "Child rows")
+        #expect(plan(comment: "line one\nline two").tableComment == "line one\nline two")
+    }
+
+    @Test("a blank comment plans no comment", arguments: ["", "   ", "\n\t"])
+    func blankCommentIsNil(comment: String) {
+        #expect(plan(comment: comment).tableComment == nil)
     }
 }

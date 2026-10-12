@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Row Number Column Sizing")
 @MainActor
 struct RowNumberColumnSizingTests {
     @Test("Single-digit max number sizes to the configured floor")

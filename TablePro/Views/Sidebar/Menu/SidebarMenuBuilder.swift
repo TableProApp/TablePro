@@ -94,6 +94,10 @@ internal enum SidebarMenuBuilder {
         if let isOn = entry.isOn {
             item.state = isOn ? .on : .off
         }
+        item.indentationLevel = entry.indentationLevel
+        if let symbol = entry.symbol {
+            item.setInformativeImage(ConnectionLibrarySymbols.image(systemName: symbol.systemName, color: symbol.color))
+        }
         return item
     }
 }

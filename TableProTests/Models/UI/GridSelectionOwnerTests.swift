@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("GridSelectionOwner")
 struct GridSelectionOwnerTests {
     @Test("A table tab showing data owns a data selection")
     func tableTabWithDataMode() {
@@ -31,14 +30,42 @@ struct GridSelectionOwnerTests {
     }
 
     /// Row editing follows the owner, so this is also the list of modes whose row commands stay
-    /// live. JSON shows the same rows the data grid owns and keeps them; Chart has no rows to edit.
+    /// live. JSON shows the same rows the data grid owns and keeps them; Chart and Output have no
+    /// rows to edit.
     @Test("Only a mode with an owning grid can edit rows")
     func rowEditingFollowsTheOwningGrid() {
-        let owners = [ResultsViewMode.data, .structure, .json, .chart].map {
+        let owners = ResultsViewMode.allCases.map {
             GridSelectionOwner.resolve(tabType: .table, resultsViewMode: $0)
         }
 
-        #expect(owners == [.dataGrid, .schemaGrid, .dataGrid, GridSelectionOwner.none])
+        #expect(owners == [
+            .dataGrid, .schemaGrid, .dataGrid, GridSelectionOwner.none, .dataGrid, GridSelectionOwner.none,
+        ])
+    }
+
+    /// Map writes into the shared channel itself: clicking a shape selects that row. The indices
+    /// it writes are the data grid's display positions, so the data grid owns them and the row
+    /// inspector can read the clicked row.
+    @Test("Map publishes the data grid's display positions")
+    func mapOwnsTheDataGridChannel() {
+        #expect(GridSelectionOwner.resolve(tabType: .table, resultsViewMode: .map) == .dataGrid)
+        #expect(GridSelectionOwner.resolve(tabType: .query, resultsViewMode: .map) == .dataGrid)
+    }
+
+    /// A Create Table tab publishes into the schema grid whatever the result mode says, and a tab
+    /// type with no grid of its own owns nothing. Asserted across every mode so a mode added later
+    /// cannot quietly claim a channel on a tab that has none.
+    ///
+    /// `.structure` is excluded because it answers for itself: a tab showing a structure grid owns
+    /// the schema channel whatever kind of tab it is, which is how the mode behaved before Map
+    /// existed.
+    @Test("Tab type still decides where a mode has no grid")
+    func tabTypeStillWins() {
+        for mode in ResultsViewMode.allCases where mode != .structure {
+            #expect(GridSelectionOwner.resolve(tabType: .createTable, resultsViewMode: mode) == .schemaGrid)
+            #expect(GridSelectionOwner.resolve(tabType: .erDiagram, resultsViewMode: mode) == .none)
+            #expect(GridSelectionOwner.resolve(tabType: .serverDashboard, resultsViewMode: mode) == .none)
+        }
     }
 
     @Test("A query tab's results are data rows")

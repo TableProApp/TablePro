@@ -32,6 +32,10 @@ internal struct ExternalConnectionPolicySnapshot: Sendable {
     internal let host: String
     internal let port: Int
     internal let username: String
+    /// Whether the connection loads SQLite extensions, whose functions a statement from outside the
+    /// app may not call. Read from the connection the session opened with when there is one, since
+    /// that is the list that loaded.
+    internal let loadsExtensions: Bool
 
     @MainActor
     internal static func resolve(connectionId: UUID) throws -> ExternalConnectionPolicySnapshot {
@@ -41,6 +45,7 @@ internal struct ExternalConnectionPolicySnapshot: Sendable {
             return make(
                 connectionId: connectionId,
                 connection: session.connection,
+                loadsExtensions: !LoadableExtensionGate.declaredExtensions(for: session.connection).isEmpty,
                 databaseName: session.resolvedBrowseDatabase,
                 /// A session whose record has been deleted keeps no claim to a level, so it falls to
                 /// the most restrictive one rather than to whatever it was granted at connect time.
@@ -50,6 +55,7 @@ internal struct ExternalConnectionPolicySnapshot: Sendable {
             return make(
                 connectionId: connectionId,
                 connection: connection,
+                loadsExtensions: !LoadableExtensionGate.declaredExtensions(for: connection).isEmpty,
                 databaseName: connection.database,
                 externalAccess: connection.externalAccess
             )
@@ -63,6 +69,7 @@ internal struct ExternalConnectionPolicySnapshot: Sendable {
     private static func make(
         connectionId: UUID,
         connection: DatabaseConnection,
+        loadsExtensions: Bool,
         databaseName: String,
         externalAccess: ExternalAccessLevel
     ) -> ExternalConnectionPolicySnapshot {
@@ -76,7 +83,8 @@ internal struct ExternalConnectionPolicySnapshot: Sendable {
             storedDatabaseName: connection.database,
             host: connection.host,
             port: connection.port,
-            username: connection.username
+            username: connection.username,
+            loadsExtensions: loadsExtensions
         )
     }
 

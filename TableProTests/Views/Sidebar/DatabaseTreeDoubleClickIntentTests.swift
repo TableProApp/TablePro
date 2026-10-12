@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Database tree double-click intent")
 struct DatabaseTreeDoubleClickIntentTests {
     private func tableRef(_ name: String, type: TableInfo.TableType = .table) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(

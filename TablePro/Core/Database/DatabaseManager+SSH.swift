@@ -7,6 +7,8 @@
 
 import Foundation
 
+import TableProSSHTransport
+
 // MARK: - SSH Tunnel Helper
 
 extension DatabaseManager {
@@ -19,26 +21,35 @@ extension DatabaseManager {
     ///   - sshPasswordOverride: Optional SSH password to use instead of the stored one (for test connections).
     /// - Returns: A connection suitable for the database driver (SSH disabled, pointing at tunnel if applicable).
     internal func buildEffectiveConnection(
-        for connection: DatabaseConnection,
-        sshPasswordOverride: String? = nil
+        for original: DatabaseConnection,
+        sshPasswordOverride: String? = nil,
+        deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
+        let connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
         let enabledKinds = connection.enabledTunnelKinds
         guard enabledKinds.count <= 1 else {
             throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)
         }
         switch enabledKinds.first {
         case .cloudflare:
-            return try await buildCloudflareEffectiveConnection(for: connection)
+            return try await buildCloudflareEffectiveConnection(for: connection, deadline: deadline)
         case .cloudSQLProxy:
-            return try await buildCloudSQLProxyEffectiveConnection(for: connection)
+            return try await buildCloudSQLProxyEffectiveConnection(for: connection, deadline: deadline)
         case .socksProxy:
-            return try await buildSOCKSProxyEffectiveConnection(for: connection)
+            return try await buildSOCKSProxyEffectiveConnection(for: connection, deadline: deadline)
         case .tunnelCommand:
-            return try await buildTunnelCommandEffectiveConnection(for: connection)
+            return try await buildTunnelCommandEffectiveConnection(for: connection, deadline: deadline)
         case .remoteFile:
             return try await buildRemoteFileEffectiveConnection(
                 for: connection,
-                sshPasswordOverride: sshPasswordOverride
+                sshPasswordOverride: sshPasswordOverride,
+                deadline: deadline
+            )
+        case .remoteDatabaseSession:
+            return try await buildRemoteSQLiteEffectiveConnection(
+                for: connection,
+                sshPasswordOverride: sshPasswordOverride,
+                deadline: deadline
             )
         case .ssh, .none:
             break
@@ -83,7 +94,8 @@ extension DatabaseManager {
             totpSecret: totpSecret,
             totpAlgorithm: sshConfig.totpAlgorithm,
             totpDigits: sshConfig.totpDigits,
-            totpPeriod: sshConfig.totpPeriod
+            totpPeriod: sshConfig.totpPeriod,
+            deadline: deadline
         )
 
         return tunneledConnection(

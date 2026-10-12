@@ -1,7 +1,7 @@
 import Foundation
 import TableProModels
-import Testing
 @testable import TableProQuery
+import Testing
 
 @Suite("SQLWriteClassifier")
 struct SQLWriteClassifierTests {
@@ -115,6 +115,7 @@ struct SQLWriteClassifierTests {
         #expect(isWrite("SET user:1 bob", .redis))
         #expect(isWrite("DEL user:1", .redis))
         #expect(isWrite("FLUSHALL", .redis))
+        #expect(isWrite("XAUTOCLAIM orders workers mallory 0 0-0 COUNT 10", .redis))
         #expect(isWrite("CONFIG SET maxmemory 0", .redis))
         #expect(isWrite("SOMETHINGNEW key", .redis))
     }
@@ -157,5 +158,88 @@ struct SQLWriteClassifierTests {
     func semicolonInsideComment() {
         #expect(!isWrite("SELECT 1 -- ; DELETE FROM users"))
         #expect(!isWrite("SELECT 1 /* ; DELETE FROM users */"))
+    }
+
+    // MARK: - Statements a lexical trick hid from the old splitter
+
+    @Test("PostgreSQL deleted every row behind SELECT $$'$$, measured on 17 through the iOS libpq sequence")
+    func dollarQuoteHidesAWrite() {
+        #expect(isWrite("SELECT $$'$$; DELETE FROM t"))
+        #expect(isWrite("SELECT $ü$'$ü$; DELETE FROM t"))
+    }
+
+    @Test("an E'' literal ends where PostgreSQL ends it")
+    func escapeStringHidesAWrite() {
+        #expect(isWrite("SELECT E'\\''; DELETE FROM t; --'"))
+    }
+
+    @Test("a nested comment ends where PostgreSQL ends it")
+    func nestedCommentHidesAWrite() {
+        #expect(isWrite("SELECT 1 /* /* */ ' */; DELETE FROM t; --'"))
+    }
+
+    @Test("a backslash is literal on PostgreSQL, so the quote after it closes the string")
+    func standardStringHidesAWrite() {
+        #expect(isWrite("SELECT 'C:\\' AS p; DELETE FROM t"))
+    }
+
+    @Test("MySQL reads the batch both ways a backslash can go")
+    func mySQLBackslashHidesAWrite() {
+        #expect(isWrite("SELECT 'a\\'; DELETE FROM t; -- '", .mysql))
+        #expect(isWrite("SELECT 'a\\''; DELETE FROM t; -- '", .mysql))
+    }
+
+    @Test("a bracketed identifier holds a quote on SQL Server")
+    func bracketHidesAWrite() {
+        #expect(isWrite("SELECT 1 AS [a'b]; DELETE FROM t", .mssql))
+        #expect(!isWrite("SELECT 1 AS [a;b]", .mssql))
+    }
+
+    @Test("a write after a GO line is seen on SQL Server, whose batches need no semicolon")
+    func goLineHidesAWrite() {
+        #expect(isWrite("SELECT 1\nGO\nDROP TABLE t", .mssql))
+        #expect(isWrite("SELECT 1\r\nGO 2 -- again\r\nDELETE FROM t", .mssql))
+        #expect(!isWrite("SELECT 1\nGO\nSELECT 2", .mssql))
+        #expect(!isWrite("SELECT 'a\nGO\nDROP TABLE t'", .mssql))
+    }
+
+    @Test("SQL Server runs a statement written after another without a semicolon, measured on Azure SQL Edge 15",
+          arguments: [
+              "SELECT 1\nDROP TABLE t", "SELECT 1 DELETE FROM t", "SELECT 1 TRUNCATE TABLE t",
+              "SELECT 1DELETE FROM t", "SELECT $1DELETE FROM t", "SELECT 1 EXEC('DELETE FROM t')",
+              "SELECT DB_NAME() USE master", "SELECT 1\nUPDATE [t] SET c = 1", "SELECT 1\nUPDATE \"t\" SET c = 1",
+              "SELECT 1\nUPDATE [t]\nSET c = 1",
+          ])
+    func unterminatedStatementIsAWrite(sql: String) {
+        #expect(isWrite(sql, .mssql))
+    }
+
+    @Test("a SQL Server read that only names a statement keyword is a read", arguments: [
+        "SELECT deleted_at, last_update FROM t", "SELECT [delete], \"update\" FROM t",
+        "SELECT 'DROP TABLE t' AS s -- DELETE FROM t", "SELECT 1\nSELECT 2",
+        "SELECT * FROM t WHERE id IN (SELECT id FROM s)", "SELECT CASE WHEN a = 1 THEN 'x' ELSE 'y' END FROM t",
+        "SELECT id FROM t ORDER BY id OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY", "SELECT 0xDELETE FROM t",
+        "SELECT [a], 'b' FROM [t] WHERE [c] = 'd'",
+    ])
+    func unterminatedReadIsARead(sql: String) {
+        #expect(!isWrite(sql, .mssql))
+    }
+
+    @Test("an engine that needs a semicolon reads a statement by its first word", arguments: [
+        DatabaseType.postgresql, .mysql, .sqlite, .oracle,
+    ])
+    func terminatedEngineReadsItsFirstWord(databaseType: DatabaseType) {
+        #expect(!isWrite("SELECT open, close, print FROM prices", databaseType))
+    }
+
+    @Test("an Oracle q'[...]' literal holds a quote")
+    func alternativeQuoteHidesAWrite() {
+        #expect(isWrite("SELECT q'[it's]' FROM dual; DELETE FROM t", .oracle))
+        #expect(!isWrite("SELECT q'[it's; fine]' FROM dual", .oracle))
+    }
+
+    @Test("a MySQL executable comment runs what it holds")
+    func executableCommentIsAWrite() {
+        #expect(isWrite("/*!40101 DELETE FROM t */", .mysql))
     }
 }

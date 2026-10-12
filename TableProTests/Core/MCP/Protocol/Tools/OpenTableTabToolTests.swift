@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("OpenTableTabTool")
 struct OpenTableTabToolTests {
     private let tool = OpenTableTabTool()
 
@@ -78,7 +77,6 @@ struct OpenTableTabToolTests {
     }
 }
 
-@Suite("OpenConnectionWindowTool")
 struct OpenConnectionWindowToolTests {
     private let tool = OpenConnectionWindowTool()
 

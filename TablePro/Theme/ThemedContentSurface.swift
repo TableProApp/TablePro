@@ -9,8 +9,9 @@ import SwiftUI
 /// scroll position on a theme change. It reads the engine inside `body`, so the palette it applies
 /// is the current one rather than whatever was captured when the pane was built.
 private struct ThemedContentSurface: ViewModifier {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     func body(content: Content) -> some View {
-        let palette = ThemeEngine.shared.palette
+        let palette = themeEngine.palette
 
         return content.foregroundStyle(
             palette.color(.panelText),

@@ -29,13 +29,13 @@ enum StructureEditingSupport {
         switch orderedFields[index] {
         case .name: column.name = value
         case .type: column.dataType = value
-        case .nullable: column.isNullable = parseBool(value) && !column.isPrimaryKey
+        case .nullable: column.setNullable(parseBool(value) && !column.isPrimaryKey)
         case .defaultValue: column.defaultValue = value.isEmpty ? nil : value
         case .onUpdate:
             column.onUpdate = parseBool(value) ? EditableColumnDefinition.currentTimestampExpression : nil
         case .primaryKey:
             column.isPrimaryKey = parseBool(value)
-            if column.isPrimaryKey { column.isNullable = false }
+            if column.isPrimaryKey { column.setNullable(false) }
         case .autoIncrement: column.autoIncrement = parseBool(value)
         case .comment: column.comment = value.isEmpty ? nil : value
         case .charset: column.charset = value.isEmpty ? nil : value
@@ -57,30 +57,45 @@ enum StructureEditingSupport {
         }
     }
 
-    static func updateIndex(_ index: inout EditableIndexDefinition, at colIndex: Int, with value: String) {
+    static func updateIndex(
+        _ index: inout EditableIndexDefinition,
+        at colIndex: Int,
+        with value: String,
+        keys: IndexKeyContext
+    ) {
         switch colIndex {
         case 0: index.name = value
-        case 1:
-            var prefixes: [String: Int] = [:]
-            index.columns = value.split(separator: ",").map { part in
-                let trimmed = part.trimmingCharacters(in: .whitespaces)
-                if let parenStart = trimmed.firstIndex(of: "("),
-                   let parenEnd = trimmed.firstIndex(of: ")"),
-                   let prefix = Int(trimmed[trimmed.index(after: parenStart)..<parenEnd]) {
-                    let name = String(trimmed[..<parenStart])
-                    prefixes[name] = prefix
-                    return name
-                }
-                return trimmed
-            }
-            index.columnPrefixes = prefixes
+        case 1: applyKeyParts(IndexKeyList.parts(of: value, keeping: index.expressions, in: keys), to: &index)
         case 2:
-            if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
+            let indexType = EditableIndexDefinition.IndexType(rawValue: value)
+            if EditableIndexDefinition.IndexType.knownTypes.contains(indexType) {
                 index.type = indexType
             }
         case 3: index.isUnique = parseBool(value)
         case 4: index.whereClause = value.isEmpty ? nil : value
         default: break
+        }
+    }
+
+    static func indexKeyContext(
+        for changeManager: StructureChangeManager,
+        on connection: DatabaseConnection
+    ) -> IndexKeyContext {
+        IndexKeyContext(
+            columnNames: changeManager.workingColumns.map(\.name),
+            dialect: .forType(connection.type),
+            grammar: SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id)
+        )
+    }
+
+    private static func applyKeyParts(_ parts: [IndexKeyPart], to index: inout EditableIndexDefinition) {
+        index.columns = parts.map(\.entry)
+        index.columnPrefixes = parts.reduce(into: [:]) { prefixes, part in
+            if case .prefixedColumn(let name, let length) = part { prefixes[name] = length }
+        }
+        index.expressions = parts.compactMap { part in
+            guard case .expression(let text) = part else { return nil }
+            return text
         }
     }
 
@@ -125,8 +140,8 @@ enum StructureEditingSupport {
     }
 
     /// Grid columns: 0 Name, 1 Columns, 2 Type, 3 Unique, 4 Condition. Index 1
-    /// covers `columns` and `columnPrefixes` together because prefixes render
-    /// inline with the column list (`email(10)`). `isPrimary` and `comment` are
+    /// covers `columns`, `columnPrefixes` and `expressions` together because all three
+    /// render in the one column list (`email(10), lower(name)`). `isPrimary` and `comment` are
     /// intentionally excluded; neither has a grid column on the Indexes tab,
     /// so changes to them produce no tint. Matches the data-tab convention of
     /// only tinting fields the user can actually see.
@@ -136,7 +151,10 @@ enum StructureEditingSupport {
     ) -> Set<Int> {
         var indices: Set<Int> = []
         if old.name != new.name { indices.insert(0) }
-        if old.columns != new.columns || old.columnPrefixes != new.columnPrefixes { indices.insert(1) }
+        if old.columns != new.columns || old.columnPrefixes != new.columnPrefixes
+            || old.expressions != new.expressions {
+            indices.insert(1)
+        }
         if old.type != new.type { indices.insert(2) }
         if old.isUnique != new.isUnique { indices.insert(3) }
         if old.whereClause != new.whereClause { indices.insert(4) }

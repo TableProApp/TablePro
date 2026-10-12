@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// The single answer to "would closing or quitting destroy something the user cannot get back".
@@ -125,6 +126,19 @@ extension MainContentCoordinator {
     /// would raise the save prompt is marked before the user reaches for the close button.
     func showsUnsavedIndicator(for tab: QueryTab) -> Bool {
         tab.showsUnsavedIndicator || hasUnsavedWork(in: tab)
+    }
+
+    /// Pushes the selected tab's answer onto the window's close button.
+    ///
+    /// The editor's text binding does this on every keystroke, which covers typing. A command that
+    /// changes the text without going through that binding has to say so itself, or the dot
+    /// describes the tab as it was before the command ran.
+    func refreshUnsavedIndicator() {
+        guard let tab = tabManager.selectedTab, let window = contentWindow else { return }
+        let showsIndicator = showsUnsavedIndicator(for: tab)
+        Task { @MainActor in
+            window.isDocumentEdited = showsIndicator
+        }
     }
 
     func hasAnyUnsavedWork() -> Bool {

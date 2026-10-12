@@ -18,15 +18,25 @@ internal struct ExternalConnectionGate {
         self.prompt = prompt ?? ExternalConnectionAlertPrompt()
     }
 
-    internal func authorize(_ connection: DatabaseConnection, scopeName: String?) async -> Bool {
+    /// The trust key names neither a filter nor an SSH server, so trusting a link that carries one
+    /// would cover whatever SQL or server a later link picks. A tunnelled loopback host is not on
+    /// this Mac either.
+    internal func authorize(
+        _ connection: DatabaseConnection,
+        scopeName: String?,
+        filter: ConnectionURLFilter? = nil
+    ) async -> Bool {
         let key = ExternalConnectionTrustKey(connection: connection, scopeName: scopeName)
-        if key.isLoopbackHost, trustStore.isTrusted(key) { return true }
+        let trustable = key.isLoopbackHost && !connection.sshConfig.enabled && filter == nil
+        if trustable, trustStore.isTrusted(key) { return true }
 
-        switch await prompt.prompt(for: connection, offerAlwaysAllow: key.isLoopbackHost) {
+        switch await prompt.prompt(for: connection, filter: filter, offerAlwaysAllow: trustable) {
         case .connect:
             return true
         case .alwaysAllow:
-            trustStore.trust(key)
+            if trustable {
+                trustStore.trust(key)
+            }
             return true
         case .cancel:
             return false

@@ -140,7 +140,9 @@ final class DataGridCellFactory {
             ) ?? ""
             let value = DataGridCellContent.resolvedDisplayText(
                 formattedValue,
-                placeholder: DataGridCellContent.placeholder(for: rawValue),
+                placeholder: DataGridCellContent.placeholder(
+                    for: rawValue, isAbsent: tableRows.isAbsent(row: i, column: columnIndex)
+                ),
                 isLargeDataset: isLargeDataset,
                 nullDisplayString: resolvedNullDisplayString
             )

@@ -12,7 +12,7 @@
 import SwiftUI
 
 internal struct CopyObjectsReviewView: View {
-    internal let session: ObjectCopySession
+    @ObservedObject internal var session: ObjectCopySession
 
     internal var body: some View {
         if let plan = session.plan {
@@ -135,16 +135,18 @@ internal struct CopyObjectsReviewView: View {
         }
     }
 
+    /// The table goes beside the reason, as the "Partly copied" and "Left out" rows put it: a
+    /// copy of several tables listed `status: enum(…) → VARCHAR(9)` once per table that had one.
     private func conversion(_ note: CrossEngineConversionNote) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Label {
-                Text(note.summary)
+                summary(note)
             } icon: {
                 Image(systemName: note.isLossy ? "exclamationmark.triangle" : "arrow.right.circle")
             }
             .font(.callout)
             .foregroundStyle(note.isLossy ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-            Text(note.reason)
+            Text(verbatim: "\(note.table): \(note.reason)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -153,15 +155,29 @@ internal struct CopyObjectsReviewView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// A type change stays on one line, cut in the middle so the column and the type it becomes
+    /// both stay in view, with the whole spelling in the tooltip.
+    @ViewBuilder
+    private func summary(_ note: CrossEngineConversionNote) -> some View {
+        if note.isTypeChange {
+            Text(note.summary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(note.summary)
+        } else {
+            Text(note.summary)
+        }
+    }
+
     @ViewBuilder
     private func notes(_ plan: ObjectCopyPlan) -> some View {
-        let noted = plan.tableSteps.compactMap { step in step.note.map { (step.id, step.selection, $0) } }
+        let noted = plan.partialNotes
         if !noted.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Partly copied")
                     .font(.subheadline.weight(.medium))
-                ForEach(noted, id: \.0) { _, selection, note in
-                    Text(verbatim: "\(selection.displayName): \(note)")
+                ForEach(noted) { note in
+                    Text(verbatim: "\(note.selection.displayName): \(note.text)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

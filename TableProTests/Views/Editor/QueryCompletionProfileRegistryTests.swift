@@ -26,7 +26,6 @@ private final class LeaseCountingMetadataProvider: ScopedMetadataProviding {
     func browseScope(for connectionId: UUID) -> DatabaseScope? { scope }
 }
 
-@Suite("Query completion profile registry")
 @MainActor
 struct QueryCompletionProfileRegistryTests {
     actor Counter {

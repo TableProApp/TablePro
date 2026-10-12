@@ -39,6 +39,23 @@ internal final class ConnectionWorkspace {
     internal var attemptToken: UUID?
     internal var phase: ConnectionWindowPhase
 
+    /// Browsing this connection's objects, or working with an agent on it.
+    ///
+    /// Beside `phase` rather than inside it: the phase machine is pure and exhaustive over whether
+    /// there is a live session to show, and a mode is not one of its transitions. It is per
+    /// connection, so one connection can sit in Agent mode while another in the same window stays
+    /// on a table.
+    internal var contentMode: ConnectionWorkspaceContentMode = .browse
+
+    /// What Browse had collapsed, so entering Agent mode can reveal its three columns and leaving
+    /// can put the window back the way the user had it.
+    ///
+    /// On the workspace rather than in a static keyed by connection id, because two windows can
+    /// host the same connection and each has its own collapsed sidebar and inspector. Shared, the
+    /// second window to enter Agent mode overwrote what the first had recorded, and the first then
+    /// left the mode with the second window's layout.
+    internal var browseCollapseState: (sidebar: Bool, inspector: Bool)?
+
     /// Each workspace owns its undo stack. Routing through `NSWindow.undoManager` was correct
     /// while a window meant one connection; sharing one window between several would let an
     /// undo in one connection roll back an edit made in another.
@@ -47,6 +64,17 @@ internal final class ConnectionWorkspace {
     /// This connection's own view tree, built once and kept. The window shows one workspace's panes
     /// at a time by swapping which of these is the split items' child.
     internal let panes = WorkspacePanes()
+
+    /// Where this connection's agent sessions live. The app has one registry and every workspace it
+    /// builds names it; the seam is here, beside the panes that draw the sessions, so a workspace
+    /// handed a registry of its own renders and starts sessions in that one and in nothing else.
+    /// The trailing pane state the window builds for it takes the same registry, which is what
+    /// keeps the assistant and Agent mode on one set of sessions.
+    internal let agentSessions: AgentSessionRegistry
+
+    /// The session rail's highlight, per window rather than per connection like the sessions
+    /// themselves: two windows showing one connection each have a rail of their own to move through.
+    internal let agentRail = AgentSessionRailState()
 
     /// The containers this connection has open, one connections-strip entry each.
     ///
@@ -88,7 +116,8 @@ internal final class ConnectionWorkspace {
         session: ConnectionSession?,
         sessionState: SessionStateFactory.SessionState?,
         trailingPaneState: TrailingPaneState?,
-        phase: ConnectionWindowPhase
+        phase: ConnectionWindowPhase,
+        agentSessions: AgentSessionRegistry = .shared
     ) {
         self.connectionId = connectionId
         self.payload = payload
@@ -98,6 +127,7 @@ internal final class ConnectionWorkspace {
         self.sessionState = sessionState
         self.trailingPaneState = trailingPaneState
         self.phase = phase
+        self.agentSessions = agentSessions
         self.undoManager = UndoManager()
         observeBrowsedContainer()
         recordBrowsedContainer()
@@ -190,10 +220,17 @@ internal final class ConnectionWorkspace {
         AppEvents.shared.connectionWindowsChanged.send()
     }
 
-    /// Payloads that arrived before this workspace had a session to open them in. A connect can
+    /// Opens that arrived before this workspace had a session to open them in. A connect can
     /// take seconds, and a table asked for in the meantime has to survive the wait rather than
-    /// be dropped.
-    private var pendingPayloads: [EditorTabPayload] = []
+    /// be dropped. Every kind shares one queue, so they land in the order they were asked for and
+    /// the last one is the tab left selected.
+    private var pendingOpens: [PendingOpen] = []
+
+    private enum PendingOpen {
+        case payload(EditorTabPayload)
+        case restoredTab(QueryTab, isStillClosed: () -> Bool, onAdopted: () -> Void)
+        case move(PendingTabMove)
+    }
 
     internal var connection: DatabaseConnection? {
         payloadConnection ?? session?.connection
@@ -210,13 +247,36 @@ internal final class ConnectionWorkspace {
         )
     }
 
+    /// The mode the window actually draws, which is browsing whenever the AI feature is off.
+    internal var resolvedContentMode: ConnectionWorkspaceContentMode {
+        ConnectionWorkspaceContentMode.resolved(
+            contentMode,
+            isAIEnabled: AppSettingsManager.shared.ai.enabled
+        )
+    }
+
+    /// Which tree the detail column draws, which is the mode's own except over a connection that
+    /// cannot be reached. `ConnectionWindowPaneResolver.detailMode` says why.
+    internal var detailMode: ConnectionWorkspaceContentMode {
+        ConnectionWindowPaneResolver.detailMode(for: resolvedPane, contentMode: resolvedContentMode)
+    }
+
+    /// The session the agent panes draw, and nil whenever the connection is browsing: nothing on
+    /// screen shows a session then, so nothing may be named or rebuilt after one.
+    internal var displayedAgentSession: AgentSession? {
+        guard resolvedContentMode == .agent else { return nil }
+        return agentSessions.currentSession(for: connectionId)
+    }
+
     /// Everything the panes are built from, compared against `panes.renderedKey` to decide whether
     /// they have to be built at all.
     internal var paneRenderKey: WorkspacePaneRenderKey {
         WorkspacePaneRenderKey(
             pane: resolvedPane,
             connection: connection,
-            sessionRevision: sessionRevision
+            sessionRevision: sessionRevision,
+            contentMode: resolvedContentMode,
+            agentSessionId: displayedAgentSession?.id
         )
     }
 
@@ -224,7 +284,7 @@ internal final class ConnectionWorkspace {
     /// being established.
     internal func open(_ payload: EditorTabPayload) {
         guard let sessionState, let connection else {
-            pendingPayloads.append(payload)
+            pendingOpens.append(.payload(payload))
             return
         }
         EditorTabOpener.apply(
@@ -235,14 +295,72 @@ internal final class ConnectionWorkspace {
         )
     }
 
+    /// Takes a tab rebuilt from the recently closed history. A payload cannot carry one: it names a
+    /// tab to build, and a restore payload names nothing, which is how a reopened tab used to open
+    /// nothing at all in a workspace that was already hosted.
+    ///
+    /// `onAdopted` runs only once the tab is in the list, so the caller lets the history entry go
+    /// then and not before. `isStillClosed` is asked first, because a tab queued behind a connect
+    /// can be reopened somewhere else while it waits, and adopting it here too would open it twice.
+    internal func adoptRestoredTab(
+        _ tab: QueryTab,
+        isStillClosed: @escaping () -> Bool,
+        onAdopted: @escaping () -> Void
+    ) {
+        guard let coordinator = sessionState?.coordinator else {
+            pendingOpens.append(.restoredTab(tab, isStillClosed: isStillClosed, onAdopted: onAdopted))
+            return
+        }
+        guard isStillClosed() else { return }
+        coordinator.adoptRestoredTab(tab)
+        onAdopted()
+    }
+
+    /// Lands once this connection is connected and its coordinator has settled its restore. The tab
+    /// stays in its source until then, so a connect that never completes costs the user nothing. A
+    /// session state kept through an outage is not a live connection, so the phase decides.
+    internal func queueMove(_ move: PendingTabMove) {
+        guard phase == .connected, let coordinator = sessionState?.coordinator else {
+            pendingOpens.append(.move(move))
+            return
+        }
+        coordinator.land(move, afterWaiting: false)
+    }
+
+    /// A move waits on one connect. Once that connect has failed or been cancelled, landing later
+    /// would take the tab away at a moment the user did not choose.
+    internal func dropPendingMoves(reason: String) {
+        var dropped: [PendingTabMove] = []
+        pendingOpens.removeAll { pending in
+            guard case .move(let move) = pending else { return false }
+            dropped.append(move)
+            return true
+        }
+        for move in dropped {
+            move.drop(reason: reason)
+        }
+        sessionState?.coordinator.dropMovesAwaitingRestore(reason: reason)
+    }
+
     /// Runs once a session has been adopted. The payload the workspace was created with is
-    /// already applied by `SessionStateFactory`, so only the ones that arrived after it are here.
+    /// already applied by `SessionStateFactory`, so only the opens that arrived after it are here.
     internal func drainPendingPayloads() {
-        guard !pendingPayloads.isEmpty else { return }
-        let queued = pendingPayloads
-        pendingPayloads.removeAll()
-        for payload in queued {
-            open(payload)
+        guard !pendingOpens.isEmpty else { return }
+        let queued = pendingOpens
+        pendingOpens.removeAll()
+        for pending in queued {
+            switch pending {
+            case .payload(let payload):
+                open(payload)
+            case .restoredTab(let tab, let isStillClosed, let onAdopted):
+                adoptRestoredTab(tab, isStillClosed: isStillClosed, onAdopted: onAdopted)
+            case .move(let move):
+                guard let coordinator = sessionState?.coordinator else {
+                    pendingOpens.append(.move(move))
+                    continue
+                }
+                coordinator.land(move, afterWaiting: true)
+            }
         }
     }
 
@@ -254,6 +372,7 @@ internal final class ConnectionWorkspace {
     /// coordinator this tears down, and a coordinator only leaves the app-wide registry on deinit.
     internal func teardown() {
         isReleased = true
+        dropPendingMoves(reason: "workspace closed")
         browseCancellable = nil
         statusCancellable = nil
         tabsCancellable = nil
@@ -265,5 +384,13 @@ internal final class ConnectionWorkspace {
         sessionState = nil
         session = nil
         undoManager.removeAllActions()
+        /// Once nothing hosts this connection any more, its agent sessions stop: a stream, a tool
+        /// loop or a card waiting for an answer would otherwise keep running with nothing on screen.
+        /// Deferred so this workspace has already left the window's registry when the check runs.
+        let connectionId = self.connectionId
+        let agentSessions = self.agentSessions
+        Task { @MainActor in
+            agentSessions.stopSessionsIfUnhosted(for: connectionId)
+        }
     }
 }

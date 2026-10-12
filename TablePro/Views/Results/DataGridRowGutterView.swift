@@ -25,7 +25,8 @@ import AppKit
 /// The column stays attached underneath. It reserves the leading width, keeps every column-index
 /// computation in the grid working untouched, and keeps mounting the one cell view the grid still
 /// mounts, which is the row number's only `AXCell` and the tooltip host for the reason a reorder is
-/// unavailable. This view draws over it, so the two must agree on the number they show.
+/// unavailable. That cell carries the number for accessibility only and paints nothing, so a bounce
+/// past the leading edge, which slides the column out from under this view, shows no second number.
 @MainActor
 final class DataGridRowGutterView: NSView {
     weak var coordinator: TableViewCoordinator?
@@ -126,8 +127,8 @@ final class DataGridRowGutterView: NSView {
         guard rowNumberColumn >= 0 else { return }
 
         /// The same rule the header uses. An identity check on the first responder is not it: while
-        /// a cell is being edited the responder is a descendant field editor, and the row and the
-        /// header both stay emphasized, so the strip would turn grey on its own.
+        /// a cell is being edited or viewed the responder is the overlay's text view beside the
+        /// table, and the header stays emphasized, so the strip would turn grey on its own.
         let emphasized = SortableHeaderEmphasis.isEmphasized(
             tableViewHoldsFocus: SortableHeaderEmphasis.holdsFocus(tableView: tableView, in: tableView.window),
             isKeyWindow: tableView.window?.isKeyWindow ?? false
@@ -240,17 +241,23 @@ final class DataGridRowGutterView: NSView {
 
         tableView.window?.makeFirstResponder(tableView)
 
-        /// The same reset the attached column's click performs, so the two routes leave the grid in
-        /// one state: a whole-row selection owns the grid, and no cell cursor survives it.
-        coordinator.selectionController.clear()
-        tableView.focusedRow = -1
-        tableView.focusedColumn = -1
-
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        applySelection(row: row, modifiers: modifiers, tableView: tableView)
+        selectRows(clickedRow: row, modifiers: modifiers)
 
         guard event.clickCount == 1 else { return }
         trackDrag(from: row, modifiers: modifiers, tableView: tableView, coordinator: coordinator, event: event)
+    }
+
+    /// The same reset the attached column's click performs, so the two routes leave the grid in one
+    /// state: a whole-row selection owns the grid. The selection change then seeds a cursor for the
+    /// keyboard, and the mark keeps a Shift+click or Cmd+click from selecting it as a cell.
+    func selectRows(clickedRow row: Int, modifiers: NSEvent.ModifierFlags) {
+        guard let tableView, let coordinator else { return }
+        coordinator.selectionController.clear()
+        tableView.focusedRow = -1
+        tableView.focusedColumn = -1
+        tableView.isCursorSeededByRowSelection = true
+        applySelection(row: row, modifiers: modifiers, tableView: tableView)
     }
 
     private func applySelection(row: Int, modifiers: NSEvent.ModifierFlags, tableView: NSTableView) {
@@ -332,6 +339,7 @@ final class DataGridRowGutterView: NSView {
 
         if !tableView.selectedRowIndexes.contains(row) {
             coordinator.selectionController.clear()
+            tableView.isCursorSeededByRowSelection = true
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             selectionAnchorRow = row
         }

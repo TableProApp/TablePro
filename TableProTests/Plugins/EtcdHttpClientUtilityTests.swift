@@ -16,7 +16,6 @@ import Testing
 
 // MARK: - Base64 Helpers
 
-@Suite("EtcdHttpClient Utilities - Base64")
 struct EtcdBase64Tests {
     @Test("base64Encode and base64Decode round-trip for simple string")
     func roundTripSimple() {
@@ -81,7 +80,6 @@ struct EtcdBase64Tests {
 
 // MARK: - Prefix Range End
 
-@Suite("EtcdHttpClient Utilities - PrefixRangeEnd")
 struct EtcdPrefixRangeEndTests {
     @Test("Normal prefix increments last byte")
     func normalPrefix() {

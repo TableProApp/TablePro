@@ -7,7 +7,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct XLSXImportOptionsView: View {
-    @Bindable var plugin: XLSXImportPlugin
+    @ObservedObject var plugin: XLSXImportPlugin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

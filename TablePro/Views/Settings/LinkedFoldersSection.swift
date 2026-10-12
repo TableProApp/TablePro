@@ -11,10 +11,13 @@ import SwiftUI
 import TableProImport
 
 struct LinkedFoldersSection: View {
+    static var title: String { String(localized: "Linked Folders") }
+
+    @ObservedObject private var licenseManager = LicenseManager.shared
     @State private var folders: [LinkedFolder] = LinkedFolderStorage.shared.loadFolders()
 
     private var isLicensed: Bool {
-        LicenseManager.shared.isFeatureAvailable(.linkedFolders)
+        licenseManager.isFeatureAvailable(.linkedFolders)
     }
 
     var body: some View {
@@ -37,7 +40,7 @@ struct LinkedFoldersSection: View {
             .disabled(!isLicensed)
         } header: {
             HStack(spacing: 6) {
-                Text("Linked Folders")
+                Text(Self.title)
                 if !isLicensed {
                     ProBadge(feature: .linkedFolders)
                 }
@@ -72,6 +75,7 @@ struct LinkedFoldersSection: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
             .labelsHidden()
+            .accessibilityLabel(folder.name)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(folder.name)

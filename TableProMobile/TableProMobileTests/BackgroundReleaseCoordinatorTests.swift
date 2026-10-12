@@ -1,8 +1,8 @@
+import TableProDatabase
+@testable import TableProMobile
+import TableProModels
 import Testing
 import UIKit
-import TableProDatabase
-import TableProModels
-@testable import TableProMobile
 
 @MainActor
 private final class SpyBackgroundTaskAsserter: BackgroundTaskAsserting {
@@ -79,7 +79,7 @@ private func makeBlockingDriver() -> MockDatabaseDriver {
     return driver
 }
 
-@Suite("BackgroundReleaseCoordinator Tests")
+@Suite("BackgroundReleaseCoordinator Tests", .timeLimit(.minutes(1)))
 @MainActor
 struct BackgroundReleaseCoordinatorTests {
     @Test("No assertion is taken when no session holds a resource")
@@ -196,6 +196,39 @@ struct BackgroundReleaseCoordinatorTests {
 
         #expect(asserter.beginCount == 1)
         #expect(asserter.endedIdentifiers == [asserter.identifier])
+    }
+
+    @Test("The assertion is held while a teardown outlasts the bound a connect would give it")
+    func assertionHeldUntilTheTeardownLands() async throws {
+        let factory = StubDriverFactory()
+        let driver = makeBlockingDriver()
+        let checkpointing = Gate()
+        driver.beforeDisconnect = { await checkpointing.enter() }
+        factory.drivers["file"] = driver
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            teardownWaitLimit: .milliseconds(50)
+        )
+        _ = try await manager.connect(makeConnection("file"))
+
+        let asserter = SpyBackgroundTaskAsserter()
+        let coordinator = BackgroundReleaseCoordinator(connectionManager: manager, asserter: asserter)
+
+        coordinator.prepareForSuspension()
+        let release = Task { await coordinator.releaseForSuspension() }
+        await checkpointing.waitUntilEntered()
+        try await Task.sleep(for: .milliseconds(250))
+
+        #expect(asserter.endedIdentifiers.isEmpty)
+        #expect(manager.hasSuspensionBlockingResources)
+
+        await checkpointing.open()
+        await release.value
+
+        #expect(asserter.beginCount == 1)
+        #expect(asserter.endedIdentifiers == [asserter.identifier])
+        #expect(!manager.hasSuspensionBlockingResources)
     }
 
     @Test("Expiring ends the assertion without ending it twice")

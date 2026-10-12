@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseType PGlite")
 struct DatabaseTypePGliteTests {
     @Test("rawValue is PGlite")
     func rawValue() {

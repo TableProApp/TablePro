@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProOracleCore
+import XCTest
 
 final class OracleConnectionOptionsTests: XCTestCase {
     func testAdditionalFieldKeysMatchTheMacKeysExactly() {
@@ -47,6 +47,28 @@ final class OracleConnectionOptionsTests: XCTestCase {
 
     func testDefaultPortIsOracleListenerPort() {
         XCTAssertEqual(OracleConnectionOptions.defaultPort, 1_521)
+    }
+
+    func testRemainingMillisecondConnectBudgetTakesPrecedence() {
+        let fields = [
+            OracleConnectionOptions.AdditionalFieldKey.connectTimeoutMilliseconds: "1250",
+            OracleConnectionOptions.AdditionalFieldKey.connectTimeoutSeconds: "30"
+        ]
+
+        XCTAssertEqual(OracleConnectionOptions.loginTimeoutSeconds(from: fields), 1.25)
+    }
+
+    func testConfiguredConnectSecondsAndOldHostDefault() {
+        XCTAssertEqual(
+            OracleConnectionOptions.loginTimeoutSeconds(from: [
+                OracleConnectionOptions.AdditionalFieldKey.connectTimeoutSeconds: "2.5"
+            ]),
+            2.5
+        )
+        XCTAssertEqual(
+            OracleConnectionOptions.loginTimeoutSeconds(from: [:]),
+            OracleConnectionOptions.defaultLoginTimeoutSeconds
+        )
     }
 
     private func makeOptions(

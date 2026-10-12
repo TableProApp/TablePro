@@ -12,7 +12,6 @@ import Testing
 /// The suite used to sit behind `#if canImport(MySQLDriverPlugin)`. The XcodeGen target is named
 /// `MySQLDriver`, so no module by that name has ever existed and every case here compiled to
 /// nothing. It now runs against the extracted generator, which the test target compiles directly.
-@Suite("MySQL CREATE TABLE SQL Generation")
 struct MySQLCreateTableTests {
 
     @Test("basic table with single column")

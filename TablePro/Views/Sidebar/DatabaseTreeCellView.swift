@@ -34,11 +34,13 @@ final class DatabaseTreeCellView: RenamableSidebarCellView<DatabaseTreeRowView> 
         switch node.kind {
         case .table(let ref), .recentTable(let ref):
             return TableRowLogic.iconName(for: ref.table.type)
+        case .partition:
+            return SidebarPartitionRow.iconName
         case .database(let metadata):
             return metadata.isSystemDatabase ? "gearshape" : "cylinder"
-        case .schema:
+        case .schema, .tableFolder:
             return "folder"
-        case .routine, .trigger, .userType, .status, .recentSection, .objectKindSection,
+        case .routine, .trigger, .userType, .status, .recentSection, .foldersSection, .objectKindSection,
              .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return "tablecells"
         }

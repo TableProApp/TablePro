@@ -10,6 +10,7 @@ import SwiftUI
 @MainActor
 internal final class WindowManager {
     nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated private static let moveLogger = Logger(subsystem: "com.TablePro", category: "TabConnectionMove")
 
     internal static let shared = WindowManager()
 
@@ -49,10 +50,103 @@ internal final class WindowManager {
         openInNewWindow(payload: payload, activate: activate, autoConnect: autoConnect)
     }
 
+    // MARK: - Reopen
+
+    /// Brings a closed tab back into the window showing its connection.
+    ///
+    /// The connection is selected before the tab is adopted, so the tab lands in the pane on screen
+    /// and its load runs there, and `onAdopted` is how the caller learns the tab is in a list.
+    ///
+    /// A connection no workspace hosts gets the tab through a pre-built session state, the way
+    /// `openTabInNewWindow` hands one over, under `.openContent` so the window does not refill
+    /// itself from the saved tab set.
+    internal func reopen(
+        _ tab: QueryTab,
+        connectionId: UUID,
+        isStillClosed: @escaping () -> Bool,
+        onAdopted: @escaping () -> Void
+    ) {
+        AppActivationPolicyController.shared.enterForeground()
+        let host = host(for: connectionId)
+        if let host, let workspace = host.workspaces.workspace(for: connectionId) {
+            host.workspaces.select(connectionId)
+            workspace.adoptRestoredTab(tab, isStillClosed: isStillClosed, onAdopted: onAdopted)
+            bringToFront(host.view.window)
+            return
+        }
+
+        guard isStillClosed(),
+              let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection
+        else {
+            AppActivationPolicyController.shared.reevaluate()
+            return
+        }
+        let payload = EditorTabPayload(
+            connectionId: connectionId,
+            tabType: tab.tabType,
+            tableName: tab.tableContext.tableName,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName,
+            isView: tab.tableContext.isView,
+            objectType: tab.tableContext.objectType,
+            sourceFileURL: tab.content.sourceFileURL,
+            erDiagramSchemaKey: tab.display.erDiagramSchemaKey,
+            tabTitle: tab.title,
+            intent: .openContent
+        )
+        let state = SessionStateFactory.create(connection: connection, payload: nil)
+        state.tabManager.tabs = [tab]
+        state.tabManager.selectedTabId = tab.id
+        /// Selected before anything observes the manager, so the switch that prepares an incoming
+        /// tab has to be run by hand, as `openTabInNewWindow` does for the tab it moves.
+        state.coordinator.handleTabChange(from: nil, to: tab.id, tabs: [tab])
+        SessionStateFactory.registerPending(state, for: payload.id)
+
+        let window: NSWindow?
+        if let host {
+            host.adoptWorkspace(payload: payload, autoConnect: false)
+            window = host.view.window
+        } else {
+            window = buildWindow(payload: payload, sessionState: state, autoConnect: false)
+        }
+        /// The entry is let go only for a tab that reached a workspace, since a discarded entry
+        /// would take the closed tab with it. A state that reached none leaves the coordinator
+        /// registry the way an expired pending entry does: `SessionStateFactory.create` registers
+        /// it eagerly, and the aggregated save would write its tab into the saved tab set. Not
+        /// `teardown()`, which releases a schema provider hold only an activated coordinator takes.
+        guard Self.coordinator(in: window, for: connectionId) === state.coordinator else {
+            Self.lifecycleLogger.error(
+                "[open] WindowManager.reopen tab reached no workspace connId=\(connectionId, privacy: .public)"
+            )
+            SessionStateFactory.removePending(for: payload.id)
+            MainContentCoordinator.activeCoordinators.removeValue(forKey: state.coordinator.instanceId)
+            AppActivationPolicyController.shared.reevaluate()
+            return
+        }
+        onAdopted()
+        bringToFront(window)
+    }
+
+    private static func coordinator(in window: NSWindow?, for connectionId: UUID) -> MainContentCoordinator? {
+        (window?.contentViewController as? MainSplitViewController)?
+            .workspaces.workspace(for: connectionId)?.sessionState?.coordinator
+    }
+
+    /// A window that is a background member of a native tab group is made key without being
+    /// brought to the front of its group, so it is selected in the group first.
+    internal func bringToFront(_ window: NSWindow?) {
+        guard let window else { return }
+        if let group = window.tabGroup, group.selectedWindow !== window {
+            group.selectedWindow = window
+        }
+        window.makeKeyAndOrderFront(nil)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+    }
+
     /// A host is any visible window whose content controller can hold workspaces. Selecting by the
     /// `main-` identifier prefix also matched the inspector window, whose controller is a different
     /// type, so the cast failed and an inspector in front made every open create a second window.
-    private func frontmostHost() -> MainSplitViewController? {
+    internal func frontmostHost() -> MainSplitViewController? {
         if let key = NSApp.keyWindow, key.isVisible,
            let host = key.contentViewController as? MainSplitViewController {
             return host
@@ -188,14 +282,6 @@ internal final class WindowManager {
 
         (window.contentViewController as? MainSplitViewController)?.hostsDetachedTab = true
 
-        /// A file's window mapping follows its tab, or reopening the file focuses the window the
-        /// tab has left and does nothing there.
-        if let sourceURL = tab.content.sourceFileURL,
-           let windowId = (window.contentViewController as? MainSplitViewController)?
-           .workspaces.workspace(for: connectionId)?.sessionState?.coordinator.windowId {
-            WindowLifecycleMonitor.shared.registerSourceFile(sourceURL, windowId: windowId)
-        }
-
         /// Ordered front as a window of its own. Left at `.automatic` the system preference can
         /// merge it straight back into the tab group it was asked to leave, which is the trap
         /// `openStandaloneWindow` already documents.
@@ -204,6 +290,66 @@ internal final class WindowManager {
         window.tabbingMode = .automatic
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         return true
+    }
+
+    // MARK: - Move Tab to Connection
+
+    /// Moves a query tab to another connection, connecting that one when it is not up. The tab
+    /// stays in its source until the target has a coordinator to take it, and it never runs there.
+    internal func moveQueryTab(
+        tabId: UUID,
+        from sourceConnectionId: UUID,
+        in sourceHost: MainSplitViewController,
+        to targetConnectionId: UUID
+    ) {
+        guard targetConnectionId != sourceConnectionId,
+              let source = sourceHost.workspaces.workspace(for: sourceConnectionId)?.sessionState?.coordinator,
+              source.canMoveTabToConnection(tabId)
+        else {
+            Self.moveLogger.info("[move] refused at request tabId=\(tabId, privacy: .public)")
+            return
+        }
+        guard let (targetHost, target) = moveTarget(for: targetConnectionId, adoptingInto: sourceHost) else {
+            Self.moveLogger.error(
+                "[move] target connection no longer exists connId=\(targetConnectionId, privacy: .public)"
+            )
+            return
+        }
+
+        targetHost.selectHostedConnection(targetConnectionId)
+        if target.resolvedContentMode == .agent {
+            targetHost.setContentMode(.browse, for: targetConnectionId)
+        }
+        bringToFront(targetHost.view.window)
+        if DatabaseManager.shared.activeSessions[targetConnectionId]?.reportedStatus.isConnected != true {
+            targetHost.reconnectWorkspaceIfIdle(targetConnectionId)
+        }
+        target.queueMove(PendingTabMove(tabId: tabId, source: source) { [weak sourceHost] in
+            sourceHost?.isShowingInKeyWindow(sourceConnectionId) ?? false
+        })
+    }
+
+    /// The window already hosting the target, else the source's own window, which takes it as a new
+    /// workspace the way Switch Connection does.
+    private func moveTarget(
+        for connectionId: UUID,
+        adoptingInto sourceHost: MainSplitViewController
+    ) -> (MainSplitViewController, ConnectionWorkspace)? {
+        if let host = host(for: connectionId), let workspace = host.workspaces.workspace(for: connectionId) {
+            return (host, workspace)
+        }
+        if let workspace = sourceHost.workspaces.workspace(for: connectionId) {
+            return (sourceHost, workspace)
+        }
+        let isKnown = DatabaseManager.shared.activeSessions[connectionId] != nil
+            || ConnectionStorage.shared.loadConnections().contains { $0.id == connectionId }
+        guard isKnown,
+              let workspace = sourceHost.adoptWorkspace(
+                  payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault),
+                  autoConnect: true
+              )
+        else { return nil }
+        return (sourceHost, workspace)
     }
 
     private func buildWindow(
@@ -408,6 +554,21 @@ internal final class WindowManager {
 
     internal func coordinators(for connectionId: UUID) -> [MainContentCoordinator] {
         workspaces(for: connectionId).compactMap { $0.sessionState?.coordinator }
+    }
+
+    internal func hostedCoordinators() -> [MainContentCoordinator] {
+        hostedWorkspaces().compactMap { $0.sessionState?.coordinator }
+    }
+
+    /// Every window's controller hosting this connection, for a command whose result the other
+    /// windows have to be told about rather than discover.
+    ///
+    /// A workspace nobody selected repairs itself on selection through its pane render key, but a
+    /// second window showing the same connection has that workspace selected already, so nothing
+    /// there is about to ask. Closing or deleting an agent session from one window is exactly that
+    /// case: the other window's assistant is pointed at a session that has gone.
+    internal func hostControllers(for connectionId: UUID) -> [MainSplitViewController] {
+        hosts().filter { $0.workspaces.workspace(for: connectionId) != nil }
     }
 
     /// The window hosting this connection, whatever state it is in.

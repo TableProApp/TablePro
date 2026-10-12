@@ -5,7 +5,8 @@
 
 import Foundation
 
-/// How the object list draws itself: icons, comments and row height.
+/// How the object list draws itself: icons, comments, row height, and whether system databases and
+/// schemas are listed.
 ///
 /// These settle the sidebar, not the clicked object, so they are not on an object row's contextual
 /// menu. The HIG asks a contextual menu to carry commands relevant to the item the pointer is over,
@@ -23,6 +24,8 @@ internal enum SidebarViewOptionsMenu {
         sections(
             showObjectIcons: context.showObjectIcons,
             showObjectComments: context.showObjectComments,
+            showSystemContainers: context.showSystemContainers,
+            showPartitions: context.showPartitions,
             rowSize: context.rowSize
         )
     }
@@ -30,6 +33,8 @@ internal enum SidebarViewOptionsMenu {
     internal static func sections(
         showObjectIcons: Bool,
         showObjectComments: Bool,
+        showSystemContainers: Bool,
+        showPartitions: Bool,
         rowSize: SidebarRowSizePreference
     ) -> [DatabaseTreeMenuSection] {
         [
@@ -43,6 +48,16 @@ internal enum SidebarViewOptionsMenu {
                     title: String(localized: "Comments"),
                     command: .toggleObjectComments,
                     isOn: showObjectComments
+                )),
+                .command(SidebarMenuEntry(
+                    title: String(localized: "System Databases and Schemas"),
+                    command: .toggleSystemContainers,
+                    isOn: showSystemContainers
+                )),
+                .command(SidebarMenuEntry(
+                    title: String(localized: "Partitions"),
+                    command: .togglePartitions,
+                    isOn: showPartitions
                 ))
             ]),
             DatabaseTreeMenuSection(SidebarRowSizePreference.allCases.map { size in
@@ -66,6 +81,10 @@ internal enum SidebarViewOptionsMenu {
             AppSettingsManager.shared.general.showObjectIcons.toggle()
         case .toggleObjectComments:
             AppSettingsManager.shared.general.showObjectComments.toggle()
+        case .toggleSystemContainers:
+            AppSettingsManager.shared.general.showSystemContainers.toggle()
+        case .togglePartitions:
+            AppSettingsManager.shared.general.showPartitions.toggle()
         case .setRowSize(let size):
             AppSettingsManager.shared.general.sidebarRowSize = size
         default:
@@ -82,6 +101,8 @@ internal enum SidebarViewOptionsMenu {
         return sections(
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
+            showSystemContainers: settings.showSystemContainers,
+            showPartitions: settings.showPartitions,
             rowSize: settings.sidebarRowSize
         )
     }

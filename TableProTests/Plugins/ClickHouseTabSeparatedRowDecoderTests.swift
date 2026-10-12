@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ClickHouse Tab Separated Row Decoder")
 struct ClickHouseTabSeparatedRowDecoderTests {
     private struct Decoded {
         let header: ClickHouseTabSeparatedRowDecoder.Header?

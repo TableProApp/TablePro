@@ -28,6 +28,19 @@ body:
       required: false
 
   - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which TablePro app this is for.
+      options:
+        - macOS
+        - iOS
+        - Linux
+        - All
+    validations:
+      required: false
+
+  - type: dropdown
     id: database
     attributes:
       label: Related database type

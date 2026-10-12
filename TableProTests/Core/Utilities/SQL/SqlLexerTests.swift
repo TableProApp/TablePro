@@ -4,11 +4,11 @@
 //
 
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
+import Testing
 
-@Suite("SQL lexer")
 struct SqlLexerTests {
 
     @Test("A line comment runs to the newline, not past it")
@@ -40,15 +40,15 @@ struct SqlLexerTests {
     @Test("A doubled quote escapes in every dialect")
     func doubledQuoteEscapes() {
         let text = "'it''s' x" as NSString
-        for dialect in SqlDialect.allCases {
+        for backslashEscapes in [true, false] {
             let span = SqlLexer.skipQuotedString(
                 text,
                 from: 0,
                 quote: SqlLexer.singleQuote,
                 length: text.length,
-                dialect: dialect
+                backslashEscapes: backslashEscapes
             )
-            #expect(span.next == 7, "\(dialect) must treat a doubled quote as an escape")
+            #expect(span.next == 7, "backslashEscapes \(backslashEscapes) must treat a doubled quote as an escape")
         }
     }
 
@@ -60,14 +60,14 @@ struct SqlLexerTests {
             from: 0,
             quote: SqlLexer.singleQuote,
             length: text.length,
-            dialect: .mysql
+            backslashEscapes: true
         )
         let postgres = SqlLexer.skipQuotedString(
             text,
             from: 0,
             quote: SqlLexer.singleQuote,
             length: text.length,
-            dialect: .postgres
+            backslashEscapes: false
         )
         #expect(postgres.next == 4, "PostgreSQL ends the string at the quote after the backslash")
         #expect(mysql.next > postgres.next, "MySQL treats the backslash as an escape and reads further")
@@ -117,7 +117,7 @@ struct SqlLexerTests {
             from: 0,
             quote: SqlLexer.singleQuote,
             length: text.length,
-            dialect: .generic
+            backslashEscapes: false
         )
         #expect(span.next == text.length)
     }
@@ -150,5 +150,21 @@ struct SqlLexerTests {
         #expect(!SqlLexer.isWhitespace(SqlLexer.semicolon))
         #expect(SqlLexer.isQuote(SqlLexer.backtick))
         #expect(!SqlLexer.isQuote(SqlLexer.dash))
+    }
+
+    @Test("An Oracle q-quote runs to its delimiter followed by a quote")
+    func alternativeQuotedString() {
+        let text = "q'[it's; x]' tail" as NSString
+        #expect(SqlLexer.skipAlternativeQuotedString(text, at: 0, length: text.length)?.next == 12)
+        let national = "NQ'{a'b}' tail" as NSString
+        #expect(SqlLexer.skipAlternativeQuotedString(national, at: 0, length: national.length)?.next == 9)
+        let sameDelimiter = "q'!a'b!' tail" as NSString
+        #expect(SqlLexer.skipAlternativeQuotedString(sameDelimiter, at: 0, length: sameDelimiter.length)?.next == 8)
+    }
+
+    @Test("A word that only starts with q is not a q-quote")
+    func notAnAlternativeQuote() {
+        let text = "qty = 'x'" as NSString
+        #expect(SqlLexer.skipAlternativeQuotedString(text, at: 0, length: text.length) == nil)
     }
 }

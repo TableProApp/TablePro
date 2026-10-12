@@ -44,7 +44,7 @@ struct ForeignKeyDialect: Equatable, Sendable {
                 allowsQualifiedReferencedTable: false,
                 allowsOmittedReferencedColumns: true
             )
-        case .mysql, .mariadb, .tidb:
+        case .mysql, .mariadb, .tidb, .oceanbase:
             return ForeignKeyDialect(
                 deleteActions: [.noAction, .restrict, .cascade, .setNull],
                 updateActions: [.noAction, .restrict, .cascade, .setNull],

@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private enum RustledgerLocator {
+enum RustledgerLocator {
     static let path: String? = resolve()
 
     static func resolve() -> String? {
@@ -1011,12 +1011,12 @@ struct BeancountPluginDriverTests {
         #expect(postingFreeCount.rows.first?.first?.asText == "0")
     }
 
-    private static func withRustledger(_ body: () async throws -> Void) async throws {
+    static func withRustledger(_ body: () async throws -> Void) async throws {
         let rledger = try #require(RustledgerLocator.path)
         try await withRustledgerEnvironment(rledger, body)
     }
 
-    private static func withRustledgerEnvironment(_ path: String, _ body: () async throws -> Void) async throws {
+    static func withRustledgerEnvironment(_ path: String, _ body: () async throws -> Void) async throws {
         try await withEnvironment([
             "TABLEPRO_BEANCOUNT_BACKEND": "rledger",
             "TABLEPRO_RUSTLEDGER_BINARY": path
@@ -1113,7 +1113,7 @@ struct BeancountPluginDriverTests {
         }
     }
 
-    private static func config(
+    static func config(
         _ ledger: URL,
         additionalFields: [String: String] = [:]
     ) -> DriverConnectionConfig {
@@ -1174,7 +1174,7 @@ struct BeancountPluginDriverTests {
         return ledger
     }
 
-    private static func makeTempDirectory() throws -> URL {
+    static func makeTempDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("beancount-driver-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

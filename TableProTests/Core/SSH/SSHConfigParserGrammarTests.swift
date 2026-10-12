@@ -11,7 +11,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH config parser grammar")
 struct SSHConfigParserGrammarTests {
     private static let env = ResolverEnvironment(
         runShell: { _ in true },

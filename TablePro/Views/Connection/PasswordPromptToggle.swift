@@ -31,7 +31,7 @@ struct PasswordPromptToggle: View {
                 : String(localized: "Prompt for password"),
             isOn: $promptForPassword
         )
-        .onChange(of: promptForPassword) { _, newValue in
+        .onChange(of: promptForPassword) { newValue in
             if newValue {
                 password = ""
                 if additionalFieldValues["usePgpass"] == "true" {

@@ -6,7 +6,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("Column default vocabulary")
 struct ColumnDefaultVocabularyTests {
     private func sqlValues(_ type: DatabaseType) -> [String] {
         ColumnDefaultVocabulary.options(for: type).compactMap(\.sql)

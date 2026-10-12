@@ -5,12 +5,12 @@
 //  Tab showing the source of one stored procedure, function, trigger, user-defined type or view.
 //
 
+import Combine
 import SwiftUI
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class ObjectSourceLoader {
+final class ObjectSourceLoader: ObservableObject {
     enum State {
         case loading
         case loaded(source: String, attributes: [ObjectAttribute], enumLabels: [String])
@@ -24,18 +24,24 @@ final class ObjectSourceLoader {
         let userType: UserDefinedTypeInfo?
     }
 
-    private(set) var state: State = .loading
+    @Published private(set) var state: State = .loading
 
     /// The type as the server last described it, so an edit addresses the object on screen rather
     /// than whatever the sidebar listed when the tab was opened.
-    private(set) var userType: UserDefinedTypeInfo?
+    @Published private(set) var userType: UserDefinedTypeInfo?
 
     private let connectionId: UUID
     private let objectRef: DatabaseObjectRef
+    private let metadata: any ScopedMetadataProviding
 
-    init(connectionId: UUID, objectRef: DatabaseObjectRef) {
+    init(
+        connectionId: UUID,
+        objectRef: DatabaseObjectRef,
+        metadata: any ScopedMetadataProviding = DatabaseManager.shared
+    ) {
         self.connectionId = connectionId
         self.objectRef = objectRef
+        self.metadata = metadata
     }
 
     var source: String {
@@ -70,6 +76,14 @@ final class ObjectSourceLoader {
         }
     }
 
+    /// A connection switch re-parents the tab and SwiftUI restarts its `.task`, so an appearance
+    /// fetches only while nothing is loaded. A cancelled or failed load is not `.loaded`, so the
+    /// next appearance retries it; Reload and Try Again call `load` and always fetch.
+    func loadIfNeeded() async {
+        if case .loaded = state { return }
+        await load()
+    }
+
     /// One round trip. Re-listing the schema to recover the attributes cost a full catalog scan
     /// per open and per reload, for values the sidebar's listing already carried into the ref. A
     /// type is the exception: its labels are what the viewer edits, so they are read fresh.
@@ -79,7 +93,7 @@ final class ObjectSourceLoader {
             database: objectRef.database,
             schema: objectRef.schema
         )
-        return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { [objectRef] driver in
+        return try await metadata.withMetadataDriver(scope: scope) { [objectRef] driver in
             switch objectRef.kind {
             case .procedure, .function:
                 guard let routine = objectRef.routine else {
@@ -120,12 +134,13 @@ final class ObjectSourceLoader {
 }
 
 struct ObjectSourceTabView: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     let connectionId: UUID
     let databaseType: DatabaseType
     let objectRef: DatabaseObjectRef
     let onOpenInEditor: (String) -> Void
 
-    @State private var loader: ObjectSourceLoader
+    @StateObject private var loader: ObjectSourceLoader
 
     init(
         connectionId: UUID,
@@ -137,7 +152,7 @@ struct ObjectSourceTabView: View {
         self.databaseType = databaseType
         self.objectRef = objectRef
         self.onOpenInEditor = onOpenInEditor
-        _loader = State(wrappedValue: ObjectSourceLoader(connectionId: connectionId, objectRef: objectRef))
+        _loader = StateObject(wrappedValue: ObjectSourceLoader(connectionId: connectionId, objectRef: objectRef))
     }
 
     var body: some View {
@@ -146,14 +161,14 @@ struct ObjectSourceTabView: View {
             Divider()
             content
         }
-        .task { await loader.load() }
+        .task { await loader.loadIfNeeded() }
     }
 
     /// Only an enum has anything to edit in place: a label is appended or renamed with one
     /// statement. Every other object stays read-only here and is edited in a query tab.
     private var enumEditor: EnumLabelEditor? {
         guard objectRef.kind == .userType, objectRef.typeKind == .enumeration,
-              let connection = DatabaseManager.shared.session(for: connectionId)?.connection
+              let connection = databaseManager.session(for: connectionId)?.connection
         else { return nil }
         return EnumLabelEditor(connection: connection, objectRef: objectRef)
     }
@@ -201,7 +216,7 @@ struct ObjectSourceTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .textBackgroundColor))
         case .failed(let message):
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Source Unavailable", systemImage: "exclamationmark.triangle")
             } description: {
                 RevealedTextView(message)

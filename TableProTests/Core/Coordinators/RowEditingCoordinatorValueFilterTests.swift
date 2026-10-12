@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("RowEditingCoordinator under a value filter")
 @MainActor
 struct RowEditingCoordinatorValueFilterTests {
     private func makeCoordinator() -> MainContentCoordinator {

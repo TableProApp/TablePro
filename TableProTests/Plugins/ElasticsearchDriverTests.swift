@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Elasticsearch - Console Parser")
 struct ElasticsearchConsoleParserTests {
     @Test("Parses method, path, and JSON body")
     func parsesFullRequest() {
@@ -40,7 +39,6 @@ struct ElasticsearchConsoleParserTests {
     }
 }
 
-@Suite("Elasticsearch - Query Builder Encoding")
 struct ElasticsearchQueryBuilderEncodingTests {
     private let builder = ElasticsearchQueryBuilder()
 
@@ -73,11 +71,18 @@ struct ElasticsearchQueryBuilderEncodingTests {
     }
 }
 
-@Suite("Elasticsearch - Query DSL")
 struct ElasticsearchQueryDSLTests {
     private let textField = ["title": ElasticsearchFieldInfo(type: "text", hasKeywordSubfield: true)]
     private let keywordField = ["status": ElasticsearchFieldInfo(type: "keyword", hasKeywordSubfield: false)]
     private let numericField = ["age": ElasticsearchFieldInfo(type: "long", hasKeywordSubfield: false)]
+    private let nestedLeafFields = [
+        "identifiers.type": ElasticsearchFieldInfo(
+            type: "keyword", hasKeywordSubfield: false, nestedPaths: ["identifiers"]
+        ),
+        "identifiers.value": ElasticsearchFieldInfo(
+            type: "keyword", hasKeywordSubfield: false, nestedPaths: ["identifiers"]
+        ),
+    ]
 
     @Test("Empty filters produce match_all")
     func matchAll() {
@@ -120,13 +125,23 @@ struct ElasticsearchQueryDSLTests {
         #expect(bool?["minimum_should_match"] as? Int == 1)
     }
 
-    @Test("IS NULL becomes must_not exists")
+    @Test("IS NULL negates presence, so an absent field matches")
     func isNull() {
         let filter = ElasticsearchFilterSpec(column: "status", op: "IS NULL", value: "")
         let clause = ElasticsearchQueryBuilder.clause(for: filter, fields: keywordField)
+        let outer = (clause["bool"] as? [String: Any])?["must_not"] as? [[String: Any]]
+        let present = (outer?.first?["bool"] as? [String: Any])
+        #expect((present?["must"] as? [[String: Any]])?.first?["exists"] != nil)
+        #expect((present?["must_not"] as? [[String: Any]])?.first?["term"] != nil)
+    }
+
+    @Test("IS NOT NULL asks for presence directly")
+    func isNotNull() {
+        let filter = ElasticsearchFilterSpec(column: "status", op: "IS NOT NULL", value: "")
+        let clause = ElasticsearchQueryBuilder.clause(for: filter, fields: keywordField)
         let bool = clause["bool"] as? [String: Any]
-        #expect((bool?["should"] as? [[String: Any]])?.count == 2)
-        #expect(bool?["minimum_should_match"] as? Int == 1)
+        #expect((bool?["must"] as? [[String: Any]])?.first?["exists"] != nil)
+        #expect((bool?["must_not"] as? [[String: Any]])?.first?["term"] != nil)
     }
 
     @Test("Deep pagination body includes _shard_doc tiebreaker")
@@ -190,6 +205,294 @@ struct ElasticsearchQueryDSLTests {
         #expect((regexp?["status"] as? [String: Any])?["value"] as? String == "a.*")
     }
 
+    @Test("A nested leaf filter wraps in a nested query")
+    func nestedLeafFilterWraps() {
+        let fields = [
+            "identifiers.type": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["identifiers"]
+            ),
+        ]
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [ElasticsearchFilterSpec(column: "identifiers.type", op: "=", value: "CPF")],
+            logicMode: "AND",
+            fields: fields
+        )
+        let nested = clause["nested"] as? [String: Any]
+        #expect(nested?["path"] as? String == "identifiers")
+        let term = (nested?["query"] as? [String: Any])?["term"] as? [String: Any]
+        #expect(term?["identifiers.type"] as? String == "CPF")
+    }
+
+    @Test("Same-element nested filters share one nested query")
+    func nestedSameElementGroups() {
+        let fields = [
+            "identifiers.type": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["identifiers"]
+            ),
+            "identifiers.value": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["identifiers"]
+            ),
+        ]
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [
+                ElasticsearchFilterSpec(
+                    column: "identifiers.type", op: "=", value: "CPF", elementScope: "identifiers"
+                ),
+                ElasticsearchFilterSpec(
+                    column: "identifiers.value", op: "=", value: "318.578.388-31", elementScope: "identifiers"
+                ),
+            ],
+            logicMode: "AND",
+            fields: fields
+        )
+        let nested = clause["nested"] as? [String: Any]
+        #expect(nested?["path"] as? String == "identifiers")
+        let bool = (nested?["query"] as? [String: Any])?["bool"] as? [String: Any]
+        let must = bool?["must"] as? [[String: Any]]
+        #expect(must?.count == 2)
+    }
+
+    @Test("Independent nested filters stay separate nested queries")
+    func nestedAnyElementStaysSeparate() {
+        let fields = [
+            "identifiers.type": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["identifiers"]
+            ),
+            "identifiers.issuer": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["identifiers"]
+            ),
+        ]
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [
+                ElasticsearchFilterSpec(column: "identifiers.type", op: "=", value: "CPF"),
+                ElasticsearchFilterSpec(column: "identifiers.issuer", op: "=", value: "EPACS"),
+            ],
+            logicMode: "AND",
+            fields: fields
+        )
+        let must = (clause["bool"] as? [String: Any])?["must"] as? [[String: Any]]
+        #expect(must?.count == 2)
+        #expect(must?.allSatisfy { $0["nested"] != nil } == true)
+    }
+
+    @Test("A nested negation negates the nested query, not its body")
+    func nestedNegationWrapsOutside() {
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [ElasticsearchFilterSpec(column: "identifiers.type", op: "!=", value: "CPF")],
+            logicMode: "AND",
+            fields: nestedLeafFields
+        )
+        let mustNot = (clause["bool"] as? [String: Any])?["must_not"] as? [[String: Any]]
+        let nested = mustNot?.first?["nested"] as? [String: Any]
+        #expect(nested?["path"] as? String == "identifiers")
+        #expect((nested?["query"] as? [String: Any])?["term"] != nil)
+    }
+
+    @Test("IS NULL on a nested leaf negates the whole nested query")
+    func nestedIsNullWrapsOutside() {
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [ElasticsearchFilterSpec(column: "identifiers.type", op: "IS NULL", value: "")],
+            logicMode: "AND",
+            fields: nestedLeafFields
+        )
+        let mustNot = (clause["bool"] as? [String: Any])?["must_not"] as? [[String: Any]]
+        #expect(mustNot?.first?["nested"] != nil)
+    }
+
+    @Test("A nested query ignores an unmapped path")
+    func nestedIgnoresUnmapped() {
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [ElasticsearchFilterSpec(column: "identifiers.type", op: "=", value: "CPF")],
+            logicMode: "AND",
+            fields: nestedLeafFields
+        )
+        #expect((clause["nested"] as? [String: Any])?["ignore_unmapped"] as? Bool == true)
+    }
+
+    @Test("A filter on a nested parent column is dropped, not sent as a term")
+    func nestedParentFilterDropped() {
+        let fields = [
+            "identifiers": ElasticsearchFieldInfo(type: "nested", hasKeywordSubfield: false),
+            "personId": ElasticsearchFieldInfo(type: "keyword", hasKeywordSubfield: false),
+        ]
+        let dropped = ElasticsearchQueryBuilder.queryClause(
+            filters: [ElasticsearchFilterSpec(column: "identifiers", op: "=", value: "anything")],
+            logicMode: "AND",
+            fields: fields
+        )
+        #expect(dropped["match_all"] != nil)
+
+        let kept = ElasticsearchQueryBuilder.queryClause(
+            filters: [
+                ElasticsearchFilterSpec(column: "identifiers", op: "=", value: "anything"),
+                ElasticsearchFilterSpec(column: "personId", op: "=", value: "p1"),
+            ],
+            logicMode: "AND",
+            fields: fields
+        )
+        #expect(kept["term"] != nil)
+    }
+
+    @Test("A leaf under two nested ancestors enters both scopes, outermost first")
+    func doublyNestedWrapsBothScopes() {
+        let fields = [
+            "orders.items.sku": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["orders", "orders.items"]
+            ),
+        ]
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [ElasticsearchFilterSpec(column: "orders.items.sku", op: "=", value: "A1")],
+            logicMode: "AND",
+            fields: fields
+        )
+        let outer = clause["nested"] as? [String: Any]
+        #expect(outer?["path"] as? String == "orders")
+        let inner = (outer?["query"] as? [String: Any])?["nested"] as? [String: Any]
+        #expect(inner?["path"] as? String == "orders.items")
+        #expect((inner?["query"] as? [String: Any])?["term"] != nil)
+    }
+
+    @Test("A same-element group keeps a negation inside the one nested query")
+    func sameElementGroupNegatesInside() {
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [
+                ElasticsearchFilterSpec(
+                    column: "identifiers.type", op: "=", value: "CPF", elementScope: "identifiers"
+                ),
+                ElasticsearchFilterSpec(
+                    column: "identifiers.value", op: "!=", value: "0", elementScope: "identifiers"
+                ),
+            ],
+            logicMode: "AND",
+            fields: nestedLeafFields
+        )
+        let nested = clause["nested"] as? [String: Any]
+        #expect(nested?["path"] as? String == "identifiers")
+        let must = ((nested?["query"] as? [String: Any])?["bool"] as? [String: Any])?["must"] as? [[String: Any]]
+        #expect(must?.count == 2)
+        #expect(must?.contains { ($0["bool"] as? [String: Any])?["must_not"] != nil } == true)
+    }
+
+    @Test("One scoped filter reads as any element, so its negation stays outside")
+    func loneScopedNegationWrapsOutside() {
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [
+                ElasticsearchFilterSpec(
+                    column: "identifiers.type", op: "!=", value: "CPF", elementScope: "identifiers"
+                ),
+            ],
+            logicMode: "AND",
+            fields: nestedLeafFields
+        )
+        let mustNot = (clause["bool"] as? [String: Any])?["must_not"] as? [[String: Any]]
+        #expect(mustNot?.first?["nested"] != nil)
+    }
+
+    @Test("One scope over two nested depths does not merge into one scope")
+    func sameScopeDifferentDepthsStaySeparate() {
+        let fields = [
+            "orders.ref": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["orders"]
+            ),
+            "orders.items.sku": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["orders", "orders.items"]
+            ),
+        ]
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [
+                ElasticsearchFilterSpec(column: "orders.ref", op: "=", value: "R1", elementScope: "orders"),
+                ElasticsearchFilterSpec(column: "orders.items.sku", op: "=", value: "A1", elementScope: "orders"),
+            ],
+            logicMode: "AND",
+            fields: fields
+        )
+        let must = (clause["bool"] as? [String: Any])?["must"] as? [[String: Any]]
+        #expect(must?.count == 2)
+        let paths = must?.compactMap { ($0["nested"] as? [String: Any])?["path"] as? String }
+        #expect(paths == ["orders", "orders"])
+        let inner = must?.compactMap { clause -> String? in
+            let nested = clause["nested"] as? [String: Any]
+            let query = nested?["query"] as? [String: Any]
+            return (query?["nested"] as? [String: Any])?["path"] as? String
+        }
+        #expect(inner == ["orders.items"])
+    }
+
+    @Test("Sorting a doubly nested leaf names both scopes")
+    func doublyNestedSortNamesBothScopes() {
+        let fields = [
+            "orders.items.sku": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["orders", "orders.items"]
+            ),
+        ]
+        let sorts = ElasticsearchQueryBuilder.sortClause(
+            [ElasticsearchSortSpec(column: "orders.items.sku", ascending: true)],
+            fields: fields,
+            tiebreaker: false
+        )
+        let options = sorts.first?["orders.items.sku"] as? [String: Any]
+        let outer = options?["nested"] as? [String: Any]
+        #expect(outer?["path"] as? String == "orders")
+        #expect((outer?["nested"] as? [String: Any])?["path"] as? String == "orders.items")
+    }
+
+    @Test("A nested parent column is not sortable")
+    func nestedParentNotSortable() {
+        let fields = ["identifiers": ElasticsearchFieldInfo(type: "nested", hasKeywordSubfield: false)]
+        #expect(ElasticsearchQueryBuilder.sortableField("identifiers", fields: fields) == nil)
+    }
+
+    @Test("Sorting a nested leaf names the nested path")
+    func nestedLeafSort() {
+        let fields = [
+            "identifiers.issuer": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPaths: ["identifiers"]
+            ),
+        ]
+        let parsed = ElasticsearchParsedSearch(
+            index: "i", from: 0, size: 10,
+            sorts: [ElasticsearchSortSpec(column: "identifiers.issuer", ascending: true)],
+            filters: [], logicMode: "AND"
+        )
+        let body = ElasticsearchQueryBuilder.searchBody(for: parsed, fields: fields, size: 10)
+        let sort = body["sort"] as? [[String: Any]]
+        let options = sort?.first?["identifiers.issuer"] as? [String: Any]
+        #expect(options?["order"] as? String == "asc")
+        #expect((options?["nested"] as? [String: Any])?["path"] as? String == "identifiers")
+    }
+
+    @Test("Tagged search round-trips elementScope")
+    func elementScopeRoundTrip() {
+        let tagged = ElasticsearchQueryBuilder.encodeSearch(
+            index: "persons", from: 0, size: 50,
+            sorts: [],
+            filters: [
+                ElasticsearchFilterSpec(
+                    column: "identifiers.type", op: "=", value: "CPF", elementScope: "identifiers"
+                ),
+            ],
+            logicMode: "AND"
+        )
+        let parsed = ElasticsearchQueryBuilder.parseSearch(tagged)
+        #expect(parsed?.filters.first?.elementScope == "identifiers")
+        #expect(parsed?.filters.first?.column == "identifiers.type")
+    }
+
+    @Test("specs copies elementScope from the plugin filter")
+    func specsCopyElementScope() {
+        let filters = [
+            PluginQueryFilter(
+                column: "identifiers.type",
+                op: "=",
+                value: "CPF",
+                isCaseSensitive: true,
+                secondValue: nil,
+                elementScope: "identifiers"
+            ),
+        ]
+        #expect(ElasticsearchQueryBuilder.specs(from: filters).first?.elementScope == "identifiers")
+    }
+
     @Test("case_insensitive is omitted when unsupported (pre-7.10)")
     func caseInsensitiveGated() {
         let on = ElasticsearchQueryBuilder.clause(
@@ -206,7 +509,6 @@ struct ElasticsearchQueryDSLTests {
     }
 }
 
-@Suite("Elasticsearch - Appended ORDER BY")
 struct ElasticsearchOrderByTests {
     @Test("Extracts a single appended ORDER BY from the tagged query")
     func singleOrderBy() {
@@ -236,7 +538,6 @@ struct ElasticsearchOrderByTests {
     }
 }
 
-@Suite("Elasticsearch - Mapping Flattener")
 struct ElasticsearchMappingFlattenerTests {
     @Test("Flattens nested objects into dotted paths and records keyword subfields")
     func flattenMapping() {
@@ -251,6 +552,32 @@ struct ElasticsearchMappingFlattenerTests {
         #expect(byName["name"]?.hasKeywordSubfield == true)
         #expect(byName["age"]?.type == "long")
         #expect(byName["address.city"]?.type == "keyword")
+        #expect(byName["address"] == nil)
+        #expect(byName["address.city"]?.nestedPath == nil)
+    }
+
+    @Test("Keeps a nested parent column and marks its leaves with the nested path")
+    func nestedMappingKeepsParentAndMarksLeaves() {
+        let properties: [String: Any] = [
+            "personId": ["type": "keyword"],
+            "identifiers": [
+                "type": "nested",
+                "properties": [
+                    "issuer": ["type": "keyword"],
+                    "system": ["type": "keyword"],
+                    "type": ["type": "keyword"],
+                    "value": ["type": "keyword"],
+                ],
+            ],
+        ]
+        let columns = ElasticsearchMappingFlattener.flattenMapping(properties: properties)
+        let byName = Dictionary(uniqueKeysWithValues: columns.map { ($0.name, $0) })
+        #expect(byName["identifiers"]?.type == "nested")
+        #expect(byName["identifiers"]?.nestedPath == nil)
+        #expect(byName["identifiers.issuer"]?.type == "keyword")
+        #expect(byName["identifiers.issuer"]?.nestedPath == "identifiers")
+        #expect(byName["identifiers.type"]?.nestedPath == "identifiers")
+        #expect(byName["personId"]?.nestedPath == nil)
     }
 
     @Test("Columns include meta columns first")
@@ -268,7 +595,7 @@ struct ElasticsearchMappingFlattenerTests {
             "address": ["city": "NYC"],
             "tags": ["a", "b"],
         ]
-        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        let flat = ElasticsearchMappingFlattener.flattenSource(source, length: .display)
         #expect(flat["name"] == .text("Alice"))
         #expect(flat["address.city"] == .text("NYC"))
         #expect(flat["tags"]?.asText?.contains("a") == true)
@@ -278,10 +605,10 @@ struct ElasticsearchMappingFlattenerTests {
     func doublesRoundTrip() {
         let source: [String: Any] = [
             "score": -3.9192320754595876e-07,
-            "total": 1847.27,
+            "total": 1_847.27,
             "counts": ["rate": 0.1, "qty": 3.0],
         ]
-        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        let flat = ElasticsearchMappingFlattener.flattenSource(source, length: .display)
         #expect(flat["score"] == .text("-3.9192320754595876e-07"))
         #expect(flat["total"] == .text("1847.27"))
         #expect(flat["counts.rate"] == .text("0.1"))
@@ -290,8 +617,8 @@ struct ElasticsearchMappingFlattenerTests {
 
     @Test("An array of doubles serializes without binary floating point noise")
     func arrayOfDoublesHasNoExcessDigits() {
-        let source: [String: Any] = ["samples": [0.1, 1847.27]]
-        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        let source: [String: Any] = ["samples": [0.1, 1_847.27]]
+        let flat = ElasticsearchMappingFlattener.flattenSource(source, length: .display)
         #expect(flat["samples"] == .text("[0.1,1847.27]"))
     }
 
@@ -302,7 +629,7 @@ struct ElasticsearchMappingFlattenerTests {
             "_source": ["msg": "hello"],
         ]]
         let columns = ["_id", "_index", "_score", "msg"]
-        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns)
+        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns, length: .display)
         #expect(rows.first?[0] == .text("1"))
         #expect(rows.first?[1] == .text("logs"))
         #expect(rows.first?[3] == .text("hello"))
@@ -319,12 +646,204 @@ struct ElasticsearchMappingFlattenerTests {
     @Test("Object-valued parent column renders as JSON, not null")
     func parentObjectColumnRendersJSON() {
         let hits: [[String: Any]] = [["_source": ["labels": ["env": "prod", "tier": "1"]]]]
-        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels"])
+        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels"], length: .display)
         #expect(rows.first?[0].asText?.contains("env") == true)
+    }
+
+    @Test("A nested identifier array fills the parent and each leaf, never null")
+    func nestedIdentifierArrayRenders() {
+        let source: [String: Any] = [
+            "personId": "03c47c6d-2cf6-4e3b-9d2c-0d762f77ae13",
+            "identifiers": [[
+                "issuer": "EPACS",
+                "system": "urn:epacs:patient:600003399",
+                "type": "PATIENT_ID",
+                "value": "8930",
+            ]],
+        ]
+        let hits: [[String: Any]] = [["_id": "03c47c6d-2cf6-4e3b-9d2c-0d762f77ae13", "_source": source]]
+        let columns = [
+            "identifiers", "identifiers.issuer", "identifiers.system",
+            "identifiers.type", "identifiers.value", "personId",
+        ]
+        let row = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns, length: .display).first
+        #expect(row?[0].asText?.contains("8930") == true)
+        #expect(row?[0].asText?.contains("identifiers.issuer") == false)
+        #expect(row?[1].asText?.contains("EPACS") == true)
+        #expect(row?[3].asText?.contains("PATIENT_ID") == true)
+        #expect(row?[4].asText?.contains("8930") == true)
+        #expect(row?[5] == .text("03c47c6d-2cf6-4e3b-9d2c-0d762f77ae13"))
+    }
+
+    @Test("Two nested identifiers keep both objects rather than the first only")
+    func nestedIdentifierPairKeepsBoth() {
+        let source: [String: Any] = [
+            "personId": "0ff4afbe-7b2f-40f6-acf9-fbb6403c6250",
+            "identifiers": [
+                ["system": "urn:br:cpf", "type": "CPF", "value": "318.578.388-31"],
+                [
+                    "issuer": "EPACS",
+                    "system": "urn:epacs:patient:600003399",
+                    "type": "PATIENT_ID",
+                    "value": "3533",
+                ],
+            ],
+        ]
+        let hits: [[String: Any]] = [["_source": source]]
+        let row = ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: ["identifiers", "identifiers.type", "identifiers.value", "identifiers.issuer"],
+            length: .display
+        ).first
+        #expect(row?[0].asText?.contains("318.578.388-31") == true)
+        #expect(row?[0].asText?.contains("3533") == true)
+        #expect(row?[1].asText?.contains("CPF") == true)
+        #expect(row?[1].asText?.contains("PATIENT_ID") == true)
+        #expect(row?[2].asText?.contains("318.578.388-31") == true)
+        #expect(row?[2].asText?.contains("3533") == true)
+        #expect(row?[3].asText?.contains("EPACS") == true)
+    }
+
+    @Test("A missing nested field is an empty cell, not a crash")
+    func missingNestedFieldIsNull() {
+        let hits: [[String: Any]] = [["_source": ["personId": "1"]]]
+        let rows = ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: ["identifiers", "identifiers.value", "personId"],
+            length: .display
+        )
+        #expect(rows.first?[0] == .null)
+        #expect(rows.first?[1] == .null)
+        #expect(rows.first?[2] == .text("1"))
+    }
+
+    @Test("An object array still fills dotted leaves")
+    func objectArrayFillsDottedLeaves() {
+        let hits: [[String: Any]] = [["_source": ["labels": [["env": "prod"], ["env": "dev"]]]]]
+        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels.env"], length: .display)
+        let text = rows.first?[0].asText
+        #expect(text?.contains("prod") == true)
+        #expect(text?.contains("dev") == true)
+    }
+
+    @Test("A leaf an object omits keeps its place, so sibling columns line up")
+    func nestedLeavesKeepPosition() {
+        let source: [String: Any] = [
+            "identifiers": [
+                ["type": "CPF", "value": "318.578.388-31"],
+                ["issuer": "EPACS", "type": "PATIENT_ID", "value": "3533"],
+            ],
+        ]
+        let hits: [[String: Any]] = [["_source": source]]
+        let row = ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: ["identifiers.issuer", "identifiers.type"],
+            length: .display
+        ).first
+        #expect(row?[0].asText == "[null,\"EPACS\"]")
+        #expect(row?[1].asText == "[\"CPF\",\"PATIENT_ID\"]")
+    }
+
+    @Test("A bare object in a nested field renders as a one-element array")
+    func bareNestedObjectRendersAsArray() {
+        let hits: [[String: Any]] = [["_source": ["identifiers": ["type": "CPF"]]]]
+        let row = ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: ["identifiers", "identifiers.type"],
+            nestedParents: ["identifiers"],
+            length: .display
+        ).first
+        #expect(row?[0].asText?.hasPrefix("[") == true)
+        #expect(row?[1].asText == "[\"CPF\"]")
+    }
+
+    @Test("An export row keeps arrays and objects longer than the grid's cap whole")
+    func exportRowKeepsLongStructuresWhole() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let chunks = (0..<4).map { _ in ["vector": embedding] }
+        let hits: [[String: Any]] = [["_id": "1", "_source": ["embedding": embedding, "chunks": chunks]]]
+        let row = try #require(ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: ["embedding", "chunks", "chunks.vector"],
+            nestedParents: ["chunks"],
+            length: .whole
+        ).first)
+
+        #expect(try parsedJSON(row[0]) as? [Double] == embedding)
+        #expect(try parsedJSON(row[1]) as? [[String: [Double]]] == chunks)
+        #expect(try parsedJSON(row[2]) as? [[Double]] == chunks.map { _ in embedding })
+    }
+
+    @Test("A grid row still cuts an array longer than the cap")
+    func gridRowCutsLongStructures() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let hits: [[String: Any]] = [["_source": ["embedding": embedding]]]
+        let row = try #require(ElasticsearchMappingFlattener.rows(
+            forHits: hits, columns: ["embedding"], length: .display
+        ).first)
+        let text = try #require(row[0].asText)
+
+        #expect(text.hasSuffix("..."))
+        #expect((text as NSString).length == 10_003)
+    }
+
+    private func parsedJSON(_ cell: PluginCellValue) throws -> Any {
+        let text = try #require(cell.asText)
+        return try JSONSerialization.jsonObject(with: Data(text.utf8))
+    }
+
+    @Test("An alias mapping keyed by real index names unions their fields")
+    func aliasMappingUnionsEveryIndex() {
+        let response: [String: Any] = [
+            "logs-2026-08": ["mappings": ["properties": [
+                "message": ["type": "text"],
+                "level": ["type": "keyword"],
+            ]]],
+            "logs-2026-09": ["mappings": ["properties": [
+                "message": ["type": "text"],
+                "traceId": ["type": "keyword"],
+            ]]],
+        ]
+        let properties = ElasticsearchMappingFlattener.properties(fromMappingResponse: response, index: "logs")
+        #expect(Set(properties.keys) == ["message", "level", "traceId"])
+    }
+
+    @Test("A response that names the index exactly uses only that index")
+    func exactIndexMappingWins() {
+        let response: [String: Any] = [
+            "logs-2026-08": ["mappings": ["properties": ["level": ["type": "keyword"]]]],
+            "logs-2026-09": ["mappings": ["properties": ["traceId": ["type": "keyword"]]]],
+        ]
+        let properties = ElasticsearchMappingFlattener.properties(
+            fromMappingResponse: response, index: "logs-2026-09"
+        )
+        #expect(Set(properties.keys) == ["traceId"])
+    }
+
+    @Test("A nested field inside a nested field reports both ancestors")
+    func doublyNestedMappingReportsBothAncestors() {
+        let properties: [String: Any] = [
+            "orders": [
+                "type": "nested",
+                "properties": [
+                    "ref": ["type": "keyword"],
+                    "items": [
+                        "type": "nested",
+                        "properties": ["sku": ["type": "keyword"]],
+                    ],
+                ],
+            ],
+        ]
+        let columns = ElasticsearchMappingFlattener.flattenMapping(properties: properties)
+        let byName = Dictionary(uniqueKeysWithValues: columns.map { ($0.name, $0) })
+        #expect(byName["orders"]?.nestedPaths.isEmpty == true)
+        #expect(byName["orders.ref"]?.nestedPaths == ["orders"])
+        #expect(byName["orders.items"]?.nestedPaths == ["orders"])
+        #expect(byName["orders.items.sku"]?.nestedPaths == ["orders", "orders.items"])
+        #expect(ElasticsearchMappingFlattener.nestedParents(from: columns) == ["orders", "orders.items"])
     }
 }
 
-@Suite("Elasticsearch - Statement Generator")
 struct ElasticsearchStatementGeneratorTests {
     private func generator() -> ElasticsearchStatementGenerator {
         ElasticsearchStatementGenerator(
@@ -335,14 +854,14 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Update encodes a POST _update keyed by _id")
-    func updateRequest() {
+    func updateRequest() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .update,
             cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Alice"))],
             originalRow: [.text("doc1"), .text("users"), .text("1"), .text("Bob"), .text("30")]
         )
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
         #expect(statements.count == 1)
@@ -353,14 +872,14 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Delete encodes a DELETE _doc by _id")
-    func deleteRequest() {
+    func deleteRequest() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .delete,
             cellChanges: [],
             originalRow: [.text("doc9"), .text("users"), .text("1"), .text("Bob"), .text("30")]
         )
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
         let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
@@ -369,9 +888,9 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Insert coerces numeric fields and omits meta columns")
-    func insertRequest() {
+    func insertRequest() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [.null, .null, .null, .text("Eve"), .text("25")]],
             deletedRowIndices: [],
@@ -384,10 +903,245 @@ struct ElasticsearchStatementGeneratorTests {
         #expect(decoded?.body?.contains("_index") == false)
     }
 
-    @Test("Insert with explicit _id uses PUT")
-    func insertWithId() {
+    private func nestedGenerator() -> ElasticsearchStatementGenerator {
+        ElasticsearchStatementGenerator(
+            index: "persons",
+            columns: ["_id", "identifiers", "identifiers.type", "personId"],
+            columnTypeNames: ["keyword", "nested", "keyword", "keyword"]
+        )
+    }
+
+    @Test("Insert writes the nested array once, through its parent column")
+    func insertOmitsNestedLeaves() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator().generateStatements(
+        let statements = try nestedGenerator().generateRowWrites(
+            from: [change],
+            insertedRowData: [0: [
+                .null,
+                .text("[{\"type\":\"CPF\"}]"),
+                .text("[\"CPF\"]"),
+                .text("p1"),
+            ]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        let body = ElasticsearchStatementGenerator.decode(statements[0].statement)?.body
+        #expect(body?.contains("\"identifiers\":[{\"type\":\"CPF\"}]") == true)
+        #expect(body?.contains("identifiers.type") == false)
+    }
+
+    private func nestedLeafRefusal(rowIndex: Int = 0) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: rowIndex,
+            reason: "'identifiers.type' is a field of a nested array. Edit the array in 'identifiers' instead."
+        )
+    }
+
+    private func leafTyped(_ value: String) -> [(columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue)] {
+        [(columnIndex: 2, columnName: "identifiers.type", oldValue: .null, newValue: .text(value))]
+    }
+
+    @Test("Update refuses a nested leaf edit rather than write the rest of the row without it")
+    func updateRefusesNestedLeaf() {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (
+                    columnIndex: 2, columnName: "identifiers.type",
+                    oldValue: .text("[\"CPF\"]"), newValue: .text("[\"X\"]")
+                ),
+                (columnIndex: 3, columnName: "personId", oldValue: .text("p1"), newValue: .text("p2")),
+            ],
+            originalRow: [.text("doc1"), .text("[]"), .text("[\"CPF\"]"), .text("p1")]
+        )
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("A new row with only a nested leaf typed is refused rather than saved empty")
+    func insertRefusesTypedLeafWithEmptyArray() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: leafTyped("[\"X\"]"), originalRow: nil)
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .null, .text("[\"X\"]"), .null]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A leaf typed into a new row is refused even when its array has a value")
+    func insertRefusesTypedLeafBesideItsArray() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: leafTyped("[\"X\"]"), originalRow: nil)
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .text("[{\"type\":\"CPF\"}]"), .text("[\"X\"]"), .null]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A pasted row whose leaf says something other than its array is refused, not saved without it")
+    func insertRefusesPastedLeafThatDisagreesWithItsArray() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .text("[{\"type\":\"CPF\"}]"), .text("[\"CNPJ\"]"), .text("p1")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A pasted leaf that holds what its array holds, however spaced, is written through the array")
+    func insertAcceptsPastedLeafThatMatchesItsArray() throws {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let statements = try nestedGenerator().generateRowWrites(
+            from: [change],
+            insertedRowData: [0: [.null, .text("[{\"type\":\"CPF\"},{\"type\":\"RG\"}]"), .text("[ \"CPF\", \"RG\" ]"), .null]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        let body = ElasticsearchStatementGenerator.decode(statements[0].statement)?.body
+        #expect(body?.contains("\"identifiers\":[{\"type\":\"CPF\"},{\"type\":\"RG\"}]") == true)
+    }
+
+    @Test("A pasted row carrying a leaf value with no array to write it through is refused")
+    func insertRefusesPastedLeafWithoutItsArray() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        #expect(throws: nestedLeafRefusal()) {
+            try nestedGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .null, .text("[\"CPF\"]"), .text("p1")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("An edit to document metadata is refused")
+    func updateRefusesMetadata() {
+        let change = PluginRowChange(
+            rowIndex: 3,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Alice")),
+                (columnIndex: 1, columnName: "_index", oldValue: .text("users"), newValue: .text("people")),
+            ],
+            originalRow: [.text("doc1"), .text("users"), .text("1"), .text("Bob"), .text("30")]
+        )
+        let refusal = PluginRowWriteRefusal(rowIndex: 3, reason: "'_index' is document metadata and cannot be edited.")
+        #expect(throws: refusal) {
+            try generator().generateRowWrites(
+                from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("A score typed into a new row is refused, and an _id typed into one is written")
+    func insertRefusesTypedScoreAndKeepsTypedId() throws {
+        let score = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [(columnIndex: 2, columnName: "_score", oldValue: .null, newValue: .text("9"))],
+            originalRow: nil
+        )
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: "'_score' is document metadata and cannot be edited.")) {
+            try generator().generateRowWrites(
+                from: [score],
+                insertedRowData: [0: [.null, .null, .text("9"), .text("Eve"), .null]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+
+        let id = PluginRowChange(
+            rowIndex: 0,
+            type: .insert,
+            cellChanges: [(columnIndex: 0, columnName: "_id", oldValue: .null, newValue: .text("e1"))],
+            originalRow: nil
+        )
+        let writes = try generator().generateRowWrites(
+            from: [id],
+            insertedRowData: [0: [.text("e1"), .null, .null, .text("Eve"), .null]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        #expect(writes.map(\.rowIndices) == [[0]])
+        #expect(ElasticsearchStatementGenerator.decode(writes[0].statement)?.path.contains("/users/_doc/e1") == true)
+    }
+
+    @Test("A value that is not valid JSON refuses the change")
+    func updateRefusesAValueJSONCannotHold() {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 4, columnName: "age", oldValue: .text("30"), newValue: .text("nan"))],
+            originalRow: [.text("doc1"), .text("users"), .text("1"), .text("Bob"), .text("30")]
+        )
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: "The new values cannot be written as JSON.")) {
+            try generator().generateRowWrites(
+                from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("A change with no _id to address it by is refused")
+    func refusesAChangeWithoutAnId() {
+        let update = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Alice"))],
+            originalRow: [.null, .text("users"), .text("1"), .text("Bob"), .text("30")]
+        )
+        let delete = PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: nil)
+        let reason = "The document's _id is unknown, so it cannot be addressed."
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 0, reason: reason)) {
+            try generator().generateRowWrites(
+                from: [update], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 1, reason: reason)) {
+            try generator().generateRowWrites(
+                from: [delete], insertedRowData: [:], deletedRowIndices: [1], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("Each request names the change it writes, and an update with nothing to set writes nothing")
+    func writesNameTheirChange() throws {
+        let original: [PluginCellValue] = [.text("doc1"), .text("users"), .text("1"), .text("Bob"), .text("30")]
+        let writes = try generator().generateRowWrites(
+            from: [
+                PluginRowChange(rowIndex: 0, type: .update, cellChanges: [], originalRow: nil),
+                PluginRowChange(
+                    rowIndex: 1,
+                    type: .update,
+                    cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .null)],
+                    originalRow: original
+                ),
+                PluginRowChange(rowIndex: 2, type: .delete, cellChanges: [], originalRow: original),
+            ],
+            insertedRowData: [:],
+            deletedRowIndices: [2],
+            insertedRowIndices: []
+        )
+        #expect(writes.map(\.rowIndices) == [[1], [2]])
+        #expect(ElasticsearchStatementGenerator.decode(writes[0].statement)?.body == "{\"doc\":{\"name\":null}}")
+    }
+
+    @Test("Insert with explicit _id uses PUT")
+    func insertWithId() throws {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let statements = try generator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [.text("custom"), .null, .null, .text("Eve"), .text("25")]],
             deletedRowIndices: [],
@@ -399,14 +1153,14 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Document id with a slash is percent-encoded into one path segment")
-    func slashInDocumentId() {
+    func slashInDocumentId() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .delete,
             cellChanges: [],
             originalRow: [.text("tenant/123"), .text("users"), .text("1"), .text("Bob"), .text("30")]
         )
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
         let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
@@ -414,9 +1168,9 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("Insert preserves an intentional empty string")
-    func insertKeepsEmptyString() {
+    func insertKeepsEmptyString() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [.null, .null, .null, .text(""), .text("25")]],
             deletedRowIndices: [],
@@ -427,9 +1181,9 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     @Test("JSON object text is kept as a string on a scalar field")
-    func jsonObjectKeptAsStringOnScalarField() {
+    func jsonObjectKeptAsStringOnScalarField() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator().generateStatements(
+        let statements = try generator().generateRowWrites(
             from: [change],
             insertedRowData: [0: [.null, .null, .null, .text("{\"a\":1}"), .text("25")]],
             deletedRowIndices: [],
@@ -437,5 +1191,113 @@ struct ElasticsearchStatementGeneratorTests {
         )
         let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
         #expect(decoded?.body?.contains("\"name\":\"{\\\"a\\\":1}\"") == true)
+    }
+
+    private func documentGenerator() -> ElasticsearchStatementGenerator {
+        ElasticsearchStatementGenerator(
+            index: "users",
+            columns: ["_id", "tags", "labels", "name"],
+            columnTypeNames: ["keyword", "keyword", "object", "text"]
+        )
+    }
+
+    private func displayed(_ value: Any) -> String {
+        ElasticsearchMappingFlattener.cell(value, length: .display).asText ?? ""
+    }
+
+    private func shortenedRefusal(_ column: String) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: 0,
+            reason: "The value in \(column) is shortened for display, so saving it would store only the part shown. "
+                + "Change this field with a query."
+        )
+    }
+
+    private func shortenedTags() -> String {
+        displayed((0..<1_500).map { "tag-\($0)" })
+    }
+
+    private func tagEdit(from old: String, to new: PluginCellValue) -> PluginRowChange {
+        PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "tags", oldValue: .text(old), newValue: new)],
+            originalRow: [.text("doc1"), .text(old), .null, .text("Bob")]
+        )
+    }
+
+    private func updateBody(_ change: PluginRowChange) throws -> String? {
+        let writes = try documentGenerator().generateRowWrites(
+            from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+        let write = try #require(writes.first)
+        return ElasticsearchStatementGenerator.decode(write.statement)?.body
+    }
+
+    @Test("An edit to an array shortened for display is refused rather than saved as the fragment")
+    func updateRefusesAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let edited = shortened.replacingOccurrences(of: "\"tag-0\"", with: "\"tag-Z\"")
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortened, to: .text(edited)))
+        }
+    }
+
+    @Test("Text appended to an array shortened for display is refused")
+    func updateRefusesTextAppendedToAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let appended = String(shortened.dropLast(3)) + #","new"]"#
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortened, to: .text(appended)))
+        }
+    }
+
+    @Test("A new row carrying a value shortened right after an object is refused")
+    func insertRefusesAValueShortenedAfterAnObject() throws {
+        let shortened = displayed(Array(repeating: ["k": "v"], count: 1_500))
+        try #require(shortened.hasSuffix("}..."))
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        #expect(throws: shortenedRefusal("labels")) {
+            try documentGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .null, .text(shortened), .text("Eve")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A complete array written over one shortened for display is refused, since it may be the shown part closed")
+    func updateRefusesACompleteArrayWrittenOverAShortenedOne() throws {
+        let shownPart = displayed((0..<800).map { "tag-\($0)" })
+        try #require(!shownPart.hasSuffix("..."))
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortenedTags(), to: .text(shownPart)))
+        }
+    }
+
+    @Test("NULL written over a value shortened for display clears the field")
+    func updateWritesNullOverAShortenedValue() throws {
+        let body = try updateBody(tagEdit(from: shortenedTags(), to: .null))
+        #expect(body == #"{"doc":{"tags":null}}"#)
+    }
+
+    @Test("An edit to another field of a row holding a shortened value is written")
+    func updateWritesAnotherFieldBesideAShortenedValue() throws {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Rob"))],
+            originalRow: [.text("doc1"), .text(shortenedTags()), .null, .text("Bob")]
+        )
+        #expect(try updateBody(change) == #"{"doc":{"name":"Rob"}}"#)
+    }
+
+    @Test("Text that opens with a bracket and trails off is written as typed")
+    func updateWritesBracketedProse() throws {
+        let body = try updateBody(tagEdit(from: "draft", to: .text("[DRAFT] Chapter one...")))
+        #expect(body == #"{"doc":{"tags":"[DRAFT] Chapter one..."}}"#)
     }
 }

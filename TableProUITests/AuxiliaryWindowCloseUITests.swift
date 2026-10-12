@@ -1,7 +1,7 @@
 import XCTest
 
 /// Command W has to close the window in front. It was bound to a command only a connection
-/// window answered, so it did nothing in Settings, in the integrations activity window, or in
+/// window answered, so it did nothing in Settings, in the MCP Activity window, or in
 /// any viewer the app opens, and the welcome window had to answer that command by hand to get
 /// its own shortcut back.
 ///
@@ -39,9 +39,9 @@ final class AuxiliaryWindowCloseUITests: UITestCase {
         assertCommandWCloses(openWindow("settings", from: "Settings…", in: app), in: app)
     }
 
-    func testCommandWClosesTheIntegrationsActivityWindow() throws {
+    func testCommandWClosesTheMCPActivityWindow() throws {
         let app = try launchShowingWelcome()
-        assertCommandWCloses(openWindow("integrations-activity", from: "Integrations…", in: app), in: app)
+        assertCommandWCloses(openWindow("integrations-activity", from: "MCP Activity…", in: app), in: app)
     }
 
     /// The welcome window used to answer the editor's own close command to get Command W back.

@@ -95,7 +95,7 @@ public actor MCPResponder {
         do {
             return try JsonRpcCodec.encode(message)
         } catch {
-            Self.logger.error("Encode response failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Encode response failed: \(error.publicLogShape, privacy: .public)")
             let fallback = MCPProtocolError
                 .internalError(detail: "encode failed")
                 .toJsonRpcErrorResponse(id: requestId)

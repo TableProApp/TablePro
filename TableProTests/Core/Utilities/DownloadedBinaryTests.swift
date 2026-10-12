@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Downloaded binary")
 struct DownloadedBinaryTests {
     private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory

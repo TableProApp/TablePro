@@ -32,23 +32,7 @@ final class PGlitePluginDriver: PostgreSQLPluginDriver {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            throw Self.connectError(underlying: error, host: connectHost, port: connectPort)
+            throw PGliteConnectFailure.presented(error, host: connectHost, port: connectPort)
         }
     }
-
-    private static func connectError(underlying: Error, host: String, port: Int) -> Error {
-        let reason = (underlying as? LibPQPluginError)?.message ?? underlying.localizedDescription
-        let template = String(
-            localized: "Can't reach a PGlite socket server at %@:%d. Start it with 'npx @electric-sql/pglite-socket', then try again."
-        )
-        return PGliteConnectionError(
-            pluginErrorMessage: String(format: template, host, port),
-            pluginErrorDetail: reason.isEmpty ? nil : reason
-        )
-    }
-}
-
-struct PGliteConnectionError: PluginDriverError {
-    let pluginErrorMessage: String
-    let pluginErrorDetail: String?
 }

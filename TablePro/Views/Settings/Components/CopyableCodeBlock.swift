@@ -25,7 +25,7 @@ struct CopyableCodeBlock: View {
                 }
             } label: {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .contentTransition(.symbolEffect(.replace))
+                    .symbolReplaceTransition()
             }
             .accessibilityLabel(String(localized: "Copy"))
             .help(String(localized: "Copy to clipboard"))

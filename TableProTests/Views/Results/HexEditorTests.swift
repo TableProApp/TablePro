@@ -10,7 +10,6 @@ import Testing
 
 // swiftlint:disable force_unwrapping
 
-@Suite("Hex Editor")
 @MainActor
 struct HexEditorTests {
     // MARK: - BlobFormattingService Round-Trip

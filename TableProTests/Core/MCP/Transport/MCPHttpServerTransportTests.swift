@@ -685,4 +685,37 @@ struct MCPHttpServerTransportTests {
             #expect(await signal.wait(for: "disconnected", timeout: .seconds(5)))
         }
     }
+
+    @Test("A server bound to the port an earlier client released still accepts a new client")
+    func serverOnAReleasedClientPortAcceptsANewClient() async throws {
+        let releasedPort = try await portOfAClientTheServerClosedFirst()
+
+        try await MCPTransportTestHarness.withServer(port: releasedPort) { port in
+            let request = try MCPTransportTestRequests.modernPost(port: port, id: 24, method: "tools/list")
+            let response = try await exchange(port: port, request: request)
+
+            #expect(response.statusCode == 200)
+        }
+    }
+
+    private func portOfAClientTheServerClosedFirst() async throws -> UInt16 {
+        var clientPort: UInt16?
+        try await MCPTransportTestHarness.withServer { port in
+            let client = RawHttpTestClient(port: port)
+            try await client.connect()
+            clientPort = await client.localPort()
+            try await client.send(
+                try MCPTransportTestRequests.modernPost(
+                    port: port,
+                    id: 23,
+                    method: "tools/list",
+                    extraHeaders: [("Connection", "close")]
+                )
+            )
+            #expect(try await client.readResponse().statusCode == 200)
+            #expect(await client.waitForClose(), "the server closes first, so its end of the pair stays in TIME_WAIT")
+            await client.close()
+        }
+        return try #require(clientPort)
+    }
 }

@@ -7,7 +7,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
     public var password: String
     public var database: String
     public var schema: String
-    public var encryptionFlag: String
+    public var encryptionLevel: MSSQLEncryptionLevel
     public var applicationName: String
     public var loginTimeoutSeconds: Int
     public var authMethod: MSSQLAuthMethod
@@ -24,10 +24,10 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
     /// `authMethod == .entra`.
     public var fedAuthToken: String?
 
-    public static let defaultPort = 1433
+    public static let defaultPort = 1_433
     public static let defaultSchema = "dbo"
     public static let defaultApplicationName = "TablePro"
-    public static let defaultEncryptionFlag = "off"
+    public static let defaultEncryptionLevel: MSSQLEncryptionLevel = .request
     public static let defaultLoginTimeoutSeconds = 30
 
     public init(
@@ -37,7 +37,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
         password: String,
         database: String,
         schema: String = MSSQLConnectionOptions.defaultSchema,
-        encryptionFlag: String = MSSQLConnectionOptions.defaultEncryptionFlag,
+        encryptionLevel: MSSQLEncryptionLevel = MSSQLConnectionOptions.defaultEncryptionLevel,
         applicationName: String = MSSQLConnectionOptions.defaultApplicationName,
         loginTimeoutSeconds: Int = MSSQLConnectionOptions.defaultLoginTimeoutSeconds,
         authMethod: MSSQLAuthMethod = .sqlServer,
@@ -59,7 +59,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
         }
         self.database = database
         self.schema = schema
-        self.encryptionFlag = encryptionFlag
+        self.encryptionLevel = encryptionLevel
         self.applicationName = applicationName
         self.loginTimeoutSeconds = loginTimeoutSeconds
     }
@@ -69,6 +69,8 @@ public extension MSSQLConnectionOptions {
     enum AdditionalFieldKey {
         public static let schema = "mssqlSchema"
         public static let authMethod = "mssqlAuthMethod"
+        public static let connectTimeoutMilliseconds = "connectTimeoutMilliseconds"
+        public static let connectTimeoutSeconds = "connectTimeoutSeconds"
     }
 
     static func schema(from additionalFields: [String: String]) -> String {
@@ -78,5 +80,28 @@ public extension MSSQLConnectionOptions {
 
     static func authMethod(from additionalFields: [String: String]) -> MSSQLAuthMethod {
         MSSQLAuthMethod(rawValue: additionalFields[AdditionalFieldKey.authMethod] ?? "") ?? .sqlServer
+    }
+
+    static func connectTimeoutMilliseconds(from additionalFields: [String: String]) -> Int {
+        if let milliseconds = positiveMilliseconds(
+            additionalFields[AdditionalFieldKey.connectTimeoutMilliseconds]
+        ) {
+            return milliseconds
+        }
+        if let seconds = Double(additionalFields[AdditionalFieldKey.connectTimeoutSeconds] ?? ""),
+           seconds > 0,
+           seconds.isFinite {
+            return positiveMilliseconds(String(seconds * 1_000)) ?? defaultLoginTimeoutSeconds * 1_000
+        }
+        return defaultLoginTimeoutSeconds * 1_000
+    }
+
+    private static func positiveMilliseconds(_ value: String?) -> Int? {
+        let maximum = Double(Int32.max) * 1_000
+        guard let value,
+              let milliseconds = Double(value),
+              milliseconds > 0,
+              milliseconds.isFinite else { return nil }
+        return max(1, Int(min(milliseconds.rounded(.up), maximum)))
     }
 }

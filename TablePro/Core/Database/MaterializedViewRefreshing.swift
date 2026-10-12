@@ -14,11 +14,12 @@ enum MaterializedViewRefreshing {
     /// Nil where the engine has no refresh that leaves readers alone, so the prompt offers no
     /// option at all rather than one that is always off.
     static func concurrentRefreshAvailability(
-        of target: DatabaseObjectTarget
+        of target: DatabaseObjectTarget,
+        provider: any ScopedMetadataProviding = DatabaseManager.shared
     ) async throws -> PluginConcurrentRefreshAvailability? {
         let name = target.name
         let schema = target.schema
-        return try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
+        return try await provider.withMetadataDriver(scope: target.scope) { driver in
             try await driver.concurrentRefreshAvailability(materializedView: name, schema: schema)
         }
     }

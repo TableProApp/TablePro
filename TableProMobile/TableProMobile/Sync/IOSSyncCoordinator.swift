@@ -1,4 +1,5 @@
 import CloudKit
+import Combine
 import Foundation
 import Observation
 import os
@@ -8,234 +9,598 @@ import TableProSyncTransport
 
 @MainActor @Observable
 final class IOSSyncCoordinator {
+    typealias LibraryState = (connections: [DatabaseConnection], groups: [ConnectionGroup], tags: [ConnectionTag])
+
+    private struct EditKey: Hashable {
+        let type: SyncRecordType
+        let id: String
+    }
+
+    /// A run that adopts a new account runs in full whatever it was admitted to, so the admission
+    /// that settles it travels with its outcome.
+    private struct RunResult {
+        let admission: SyncAdmission
+        let failure: SyncStepFailure?
+    }
+
+    private enum AccountCheck {
+        case ready(isNewAccount: Bool)
+        case failed(SyncStepFailure)
+        case superseded
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "Sync")
 
-    var status: SyncStatus = .idle
-    var lastSyncDate: Date?
+    private(set) var status: SyncStatus
+    private(set) var lastSyncDate: Date?
 
-    private var engine: CloudKitSyncEngine?
-    private let metadata = SyncMetadataStorage()
-    private let recordCache = SyncRecordCache()
+    @ObservationIgnored private let metadata: SyncMetadataStorage
+    @ObservationIgnored private let recordCache: SyncRecordCache
+    @ObservationIgnored private let makeTransport: () -> any IOSSyncTransport
+    @ObservationIgnored private let isEnabled: () -> Bool
+    @ObservationIgnored private let networkMonitor: SyncNetworkMonitor?
+    @ObservationIgnored private var transport: (any IOSSyncTransport)?
+    @ObservationIgnored private var debounceTask: Task<Void, Never>?
+    @ObservationIgnored private var retryTask: Task<Void, Never>?
+    @ObservationIgnored private var runningSync: Task<Void, Never>?
 
-    private func getEngine() -> CloudKitSyncEngine {
-        if let engine { return engine }
-        let newEngine = CloudKitSyncEngine()
-        engine = newEngine
-        return newEngine
+    /// Triggers that arrived while a run was in flight. One more run follows it rather than any of
+    /// them cancelling it: a cancelled request reported itself as a failure.
+    @ObservationIgnored private var pendingTriggers: [SyncTrigger] = []
+
+    /// Failed runs in a row, which sets how far the next attempt is held back.
+    @ObservationIgnored private var consecutiveFailures = 0
+
+    /// When an upload held back by the last failure may be tried by a trigger that changes nothing.
+    @ObservationIgnored private var nextAttempt: Date?
+
+    /// The end of the wait CloudKit named on its last throttle. No automatic run starts before it.
+    @ObservationIgnored private var throttledUntil: Date?
+
+    /// Bumped whenever something other than a run decides the status, so a run that suspended
+    /// across the network can tell its outcome is no longer the current answer.
+    @ObservationIgnored private var statusGeneration = 0
+    @ObservationIgnored private var editGenerations: [EditKey: Int] = [:]
+    @ObservationIgnored private var accountChangeObservation: AnyCancellable?
+
+    @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
+    @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Void)?
+    @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Void)?
+    @ObservationIgnored var getCurrentState: (() -> LibraryState?)?
+
+    private static var recordCacheDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return base.appendingPathComponent("TablePro/SyncRecordCache", isDirectory: true)
     }
-    private var debounceTask: Task<Void, Never>?
-    private var needsResync = false
 
-    var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
-    var onGroupsChanged: (([ConnectionGroup]) -> Void)?
-    var onTagsChanged: (([ConnectionTag]) -> Void)?
-    var getCurrentState: (() -> (connections: [DatabaseConnection], groups: [ConnectionGroup], tags: [ConnectionTag])?)?
+    init(
+        metadata: SyncMetadataStorage = SyncMetadataStorage(userDefaults: .standard),
+        recordCache: SyncRecordCache = SyncRecordCache(
+            directory: IOSSyncCoordinator.recordCacheDirectory,
+            defaults: .standard
+        ),
+        makeTransport: @escaping () -> any IOSSyncTransport = { CloudKitSyncEngine() },
+        isEnabled: @escaping () -> Bool = { AppPreferences.isCloudSyncEnabled },
+        notificationCenter: NotificationCenter = .default,
+        networkMonitor: SyncNetworkMonitor? = SyncNetworkMonitor()
+    ) {
+        self.metadata = metadata
+        self.recordCache = recordCache
+        self.makeTransport = makeTransport
+        self.isEnabled = isEnabled
+        self.networkMonitor = networkMonitor
+        self.status = isEnabled() ? metadata.zoneState.initialStatus : .disabled(.userDisabled)
+        self.lastSyncDate = metadata.lastSyncDate
+        accountChangeObservation = notificationCenter.publisher(for: .CKAccountChanged)
+            .sink { @Sendable [weak self] _ in
+                Task { @MainActor in
+                    await self?.sync(.accountChange)
+                }
+            }
+        networkMonitor?.start { [weak self] in
+            Task { @MainActor in
+                self?.networkDidReturn()
+            }
+        }
+    }
+
+    deinit {
+        debounceTask?.cancel()
+        retryTask?.cancel()
+    }
+
+    private func currentTransport() -> any IOSSyncTransport {
+        if let transport { return transport }
+        let created = makeTransport()
+        transport = created
+        return created
+    }
+
+    var hasCompletedFirstSync: Bool {
+        lastSyncDate != nil
+    }
+
+    func accountStatus() async -> CKAccountStatus {
+        do {
+            return try await currentTransport().accountStatus()
+        } catch {
+            Self.logger.warning("iCloud account status unavailable: \(error.localizedDescription, privacy: .private)")
+            return .couldNotDetermine
+        }
+    }
+
+    // MARK: - Enable / Disable
+
+    func setEnabled(_ enabled: Bool) {
+        resetRetryState()
+        guard enabled else {
+            debounceTask?.cancel()
+            debounceTask = nil
+            pendingTriggers = []
+            metadata.lastSyncDate = nil
+            lastSyncDate = nil
+            decide(.disabled(.userDisabled))
+            return
+        }
+        /// Turning sync on is the person's choice to upload, into a removed zone too.
+        if metadata.zoneState == .removed {
+            prepareFullUpload()
+        }
+        decide(.idle)
+        Task { await sync(.userRequest) }
+    }
+
+    /// The person's answer after TablePro's data was removed from iCloud: upload everything this
+    /// device holds again. Never done on a trigger, which is Apple's guidance for a purged zone.
+    func uploadAgain() async {
+        /// The notice, and its button, stay on screen during an automatic check of the zone, so the
+        /// person's answer waits for that check rather than being dropped.
+        await runningSync?.value
+        guard status.error == .blocked(.dataDeletedFromICloud) else { return }
+        prepareFullUpload()
+        resetRetryState()
+        decide(.idle)
+        await sync(.userRequest)
+    }
+
+    private func prepareFullUpload() {
+        metadata.saveToken(nil)
+        metadata.zoneState = .unknown
+        recordCache.removeAll()
+        markAllLocalDataDirty()
+    }
 
     // MARK: - Sync
 
-    func sync(
-        localConnections: [DatabaseConnection],
-        localGroups: [ConnectionGroup] = [],
-        localTags: [ConnectionTag] = [],
-        isRetry: Bool = false
-    ) async {
-        guard isRetry || status != .syncing else {
-            needsResync = true
+    /// Runs as much of a sync as `trigger` is admitted to, given how the last run ended. A trigger
+    /// that arrives while a run is in flight queues one more run and waits for both.
+    func sync(_ trigger: SyncTrigger = .userRequest) async {
+        guard isEnabled() else {
+            if status != .disabled(.userDisabled) {
+                decide(.disabled(.userDisabled))
+            }
             return
         }
-        status = .syncing
-        defer { drainResyncIfNeeded() }
-
-        do {
-            let accountStatus = try await getEngine().accountStatus()
-            guard accountStatus == .available else {
-                status = .error(.accountUnavailable)
-                return
+        if let runningSync {
+            if !pendingTriggers.contains(trigger) {
+                pendingTriggers.append(trigger)
             }
+            await runningSync.value
+            return
+        }
+        let task = Task { await runThenPending(trigger) }
+        runningSync = task
+        await task.value
+    }
 
-            try await getEngine().ensureZoneExists()
-            let remoteChanges = try await pull()
-            let connCount = remoteChanges.changedConnections.count
-            let groupCount = remoteChanges.changedGroups.count
-            let tagCount = remoteChanges.changedTags.count
-            Self.logger.info("Pulled \(connCount) connections, \(groupCount) groups, \(tagCount) tags")
+    private func runThenPending(_ trigger: SyncTrigger) async {
+        var next: SyncTrigger? = trigger
+        while let current = next {
+            await run(current)
+            next = takePendingTrigger()
+        }
+        runningSync = nil
+    }
 
-            let mergedConnections = mergeConnections(local: localConnections, remote: remoteChanges)
-            let mergedGroups = mergeGroups(local: localGroups, remote: remoteChanges)
-            let mergedTags = mergeTags(local: localTags, remote: remoteChanges)
-
-            try await push(
-                localConnections: mergedConnections,
-                localGroups: mergedGroups,
-                localTags: mergedTags
-            )
-
-            onConnectionsChanged?(mergedConnections)
-            onGroupsChanged?(mergedGroups)
-            onTagsChanged?(mergedTags)
-
-            if let newToken = remoteChanges.newToken {
-                metadata.saveToken(newToken)
+    private func run(_ trigger: SyncTrigger) async {
+        guard isEnabled() else {
+            if status != .disabled(.userDisabled) {
+                decide(.disabled(.userDisabled))
             }
+            return
+        }
+        guard getCurrentState?() != nil else {
+            Self.logger.info("Sync skipped: the library has not loaded")
+            return
+        }
+        let previousError = status.error
+        let admission = SyncAdmission.decide(
+            for: trigger,
+            after: previousError,
+            nextAttempt: nextAttempt,
+            throttledUntil: throttledUntil
+        )
+        guard admission != .none else {
+            Self.logger.info("Sync held back for \(String(describing: trigger), privacy: .public)")
+            return
+        }
 
-            metadata.lastSyncDate = Date()
-            lastSyncDate = metadata.lastSyncDate
-            status = .idle
-        } catch let error as SyncError where error == .tokenExpired {
-            guard !isRetry else {
-                status = .error(.tokenExpired)
-                return
+        let generation = statusGeneration
+        /// A standing condition stays on screen through the automatic runs that check on it, so the
+        /// notice does not blink away at every foreground. Only the person's own request shows
+        /// progress over it.
+        if previousError == nil || trigger == .userRequest {
+            status = .syncing
+        }
+        guard let result = await perform(admission, generation: generation) else {
+            Self.logger.info("Discarding a sync run the status moved on from")
+            return
+        }
+        finish(result, previousError: previousError, from: generation)
+    }
+
+    /// The trigger that may do the most among those that arrived during the last run.
+    private func takePendingTrigger() -> SyncTrigger? {
+        guard !pendingTriggers.isEmpty else { return nil }
+        let error = status.error
+        /// The network coming back mid-run matters only if the run ended unable to reach iCloud.
+        let triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
+        pendingTriggers = []
+        let attempt = nextAttempt
+        let throttle = throttledUntil
+        let reach: (SyncTrigger) -> Int = { trigger in
+            let scope: Int
+            switch SyncAdmission.decide(for: trigger, after: error, nextAttempt: attempt, throttledUntil: throttle) {
+            case .full: scope = 2
+            case .downloadOnly: scope = 1
+            case .none: return 0
             }
+            /// Between equals, the person's request wins, since only it shows progress.
+            return scope * 2 + (trigger == .userRequest ? 1 : 0)
+        }
+        guard let next = triggers.max(by: { reach($0) < reach($1) }), reach(next) > 0 else { return nil }
+        return next
+    }
+
+    /// Nil when the status moved on while the run was in flight.
+    private func perform(_ requested: SyncAdmission, generation: Int) async -> RunResult? {
+        let transport = currentTransport()
+        var admission = requested
+        switch await confirmAccount(using: transport, generation: generation) {
+        case .superseded:
+            return nil
+        case .failed(let failure):
+            return RunResult(admission: admission, failure: failure)
+        case .ready(let isNewAccount):
+            /// A condition the last account was under says nothing about this one.
+            if isNewAccount {
+                admission = .full
+            }
+        }
+
+        guard let result = await pullThenPush(admission, generation: generation, using: transport) else { return nil }
+        let zone = metadata.zoneState
+        let nextZone = zone.after(failure: result.failure, reachedZone: false)
+        /// The old zone's records went with it. Kept, their system fields would make every later
+        /// save into a zone another device recreated fail as an unknown record.
+        if nextZone == .removed, zone != .removed {
+            recordCache.removeAll()
             metadata.saveToken(nil)
-            await sync(
-                localConnections: localConnections,
-                localGroups: localGroups,
-                localTags: localTags,
-                isRetry: true
-            )
+        }
+        metadata.zoneState = nextZone
+        return result
+    }
+
+    /// Reads the account before any request, so a signed-out or restricted account is reported as
+    /// itself rather than as whatever the first request fails with. Adopting its id is what keeps
+    /// another account's token, tombstones and cached records from being used against this one.
+    private func confirmAccount(using transport: any IOSSyncTransport, generation: Int) async -> AccountCheck {
+        do {
+            let accountStatus = try await transport.accountStatus()
+            if let blocker = SyncBlocker(accountStatus: accountStatus) {
+                return .failed(SyncStepFailure(failure: .blocked(blocker), error: .blocked(blocker), retryAfter: nil))
+            }
+            let accountId = try await transport.currentAccountId()
+            guard generation == statusGeneration else { return .superseded }
+            return .ready(isNewAccount: adoptAccount(accountId))
         } catch {
-            status = .error(SyncError.from(error))
+            Self.logger.error("Could not read the iCloud account: \(error.localizedDescription, privacy: .private)")
+            return .failed(await refined(SyncStepFailure(error), using: transport))
         }
     }
 
-    // MARK: - Token Reset
-
-    func resetSyncToken(
-        localConnections: [DatabaseConnection],
-        localGroups: [ConnectionGroup],
-        localTags: [ConnectionTag]
-    ) async {
-        debounceTask?.cancel()
-        metadata.saveToken(nil)
+    /// Whether the account differs from the one this device last synced with.
+    private func adoptAccount(_ accountId: String) -> Bool {
+        switch metadata.adoptAccount(accountId) {
+        case .firstSeen, .unchanged:
+            return false
+        case .switched:
+            Self.logger.notice("The iCloud account changed, so sync starts over and pending edits go to the new account")
+        case .previousAccountUnknown:
+            Self.logger.notice("An earlier build synced without recording its iCloud account, so sync starts over once")
+        }
         recordCache.removeAll()
-        Self.logger.info("Sync token cleared; forcing full pull from iCloud")
-        await sync(
-            localConnections: localConnections,
-            localGroups: localGroups,
-            localTags: localTags
-        )
+        lastSyncDate = metadata.lastSyncDate
+        return true
+    }
+
+    private func pullThenPush(
+        _ admission: SyncAdmission,
+        generation: Int,
+        using transport: any IOSSyncTransport
+    ) async -> RunResult? {
+        /// Only a run that may upload creates the zone. A download looks for it, and finding it
+        /// again is how this device learns another one brought deleted data back.
+        if metadata.zoneState.createsZone(in: admission) {
+            do {
+                try await transport.ensureZoneExists()
+                metadata.zoneState = .confirmed
+            } catch {
+                Self.logger.error("Could not create the sync zone: \(error.localizedDescription, privacy: .private)")
+                return RunResult(admission: admission, failure: await refined(SyncStepFailure(error), using: transport))
+            }
+        }
+
+        let pulled: PullResult
+        do {
+            pulled = try await fetchChanges(using: transport)
+        } catch {
+            Self.logger.error("Pull failed: \(error.localizedDescription, privacy: .private)")
+            guard generation == statusGeneration else { return nil }
+            guard let failure = metadata.zoneState.reconciled(downloadFailure: SyncStepFailure(error)) else {
+                return RunResult(admission: admission, failure: nil)
+            }
+            return RunResult(admission: admission, failure: await refined(failure, using: transport))
+        }
+        guard generation == statusGeneration else { return nil }
+        metadata.zoneState = .confirmed
+
+        let changes = PullChanges(pulled)
+        let connCount = changes.changedConnections.count
+        let groupCount = changes.changedGroups.count
+        let tagCount = changes.changedTags.count
+        Self.logger.info("Pulled \(connCount) connections, \(groupCount) groups, \(tagCount) tags")
+
+        guard applyRemoteChanges(changes) else {
+            return RunResult(admission: admission, failure: .pullNotSaved)
+        }
+        /// Committed before the upload, so an upload that fails does not make every later run
+        /// download and merge everything since the last clean sync again.
+        if let newToken = pulled.newToken {
+            metadata.saveToken(newToken)
+        }
+        recordCache.store(pulled.changedRecords)
+        recordCache.remove(pulled.deletedRecordIDs)
+
+        guard admission == .full else { return RunResult(admission: admission, failure: nil) }
+        guard let pushFailure = await push(using: transport) else {
+            return RunResult(admission: admission, failure: nil)
+        }
+        return RunResult(admission: admission, failure: await refined(pushFailure, using: transport))
+    }
+
+    private func fetchChanges(using transport: any IOSSyncTransport) async throws -> PullResult {
+        do {
+            return try await transport.pull(since: metadata.loadToken())
+        } catch let error where SyncFailure(error) == .tokenExpired {
+            Self.logger.warning("Change token expired, clearing it and fetching everything")
+            metadata.saveToken(nil)
+            return try await transport.pull(since: nil)
+        }
+    }
+
+    /// CloudKit fails an operation with `notAuthenticated` for every account state that is not
+    /// available, so a fresh status read says which one it is.
+    private func refined(_ failure: SyncStepFailure, using transport: any IOSSyncTransport) async -> SyncStepFailure {
+        guard case .blocked(let blocker) = failure.failure, blocker.isAccountState else { return failure }
+        let current = try? await transport.accountStatus()
+        let actual = current.flatMap { SyncBlocker(accountStatus: $0) } ?? .accountNotReady
+        return SyncStepFailure(failure: .blocked(actual), error: .blocked(actual), retryAfter: failure.retryAfter)
+    }
+
+    /// Publishes the outcome of a run, unless something decided the status while it was in flight.
+    private func finish(_ result: RunResult, previousError: SyncError?, from generation: Int) {
+        guard generation == statusGeneration else {
+            Self.logger.info("Discarding a sync outcome the status moved on from")
+            return
+        }
+        let settlement = SyncSettlement(failure: result.failure, admission: result.admission, previousError: previousError)
+        if settlement.stampsLastSync {
+            metadata.lastSyncDate = Date()
+            lastSyncDate = metadata.lastSyncDate
+        }
+        if settlement.resetsRetry {
+            resetRetryState()
+        }
+        if settlement.needsUpload, !pendingTriggers.contains(.scheduledRetry) {
+            pendingTriggers.append(.scheduledRetry)
+        }
+        if let counted = settlement.countedFailure {
+            consecutiveFailures += 1
+            let delay = SyncRetryPolicy.nextAttemptDelay(
+                after: counted,
+                consecutiveFailures: consecutiveFailures,
+                retryAfter: result.failure?.retryAfter
+            )
+            nextAttempt = delay.map { Date().addingTimeInterval($0) }
+            scheduleRetry(after: delay)
+        }
+        if settlement.throttles {
+            let wait = SyncRetryPolicy.nextAttemptDelay(
+                after: .busy,
+                consecutiveFailures: 1,
+                retryAfter: result.failure?.retryAfter
+            ) ?? 30
+            let until = Date().addingTimeInterval(wait)
+            throttledUntil = until
+            /// The next attempt comes once the throttle is over, never inside it, and also when
+            /// nothing else was going to try again.
+            if nextAttempt.map({ $0 < until }) ?? true {
+                nextAttempt = until
+                scheduleRetry(after: wait)
+            }
+        } else {
+            throttledUntil = nil
+        }
+        status = settlement.status
+    }
+
+    private func scheduleRetry(after delay: TimeInterval?) {
+        retryTask?.cancel()
+        retryTask = nil
+        guard let delay else { return }
+        Self.logger.info("Next sync attempt in \(Int(delay), privacy: .public) s")
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay), tolerance: .seconds(delay / 10))
+            guard !Task.isCancelled else { return }
+            await self?.sync(.scheduledRetry)
+        }
+    }
+
+    private func resetRetryState() {
+        consecutiveFailures = 0
+        nextAttempt = nil
+        throttledUntil = nil
+        retryTask?.cancel()
+        retryTask = nil
+    }
+
+    /// The path can come back while a run is still retrying, before that run reports it could not
+    /// reach iCloud, and the monitor reports the return only once. So a return during a run is kept
+    /// for when it ends.
+    private func networkDidReturn() {
+        if runningSync != nil {
+            if !pendingTriggers.contains(.networkRestored) {
+                pendingTriggers.append(.networkRestored)
+            }
+        } else if status.error == .offline {
+            Task { await sync(.networkRestored) }
+        }
+    }
+
+    /// Settles the status from outside a run, which retires whatever run is in flight.
+    private func decide(_ outcome: SyncStatus) {
+        statusGeneration += 1
+        status = outcome
     }
 
     // MARK: - Dirty / Tombstone Tracking
 
     func markDirty(_ connectionId: UUID) {
-        metadata.markDirty(connectionId.uuidString, type: .connection)
+        markDirty([connectionId.uuidString], type: .connection)
     }
 
     func markDeleted(_ connectionId: UUID) {
-        metadata.addTombstone(connectionId.uuidString, type: .connection)
+        addTombstone(connectionId.uuidString, type: .connection)
     }
 
     func markDirtyGroup(_ groupId: UUID) {
-        metadata.markDirty(groupId.uuidString, type: .group)
+        markDirty([groupId.uuidString], type: .group)
     }
 
     func markDeletedGroup(_ groupId: UUID) {
-        metadata.addTombstone(groupId.uuidString, type: .group)
+        addTombstone(groupId.uuidString, type: .group)
     }
 
     func markDirtyTag(_ tagId: UUID) {
-        metadata.markDirty(tagId.uuidString, type: .tag)
+        markDirty([tagId.uuidString], type: .tag)
     }
 
     func markDeletedTag(_ tagId: UUID) {
-        metadata.addTombstone(tagId.uuidString, type: .tag)
+        addTombstone(tagId.uuidString, type: .tag)
     }
 
-    private func drainResyncIfNeeded() {
-        guard needsResync, status == .idle else {
-            needsResync = false
-            return
+    private func markDirty(_ ids: [String], type: SyncRecordType) {
+        for id in ids {
+            editGenerations[EditKey(type: type, id: id), default: 0] += 1
         }
-        needsResync = false
-        scheduleSyncAfterChange()
+        metadata.markDirty(ids, type: type)
     }
 
+    private func addTombstone(_ id: String, type: SyncRecordType) {
+        metadata.addTombstone(id, type: type)
+    }
+
+    private func markAllLocalDataDirty() {
+        guard let state = getCurrentState?() else { return }
+        markDirty(state.connections.filter(\.participatesInSync).map(\.id.uuidString), type: .connection)
+        markDirty(state.groups.map(\.id.uuidString), type: .group)
+        markDirty(state.tags.map(\.id.uuidString), type: .tag)
+    }
+
+    /// An edit made while a run is in flight queues one more run instead of cancelling it, because
+    /// a cancelled request reported a failure.
     func scheduleSyncAfterChange() {
         debounceTask?.cancel()
-        debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard !Task.isCancelled else { return }
-            guard let state = getCurrentState?() else { return }
-            await sync(
-                localConnections: state.connections,
-                localGroups: state.groups,
-                localTags: state.tags
-            )
+        guard isEnabled() else {
+            debounceTask = nil
+            return
         }
+        debounceTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            await self?.sync(.localChange)
+        }
+    }
+
+    // MARK: - Apply
+
+    private func applyRemoteChanges(_ remote: PullChanges) -> Bool {
+        guard let state = getCurrentState?() else { return false }
+        onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote))
+        onGroupsChanged?(mergeGroups(local: state.groups, remote: remote))
+        onTagsChanged?(mergeTags(local: state.tags, remote: remote))
+        return true
     }
 
     // MARK: - Push
 
-    private func push(
-        localConnections: [DatabaseConnection],
-        localGroups: [ConnectionGroup],
-        localTags: [ConnectionTag]
-    ) async throws {
-        let zoneID = await getEngine().currentZoneID
-        var allRecords: [CKRecord] = []
-        var allDeletions: [CKRecord.ID] = []
+    /// Whatever went through is settled even when a later batch threw, so a saved record is not
+    /// sent again and a cached record does not stand in with a stale change tag.
+    private func push(using transport: any IOSSyncTransport) async -> SyncStepFailure? {
+        let zoneID = await transport.currentZoneID
+        guard let state = getCurrentState?() else { return nil }
+        let generationsAtPush = editGenerations
+        let batch = pushBatch(from: state, in: zoneID)
+        guard !batch.records.isEmpty || !batch.deletions.isEmpty else { return nil }
 
-        // Dirty connections
-        let dirtyConnIDs = metadata.dirtyIds(for: .connection)
-        for connection in localConnections where dirtyConnIDs.contains(connection.id.uuidString) {
-            let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
-            if let existing = recordCache.record(for: recordID) {
-                SyncRecordMapper.updateRecord(existing, with: connection)
-                allRecords.append(existing)
-            } else {
-                allRecords.append(SyncRecordMapper.toRecord(connection, zoneID: zoneID))
-            }
+        var outcome: PushOutcome
+        var interruption: (any Error)?
+        do {
+            outcome = try await transport.push(records: batch.records, deletions: batch.deletions)
+        } catch let interrupted as SyncPushInterruption {
+            outcome = interrupted.completed
+            interruption = interrupted.cause
+        } catch {
+            Self.logger.error("Push failed: \(error.localizedDescription, privacy: .private)")
+            return SyncStepFailure(error)
         }
+        outcome.acceptMissingDeletions(of: batch.deletions)
+        settle(outcome, generationsAtPush: generationsAtPush)
 
-        // Connection tombstones
-        for tombstone in metadata.tombstones(for: .connection) {
-            allDeletions.append(SyncRecordMapper.recordID(type: .connection, id: tombstone.id, in: zoneID))
+        let itemFailure = SyncStepFailure(outcome)
+        if let interruption {
+            Self.logger.error("Push stopped part way: \(interruption.localizedDescription, privacy: .private)")
+            /// A blocker an earlier batch hit explains the interruption too; anything less does not.
+            return itemFailure.flatMap { $0.failure.stopsUpload ? $0 : nil } ?? SyncStepFailure(interruption)
         }
-
-        // Dirty groups
-        let dirtyGroupIDs = metadata.dirtyIds(for: .group)
-        for group in localGroups where dirtyGroupIDs.contains(group.id.uuidString) {
-            let recordID = SyncRecordMapper.recordID(type: .group, id: group.id.uuidString, in: zoneID)
-            if let existing = recordCache.record(for: recordID) {
-                SyncRecordMapper.updateRecord(existing, with: group)
-                allRecords.append(existing)
-            } else {
-                allRecords.append(SyncRecordMapper.toRecord(group, zoneID: zoneID))
-            }
+        if let itemFailure {
+            let pending = outcome.failures.count
+            Self.logger.error("Push left \(pending, privacy: .public) items pending: \(String(describing: itemFailure.failure), privacy: .public)")
         }
+        return itemFailure
+    }
 
-        // Group tombstones
-        for tombstone in metadata.tombstones(for: .group) {
-            allDeletions.append(SyncRecordMapper.recordID(type: .group, id: tombstone.id, in: zoneID))
-        }
-
-        // Dirty tags
-        let dirtyTagIDs = metadata.dirtyIds(for: .tag)
-        for tag in localTags where dirtyTagIDs.contains(tag.id.uuidString) {
-            let recordID = SyncRecordMapper.recordID(type: .tag, id: tag.id.uuidString, in: zoneID)
-            if let existing = recordCache.record(for: recordID) {
-                SyncRecordMapper.updateRecord(existing, with: tag)
-                allRecords.append(existing)
-            } else {
-                allRecords.append(SyncRecordMapper.toRecord(tag, zoneID: zoneID))
-            }
-        }
-
-        // Tag tombstones
-        for tombstone in metadata.tombstones(for: .tag) {
-            allDeletions.append(SyncRecordMapper.recordID(type: .tag, id: tombstone.id, in: zoneID))
-        }
-
-        guard !allRecords.isEmpty || !allDeletions.isEmpty else { return }
-
-        let outcome = try await getEngine().push(records: allRecords, deletions: allDeletions)
-
+    private func settle(_ outcome: PushOutcome, generationsAtPush: [EditKey: Int]) {
         recordCache.store(Array(outcome.savedRecords.values))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         for recordID in outcome.savedRecords.keys {
             guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
+            let key = EditKey(type: parsed.type, id: parsed.id)
+            guard editGenerations[key] == generationsAtPush[key] else { continue }
+            editGenerations[key] = nil
             metadata.removeDirty(parsed.id, type: parsed.type)
         }
 
@@ -243,17 +608,53 @@ final class IOSSyncCoordinator {
             guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
             metadata.removeTombstone(parsed.id, type: parsed.type)
         }
+    }
 
-        guard outcome.hasFailures else { return }
+    private func pushBatch(from state: LibraryState, in zoneID: CKRecordZone.ID) -> (records: [CKRecord], deletions: [CKRecord.ID]) {
+        var records: [CKRecord] = []
+        var deletions: [CKRecord.ID] = []
 
-        for (recordID, failure) in outcome.failures {
-            Self.logger.error("iCloud rejected \(recordID.recordName): \(failure.message)")
+        let dirtyConnIDs = metadata.dirtyIds(for: .connection)
+        for connection in state.connections
+            where connection.participatesInSync && dirtyConnIDs.contains(connection.id.uuidString) {
+            let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
+            if let existing = recordCache.record(for: recordID) {
+                SyncRecordMapper.updateRecord(existing, with: connection)
+                records.append(existing)
+            } else {
+                records.append(SyncRecordMapper.toRecord(connection, zoneID: zoneID))
+            }
         }
 
-        throw SyncError.pushRejected(
-            count: outcome.failures.count,
-            detail: outcome.failures.values.first?.message ?? ""
-        )
+        let dirtyGroupIDs = metadata.dirtyIds(for: .group)
+        for group in state.groups where dirtyGroupIDs.contains(group.id.uuidString) {
+            let recordID = SyncRecordMapper.recordID(type: .group, id: group.id.uuidString, in: zoneID)
+            if let existing = recordCache.record(for: recordID) {
+                SyncRecordMapper.updateRecord(existing, with: group)
+                records.append(existing)
+            } else {
+                records.append(SyncRecordMapper.toRecord(group, zoneID: zoneID))
+            }
+        }
+
+        let dirtyTagIDs = metadata.dirtyIds(for: .tag)
+        for tag in state.tags where dirtyTagIDs.contains(tag.id.uuidString) {
+            let recordID = SyncRecordMapper.recordID(type: .tag, id: tag.id.uuidString, in: zoneID)
+            if let existing = recordCache.record(for: recordID) {
+                SyncRecordMapper.updateRecord(existing, with: tag)
+                records.append(existing)
+            } else {
+                records.append(SyncRecordMapper.toRecord(tag, zoneID: zoneID))
+            }
+        }
+
+        for type in [SyncRecordType.connection, .group, .tag] {
+            for tombstone in metadata.tombstones(for: type) {
+                deletions.append(SyncRecordMapper.recordID(type: type, id: tombstone.id, in: zoneID))
+            }
+        }
+
+        return (records, deletions)
     }
 
     // MARK: - Pull
@@ -265,134 +666,88 @@ final class IOSSyncCoordinator {
         var deletedGroupIDs: Set<UUID> = []
         var changedTags: [ConnectionTag] = []
         var deletedTagIDs: Set<UUID> = []
-        var newToken: CKServerChangeToken?
-    }
 
-    private func pull() async throws -> PullChanges {
-        let token = metadata.loadToken()
-        let result = try await getEngine().pull(since: token)
-
-        var changes = PullChanges()
-        changes.newToken = result.newToken
-
-        recordCache.store(result.changedRecords)
-        recordCache.remove(result.deletedRecordIDs)
-
-        for record in result.changedRecords {
-            switch record.recordType {
-            case SyncRecordType.connection.rawValue:
-                if let connection = SyncRecordMapper.toConnection(record) {
-                    changes.changedConnections.append(connection)
+        init(_ result: PullResult) {
+            for record in result.changedRecords {
+                switch record.recordType {
+                case SyncRecordType.connection.rawValue:
+                    if let connection = SyncRecordMapper.toConnection(record) {
+                        changedConnections.append(connection)
+                    }
+                case SyncRecordType.group.rawValue:
+                    if let group = SyncRecordMapper.toGroup(record) {
+                        changedGroups.append(group)
+                    }
+                case SyncRecordType.tag.rawValue:
+                    if let tag = SyncRecordMapper.toTag(record) {
+                        changedTags.append(tag)
+                    }
+                default:
+                    break
                 }
-            case SyncRecordType.group.rawValue:
-                if let group = SyncRecordMapper.toGroup(record) {
-                    changes.changedGroups.append(group)
+            }
+
+            for recordID in result.deletedRecordIDs {
+                guard let parsed = SyncRecordType.parse(recordName: recordID.recordName),
+                      let uuid = UUID(uuidString: parsed.id) else { continue }
+                switch parsed.type {
+                case .connection:
+                    deletedConnectionIDs.insert(uuid)
+                case .group:
+                    deletedGroupIDs.insert(uuid)
+                case .tag:
+                    deletedTagIDs.insert(uuid)
+                default:
+                    break
                 }
-            case SyncRecordType.tag.rawValue:
-                if let tag = SyncRecordMapper.toTag(record) {
-                    changes.changedTags.append(tag)
-                }
-            default:
-                break
             }
         }
-
-        for recordID in result.deletedRecordIDs {
-            guard let parsed = SyncRecordType.parse(recordName: recordID.recordName),
-                  let uuid = UUID(uuidString: parsed.id) else { continue }
-            switch parsed.type {
-            case .connection:
-                changes.deletedConnectionIDs.insert(uuid)
-            case .group:
-                changes.deletedGroupIDs.insert(uuid)
-            case .tag:
-                changes.deletedTagIDs.insert(uuid)
-            default:
-                break
-            }
-        }
-
-        return changes
     }
 
     // MARK: - Merge
 
-    // DatabaseConnection has no modifiedDate field, so we use CKRecord.modificationDate
-    // from the cached record to determine which version is newer. Local changes are
-    // tracked via dirty flags (markDirty), so if the local copy is dirty and the remote
-    // record is older than the last sync, we keep local. Otherwise remote wins.
-
     private func mergeConnections(local: [DatabaseConnection], remote: PullChanges) -> [DatabaseConnection] {
-        var result = local.filter { !remote.deletedConnectionIDs.contains($0.id) }
-        let localMap = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
-        let dirtyIDs = metadata.dirtyIds(for: .connection)
-
-        for remoteConn in remote.changedConnections {
-            if localMap[remoteConn.id] != nil {
-                if let index = result.firstIndex(where: { $0.id == remoteConn.id }) {
-                    if dirtyIDs.contains(remoteConn.id.uuidString) {
-                        // Local has unsaved changes: keep local version so we push it later
-                        continue
-                    }
-                    if result[index] == remoteConn {
-                        // Content identical: skip overwrite to preserve any transient local state
-                        continue
-                    }
-                    result[index] = remoteConn
-                }
-            } else if !remote.deletedConnectionIDs.contains(remoteConn.id) {
-                result.append(remoteConn)
-            }
-        }
-
-        return result
+        merge(
+            local: local,
+            changed: remote.changedConnections,
+            deleted: remote.deletedConnectionIDs,
+            dirtyIds: metadata.dirtyIds(for: .connection)
+        )
     }
 
     private func mergeGroups(local: [ConnectionGroup], remote: PullChanges) -> [ConnectionGroup] {
-        var result = local.filter { !remote.deletedGroupIDs.contains($0.id) }
-        let localMap = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
-        let dirtyIDs = metadata.dirtyIds(for: .group)
-
-        for remoteGroup in remote.changedGroups {
-            if localMap[remoteGroup.id] != nil {
-                if let index = result.firstIndex(where: { $0.id == remoteGroup.id }) {
-                    if dirtyIDs.contains(remoteGroup.id.uuidString) {
-                        continue
-                    }
-                    if result[index] == remoteGroup {
-                        continue
-                    }
-                    result[index] = remoteGroup
-                }
-            } else if !remote.deletedGroupIDs.contains(remoteGroup.id) {
-                result.append(remoteGroup)
-            }
-        }
-
-        return result
+        merge(
+            local: local,
+            changed: remote.changedGroups,
+            deleted: remote.deletedGroupIDs,
+            dirtyIds: metadata.dirtyIds(for: .group)
+        )
     }
 
     private func mergeTags(local: [ConnectionTag], remote: PullChanges) -> [ConnectionTag] {
-        var result = local.filter { !remote.deletedTagIDs.contains($0.id) }
-        let localMap = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
-        let dirtyIDs = metadata.dirtyIds(for: .tag)
+        merge(
+            local: local,
+            changed: remote.changedTags,
+            deleted: remote.deletedTagIDs,
+            dirtyIds: metadata.dirtyIds(for: .tag)
+        )
+    }
 
-        for remoteTag in remote.changedTags {
-            if localMap[remoteTag.id] != nil {
-                if let index = result.firstIndex(where: { $0.id == remoteTag.id }) {
-                    if dirtyIDs.contains(remoteTag.id.uuidString) {
-                        continue
-                    }
-                    if result[index] == remoteTag {
-                        continue
-                    }
-                    result[index] = remoteTag
-                }
-            } else if !remote.deletedTagIDs.contains(remoteTag.id) {
-                result.append(remoteTag)
+    private func merge<Item: Identifiable & Equatable>(
+        local: [Item],
+        changed: [Item],
+        deleted: Set<UUID>,
+        dirtyIds: Set<String>
+    ) -> [Item] where Item.ID == UUID {
+        var result = local.filter { !deleted.contains($0.id) }
+        for remoteItem in changed where !deleted.contains(remoteItem.id) {
+            guard let index = result.firstIndex(where: { $0.id == remoteItem.id }) else {
+                result.append(remoteItem)
+                continue
             }
+            guard !dirtyIds.contains(remoteItem.id.uuidString), result[index] != remoteItem else { continue }
+            result[index] = remoteItem
         }
-
         return result
     }
 }

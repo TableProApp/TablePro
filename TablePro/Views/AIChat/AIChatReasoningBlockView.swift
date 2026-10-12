@@ -47,7 +47,7 @@ struct AIChatReasoningBlockView: View {
         .onAppear {
             displayedText = block.text ?? ""
         }
-        .onChange(of: block.text ?? "") { _, newValue in
+        .onChange(of: block.text ?? "") { newValue in
             scheduleUpdate(to: newValue)
         }
         .onDisappear {

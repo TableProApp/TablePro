@@ -5,14 +5,18 @@
 //  Tests for SchemaService aggregation across per-schema table lists.
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
 import Testing
 
-@Suite("SchemaService")
 @MainActor
 struct SchemaServiceTests {
+    private func unnamedDatabase(_ connectionId: UUID) -> DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     @Test("allLoadedTables unions tables across loaded per-schema lists")
     func allLoadedTablesUnionsPerSchema() async {
         let connectionId = UUID()
@@ -28,8 +32,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(schema: "sales", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "hr", in: unnamedDatabase(connectionId), driver: driver)
 
         let names = Set(service.allLoadedTables(for: connectionId).map(\.name))
         #expect(names == ["orders", "leads", "employees"])
@@ -46,11 +50,29 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaObjects(connectionId: connectionId, schema: "mirror", driver: driver)
+        await service.loadSchemaObjects(schema: "sales", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "mirror", in: unnamedDatabase(connectionId), driver: driver)
 
         let matching = service.allLoadedTables(for: connectionId).filter { $0.id == shared.id }
         #expect(matching.count == 1)
+    }
+
+    @Test("allLoadedTables keeps two tables whose names differ only in where a period sits")
+    func allLoadedTablesKeepsDottedNamesApart() async {
+        let connectionId = UUID()
+        let driver = MockDatabaseDriver()
+        driver.schemaTablesToReturn = [
+            "a": [TableInfo(name: "b.c", type: .table, rowCount: 0, schema: "a")],
+            "a.b": [TableInfo(name: "c", type: .table, rowCount: 0, schema: "a.b")]
+        ]
+
+        let service = SchemaService()
+        await service.loadSchemaObjects(schema: "a", in: unnamedDatabase(connectionId), driver: driver)
+        await service.loadSchemaObjects(schema: "a.b", in: unnamedDatabase(connectionId), driver: driver)
+
+        let loaded = service.allLoadedTables(for: connectionId)
+        #expect(loaded.count == 2)
+        #expect(Set(loaded.map(\.schema)) == ["a", "a.b"])
     }
 
     @Test("allLoadedTables is empty for a connection with no loaded state")
@@ -64,7 +86,7 @@ struct SchemaServiceTests {
         let service = SchemaService()
         let connectionId = UUID()
 
-        service.markLoadFailed(connectionId: connectionId, message: "connect timed out")
+        service.markLoadFailed(connectionId: connectionId, message: "connect timed out", scope: nil)
 
         #expect(service.state(for: connectionId) == .failed("connect timed out"))
     }
@@ -81,9 +103,157 @@ struct SchemaServiceTests {
             connection: TestFixtures.makeConnection()
         )
 
-        service.markLoadFailed(connectionId: connectionId, message: "refresh failed")
+        service.markLoadFailed(connectionId: connectionId, message: "refresh failed", scope: nil)
 
         #expect(service.state(for: connectionId) == .loaded(driver.tablesToReturn))
+    }
+
+    @Test("A failed refresh of the database already loaded keeps its tables")
+    func failureForTheLoadedScopeKeepsTables() async {
+        let connection = TestFixtures.makeConnection()
+        let scope = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: scope)
+
+        service.markLoadFailed(connectionId: connection.id, message: "refresh failed", scope: scope)
+
+        #expect(service.state(for: connection.id) == .loaded(driver.tablesToReturn))
+        #expect(service.loadedScope(for: connection.id) == scope)
+    }
+
+    /// MySQL switches database in place, so the tables of the database being left were still loaded
+    /// when the new one failed to load, and the sidebar listed them under the new name with no error.
+    @Test("A failure for a newly selected database replaces the tables of the one being left")
+    func failureForAnotherScopeReplacesTables() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+
+        service.markLoadFailed(connectionId: connection.id, message: "Access denied", scope: billing)
+
+        #expect(service.state(for: connection.id) == .failed("Access denied"))
+        #expect(service.loadedScope(for: connection.id) == nil)
+    }
+
+    @Test("A table fetch that fails for a newly selected database reports the failure")
+    func failedLoadForAnotherScopeReportsFailure() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+
+        driver.fetchTablesError = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Access denied"])
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: billing)
+
+        #expect(service.state(for: connection.id) == .failed("Access denied"))
+        #expect(service.loadedScope(for: connection.id) == nil)
+    }
+
+    @Test("A table fetch that fails on refresh of the same database keeps its tables")
+    func failedRefreshOfTheSameScopeKeepsTables() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+
+        driver.fetchTablesError = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "timed out"])
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+
+        #expect(service.state(for: connection.id) == .loaded(driver.tablesToReturn))
+        #expect(service.loadedScope(for: connection.id) == sales)
+    }
+
+    @Test("Switching back to a database shows its tables at once and refreshes them without loading")
+    func switchingBackShowsTheKeptTables() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let orders = TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)
+        let refunds = TableInfo(name: "refunds", type: .table, rowCount: 0, schema: nil)
+        let driver = MockDatabaseDriver()
+        let service = SchemaService()
+        driver.tablesToReturn = [orders]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        service.show(scope: billing, type: connection.type)
+        #expect(service.state(for: connection.id) == .idle)
+        driver.tablesToReturn = [TableInfo(name: "invoices", type: .table, rowCount: 0, schema: nil)]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: billing)
+
+        service.show(scope: sales, type: connection.type)
+
+        #expect(service.state(for: connection.id) == .loaded([orders]))
+        #expect(service.loadedScope(for: connection.id) == sales)
+        #expect(!service.isCatalogCurrent(for: connection.id))
+
+        var sawLoading = false
+        let watch = service.$states.sink { states in
+            if states.values.contains(.loading) { sawLoading = true }
+        }
+        driver.tablesToReturn = [orders, refunds]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        watch.cancel()
+
+        #expect(!sawLoading)
+        #expect(service.state(for: connection.id) == .loaded([orders, refunds]))
+        #expect(service.isCatalogCurrent(for: connection.id))
+    }
+
+    @Test("Forgetting a database drops its kept tables and leaves the one on screen")
+    func forgetDropsTheDatabasesCatalog() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let invoices = [TableInfo(name: "invoices", type: .table, rowCount: 0, schema: nil)]
+        let driver = MockDatabaseDriver()
+        let service = SchemaService()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        service.show(scope: billing, type: connection.type)
+        driver.tablesToReturn = invoices
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: billing)
+
+        service.forget(database: "sales", connectionId: connection.id)
+
+        #expect(service.state(for: connection.id) == .loaded(invoices))
+        service.show(scope: sales, type: connection.type)
+        #expect(service.state(for: connection.id) == .idle)
+        #expect(service.loadedScope(for: connection.id) == nil)
+    }
+
+    @Test("Tables and the other object kinds settle a failure by the same rule")
+    func tableFailureRuleMatchesSideObjects() {
+        let tables = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let pairs: [(SchemaState, MetadataLoadState<[TableInfo]>)] = [
+            (.idle, .idle),
+            (.loading, .loading),
+            (.loaded(tables), .loaded(tables)),
+            (.failed("old"), .failed("old"))
+        ]
+        for (schemaState, metadataState) in pairs {
+            for discarding in [false, true] {
+                let settledTables = schemaState.settled(byFailure: "new", discardingValue: discarding)
+                let settledObjects = metadataState.settled(by: .failed("new"), discardingValue: discarding)
+                switch (settledTables, settledObjects) {
+                case (.loaded(let left), .loaded(let right)):
+                    #expect(left == right)
+                case (.failed(let left), .failed(let right)):
+                    #expect(left == right)
+                default:
+                    Issue.record("Rules disagree for \(schemaState), discarding \(discarding)")
+                }
+            }
+        }
     }
 
     @Test("hierarchical load lists schemas")
@@ -127,5 +297,19 @@ struct SchemaServiceTests {
             isFailed = true
         }
         #expect(isFailed)
+    }
+
+    /// A load cancelled before anything arrived used to leave `.loading` behind, a spinner nothing
+    /// would ever replace and a state every "load what is missing" check reads as a load in flight.
+    @Test("a first load that is cancelled settles back to idle")
+    func cancelledFirstLoadSettlesToIdle() async {
+        let connection = TestFixtures.makeConnection(database: "")
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.fetchTablesError = CancellationError()
+        let service = SchemaService()
+
+        await service.load(connectionId: connection.id, driver: driver, connection: connection)
+
+        #expect(service.state(for: connection.id) == .idle)
     }
 }

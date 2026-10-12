@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection form database field")
 @MainActor
 struct NetworkPaneDatabaseFieldTests {
     private func model(for type: DatabaseType) -> NetworkPaneViewModel {

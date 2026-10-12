@@ -12,7 +12,6 @@ import Testing
 
 // MARK: - InspectorTrigger Tests
 
-@Suite("InspectorTrigger")
 struct InspectorTriggerTests {
     private func trigger(
         tableName: String? = "users",
@@ -84,7 +83,6 @@ struct InspectorTriggerTests {
 
 // MARK: - PendingChangeTrigger Tests
 
-@Suite("PendingChangeTrigger")
 struct PendingChangeTriggerTests {
     private func makeTrigger(
         hasDataChanges: Bool = false,
@@ -92,7 +90,8 @@ struct PendingChangeTriggerTests {
         pendingDeletes: Set<DatabaseTreeTableRef> = [],
         hasStructureChanges: Bool = false,
         isFileDirty: Bool = false,
-        hasCreateTablePending: Bool = false
+        hasCreateTablePending: Bool = false,
+        hasPrincipalChanges: Bool = false
     ) -> PendingChangeTrigger {
         PendingChangeTrigger(
             hasDataChanges: hasDataChanges,
@@ -100,8 +99,17 @@ struct PendingChangeTriggerTests {
             pendingDeletes: pendingDeletes,
             hasStructureChanges: hasStructureChanges,
             isFileDirty: isFileDirty,
-            hasCreateTablePending: hasCreateTablePending
+            hasCreateTablePending: hasCreateTablePending,
+            hasPrincipalChanges: hasPrincipalChanges
         )
+    }
+
+    /// The fifth source, and the reason the commit control was dim on a Users & Roles tab however
+    /// many principal edits were staged: without this field the trigger never changed, so the one
+    /// function that recomputes what is pending was never re-run.
+    @Test("Different hasPrincipalChanges produces unequal triggers")
+    func differentHasPrincipalChanges() {
+        #expect(makeTrigger(hasPrincipalChanges: true) != makeTrigger(hasPrincipalChanges: false))
     }
 
     @Test("Same values are equal")

@@ -45,7 +45,6 @@ private final class StubClipboard: ClipboardProvider {
     var hasGridRows: Bool { hasGridRowsValue }
 }
 
-@Suite("pasteCellsFromClipboard routing")
 @MainActor
 struct CellPasteRoutingTests {
     private func makeCoordinator(columns: [String], rowCount: Int) -> TableViewCoordinator {
@@ -70,6 +69,7 @@ struct CellPasteRoutingTests {
         stub.text = "anything\twith\ttabs"
         stub.hasGridRowsValue = true
         ClipboardService.shared = stub
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
 
         let coordinator = makeCoordinator(columns: ["a", "b", "c"], rowCount: 5)
         let result = coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: 0)
@@ -83,6 +83,7 @@ struct CellPasteRoutingTests {
         stub.text = "x\ty\tz\nq\tw\te"
         stub.hasGridRowsValue = false
         ClipboardService.shared = stub
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
 
         let coordinator = makeCoordinator(columns: ["a", "b", "c"], rowCount: 5)
         let result = coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: 0)
@@ -96,6 +97,7 @@ struct CellPasteRoutingTests {
         stub.text = "x\ty"
         stub.hasGridRowsValue = false
         ClipboardService.shared = stub
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
 
         let coordinator = makeCoordinator(columns: ["a", "b", "c", "d", "e"], rowCount: 5)
         let result = coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: 0)
@@ -112,6 +114,7 @@ struct CellPasteRoutingTests {
         stub.text = "hello"
         stub.hasGridRowsValue = false
         ClipboardService.shared = stub
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
 
         let coordinator = makeCoordinator(columns: ["a", "b", "c"], rowCount: 5)
 
@@ -125,6 +128,7 @@ struct CellPasteRoutingTests {
         stub.text = "hello"
         stub.hasGridRowsValue = true
         ClipboardService.shared = stub
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
 
         let coordinator = makeCoordinator(columns: ["a", "b", "c"], rowCount: 5)
 
@@ -138,6 +142,7 @@ struct CellPasteRoutingTests {
         stub.text = "hello"
         stub.hasGridRowsValue = false
         ClipboardService.shared = stub
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
 
         let coordinator = makeCoordinator(columns: ["a"], rowCount: 3)
 
@@ -150,6 +155,7 @@ struct CellPasteRoutingTests {
         stub.text = "x\ty"
         stub.hasGridRowsValue = false
         ClipboardService.shared = stub
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
 
         let coordinator = makeCoordinator(columns: ["a", "b", "c", "d", "e"], rowCount: 5)
         let before = Array(coordinator.tableRowsProvider().rows)
@@ -164,6 +170,7 @@ struct CellPasteRoutingTests {
         let stub = StubClipboard()
         stub.text = "x\ty"
         ClipboardService.shared = stub
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
 
         let coordinator = TableViewCoordinator(
             changeManager: AnyChangeManager(DataChangeManager()),

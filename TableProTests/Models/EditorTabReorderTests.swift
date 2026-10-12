@@ -13,7 +13,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Editor tab reorder")
 struct EditorTabReorderTests {
     private static let ids = (0 ..< 5).map { _ in UUID() }
 
@@ -87,7 +86,6 @@ struct EditorTabReorderTests {
     }
 }
 
-@Suite("Editor tab reorder resolver")
 struct EditorTabReorderResolverTests {
     private let tabWidth: CGFloat = 100
 
@@ -222,7 +220,6 @@ struct EditorTabReorderResolverTests {
 }
 
 /// The boundary the commonest drag of all lands on.
-@Suite("Editor tab reorder crossing tolerance")
 struct EditorTabReorderCrossingToleranceTests {
     /// Releasing on a neighbour's exact centre is what a one-place drag does, and the location
     /// arrives from a geometry conversion, so it is a hair under the midpoint as often as it is on

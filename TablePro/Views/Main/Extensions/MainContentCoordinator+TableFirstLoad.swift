@@ -23,7 +23,8 @@ extension MainContentCoordinator {
             }
             return
         }
-        executeTableTabQueryDirectly(trigger: trigger)
+        let viewport = restoredRowAnchor(forTab: tabId).map(GridReloadIntent.restoreRow) ?? .keepPlace
+        executeTableTabQueryDirectly(trigger: trigger, viewport: viewport)
     }
 
     @discardableResult
@@ -59,14 +60,14 @@ extension MainContentCoordinator {
               tabManager.tabs[index].tableContext.tableName == tableName,
               tabManager.tabs[index].tableContext.schemaName == schemaName else { return false }
 
-        let restoreApplied = applyPendingRestoredViewState(at: index)
-        let sortApplied = restoreApplied ? false : applyResolvedDefaultSort(at: index, hint: hint)
-        let loadedTab = tabManager.tabs[index]
-        if restoreApplied || sortApplied
-            || !loadedTab.columnLayout.hiddenColumns.isEmpty
-            || loadedTab.filterState.hasAppliedFilters {
-            filterCoordinator.rebuildTableQuery(at: index)
+        if !applyPendingRestoredViewState(at: index) {
+            _ = applyResolvedDefaultSort(at: index, hint: hint)
         }
+        /// Unconditional, like the branch above that skips the schema load. The query is derived
+        /// from the tab's filters, sort, hidden columns and page, so rebuilding it is always
+        /// correct, and a tab reopened from the recently closed history carries the last *filtered*
+        /// SQL it ran. When that filter comes back unapplied, nothing else drops its WHERE.
+        filterCoordinator.rebuildTableQuery(at: index)
         return true
     }
 
@@ -75,10 +76,14 @@ extension MainContentCoordinator {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tabType == .table,
               tabManager.tabs[index].tableContext.schemaName == nil,
-              let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(nil, for: connectionId)
+              let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(
+                  nil,
+                  inDatabase: tabManager.tabs[index].tableContext.resolvedDatabaseName(browsing: browseDatabaseName),
+                  for: connectionId
+              )
         else { return false }
 
-        tabManager.mutate(at: index) { $0.tableContext.schemaName = resolvedSchema }
+        tabManager.adoptResolvedSchema(resolvedSchema, at: index)
         filterCoordinator.rebuildTableQuery(at: index)
         return true
     }
@@ -103,14 +108,14 @@ extension MainContentCoordinator {
         /// columns the *live* sort names, and a restored sort is still sitting in
         /// `pendingRestoredSort`, so a saved sort on a hidden column resolved to nothing and the
         /// next save wrote the loss to disk.
-        let resolvedSort = MainContentCoordinator.resolveRestoredSortColumns(
+        let resolvedSort = supportsColumnSort ? MainContentCoordinator.resolveRestoredSortColumns(
             pendingSort,
             in: cachedSchemaColumns(for: tab)?.columns ?? effectiveResultColumns(for: tab)
-        )
+        ) : []
         /// A sort that resolved to nothing has not been consumed, it has failed to resolve, which is
         /// what an empty column list looks like when the schema fetch did not land. Clearing it
         /// anyway threw the saved sort away and the next save wrote the loss to disk.
-        let sortWasConsumed = pendingSort.isEmpty || !resolvedSort.isEmpty
+        let sortWasConsumed = pendingSort.isEmpty || !resolvedSort.isEmpty || !supportsColumnSort
         // The persisted page index counts pages of the size it was taken in, so reading it in
         // today's default would land the tab on rows it was never showing.
         let pageSize = paginationCapability.clampedRowCount(
@@ -141,6 +146,7 @@ extension MainContentCoordinator {
     /// the next first load, and Don't Sort could never stick.
     func wantsDefaultSort(for tab: QueryTab, hint: DefaultSortHint) -> Bool {
         guard tab.tabType == .table,
+              supportsColumnSort,
               tab.sortState.source == .unset,
               !tab.sortState.isSorting,
               let tableName = tab.tableContext.tableName, !tableName.isEmpty else {

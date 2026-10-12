@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("StructureTabDataState")
 struct StructureTabDataStateTests {
     @Test("a fresh state has no data and needs every tab fetched")
     func freshStateNeedsFetch() {

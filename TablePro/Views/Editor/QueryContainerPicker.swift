@@ -49,12 +49,16 @@ struct QueryContainerPicker: View {
     }
 
     private var menu: some View {
-        Menu {
-            ForEach(containers) { container in
-                Button {
-                    if container.name != selectedName { onChange(container.name) }
-                } label: {
-                    Label(container.name, systemImage: container.name == selectedName ? "checkmark" : container.icon)
+        let userContainers = containers.filter { !$0.isSystemDatabase }
+        let systemContainers = containers.filter(\.isSystemDatabase)
+        return Menu {
+            ForEach(userContainers) { container in
+                containerButton(container)
+            }
+            if !systemContainers.isEmpty {
+                Divider()
+                ForEach(systemContainers) { container in
+                    containerButton(container)
                 }
             }
         } label: {
@@ -64,15 +68,21 @@ struct QueryContainerPicker: View {
                 Text(scopeLabel)
                     .font(.callout)
                     .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             }
             .foregroundStyle(.secondary)
+            .accessibilityLabel(scopeAccessibilityLabel)
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
-        .accessibilityLabel(scopeAccessibilityLabel)
+    }
+
+    private func containerButton(_ container: DatabaseMetadata) -> some View {
+        Button {
+            if container.name != selectedName { onChange(container.name) }
+        } label: {
+            Label(container.name, systemImage: container.name == selectedName ? "checkmark" : container.icon)
+        }
     }
 
     private var readOnlyLabel: some View {

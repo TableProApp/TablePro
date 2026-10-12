@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("QuickSwitcherHostResolver")
 struct QuickSwitcherHostResolverTests {
     /// The registry the candidates come from is a dictionary with no order, so before this was
     /// fixed the result landed in whichever window it happened to yield first, overwriting an

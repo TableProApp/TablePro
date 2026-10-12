@@ -3,13 +3,14 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import SwiftUI
 
-@MainActor @Observable
-final class FindCoordinator {
-    @ObservationIgnored unowned let parent: MainContentCoordinator
-    @ObservationIgnored private var searchDebounce: DispatchWorkItem?
+@MainActor
+final class FindCoordinator: ObservableObject {
+    unowned let parent: MainContentCoordinator
+    private var searchDebounce: DispatchWorkItem?
 
     init(parent: MainContentCoordinator) {
         self.parent = parent

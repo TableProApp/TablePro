@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Cloudflare D1 Driver Helpers")
 struct CloudflareD1DriverHelperTests {
 
     // MARK: - Local copies of helper functions for testing

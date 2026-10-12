@@ -12,7 +12,6 @@ import Testing
 /// `CONSTRAINT fk_orders_customer …` used to read back as the positional `fk_orders_0` and the name
 /// the user typed was lost on the next read. The name comes from the stored `CREATE TABLE` text and
 /// the resolved columns come from the pragma, matched on the relationship each describes.
-@Suite("SQLite Foreign Key Grouping")
 struct SQLiteForeignKeyGroupingTests {
     /// A `PRAGMA foreign_key_list` row: id, seq, table, from, to, on_update, on_delete, match.
     private func row(

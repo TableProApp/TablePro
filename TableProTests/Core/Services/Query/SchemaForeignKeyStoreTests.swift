@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Schema foreign key store")
 @MainActor
 struct SchemaForeignKeyStoreTests {
     private func makeScope(_ connectionId: UUID, database: String = "shop", schema: String? = "public") -> DatabaseScope {

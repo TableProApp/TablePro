@@ -3,13 +3,14 @@
 //  XLSXImportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProTabularIO
 
-@Observable
-final class XLSXImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XLSX Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from Excel workbooks"
@@ -18,6 +19,7 @@ final class XLSXImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sen
     static let acceptedFileExtensions = ["xlsx"]
     static let iconName = "tablecells"
     static let requiresTargetTable = true
+    static let sourceFieldsFollowFileOrder = true
 
     typealias Settings = XLSXImportOptions
     static let settingsStorageId = "xlsximport"
@@ -28,7 +30,7 @@ final class XLSXImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sen
     /// already in memory by then, so this only bounds the inference work.
     private static let detectionSampleRows = 200
 
-    var settings = XLSXImportOptions() {
+    @Published var settings = XLSXImportOptions() {
         didSet { saveSettings() }
     }
 
@@ -133,39 +135,33 @@ final class XLSXImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sen
     /// refers to, so a streaming read would have to hold that table anyway, and the format has no
     /// way to say how large it is before parsing.
     private func readSheet(at url: URL) throws -> Sheet {
-        let archive = try Data(contentsOf: url, options: .mappedIfSafe)
-        let entries = try ZipReader.entries(in: archive)
+        let archive = try ZipArchive(contentsOf: url)
 
-        guard let worksheetPath = XLSXSheetParser.firstWorksheetPath(in: Array(entries.keys)),
-              let worksheet = entries[worksheetPath] else {
+        guard let worksheetPath = XLSXSheetParser.firstWorksheetPath(in: archive.paths),
+              let worksheet = archive.entry(named: worksheetPath) else {
             throw XLSXSheetParser.ParseError.noWorksheet
         }
 
         var strings: [String] = []
-        if let sharedEntry = entries["xl/sharedStrings.xml"] {
-            strings = XLSXSheetParser.sharedStrings(
-                from: try ZipReader.data(for: sharedEntry, in: archive))
+        if let sharedEntry = archive.entry(named: "xl/sharedStrings.xml") {
+            strings = XLSXSheetParser.sharedStrings(from: try archive.data(for: sharedEntry, limit: .max))
         }
 
         var rows = XLSXSheetParser.rows(
-            from: try ZipReader.data(for: worksheet, in: archive),
+            from: try archive.data(for: worksheet, limit: .max),
             sharedStrings: strings
         )
 
         guard settings.hasHeaderRow else {
             let width = rows.first?.count ?? 0
             return Sheet(
-                header: (0 ..< width).map { "column\($0 + 1)" },
+                header: (0 ..< width).map(XLSXSheetParser.placeholderName),
                 rows: rows
             )
         }
         guard !rows.isEmpty else { return Sheet(header: nil, rows: []) }
         let headerRow = rows.removeFirst()
-        let header = headerRow.enumerated().map { index, value -> String in
-            let name = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return name.isEmpty ? "column\(index + 1)" : name
-        }
-        return Sheet(header: header, rows: rows)
+        return Sheet(header: XLSXSheetParser.headerNames(from: headerRow), rows: rows)
     }
 
     /// Every value arrives as text, so the type is inferred from what the values look like. The

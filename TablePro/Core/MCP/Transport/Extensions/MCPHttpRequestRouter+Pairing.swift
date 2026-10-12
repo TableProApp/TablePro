@@ -13,6 +13,7 @@ internal extension MCPHttpRequestRouter {
         }
         struct ExchangeResponse: Encodable {
             let token: String
+            let scope: String
         }
 
         let clientAddress = await context.clientAddress()
@@ -23,7 +24,7 @@ internal extension MCPHttpRequestRouter {
         do {
             parsed = try JSONDecoder().decode(ExchangeBody.self, from: body)
         } catch {
-            Self.logger.warning("Integrations exchange decode failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Integrations exchange decode failed: \(error.publicLogShape, privacy: .public)")
             MCPAuditLogger.logPairingExchange(outcome: .denied, ip: ip, details: "invalid JSON body")
             await respondPairingFailure(context: context, status: .badRequest, message: "Invalid JSON body")
             return
@@ -48,11 +49,14 @@ internal extension MCPHttpRequestRouter {
         }
 
         do {
-            let token = try await MCPPairingService.shared.exchange(
+            let record = try await MCPPairingService.shared.exchange(
                 PairingExchange(code: parsed.code, verifier: parsed.codeVerifier),
                 clientAddress: clientAddress
             )
-            let payload = try JSONEncoder().encode(ExchangeResponse(token: token))
+            let payload = try JSONEncoder().encode(ExchangeResponse(
+                token: record.plaintextToken,
+                scope: record.grantedScopes.map(\.rawValue).sorted().joined(separator: " ")
+            ))
             await context.writePlainJsonResponse(status: .ok, body: payload)
             await context.completeResponse()
         } catch {

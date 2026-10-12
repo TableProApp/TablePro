@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH host pattern matcher")
 struct SSHHostPatternMatcherTests {
     @Test("Exact match")
     func testExactMatch() {

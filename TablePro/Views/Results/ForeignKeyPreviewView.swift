@@ -5,15 +5,15 @@
 //  Read-only popover showing the referenced row for a foreign key cell.
 //
 
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class FKPreviewModel {
-    var cellValue: String?
-    var fkInfo: ForeignKeyInfo
+final class FKPreviewModel: ObservableObject {
+    @Published var cellValue: String?
+    @Published var fkInfo: ForeignKeyInfo
 
     init(cellValue: String?, fkInfo: ForeignKeyInfo) {
         self.cellValue = cellValue
@@ -27,8 +27,9 @@ private struct FKPreviewTaskKey: Equatable {
 }
 
 struct ForeignKeyPreviewView: View {
-    let model: FKPreviewModel
-    let connectionId: UUID
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @ObservedObject var model: FKPreviewModel
+    let scope: DatabaseScope
     let databaseType: DatabaseType
     let onNavigate: () -> Void
     let onDismiss: () -> Void
@@ -127,13 +128,13 @@ struct ForeignKeyPreviewView: View {
 
                             if let val = value {
                                 Text(val)
-                                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                                    .font(themeEngine.valueFontSwiftUI)
                                     .foregroundStyle(.primary)
                                     .lineLimit(3)
                                     .textSelection(.enabled)
                             } else {
                                 Text("NULL")
-                                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                                    .font(themeEngine.valueFontSwiftUI)
                                     .foregroundStyle(.tertiary)
                                     .italic()
                             }
@@ -178,7 +179,7 @@ struct ForeignKeyPreviewView: View {
 
         do {
             let fetched = try await ForeignKeyRowFetcher.fetch(
-                connectionId: connectionId,
+                origin: scope,
                 databaseType: databaseType,
                 reference: JSONForeignKeyRef(fkInfo),
                 value: value

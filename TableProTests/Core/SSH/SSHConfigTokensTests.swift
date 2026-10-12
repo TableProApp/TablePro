@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SSH config tokens")
 struct SSHConfigTokensTests {
     private static let context = SSHTokenContext(
         originalHost: "tok",
@@ -222,9 +221,23 @@ struct SSHConfigTokensTests {
         _ = gethostname(&buffer, buffer.count)
         #expect(SSHTokenContext.systemHostname() == String(cString: buffer))
     }
+
+    @Test("Every expansion failure is plain text that names the keyword")
+    func expansionFailuresArePlainText() {
+        let failures: [SSHTokenExpansionError] = [
+            .unsupportedToken(keyword: "IdentityAgent", token: "%r"),
+            .danglingPercent(keyword: "IdentityAgent"),
+            .undefinedEnvironmentVariable(keyword: "IdentityAgent", name: "NOPE"),
+            .malformedEnvironmentReference(keyword: "IdentityAgent")
+        ]
+
+        for failure in failures {
+            #expect(!failure.explanation.contains("`"), "\(failure)")
+            #expect(failure.explanation.contains("IdentityAgent"), "\(failure)")
+        }
+    }
 }
 
-@Suite("SSH path utilities")
 struct SSHPathExpansionTests {
     @Test("A leading tilde expands to the home directory")
     func expandsTilde() {

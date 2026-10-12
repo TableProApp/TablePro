@@ -41,10 +41,14 @@ extension MainContentCoordinator {
         )
     }
 
+    /// `database` names the target when the caller knows it, which a foreign key does and the
+    /// sidebar does not: a reference can point into another database, and taking the browse cursor
+    /// there opens a tab on whichever one the sidebar happens to be showing.
     @discardableResult
     func openTableTab(
         _ tableName: String,
         schema: String? = nil,
+        database: String? = nil,
         showStructure: Bool = false,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
@@ -63,10 +67,12 @@ extension MainContentCoordinator {
             }
             currentDatabase = String(tableName.dropFirst(2))
         } else {
-            currentDatabase = browseDatabaseName
+            currentDatabase = database?.nilIfEmpty ?? browseDatabaseName
         }
 
-        let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(schema, for: connectionId)
+        let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(
+            schema, inDatabase: currentDatabase, for: connectionId
+        )
         let createAsPreview = !forceNonPreview && !forceNewTab
             && AppSettingsManager.shared.tabs.enablePreviewTabs
 
@@ -80,7 +86,7 @@ extension MainContentCoordinator {
             includeSiblings: navigationModel != .inPlace
         ) {
             navigationLogger.debug(
-                "[tableload] activateExistingTab table=\(tableName, privacy: .public)"
+                "[tableload] activateExistingTab table=\(tableName, privacy: .private(mask: .hash))"
             )
             return disposition
         }
@@ -112,8 +118,8 @@ extension MainContentCoordinator {
         /// database (`selectRedisDatabaseAndQuery`), which a restore does not do, so a Back would
         /// put the table back while leaving the connection on another database index.
         if navigationModel == .inPlace {
-            if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableContext.tableName {
-                saveLastFilters(for: oldTableName)
+            if let oldTab = tabManager.selectedTab {
+                saveLastFilters(of: oldTab)
             }
             if let tabId = tabManager.selectedTabId {
                 let token = TableLoadTracer.shared.begin(
@@ -135,14 +141,14 @@ extension MainContentCoordinator {
                     clearFilterState()
                     discardRowsForRetarget()
                     restoreLastHiddenColumnsForTable()
-                    restoreFiltersForTable(tableName)
+                    restoreFiltersForSelectedTab()
                     if let dbIndex = Int(currentDatabase) {
                         selectRedisDatabaseAndQuery(dbIndex)
                     }
                 }
                 return replaced ? .currentCoordinator : nil
             } catch {
-                navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+                navigationLogger.error("openTableTab replaceTabContent failed: \(error.publicLogShape, privacy: .public)")
                 return nil
             }
         }
@@ -162,7 +168,7 @@ extension MainContentCoordinator {
 
         promotePreviewTab()
         navigationLogger.debug(
-            "[tableload] handoffToNewWindowTab table=\(tableName, privacy: .public)"
+            "[tableload] handoffToNewWindowTab table=\(tableName, privacy: .private(mask: .hash))"
         )
         TableLoadTracer.shared.noteWindowTabHandoff(connectionId: connection.id, table: tableName)
         let payload = EditorTabPayload(
@@ -253,7 +259,7 @@ extension MainContentCoordinator {
                 isPreview: createAsPreview
             )
         } catch {
-            navigationLogger.error("openTableTab tab creation failed: \(error.localizedDescription, privacy: .public)")
+            navigationLogger.error("openTableTab tab creation failed: \(error.publicLogShape, privacy: .public)")
             return false
         }
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
@@ -275,7 +281,7 @@ extension MainContentCoordinator {
             toolbarState.isTableTab = true
         }
         restoreLastHiddenColumnsForTable()
-        restoreFiltersForTable(tableName)
+        restoreFiltersForSelectedTab()
         if isInPlace, let dbIndex = Int(currentDatabase) {
             selectRedisDatabaseAndQuery(dbIndex)
         } else {
@@ -296,8 +302,8 @@ extension MainContentCoordinator {
         let previousTableName = tabManager.selectedTab?.tableContext.tableName
         let replacesPreviewTab = tabManager.selectedTab?.isPreview == true
         let departing = captureNavigationEntry()
-        if let previousTableName {
-            saveLastFilters(for: previousTableName)
+        if let departingTab = tabManager.selectedTab {
+            saveLastFilters(of: departingTab)
         }
 
         var token: TableLoadTraceToken?
@@ -315,7 +321,7 @@ extension MainContentCoordinator {
                 token: started,
                 detail: """
                     path=reuseActiveTab from=\(previousTableName ?? "none") \
-                    wasExecuting=\(wasExecuting) hasInFlightQuery=\(currentQueryTask != nil)
+                    wasExecuting=\(wasExecuting) hasInFlightQuery=\(queryTasks.hasTask(for: tabId))
                     """
             )
         }
@@ -331,7 +337,7 @@ extension MainContentCoordinator {
                 isPreview: createAsPreview
             )
         } catch {
-            navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+            navigationLogger.error("openTableTab replaceTabContent failed: \(error.publicLogShape, privacy: .public)")
             if let token { TableLoadTracer.shared.finish(token: token, outcome: .replaceFailed) }
             return false
         }
@@ -340,14 +346,16 @@ extension MainContentCoordinator {
         clearFilterState()
         discardRowsForRetarget(resultsViewMode: showStructure ? .structure : .data)
         restoreLastHiddenColumnsForTable()
-        restoreFiltersForTable(tableName)
+        restoreFiltersForSelectedTab()
         if let tabId = tabManager.selectedTab?.id {
             if let token { TableLoadTracer.shared.stage(.cancelPreviousLoad, token: token) }
             cancelTableLoad(for: tabId)
         }
         lazyLoadCurrentTabIfNeeded()
         if replacesPreviewTab, createAsPreview {
-            FeatureTipSignals.previewTabReplaced()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.previewTabReplaced()
+            }
         }
         return true
     }
@@ -391,6 +399,10 @@ extension MainContentCoordinator {
         return false
     }
 
+    /// Whether browsing the object list may take the selected tab over.
+    ///
+    /// Only browsing asks. Following a foreign key never takes a tab over, because a reference can
+    /// only be followed from a grid and the row the reader clicked is in that grid.
     var isActiveTabReusable: Bool {
         guard let tab = tabManager.selectedTab else { return false }
         if selectedTabHoldsProtectedContent { return false }
@@ -411,39 +423,39 @@ extension MainContentCoordinator {
     }
 
     func showAllTablesMetadata() {
-        guard let sql = allTablesMetadataSQL() else { return }
-
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .query,
-            initialQuery: sql
-        )
-        openTabInNewWindow(payload)
+        switch allTablesListing() {
+        case .shellCommand(let command):
+            tabManager.addTab(initialQuery: command, databaseName: browseDatabaseName)
+            runQuery(viewport: .firstRow)
+        case .statement(let sql):
+            openTabInNewWindow(EditorTabPayload(connectionId: connection.id, tabType: .query, initialQuery: sql))
+        case nil:
+            return
+        }
     }
 
-    private func allTablesMetadataSQL() -> String? {
-        let editorLang = PluginManager.shared.editorLanguage(for: connection.type)
-        // Non-SQL databases: open a command tab instead
-        if editorLang == .javascript {
-            tabManager.addTab(
-                initialQuery: "db.runCommand({\"listCollections\": 1, \"nameOnly\": false})",
-                databaseName: browseDatabaseName
-            )
-            runQuery()
-            return nil
-        } else if editorLang == .bash {
-            tabManager.addTab(
-                initialQuery: "SCAN 0 MATCH * COUNT 100",
-                databaseName: browseDatabaseName
-            )
-            runQuery()
+    /// Nil when the engine has no listing, which is when the sidebar leaves the command out.
+    func allTablesListing() -> AllTablesListing? {
+        let pluginListing = DatabaseManager.shared.driver(for: connectionId).flatMap { driver in
+            (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: allTablesContainer(driver))
+        }
+        return AllTablesListing.resolve(databaseType: connection.type, pluginListing: pluginListing)
+    }
+
+    /// The container this listing is about, named rather than left to the driver.
+    ///
+    /// A schema-less engine answers an unnamed container with whatever database the shared driver
+    /// was last pinned to, which a cross-database tab moves and nothing restores, so the listing
+    /// described a database the user was not browsing.
+    private func allTablesContainer(_ driver: DatabaseDriver) -> String? {
+        switch EngineNamespaceSlot(databaseType: connection.type) {
+        case .schema:
+            return (driver as? SchemaSwitchable)?.escapedSchema
+        case .database:
+            return browseDatabaseName.nilIfEmpty
+        case .unqualified:
             return nil
         }
-
-        // SQL databases: delegate to plugin driver
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
-        let schema = (driver as? SchemaSwitchable)?.escapedSchema
-        return (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: schema)
     }
 
     // MARK: - Database Switching
@@ -464,7 +476,7 @@ extension MainContentCoordinator {
             syncSidebarObjectSelection()
             return true
         } catch {
-            navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
+            navigationLogger.error("Failed to switch database: \(error.publicLogShape, privacy: .public)")
             /// A user who dismissed the password prompt already knows why nothing happened, and
             /// telling them their own decision failed is noise, not news.
             guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return false }
@@ -579,7 +591,7 @@ extension MainContentCoordinator {
     func switchSchema(to schema: String) async {
         guard PluginManager.shared.supportsSchemaSwitching(for: connection.type) else {
             navigationLogger.warning(
-                "switchSchema(to: \(schema, privacy: .public)) ignored: \(self.connection.type.rawValue, privacy: .public) does not support schema switching"
+                "switchSchema(to: \(schema, privacy: .private(mask: .hash))) ignored: \(self.connection.type.rawValue, privacy: .public) does not support schema switching"
             )
             AlertHelper.showErrorSheet(
                 title: String(localized: "Schema Switching Not Supported"),
@@ -599,9 +611,17 @@ extension MainContentCoordinator {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
             syncSidebarObjectSelection()
         } catch {
+            /// A switch that waited for the driver is dropped when the connection was closed and
+            /// opened again before its turn. The toolbar now belongs to that new session, so it is
+            /// read back from it rather than restored to what the old one showed, and nothing failed
+            /// that the user needs telling about.
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
+                toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
+                return
+            }
             toolbarState.currentSchema = previousSchema
 
-            navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
+            navigationLogger.error("Failed to switch schema: \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(format: String(localized: "%@ Switch Failed"), schemaEntityName),
                 message: error.localizedDescription,
@@ -622,6 +642,7 @@ extension MainContentCoordinator {
                 ? PluginManager.shared.schemaEntityNamePlural(for: connection.type)
                 : PluginManager.shared.containerEntityNamePlural(for: connection.type),
             dropsDependentObjects: isSchema
+                && PluginManager.shared.supportsCascadeDrop(for: connection.type)
         )
     }
 
@@ -633,23 +654,13 @@ extension MainContentCoordinator {
         for target in request.targets {
             do {
                 try await dropContainer(target)
+                services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
                 navigationLogger.error(
-                    "Failed to drop \(target.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Failed to drop \(target.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
                 failures.append((target.name, error.localizedDescription))
             }
-        }
-
-        await DatabaseTreeMetadataService.shared.refreshDatabases(
-            connectionId: connectionId,
-            databaseType: connection.type
-        )
-        for database in Set(request.targets.filter { $0.kind == .schema }.compactMap(\.database)) {
-            await DatabaseTreeMetadataService.shared.refreshSchemas(
-                connectionId: connectionId,
-                database: database
-            )
         }
 
         guard !failures.isEmpty else { return }
@@ -660,22 +671,44 @@ extension MainContentCoordinator {
         )
     }
 
+    /// Through the container DDL path, like every other write: a drop used to call the driver
+    /// directly, so Safe Mode's confirmation and Touch ID tiers never fired and no audit record
+    /// was written for the operation that destroys the most. The driver runs the drop itself, so
+    /// there is no statement to show and the description is what the gate presents.
     private func dropContainer(_ target: DatabaseContainerRef) async throws {
-        switch target.kind {
-        case .database:
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-                throw DatabaseError.notConnected
-            }
-            try await driver.dropDatabase(name: target.name)
-        case .schema:
-            guard let scope = DatabaseManager.shared.resolvedScope(
-                database: target.database, schema: nil, for: connectionId
-            ) else {
-                throw DatabaseError.notConnected
-            }
-            let name = target.name
-            try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.dropSchema(name: name)
+        guard let scope = DatabaseManager.shared.resolvedScope(
+            database: target.kind == .database ? nil : target.database, schema: nil, for: connectionId
+        ) else {
+            throw DatabaseError.notConnected
+        }
+        let entity = target.kind == .schema
+            ? PluginManager.shared.schemaEntityName(for: connection.type)
+            : PluginManager.shared.containerEntityName(for: connection.type)
+        let name = target.name
+        let kind = target.kind
+        let connectionId = connectionId
+        try await DatabaseManager.shared.runContainerOperation(
+            description: String(format: String(localized: "Drop %1$@ \"%2$@\""), entity, name),
+            kind: .destructiveQuery,
+            scope: scope,
+            databaseType: connection.type,
+            event: nil,
+            /// The sidebar already presented the destructive confirmation, once for the whole
+            /// batch. Without this the gate presents its own on top, asking twice for one drop and
+            /// once per target for a multi-row selection. Touch ID and the audit record still apply.
+            isConfirmationPreCleared: true
+        ) { driver in
+            switch kind {
+            case .database:
+                /// PostgreSQL refuses to drop a database while a backend is attached to it, and the
+                /// connection kept for it and the pooled ones are such backends. Closed only here,
+                /// once the drop is authorized: a refused drop must not end the session on it.
+                await MainActor.run {
+                    MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
+                    DatabaseManager.shared.sessionLanes.close(database: name, for: connectionId)
+                }
+                try await driver.dropDatabase(name: name)
+            case .schema: try await driver.dropSchema(name: name)
             }
         }
     }
@@ -698,60 +731,56 @@ extension MainContentCoordinator {
 
         let connId = connectionId
         let database = String(dbIndex)
+        let tabId = tabManager.selectedTabId
         redisDatabaseSwitchTask = Task { [weak self] in
             guard let self else { return }
             do {
-                if let adapter = DatabaseManager.shared.driver(for: connId) as? PluginDriverAdapter {
-                    try await adapter.switchDatabase(to: String(dbIndex))
-                }
+                try await DatabaseManager.shared.switchDatabase(to: database, for: connId, persist: false)
             } catch {
-                if !Task.isCancelled {
-                    navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
-                }
-                if let tabId = tabManager.selectedTab?.id {
-                    declineTableLoad(for: tabId)
+                guard !Task.isCancelled else { return }
+                navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.publicLogShape, privacy: .public)")
+                if let tabId {
+                    reportRedisSelectionFailure(error, onTab: tabId)
                 }
                 return
             }
             guard !Task.isCancelled else { return }
-            DatabaseManager.shared.updateSession(connId) { session in
-                session.browseDatabase = database
-            }
             toolbarState.currentDatabase = database
-            executeTableTabQueryDirectly()
+            if let tabId, tabManager.selectedTabId != tabId {
+                declineTableLoad(for: tabId)
+            } else {
+                executeTableTabQueryDirectly(viewport: .firstRow)
+            }
 
-            let separator = connection.additionalFields["redisSeparator"] ?? ":"
-            if sidebarViewModel?.redisKeyTreeViewModel == nil {
-                let vm = RedisKeyTreeViewModel()
-                sidebarViewModel?.redisKeyTreeViewModel = vm
-                let sidebarState = SharedSidebarState.forConnection(connId)
-                sidebarState.redisKeyTreeViewModel = vm
-            }
-            Task {
-                await self.sidebarViewModel?.redisKeyTreeViewModel?.loadKeys(
-                    connectionId: connId,
-                    database: database,
-                    separator: separator
-                )
-            }
+            loadRedisKeyTree(databaseIndex: dbIndex)
         }
     }
 
+    /// The session's own database rather than the connection's saved index: a Cluster serves
+    /// database 0 only and records no other, and neither does a server that refused the saved one.
     func initRedisKeyTreeIfNeeded() {
         guard connection.type == .redis else { return }
+        guard SharedSidebarState.forConnection(connectionId).redisKeyTreeViewModel == nil else { return }
+        let browsed = DatabaseManager.shared.session(for: connectionId)?.browseDatabase
+        loadRedisKeyTree(databaseIndex: browsed.flatMap { Int($0) } ?? 0)
+    }
+
+    /// The tree belongs to the connection's shared sidebar state rather than to this window's sidebar
+    /// view model, which may not exist yet, so the load never depends on which window asked for it.
+    private func loadRedisKeyTree(databaseIndex: Int) {
         let sidebarState = SharedSidebarState.forConnection(connectionId)
-        guard sidebarState.redisKeyTreeViewModel == nil else { return }
+        let keyTree = sidebarState.redisKeyTreeViewModel ?? makeRedisKeyTree(in: sidebarState)
+        keyTree.loadKeys(
+            connectionId: connectionId,
+            databaseIndex: databaseIndex,
+            separator: connection.additionalFields["redisSeparator"] ?? ":"
+        )
+    }
 
-        let vm = RedisKeyTreeViewModel()
-        sidebarState.redisKeyTreeViewModel = vm
-        sidebarViewModel?.redisKeyTreeViewModel = vm
-
-        let connId = connectionId
-        let database = toolbarState.currentDatabase
-        let separator = connection.additionalFields["redisSeparator"] ?? ":"
-        Task {
-            await vm.loadKeys(connectionId: connId, database: database, separator: separator)
-        }
+    private func makeRedisKeyTree(in sidebarState: SharedSidebarState) -> RedisKeyTreeViewModel {
+        let keyTree = RedisKeyTreeViewModel()
+        sidebarState.redisKeyTreeViewModel = keyTree
+        return keyTree
     }
 
     // MARK: - Redis Key Tree Navigation
@@ -760,24 +789,20 @@ extension MainContentCoordinator {
         applyBrowseSearch(BrowseSearchState(pattern: "\(prefix)*"))
     }
 
-    func openRedisKey(_ keyName: String, keyType: String) {
-        let escapedKey = keyName.replacingOccurrences(of: "\"", with: "\\\"")
-        let query: String
-        switch keyType.lowercased() {
-        case "hash":
-            query = "HGETALL \"\(escapedKey)\""
-        case "list":
-            query = "LRANGE \"\(escapedKey)\" 0 -1"
-        case "set":
-            query = "SMEMBERS \"\(escapedKey)\""
-        case "zset":
-            query = "ZRANGE \"\(escapedKey)\" 0 -1 WITHSCORES"
-        case "stream":
-            query = "XRANGE \"\(escapedKey)\" - +"
-        default:
-            query = "GET \"\(escapedKey)\""
+    func openRedisKey(_ keyName: String, keyType: String?) {
+        let keyTree = SharedSidebarState.forConnection(connectionId).redisKeyTreeViewModel
+        guard let databaseIndex = keyTree?.shownDatabaseIndex else {
+            navigationLogger.warning("Not opening a Redis key: the key tree shows no database")
+            return
         }
-        tabManager.addTab(initialQuery: query, title: keyName)
-        runQuery()
+        openRedisKey(keyName, keyType: keyType, inDatabase: databaseIndex)
+    }
+
+    func openRedisKey(_ keyName: String, keyType: String?, inDatabase databaseIndex: Int) {
+        tabManager.addTab(
+            initialQuery: RedisKeyTreeCommand.openKey(keyName, keyType: keyType, inDatabase: databaseIndex),
+            title: keyName
+        )
+        runQuery(viewport: .firstRow)
     }
 }

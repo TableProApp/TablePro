@@ -2,31 +2,20 @@
 //  LibSSH2ForwardChannel.swift
 //  TablePro
 //
+//  Compiled into the macOS app and, by file reference, into the iOS app, which defaults to
+//  MainActor isolation. Every top-level declaration states its own isolation for that reason;
+//  scripts/ci/check-ios-shared-isolation.py holds it.
+//
 
 import Foundation
 
 import CLibSSH2
-
-/// Result of a single non-blocking attempt to open a forwarding channel. A failure carries
-/// libssh2's own message because it names the cause the user needs (a refused destination, a
-/// forwarding policy on the server) and is otherwise lost by the time anything can report it.
-internal enum SSHForwardChannelAttempt {
-    case opened(OpaquePointer)
-    case wouldBlock(RelayDirections)
-    case failed(code: Int32, message: String)
-}
-
-/// One non-blocking attempt to open a forwarding channel. Implementations must return
-/// promptly: the caller drives retries and owns the deadline, so an implementation that
-/// blocks would stall every other channel sharing the session.
-internal protocol SSHForwardChannelOpening {
-    func attemptOpen() -> SSHForwardChannelAttempt
-}
+import TableProSSHTransport
 
 /// Bridges `SSHForwardChannelOpening` to libssh2. Each attempt takes the session queue
 /// only long enough to try the open and read back the error and block directions, so a
 /// slow open never holds the queue against relays or keep-alive.
-internal struct LibSSH2ForwardChannelOpener: SSHForwardChannelOpening {
+nonisolated internal struct LibSSH2ForwardChannelOpener: SSHForwardChannelOpening {
     let session: OpaquePointer
     let destination: SSHForwardDestination
     let originPort: Int
@@ -55,7 +44,7 @@ internal struct LibSSH2ForwardChannelOpener: SSHForwardChannelOpening {
 /// Opens the channel that carries forwarded traffic to the destination. The two libssh2
 /// entry points behave identically to the caller: both return a channel that reads and
 /// writes the same way, and both signal "not ready yet" with `LIBSSH2_ERROR_EAGAIN`.
-internal enum LibSSH2ForwardChannel {
+nonisolated internal enum LibSSH2ForwardChannel {
     static func open(
         session: OpaquePointer,
         destination: SSHForwardDestination,

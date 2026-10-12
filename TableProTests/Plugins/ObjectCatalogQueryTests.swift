@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PostgreSQL Object Catalog Queries")
 struct PostgreSQLObjectQueryTests {
     /// information_schema.routines shows only what the caller has a privilege on and repeats a
     /// name once per overload, which is what produced duplicate rows and an arbitrary definition.
@@ -32,6 +31,14 @@ struct PostgreSQLObjectQueryTests {
         #expect(!PostgreSQLCapabilities(serverVersion: 100_000).hasProcedureKind)
         #expect(!PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(0))
             .contains("proisagg"))
+    }
+
+    @Test("The extension test names pg_proc, so a member of another catalog sharing the oid hides nothing")
+    func routineExtensionTestNamesItsCatalog() {
+        let sql = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(160_000))
+        #expect(sql.contains(
+            "WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid AND d.deptype = 'e'"
+        ))
     }
 
     @Test("Aggregates and window functions are excluded because pg_get_functiondef raises on them")
@@ -115,7 +122,6 @@ struct PostgreSQLObjectQueryTests {
     }
 }
 
-@Suite("MySQL Object Catalog Queries")
 struct MySQLObjectQueryTests {
     @Test("The DDL statement is schema-qualified")
     func routineDefinitionIsQualified() {
@@ -175,15 +181,166 @@ struct MySQLObjectQueryTests {
     func literalsAreEscaped() {
         #expect(MySQLObjectQueries.routineList(schema: "it's").contains("'it''s'"))
         #expect(MySQLObjectQueries.triggerList(schema: "app", table: "o'brien").contains("'o''brien'"))
+        #expect(MySQLObjectQueries.catalogTableCount(schema: "o'brien").contains("'o''brien'"))
+        #expect(MySQLObjectQueries.foreignKeyColumns(schema: "o'brien", table: nil).contains("'o''brien'"))
+        #expect(MySQLObjectQueries.referentialActions(schema: "o'brien", table: nil).contains("'o''brien'"))
+    }
+
+    /// Ordering by `CONSTRAINT_NAME` alone left the order to the server. Measured on MariaDB
+    /// 11.4.13, a two-column key came back as `p_tenant` then `p_id`, which the structure editor
+    /// and every comparison then read as the declaration order.
+    @Test("The foreign key column read ends its ordering at ORDINAL_POSITION")
+    func foreignKeyColumnsOrderByOrdinalPosition() {
+        let sql = MySQLObjectQueries.foreignKeyColumns(schema: "app", table: nil)
+        #expect(sql.hasSuffix("ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION"))
+        #expect(sql.contains("REFERENCED_TABLE_NAME IS NOT NULL"))
+        #expect(sql.contains("REFERENCED_TABLE_SCHEMA"))
+    }
+
+    /// ShardingSphere-Proxy 5.5.3 answers any join of two `information_schema` tables with an OK
+    /// packet carrying no columns, and answers each of these two reads correctly on its own.
+    @Test("Neither foreign key read joins a second catalog")
+    func foreignKeyReadsAreUnjoined() {
+        let columns = MySQLObjectQueries.foreignKeyColumns(schema: "app", table: nil)
+        let actions = MySQLObjectQueries.referentialActions(schema: "app", table: nil)
+
+        #expect(!columns.uppercased().contains(" JOIN "))
+        #expect(!actions.uppercased().contains(" JOIN "))
+        #expect(columns.contains("information_schema.KEY_COLUMN_USAGE"))
+        #expect(actions.contains("information_schema.REFERENTIAL_CONSTRAINTS"))
+        #expect(actions.contains("CONSTRAINT_SCHEMA = 'app'"))
+        #expect(actions.contains("DELETE_RULE"))
+        #expect(actions.contains("UPDATE_RULE"))
+    }
+
+    @Test("The table filter is the only difference between the two foreign key scopes")
+    func foreignKeyScopesShareOneBuilder() {
+        #expect(!MySQLObjectQueries.foreignKeyColumns(schema: "app", table: nil).contains("TABLE_NAME = '"))
+        #expect(MySQLObjectQueries.foreignKeyColumns(schema: "app", table: "orders").contains("TABLE_NAME = 'orders'"))
+        #expect(!MySQLObjectQueries.referentialActions(schema: "app", table: nil).contains("TABLE_NAME = '"))
+        #expect(
+            MySQLObjectQueries.referentialActions(schema: "app", table: "orders").contains("TABLE_NAME = 'orders'")
+        )
+    }
+
+    /// One scalar, so a server that answers it with no row at all is telling the driver its catalog
+    /// is not this database's: measured on DBLE 3.23, where a direct MySQL always answers one row.
+    @Test("The visibility probe is a single scalar count over one catalog")
+    func catalogTableCountIsOneScalar() {
+        let sql = MySQLObjectQueries.catalogTableCount(schema: "app")
+        #expect(sql.contains("SELECT COUNT(*)"))
+        #expect(sql.contains("information_schema.TABLES"))
+        #expect(sql.contains("TABLE_SCHEMA = 'app'"))
+        #expect(!sql.uppercased().contains(" JOIN "))
     }
 
     @Test("A backtick in an identifier is doubled")
     func identifiersAreQuoted() {
         #expect(MySQLObjectQueries.quoteIdentifier("we`ird") == "`we``ird`")
     }
+
+    @Test("SHOW FULL TABLES names its database as a quoted identifier")
+    func showFullTablesQuotesTheDatabase() {
+        #expect(MySQLObjectQueries.showFullTables(schema: "app") == "SHOW FULL TABLES FROM `app`")
+        #expect(MySQLObjectQueries.showFullTables(schema: "we`ird") == "SHOW FULL TABLES FROM `we``ird`")
+    }
+
+    /// A caller that names no database means the one the connection is on. Dropping the one it did
+    /// name is what made a read about another database answer about the session's.
+    @Test("A named schema wins over the active database, and only a missing one falls back")
+    func effectiveSchemaPrefersTheNamedDatabase() {
+        #expect(MySQLObjectQueries.effectiveSchema("crm", activeDatabase: "app") == "crm")
+        #expect(MySQLObjectQueries.effectiveSchema(nil, activeDatabase: "app") == "app")
+        #expect(MySQLObjectQueries.effectiveSchema("", activeDatabase: "app") == "app")
+    }
+
+    /// A connection with no database selected has nothing to qualify against, and MySQL takes no
+    /// empty qualifier, so the bare name is the only form left.
+    @Test("With no database selected the name stays unqualified")
+    func effectiveSchemaIsEmptyWithoutADatabase() {
+        let resolved = MySQLObjectQueries.effectiveSchema(nil, activeDatabase: "")
+        #expect(resolved.isEmpty)
+        #expect(MySQLObjectQueries.qualifiedIdentifier(schema: resolved, name: "t") == "`t`")
+    }
+
+    /// Databend answers the same driver protocol and escapes a backtick-bearing name by switching to
+    /// double quotes, so a catalog statement must qualify with the caller's quoter, not this one's.
+    @Test("The qualifier is rendered with the quoter the caller passes")
+    func qualifiedIdentifierUsesTheCallersQuoter() {
+        let shouty: (String) -> String = { "<\($0)>" }
+        #expect(MySQLObjectQueries.qualifiedIdentifier(schema: "crm", name: "t", quote: shouty) == "<crm>.<t>")
+        #expect(MySQLObjectQueries.qualifiedIdentifier(schema: nil, name: "t", quote: shouty) == "<t>")
+        #expect(MySQLObjectQueries.qualifiedIdentifier(schema: "crm", name: "t") == "`crm`.`t`")
+    }
+
+    /// A backslash is an escape character to MySQL unless NO_BACKSLASH_ESCAPES is set, so a literal
+    /// that only doubles the quote leaves a database name ending in one able to escape its own
+    /// closing quote.
+    @Test("A literal escapes the backslash as well as the quote")
+    func literalsEscapeBackslashes() {
+        #expect(MySQLObjectQueries.escapeLiteral("a\\") == "a\\\\")
+        #expect(MySQLObjectQueries.escapeLiteral("it's") == "it''s")
+    }
+
+    /// Measured on 4.1.22: `SHOW FULL TABLES` answers 1064 and `SHOW TABLES` lists the names.
+    @Test("A server without the catalog lists its tables with SHOW TABLES")
+    func legacyTableListing() {
+        #expect(MySQLObjectQueries.showTables(schema: "ju_mijuit_new") == "SHOW TABLES FROM `ju_mijuit_new`")
+        #expect(MySQLObjectQueries.showTables(schema: "we`ird") == "SHOW TABLES FROM `we``ird`")
+        #expect(MySQLObjectQueries.listedTables(schema: "app", hasInformationSchema: true) == "SHOW FULL TABLES FROM `app`")
+        #expect(MySQLObjectQueries.listedTables(schema: "app", hasInformationSchema: false) == "SHOW TABLES FROM `app`")
+    }
+
+    /// Measured on 4.1.22: `SHOW TABLE STATUS ... WHERE` answers 1064 and `LIKE` reads the row.
+    @Test("Before 5.0.3 the status read names its table with LIKE")
+    func tableStatusUsesLikeWithoutWhere() {
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "ju_mijuit_new", table: "apcust", acceptsWhere: false)
+                == "SHOW TABLE STATUS FROM `ju_mijuit_new` LIKE 'apcust'"
+        )
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "ju_mijuit_new", table: "apcust", acceptsWhere: true)
+                == "SHOW TABLE STATUS FROM `ju_mijuit_new` WHERE Name = 'apcust'"
+        )
+        #expect(MySQLObjectQueries.tableStatus(schema: nil, table: "apcust", acceptsWhere: false) == "SHOW TABLE STATUS LIKE 'apcust'")
+        #expect(MySQLObjectQueries.tableStatus(schema: "", table: "apcust", acceptsWhere: true) == "SHOW TABLE STATUS WHERE Name = 'apcust'")
+    }
+
+    @Test("A LIKE pattern escapes its wildcards and the backslash, and nothing else")
+    func likePatternEscapesWildcards() {
+        #expect(MySQLObjectQueries.likePattern(matching: #"a\b%c_d"#) == #"a\\b\%c\_d"#)
+        #expect(MySQLObjectQueries.likePattern(matching: "it's `t`") == "it's `t`")
+    }
+
+    @Test("The LIKE pattern is escaped again as a literal, and the database as an identifier")
+    func tableStatusEscapesHostileNames() {
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "ju_mijuit_new", table: "apcust_send_history", acceptsWhere: false)
+                == #"SHOW TABLE STATUS FROM `ju_mijuit_new` LIKE 'apcust\\_send\\_history'"#
+        )
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "we`ird", table: #"a\b%c_d'e"#, acceptsWhere: false)
+                == #"SHOW TABLE STATUS FROM `we``ird` LIKE 'a\\\\b\\%c\\_d''e'"#
+        )
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "we`ird", table: #"a\b%c_d'e"#, acceptsWhere: true)
+                == #"SHOW TABLE STATUS FROM `we``ird` WHERE Name = 'a\\b%c_d''e'"#
+        )
+    }
+
+    /// `information_schema.PARAMETERS` arrived in 5.5.3; 5.1.73 answers 1109.
+    @Test("Without the PARAMETERS catalog the routine list keeps its shape with a NULL parameter list")
+    func routineListWithoutParameters() {
+        let legacy = MySQLObjectQueries.routineList(schema: "app", includesParameters: false)
+
+        #expect(legacy.contains("NULL AS PARAMETER_LIST"))
+        #expect(!legacy.contains("information_schema.PARAMETERS"))
+        #expect(legacy.contains("FROM information_schema.ROUTINES r"))
+        #expect(legacy.contains("WHERE r.ROUTINE_SCHEMA = 'app'"))
+        #expect(MySQLObjectQueries.routineList(schema: "app", includesParameters: true).contains("information_schema.PARAMETERS"))
+    }
 }
 
-@Suite("MSSQL Object Catalog Queries")
 struct MSSQLObjectQueryTests {
     /// INFORMATION_SCHEMA.ROUTINES.ROUTINE_DEFINITION is nvarchar(4000) and silently truncates,
     /// which looks like a procedure that ends mid-statement.
@@ -232,11 +389,83 @@ struct MSSQLObjectQueryTests {
 
     @Test("Fixed catalog type codes stay plain literals")
     func catalogTypeCodesStayPlain() {
-        #expect(MSSQLObjectQueries.routineList(schema: "dbo").contains("o.type IN ('P', 'FN', 'IF', 'TF')"))
+        #expect(MSSQLObjectQueries.routineList(schema: "dbo")
+            .contains("o.type IN ('P', 'PC', 'X', 'FN', 'IF', 'TF', 'FS', 'FT', 'AF')"))
+    }
+
+    /// A database with CLR routines listed fewer than it held, with nothing saying so.
+    @Test("CLR and extended routines are listed alongside the T-SQL ones")
+    func clrRoutinesAreListed() {
+        for code in ["PC", "FS", "FT", "AF", "X"] {
+            #expect(MSSQLObjectQueries.routineObjectTypes.contains(code))
+        }
+    }
+
+    @Test("Every procedure code reads as a procedure and every function code as a function")
+    func objectTypeMappingCoversClr() {
+        for code in ["P ", "PC", "X "] {
+            #expect(MSSQLObjectQueries.routineKind(forObjectType: code) == "PROCEDURE")
+        }
+        for code in ["FN", "IF", "TF", "FS", "FT", "AF"] {
+            #expect(MSSQLObjectQueries.routineKind(forObjectType: code) == "FUNCTION")
+        }
+    }
+
+    /// Measured on SQL Server 2022: a caller with only SELECT and EXECUTE still sees the
+    /// sys.sql_modules row with a NULL definition, exactly as WITH ENCRYPTION does. Only
+    /// OBJECTPROPERTY tells the two apart, and it answers for that caller too.
+    @Test("Encryption is read from OBJECTPROPERTY, not from a missing definition")
+    func encryptionIsNotInferredFromNullDefinition() {
+        let list = MSSQLObjectQueries.routineList(schema: "dbo")
+        #expect(list.contains("OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS is_encrypted"))
+        #expect(list.contains("AS definition_withheld"))
+        #expect(MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p")
+            .contains("OBJECTPROPERTY(o.object_id, 'IsEncrypted')"))
+    }
+
+    /// Selecting every body to draw a list of names pulled a whole schema's source over the wire
+    /// and dropped it; the reader's own open re-queries the one they asked for.
+    @Test("The listing carries no routine bodies")
+    func listingOmitsBodies() {
+        let list = MSSQLObjectQueries.routineList(schema: "dbo")
+        #expect(!list.contains("m.definition,"))
+        #expect(MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p").contains("m.definition"))
+    }
+
+    /// A CLR routine has no sys.sql_modules row at all, so the inner join this replaced returned
+    /// zero rows and the caller reported a routine sitting in the list as no longer existing.
+    /// Measured against SQL Server 2022 with an object that has no module row: inner join 0 rows,
+    /// left join 1 row.
+    @Test("The definition query survives a routine with no SQL module row")
+    func definitionQueryUsesLeftJoin() {
+        let sql = MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p")
+        #expect(sql.contains("FROM sys.objects o"))
+        #expect(sql.contains("LEFT JOIN sys.sql_modules m"))
+        #expect(!sql.contains("FROM sys.sql_modules"))
+        #expect(sql.contains("o.type"))
+    }
+
+    @Test("Only T-SQL routines are expected to have a SQL source")
+    func sqlSourceIsPerObjectType() {
+        for code in ["P ", "FN", "IF", "TF"] {
+            #expect(MSSQLObjectQueries.routineHasSQLSource(forObjectType: code))
+        }
+        for code in ["PC", "FS", "FT", "AF", "X "] {
+            #expect(!MSSQLObjectQueries.routineHasSQLSource(forObjectType: code))
+        }
+    }
+
+    /// Reporting a CLR routine's language as T-SQL is a claim about a body that is not there.
+    @Test("Language names the runtime the routine actually runs on")
+    func languageFollowsObjectType() {
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "P ") == "T-SQL")
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "TF") == "T-SQL")
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "PC") == "CLR")
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "AF") == "CLR")
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "X ") == "Extended")
     }
 }
 
-@Suite("Oracle Object Catalog Queries")
 struct OracleObjectQueryTests {
     @Test("The trigger list selects the body the old query never asked for")
     func triggerListSelectsBody() {
@@ -252,26 +481,132 @@ struct OracleObjectQueryTests {
         #expect(one.contains("TABLE_NAME = 'EMPLOYEES'"))
     }
 
-    /// DESCRIPTION already holds the name, timing, events, table and WHEN clause. Assembling that
-    /// header from the separate columns is how the old code lost the WHEN clause.
-    @Test("A trigger definition is the description plus the body")
-    func triggerDefinitionUsesDescription() {
-        let definition = OracleObjectQueries.triggerDefinition(
-            description: "\"AUDIT_EMP\"\nBEFORE INSERT ON \"HR\".\"EMPLOYEES\"\nFOR EACH ROW\nWHEN (NEW.SALARY > 0)",
-            body: "BEGIN NULL; END;",
-            name: "AUDIT_EMP"
+    private static func trigger(
+        name: String = "CS_TRG",
+        owner: String? = "PROBE",
+        tableOwner: String? = "PROBE",
+        description: String?,
+        whenClause: String? = nil,
+        actionType: String? = "PL/SQL     ",
+        status: String? = "ENABLED",
+        body: String?
+    ) -> OracleTriggerSource {
+        OracleTriggerSource(
+            name: name, owner: owner, tableOwner: tableOwner, description: description, whenClause: whenClause,
+            actionType: actionType, status: status, body: body
         )
-        #expect(definition.hasPrefix("CREATE OR REPLACE TRIGGER "))
-        #expect(definition.contains("WHEN (NEW.SALARY > 0)"))
-        #expect(definition.hasSuffix("BEGIN NULL; END;"))
+    }
+
+    /// The shapes measured on Oracle 23ai: DESCRIPTION ends before the WHEN clause and holds no
+    /// DISABLE, so both come from their own columns.
+    @Test("A trigger definition writes back its WHEN clause and its disabled state")
+    func triggerDefinitionKeepsWhenAndDisable() {
+        let definition = OracleObjectQueries.triggerDefinition(Self.trigger(
+            description: "trg_b BEFORE INSERT ON t1 FOR EACH ROW FOLLOWS trg_a ",
+            whenClause: "NEW.id > 0",
+            status: "DISABLED",
+            body: "BEGIN :NEW.v := 'b'; END;"
+        ))
+
+        #expect(definition == """
+            CREATE OR REPLACE TRIGGER trg_b BEFORE INSERT ON t1 FOR EACH ROW FOLLOWS trg_a
+            DISABLE
+            WHEN (NEW.id > 0)
+            BEGIN :NEW.v := 'b'; END;
+            """)
+    }
+
+    /// TRIGGER_BODY holds only the call's target and a `;` Oracle added. Written back without CALL
+    /// the create failed with ORA-04079; with the `;` it is stored INVALID.
+    @Test("A CALL trigger is written with CALL and without Oracle's ;")
+    func callTriggerDefinition() {
+        let definition = OracleObjectQueries.triggerDefinition(Self.trigger(
+            description: "trg_call BEFORE INSERT ON t1 FOR EACH ROW\n",
+            actionType: "CALL",
+            body: "log_it(:NEW.id);"
+        ))
+
+        #expect(definition == "CREATE OR REPLACE TRIGGER trg_call BEFORE INSERT ON t1 FOR EACH ROW\nCALL log_it(:NEW.id)")
+    }
+
+    @Test("A compound trigger keeps its body and takes its clauses before it")
+    func compoundTriggerDefinition() {
+        let definition = OracleObjectQueries.triggerDefinition(Self.trigger(
+            description: "trg_c FOR INSERT ON t1 ",
+            status: "DISABLED",
+            body: "COMPOUND TRIGGER\n  BEFORE EACH ROW IS BEGIN NULL; END BEFORE EACH ROW;\nEND trg_c;"
+        ))
+
+        #expect(definition.hasPrefix("CREATE OR REPLACE TRIGGER trg_c FOR INSERT ON t1\nDISABLE\nCOMPOUND TRIGGER"))
+    }
+
+    /// Written as the source spelled it, a sync into another schema created the trigger back in the
+    /// source schema. ALL_SOURCE already gives a procedure without its schema.
+    @Test("The owner's schema is taken out of the header, any other schema stays")
+    func ownerSchemaIsStripped() {
+        let cases: [(header: String, expected: String)] = [
+            ("cmp_src.trg_b BEFORE INSERT ON cmp_src.t1 FOR EACH ROW", "trg_b BEFORE INSERT ON t1 FOR EACH ROW"),
+            (#""CMP_SRC"."TRG_Q" BEFORE UPDATE OF v ON "CMP_SRC"."T1""#, #""TRG_Q" BEFORE UPDATE OF v ON "T1""#),
+            ("trg_logon AFTER LOGON ON cmp_src.SCHEMA", "trg_logon AFTER LOGON ON SCHEMA"),
+            ("trg_x BEFORE INSERT ON other.t1 FOR EACH ROW", "trg_x BEFORE INSERT ON other.t1 FOR EACH ROW"),
+            (#"trg_y BEFORE INSERT ON "cmp_src".t1"#, #"trg_y BEFORE INSERT ON "cmp_src".t1"#),
+            (
+                "trg_z BEFORE INSERT ON other.cmp_src REFERENCING NEW AS cmp_src",
+                "trg_z BEFORE INSERT ON other.cmp_src REFERENCING NEW AS cmp_src"
+            ),
+            ("trg_w -- on cmp_src.t1\n  BEFORE DELETE ON CMP_SRC . t1", "trg_w -- on cmp_src.t1\n  BEFORE DELETE ON t1"),
+        ]
+        for example in cases {
+            #expect(OracleObjectQueries.strippingSchema("CMP_SRC", from: example.header) == example.expected, "\(example.header)")
+        }
+    }
+
+    @Test("A definition read from another schema lands in the schema it runs in")
+    func triggerDefinitionDropsTheOwner() {
+        let definition = OracleObjectQueries.triggerDefinition(Self.trigger(
+            owner: "CMP_SRC",
+            tableOwner: "CMP_SRC",
+            description: "cmp_src.trg_b BEFORE INSERT ON cmp_src.t1 FOR EACH ROW",
+            body: "BEGIN NULL; END;"
+        ))
+
+        #expect(definition == "CREATE OR REPLACE TRIGGER trg_b BEFORE INSERT ON t1 FOR EACH ROW\nBEGIN NULL; END;")
+    }
+
+    /// Listed with HR's table and replayed from HR, an unqualified header would create HR.TRG and
+    /// leave AUDIT.TRG, the trigger that was opened, as it was.
+    @Test("A trigger one schema owns on another schema's table keeps its header as written")
+    func crossSchemaTriggerKeepsItsQualifiers() {
+        let definition = OracleObjectQueries.triggerDefinition(Self.trigger(
+            owner: "AUDIT",
+            tableOwner: "HR",
+            description: "audit.trg BEFORE INSERT ON hr.t FOR EACH ROW",
+            body: "BEGIN NULL; END;"
+        ))
+
+        #expect(definition == "CREATE OR REPLACE TRIGGER audit.trg BEFORE INSERT ON hr.t FOR EACH ROW\nBEGIN NULL; END;")
     }
 
     @Test("A missing description still produces a runnable header")
     func triggerDefinitionFallsBackToName() {
-        let definition = OracleObjectQueries.triggerDefinition(
-            description: nil, body: "BEGIN NULL; END;", name: "AUDIT_EMP"
-        )
+        let definition = OracleObjectQueries.triggerDefinition(Self.trigger(
+            name: "AUDIT_EMP", description: nil, body: "BEGIN NULL; END;"
+        ))
         #expect(definition.hasPrefix("CREATE OR REPLACE TRIGGER \"AUDIT_EMP\""))
+    }
+
+    @Test("The trigger list reads ACTION_TYPE, and TRIGGER_BODY stays the last column because it is a LONG")
+    func triggerListSelectsActionType() {
+        let sql = OracleObjectQueries.triggerList(schema: "HR", table: nil)
+        #expect(sql.contains("ACTION_TYPE,\n    TABLE_OWNER,\n    TRIGGER_BODY\nFROM SYS.ALL_TRIGGERS"))
+    }
+
+    /// Unqualified, a trigger another schema owns is looked up in the current schema instead.
+    @Test("A trigger drop names its schema only when that is not the current one")
+    func dropTriggerQualification() {
+        #expect(OracleObjectQueries.dropTrigger(name: "T", schema: "HR", currentSchema: "HR") == #"DROP TRIGGER "T""#)
+        #expect(OracleObjectQueries.dropTrigger(name: "T", schema: "APP", currentSchema: "HR") == #"DROP TRIGGER "APP"."T""#)
+        #expect(OracleObjectQueries.dropTrigger(name: "T", schema: nil, currentSchema: "HR") == #"DROP TRIGGER "T""#)
     }
 
     @Test("Timing and orientation are read out of the trigger type")

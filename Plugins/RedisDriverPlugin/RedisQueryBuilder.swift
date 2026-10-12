@@ -16,13 +16,14 @@ struct RedisQueryBuilder {
     /// to completion (bounded) and honors LIMIT/OFFSET, so paging returns every key.
     func buildBaseQuery(
         namespace: String,
+        database: Int? = nil,
         sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
         columns: [String] = [],
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
         let pattern = namespace.isEmpty ? nil : "\(namespace)*"
-        return buildKeyBrowseQuery(pattern: pattern, typeScope: nil, limit: limit, offset: offset)
+        return buildKeyBrowseQuery(pattern: pattern, typeScope: nil, database: database, limit: limit, offset: offset)
     }
 
     /// Build a key-browse command from filter tuples.
@@ -31,23 +32,50 @@ struct RedisQueryBuilder {
     /// Legacy Key operators (CONTAINS, STARTS WITH, ...) still resolve to an escaped glob.
     func buildFilteredQuery(
         namespace: String,
+        database: Int? = nil,
         filters: [(column: String, op: String, value: String)],
         logicMode: String = "and",
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
-        let pattern = extractBrowsePattern(from: filters, namespace: namespace)
-        let typeScope = extractTypeScope(from: filters)
+        let scope = browseScope(filters: filters, namespace: namespace)
 
-        guard pattern != nil || typeScope != nil else {
-            return buildBaseQuery(namespace: namespace, limit: limit, offset: offset)
+        guard scope.pattern != nil || scope.typeScope != nil else {
+            return buildBaseQuery(namespace: namespace, database: database, limit: limit, offset: offset)
         }
 
-        return buildKeyBrowseQuery(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
+        return buildKeyBrowseQuery(
+            pattern: scope.pattern, typeScope: scope.typeScope, database: database, limit: limit, offset: offset
+        )
     }
 
-    func buildKeyBrowseQuery(pattern: String?, typeScope: String?, limit: Int, offset: Int) -> String {
+    /// The SCAN `MATCH` glob and `TYPE` scope a filtered browse lists keys by, both nil when the
+    /// filters narrow nothing. The exact row count reads the same pair, so it counts the keys the
+    /// grid would list rather than a reading of the filters of its own.
+    func browseScope(
+        filters: [(column: String, op: String, value: String)],
+        namespace: String = ""
+    ) -> (pattern: String?, typeScope: String?) {
+        (extractBrowsePattern(from: filters, namespace: namespace), extractTypeScope(from: filters))
+    }
+
+    /// Streamed, so the whole database is read and `LIMIT` is never consulted.
+    func buildExportQuery(database: Int?) -> String {
+        guard let database else { return "KEYBROWSE" }
+        return "KEYBROWSE DB \(database)"
+    }
+
+    func buildKeyBrowseQuery(
+        pattern: String?,
+        typeScope: String?,
+        database: Int? = nil,
+        limit: Int,
+        offset: Int
+    ) -> String {
         var command = "KEYBROWSE"
+        if let database {
+            command += " DB \(database)"
+        }
         if let pattern, !pattern.isEmpty {
             command += " MATCH \"\(quoteForCommand(pattern))\""
         }
@@ -67,7 +95,7 @@ struct RedisQueryBuilder {
         if namespace.isEmpty {
             return "DBSIZE"
         }
-        return "SCAN 0 MATCH \"\(namespace)*\" COUNT 10000"
+        return "SCAN 0 MATCH \"\(quoteForCommand(escapeGlobChars(namespace)))*\" COUNT 10000"
     }
 
     // MARK: - Private Helpers

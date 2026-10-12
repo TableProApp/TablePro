@@ -3,8 +3,9 @@
 //  TablePro
 //
 
-import CodeEditTextView
 import Foundation
+import TableProSQLGrammar
+import TableProTextEngine
 
 internal enum InvisibleCharacterRemover {
     private static let lineBreaks: Set<UInt32> = [0x85, 0x2028, 0x2029]
@@ -14,14 +15,14 @@ internal enum InvisibleCharacterRemover {
         in text: NSString,
         scope: NSRange,
         skippingLiteralsAndComments: Bool,
-        rules: SQLLexicalRules,
+        grammar: SQLLexicalGrammar,
         lineEnding: String
     ) -> [TextReplacement] {
         let end = min(NSMaxRange(scope), text.length)
         var replacements: [TextReplacement] = []
         var index = max(scope.location, 0)
         while index < end {
-            if skippingLiteralsAndComments, let skipTo = SQLNonCodeSpan.end(at: index, in: text, rules: rules) {
+            if skippingLiteralsAndComments, let skipTo = SQLNonCodeSpan.end(at: index, in: text, grammar: grammar) {
                 index = skipTo
                 continue
             }

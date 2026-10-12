@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-enum PostgreSQLTextArray {
+nonisolated enum PostgreSQLTextArray {
     static func elements(_ text: String?) -> [String?] {
         guard let text, let parsed = PostgresArrayLiteralCodec.parse(text) else { return [] }
         return parsed.map { element in

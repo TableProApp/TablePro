@@ -48,10 +48,49 @@ extension MainContentCoordinator {
     }
 
     private func loadSchemaForNewSession() {
-        Task { @MainActor in
-            self.setupPluginDriver()
-            await self.loadSchemaIfNeeded()
+        setupPluginDriver()
+        startSchemaLoad()
+    }
+
+    /// The schema half of an activation, which runs on every appearance of this connection's
+    /// content, a connection switch included. A catalog and an autocomplete provider that are
+    /// already loaded are left alone, so coming back to a connection queries nothing.
+    func loadSchemaOnActivation() {
+        let scope = services.databaseManager.browseScope(for: connectionId)
+        let action = SchemaLoadPolicy.activationAction(
+            hasLiveDriver: hasLiveDriver,
+            catalog: services.schemaService.state(for: connectionId),
+            autocompletePopulated: scope.map { services.schemaProviderRegistry.isPopulated($0) } ?? false,
+            loadInFlight: schemaLoadTask != nil
+        )
+        Self.logger.info(
+            "[schema] activation connId=\(self.connectionId, privacy: .public) action=\(String(describing: action), privacy: .public)"
+        )
+        switch action {
+        case .none:
+            return
+        case .awaitConnection:
+            armPostConnectSchemaLoad()
+        case .load:
+            startSchemaLoad()
         }
+    }
+
+    /// Starts the schema load, or joins the one already running, and returns it. Every caller
+    /// shares one load, so opening a connection no longer fetches every column twice, once for the
+    /// view restoring its tabs and once for the view appearing.
+    @discardableResult
+    func startSchemaLoad() -> Task<Void, Never> {
+        if let schemaLoadTask { return schemaLoadTask }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.loadSchema()
+            self.schemaLoadTask = nil
+            self.schemaLoadDriver = nil
+        }
+        schemaLoadTask = task
+        schemaLoadDriver = services.databaseManager.driver(for: connectionId)
+        return task
     }
 
     func loadSchema() async {
@@ -88,9 +127,9 @@ extension MainContentCoordinator {
                 armPostConnectSchemaLoad()
             case .surface(let message):
                 Self.logger.error(
-                    "[schema] initial load failed connId=\(self.connectionId, privacy: .public) error=\(message, privacy: .public)"
+                    "[schema] initial load failed connId=\(self.connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public) \(message, privacy: .private)"
                 )
-                services.schemaService.markLoadFailed(connectionId: connectionId, message: message)
+                services.schemaService.markLoadFailed(connectionId: connectionId, message: message, scope: scope)
             }
             return
         }
@@ -100,16 +139,10 @@ extension MainContentCoordinator {
         )
         await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
         pruneStaleSidebarState()
-        prefetchForeignKeys(scope: scope)
     }
 
-    /// The user cannot open a table before the object list they click it in has loaded, so starting
-    /// here puts the fetch ahead of the first table open without competing with it. On a poolable
-    /// engine `.bulk` also keeps it off the connection the table's own metadata will use.
-    ///
-    /// The capability is read from the session driver rather than from inside the lease, because a
-    /// pooled lease builds and connects a whole new driver: asking there would open a second server
-    /// connection on every engine that then declines, and throw the answer away.
+    /// `.bulk` keeps the read off the connection the table's own metadata uses. The capability is
+    /// read from the session driver: a pooled lease would connect a new driver only to learn the engine declines.
     func prefetchForeignKeys(scope: DatabaseScope) {
         guard services.databaseManager.driver(for: connectionId)?.providesBulkForeignKeyFetch == true else { return }
         SchemaForeignKeyStore.shared.prefetch(scope: scope) { [services] in
@@ -122,7 +155,7 @@ extension MainContentCoordinator {
                 }
             } catch {
                 Self.logger.info(
-                    "[fk] schema foreign key prefetch failed: \(error.localizedDescription, privacy: .public)"
+                    "[fk] schema foreign key prefetch failed: \(error.publicLogShape, privacy: .public)"
                 )
                 return nil
             }
@@ -147,6 +180,8 @@ extension MainContentCoordinator {
             tableMetadata = entry.metadata
             return
         }
+        // Only the inspector draws these numbers; it reads them when it comes on screen.
+        guard trailingPaneState?.inspector.isOnScreen == true else { return }
         guard let scope = selectedTabScope else {
             Self.logger.error("Skipped table metadata load: no database bound to the selected tab")
             return
@@ -166,7 +201,7 @@ extension MainContentCoordinator {
             guard tabManager.selectedTabId == tab.id else { return }
             tableMetadata = metadata
         } catch {
-            Self.logger.error("Failed to load table metadata: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load table metadata: \(error.publicLogShape, privacy: .public)")
         }
     }
 }

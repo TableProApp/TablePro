@@ -3,12 +3,12 @@
 //  TableProTests
 //
 
-import CodeEditTextView
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
+import TableProTextEngine
 import Testing
 
-@Suite("Statement blank characters")
 struct StatementBlankTests {
     private static func label(_ value: UInt32) -> String {
         String(format: "U+%04X", value)

@@ -87,6 +87,8 @@ final class DataGridColumnPool {
         isEditable: Bool,
         hiddenColumnNames: Set<String>,
         firstClickSortDirection: SortDirection,
+        supportsColumnSort: Bool = true,
+        supportsValueFilter: Bool = true,
         widthCalculator: (String, Int) -> CGFloat
     ) -> Bool {
         attach(to: tableView)
@@ -116,7 +118,9 @@ final class DataGridColumnPool {
                     comment: comment,
                     width: resolvedWidth,
                     isEditable: isEditable,
-                    firstClickSortDirection: firstClickSortDirection
+                    firstClickSortDirection: firstClickSortDirection,
+                    supportsColumnSort: supportsColumnSort,
+                    supportsValueFilter: supportsValueFilter
                 )
                 let hidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
                 if hidden {
@@ -261,7 +265,9 @@ final class DataGridColumnPool {
         comment: String?,
         width: CGFloat,
         isEditable: Bool,
-        firstClickSortDirection: SortDirection
+        firstClickSortDirection: SortDirection,
+        supportsColumnSort: Bool = true,
+        supportsValueFilter: Bool = true
     ) {
         if !(column.headerCell is SortableHeaderCell) || column.headerCell.stringValue != name {
             let cell = SortableHeaderCell(textCell: name)
@@ -269,6 +275,7 @@ final class DataGridColumnPool {
             cell.alignment = column.headerCell.alignment
             column.headerCell = cell
         }
+        (column.headerCell as? SortableHeaderCell)?.supportsValueFilter = supportsValueFilter
 
         var tooltip: String
         if let typeName = columnType?.rawType ?? columnType?.displayName {
@@ -293,6 +300,12 @@ final class DataGridColumnPool {
         }
         if column.isEditable != isEditable {
             column.isEditable = isEditable
+        }
+        guard supportsColumnSort else {
+            if column.sortDescriptorPrototype != nil {
+                column.sortDescriptorPrototype = nil
+            }
+            return
         }
         let prototypeAscending = firstClickSortDirection == .ascending
         if column.sortDescriptorPrototype?.key != name

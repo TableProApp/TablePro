@@ -27,6 +27,8 @@ struct AnalyticsHeartbeatPayloadTests {
         var connectionAttemptedAt: Date?
         var connectionSucceededAt: Date?
         var firstQueryExecutedAt: Date?
+        var updateInstallMode: String?
+        var updateCheckInterval: Int?
     }
 
     private func makeService(provider: StubProvider) -> AnalyticsHeartbeatService {
@@ -51,7 +53,9 @@ struct AnalyticsHeartbeatPayloadTests {
             hasLicense: provider.hasLicense,
             connectionAttemptedAt: provider.connectionAttemptedAt,
             connectionSucceededAt: provider.connectionSucceededAt,
-            firstQueryExecutedAt: provider.firstQueryExecutedAt
+            firstQueryExecutedAt: provider.firstQueryExecutedAt,
+            updateInstallMode: provider.updateInstallMode,
+            updateCheckInterval: provider.updateCheckInterval
         )
     }
 
@@ -127,5 +131,85 @@ struct AnalyticsHeartbeatPayloadTests {
 
         #expect(baseSig != withSig, "Signature must change when payload contents change")
         #expect(baseBody != withTimestampBody, "Body must differ when a new timestamp is included")
+    }
+}
+
+@MainActor
+@Suite("AnalyticsHeartbeatService update fields")
+struct AnalyticsUpdateFieldTests {
+    private final class StubProvider: AnalyticsEnvironmentProvider {
+        var machineId = "machine-1"
+        var appVersion: String? = "1.0.0"
+        var osVersion = "macOS 15.1.0"
+        var architecture = "arm64"
+        var platform = "macos"
+        var locale = "en"
+        var isAnalyticsEnabled = true
+        var hasLicense = false
+        var activeDatabaseTypes: [String] = []
+        var activeConnectionCount = 0
+        var hmacSecret: String?
+    }
+
+    private func encoded(mode: String?, interval: Int?) throws -> [String: Any] {
+        let payload = AnalyticsPayload(
+            machineId: "machine-1",
+            platform: "macos",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.1.0",
+            architecture: "arm64",
+            locale: "en",
+            databaseTypes: nil,
+            connectionCount: 0,
+            hasLicense: false,
+            updateInstallMode: mode,
+            updateCheckInterval: interval
+        )
+        let service = AnalyticsHeartbeatService(
+            provider: StubProvider(),
+            heartbeatInterval: 60,
+            initialDelay: 60,
+            cooldownInterval: 0
+        )
+        let data = try service.makeEncodedBodyForTesting(payload: payload)
+        let object = try JSONSerialization.jsonObject(with: data)
+        return try #require(object as? [String: Any])
+    }
+
+    /// The whole point of these two fields is measuring whether a default that was flipped for
+    /// every existing install was accepted, so the wire keys have to match what the backend reads.
+    @Test("Encodes the update fields in snake_case")
+    func encodesUpdateFields() throws {
+        let body = try encoded(mode: "automatic", interval: 86_400)
+
+        #expect(body["update_install_mode"] as? String == "automatic")
+        #expect(body["update_check_interval"] as? Int == 86_400)
+    }
+
+    @Test("Omits both when the platform has no updater")
+    func omitsWhenAbsent() throws {
+        let body = try encoded(mode: nil, interval: nil)
+
+        #expect(body["update_install_mode"] == nil)
+        #expect(body["update_check_interval"] == nil)
+    }
+
+    /// Checks off means there is no interval to report, and the mode still says so.
+    @Test("Reports the mode with no interval when checks are off")
+    func reportsModeWithoutInterval() throws {
+        let body = try encoded(mode: "off", interval: nil)
+
+        #expect(body["update_install_mode"] as? String == "off")
+        #expect(body["update_check_interval"] == nil)
+    }
+
+    /// A provider that implements neither gets nil from the protocol default, which is what keeps
+    /// the iOS provider compiling untouched.
+    @Test("A provider that implements neither reports neither")
+    func defaultsToNil() {
+        let provider = StubProvider()
+
+        #expect(provider.updateInstallMode == nil)
+        #expect(provider.updateCheckInterval == nil)
     }
 }

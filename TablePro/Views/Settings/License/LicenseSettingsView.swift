@@ -10,7 +10,7 @@ import SwiftUI
 /// The layout is keyed on holding a license, and entitlement decides only whether a renewal field
 /// appears alongside it. A lapsed license still has seats to release and billing to open.
 struct LicenseSettingsView: View {
-    private let licenseManager = LicenseManager.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
 
     private var notice: LicenseNotice? {
         LicensePresentation.notice(
@@ -92,36 +92,20 @@ struct LicenseSettingsView: View {
     /// fact appears once, and only facts somebody acts on appear at all.
     private func detailsSection(_ license: License) -> some View {
         Section {
-            LabeledContent(String(localized: "License key")) {
-                HStack(spacing: 8) {
-                    /// Enough of the key to tell which licence this is, and no more. A full-length
-                    /// mask is the same secret-shaped run of dots for everyone, so it earned its
-                    /// width by being unreadable and then lost the end of itself to truncation.
-                    Text(LicensePresentation.maskedKey(license.key))
-                        .font(.system(.body, design: .monospaced))
-                        .lineLimit(1)
-                        .accessibilityLabel(Text(String(localized: "License key, hidden")))
-
-                    Button(String(localized: "Copy Key")) {
-                        ClipboardService.shared.writeSecretText(license.key)
-                    }
-                    .controlSize(.small)
-                    .accessibilityIdentifier("license-copy-key")
-                }
-            }
+            LicenseKeyRow(key: license.key)
         }
     }
 
     private var actionsSection: some View {
         Section {
-            Link(String(localized: "Manage Billing"), destination: SupportLinks.account)
+            Link(String(localized: "Manage Account"), destination: SupportLinks.account)
 
             Button(String(localized: "Deactivate on This Mac…"), role: .destructive) {
                 Task { @MainActor in
                     let confirmed = await AlertHelper.confirmDestructive(
                         title: String(localized: "Deactivate this license?"),
                         message: String(
-                            localized: "Pro features stop on this Mac right away. You can activate this license again later."
+                            localized: "Paid features stop on this Mac right away. You can activate this license again later."
                         ),
                         confirmButton: String(localized: "Deactivate"),
                         cancelButton: String(localized: "Cancel")
@@ -153,7 +137,7 @@ struct LicenseSettingsView: View {
         Section {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Unlock the Pro features")
+                    Text("Unlock the paid features")
                         .font(.headline)
 
                     Text("Everything else keeps working without a license, with nothing counting down.")
@@ -200,6 +184,37 @@ struct LicenseSettingsView: View {
             expiry: license.expiresAt.map { $0.formatted(date: .abbreviated, time: .omitted) }
         )
     }}
+
+/// The license key, masked, with Copy for the real one.
+struct LicenseKeyRow: View {
+    let key: String
+
+    var body: some View {
+        LabeledContent(String(localized: "License key")) {
+            HStack(spacing: 8) {
+                /// Enough of the key to tell which licence this is, and no more. A full-length
+                /// mask is the same secret-shaped run of dots for everyone, so it earned its
+                /// width by being unreadable and then lost the end of itself to truncation.
+                Text(LicensePresentation.maskedKey(key))
+                    .font(.system(.body, design: .monospaced))
+                    .lineLimit(1)
+                    /// Not `.accessibilityLabel`. On a line-limited `Text` in a `LabeledContent`
+                    /// shown after the first render, SwiftUI reads that label back through the
+                    /// platform element it set it on, which calls the label again until the stack
+                    /// overflows. A replacement element carries no platform element.
+                    .accessibilityRepresentation {
+                        Text(String(localized: "License key, hidden"))
+                    }
+
+                Button(String(localized: "Copy Key")) {
+                    ClipboardService.shared.writeSecretText(key)
+                }
+                .controlSize(.small)
+                .accessibilityIdentifier("license-copy-key")
+            }
+        }
+    }
+}
 
 /// A degraded state, stated where it applies rather than floated over the pane.
 private struct LicenseNoticeSection: View {

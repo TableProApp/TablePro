@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("SidebarObjectKind visibility")
 struct SidebarObjectKindTests {
     private let everyKind: [SidebarObjectKind: Int] = [
         .table: 2, .view: 1, .materializedView: 1, .foreignTable: 1,

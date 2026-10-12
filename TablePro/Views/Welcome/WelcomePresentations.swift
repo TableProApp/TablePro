@@ -8,16 +8,16 @@ import TableProImport
 import UniformTypeIdentifiers
 
 internal struct WelcomePresentations: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
     let onSheetDismiss: () -> Void
 
     func body(content: Content) -> some View {
         content
             .modifier(WelcomeDeletionAlerts(vm: vm))
             .sheet(item: $vm.activeSheet, onDismiss: {
-                if let count = vm.pendingImportResultCount {
-                    vm.importResultCount = count
-                    vm.pendingImportResultCount = nil
+                if let outcome = vm.pendingImportOutcome {
+                    vm.importOutcome = outcome
+                    vm.pendingImportOutcome = nil
                 }
                 onSheetDismiss()
                 WindowOpener.shared.openStagedConnectionForm()
@@ -42,7 +42,7 @@ internal struct WelcomePresentations: ViewModifier {
                     vm.pluginDiagnostic = nil
                 }
             }
-            .modifier(WelcomeGroupAlerts(vm: vm))
+            .modifier(WelcomeLibraryAlerts(vm: vm))
             .alert(
                 String(localized: "Connection Failed"),
                 isPresented: $vm.showConnectionError
@@ -79,24 +79,30 @@ internal struct WelcomePresentations: ViewModifier {
     @ViewBuilder
     private func activeSheetContent(_ sheet: WelcomeActiveSheet) -> some View {
         switch sheet {
-        case .newGroup(let parentId):
-            CreateGroupSheet(parentId: parentId) { name, color, pid in
-                try vm.createGroup(name: name, color: color, parentId: pid)
+        case .newGroup(let request):
+            GroupEditorSheet(mode: .create(parentId: request.parentId), groups: vm.groups) { draft in
+                try vm.createGroup(
+                    name: draft.name,
+                    color: draft.color,
+                    iconName: draft.iconName,
+                    parentId: draft.parentId,
+                    moving: request.movingConnectionIds
+                )
+            }
+        case .editGroup(let group):
+            GroupEditorSheet(mode: .edit(group), groups: vm.groups) { draft in
+                try vm.saveGroup(id: group.id, from: ConnectionGroupFields(group), to: draft)
             }
         case .activation:
             LicenseActivationSheet()
         case .importFile(let url):
-            ConnectionImportSheet(fileURL: url) { count in
-                vm.pendingImportResultCount = count
-                vm.activeSheet = nil
-            }
+            ConnectionImportSheet(fileURL: url) { vm.finishImport($0) }
         case .exportConnections(let conns):
             ConnectionExportOptionsSheet(connections: conns)
         case .importFromApp:
-            ImportFromAppSheet { count in
-                vm.pendingImportResultCount = count
-                vm.activeSheet = nil
-            }
+            ImportFromAppSheet { vm.finishImport($0) }
+        case .importFromAWS:
+            ImportFromAWSSheet { vm.finishImport($0) }
         case .projectFolderScan(let url):
             ProjectFolderScanSheet(
                 rootURL: url,
@@ -109,16 +115,14 @@ internal struct WelcomePresentations: ViewModifier {
                     vm.openProjectFolder()
                 }
             )
-        case .deeplinkImport(let exportable):
-            DeeplinkImportSheet(connection: exportable) {
-                vm.loadConnections()
-            }
+        case .deeplinkImport(let bundle):
+            DeeplinkImportSheet(bundle: bundle) { vm.finishImport($0) }
         }
     }
 }
 
 private struct WelcomeDeletionAlerts: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
         content
@@ -155,8 +159,8 @@ private struct WelcomeDeletionAlerts: ViewModifier {
     }
 }
 
-private struct WelcomeGroupAlerts: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+private struct WelcomeLibraryAlerts: ViewModifier {
+    @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
         content
@@ -175,23 +179,16 @@ private struct WelcomeGroupAlerts: ViewModifier {
                     Text("Are you sure you want to delete the group \"\(group.name)\" and its subgroups? Their connections will be moved to the top level.")
                 }
             }
-            .alert(String(localized: "Rename Group"), isPresented: $vm.showRenameGroupAlert) {
-                TextField(String(localized: "Group name"), text: $vm.renameGroupName)
-                Button(String(localized: "Rename")) { vm.confirmRenameGroup() }
-                Button(String(localized: "Cancel"), role: .cancel) { vm.renameGroupTarget = nil }
-            } message: {
-                Text("Enter a new name for the group.")
-            }
             .alert(
-                String(localized: "Group Not Updated"),
+                String(localized: "Change Not Saved"),
                 isPresented: Binding(
-                    get: { vm.groupErrorMessage != nil },
-                    set: { if !$0 { vm.groupErrorMessage = nil } }
+                    get: { vm.libraryErrorMessage != nil },
+                    set: { if !$0 { vm.libraryErrorMessage = nil } }
                 )
             ) {
-                Button(String(localized: "OK")) { vm.groupErrorMessage = nil }
+                Button(String(localized: "OK")) { vm.libraryErrorMessage = nil }
             } message: {
-                if let message = vm.groupErrorMessage {
+                if let message = vm.libraryErrorMessage {
                     Text(message)
                 }
             }
@@ -199,34 +196,29 @@ private struct WelcomeGroupAlerts: ViewModifier {
 }
 
 private struct WelcomeImportResultAlert: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
-        content
+        let outcomeMessage = vm.importOutcome.map { ImportOutcomeMessage($0) }
+        return content
             .alert(
-                (vm.importResultCount ?? 0) > 0
-                    ? String(localized: "Import Complete")
-                    : String(localized: "No Connections Imported"),
+                outcomeMessage?.title ?? "",
                 isPresented: Binding(
-                    get: { vm.importResultCount != nil },
-                    set: { if !$0 { vm.importResultCount = nil } }
+                    get: { vm.importOutcome != nil },
+                    set: { if !$0 { vm.importOutcome = nil } }
                 )
             ) {
-                Button(String(localized: "OK")) { vm.importResultCount = nil }
+                Button(String(localized: "OK")) { vm.importOutcome = nil }
             } message: {
-                if let count = vm.importResultCount, count > 0 {
-                    Text(count == 1
-                        ? String(localized: "1 connection was imported.")
-                        : String(format: String(localized: "%d connections were imported."), count))
-                } else {
-                    Text(String(localized: "All selected connections were skipped."))
+                if let outcomeMessage {
+                    Text(verbatim: outcomeMessage.message)
                 }
             }
     }
 }
 
 private struct WelcomeConnectionCreationOverlays: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
         content

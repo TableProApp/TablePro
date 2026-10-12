@@ -6,10 +6,18 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 extension ElasticsearchPluginDriver {
     func execute(query: String) async throws -> PluginQueryResult {
+        try await execute(query: query, length: .display)
+    }
+
+    private func execute(
+        query: String,
+        length: ElasticsearchMappingFlattener.CellLength
+    ) async throws -> PluginQueryResult {
         let startTime = Date()
         guard let conn = connection else { throw ElasticsearchError.notConnected }
 
@@ -27,14 +35,131 @@ extension ElasticsearchPluginDriver {
         }
 
         if ElasticsearchQueryBuilder.isTaggedQuery(trimmed) {
-            return try await executeSearch(trimmed, conn: conn, startTime: startTime)
+            return try await executeSearch(trimmed, conn: conn, length: length, startTime: startTime)
         }
 
         if ElasticsearchStatementGenerator.isTaggedStatement(trimmed) {
             return try await executeWrite(trimmed, conn: conn, startTime: startTime)
         }
 
-        return try await executeConsole(trimmed, conn: conn, startTime: startTime)
+        return try await executeConsole(trimmed, conn: conn, length: length, startTime: startTime)
+    }
+
+    // MARK: - Export
+
+    /// Exports one index by paging it, yielding each batch instead of holding the whole index.
+    ///
+    /// The protocol default runs `execute` once and buffers the entire result, which is fine for a
+    /// grid page and not for an export. Anything that is not an export tag keeps that default.
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let index = ElasticsearchOperations.decodeExport(query) else {
+            return defaultStreamRows(query: query)
+        }
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            let task = Task {
+                do {
+                    try await self.streamIndex(index, continuation: continuation)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+
+    /// A point-in-time pins the index for the whole export, so a document written while it runs
+    /// cannot shift the sort and be exported twice or skipped. `search_after` walks it, which is the
+    /// only way past the 10,000 `max_result_window` ceiling.
+    private func streamIndex(
+        _ index: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        guard let conn = connection else { throw ElasticsearchError.notConnected }
+        let mappingColumns = try await cachedMappingColumns(index)
+        let fields = ElasticsearchMappingFlattener.fieldInfo(from: mappingColumns)
+        let nestedParents = ElasticsearchMappingFlattener.nestedParents(from: mappingColumns)
+        let parsed = ElasticsearchParsedSearch(
+            index: index, from: 0, size: Self.deepPageBatchSize, sorts: [], filters: [], logicMode: "AND"
+        )
+
+        let pit = try await conn.openPointInTime(index: index, keepAlive: Self.pitKeepAlive)
+        defer { Task { await conn.closePointInTime(id: pit) } }
+
+        var columns: [String]?
+        var searchAfter: [Any]?
+        while true {
+            try Task.checkCancellation()
+            var body = ElasticsearchQueryBuilder.searchBody(
+                for: parsed, fields: fields, size: Self.deepPageBatchSize,
+                tiebreaker: true, searchAfter: searchAfter, supportsCaseInsensitive: supportsCaseInsensitiveSearch
+            )
+            body["pit"] = ["id": pit, "keep_alive": Self.pitKeepAlive]
+            let response = try await conn.search(index: nil, body: body)
+            let hits = extractHits(response)
+            guard !hits.isEmpty else { break }
+
+            /// The columns are settled once, from the mapping plus the first batch, because a
+            /// stream has one header and a later batch holding a field the first did not must not
+            /// widen it.
+            if columns == nil {
+                let resolved = ElasticsearchMappingFlattener.columns(forHits: hits, mappingColumns: mappingColumns)
+                columns = resolved
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: resolved,
+                    columnTypeNames: resolved.map { exportTypeName($0, fields: fields) },
+                    estimatedRowCount: nil
+                )))
+            }
+            if let resolved = columns {
+                continuation.yield(.rows(ElasticsearchMappingFlattener.rows(
+                    forHits: hits, columns: resolved, nestedParents: nestedParents, length: .whole
+                )))
+            }
+
+            searchAfter = hits.last?["sort"] as? [Any]
+            if hits.count < Self.deepPageBatchSize || searchAfter == nil { break }
+        }
+
+        if columns == nil {
+            let resolved = ElasticsearchMappingFlattener.columns(forHits: [], mappingColumns: mappingColumns)
+            continuation.yield(.header(PluginStreamHeader(
+                columns: resolved,
+                columnTypeNames: resolved.map { exportTypeName($0, fields: fields) },
+                estimatedRowCount: nil
+            )))
+        }
+    }
+
+    private func exportTypeName(_ column: String, fields: [String: ElasticsearchFieldInfo]) -> String {
+        switch column {
+        case ElasticsearchMappingFlattener.idColumn, ElasticsearchMappingFlattener.indexColumn:
+            return "keyword"
+        case ElasticsearchMappingFlattener.scoreColumn:
+            return "float"
+        default:
+            return fields[column]?.type ?? ""
+        }
+    }
+
+    private func defaultStreamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            let task = Task {
+                do {
+                    let result = try await self.execute(query: query, length: .whole)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames,
+                        estimatedRowCount: nil
+                    )))
+                    if !result.rows.isEmpty { continuation.yield(.rows(result.rows)) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
     }
 
     // MARK: - Search
@@ -42,6 +167,7 @@ extension ElasticsearchPluginDriver {
     private func executeSearch(
         _ query: String,
         conn: ElasticsearchConnection,
+        length: ElasticsearchMappingFlattener.CellLength,
         startTime: Date
     ) async throws -> PluginQueryResult {
         let (base, appendedSorts) = ElasticsearchQueryBuilder.extractOrderBy(query)
@@ -57,9 +183,9 @@ extension ElasticsearchPluginDriver {
         let fields = ElasticsearchMappingFlattener.fieldInfo(from: mappingColumns)
 
         Self.logger.debug("""
-        executeSearch index=\(parsed.index, privacy: .public) from=\(parsed.from) size=\(parsed.size) \
+        executeSearch index=\(parsed.index, privacy: .private(mask: .hash)) from=\(parsed.from) size=\(parsed.size) \
         logic=\(parsed.logicMode, privacy: .public) \
-        filters=\(parsed.filters.map { "\($0.column) \($0.op) \($0.value)" }.joined(separator: " | "), privacy: .public) \
+        filters=\(parsed.filters.map { "\($0.column) \($0.op) \($0.value)" }.joined(separator: " | "), privacy: .private) \
         sorts=\(parsed.sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .public) \
         fieldInfoCount=\(fields.count) \
         fields=\(fields.map { "\($0.key):\($0.value.type)\($0.value.hasKeywordSubfield ? "+kw" : "")" }.sorted().joined(separator: ","), privacy: .public)
@@ -67,7 +193,7 @@ extension ElasticsearchPluginDriver {
 
         let hits = try await fetchHits(index: parsed.index, parsed: parsed, fields: fields, conn: conn)
 
-        return renderHits(hits, mappingColumns: mappingColumns, fields: fields, startTime: startTime)
+        return renderHits(hits, mappingColumns: mappingColumns, fields: fields, length: length, startTime: startTime)
     }
 
     private func fetchHits(
@@ -81,10 +207,10 @@ extension ElasticsearchPluginDriver {
                 for: parsed, fields: fields, size: parsed.size, supportsCaseInsensitive: supportsCaseInsensitiveSearch
             )
             body["from"] = parsed.from
-            Self.logger.debug("POST /\(index, privacy: .public)/_search body=\(Self.jsonString(body), privacy: .public)")
+            Self.logger.debug("POST /\(index, privacy: .private(mask: .hash))/_search body=\(Self.jsonString(body), privacy: .private)")
             let response = try await conn.search(index: index, body: body)
             let hits = extractHits(response)
-            Self.logger.debug("_search returned \(hits.count) hit(s) for index=\(index, privacy: .public)")
+            Self.logger.debug("_search returned \(hits.count) hit(s) for index=\(index, privacy: .private(mask: .hash))")
             return hits
         }
         return try await deepFetchHits(index: index, parsed: parsed, fields: fields, conn: conn)
@@ -174,6 +300,7 @@ extension ElasticsearchPluginDriver {
     private func executeConsole(
         _ input: String,
         conn: ElasticsearchConnection,
+        length: ElasticsearchMappingFlattener.CellLength,
         startTime: Date
     ) async throws -> PluginQueryResult {
         guard let request = ElasticsearchConsoleParser.parse(input) else {
@@ -186,16 +313,19 @@ extension ElasticsearchPluginDriver {
         guard (200..<300).contains(response.statusCode) else {
             throw mapWriteError(response)
         }
+        if ElasticsearchOperations.changesMapping(method: request.method) {
+            invalidateMappingCache()
+        }
 
         if let json = response.json as? [String: Any],
            json["hits"] is [String: Any],
            json["aggregations"] == nil,
            json["suggest"] == nil {
             let hits = extractHits(response)
-            return renderHits(hits, mappingColumns: [], fields: [:], startTime: startTime)
+            return renderHits(hits, mappingColumns: [], fields: [:], length: length, startTime: startTime)
         }
         if let rows = response.json as? [[String: Any]] {
-            return renderObjects(rows, startTime: startTime)
+            return renderObjects(rows, length: length, startTime: startTime)
         }
         return renderRawJson(response, startTime: startTime)
     }
@@ -206,10 +336,16 @@ extension ElasticsearchPluginDriver {
         _ hits: [[String: Any]],
         mappingColumns: [ElasticsearchColumn],
         fields: [String: ElasticsearchFieldInfo],
+        length: ElasticsearchMappingFlattener.CellLength,
         startTime: Date
     ) -> PluginQueryResult {
         let columns = ElasticsearchMappingFlattener.columns(forHits: hits, mappingColumns: mappingColumns)
-        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns)
+        let rows = ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: columns,
+            nestedParents: ElasticsearchMappingFlattener.nestedParents(from: mappingColumns),
+            length: length
+        )
         let typeNames = columns.map { column -> String in
             switch column {
             case ElasticsearchMappingFlattener.idColumn, ElasticsearchMappingFlattener.indexColumn:
@@ -229,10 +365,14 @@ extension ElasticsearchPluginDriver {
         )
     }
 
-    private func renderObjects(_ objects: [[String: Any]], startTime: Date) -> PluginQueryResult {
+    private func renderObjects(
+        _ objects: [[String: Any]],
+        length: ElasticsearchMappingFlattener.CellLength,
+        startTime: Date
+    ) -> PluginQueryResult {
         let columns = ElasticsearchMappingFlattener.unionColumns(fromSources: objects)
         let rows = objects.map { object -> [PluginCellValue] in
-            let flat = ElasticsearchMappingFlattener.flattenSource(object)
+            let flat = ElasticsearchMappingFlattener.flattenSource(object, length: length)
             return columns.map { flat[$0] ?? .null }
         }
         return PluginQueryResult(

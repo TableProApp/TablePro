@@ -98,6 +98,7 @@ enum RecordDecoder {
             for byte in bytes { pattern = (pattern << 8) | UInt64(byte) }
             return .double(Double(bitPattern: pattern))
         case TeradataType.char, TeradataType.varchar, TeradataType.longVarchar:
+            // swiftlint:disable:next optional_data_string_conversion
             let text = String(decoding: bytes, as: UTF8.self)
             return .text(column.baseCode == TeradataType.char
                 ? String(text.reversed().drop { $0 == " " }.reversed())
@@ -108,7 +109,7 @@ enum RecordDecoder {
             return .bytes(bytes)
         case TeradataType.dateInteger:
             let packed = TeradataType.signedInteger(bytes)
-            let year = 1900 + Int(packed / 10000)
+            let year = 1_900 + Int(packed / 10_000)
             let month = Int((packed / 100) % 100)
             let day = Int(packed % 100)
             return .text(String(format: "%04d-%02d-%02d", year, month, day))

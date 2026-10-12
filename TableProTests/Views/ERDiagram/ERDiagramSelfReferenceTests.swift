@@ -14,7 +14,6 @@ import Testing
 /// Smallest possible node (one column), a mid-sized one, and a very tall one.
 private let selfLoopNodeHeights: [CGFloat] = [58, 212, 916]
 
-@Suite("ER diagram self-referencing relationships")
 @MainActor
 struct ERDiagramSelfReferenceTests {
 

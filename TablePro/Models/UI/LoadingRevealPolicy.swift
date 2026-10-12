@@ -24,6 +24,17 @@ internal enum LoadingRevealPolicy {
 
     internal static let minimumDwell: Duration = .milliseconds(500)
 
+    internal static func remainingGrace(
+        activeSince: ContinuousClock.Instant?,
+        now: ContinuousClock.Instant
+    ) -> Duration {
+        guard let activeSince else { return grace }
+        let elapsed = activeSince.duration(to: now)
+        guard elapsed > .zero else { return grace }
+        guard elapsed < grace else { return .zero }
+        return grace - elapsed
+    }
+
     /// How much longer an indicator revealed at `revealedAt` has to stay before it may go.
     ///
     /// Measured from the reveal rather than from the moment the work ended, so anything slow

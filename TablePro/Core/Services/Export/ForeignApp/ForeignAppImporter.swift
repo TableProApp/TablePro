@@ -10,44 +10,57 @@ import Security
 import TableProImport
 import UniformTypeIdentifiers
 
+// MARK: - Request, Inventory, Support
+
+struct ForeignImportRequest: Sendable, Equatable {
+    var includePasswords: Bool
+    var includeSavedQueries: Bool
+}
+
+struct ForeignAppInventory: Sendable, Equatable {
+    let connections: Int
+    let savedQueries: Int
+}
+
+enum ForeignSavedQuerySupport: Sendable, Equatable {
+    case reads(caption: String)
+    case unavailable(reason: String)
+
+    static func globalFolder(named appName: String) -> ForeignSavedQuerySupport {
+        .reads(caption: String(
+            format: String(localized: "Saved queries import for every connection, in a folder named “%@”."),
+            appName
+        ))
+    }
+}
+
 // MARK: - Protocol
 
 protocol ForeignAppImporter: Sendable {
     var id: String { get }
     var displayName: String { get }
     var symbolName: String { get }
-    /// Canonical bundle identifier of the source app. Importers whose source
-    /// app ships in multiple editions (e.g. DBeaver Community / Enterprise)
-    /// should override `installedAppURL()` to look those up as well.
+    // An app shipped in several editions overrides `installedAppURL()` to look each one up.
     var appBundleIdentifier: String { get }
-    /// True when importing passwords reads the macOS keychain, which makes the
-    /// system show a per-item access prompt. Importers that read passwords from
-    /// a file (DBeaver, Beekeeper Studio) return false so no prompt is promised.
+    // True when reading passwords makes macOS show a Keychain prompt per item.
     var readsPasswordsFromKeychain: Bool { get }
-    /// Non-nil for importers that read a user-selected export file instead of an
-    /// installed app's on-disk store. The values are the content types the file
-    /// picker filters to; the source picker presents a panel and hands the
-    /// chosen URL to `setSelectedFile(_:)` before importing.
+    // Non-nil when the importer reads a file the user picks rather than the app's own store.
     var importFileTypes: [UTType]? { get }
+    var savedQuerySupport: ForeignSavedQuerySupport { get }
     func installedAppURL() -> URL?
-    /// Declared here (not only in the extension) so concrete overrides dispatch
-    /// through `any ForeignAppImporter`. File-sourced importers return true
-    /// regardless of whether a matching app is installed.
+    // Declared here so an override dispatches through `any ForeignAppImporter`.
     func isAvailable() -> Bool
-    func connectionCount() -> Int
+    // Reads files only, never the Keychain, so it is safe off the main thread.
+    func inventory() -> ForeignAppInventory
     mutating func setSelectedFile(_ url: URL)
-    func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult
+    func collect(_ request: ForeignImportRequest) throws -> CollectedImport
 }
 
 extension ForeignAppImporter {
-    /// LaunchServices lookup for the source app. Returns the URL on disk if
-    /// the app is registered with macOS, regardless of whether the user has
-    /// opened it or created any data. Override to consider multiple editions.
     func installedAppURL() -> URL? {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: appBundleIdentifier)
     }
 
-    /// Convenience: true when the source app is installed.
     func isAvailable() -> Bool {
         installedAppURL() != nil
     }
@@ -55,6 +68,29 @@ extension ForeignAppImporter {
     var importFileTypes: [UTType]? { nil }
 
     mutating func setSelectedFile(_ url: URL) {}
+}
+
+// MARK: - Records
+
+struct ForeignConnectionRecord: Sendable {
+    let sourceId: String?
+    let settings: ExportableConnection
+    let groupPath: [String]
+    let credentials: ExportableCredentials?
+}
+
+struct ForeignSavedQuery: Sendable, Equatable {
+    enum Content: Sendable, Equatable {
+        case text(String)
+        case oversized(byteCount: Int)
+    }
+
+    let name: String
+    let content: Content
+    let keyword: String?
+    let folderPath: [String]
+    let sourceConnectionId: String?
+    let isAutoNamed: Bool
 }
 
 // MARK: - Database Types
@@ -73,20 +109,6 @@ enum ForeignAppDatabaseType {
 
     static func localFilePathField(for typeId: String) -> LocalFilePathField? {
         PluginMetadataRegistry.shared.snapshot(for: DatabaseType(rawValue: typeId))?.capabilities.localFilePathField
-    }
-}
-
-// MARK: - Result
-
-struct ForeignAppImportResult {
-    let envelope: ConnectionExportEnvelope
-    let sourceName: String
-    let credentialsAborted: Bool
-
-    init(envelope: ConnectionExportEnvelope, sourceName: String, credentialsAborted: Bool = false) {
-        self.envelope = envelope
-        self.sourceName = sourceName
-        self.credentialsAborted = credentialsAborted
     }
 }
 
@@ -169,7 +191,7 @@ enum ForeignKeychainReader {
         case errSecItemNotFound:
             return .notFound
         default:
-            logger.debug("Keychain read denied or cancelled for \(service): \(status)")
+            logger.debug("Keychain read denied or cancelled: \(status)")
             return .cancelled
         }
     }

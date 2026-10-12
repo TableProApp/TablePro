@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("LicensePresentation")
 struct LicensePresentationTests {
     // MARK: - Which layout the pane shows
 
@@ -169,12 +168,13 @@ struct LicensePresentationTests {
 
     // MARK: - Plan line
 
-    /// Shipped as "Team · Lifetime · Lifetime": the billing cycle is already the word, and the
-    /// absent expiry said it a second time.
-    @Test("A lifetime license says lifetime once")
-    func lifetimePlanSaysItOnce() {
+    /// Shipped as "Team · Lifetime · Lifetime": the billing cycle is the server's word for it, and
+    /// the absent expiry said it a second time. The pricing page sells this cycle as One-time.
+    @Test("A license bought once says One-time once, and never the server's word for it")
+    func oneTimePlanSaysItOnce() {
         let line = LicensePresentation.planDescription(tier: "team", billingCycle: "lifetime", expiry: nil)
-        #expect(line.components(separatedBy: "Lifetime").count - 1 == 1, "Got: \(line)")
+        #expect(line.components(separatedBy: String(localized: "One-time")).count - 1 == 1, "Got: \(line)")
+        #expect(line.localizedCaseInsensitiveContains("lifetime") == false, "Got: \(line)")
     }
 
     @Test("A recurring license states its cycle and its expiry")
@@ -218,5 +218,75 @@ struct LicensePresentationTests {
         #expect(LicensePresentation.deviceCount(used: 1, limit: 5).contains("5"))
         #expect(LicensePresentation.memberCount(used: 4, limit: 5).contains("4"))
         #expect(LicensePresentation.memberCount(used: 0, limit: 0).isEmpty == false)
+    }
+
+    // MARK: - Activation failures
+
+    private static let licenseKey = "ABCDE-FGHIJ-KLMNO-PQRST-UVWXY"
+
+    @Test("A key with no free activation links to the account's Macs page")
+    func activationLimitLinksToTheMacsPage() throws {
+        let failure = LicensePresentation.activationFailure(
+            for: LicenseError.activationLimitReached,
+            entry: Self.licenseKey
+        )
+
+        let link = try #require(failure.link)
+        #expect(link.destination == SupportLinks.accountMachines)
+        #expect(link.title == String(localized: "Manage Macs"))
+        #expect(
+            failure.message == String(
+                localized: "This license has reached its activation limit. Remove a Mac from your account, then activate again."
+            )
+        )
+    }
+
+    @Test("A key typed in lowercase still gets the Macs link, since activation accepts it")
+    func lowercaseKeyStillGetsTheLink() {
+        let failure = LicensePresentation.activationFailure(
+            for: LicenseError.activationLimitReached,
+            entry: Self.licenseKey.lowercased()
+        )
+
+        #expect(failure.link?.destination == SupportLinks.accountMachines)
+    }
+
+    /// The server answers a full team with the same status, and the Macs page lists only the
+    /// licenses the signed-in email bought, so it holds nothing an invitee can remove.
+    @Test("An invite code that finds no free seat gets no Macs link")
+    func inviteCodeAtTheLimitHasNoLink() {
+        let failure = LicensePresentation.activationFailure(
+            for: LicenseError.activationLimitReached,
+            entry: "k3J9xQ2mT7vR"
+        )
+
+        #expect(failure.link == nil)
+    }
+
+    @Test("Every other license failure keeps its own message and offers no link")
+    func otherFailuresHaveNoLink() {
+        let errors: [LicenseError] = [
+            .invalidKey,
+            .licenseExpired,
+            .licenseSuspended,
+            .notActivated,
+            .networkError(URLError(.notConnectedToInternet)),
+            .serverError(500, "Internal Server Error"),
+        ]
+
+        for error in errors {
+            let failure = LicensePresentation.activationFailure(for: error, entry: Self.licenseKey)
+            #expect(failure.link == nil)
+            #expect(failure.message == error.friendlyDescription)
+        }
+    }
+
+    @Test("A failure that is not a license error reads as its own description")
+    func foreignErrorUsesItsDescription() {
+        let error = URLError(.timedOut)
+        let failure = LicensePresentation.activationFailure(for: error, entry: Self.licenseKey)
+
+        #expect(failure.message == error.localizedDescription)
+        #expect(failure.link == nil)
     }
 }

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import os
 
@@ -32,17 +33,14 @@ internal enum ThemeOrigin: Sendable {
 /// synchronously before anything activates, because the old storage refreshed through a detached
 /// Task and a save was therefore followed by an activation of the stale copy.
 @MainActor
-@Observable
-internal final class ThemeCatalog {
+internal final class ThemeCatalog: ObservableObject {
     internal static let shared = ThemeCatalog()
 
-    internal private(set) var themes: [ThemeDefinition] = BuiltInThemes.all
-    internal private(set) var rejected: [RejectedThemeRecord] = []
+    @Published internal private(set) var themes: [ThemeDefinition] = BuiltInThemes.all
+    @Published internal private(set) var rejected: [RejectedThemeRecord] = []
 
-    @ObservationIgnored
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeCatalog")
 
-    @ObservationIgnored
     nonisolated private static let bundledOrder = [
         BuiltInThemes.defaultLightId,
         BuiltInThemes.defaultDarkId,
@@ -226,7 +224,7 @@ internal final class ThemeCatalog {
                 themes.append(document.resolved())
             } catch {
                 guard source != .bundle else {
-                    logger.error("Bundled theme \(file.lastPathComponent) rejected: \(error.localizedDescription)")
+                    logger.error("Bundled theme \(file.lastPathComponent) rejected: \(error.publicLogShape, privacy: .public)")
                     continue
                 }
                 rejected.append(

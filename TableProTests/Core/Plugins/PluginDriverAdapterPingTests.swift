@@ -50,7 +50,6 @@ private final class PingOverrideDriver: BasePingDriver, PluginDatabaseDriver, @u
     }
 }
 
-@Suite("PluginDriverAdapter ping")
 struct PluginDriverAdapterPingTests {
     private func makeAdapter(driver: any PluginDatabaseDriver) -> PluginDriverAdapter {
         let connection = DatabaseConnection(name: "Test", type: .redis)

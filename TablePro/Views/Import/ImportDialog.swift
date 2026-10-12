@@ -10,9 +10,9 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
-import UniformTypeIdentifiers
 
 struct ImportDialog: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDialog")
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
@@ -34,6 +34,7 @@ struct ImportDialog: View {
     @State private var statementCount: Int = 0
     @State private var isCountingStatements = false
     @State private var selectedEncoding: ImportEncoding
+    @State private var detectedEncoding: ImportEncoding?
     @State private var selectedFormatId: String = "sql"
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var importSucceeded = false
@@ -125,7 +126,7 @@ struct ImportDialog: View {
                 .interactiveDismissDisabled()
             }
         }
-        .onChange(of: showSuccessDialog) { _, isShowing in
+        .onChange(of: showSuccessDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
@@ -138,7 +139,7 @@ struct ImportDialog: View {
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             }
         }
-        .onChange(of: showErrorDialog) { _, isShowing in
+        .onChange(of: showErrorDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
                 showErrorDialog = false
@@ -153,7 +154,7 @@ struct ImportDialog: View {
     /// configured for row import" once the user pressed Import.
     private var availableFormats: [any ImportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        return PluginManager.shared.allImportPlugins()
+        return pluginManager.allImportPlugins()
             .filter { plugin in
                 let pluginType = type(of: plugin)
                 return ImportRouting.isStatementFormat(
@@ -167,7 +168,7 @@ struct ImportDialog: View {
     }
 
     private var currentPlugin: (any ImportFormatPlugin)? {
-        PluginManager.shared.importPlugin(forFormat: selectedFormatId)
+        pluginManager.importPlugin(forFormat: selectedFormatId)
     }
 
     // MARK: - View Components
@@ -285,7 +286,7 @@ struct ImportDialog: View {
                     .pickerStyle(.menu)
                     .labelsHidden()
                     .frame(width: 120)
-                    .onChange(of: selectedEncoding) { _, _ in
+                    .onChange(of: selectedEncoding) { _ in
                         loadFileTask?.cancel()
                         if let url = fileURL {
                             loadFileTask = Task {
@@ -345,10 +346,15 @@ struct ImportDialog: View {
 
     private func recordSuccessfulImport() {
         importSucceeded = true
-        TransferDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
+        if selectedEncoding != detectedEncoding {
+            TransferDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
+        }
         settingsSnapshot = nil
     }
 
+    /// This dialog runs a file of statements, so Change File… offers the statement formats and no
+    /// others. It goes through `ImportFilePanel` for the validation `allowedContentTypes` cannot
+    /// give: a file it dims can still be double-clicked through (#3047).
     @MainActor
     private func selectFile() async {
         guard let window = hostWindow else {
@@ -356,17 +362,23 @@ struct ImportDialog: View {
             return
         }
 
-        let panel = NSOpenPanel()
+        let options = availableFormats.map {
+            ImportFormatOption(
+                id: type(of: $0).formatId,
+                name: type(of: $0).formatDisplayName,
+                acceptedFileExtensions: type(of: $0).acceptedFileExtensions
+            )
+        }
+        guard !options.isEmpty else { return }
 
-        let extensions = currentPlugin.map { type(of: $0).acceptedFileExtensions } ?? ["sql", "gz"]
-        let allowedTypes = extensions.compactMap { UTType(filenameExtension: $0) }
-        panel.allowedContentTypes = allowedTypes.isEmpty ? [.data] : allowedTypes
-        panel.allowsMultipleSelection = false
-        panel.message = "Select file to import"
+        let url = await ImportFilePanel.present(
+            matching: options,
+            message: String(localized: "Select a file to import"),
+            in: window
+        )
+        guard let url, case .format(let formatId) = ImportFileFormatResolver.match(url, among: options) else { return }
 
-        let response = await panel.presentAsSheet(for: window)
-        guard response == .OK, let url = panel.url else { return }
-
+        selectedFormatId = formatId
         self.loadFileTask = Task {
             await self.loadFile(url)
         }
@@ -392,7 +404,7 @@ struct ImportDialog: View {
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
             fileSize = attrs[.size] as? Int64 ?? 0
         } catch {
-            Self.logger.warning("Failed to get file attributes for \(url.path(percentEncoded: false), privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to get file attributes for \(url.path(percentEncoded: false), privacy: .public): \(error.publicLogShape, privacy: .public)")
             fileSize = 0
         }
 
@@ -414,7 +426,7 @@ struct ImportDialog: View {
                 do {
                     try handle.close()
                 } catch {
-                    Self.logger.warning("Failed to close file handle for preview: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.warning("Failed to close file handle for preview: \(error.publicLogShape, privacy: .public)")
                 }
             }
 
@@ -425,6 +437,17 @@ struct ImportDialog: View {
             if let preview = decoder.decode(previewData) {
                 filePreview = preview
                 hasPreviewError = false
+            } else if let detected = SQLDumpEncodingChoice.encoding(
+                replacing: selectedEncoding,
+                forPreview: previewData,
+                isWholeFile: previewData.count < maxPreviewSize,
+                family: TransactionEngineFamily.of(connection.type),
+                grammar: connection.type.lexicalGrammar
+            ) {
+                Self.logger.info("Preview did not decode as \(selectedEncoding.rawValue, privacy: .public); switching to the detected \(detected.rawValue, privacy: .public)")
+                detectedEncoding = detected
+                selectedEncoding = detected
+                return
             } else {
                 filePreview = String(format: String(localized: "Failed to load preview using encoding: %@. Try selecting a different text encoding."), selectedEncoding.label)
                 hasPreviewError = true
@@ -447,14 +470,14 @@ struct ImportDialog: View {
 
         do {
             let encoding = selectedEncoding.encoding
-            let dialect = SqlDialect.from(databaseTypeId: connection.type.rawValue)
+            let grammar = connection.type.lexicalGrammar
             let parser = SQLFileParser()
             let count = try await Task.detached {
-                try await parser.countStatements(url: url, encoding: encoding, dialect: dialect)
+                try await parser.countStatements(url: url, encoding: encoding, grammar: grammar)
             }.value
             statementCount = count
         } catch {
-            Self.logger.warning("Failed to count statements: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to count statements: \(error.publicLogShape, privacy: .public)")
             statementCount = 0
         }
 
@@ -475,10 +498,17 @@ struct ImportDialog: View {
 
         importTask = Task {
             do {
+                /// The scope the driver is already on, not the connection's saved default: a tab may
+                /// have moved it, and on an engine that reconnects to change database, pinning
+                /// somewhere else would refuse the import outright.
+                guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
+                    throw DatabaseError.notConnected
+                }
                 let result = try await service.importFile(
                     from: url,
                     formatId: selectedFormatId,
                     encoding: selectedEncoding.encoding,
+                    scope: scope,
                     decompressedURL: decompressedURL,
                     ownsDecompressedFile: ownsDecompressedFile,
                     knownStatementCount: statementCount > 0 ? statementCount : nil
@@ -505,6 +535,9 @@ struct ImportDialog: View {
                     showErrorDialog = true
                 }
             }
+            /// A SQL file can create, alter or drop anything, and one that failed or was cancelled
+            /// part way has already run every statement before that point.
+            CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
         }
     }
 
@@ -514,7 +547,7 @@ struct ImportDialog: View {
                 try FileManager.default.removeItem(at: tempURL)
             } catch {
                 Self.logger.error(
-                    "cleanupTempFiles: Failed to remove tempPreviewURL at \(tempURL.path(percentEncoded: false), privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "cleanupTempFiles: Failed to remove tempPreviewURL at \(tempURL.path(percentEncoded: false), privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
             }
             tempPreviewURL = nil

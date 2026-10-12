@@ -16,10 +16,12 @@ struct LockScreenView: View {
                     .font(.system(size: 56))
                     .foregroundStyle(.tint)
                     .symbolRenderingMode(.hierarchical)
+                    .accessibilityHidden(true)
 
                 VStack(spacing: 6) {
-                    Text("TablePro is Locked")
+                    Text("TablePro Is Locked")
                         .font(.title2.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
                     Text("Authenticate to access your database connections.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -30,11 +32,8 @@ struct LockScreenView: View {
                 Button {
                     Task { await unlock() }
                 } label: {
-                    Label(
-                        didFail ? String(localized: "Try Again") : String(localized: "Unlock"),
-                        systemImage: "faceid"
-                    )
-                    .frame(minWidth: 220)
+                    Label(buttonTitle, systemImage: biometrySymbol)
+                        .frame(minWidth: 220)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
@@ -44,13 +43,37 @@ struct LockScreenView: View {
         .task { await unlock() }
     }
 
+    private var buttonTitle: String {
+        didFail ? String(localized: "Try Again") : String(localized: "Unlock")
+    }
+
+    private var biometrySymbol: String {
+        switch lockState.biometry {
+        case .faceID: "faceid"
+        case .touchID: "touchid"
+        case .opticID: "opticid"
+        case .unavailable: "lock.open"
+        }
+    }
+
     private func unlock() async {
         guard !isAuthenticating, lockState.isLocked else { return }
         isAuthenticating = true
         defer { isAuthenticating = false }
-        let success = await lockState.unlock()
-        if !success {
-            didFail = true
-        }
+        didFail = !(await lockState.unlock())
+    }
+}
+
+struct PrivacyCoverView: View {
+    var body: some View {
+        Rectangle()
+            .fill(.regularMaterial)
+            .ignoresSafeArea()
+            .overlay {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
     }
 }

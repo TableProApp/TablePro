@@ -88,6 +88,12 @@ struct StructureObjectEditMatrix: Sendable, Equatable {
         .partitionedTable: everyOperation
     ])
 
+    /// Measured against Cassandra 5.0.9 and ScyllaDB 2026.3.1: `ALTER TABLE … ADD` and `DROP` run. `ADD … NOT NULL`
+    /// and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` answers "Altering column types is no longer
+    /// supported", and renaming a column outside the primary key answers "Cannot rename non PRIMARY KEY column".
+    /// Indexes are created and dropped in CQL, which the plugin does not write.
+    static let cassandra = StructureObjectEditMatrix([.table: [.addColumn, .dropColumn]])
+
     /// Measured against PostgreSQL 17.11, one statement per cell. A table and a partitioned table
     /// take all seventeen. A view and a materialized view differ on `SET DEFAULT` and on
     /// `CREATE INDEX`, which is why one row per kind is the only shape that works. A foreign table
@@ -107,6 +113,17 @@ struct StructureObjectEditMatrix: Sendable, Equatable {
         .systemTable: [],
         .externalTable: []
     ])
+}
+
+enum TriggerEditEligibility {
+    static func kindAcceptsTriggers(_ kind: TableInfo.TableType) -> Bool {
+        switch kind {
+        case .table, .partitionedTable, .view, .foreignTable:
+            return true
+        case .materializedView, .systemTable, .externalTable, .sequence:
+            return false
+        }
+    }
 }
 
 /// Whether the Structure tab may offer one edit right now, and what to say when it may not.
@@ -131,10 +148,9 @@ enum StructureEditAvailability: Sendable, Equatable {
 ///
 /// Pure, so the rule is testable without a connection, and ordered: an engine that cannot edit
 /// structure at all says that first, then the object's kind, then the engine's own statement for the
-/// operation. Reading the kind as one `isView` Bool is the defect this replaces, because
-/// `TableInfo.TableType.allowsRowEditing` is true for a materialized view, so the Structure tab
-/// offered `ADD COLUMN`, `SET NOT NULL`, type changes and constraint edits that PostgreSQL always
-/// refuses. (#2726)
+/// operation. Reading the kind as one `isView` Bool is the defect this replaces, because the Bool
+/// read false for a materialized view, so the Structure tab offered `ADD COLUMN`, `SET NOT NULL`,
+/// type changes and constraint edits that PostgreSQL always refuses. (#2726)
 enum StructureEditEligibility {
     static func allows(
         _ operation: StructureEditOperation,
@@ -263,6 +279,7 @@ enum StructureEditEligibility {
         case .foreignTable: return String(localized: "A foreign table")
         case .systemTable: return String(localized: "A system table")
         case .externalTable: return String(localized: "An external table")
+        case .sequence: return String(localized: "A sequence")
         }
     }
 }

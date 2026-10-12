@@ -8,7 +8,6 @@ import SwiftUI
 import Testing
 
 @MainActor
-@Suite("FieldEditorContext policy")
 struct FieldEditorContextPolicyTests {
     private func makeContext(
         isReadOnly: Bool,

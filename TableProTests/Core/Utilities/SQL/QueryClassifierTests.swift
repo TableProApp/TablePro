@@ -5,9 +5,9 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
-@Suite("QueryClassifier isExplainStatement")
 struct QueryClassifierExplainTests {
     @Test("Detects EXPLAIN and EXPLAIN ANALYZE variants")
     func detectsExplainVariants() {
@@ -46,7 +46,6 @@ struct QueryClassifierExplainTests {
     }
 }
 
-@Suite("QueryClassifier explainedStatement")
 struct QueryClassifierExplainedStatementTests {
     @Test("Preserves line comments between EXPLAIN options and the statement")
     func preservesLineCommentBeforeStatement() throws {
@@ -91,7 +90,6 @@ struct QueryClassifierExplainedStatementTests {
     }
 }
 
-@Suite("QueryClassifier classification with leading comments")
 struct QueryClassifierLeadingCommentTests {
     @Test("isWriteQuery detects writes preceded by comments")
     func writeDetectionWithComments() {
@@ -116,7 +114,6 @@ struct QueryClassifierLeadingCommentTests {
     }
 }
 
-@Suite("QueryClassifier keyword boundary handling")
 struct QueryClassifierKeywordBoundaryTests {
     @Test("isWriteQuery detects writes followed by newline or tab")
     func writeDetectionAcrossWhitespace() {
@@ -140,7 +137,6 @@ struct QueryClassifierKeywordBoundaryTests {
     }
 }
 
-@Suite("QueryClassifier parenthesised statements")
 struct QueryClassifierParenthesisedTests {
     @Test("leadingKeyword reaches past opening parentheses")
     func leadingKeywordSkipsParens() {
@@ -173,7 +169,6 @@ struct QueryClassifierParenthesisedTests {
     }
 }
 
-@Suite("QueryClassifier isMultiStatement")
 struct QueryClassifierMultiStatementTests {
     @Test("A trailing comment after the terminating semicolon is not a second statement")
     func trailingCommentIsNotMultiStatement() {
@@ -189,5 +184,103 @@ struct QueryClassifierMultiStatementTests {
     @Test("A comment-only query is not multi-statement")
     func commentOnlyQueryIsNotMultiStatement() {
         #expect(!QueryClassifier.isMultiStatement("-- note", databaseType: .mysql))
+    }
+
+    @Test("A statement a GO line runs more than once is multi-statement, and one it runs once is not")
+    func repeatedBatchIsMultiStatement() {
+        #expect(QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO 2", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("TRUNCATE TABLE dbo.t\nGO 1", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("GO\nDROP TABLE dbo.stale", databaseType: .mssql))
+        #expect(!QueryClassifier.isMultiStatement("GO 3\nDROP TABLE dbo.stale", databaseType: .mssql))
+    }
+}
+
+/// T-SQL needs no `;` between statements. Each text below was sent whole to Azure SQL Edge 15.0, which ran every
+/// statement in it, so the classifier has to tier the ones written after the first as well.
+struct QueryClassifierUnterminatedStatementTests {
+    struct Case: CustomTestStringConvertible, Sendable {
+        let sql: String
+        let tier: QueryTier
+        let deletesEverything: Bool
+
+        var testDescription: String { sql }
+    }
+
+    static let hidden: [Case] = [
+        Case(sql: "SELECT 1\nDROP TABLE t", tier: .destructive, deletesEverything: true),
+        Case(sql: "SELECT 1 DELETE FROM t", tier: .write, deletesEverything: true),
+        Case(sql: "PRINT 'x' UPDATE t SET c = 1", tier: .write, deletesEverything: false),
+        Case(sql: "SELECT 1 TRUNCATE TABLE t", tier: .destructive, deletesEverything: true),
+        Case(sql: "SELECT 1 EXEC('DELETE FROM t')", tier: .write, deletesEverything: false),
+        Case(sql: "SELECT 1DELETE FROM t", tier: .write, deletesEverything: true),
+        Case(sql: "SELECT $1DELETE FROM t", tier: .write, deletesEverything: true),
+        Case(sql: "SELECT 1\u{200B}DELETE FROM t", tier: .write, deletesEverything: true),
+        Case(sql: "SELECT DB_NAME() USE master", tier: .write, deletesEverything: false),
+        Case(sql: "SET NOCOUNT ON DELETE FROM t", tier: .write, deletesEverything: true),
+        Case(sql: "WAITFOR DELAY '00:00:00' DELETE FROM t", tier: .write, deletesEverything: true),
+        Case(sql: "IF 1 = 0 SELECT 1 ELSE DELETE FROM t", tier: .write, deletesEverything: true),
+        Case(sql: "DELETE FROM t SELECT 1 WHERE 1 = 1", tier: .write, deletesEverything: true),
+        Case(sql: "CREATE TYPE dbo.t FROM int DROP TABLE x", tier: .destructive, deletesEverything: true),
+        Case(sql: "SELECT 1\nUPDATE [t] SET c = 1", tier: .write, deletesEverything: false),
+        Case(sql: "SELECT 1\nUPDATE \"t\" SET c = 1", tier: .write, deletesEverything: false),
+        Case(sql: "PRINT 1\nUPDATE [t]\nSET c = 1", tier: .write, deletesEverything: false),
+        Case(sql: "PRINT 1\nSELECT [a], [b] INTO x FROM t", tier: .write, deletesEverything: false),
+        Case(sql: "PRINT 1\nDELETE [t]", tier: .write, deletesEverything: true),
+        Case(
+            sql: "INSERT INTO log SELECT id FROM (DELETE FROM t OUTPUT deleted.id) AS d",
+            tier: .write,
+            deletesEverything: true
+        ),
+    ]
+
+    @Test("A statement written after another without a terminator is tiered", arguments: hidden)
+    func hiddenStatementIsTiered(_ hidden: Case) {
+        #expect(QueryClassifier.classifyTier(hidden.sql, databaseType: .mssql) == hidden.tier)
+        #expect(QueryClassifier.isWriteQuery(hidden.sql, databaseType: .mssql))
+        #expect(QueryClassifier.isDangerousQuery(hidden.sql, databaseType: .mssql) == hidden.deletesEverything)
+    }
+
+    @Test("A backup written after a read reaches the filesystem")
+    func hiddenBackupReachesTheFilesystem() {
+        let sql = "SELECT 1 BACKUP DATABASE d TO DISK = '/tmp/d.bak'"
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: .mssql))
+    }
+
+    @Test("A read that only names a statement keyword stays a read", arguments: [
+        "SELECT deleted_at, last_update FROM t",
+        "SELECT [delete], \"update\" FROM t",
+        "SELECT 'DROP TABLE t' AS s -- DELETE FROM t",
+        "SELECT 1\nSELECT 2",
+        "SELECT [a], 'b' FROM [t] WHERE [c] = 'd'",
+        "SELECT 1 PRINT 'done'",
+        "SELECT * FROM t WHERE id IN (SELECT id FROM s)",
+        "SELECT CASE WHEN a = 1 THEN 'x' ELSE 'y' END FROM t",
+        "SELECT a.id FROM t a INNER MERGE JOIN s b ON a.id = b.id OPTION (MERGE JOIN, USE HINT('X'))",
+        "SELECT id FROM t ORDER BY id OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY",
+        "SELECT 0xDELETE FROM t",
+        "SELECT 1 éDELETE FROM t",
+        "WITH c AS (SELECT 1 AS x) SELECT * FROM c",
+    ])
+    func readsStayReads(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mssql) == .safe)
+        #expect(!QueryClassifier.isDangerousQuery(sql, databaseType: .mssql))
+        #expect(!QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: .mssql))
+    }
+
+    @Test("Storing a procedure runs nothing written after its header")
+    func routineBodyIsNotRun() {
+        let sql = "CREATE PROCEDURE dbo.p AS SELECT 1 DROP TABLE t"
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mssql) == .write)
+        #expect(!QueryClassifier.isDangerousQuery(sql, databaseType: .mssql))
+    }
+
+    @Test("An engine that needs a terminator keeps reading a statement by its first word", arguments: [
+        DatabaseType.mysql, .postgresql, .sqlite, .oracle,
+    ])
+    func terminatedEnginesAreUnchanged(databaseType: DatabaseType) {
+        #expect(QueryClassifier.classifyTier("SELECT open, close, print FROM prices", databaseType: databaseType)
+            == .safe)
+        #expect(QueryClassifier.classifyTier("SELECT 1; DELETE FROM t", databaseType: databaseType) == .write)
     }
 }

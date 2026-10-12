@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCP HTTP Header Validator")
 struct MCPHttpHeaderValidatorTests {
     private func makeHead(_ pairs: [(String, String)]) -> HttpRequestHead {
         HttpRequestHead(method: .post, path: "/mcp", httpVersion: "HTTP/1.1", headers: HttpHeaders(pairs))

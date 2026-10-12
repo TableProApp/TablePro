@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("StreamTextBuffer")
 @MainActor
 struct StreamTextBufferTests {
     @Test("Text appends accumulate and drain once")

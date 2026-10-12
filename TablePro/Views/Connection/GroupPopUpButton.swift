@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProConnectionLibrary
 
 /// One row of a group pop-up menu. `indentationLevel` is the menu's own way of showing nesting,
 /// which a run of leading spaces is not: spaces are read aloud by VoiceOver and lay out on the
@@ -14,6 +15,7 @@ internal struct GroupMenuEntry: Equatable, Identifiable {
     internal let title: String
     internal let indentationLevel: Int
     internal let color: ConnectionColor
+    internal let iconName: String?
     internal let isEnabled: Bool
     internal let hasSeparatorAbove: Bool
 
@@ -22,6 +24,7 @@ internal struct GroupMenuEntry: Equatable, Identifiable {
         title: String,
         indentationLevel: Int = 0,
         color: ConnectionColor = .none,
+        iconName: String? = nil,
         isEnabled: Bool = true,
         hasSeparatorAbove: Bool = false
     ) {
@@ -29,41 +32,62 @@ internal struct GroupMenuEntry: Equatable, Identifiable {
         self.title = title
         self.indentationLevel = indentationLevel
         self.color = color
+        self.iconName = iconName
         self.isEnabled = isEnabled
         self.hasSeparatorAbove = hasSeparatorAbove
     }
 }
 
 internal enum GroupMenuEntries {
-    private static let maximumDepth = ConnectionGroup.maxNestingDepth
-
     internal static func forConnection(groups: [ConnectionGroup], noneTitle: String) -> [GroupMenuEntry] {
-        var entries = [GroupMenuEntry(id: nil, title: noneTitle)]
-        entries += flattenGroupsForMenu(groups: groups).enumerated().map { index, entry in
-            GroupMenuEntry(
-                id: entry.group.id,
-                title: entry.group.name,
-                indentationLevel: entry.depth,
-                color: entry.group.color,
-                hasSeparatorAbove: index == 0
-            )
-        }
-        return entries
+        entries(graph: LibraryGroupGraph(groups: groups), groups: groups, noneTitle: noneTitle, isEnabled: { _ in true })
     }
 
     internal static func forParent(groups: [ConnectionGroup], noneTitle: String) -> [GroupMenuEntry] {
-        var entries = [GroupMenuEntry(id: nil, title: noneTitle)]
-        entries += flattenGroupsForMenu(groups: groups).enumerated().map { index, entry in
-            GroupMenuEntry(
-                id: entry.group.id,
-                title: entry.group.name,
-                indentationLevel: entry.depth,
-                color: entry.group.color,
-                isEnabled: depthOf(groupId: entry.group.id, groups: groups) < maximumDepth,
-                hasSeparatorAbove: index == 0
-            )
+        let graph = LibraryGroupGraph(groups: groups)
+        return entries(graph: graph, groups: groups, noneTitle: noneTitle, isEnabled: { graph.canCreateSubgroup(under: $0) })
+    }
+
+    /// The parents an existing group can move under. Its own subtree is left out, because a group
+    /// cannot sit inside itself, and a parent that would push the subtree past the nesting cap is
+    /// shown dimmed, as one at the cap is when creating a group.
+    internal static func forMoving(groupId: UUID, groups: [ConnectionGroup], noneTitle: String) -> [GroupMenuEntry] {
+        let graph = LibraryGroupGraph(groups: groups)
+        let subtree = graph.descendantIds(of: groupId).union([groupId])
+        return entries(
+            graph: graph,
+            groups: groups,
+            noneTitle: noneTitle,
+            isOffered: { !subtree.contains($0) },
+            isEnabled: { graph.canPlace(groupId, under: $0) }
+        )
+    }
+
+    private static func entries(
+        graph: LibraryGroupGraph,
+        groups: [ConnectionGroup],
+        noneTitle: String,
+        isOffered: (UUID) -> Bool = { _ in true },
+        isEnabled: (UUID) -> Bool
+    ) -> [GroupMenuEntry] {
+        let groupsById = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let offered: [(group: ConnectionGroup, depth: Int)] = graph.flattened().compactMap { flat in
+            guard let group = groupsById[flat.id], isOffered(group.id) else { return nil }
+            return (group, flat.depth)
         }
-        return entries
+        var result = [GroupMenuEntry(id: nil, title: noneTitle)]
+        for (index, (group, depth)) in offered.enumerated() {
+            result.append(GroupMenuEntry(
+                id: group.id,
+                title: group.name,
+                indentationLevel: depth,
+                color: group.color,
+                iconName: group.iconName,
+                isEnabled: isEnabled(group.id),
+                hasSeparatorAbove: index == 0
+            ))
+        }
+        return result
     }
 }
 
@@ -112,23 +136,12 @@ internal struct GroupPopUpButton: NSViewRepresentable {
             item.indentationLevel = entry.indentationLevel
             item.isEnabled = entry.isEnabled
             item.representedObject = entry.id
-            if !entry.color.isDefault {
-                item.image = colorDot(entry.color.color)
+            if entry.id != nil {
+                item.setInformativeImage(LibraryGlyph.groupNSImage(iconName: entry.iconName, color: entry.color))
             }
             menu.addItem(item)
         }
         return menu
-    }
-
-    private static func colorDot(_ color: Color) -> NSImage {
-        let size = NSSize(width: 10, height: 10)
-        let image = NSImage(size: size, flipped: false) { rect in
-            NSColor(color).setFill()
-            NSBezierPath(ovalIn: rect).fill()
-            return true
-        }
-        image.isTemplate = false
-        return image
     }
 
     @MainActor

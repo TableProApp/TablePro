@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPToolConsent elicitation round trip")
 struct MCPToolConsentTests {
     private static let key = "approve_statement"
     private static let now = Date(timeIntervalSince1970: 1_700_000_000)

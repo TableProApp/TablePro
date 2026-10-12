@@ -11,8 +11,8 @@ import Security
 import SwiftUI
 import TableProPluginKit
 
-@MainActor @Observable
-final class PluginManager {
+@MainActor
+final class PluginManager: ObservableObject {
     static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
     /// Raised to 29 for `maintenanceOperations` on `PluginDatabaseDriver`, plus the
     /// `PluginMaintenanceOperation`, `PluginMaintenanceOption`, `PluginMaintenanceScope` and
@@ -38,6 +38,12 @@ final class PluginManager {
     /// the first to answer them: it takes a whole-file write lock for the life of its handle, so an
     /// idle connection stops every other process from opening the same database.
     ///
+    /// Raised to 30 for `ExportFormatResult.notes` and its `init(warnings:notes:)`, which is what lets
+    /// an export report a fact about what it wrote without the summary alert reading it as a problem.
+    /// The old `init(warnings:)` is kept verbatim as `@_disfavoredOverload`, so every already-built
+    /// export plugin keeps loading and only a plugin rebuilt against the new initializer needs a host
+    /// that has it.
+    ///
     /// Raised to 22 before that for `fetchIndexDDL` on `PluginDatabaseDriver` and `PluginExportDataSource`,
     /// which is what lets a dump write a table's indexes after its rows instead of leaving whether
     /// they appear at all to each driver's `fetchTableDDL`.
@@ -55,23 +61,95 @@ final class PluginManager {
     /// rebuilt CassandraDriver for the v20 requirements it implements none of. Left at 20, such a
     /// plugin passes `validateBundleVersions` in a shipped v20 app and then fails
     /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
-    nonisolated static let currentPluginKitVersion = 29
+    ///
+    /// 31 adds `aliasType`, `tableType` and `clrType` to `PluginUserDefinedTypeKind` and
+    /// `adoptingSchema` to `PluginUserDefinedTypeInfo`. The enum is not `@frozen` and every app-side
+    /// switch over it already carries `@unknown default`, so an already-built plugin keeps loading;
+    /// the minimum stays where it is and no bulk re-release is needed.
+    ///
+    /// 32 adds the spellings a catalog read carries for a DDL writer: `ddlSpelling`, `ddlDefault`,
+    /// `ddlGenerationExpression` and `ddlCollation` on `PluginColumnInfo`, and `expressions`,
+    /// `includedColumns`, `ddlMethodAndKeys` and `ddlWhereClause` on `PluginIndexInfo`, plus the open
+    /// `IndexType`. Each arrives through an added initializer while every published one stays
+    /// byte-identical and disfavoured.
+    ///
+    /// 33 adds `classificationTypeName` to `PluginColumnInfo`, the name the app classifies a column
+    /// by where its declared spelling names no kind: a PostgreSQL enum, a domain and a PostGIS
+    /// geometry all classify as text otherwise, which takes the value picker off an enum and the
+    /// spatial rendering off a geometry.
+    ///
+    /// 33 also adds `checkConstraintRefusal`, which reports why the connected server has no check
+    /// constraints even though the engine does, and `sessionTransactionState()`, which reports what
+    /// the session already has open so nothing the app owns wraps a transaction the user opened.
+    /// Both have defaults (nil and `.unknown`), so an already-built plugin keeps loading and
+    /// answers them; the minimum stays where it is and no bulk re-release is needed.
+    ///
+    /// 33 also adds `isValid` to `PluginIndexInfo`, through an added initializer with the previous
+    /// full one disfavoured; nil means the driver does not report it.
+    ///
+    /// 33 also adds `generateModifyIndexSQL(table:oldIndexName:newIndex:)`, which replaces an index
+    /// in one statement where the engine's DDL is not transactional, the public `SQLiteIndexCatalog`
+    /// that SQLite, libSQL and Cloudflare D1 read and write indexes through, and the public
+    /// `SQLIndexKeyList` it and DuckDB read a stored `CREATE INDEX` with. The requirement defaults
+    /// to nil, so an already-built plugin keeps loading and the app splits the change into a drop
+    /// and an add as before.
+    ///
+    /// 33 also adds `createTableFormSpec(schema:)` and `createTableStatements(for:schema:)`, the
+    /// Create Table form a driver describes for tables that are not a list of typed columns. The
+    /// defaults answer nil and throw, so an already-built plugin keeps the column grid. It adds the
+    /// `modifyIndex` and `dropIndex` cases to the non-frozen `PluginSchemaOperation`, which an
+    /// already-built plugin answers through its `@unknown default`.
+    ///
+    /// 33 also adds the `modifyColumn` and `dropColumn` cases to `PluginSchemaOperation`, the
+    /// `PluginSchemaChangeReview` value, and `reviewSchemaChange(table:schema:operations:)`,
+    /// `schemaChangeRefusalBeforeWriting(table:schema:operations:review:)` and
+    /// `schemaChangeShortfallAfterWriting(table:schema:operations:review:)`, the save-level
+    /// questions a document store needs the server to answer, and
+    /// `tableDefinitionDidChange(table:schema:)`, which tells the session's driver to drop what it
+    /// learned about a table another connection changed. The defaults approve every save, find
+    /// every save finished and keep nothing, so an already-built plugin keeps loading and saves as
+    /// before.
+    ///
+    /// 34 adds `PluginRowWriteContext` and `generateRowWrites(...context:)`, which hands a driver
+    /// that writes its own statements the columns the server owns and how a keyless row match has to
+    /// compare each column. The default forwards to the requirement without the context, so an
+    /// already-built plugin keeps loading and writes what it wrote before; the minimum stays where it
+    /// is and no bulk re-release is needed.
+    ///
+    /// 35 adds `PluginRowWriteContext.columnTypeNames`, the type each column was read as. A plugin
+    /// built against it reads a property a 34 host does not have, so the number moves; an
+    /// already-built plugin never reads it, so the minimum stays and no bulk re-release is needed.
+    ///
+    /// 36 adds `PluginStatementContext` and the `context:` variants of `execute`,
+    /// `executeParameterized`, `executeUserQuery` and `streamRows`, which tell a driver the host ran
+    /// a statement as a proven read. The defaults forward to the requirements without the context,
+    /// so an already-built plugin keeps loading and runs what it ran before; the minimum stays and no
+    /// bulk re-release is needed.
+    ///
+    /// 37 adds `GoogleCloudSQLAuthFields`, the Cloud SQL IAM choices on the Authentication picker,
+    /// and `DriverConnectionConfig.refreshPassword`, which mints a token password again for a
+    /// sign-in the driver makes on its own. The old initializer keeps its symbol, so the minimum
+    /// stays and no bulk re-release is needed.
+    nonisolated static let currentPluginKitVersion = 37
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19
-    nonisolated static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
-    @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let builtInPluginsURL: URL?
-    @ObservationIgnored internal let userPluginsDir: URL
+    private let defaults: UserDefaults
+    private let builtInPluginsURL: URL?
+    internal let userPluginsDir: URL
 
-    internal(set) var plugins: [PluginEntry] = []
+    /// Every plugin collection here is published. The class was `@Observable` until #2874, which
+    /// tracked these without a word, and Settings > Plugins and the rejected-plugin banner are
+    /// written against that: without it an install, an update or a rejection changed nothing on
+    /// screen until the pane was reopened.
+    @Published internal(set) var plugins: [PluginEntry] = []
 
-    internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
+    @Published internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
 
-    internal(set) var pluginsWithRegistryUpdate: Set<String> = []
+    @Published internal(set) var pluginsWithRegistryUpdate: Set<String> = []
 
     var isInstalling: Bool {
         PluginInstallTracker.shared.activeInstalls.values.contains { progress in
@@ -94,7 +172,7 @@ final class PluginManager {
         }
     }
 
-    @ObservationIgnored private var initialLoadWaiters: [LoadWaiter] = []
+    private var initialLoadWaiters: [LoadWaiter] = []
 
     private struct LoadWaiter {
         let id: UUID
@@ -124,19 +202,17 @@ final class PluginManager {
         waiter.continuation.resume()
     }
 
-    internal(set) var rejectedPlugins: [RejectedPlugin] = []
+    @Published internal(set) var rejectedPlugins: [RejectedPlugin] = []
 
-    var needsRestart: Bool = false
+    @Published var needsRestart: Bool = false
 
-    internal(set) var driverPlugins: [String: any DriverPlugin] = [:]
+    @Published internal(set) var driverPlugins: [String: any DriverPlugin] = [:]
 
-    internal(set) var exportPlugins: [String: any ExportFormatPlugin] = [:]
+    @Published internal(set) var exportPlugins: [String: any ExportFormatPlugin] = [:]
 
-    internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
+    @Published internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
 
-    internal(set) var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
-
-    internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
+    @Published internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
 
     var disabledPluginIds: Set<String> {
         get { Set(defaults.stringArray(forKey: Self.disabledPluginsKey) ?? []) }
@@ -145,30 +221,27 @@ final class PluginManager {
 
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
 
-    private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
+    @Published private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
 
-    @ObservationIgnored private(set) var lazyDriverURLs: [String: URL] = [:]
-    @ObservationIgnored private var lazyExportURLs: [String: URL] = [:]
-    @ObservationIgnored private var lazyImportURLs: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorURLs: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorFileExtensions: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorUTIs: [String: URL] = [:]
-    @ObservationIgnored private var activatedBundleIds: Set<String> = []
+    private(set) var lazyDriverURLs: [String: URL] = [:]
+    private var lazyExportURLs: [String: URL] = [:]
+    private var lazyImportURLs: [String: URL] = [:]
+    private var activatedBundleIds: Set<String> = []
 
-    @ObservationIgnored internal var reconciliationTask: Task<Void, Never>?
-    @ObservationIgnored internal var reconciliationActive = false
-    @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
-    @ObservationIgnored internal var reconciliationManifestAttempts = 0
-    @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
-    @ObservationIgnored internal var pluginNetworkMonitor: NWPathMonitor?
-    @ObservationIgnored internal var lastNetworkSatisfied = false
-    @ObservationIgnored internal var installsInFlight: Set<String> = []
+    internal var reconciliationTask: Task<Void, Never>?
+    internal var reconciliationActive = false
+    internal var reconciliationAttempts: [String: Int] = [:]
+    internal var reconciliationManifestAttempts = 0
+    private var connectionStatusSubscription: AnyCancellable?
+    internal var pluginNetworkMonitor: NWPathMonitor?
+    internal var lastNetworkSatisfied = false
+    internal var installsInFlight: Set<String> = []
 
     /// User-installed bundles discovered but not yet signature-checked. `sweepPluginSignatures()`
     /// drains it after the first frame.
-    @ObservationIgnored internal var pendingSignatureChecks: [URL] = []
+    internal var pendingSignatureChecks: [URL] = []
 
-    var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
+    @Published var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
@@ -363,7 +436,6 @@ final class PluginManager {
         if !manifest.providedDatabaseTypeIds.isEmpty { capabilities.append(.databaseDriver) }
         if !manifest.providedExportFormatIds.isEmpty { capabilities.append(.exportFormat) }
         if !manifest.providedImportFormatIds.isEmpty { capabilities.append(.importFormat) }
-        if !manifest.providedInspectorIds.isEmpty { capabilities.append(.documentInspector) }
 
         let info = bundle.infoDictionary ?? [:]
         let version = (info["CFBundleShortVersionString"] as? String) ?? "0.0.0"
@@ -389,8 +461,7 @@ final class PluginManager {
             pluginIconName: pluginIconName,
             defaultPort: defaultPort,
             exportFormatId: manifest.providedExportFormatIds.first,
-            importFormatId: manifest.providedImportFormatIds.first,
-            inspectorId: manifest.providedInspectorIds.first
+            importFormatId: manifest.providedImportFormatIds.first
         )
         plugins.append(entry)
 
@@ -403,16 +474,7 @@ final class PluginManager {
         for formatId in manifest.providedImportFormatIds {
             lazyImportURLs[formatId] = url
         }
-        for inspectorId in manifest.providedInspectorIds {
-            lazyInspectorURLs[inspectorId] = url
-        }
-        for ext in manifest.providedInspectorFileExtensions {
-            lazyInspectorFileExtensions[ext.lowercased()] = url
-        }
-        for uti in manifest.providedInspectorUTIs {
-            lazyInspectorUTIs[uti] = url
-        }
-        Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds), inspectors=\(manifest.providedInspectorIds)")
+        Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds)")
     }
 
     /// Takes back everything `registerLazyManifest` published for this bundle, so a plugin the app
@@ -439,16 +501,13 @@ final class PluginManager {
 
     /// Rebuilt from the surviving manifests rather than filtered by URL.
     ///
-    /// Two bundles may declare the same driver, format or inspector key, and the one registered
+    /// Two bundles may declare the same driver or format key, and the one registered
     /// last owns it. Deleting the withdrawn bundle's keys would take the shared key with it and
     /// leave the valid plugin listed but unreachable for the rest of the process.
     private func rebuildLazyRegistrations() {
         lazyDriverURLs = [:]
         lazyExportURLs = [:]
         lazyImportURLs = [:]
-        lazyInspectorURLs = [:]
-        lazyInspectorFileExtensions = [:]
-        lazyInspectorUTIs = [:]
 
         for entry in plugins {
             guard let bundle = Bundle(url: entry.url),
@@ -462,15 +521,6 @@ final class PluginManager {
             }
             for formatId in manifest.providedImportFormatIds {
                 lazyImportURLs[formatId] = entry.url
-            }
-            for inspectorId in manifest.providedInspectorIds {
-                lazyInspectorURLs[inspectorId] = entry.url
-            }
-            for ext in manifest.providedInspectorFileExtensions {
-                lazyInspectorFileExtensions[ext.lowercased()] = entry.url
-            }
-            for uti in manifest.providedInspectorUTIs {
-                lazyInspectorUTIs[uti] = entry.url
             }
         }
     }
@@ -493,22 +543,12 @@ final class PluginManager {
         activateLazyBundle(at: url)
     }
 
-    func activateInspector(id: String) {
-        guard inspectorPlugins[id] == nil else { return }
-        guard let url = lazyInspectorURLs[id] else { return }
-        activateLazyBundle(at: url)
-    }
-
     func allLazyExportFormatIds() -> [String] {
         Array(lazyExportURLs.keys)
     }
 
     func allLazyImportFormatIds() -> [String] {
         Array(lazyImportURLs.keys)
-    }
-
-    func allLazyInspectorIds() -> [String] {
-        Array(lazyInspectorURLs.keys)
     }
 
     func activateLazyBundle(at url: URL) {
@@ -581,44 +621,23 @@ final class PluginManager {
 
     nonisolated internal static func validateBundleVersions(_ bundle: Bundle) throws {
         let infoPlist = bundle.infoDictionary ?? [:]
-        let declaredPluginKit = infoPlist["TableProPluginKitVersion"] as? Int
-        let declaredInspectorKit = infoPlist["TableProInspectorKitVersion"] as? Int
-
-        if declaredPluginKit == nil && declaredInspectorKit == nil {
+        guard let version = infoPlist["TableProPluginKitVersion"] as? Int else {
             throw PluginError.pluginOutdated(
                 pluginVersion: 0,
                 requiredVersion: currentPluginKitVersion
             )
         }
-
-        if let version = declaredPluginKit {
-            if version > currentPluginKitVersion {
-                throw PluginError.incompatibleVersion(
-                    required: version,
-                    current: currentPluginKitVersion
-                )
-            }
-            if version < minimumCompatiblePluginKitVersion {
-                throw PluginError.pluginOutdated(
-                    pluginVersion: version,
-                    requiredVersion: currentPluginKitVersion
-                )
-            }
+        if version > currentPluginKitVersion {
+            throw PluginError.incompatibleVersion(
+                required: version,
+                current: currentPluginKitVersion
+            )
         }
-
-        if let version = declaredInspectorKit {
-            if version > currentInspectorKitVersion {
-                throw PluginError.incompatibleVersion(
-                    required: version,
-                    current: currentInspectorKitVersion
-                )
-            }
-            if version < currentInspectorKitVersion {
-                throw PluginError.pluginOutdated(
-                    pluginVersion: version,
-                    requiredVersion: currentInspectorKitVersion
-                )
-            }
+        if version < minimumCompatiblePluginKitVersion {
+            throw PluginError.pluginOutdated(
+                pluginVersion: version,
+                requiredVersion: currentPluginKitVersion
+            )
         }
 
         if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
@@ -728,7 +747,6 @@ final class PluginManager {
         let driverType = principalClass as? any DriverPlugin.Type
         let exportType = principalClass as? any ExportFormatPlugin.Type
         let importType = principalClass as? any ImportFormatPlugin.Type
-        let inspectorType = principalClass as? any DocumentInspectorPlugin.Type
 
         let disabled = disabledPluginIds
         let version: String
@@ -753,8 +771,7 @@ final class PluginManager {
             pluginIconName: driverType?.iconName ?? "puzzlepiece",
             defaultPort: driverType?.defaultPort,
             exportFormatId: exportType?.formatId,
-            importFormatId: importType?.formatId,
-            inspectorId: inspectorType?.inspectorId
+            importFormatId: importType?.formatId
         )
 
         plugins.append(entry)
@@ -1007,6 +1024,7 @@ final class PluginManager {
             driverPlugins = driverPlugins.filter { key, _ in
                 !allTypeIds.contains(key)
             }
+            queryBuildingDriverCache.removeAll()
         }
 
         if let formatId = entry.exportFormatId {
@@ -1014,9 +1032,6 @@ final class PluginManager {
         }
         if let formatId = entry.importFormatId {
             importPlugins.removeValue(forKey: formatId)
-        }
-        if let inspectorId = entry.inspectorId {
-            inspectorPlugins.removeValue(forKey: inspectorId)
         }
     }
 }

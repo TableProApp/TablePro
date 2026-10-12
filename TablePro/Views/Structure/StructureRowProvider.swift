@@ -94,11 +94,28 @@ final class StructureRowProvider {
     /// offers the table's own columns, the second the database's tables, and the third the columns
     /// of whichever table that row names. Every list keeps a `Custom…` entry, so a table the app has
     /// not loaded is still reachable by typing.
+    ///
+    /// On the Indexes grid it is Type, which lists the row's own type beside the known ones.
     var rowDependentDropdownColumns: Set<Int> {
         switch tab {
         case .foreignKeys: ForeignKeyReferenceMenus.rowDependentColumns
-        case .columns, .indexes, .checkConstraints, .ddl, .parts, .triggers: []
+        case .indexes: [Self.indexTypeColumn]
+        case .columns, .checkConstraints, .ddl, .parts, .triggers: []
         }
+    }
+
+    /// The Indexes grid's Type column.
+    static let indexTypeColumn = 2
+
+    /// The menu an Indexes grid cell opens for `index`, or nil for a column whose list does not
+    /// depend on the row. Shared by the Structure tab and Create Table so the two cannot drift.
+    static func indexMenuOptions(
+        columnIndex: Int,
+        index: EditableIndexDefinition,
+        serverSupport: StructureServerSupport
+    ) -> [GridMenuOption]? {
+        guard columnIndex == indexTypeColumn else { return nil }
+        return GridMenuOption.values(serverSupport.indexTypeChoices(keeping: index.type).map(\.rawValue))
     }
 
     /// Explicit option lists for every dropdown column, keyed by column index.
@@ -123,9 +140,7 @@ final class StructureRowProvider {
                 6: GridMenuOption.values(updateActions.map(\.rawValue))
             ]
         case .indexes:
-            let offered = serverSupport.offeredIndexTypes(from: EditableIndexDefinition.IndexType.allCases)
-            let types = offered.map(\.rawValue)
-            return [2: GridMenuOption.values(types), 3: GridMenuOption.values(Self.booleanOptions)]
+            return [3: GridMenuOption.values(Self.booleanOptions)]
         case .columns:
             var result: [Int: [GridMenuOption]] = [:]
             for field in Self.booleanFields {

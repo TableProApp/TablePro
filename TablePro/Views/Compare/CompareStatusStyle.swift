@@ -70,6 +70,8 @@ internal enum CompareStatusStyle {
             return String(localized: "Delete")
         case .identical:
             return String(localized: "Same")
+        case .conflict:
+            return String(localized: "Outside Filter")
         }
     }
 
@@ -83,6 +85,8 @@ internal enum CompareStatusStyle {
             return "minus.circle.fill"
         case .identical:
             return "equal.circle"
+        case .conflict:
+            return "exclamationmark.triangle.fill"
         }
     }
 
@@ -98,6 +102,8 @@ internal enum CompareStatusStyle {
             return palette.color(.statusError)
         case .identical:
             return Color(nsColor: .secondaryLabelColor)
+        case .conflict:
+            return palette.color(.statusWarning)
         }
     }
 
@@ -113,7 +119,7 @@ internal enum CompareStatusStyle {
             return palette.color(.gridModified)
         case .delete:
             return palette.color(.gridDeleted)
-        case .identical:
+        case .identical, .conflict:
             return .clear
         }
     }

@@ -22,7 +22,6 @@ private final class NoopColumnLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Fill Column")
 @MainActor
 struct FillColumnTests {
     private func makeCoordinator(

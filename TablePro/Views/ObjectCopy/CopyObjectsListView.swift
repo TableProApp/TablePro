@@ -9,7 +9,7 @@ import SwiftUI
 import TableProPluginKit
 
 internal struct CopyObjectsListView: View {
-    @Bindable internal var session: ObjectCopySession
+    @ObservedObject internal var session: ObjectCopySession
 
     internal var body: some View {
         VStack(spacing: 0) {
@@ -73,7 +73,7 @@ internal struct CopyObjectsListView: View {
                     .foregroundStyle(.secondary)
             }
         } else if let message = session.catalogError {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Cannot Read the Source", systemImage: "exclamationmark.triangle")
             } description: {
                 RevealedTextView(message)
@@ -81,7 +81,7 @@ internal struct CopyObjectsListView: View {
                 Button("Try Again") { Task { await session.loadObjects() } }
             }
         } else if session.filteredObjects.isEmpty {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Nothing to Copy", systemImage: "tray")
             } description: {
                 Text("This database reports no objects.")

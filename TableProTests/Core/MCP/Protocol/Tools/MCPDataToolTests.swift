@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPFilterArguments")
 struct MCPFilterArgumentsTests {
     private func arguments(_ filters: [JsonValue]) -> JsonValue {
         .object(["filters": .array(filters)])
@@ -134,7 +133,6 @@ struct MCPFilterArgumentsTests {
     }
 }
 
-@Suite("CountRowsTool")
 struct CountRowsToolTests {
     private let tool = CountRowsTool()
 
@@ -196,7 +194,6 @@ struct CountRowsToolTests {
     }
 }
 
-@Suite("InsertRowsTool")
 struct InsertRowsToolTests {
     private let tool = InsertRowsTool()
 
@@ -278,7 +275,6 @@ struct InsertRowsToolTests {
     }
 }
 
-@Suite("QuoteIdentifiersTool")
 struct QuoteIdentifiersToolTests {
     private let tool = QuoteIdentifiersTool()
 
@@ -313,5 +309,39 @@ struct QuoteIdentifiersToolTests {
                 "identifiers": .array([.int(1)])
             ]))
         }
+    }
+}
+
+struct BrowseTableSortValidationTests {
+    @Test("A sort on a column the table does not have is refused, the way an unknown selected column is")
+    func unknownSortColumnIsRefused() {
+        do {
+            _ = try MCPConnectionBridge.sortState(
+                from: [(column: "nope", descending: false), (column: "id", descending: false)],
+                columns: ["id"]
+            )
+            Issue.record("Expected the unknown sort column to be refused")
+        } catch let error as DatabaseAccessError {
+            let toolError = MCPToolExecutionError.from(error, secrets: [])
+            #expect(toolError.code == .invalidArgument)
+            #expect(toolError.message.contains("Unknown column(s): nope"))
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test("Known sort columns resolve to their positions and directions")
+    func knownSortColumnsResolve() throws {
+        let state = try MCPConnectionBridge.sortState(
+            from: [(column: "name", descending: true), (column: "id", descending: false)],
+            columns: ["id", "name"]
+        )
+        #expect(state?.columns.map(\.columnIndex) == [1, 0])
+        #expect(state?.columns.map(\.direction) == [.descending, .ascending])
+    }
+
+    @Test("No sort entries means no sort")
+    func emptySortIsNoSort() throws {
+        #expect(try MCPConnectionBridge.sortState(from: [], columns: ["id"]) == nil)
     }
 }

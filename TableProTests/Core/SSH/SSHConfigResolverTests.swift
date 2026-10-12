@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH config resolver")
 struct SSHConfigResolverTests {
     private func makeConfig(
         host: String,

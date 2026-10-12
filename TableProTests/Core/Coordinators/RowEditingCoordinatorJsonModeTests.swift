@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("RowEditingCoordinator in JSON mode")
 @MainActor
 struct RowEditingCoordinatorJsonModeTests {
     private func makeCoordinator(mode: ResultsViewMode) -> MainContentCoordinator {

@@ -1,0 +1,3 @@
+module TableProTextEngineObjC {
+    header "CGContextHidden.h"
+}

@@ -12,9 +12,41 @@ import Foundation
 
 // MARK: - Formatter Options
 
+/// The case the formatter writes a keyword in.
+///
+/// `preserve` keeps the spelling that is already in the statement wherever one exists; a keyword
+/// the formatter synthesizes, such as the `BY` of a split `ORDER BY`, has no such spelling and is
+/// written lower case.
+enum SQLFormatterKeywordCase {
+    case upper
+    case lower
+    case preserve
+
+    /// `upper` is the token's uppercased form, `original` the spelling the statement already had.
+    func applied(upper: String, original: String) -> String {
+        switch self {
+        case .upper: return upper
+        case .lower: return upper.lowercased()
+        case .preserve: return original
+        }
+    }
+
+    /// A keyword the formatter writes from nothing, so there is no original spelling to preserve.
+    func synthesized(_ upper: String) -> String {
+        switch self {
+        case .upper: return upper
+        case .lower, .preserve: return upper.lowercased()
+        }
+    }
+
+    /// Whether a token that is really a function or type name keeps the spelling it was written
+    /// with. Only `preserve` has nothing to decide, because it keeps every spelling anyway.
+    var rewritesKeywords: Bool { self != .preserve }
+}
+
 /// Configuration for SQL formatting behavior
 struct SQLFormatterOptions {
-    var uppercaseKeywords: Bool = true
+    var keywordCase: SQLFormatterKeywordCase = .upper
     var indentSize: Int = 2
     var preserveComments: Bool = true
 

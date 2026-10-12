@@ -4,7 +4,6 @@ import TableProPluginKit
 import TableProWeaviateCore
 import Testing
 
-@Suite("Weaviate registry snapshot")
 struct WeaviateRegistrySnapshotTests {
     private func snapshot() throws -> PluginMetadataSnapshot {
         let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()
@@ -21,7 +20,7 @@ struct WeaviateRegistrySnapshotTests {
         #expect(snapshot.schema.defaultPrimaryKeyColumn == "uuid")
         #expect(snapshot.schema.immutableColumns == ["uuid", "vector"])
         #expect(!snapshot.supportsForeignKeys)
-        #expect(!snapshot.capabilities.supportsSSH)
+        #expect(snapshot.capabilities.supportsSSH)
         #expect(snapshot.capabilities.supportsSSL)
         #expect(snapshot.connection.category == .document)
         #expect(snapshot.iconName == "weaviate-icon")
@@ -45,7 +44,6 @@ struct WeaviateRegistrySnapshotTests {
     }
 }
 
-@Suite("Weaviate connection fields")
 struct WeaviateConnectionFieldsTests {
     private func fields() throws -> [ConnectionField] {
         let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()
@@ -94,7 +92,6 @@ struct WeaviateConnectionFieldsTests {
     }
 }
 
-@Suite("Weaviate field parity")
 struct WeaviateFieldParityTests {
     private static let repoRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
@@ -125,9 +122,8 @@ struct WeaviateFieldParityTests {
     }
 }
 
-@Suite("Weaviate plugin manifest")
 struct WeaviatePluginManifestTests {
-    @Test("Info.plist declares PluginKit 25 and the Weaviate type id")
+    @Test("Info.plist declares the current PluginKit ABI and the Weaviate type id")
     func plistDeclaresType() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -135,7 +131,7 @@ struct WeaviatePluginManifestTests {
             .deletingLastPathComponent()
             .appendingPathComponent("Plugins/WeaviateDriverPlugin/Info.plist")
         let plist = try #require(NSDictionary(contentsOf: url) as? [String: Any])
-        #expect(plist["TableProPluginKitVersion"] as? Int == 25)
+        #expect(plist["TableProPluginKitVersion"] as? Int == PluginManager.currentPluginKitVersion)
         #expect(plist["TableProProvidesDatabaseTypeIds"] as? [String] == ["Weaviate"])
     }
 }

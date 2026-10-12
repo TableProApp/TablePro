@@ -21,6 +21,20 @@ struct DataGridConfiguration: Equatable {
     var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
 
+    /// Columns drawn as a checkbox whose state the delegate owns, for a grid that reviews rows rather
+    /// than edits them. Keyed by index, because the column is the grid's own and has no name a table
+    /// column could share.
+    var checkboxColumns: Set<Int> = []
+
+    /// Whether the grid offers the commands that belong to a result: filtering by a column, column
+    /// hiding, export and the JSON view. A grid whose rows are a comparison answers none of them, and
+    /// a command that does nothing is worse than one that is not there.
+    var supportsColumnCommands: Bool = true
+
+    var supportsValueFilter: Bool = true
+
+    var filterMenuColumnTypes: [ColumnType]?
+
     /// Headings whose cells this grid must not let the user change, even though the rest of the grid
     /// is editable. The Structure tab sets it per object kind: PostgreSQL takes a view's
     /// `RENAME COLUMN` and `SET DEFAULT` and refuses its `SET NOT NULL` and `SET DATA TYPE`, so Name
@@ -34,6 +48,10 @@ struct DataGridConfiguration: Equatable {
     /// and a query result runs in a `.query` tab and is as much the data grid as a table is. The
     /// question is what the grid holds, not which tab it sits in.
     var appliesRowSortPreferences: Bool = false
+
+    /// Whether a heading click or the heading menu orders the rows. A Cassandra table cannot be ordered by an
+    /// arbitrary column, so its table grid offers no sort rather than one the server refuses.
+    var supportsColumnSort: Bool = true
 
     /// Why these rows cannot be written back, when they cannot. A grid that silently refuses every
     /// keystroke reads as broken, so the reason rides with the configuration and the grid shows it.

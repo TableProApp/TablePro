@@ -20,6 +20,8 @@ public struct AnalyticsPayload: Encodable, Sendable {
     public let connectionAttemptedAt: Date?
     public let connectionSucceededAt: Date?
     public let firstQueryExecutedAt: Date?
+    public let updateInstallMode: String?
+    public let updateCheckInterval: Int?
 
     public init(
         machineId: String,
@@ -33,7 +35,9 @@ public struct AnalyticsPayload: Encodable, Sendable {
         hasLicense: Bool,
         connectionAttemptedAt: Date? = nil,
         connectionSucceededAt: Date? = nil,
-        firstQueryExecutedAt: Date? = nil
+        firstQueryExecutedAt: Date? = nil,
+        updateInstallMode: String? = nil,
+        updateCheckInterval: Int? = nil
     ) {
         self.machineId = machineId
         self.platform = platform
@@ -47,5 +51,7 @@ public struct AnalyticsPayload: Encodable, Sendable {
         self.connectionAttemptedAt = connectionAttemptedAt
         self.connectionSucceededAt = connectionSucceededAt
         self.firstQueryExecutedAt = firstQueryExecutedAt
+        self.updateInstallMode = updateInstallMode
+        self.updateCheckInterval = updateCheckInterval
     }
 }

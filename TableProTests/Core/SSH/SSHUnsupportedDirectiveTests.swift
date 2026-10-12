@@ -10,7 +10,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("SSHUnsupportedDirective")
 struct SSHUnsupportedDirectiveTests {
     @Test("ProxyCommand is reported")
     func proxyCommandChangesRouting() {
@@ -44,7 +43,6 @@ struct SSHUnsupportedDirectiveTests {
     }
 }
 
-@Suite("ProxyCommand parsing")
 struct SSHProxyCommandParsingTests {
     @Test("ProxyCommand parses as an unrecognized directive so it can be reported")
     func proxyCommandIsUnrecognized() {

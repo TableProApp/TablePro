@@ -7,26 +7,47 @@ import Foundation
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
+    /// SQL Server refuses `=` on these (Msg 402 for `ntext`, `text`, `image` and `xml`, 403 for the spatial types), so
+    /// a keyless match compares them through a cast, which is exact for each. A `hierarchyid` reads as its bytes, which
+    /// the cast to `varbinary(max)` compares without an implicit conversion back to the type.
+    static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "IMAGE", "GEOGRAPHY", "GEOMETRY", "HIERARCHYID"]
+
+    /// `sql_variant` refuses `=` too (Msg 206), and no cast keeps its base type: the integer `1` and the string `N'1'`
+    /// cast to the same text, so a keyless match on it could pick either row.
+    static let mssqlRowMatchExcludedTypePrefixes = ["SQL_VARIANT"]
+
+    /// Oracle cannot compare a LOB, `LONG`, `LONG RAW`, `BFILE`, `XMLTYPE`, `JSON`, `VECTOR` or spatial value with `=`
+    /// (ORA-22848 on a CLOB), so a keyless match leaves them out. Matched against the bare type name, which an
+    /// owner-qualified column such as `"MDSYS"."SDO_GEOMETRY"` classifies by.
+    static let oracleRowMatchExcludedTypePrefixes = [
+        "CLOB", "NCLOB", "BLOB", "LONG", "BFILE", "XMLTYPE", "JSON", "VECTOR", "SDO_"
+    ]
+
     // swiftlint:disable function_body_length
     func registryPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let (
             clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
             oracleDialect, oracleColumnTypes, damengDialect, damengCompletions, damengColumnTypes,
             duckdbDialect, duckdbColumnTypes,
-            cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
+            cassandraDialect, cassandraColumnTypes, cassandraCapabilities, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         ) = registryDefaultIngredients()
 
         return [
             ("MongoDB", PluginMetadataSnapshot(
                 displayName: "MongoDB", iconName: "mongodb-icon", defaultPort: 27_017,
-                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
+                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "mongodb", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["mongodb", "mongodb+srv"], postConnectActions: [],
                 brandColorHex: "#00ED63",
                 queryLanguageName: "MQL", editorLanguage: .javascript,
                 connectionMode: .network, supportsDatabaseSwitching: true,
+                structureEditing: SchemaEditingSupport(
+                    structureEdits: StructureObjectEditMatrix([
+                        .table: [.addColumn, .renameColumn, .dropColumn, .addIndex, .dropIndex]
+                    ])
+                ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -39,8 +60,14 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsDocumentEditing: true,
+                    supportsFieldRemoval: true,
+                    supportsAddColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
                     supportsOpportunisticTLS: false,
-                    authenticationIsDatabaseScoped: true
+                    authenticationIsDatabaseScoped: true,
+                    columnsAreSampled: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -133,7 +160,8 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsColumnSort: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -210,7 +238,7 @@ extension PluginMetadataRegistry {
                             id: "redisDatabase",
                             label: String(localized: "Database Index"),
                             defaultValue: "0",
-                            fieldType: .stepper(range: ConnectionField.IntRange(0...15)),
+                            fieldType: .stepper(range: ConnectionField.IntRange(0...(Int(Int32.max) - 1))),
                             visibleWhen: FieldVisibilityRule(
                                 fieldId: "redisMode",
                                 values: ["standalone", "sentinel"]
@@ -255,7 +283,8 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: true,
                     supportsDropSchema: true,
                     supportsRenameColumn: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    supportsPerConnectionCertificatePaths: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "dbo",
@@ -268,7 +297,9 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment],
+                    rowMatchExcludedTypePrefixes: Self.mssqlRowMatchExcludedTypePrefixes,
+                    rowMatchTextTypePrefixes: Self.mssqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mssqlDialect,
@@ -315,7 +346,9 @@ extension PluginMetadataRegistry {
                 displayName: "Teradata", iconName: "teradata-icon", defaultPort: 1_025,
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "teradata", parameterStyle: .questionMark,
-                navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+                navigationModel: .standard,
+                explainVariants: [ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .plainText)],
+                pathFieldRole: .database,
                 supportsHealthMonitor: false, urlSchemes: ["teradata"],
                 postConnectActions: [.selectDatabaseFromLastSession],
                 brandColorHex: "#F37440",
@@ -347,7 +380,8 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue],
+                    systemDatabaseNamesIgnoreCase: true
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(
@@ -423,7 +457,10 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsRenameColumn: false,
-                    defaultSSLMode: .disabled
+                    defaultSSLMode: .disabled,
+                    supportsOpportunisticTLS: false,
+                    tlsImpliedPorts: [443],
+                    verifiesServerWithSystemTrust: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -551,13 +588,12 @@ extension PluginMetadataRegistry {
                     containerEntityName: "Schema",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: [
-                        "SYS", "SYSTEM", "OUTLN", "DBSNMP", "APPQOSSYS", "WMSYS", "XDB"
-                    ],
-                    systemSchemaNames: [],
+                    systemDatabaseNames: PluginMetadataRegistry.oracleSystemSchemaNames,
+                    systemSchemaNames: PluginMetadataRegistry.oracleSystemSchemaNames,
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment],
+                    rowMatchExcludedTypePrefixes: Self.oracleRowMatchExcludedTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: oracleDialect,
@@ -612,7 +648,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: ["SYS", "SYSDBA", "SYSAUDITOR", "SYSSSO", "CTISYS"],
+                    systemSchemaNames: ["SYS", "SYSAUDITOR", "SYSSSO", "CTISYS", "SYSJOB", "SYSGEO2"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
@@ -664,7 +700,9 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
                     supportsModifyPrimaryKey: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    tlsImpliedPorts: [8_443, 443],
+                    verifiesServerWithSystemTrust: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -788,25 +826,8 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#26A0D8",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
-                    supportsImport: false,
-                    supportsExport: true,
-                    supportsSSH: true,
-                    supportsSSL: true,
-                    supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: false,
-                    supportsReadOnlyMode: true,
-                    supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true,
-                    supportsModifyColumn: false,
-                    supportsAddIndex: false,
-                    supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false,
-                    supportsOpportunisticTLS: false,
-                    supportsClientKeyPassphrase: true
-                ),
+                structureEditing: SchemaEditingSupport(structureEdits: .cassandra),
+                capabilities: cassandraCapabilities,
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "default",
@@ -821,7 +842,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .comment]
+                    structureColumnFields: [.name, .type]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: cassandraDialect,
@@ -851,25 +872,8 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#6B2EE3",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
-                    supportsImport: false,
-                    supportsExport: true,
-                    supportsSSH: true,
-                    supportsSSL: true,
-                    supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: false,
-                    supportsReadOnlyMode: true,
-                    supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true,
-                    supportsModifyColumn: false,
-                    supportsAddIndex: false,
-                    supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false,
-                    supportsOpportunisticTLS: false,
-                    supportsClientKeyPassphrase: true
-                ),
+                structureEditing: SchemaEditingSupport(structureEdits: .cassandra),
+                capabilities: cassandraCapabilities,
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "default",
@@ -884,7 +888,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .comment]
+                    structureColumnFields: [.name, .type]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: cassandraDialect,
@@ -918,14 +922,15 @@ extension PluginMetadataRegistry {
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: true,
-                    supportsSSL: true,
+                    supportsSSL: false,
                     supportsCascadeDrop: false,
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsColumnSort: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -956,8 +961,9 @@ extension PluginMetadataRegistry {
                         ConnectionField(
                             id: "etcdTlsMode",
                             label: String(localized: "TLS Mode"),
+                            defaultValue: "Disabled",
                             fieldType: .dropdown(options: [
-                                .init(value: "Disabled", label: "Disabled"),
+                                .init(value: "Disabled", label: String(localized: "Disabled")),
                                 .init(value: "Required", label: String(localized: "Required (skip verify)")),
                                 .init(value: "VerifyCA", label: String(localized: "Verify CA")),
                                 .init(value: "VerifyIdentity", label: String(localized: "Verify Identity")),
@@ -1077,7 +1083,8 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: false,
                     supportsModifyColumn: false,
                     supportsRenameColumn: true,
-                    localFilePathField: .additionalField("libsqlFilePath")
+                    localFilePathField: .additionalField("libsqlFilePath"),
+                    newDatabaseFileExtensions: Self.sqliteFileExtensions
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",
@@ -1131,7 +1138,8 @@ extension PluginMetadataRegistry {
                             required: true,
                             section: .authentication,
                             visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])
-                        )
+                        ),
+                        .loadableExtensions(visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"]))
                     ],
                     category: .cloud,
                     tagline: String(localized: "Distributed SQLite by Turso")
@@ -1141,7 +1149,7 @@ extension PluginMetadataRegistry {
             + duckdbPluginDefaults(dialect: duckdbDialect, columnTypes: duckdbColumnTypes)
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
             + kafkaPluginDefaults() + typesensePluginDefaults() + r2SQLPluginDefaults()
-            + weaviatePluginDefaults()
+            + weaviatePluginDefaults() + hanaPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }

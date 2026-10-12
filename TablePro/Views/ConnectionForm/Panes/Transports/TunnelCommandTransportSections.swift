@@ -6,9 +6,7 @@
 import SwiftUI
 
 struct TunnelCommandTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
-
-    private var viewModel: TunnelCommandPaneViewModel { coordinator.tunnelCommand }
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         methodSection
@@ -136,10 +134,7 @@ struct TunnelCommandTransportSections: View {
 
     @ViewBuilder
     private var previewSection: some View {
-        if let preview = viewModel.previewCommand(
-            remoteHost: coordinator.network.host,
-            remotePort: Int(coordinator.network.port) ?? 0
-        ) {
+        if let preview = coordinator.tunnelCommandPreview {
             Section {
                 Text(verbatim: preview)
                     .font(.system(.caption, design: .monospaced))

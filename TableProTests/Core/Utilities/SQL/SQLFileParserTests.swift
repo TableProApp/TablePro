@@ -5,13 +5,13 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @testable import TablePro
 
-@Suite("SQLFileParser dialect-aware parsing")
 struct SQLFileParserTests {
-    private static func parse(_ sql: String, dialect: SqlDialect) async throws -> [String] {
+    private static func parse(_ sql: String, grammar: SQLLexicalGrammar) async throws -> [String] {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".sql")
         try sql.write(to: url, atomically: true, encoding: .utf8)
@@ -19,7 +19,7 @@ struct SQLFileParserTests {
 
         var statements: [String] = []
         let parser = SQLFileParser()
-        for try await (stmt, _) in parser.parseFile(url: url, encoding: .utf8, dialect: dialect) {
+        for try await (stmt, _) in parser.parseFile(url: url, encoding: .utf8, grammar: grammar) {
             statements.append(stmt)
         }
         return statements
@@ -31,7 +31,7 @@ struct SQLFileParserTests {
         INSERT INTO orders (path, label) VALUES ('C:\\Users\\bob\\', 'next');
         INSERT INTO orders (path, label) VALUES ('plain', 'second');
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("'C:\\Users\\bob\\'"))
         #expect(stmts[1].contains("'plain'"))
@@ -43,7 +43,7 @@ struct SQLFileParserTests {
         INSERT INTO t (a, b) VALUES ('ends\\', 'has ; semi');
         SELECT 1;
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("'has ; semi'"))
         #expect(stmts[1] == "SELECT 1")
@@ -55,7 +55,7 @@ struct SQLFileParserTests {
         INSERT INTO t (a) VALUES ('it\\'s a test');
         SELECT 2;
         """
-        let stmts = try await Self.parse(sql, dialect: .mysql)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.mysql)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("'it\\'s a test'"))
         #expect(stmts[1] == "SELECT 2")
@@ -67,7 +67,7 @@ struct SQLFileParserTests {
         SELECT E'line1\\nline2', E'has\\'quote';
         SELECT 3;
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("E'line1\\nline2'"))
         #expect(stmts[1] == "SELECT 3")
@@ -84,7 +84,7 @@ struct SQLFileParserTests {
         $$ LANGUAGE plpgsql;
         SELECT 4;
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("BEGIN"))
         #expect(stmts[0].contains("INSERT INTO t VALUES (2)"))
@@ -99,7 +99,7 @@ struct SQLFileParserTests {
         $func$ LANGUAGE sql;
         SELECT 5;
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("$func$"))
         #expect(stmts[0].contains("$$inner string with ; semicolons$$"))
@@ -112,7 +112,7 @@ struct SQLFileParserTests {
         SELECT * FROM t WHERE id = $1$;
         SELECT 6;
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0] == "SELECT * FROM t WHERE id = $1$")
         #expect(stmts[1] == "SELECT 6")
@@ -124,7 +124,7 @@ struct SQLFileParserTests {
         INSERT INTO t (a) VALUES ('it''s working');
         SELECT 7;
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("'it''s working'"))
         #expect(stmts[1] == "SELECT 7")
@@ -136,7 +136,7 @@ struct SQLFileParserTests {
         SELECT 'foo' 'bar';
         SELECT 8;
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("'foo'"))
         #expect(stmts[0].contains("'bar'"))
@@ -150,7 +150,7 @@ struct SQLFileParserTests {
         -- this is a comment
         SELECT 9;
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains("'-- not a comment'"))
         #expect(stmts[1] == "SELECT 9")
@@ -159,11 +159,11 @@ struct SQLFileParserTests {
     @Test("MySQL hash comment recognized; Postgres treats # as a normal char")
     func hash_comment_dialect_gating() async throws {
         let sqlMysql = "SELECT 1; # mysql comment\nSELECT 2;"
-        let mysqlStmts = try await Self.parse(sqlMysql, dialect: .mysql)
+        let mysqlStmts = try await Self.parse(sqlMysql, grammar: TestGrammar.mysql)
         #expect(mysqlStmts == ["SELECT 1", "SELECT 2"])
 
         let sqlPostgres = "SELECT 1, '#' AS hash_value;\nSELECT 2;"
-        let pgStmts = try await Self.parse(sqlPostgres, dialect: .postgres)
+        let pgStmts = try await Self.parse(sqlPostgres, grammar: TestGrammar.postgres)
         #expect(pgStmts.count == 2)
         #expect(pgStmts[0].contains("'#'"))
     }
@@ -176,7 +176,7 @@ struct SQLFileParserTests {
                 (1, 'x'),
                 (2, 'y');
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 1)
         #expect(stmts[0].contains("(1, 'x')"))
         #expect(stmts[0].contains("(2, 'y')"))
@@ -190,11 +190,81 @@ struct SQLFileParserTests {
           (2, 'value ends with backslash\\', 'next has ; semicolon', 2),
           (3, 'C:\\Users\\win\\AppData\\', 'plain reason', 2);
         """
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 1)
         #expect(stmts[0].contains("'value ends with backslash\\'"))
         #expect(stmts[0].contains("'next has ; semicolon'"))
         #expect(stmts[0].contains("'C:\\Users\\win\\AppData\\'"))
+    }
+
+    private static let merge = """
+        MERGE dbo.t AS t USING dbo.s AS s ON t.id = s.id WHEN NOT MATCHED THEN INSERT (id, v) VALUES (s.id, s.v)
+        """
+
+    /// SQL import sends a SQL Server file with no `GO` line a statement at a time, and SQL Server fails a `MERGE` sent
+    /// without its `;` with Msg 10713.
+    @Test("SQL Server: a MERGE keeps its ; in the middle of a file and at its end")
+    func sqlServerMergeKeepsItsTerminator() async throws {
+        let sql = """
+            UPDATE dbo.s SET v = 1;
+            \(Self.merge);
+            SELECT COUNT(*) FROM dbo.t;
+            TRUNCATE TABLE dbo.\u{6CE8}\u{6587}
+            \(Self.merge);
+            """
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.sqlServer)
+        #expect(stmts == [
+            "UPDATE dbo.s SET v = 1",
+            Self.merge + ";",
+            "SELECT COUNT(*) FROM dbo.t",
+            "TRUNCATE TABLE dbo.\u{6CE8}\u{6587}\n" + Self.merge + ";",
+        ])
+    }
+
+    /// SQL Server reads `1MERGE` as a number and a `MERGE`, as the statement scanner does.
+    @Test("SQL Server: a MERGE glued to a number keeps its ;")
+    func sqlServerMergeGluedToNumberKeepsItsTerminator() async throws {
+        let sql = "SELECT 1\(Self.merge);\nSELECT 1.\(Self.merge);"
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.sqlServer)
+        #expect(stmts == ["SELECT 1\(Self.merge);", "SELECT 1.\(Self.merge);"])
+    }
+
+    @Test("SQL Server: a name that ends in merge is not a MERGE")
+    func sqlServerNameEndingInMergeDropsTheSeparator() async throws {
+        let sql = "SELECT 1 AS x$merge;\nSELECT 1 AS \u{00E9}merge;\nSELECT a FROM #merge;"
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.sqlServer)
+        #expect(stmts == ["SELECT 1 AS x$merge", "SELECT 1 AS \u{00E9}merge", "SELECT a FROM #merge"])
+    }
+
+    @Test("SQL Server: a MERGE whose keyword straddles two read chunks keeps its ;")
+    func sqlServerMergeAcrossChunkBoundary() async throws {
+        let padding = String(repeating: "a", count: 65_523)
+        let sql = "SELECT '\(padding)';\n\(Self.merge);"
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.sqlServer)
+        #expect(stmts == ["SELECT '\(padding)'", Self.merge + ";"])
+    }
+
+    /// A T-SQL routine has no `DELIMITER` and no dollar quoting, so in a file with no `GO` line only the statement
+    /// grammar keeps its body whole.
+    @Test("SQL Server: a procedure body arrives whole")
+    func sqlServerProcedureBodyArrivesWhole() async throws {
+        let procedure = "CREATE PROCEDURE dbo.p AS BEGIN UPDATE dbo.t SET v = 1; \(Self.merge); END"
+        let stmts = try await Self.parse(procedure + ";\nSELECT 1;", grammar: TestGrammar.sqlServer)
+        #expect(stmts == [procedure, "SELECT 1"])
+    }
+
+    /// A T-SQL routine runs to the end of its batch, as sqlcmd sends it, so its body arrives whole.
+    @Test("SQL Server: a procedure body arrives whole in its batch")
+    func sqlServerProcedureBodyArrivesWholeInItsBatch() async throws {
+        let procedure = "CREATE PROCEDURE dbo.p AS BEGIN UPDATE dbo.t SET v = 1; \(Self.merge); END;"
+        let stmts = try await Self.parse(procedure + "\nGO\nSELECT 1;", grammar: TestGrammar.sqlServer)
+        #expect(stmts == [procedure, "SELECT 1;"])
+    }
+
+    @Test("Postgres: the ; after a MERGE is still a separator")
+    func postgresMergeDropsItsTerminator() async throws {
+        let stmts = try await Self.parse("\(Self.merge);\nSELECT 1;", grammar: TestGrammar.postgres)
+        #expect(stmts == [Self.merge, "SELECT 1"])
     }
 
     @Test("Multi-byte UTF-8 char straddling 64KB chunk boundary parses correctly")
@@ -203,7 +273,7 @@ struct SQLFileParserTests {
         let prefix = String(repeating: "a", count: chunkSize - 1)
         let multibyteChar = "é"
         let sql = "INSERT INTO t (a) VALUES ('\(prefix)\(multibyteChar)tail');\nSELECT 99;"
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].contains(multibyteChar))
         #expect(stmts[0].contains("tail"))
@@ -214,7 +284,7 @@ struct SQLFileParserTests {
     func large_multi_row_insert_correctness() async throws {
         let rows = (1...5_000).map { "  (\($0), 'row\($0)')" }.joined(separator: ",\n")
         let sql = "INSERT INTO t (id, label) VALUES\n\(rows);\nSELECT 100;"
-        let stmts = try await Self.parse(sql, dialect: .postgres)
+        let stmts = try await Self.parse(sql, grammar: TestGrammar.postgres)
         #expect(stmts.count == 2)
         #expect(stmts[0].hasPrefix("INSERT INTO t"))
         #expect(stmts[0].contains("(1, 'row1')"))
@@ -235,7 +305,7 @@ struct SQLFileParserTests {
 
         var received: [String] = []
         let parser = SQLFileParser()
-        for try await (stmt, _) in parser.parseFile(url: url, encoding: .utf8, dialect: .postgres) {
+        for try await (stmt, _) in parser.parseFile(url: url, encoding: .utf8, grammar: TestGrammar.postgres) {
             received.append(stmt)
             try await Task.sleep(nanoseconds: 100_000)
         }
@@ -257,7 +327,7 @@ struct SQLFileParserTests {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let parser = SQLFileParser()
-        let count = try await parser.countStatements(url: url, encoding: .utf8, dialect: .postgres)
+        let count = try await parser.countStatements(url: url, encoding: .utf8, grammar: TestGrammar.postgres)
         #expect(count == statementCount)
     }
 
@@ -277,7 +347,8 @@ struct SQLFileParserTests {
         #expect(SqlDialect.from(databaseTypeId: "SQLite") == .sqlite)
         #expect(SqlDialect.from(databaseTypeId: "DuckDB") == .sqlite)
         #expect(SqlDialect.from(databaseTypeId: "Cloudflare D1") == .sqlite)
-        #expect(SqlDialect.from(databaseTypeId: "Oracle") == .generic)
+        #expect(SqlDialect.from(databaseTypeId: "Oracle") == .oracle)
+        #expect(SqlDialect.from(databaseTypeId: "Dameng") == .generic)
         #expect(SqlDialect.from(databaseTypeId: "Unknown Whatever") == .generic)
     }
 
@@ -289,7 +360,7 @@ struct SQLFileParserTests {
 
         var statements: [String] = []
         let parser = SQLFileParser()
-        for try await (stmt, _) in parser.parseFile(url: url, encoding: encoding, dialect: .mysql) {
+        for try await (stmt, _) in parser.parseFile(url: url, encoding: encoding, grammar: TestGrammar.mysql) {
             statements.append(stmt)
         }
         return statements
@@ -321,5 +392,44 @@ struct SQLFileParserTests {
         let body = try #require(sql.data(using: .shiftJIS))
         #expect(body.count > 65_536)
         #expect(try await Self.parse(body, encoding: .shiftJIS) == lines.map { String($0.dropLast()) })
+    }
+
+    private static let cqlScript = """
+        BEGIN UNLOGGED BATCH USING TIMESTAMP 1481124356754405
+          INSERT INTO ks.t (id, v) VALUES (1, 'a; APPLY BATCH; b');
+          UPDATE ks.t SET v = $$ APPLY BATCH; $$ WHERE id = 2;
+        apply batch;
+        CREATE TABLE ks.cases (id int PRIMARY KEY, case text);
+        SELECT * FROM ks.t;
+        """
+
+    private static let cqlStatements = [
+        """
+        BEGIN UNLOGGED BATCH USING TIMESTAMP 1481124356754405
+          INSERT INTO ks.t (id, v) VALUES (1, 'a; APPLY BATCH; b');
+          UPDATE ks.t SET v = $$ APPLY BATCH; $$ WHERE id = 2;
+        apply batch
+        """,
+        "CREATE TABLE ks.cases (id int PRIMARY KEY, case text)",
+        "SELECT * FROM ks.t",
+    ]
+
+    @Test("An imported CQL batch arrives whole, as the editor sends it")
+    func cqlBatchImportsWhole() async throws {
+        let grammar = DatabaseType.cassandra.lexicalGrammar
+        #expect(try await Self.parse(Self.cqlScript, grammar: grammar) == Self.cqlStatements)
+        let edited = SQLStatementScanner.executableStatements(in: Self.cqlScript, grammar: grammar).map { $0.sql }
+        #expect(edited == Self.cqlStatements)
+    }
+
+    @Test("A chunk boundary anywhere in a CQL batch changes nothing")
+    func cqlBatchChunkBoundaryAnywhere() async throws {
+        let grammar = DatabaseType.cassandra.lexicalGrammar
+        let chunkSize = 65_536
+        for boundary in 0..<(Self.cqlScript as NSString).length {
+            let padding = "--" + String(repeating: "x", count: chunkSize - boundary - 3) + "\n"
+            let statements = try await Self.parse(padding + Self.cqlScript, grammar: grammar)
+            #expect(statements == Self.cqlStatements, "boundary at \(boundary)")
+        }
     }
 }

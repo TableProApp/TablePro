@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPRequestState")
 struct MCPRequestStateTests {
     private func principal(fingerprint: String = "fp-1", tokenId: UUID? = nil) -> MCPPrincipal {
         MCPPrincipal(
@@ -145,7 +144,6 @@ struct MCPRequestStateTests {
     }
 }
 
-@Suite("MCPRequestState replay resistance")
 struct MCPRequestStateReplayTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 

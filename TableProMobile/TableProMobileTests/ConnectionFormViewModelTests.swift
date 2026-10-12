@@ -1,20 +1,19 @@
 import Foundation
-import Testing
 import TableProDatabase
-import TableProModels
 @testable import TableProMobile
+import TableProModels
+import Testing
 
 @MainActor
 @Suite("ConnectionFormViewModel")
 struct ConnectionFormViewModelTests {
-
     private func makeStoredConnection() -> DatabaseConnection {
         var conn = DatabaseConnection(
             id: UUID(),
             name: "Local",
             type: .postgresql,
             host: "10.0.0.1",
-            port: 5432,
+            port: 5_432,
             username: "alice",
             database: "appdb",
             sshEnabled: false,
@@ -115,17 +114,87 @@ struct ConnectionFormViewModelTests {
         #expect(vm.database == "")
     }
 
-    @Test("createNewDatabase creates a .db URL in Documents")
-    func createDatabase() {
-        let vm = ConnectionFormViewModel()
+    @Test("createNewDatabase stores the file's path in Documents and creates nothing yet")
+    func createDatabase() throws {
+        let fixture = try AppStateFixture()
+        let vm = fixture.makeFormViewModel()
         vm.type = .sqlite
         vm.newDatabaseName = "scratch"
 
         vm.createNewDatabase()
 
         #expect(vm.selectedFileURL?.lastPathComponent == "scratch.db")
-        #expect(vm.database.hasSuffix("/scratch.db"))
+        #expect(vm.database == fixture.documentsFile("scratch.db").path)
         #expect(vm.name == "scratch")
         #expect(vm.newDatabaseName == "")
+        #expect(vm.pendingFile == .newDocumentsFile(fixture.documentsFile("scratch.db")))
+        #expect(!FileManager.default.fileExists(atPath: fixture.documentsFile("scratch.db").path))
+    }
+
+    @Test("A new database with a name already in Documents is refused")
+    func createDatabaseWithTakenName() throws {
+        let fixture = try AppStateFixture()
+        try Data().write(to: fixture.documentsFile("scratch.db"))
+        let vm = fixture.makeFormViewModel()
+        vm.type = .sqlite
+        vm.newDatabaseName = "scratch"
+
+        vm.createNewDatabase()
+
+        #expect(vm.fileError == LocalDatabaseFileError.alreadyExists(fileName: "scratch.db").localizedDescription)
+        #expect(vm.database.isEmpty)
+        #expect(vm.pendingFile == nil)
+    }
+
+    @Test("A file that cannot be copied in says so and leaves the form without a database")
+    func failedCopyIsReported() throws {
+        let fixture = try AppStateFixture()
+        let vm = fixture.makeFormViewModel()
+        vm.type = .sqlite
+
+        vm.handleSQLiteFilePicker(.success([fixture.root.appendingPathComponent("missing.db")]))
+
+        #expect(vm.fileError != nil)
+        #expect(vm.database.isEmpty)
+        #expect(vm.selectedFileURL == nil)
+    }
+
+    @Test("A picked SQLite file is copied into Documents and stored by its path there")
+    func pickedFileIsCopied() throws {
+        let fixture = try AppStateFixture()
+        let source = fixture.root.appendingPathComponent("orders.sqlite")
+        try Data("orders".utf8).write(to: source)
+        let vm = fixture.makeFormViewModel()
+        vm.type = .sqlite
+
+        vm.handleSQLiteFilePicker(.success([source]))
+
+        #expect(vm.database == fixture.documentsFile("orders.sqlite").path)
+        #expect(vm.pendingFile == .documentsFile)
+        #expect(FileManager.default.fileExists(atPath: fixture.documentsFile("orders.sqlite").path))
+    }
+
+    @Test("A file connection from before a restore shows today's file and keeps its stored path")
+    func restoredFileHydrates() throws {
+        let fixture = try AppStateFixture()
+        let storedPath = fixture.earlierContainerPath(to: "notes.db")
+        let vm = fixture.makeFormViewModel(
+            editing: DatabaseConnection(type: .sqlite, port: 0, database: storedPath)
+        )
+
+        #expect(vm.selectedFileURL == fixture.documentsFile("notes.db"))
+        #expect(vm.database == storedPath)
+    }
+
+    @Test("A file connection synced from another device is not shown as a file on this one")
+    func otherDeviceFileIsNotReRooted() throws {
+        let fixture = try AppStateFixture()
+        let storedPath = fixture.otherInstallContainerPath(to: "notes.db")
+        let vm = fixture.makeFormViewModel(
+            editing: DatabaseConnection(type: .sqlite, port: 0, database: storedPath)
+        )
+
+        #expect(vm.selectedFileURL == URL(fileURLWithPath: storedPath))
+        #expect(vm.database == storedPath)
     }
 }

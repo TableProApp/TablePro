@@ -5,25 +5,13 @@
 
 import SwiftUI
 
-struct AcknowledgementsView: View {
+struct AcknowledgementsSidebar: View {
     let inventory: ThirdPartyLicenseInventory?
-
-    @State private var selection: ThirdPartyComponent.ID?
+    @ObservedObject var selection: SidebarSelection<ThirdPartyComponent.ID>
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 340)
-        } detail: {
-            detail
-        }
-        .frame(minWidth: 720, minHeight: 460)
-    }
-
-    @ViewBuilder
-    private var sidebar: some View {
         if let inventory {
-            List(selection: $selection) {
+            List(selection: $selection.value) {
                 Section(String(localized: "Open Source Libraries")) {
                     ForEach(inventory.attributed) { component in
                         row(for: component)
@@ -39,7 +27,7 @@ struct AcknowledgementsView: View {
             }
             .listStyle(.sidebar)
         } else {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No License Information"),
                 systemImage: "doc.text.magnifyingglass",
                 description: Text(String(localized: "The list of open source libraries is missing from this build."))
@@ -56,13 +44,17 @@ struct AcknowledgementsView: View {
         }
         .tag(component.id)
     }
+}
 
-    @ViewBuilder
-    private var detail: some View {
+struct AcknowledgementsDetail: View {
+    let inventory: ThirdPartyLicenseInventory?
+    @ObservedObject var selection: SidebarSelection<ThirdPartyComponent.ID>
+
+    var body: some View {
         if let inventory, let component = selectedComponent(in: inventory) {
             ComponentLicenseDetail(component: component, text: inventory.licenseText(for: component))
         } else {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "Select a Library"),
                 systemImage: "sidebar.left",
                 description: Text(String(localized: "TablePro includes these open source libraries. Pick one to read its license."))
@@ -71,8 +63,8 @@ struct AcknowledgementsView: View {
     }
 
     private func selectedComponent(in inventory: ThirdPartyLicenseInventory) -> ThirdPartyComponent? {
-        guard let selection else { return nil }
-        return inventory.components.first { $0.id == selection }
+        guard let id = selection.value else { return nil }
+        return inventory.components.first { $0.id == id }
     }
 }
 

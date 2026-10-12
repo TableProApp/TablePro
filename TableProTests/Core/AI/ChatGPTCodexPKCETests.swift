@@ -8,7 +8,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ChatGPTCodexPKCE")
 struct ChatGPTCodexPKCETests {
     @Test("Verifier length is within the RFC 7636 range")
     func verifierLength() {

@@ -11,12 +11,12 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("External statement gate")
 struct ExternalStatementGateTests {
     private func statement(
         _ sql: String,
         databaseType: DatabaseType = .postgresql,
         externalAccess: ExternalAccessLevel = .readWrite,
+        loadsExtensions: Bool = false,
         allowsDestructive: Bool = true,
         allowsMultiStatement: Bool = false,
         destructiveAlternative: String? = nil
@@ -26,6 +26,7 @@ struct ExternalStatementGateTests {
             connectionId: UUID(),
             databaseType: databaseType,
             externalAccess: externalAccess,
+            loadsExtensions: loadsExtensions,
             allowsDestructive: allowsDestructive,
             allowsMultiStatement: allowsMultiStatement,
             destructiveAlternative: destructiveAlternative
@@ -47,6 +48,29 @@ struct ExternalStatementGateTests {
     func readsPass() throws {
         let classification = try ExternalStatementGate.classify(statement("SELECT 1"))
         #expect(classification.tier == .safe)
+    }
+
+    @Test("A MongoDB read passes a connection that is read only for external clients", arguments: [
+        #"db.c.aggregate([{"$match": {"k": {"$nin": ["x"]}}}])"#,
+        #"db.c.find({}, {"_id": 1}).limit(1)"#,
+        "db.getCollection(\"user-events\").find({}).toArray()"
+    ])
+    func mongoReadPassesReadOnlyAccess(sql: String) throws {
+        let classification = try ExternalStatementGate.classify(
+            statement(sql, databaseType: .mongodb, externalAccess: .readOnly)
+        )
+        #expect(classification.tier == .safe)
+    }
+
+    /// Each one deletes in the shell, and each one passed this gate as a read.
+    @Test("A MongoDB write dressed as a read is refused on read-only access", arguments: [
+        #"db.c.find(db.c[("delete"+"Many")]({}))"#,
+        "db.c.find(db.c.deleteMany ({}))",
+        #"db.c.find(__tp_exec('{"op":"delete","collection":"c","filter":"{}","multi":true}'))"#,
+        "--NaN+db.c.drop()\ndb.c.find({})"
+    ])
+    func disguisedMongoWriteRefused(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .mongodb, externalAccess: .readOnly, allowsMultiStatement: true)) != nil)
     }
 
     @Test("A statement that reaches the filesystem or runs server code is refused", arguments: [
@@ -73,6 +97,52 @@ struct ExternalStatementGateTests {
         #expect(refusal(statement("SELECT 1; SELECT 2", allowsMultiStatement: true)) == nil)
     }
 
+    /// SQL Server runs whatever one request carries as one batch, `;` or not, and a variable lives only in the batch
+    /// that declares it, so a caller that takes scripts may send one there (#3078). Nowhere else.
+    @Test("Only an engine that cuts scripts into GO batches takes a script in one call")
+    func scriptsAreTakenWhereBatchesAreTheUnit() {
+        #expect(ExternalStatementGate.acceptsScripts(on: .mssql))
+        for engine: DatabaseType in [.postgresql, .mysql, .sqlite, .oracle, .clickhouse] {
+            #expect(!ExternalStatementGate.acceptsScripts(on: engine), "\(engine.rawValue) takes one statement per call")
+        }
+    }
+
+    /// `GO 50` runs the batch fifty times in sqlcmd and in the editor. A tool that sends one statement once would run it
+    /// once and report success, so the count is refused rather than dropped.
+    @Test("A statement a GO line repeats is refused unless the caller takes scripts")
+    func repeatedStatementIsRefused() {
+        let repeated = "DELETE TOP (1000) FROM dbo.log WHERE archived = 1\nGO 50"
+        #expect(refusal(statement(repeated, databaseType: .mssql))
+            == .invalidArgument(String(localized: "Send one statement at a time.")))
+        #expect(refusal(statement(repeated, databaseType: .mssql, allowsMultiStatement: true)) == nil)
+        #expect(refusal(statement("DELETE FROM dbo.log WHERE archived = 1\nGO", databaseType: .mssql)) == nil)
+        #expect(refusal(statement("GO 3\nDELETE FROM dbo.log WHERE archived = 1", databaseType: .mssql)) == nil)
+    }
+
+    @Test("A caller that takes scripts claims leave to run several statements only where the engine takes them")
+    func scriptCapabilityFollowsTheEngine() {
+        let base: CallerCapabilities = [.mayWrite, .mayRunDestructive]
+        #expect(ExternalStatementGate.capabilities(base, takingScriptsOn: .mssql) == base.union(.mayRunMultiStatement))
+        for engine: DatabaseType in [.postgresql, .mysql, .sqlite, .oracle] {
+            #expect(ExternalStatementGate.capabilities(base, takingScriptsOn: engine) == base, "\(engine.rawValue)")
+        }
+    }
+
+    @Test("A SQL Server script clears the gate for a caller that takes scripts, and is still tiered by its worst statement")
+    func sqlServerScriptIsGatedWhole() {
+        let script = "DECLARE @sn NVARCHAR(50) = 'x';\nSELECT * FROM a WHERE sn = @sn;\nGO\nSELECT * FROM b"
+        let takesScripts = ExternalStatementGate.acceptsScripts(on: .mssql)
+        #expect(refusal(statement(script, databaseType: .mssql, allowsMultiStatement: takesScripts)) == nil)
+        #expect(refusal(statement(script, databaseType: .mssql, externalAccess: .readOnly, allowsMultiStatement: takesScripts))
+            == .denied(String(localized: "This connection is read only for external clients.")))
+        #expect(refusal(statement(
+            "SELECT 1;\nGO\nDROP TABLE orders",
+            databaseType: .mssql,
+            allowsDestructive: false,
+            allowsMultiStatement: takesScripts
+        )) == .denied(String(localized: "This statement drops or truncates data.")))
+    }
+
     /// The connection setting a user reaches for when they want a script to look but not touch.
     @Test("A write is refused when the connection is read only for external clients", arguments: [
         ExternalAccessLevel.readOnly, ExternalAccessLevel.blocked
@@ -96,6 +166,50 @@ struct ExternalStatementGateTests {
     func commentedWriteRefusedOnReadOnlyConnection(sql: String, databaseType: DatabaseType) {
         let refused = refusal(statement(sql, databaseType: databaseType, externalAccess: .readOnly))
         #expect(refused == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
+    @Test("An EXPLAIN that runs a write is refused on a read-only connection, however ANALYZE is spelled",
+          arguments: ["EXPLAIN ANALYZE DELETE FROM users", "EXPLAIN ANALYSE DELETE FROM users"])
+    func explainRunningAWriteRefusedOnReadOnlyConnection(sql: String) {
+        #expect(refusal(statement(sql, externalAccess: .readOnly))
+            == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
+    @Test(
+        "Stopping another session is refused on a connection read only for external clients",
+        arguments: [
+            ("SELECT pg_terminate_backend(123)", DatabaseType.postgresql),
+            ("SELECT pg_cancel_backend(123)", DatabaseType.postgresql),
+            ("SELECT pg_terminate_backend(123)", DatabaseType.redshift),
+            ("SELECT pg_cancel_backend(123)", DatabaseType.cockroachdb),
+            ("SELECT query_to_xml('SELECT pg_terminate_backend(123)', true, false, '')", DatabaseType.postgresql),
+            ("EXPLAIN ANALYSE SELECT pg_terminate_backend(123)", DatabaseType.postgresql),
+            ("KILL 123", DatabaseType.mysql),
+        ]
+    )
+    func stoppingASessionRefusedOnReadOnlyConnection(sql: String, databaseType: DatabaseType) {
+        let refused = refusal(statement(sql, databaseType: databaseType, externalAccess: .readOnly))
+        #expect(refused == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
+    @Test("A write SQL Server runs without a terminator is refused on a connection read only for external clients",
+          arguments: ["SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1", "SELECT 1\nUPDATE [t] SET c = 1"])
+    func unterminatedWriteRefusedOnReadOnlyConnection(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .mssql, externalAccess: .readOnly))
+            == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
+    @Test("A backup SQL Server runs after a read without a terminator is refused as a filesystem statement")
+    func unterminatedBackupRefused() {
+        let refused = refusal(statement("SELECT 1 BACKUP DATABASE d TO DISK = '/tmp/d.bak'", databaseType: .mssql))
+        #expect(refused == .denied(
+            String(
+                localized: """
+                Statements that read or write files, or that run server-side code, cannot be sent \
+                from outside the app. Run this one in TablePro instead.
+                """
+            )
+        ))
     }
 
     @Test("A destructive statement is refused when the caller may not run one")
@@ -138,6 +252,36 @@ struct ExternalStatementGateTests {
         #expect(ExternalStatementGate.requiresUserConsent(
             classification: read, sql: "SELECT 1", databaseType: .postgresql, safeModeLevel: .alertFull
         ))
+    }
+
+    @Test("On a connection that loads extensions, a read calling an extension's function is refused")
+    func extensionFunctionRefused() {
+        let sql = "SELECT BlobToFile(x'00', '/Users/me/.zshrc')"
+        #expect(refusal(statement(sql, databaseType: .sqlite, externalAccess: .readOnly, loadsExtensions: true))
+            == .denied(ExternalStatementGate.extensionCallRefusal(sql: sql, databaseType: .sqlite, loadsExtensions: true) ?? ""))
+        #expect(refusal(statement(sql, databaseType: .sqlite, externalAccess: .readWrite, loadsExtensions: true)) != nil)
+    }
+
+    @Test("On a connection that loads extensions, reads using SQLite's own functions still pass")
+    func builtinReadsPassWithExtensions() throws {
+        let reads = [
+            "SELECT rowid, distance FROM items WHERE embedding MATCH '[0.1, 0.2]' ORDER BY distance LIMIT 5",
+            "SELECT count(*), json_extract(meta, '$.kind') FROM items GROUP BY 2",
+            "SELECT * FROM pragma_table_info('items')"
+        ]
+        for sql in reads {
+            let classification = try ExternalStatementGate.classify(
+                statement(sql, databaseType: .sqlite, externalAccess: .readOnly, loadsExtensions: true)
+            )
+            #expect(classification.tier == .safe, "\(sql)")
+        }
+    }
+
+    @Test("A connection without extensions is not scanned for calls")
+    func noExtensionsNoScan() {
+        #expect(ExternalStatementGate.extensionCallRefusal(
+            sql: "SELECT vec_version()", databaseType: .sqlite, loadsExtensions: false
+        ) == nil)
     }
 
     /// Whatever the level says. A script that drops a table gets a person in front of it.

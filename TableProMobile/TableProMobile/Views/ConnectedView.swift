@@ -5,6 +5,7 @@ import TableProModels
 struct ConnectedView: View {
     @Environment(AppState.self) private var appState
     @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
+    @Environment(ScenePresenter.self) private var presenter
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     let connection: DatabaseConnection
@@ -18,39 +19,56 @@ struct ConnectedView: View {
         connection.name.isEmpty ? connection.host : connection.name
     }
 
+    private var liveRecord: DatabaseConnection? {
+        appState.connections.first { $0.id == connection.id }
+    }
+
+    private var isRemoved: Bool {
+        appState.isConnectionRemoved(connection.id)
+    }
+
+    private var connectionEditorPresented: Binding<Bool> {
+        Binding(
+            get: { presenter.isEditingConnection(connection.id) },
+            set: { if !$0 { presenter.dismissConnectionEditor() } }
+        )
+    }
+
     var body: some View {
         Group {
             if let coordinator {
-                switch coordinator.phase {
-                case .connecting:
-                    statusScreen { connectingView }
-                case .error(let error):
-                    statusScreen {
-                        ErrorView(error: error) {
-                            await coordinator.connect()
-                        }
-                    }
-                case .connected:
-                    connectedContent(coordinator)
-                }
+                screen(for: coordinator)
+                    .connectionPrompts(coordinator.prompts)
             } else {
                 statusScreen { connectingView }
             }
         }
-        .onChange(of: appState.connections) { _, newConnections in
-            if !newConnections.contains(where: { $0.id == connection.id }) {
-                showDeletedAlert = true
-            }
+        .onChange(of: isRemoved, initial: true) { _, removed in
+            guard removed else { return }
+            presenter.dismissConnectionEditor()
+            showDeletedAlert = true
         }
         .alert(String(localized: "Connection Deleted"), isPresented: $showDeletedAlert) {
             Button("OK", role: .cancel) { dismiss() }
         } message: {
             Text("This connection no longer exists. It may have been removed from another device.")
         }
-        .task(id: coordinatorStore.revision) {
-            let resolved = coordinatorStore.coordinator(for: connection, appState: appState)
+        .sheet(isPresented: connectionEditorPresented) {
+            ConnectionFormView(editing: liveRecord ?? connection) { _ in
+                presenter.dismissConnectionEditor()
+            }
+        }
+        .task(id: coordinatorStore.generation(for: connection.id)) {
+            guard let record = liveRecord else { return }
+            let resolved = coordinatorStore.coordinator(for: record, appState: appState)
             coordinator = resolved
-            if case .connected = resolved.phase { return }
+            if let table = presenter.takeTable(for: connection.id) {
+                resolved.pendingTableName = table
+            }
+            if case .connected = resolved.phase {
+                resolved.navigateToPendingTable()
+                return
+            }
             await resolved.connect()
             guard !Task.isCancelled else { return }
             if case .connected = resolved.phase {
@@ -60,6 +78,11 @@ struct ConnectedView: View {
                 hapticError.toggle()
             }
         }
+        .onChange(of: presenter.pendingTable) { _, _ in
+            guard let coordinator, let table = presenter.takeTable(for: connection.id) else { return }
+            coordinator.pendingTableName = table
+            coordinator.navigateToPendingTable()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await coordinator?.reconnectIfNeeded() }
@@ -67,6 +90,22 @@ struct ConnectedView: View {
         }
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
+    }
+
+    @ViewBuilder
+    private func screen(for coordinator: ConnectionCoordinator) -> some View {
+        switch ConnectedScreen.resolve(phase: coordinator.phase, isHeldByEditor: presenter.isHeldByEditor) {
+        case .connecting:
+            statusScreen { connectingView }
+        case .failed(let error):
+            statusScreen {
+                ErrorView(error: error) {
+                    await coordinator.connect()
+                }
+            }
+        case .tabs:
+            connectedContent(coordinator)
+        }
     }
 
     // MARK: - Chrome
@@ -83,7 +122,8 @@ struct ConnectedView: View {
     @ToolbarContentBuilder
     private var closeToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            Button {
+            DiscardChangesButton(hasChanges: presenter.isHeldByEditor) {
+                coordinator?.cancelConnect()
                 dismiss()
             } label: {
                 Label("Connections", systemImage: "chevron.backward")
@@ -97,8 +137,10 @@ struct ConnectedView: View {
     private var connectingView: some View {
         VStack(spacing: 16) {
             ProgressView {
-                Text(String(format: String(localized: "Connecting to %@..."),
-                             connection.name.isEmpty ? connection.host : connection.name))
+                Text(String(
+                    format: String(localized: "Connecting to %@..."),
+                    connection.name.isEmpty ? connection.host : connection.name
+                ))
             }
             Button(String(localized: "Cancel"), role: .cancel) {
                 coordinator?.cancelConnect()
@@ -115,15 +157,26 @@ struct ConnectedView: View {
         @Bindable var coordinator = coordinator
         return TabView(selection: $coordinator.selectedTab) {
             Tab("Tables", systemImage: "tablecells", value: .tables) {
-                NavigationStack(path: $coordinator.tablesPath) {
+                NavigationSplitView {
                     tabChrome(coordinator) {
                         TableListView(connectionId: connection.id)
                     }
-                    .navigationDestination(for: TableInfo.self) { table in
-                        DataBrowserView(table: table)
-                            .environment(coordinator)
+                } detail: {
+                    NavigationStack {
+                        if let table = coordinator.selectedTable {
+                            DataBrowserView(table: table)
+                                .environment(coordinator)
+                                .id(table)
+                        } else {
+                            ContentUnavailableView(
+                                "No Table Selected",
+                                systemImage: "tablecells",
+                                description: Text("Pick a table to browse its rows.")
+                            )
+                        }
                     }
                 }
+                .navigationSplitViewStyle(.balanced)
             }
             Tab("Query", systemImage: "terminal", value: .query) {
                 NavigationStack {
@@ -195,7 +248,7 @@ struct ConnectedView: View {
         } message: {
             Text(coordinator.failureAlertMessage ?? "")
         }
-        .userActivity("com.TablePro.viewConnection") { activity in
+        .userActivity(SceneIntent.viewConnectionActivity, isActive: appState.offersHandoff(for: connection)) { activity in
             activity.title = connection.name.isEmpty ? connection.host : connection.name
             activity.isEligibleForHandoff = true
             activity.userInfo = ["connectionId": connection.id.uuidString]
@@ -218,21 +271,19 @@ struct ConnectedView: View {
 
     @ToolbarContentBuilder
     private func connectionToolbar(_ coordinator: ConnectionCoordinator) -> some ToolbarContent {
-        if coordinator.selectedTab == .info {
+        if coordinator.selectedTab == .info, !connection.isSample {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    coordinator.showingEditSheet = true
+                    presenter.presentConnectionEditor(for: connection.id)
                 } label: {
-                    Image(systemName: "pencil")
-                        .accessibilityLabel(Text("Edit Connection"))
+                    Label("Edit Connection", systemImage: "pencil")
                 }
             }
         }
-        if connection.safeModeLevel != .off {
+        if let badge = SafeModeBadge(level: connection.safeModeLevel) {
             ToolbarItem(placement: .topBarTrailing) {
-                Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
-                    .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
-                    .font(.caption)
+                Label(badge.title, systemImage: badge.symbolName)
+                    .foregroundStyle(badge.tint == .blocked ? Color.red : Color.orange)
             }
         }
         if coordinator.supportsDatabaseSwitching && coordinator.databases.count > 1 {
@@ -250,18 +301,8 @@ struct ConnectedView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 4) {
-                        Text(coordinator.activeDatabase)
-                            .font(.subheadline)
-                        if coordinator.isSwitching {
-                            ProgressView()
-                                .controlSize(.mini)
-                        } else {
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    Label(coordinator.activeDatabase, systemImage: "cylinder.split.1x2")
+                        .font(.subheadline)
                 }
                 .disabled(coordinator.isSwitching)
             }

@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("HeaderSortCycle - single column")
 struct HeaderSortCycleSingleColumnTests {
     @Test("No active sort starts ascending")
     func noActiveSortStartsAscending() {
@@ -93,7 +92,6 @@ struct HeaderSortCycleSingleColumnTests {
     }
 }
 
-@Suite("HeaderSortCycle - multi-column shift-click")
 struct HeaderSortCycleMultiColumnTests {
     @Test("Shift-click on unsorted column adds it ascending")
     func shiftClickUnsortedAddsAscending() {
@@ -185,7 +183,6 @@ struct HeaderSortCycleMultiColumnTests {
     }
 }
 
-@Suite("HeaderSortCycle - source and first-click direction")
 struct HeaderSortCycleSourceTests {
     @Test("A default sort's first click reverses it, and the result is the user's")
     func defaultSortFirstClickReverses() {

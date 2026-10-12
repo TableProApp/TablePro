@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct JSONExportOptionsView: View {
-    @Bindable var plugin: JSONExportPlugin
+    @ObservedObject var plugin: JSONExportPlugin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

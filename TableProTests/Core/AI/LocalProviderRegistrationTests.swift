@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Local OpenAI-compatible provider registration")
 struct LocalProviderRegistrationTests {
     init() {
         AIProviderRegistration.registerAll()
@@ -56,7 +55,8 @@ struct LocalProviderRegistrationTests {
             let provider = descriptor(for: type)
             #expect(provider?.supportsReasoning == true)
             #expect(provider?.supportsImages == true)
-            #expect(provider?.supportsImages(forModelID: "some-unfetched-local-model") == true)
+            #expect(provider?.supportsImages(fetched: nil) == true)
+            #expect(provider?.supportsImages(fetched: AIModelInfo(id: "text-only", modalities: [.text])) == false)
             #expect(provider?.supportedEffortLevels(forModelID: "some-unfetched-local-model").isEmpty == false)
         }
     }
@@ -82,7 +82,12 @@ struct LocalProviderRegistrationTests {
         for type in [AIProviderType.llamaCpp, .mlx] {
             let config = AIProviderConfig(type: type)
             #expect(config.endpoint == "http://localhost:8080")
-            #expect(config.endpoint.openAIPath("chat/completions") == "http://localhost:8080/v1/chat/completions")
+            let style = type.endpointStyle
+            #expect(style == .chatCompletions)
+            #expect(
+                AIEndpoint(config.endpoint, style: style)?.chatURL(model: "local-model", style: style)?.absoluteString
+                    == "http://localhost:8080/v1/chat/completions"
+            )
         }
     }
 }

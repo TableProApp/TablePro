@@ -41,7 +41,7 @@ final class SettingsWindowTitleTests: XCTestCase {
 
     func testEveryPaneIsReachableAndCarriesItsOwnTitle() {
         let (panes, _) = makePanes()
-        panes.loadViewIfNeeded()
+        _ = panes.view
 
         XCTAssertEqual(SettingsPaneTabViewController.paneOrder, SettingsPane.allCases)
         XCTAssertEqual(panes.tabViewItems.count, SettingsPane.allCases.count)
@@ -71,6 +71,20 @@ final class SettingsWindowTitleTests: XCTestCase {
         let (_, window) = makePanes()
 
         XCTAssertEqual(window.title, SettingsPane.keyboard.title)
+    }
+
+    func testAStoredMCPPaneRestoresThePaneTitledMCP() {
+        AppStorageEnvironment.shared.defaults.set("mcp", forKey: PreferenceKeys.selectedSettingsPane.name)
+
+        let (_, window) = makePanes()
+
+        XCTAssertEqual(window.title, "MCP")
+    }
+
+    // The rawValue is the persisted pane and the tab item identifier, so it outlives any title.
+    func testPaneIdentifiersSurviveTitleChanges() {
+        XCTAssertEqual(SettingsPane.mcp.rawValue, "mcp")
+        XCTAssertEqual(SettingsPane.account.rawValue, "account")
     }
 
     func testAskingForNoPaneReadsTheStoredPaneRatherThanStayingPut() {

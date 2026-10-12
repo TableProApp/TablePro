@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("RowDisplayCache")
 @MainActor
 struct RowDisplayCacheTests {
     private func makeBox(_ values: [String?]) -> RowDisplayBox {

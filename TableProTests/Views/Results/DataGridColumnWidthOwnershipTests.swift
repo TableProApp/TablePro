@@ -18,7 +18,6 @@ private final class NoopColumnLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Legacy column width ownership")
 @MainActor
 struct DataGridColumnWidthOwnershipTests {
     private static let plainWidth: CGFloat = 210

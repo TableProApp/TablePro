@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("DatabaseConnection tag migration")
 struct DatabaseConnectionTagMigrationTests {
     private func decode(_ json: [String: Any]) throws -> DatabaseConnection {
         let data = try JSONSerialization.data(withJSONObject: json)

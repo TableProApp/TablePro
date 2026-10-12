@@ -7,7 +7,7 @@ extension MCPPromptCatalog {
         proposeIndexes
     ]
 
-    private static let referencedTableLimit = 6
+    static let referencedTableLimit = 6
     private static let queryInventoryLimit = 150
     private static let queryExcerptLimit = 8_000
 
@@ -29,7 +29,12 @@ extension MCPPromptCatalog {
                 MCPPromptArgument(
                     name: "tables",
                     title: String(localized: "Tables"),
-                    description: String(localized: "Comma-separated tables to use. All loaded tables when omitted"),
+                    description: String(
+                        format: String(
+                            localized: "Comma-separated tables whose columns the prompt includes, up to %1$d. The first %1$d by name when omitted"
+                        ),
+                        referencedTableLimit
+                    ),
                     completion: .table
                 ),
                 .database,
@@ -40,10 +45,9 @@ extension MCPPromptCatalog {
                 let requested = context.list("tables")
                 let target = try await context.resolveTarget()
                 let inventory = try await context.schema.tableInventory(target: target, includeRowCounts: true)
-                let names = requested.isEmpty
-                    ? Array(inventory.prefix(referencedTableLimit).map(\.name))
-                    : Array(requested.prefix(referencedTableLimit))
+                let names = referencedTables(requested: requested, inventory: inventory)
                 let details = await context.schema.tableDetails(target: target, tables: names)
+                let available = requested.isEmpty ? inventory.count : requested.count
 
                 let text = """
                 Answer this question with one query against a live \(target.connection.databaseType) database.
@@ -59,10 +63,10 @@ extension MCPPromptCatalog {
 
                 ## Structure of the tables you can use
                 \(MCPPromptMarkdown.tableSections(details, includeDdl: false))
-
+                \(structureCoverageNote(described: details.count, available: available))
                 Rules:
-                - Use only the tables and columns shown above. If the question needs something that is not \
-                there, say what is missing and stop.
+                - Use only the tables and columns shown above, or ones you read with describe_table. If the \
+                question needs something that is not there, say what is missing and stop.
                 - Qualify every column when more than one table is involved, and state the join key you used.
                 - Prefer explicit JOIN ... ON. Say which joins can multiply rows and how you avoided it.
                 - Add a LIMIT unless the answer is an aggregate.
@@ -81,6 +85,18 @@ extension MCPPromptCatalog {
                 )
             }
         )
+    }
+
+    static func referencedTables(requested: [String], inventory: [MCPPromptTableEntry]) -> [String] {
+        requested.isEmpty
+            ? Array(inventory.prefix(referencedTableLimit).map(\.name))
+            : Array(requested.prefix(referencedTableLimit))
+    }
+
+    static func structureCoverageNote(described: Int, available: Int) -> String {
+        guard available > described else { return "" }
+        return "\nThe structure above covers \(described) of \(available) tables. "
+            + "Call describe_table for any other table before you use it.\n"
     }
 
     private static var reviewQuery: MCPPromptDefinition {
@@ -108,13 +124,9 @@ extension MCPPromptCatalog {
             ],
             render: { context in
                 let query = try context.requiredValue("query")
-                let plan = context.value("explain_plan")
+                let plan = context.value("explain_plan").map { MCPPromptMarkdown.truncated($0, limit: queryExcerptLimit) }
                 let target = try await context.resolveTarget()
-                let inventory = try await context.schema.tableInventory(target: target, includeRowCounts: true)
-                let details = await context.schema.tableDetails(
-                    target: target,
-                    tables: referencedTables(in: query, inventory: inventory, limit: referencedTableLimit)
-                )
+                let snapshot = try await context.schema.queryContext(target: target, statement: query, explainPlan: plan)
 
                 let text = """
                 Review this query before it runs against a live \(target.connection.databaseType) database.
@@ -123,11 +135,10 @@ extension MCPPromptCatalog {
                 \(MCPPromptMarkdown.connectionHeader(target))
 
                 ## Query
-                \(queryBlock(query))
-                \(planSection(plan))
+                \(queryBlock(query, language: snapshot.languageTag))
 
-                ## Tables it references
-                \(MCPPromptMarkdown.tableSections(details, includeDdl: false))
+                \(QueryContextRenderer.render(snapshot))
+                \(missingPlanNote(plan))
 
                 Answer in this order:
                 1. Correctness: does it return what it looks like it is asking for? Name every join that can \
@@ -179,13 +190,9 @@ extension MCPPromptCatalog {
             ],
             render: { context in
                 let query = try context.requiredValue("query")
-                let plan = context.value("explain_plan")
+                let plan = context.value("explain_plan").map { MCPPromptMarkdown.truncated($0, limit: queryExcerptLimit) }
                 let target = try await context.resolveTarget()
-                let inventory = try await context.schema.tableInventory(target: target, includeRowCounts: true)
-                let details = await context.schema.tableDetails(
-                    target: target,
-                    tables: referencedTables(in: query, inventory: inventory, limit: referencedTableLimit)
-                )
+                let snapshot = try await context.schema.queryContext(target: target, statement: query, explainPlan: plan)
 
                 let text = """
                 Propose indexes for this slow query on \(target.connection.databaseType).
@@ -194,11 +201,10 @@ extension MCPPromptCatalog {
                 \(MCPPromptMarkdown.connectionHeader(target))
 
                 ## Query
-                \(queryBlock(query))
-                \(planSection(plan))
+                \(queryBlock(query, language: snapshot.languageTag))
 
-                ## Tables, their row counts, and the indexes they already have
-                \(MCPPromptMarkdown.tableSections(details, includeDdl: false))
+                \(QueryContextRenderer.render(snapshot))
+                \(missingPlanNote(plan))
 
                 For every candidate index, give:
                 - the exact CREATE INDEX statement for this engine
@@ -225,40 +231,15 @@ extension MCPPromptCatalog {
         )
     }
 
-    private static func queryBlock(_ query: String) -> String {
+    private static func queryBlock(_ query: String, language: String) -> String {
         MCPPromptMarkdown.codeBlock(
             MCPPromptMarkdown.truncated(query, limit: queryExcerptLimit),
-            language: "sql"
+            language: language
         )
     }
 
-    private static func planSection(_ plan: String?) -> String {
-        guard let plan, !plan.isEmpty else {
-            return "\n## Explain plan\nNot provided. Say which EXPLAIN command to run and what to look for in it."
-        }
-        return "\n## Explain plan\n" + MCPPromptMarkdown.codeBlock(
-            MCPPromptMarkdown.truncated(plan, limit: queryExcerptLimit),
-            language: "text"
-        )
-    }
-
-    private static func referencedTables(
-        in query: String,
-        inventory: [MCPPromptTableEntry],
-        limit: Int
-    ) -> [String] {
-        let identifiers = Set(identifierTokens(in: query))
-        let matched = inventory.filter { identifiers.contains($0.name.lowercased()) }
-        guard !matched.isEmpty else { return [] }
-        return matched.prefix(limit).map(\.name)
-    }
-
-    private static func identifierTokens(in query: String) -> [String] {
-        query
-            .lowercased()
-            .split { character in
-                !(character.isLetter || character.isNumber || character == "_")
-            }
-            .map(String.init)
+    private static func missingPlanNote(_ plan: String?) -> String {
+        guard plan == nil else { return "" }
+        return "\n### Explain plan\nNot provided. Say which EXPLAIN command to run and what to look for in it."
     }
 }

@@ -19,52 +19,53 @@ final class WeakCoordinatorRef {
     }
 }
 
-@Observable
 @MainActor
-final class ConnectionFormCoordinator {
+final class ConnectionFormCoordinator: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormCoordinator")
 
     let connectionId: UUID?
-    private(set) var originalConnection: DatabaseConnection?
+    @Published private(set) var originalConnection: DatabaseConnection?
 
-    var network: NetworkPaneViewModel
-    var auth: AuthPaneViewModel
-    var ssh: SSHPaneViewModel
-    var remoteFile: RemoteFilePaneViewModel
-    var cloudflareTunnel: CloudflareTunnelPaneViewModel
-    var cloudSQLProxy: CloudSQLProxyPaneViewModel
-    var socksProxy: SOCKSProxyPaneViewModel
-    var tunnelCommand: TunnelCommandPaneViewModel
-    var ssl: SSLPaneViewModel
-    var customization: CustomizationPaneViewModel
-    var advanced: AdvancedPaneViewModel
-    var aiRules: AIRulesPaneViewModel
+    @Published var network: NetworkPaneViewModel
+    @Published var auth: AuthPaneViewModel
+    @Published var ssh: SSHPaneViewModel
+    @Published var remoteFile: RemoteFilePaneViewModel
+    @Published var cloudflareTunnel: CloudflareTunnelPaneViewModel
+    @Published var cloudSQLProxy: CloudSQLProxyPaneViewModel
+    @Published var socksProxy: SOCKSProxyPaneViewModel
+    @Published var tunnelCommand: TunnelCommandPaneViewModel
+    @Published var ssl: SSLPaneViewModel
+    @Published var customization: CustomizationPaneViewModel
+    @Published var advanced: AdvancedPaneViewModel
+    @Published var aiRules: AIRulesPaneViewModel
 
-    var selectedTab: ConnectionFormTab = .general
-    var hasLoadedData: Bool = false
+    @Published var selectedTab: ConnectionFormTab = .general
+    @Published var hasLoadedData: Bool = false
 
-    var isTesting: Bool = false
-    var testSucceeded: Bool = false
-    var testTask: Task<Void, Never>?
+    @Published var isTesting: Bool = false
+    @Published var testSucceeded: Bool = false
+    @Published var testTask: Task<Void, Never>?
 
-    var isInstallingPlugin: Bool = false
-    var pluginInstallError: String?
-    var pluginInstallConnection: DatabaseConnection?
-    var pluginDiagnostic: PluginDiagnosticItem?
+    @Published var isInstallingPlugin: Bool = false
+    @Published var pluginInstallError: String?
+    @Published var pluginInstallConnection: DatabaseConnection?
+    @Published var pluginDiagnostic: PluginDiagnosticItem?
 
-    var saveError: String?
+    @Published var saveError: String?
 
-    var clipboardCandidate: ParsedConnection?
-    var clipboardBannerDismissed: Bool = false
+    @Published var clipboardCandidate: ClipboardConnectionCandidate?
+    @Published var clipboardBannerDismissed: Bool = false
 
-    var isChoosingType: Bool = false
+    @Published var isChoosingType: Bool = false
 
 
-    private var temporaryTestIds: Set<UUID> = []
+    @Published private var temporaryTestIds: Set<UUID> = []
 
-    @ObservationIgnored let services: AppServices
+    private var childChangeForwarding: AnyCancellable?
+
+    let services: AppServices
     var storage: ConnectionStorage { services.connectionStorage }
-    var dismissAction: (() -> Void)?
+    @Published var dismissAction: (() -> Void)?
 
     var isNew: Bool { connectionId == nil }
 
@@ -138,6 +139,38 @@ final class ConnectionFormCoordinator {
         customization.coordinator = ref
         advanced.coordinator = ref
         aiRules.coordinator = ref
+
+        childChangeForwarding = forwardChildChanges()
+    }
+
+    /// Every pane observes this coordinator and reads its values through a child, as in
+    /// `coordinator.network.type`. `@Published` on a child only fires when the reference is
+    /// replaced, never when a value inside it changes, so without this a pane stayed as it was
+    /// drawn: picking Sentinel left the Redis mode picker on Standalone with the host field still
+    /// showing. The send is synchronous because SwiftUI needs `objectWillChange` before the value
+    /// lands, and `switchToLatest` moves the subscription to a replacement child.
+    private func forwardChildChanges() -> AnyCancellable {
+        Publishers.MergeMany([
+            Self.changes(of: $network),
+            Self.changes(of: $auth),
+            Self.changes(of: $ssh),
+            Self.changes(of: $remoteFile),
+            Self.changes(of: $cloudflareTunnel),
+            Self.changes(of: $cloudSQLProxy),
+            Self.changes(of: $socksProxy),
+            Self.changes(of: $tunnelCommand),
+            Self.changes(of: $ssl),
+            Self.changes(of: $customization),
+            Self.changes(of: $advanced),
+            Self.changes(of: $aiRules),
+        ])
+        .sink { [weak self] in self?.objectWillChange.send() }
+    }
+
+    private static func changes<Child: ObservableObject>(
+        of child: Published<Child>.Publisher
+    ) -> AnyPublisher<Void, Never> where Child.ObjectWillChangePublisher == ObservableObjectPublisher {
+        child.map(\.objectWillChange).switchToLatest().eraseToAnyPublisher()
     }
 
     /// Performs the one-time side-effecting setup: applying initial type
@@ -173,6 +206,9 @@ final class ConnectionFormCoordinator {
         )
         ssh.loadProfiles()
         ssh.loadSSHConfig()
+        /// A new connection has no stored record to load from, and its picker still has to offer
+        /// every profile.
+        auth.loadCredentialProfiles()
         if let id = connectionId,
            let existing = storage.loadConnections().first(where: { $0.id == id })
         {
@@ -236,6 +272,11 @@ final class ConnectionFormCoordinator {
         pluginInstallError = nil
     }
 
+    func didChangePort() {
+        guard hasLoadedData else { return }
+        ssl.reconcile(port: network.resolvedPort, type: network.type)
+    }
+
     private func applyTypeDefaults(_ newType: DatabaseType, includeNetwork: Bool) {
         if includeNetwork {
             network.applyTypeDefaults(forNewType: newType)
@@ -264,14 +305,14 @@ final class ConnectionFormCoordinator {
         var resolvedHost = network.resolvedHost
         var resolvedPort = network.resolvedPort
 
-        if network.type.pluginTypeId == "MongoDB",
-           let mongoHosts = fields["mongoHosts"],
-           !mongoHosts.isEmpty
-        {
-            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: network.type.defaultPort)
-            fields["mongoHosts"] = result.hosts
-            resolvedHost = result.primaryHost
-            resolvedPort = result.primaryPort
+        // An empty list means what its placeholder shows, never the Host it hid.
+        if let hostList = PluginManager.shared.additionalConnectionFields(for: network.type).endpointHostList {
+            let type = network.type
+            let endpoints = HostListEndpoint.parseList(fields[hostList.id] ?? "", defaultPort: type.defaultPort)
+            fields[hostList.id] = endpoints.map(\.entry).joined(separator: ",")
+            let primary = endpoints.first ?? HostListEndpoint(host: type.defaultHost ?? "localhost", port: type.defaultPort)
+            resolvedHost = primary.host
+            resolvedPort = primary.port
         }
 
         let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -286,15 +327,17 @@ final class ConnectionFormCoordinator {
             host: resolvedHost,
             port: resolvedPort,
             database: network.database,
-            username: auth.resolvedUsername,
+            username: auth.selectedCredentialProfile?.username ?? auth.resolvedUsername,
             type: network.type,
             sshConfig: ssh.state.buildSSHConfig(),
             sslConfig: ssl.buildConfig(),
             color: customization.color,
+            iconName: customization.iconName,
             tagIds: customization.tagIds,
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
             sshTunnelMode: ssh.state.buildTunnelMode(),
+            credentialMode: auth.credentialMode,
             cloudflareTunnelMode: cloudflareTunnel.state.buildTunnelMode(),
             cloudSQLProxyMode: cloudSQLProxy.state.buildTunnelMode(),
             socksProxyMode: socksProxy.state.buildTunnelMode(),
@@ -303,7 +346,11 @@ final class ConnectionFormCoordinator {
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
             externalAccess: advanced.externalAccess,
-            redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
+            connectTimeoutSeconds: customization.connectTimeoutSeconds,
+            queryTimeoutSeconds: customization.queryTimeoutSeconds,
+            redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
+                RedisDatabaseIndex.parse($0) ?? 0
+            },
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,
@@ -357,10 +404,14 @@ final class ConnectionFormCoordinator {
         guard let original = originalConnection, original.id == id else {
             return DatabaseConnection(id: id, name: "")
         }
-        return original
+        return storage.loadConnection(id: id) ?? original
     }
 
     private func saveConnection(connect: Bool) {
+        guard !storage.isLibraryUnreadable else {
+            saveError = Self.unreadableLibraryMessage
+            return
+        }
         let finalId = connectionId ?? UUID()
 
         var edits = buildEdits()
@@ -375,10 +426,27 @@ final class ConnectionFormCoordinator {
             edits.additionalFields.removeValue(forKey: field.id)
         }
 
-        let connectionToSave = edits.applied(to: baseConnection(id: finalId))
+        var connectionToSave = edits.applied(to: baseConnection(id: finalId))
 
-        if auth.effectivePromptForPassword {
-            storage.deletePassword(for: connectionToSave.id)
+        /// Removing a secret cannot be undone, so a clear waits until the connection record it
+        /// belongs to is on disk. Running it first and then failing the write leaves the old
+        /// connection in place with nothing left to authenticate it.
+        var clearedSecrets: [() -> Void] = []
+
+        /// A linked connection holds no secret of its own. That is the whole point: the password
+        /// exists once, under the profile, so rotating it is one edit rather than one per
+        /// connection. Any secret the connection had before the link goes with it, or an encrypted
+        /// export still carries it and a duplicate still copies it.
+        if auth.usesCredentialProfile {
+            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
+            /// The secure-field loop above wrote the form's values back under the connection id.
+            /// Anything the profile owns has to go with the password, or the connection keeps a
+            /// second stale copy that a duplicate carries and the driver can fall back to.
+            for fieldId in auth.selectedCredentialProfile?.secureFieldIds ?? [] {
+                clearedSecrets.append { self.storage.deletePluginSecureField(fieldId: fieldId, for: finalId) }
+            }
+        } else if auth.effectivePromptForPassword || auth.clearsStoredPassword {
+            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
         } else if !auth.password.isEmpty {
             storage.savePassword(auth.password, for: connectionToSave.id)
         }
@@ -388,9 +456,13 @@ final class ConnectionFormCoordinator {
                 && !ssh.state.password.isEmpty
             {
                 storage.saveSSHPassword(ssh.state.password, for: connectionToSave.id)
+            } else if ssh.state.clearsStoredPassword {
+                clearedSecrets.append { self.storage.deleteSSHPassword(for: finalId) }
             }
             if ssh.state.authMethod == .privateKey && !ssh.state.keyPassphrase.isEmpty {
                 storage.saveKeyPassphrase(ssh.state.keyPassphrase, for: connectionToSave.id)
+            } else if ssh.state.clearsStoredKeyPassphrase {
+                clearedSecrets.append { self.storage.deleteKeyPassphrase(for: finalId) }
             }
             if ssh.state.totpMode == .autoGenerate && !ssh.state.totpSecret.isEmpty {
                 storage.saveTOTPSecret(ssh.state.totpSecret, for: connectionToSave.id)
@@ -415,11 +487,17 @@ final class ConnectionFormCoordinator {
 
         var savedConnections = storage.loadConnections()
         if isNew {
+            connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
+                in: savedConnections,
+                groupId: connectionToSave.groupId
+            )
             savedConnections.append(connectionToSave)
             guard storage.saveConnections(savedConnections) else {
-                saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+                saveError = saveFailureMessage
                 return
             }
+            clearedSecrets.forEach { $0() }
+            approveEditedExtensions(for: connectionToSave.id)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -433,17 +511,34 @@ final class ConnectionFormCoordinator {
                 saveError = String(localized: "This connection was deleted on another device or window. Your changes were not saved.")
                 return
             }
+            if savedConnections[index].groupId != connectionToSave.groupId {
+                connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
+                    in: savedConnections,
+                    groupId: connectionToSave.groupId
+                )
+            }
             savedConnections[index] = connectionToSave
             guard storage.saveConnections(savedConnections) else {
-                saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+                saveError = saveFailureMessage
                 return
             }
+            clearedSecrets.forEach { $0() }
+            approveEditedExtensions(for: connectionToSave.id)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
             services.appEvents.connectionUpdated.send(connectionToSave.id)
         }
+    }
+
+    private static var unreadableLibraryMessage: String {
+        String(localized: "TablePro could not read your saved connections, so it did not save over them.")
+    }
+
+    private var saveFailureMessage: String {
+        guard !storage.isLibraryUnreadable else { return Self.unreadableLibraryMessage }
+        return String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {
@@ -464,7 +559,7 @@ final class ConnectionFormCoordinator {
 
         if !WindowManager.shared.hasOpenWindow(for: connection.id) {
             Self.logger.info(
-                "Connection failed after window was closed: \(error.localizedDescription, privacy: .public)")
+                "Connection failed after window was closed: \(error.publicLogShape, privacy: .public)")
             return
         }
 
@@ -476,7 +571,7 @@ final class ConnectionFormCoordinator {
             return
         }
 
-        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("Failed to connect: \(error.publicLogShape, privacy: .public)")
         WelcomeRouter.shared.routeError(error, for: connection)
     }
 
@@ -509,11 +604,18 @@ final class ConnectionFormCoordinator {
         let window = NSApp.keyWindow
 
         var testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
-        testConn.passwordSource = auth.password.isEmpty ? originalConnection?.passwordSource : nil
+        /// `credentialMode` rides along from the edits, so the resolver finds the linked profile
+        /// under its own id rather than the throwaway connection's. The connection's own password
+        /// source is only resurrected when nothing else supplies a password.
+        testConn.passwordSource = auth.password.isEmpty && !auth.usesCredentialProfile
+            ? originalConnection?.passwordSource
+            : nil
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password
-        let promptForPassword = auth.effectivePromptForPassword
+        /// A linked profile owns the decision, so a profile set to ask every time asks here
+        /// too instead of testing with an empty password.
+        let promptForPassword = ConnectionCredentialResolver.promptsForPassword(testConn)
         let connectionType = network.type
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state
@@ -540,6 +642,14 @@ final class ConnectionFormCoordinator {
         )
 
         testTask = Task { [weak self, services] in
+            guard await self?.authorizeExtensionsForTest(testConnectionId: testConn.id) == true else {
+                await MainActor.run {
+                    self?.cleanupTestSecrets(for: testConn.id)
+                    self?.isTesting = false
+                    self?.testTask = nil
+                }
+                return
+            }
             do {
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
                 let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
@@ -715,6 +825,7 @@ final class ConnectionFormCoordinator {
         services.connectionStorage.deleteSOCKSProxyPassword(for: testId)
         let secureFieldIds = services.pluginManager.secureConnectionFieldIds(for: network.type)
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
+        LoadableExtensionApprovalStore.shared.revoke(for: [testId])
         temporaryTestIds.remove(testId)
     }
 
@@ -789,12 +900,20 @@ final class ConnectionFormCoordinator {
             advanced.resetForType(parsed.type)
         }
 
+        if let socketPath = parsed.localSocketPath, network.supportsLocalSocket {
+            network.endpoint = .localSocket
+            network.localSocketPath = socketPath
+            transport = nil
+        } else {
+            // Left on Socket, normalizeTransport would drop the SSH server the URL names.
+            network.endpoint = .hostAndPort
+        }
         network.host = parsed.host
-        network.port = parsed.port.map(String.init) ?? String(parsed.type.defaultPort)
+        network.port = String(parsed.resolvedPort)
         network.database = parsed.database
         auth.username = parsed.username
         auth.password = parsed.password
-        ssl.mode = parsed.sslMode ?? parsed.type.defaultSSLMode
+        ssl.applyImported(parsed.sslModeResolution)
 
         if let sshHostValue = parsed.sshHost {
             /// Through the transport setter rather than the flag, so a URL naming an SSH server
@@ -818,11 +937,15 @@ final class ConnectionFormCoordinator {
             }
         }
 
-        if let multiHost = parsed.multiHost, !multiHost.isEmpty {
-            network.additionalFieldValues["mongoHosts"] = multiHost
-        } else if parsed.type.pluginTypeId == "MongoDB" {
-            let portStr = parsed.port.map(String.init) ?? String(parsed.type.defaultPort)
-            network.additionalFieldValues["mongoHosts"] = "\(parsed.host):\(portStr)"
+        if let hostList = PluginManager.shared.additionalConnectionFields(for: parsed.type).endpointHostList {
+            if let multiHost = parsed.multiHost, !multiHost.isEmpty {
+                network.additionalFieldValues[hostList.id] = multiHost
+            } else {
+                network.additionalFieldValues[hostList.id] = HostListEndpoint.parse(
+                    parsed.host,
+                    defaultPort: parsed.resolvedPort
+                )?.entry
+            }
         }
 
         let mongoKeysAuth = auth.additionalFieldValues.keys.filter {
@@ -843,9 +966,6 @@ final class ConnectionFormCoordinator {
         }
         if parsed.useSrv {
             writeFieldByRegistry("mongoUseSrv", value: "true")
-            if ssl.mode == .disabled {
-                ssl.mode = .required
-            }
         }
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
             switch key {
@@ -864,6 +984,9 @@ final class ConnectionFormCoordinator {
         }
         if let svcName = parsed.oracleServiceName, !svcName.isEmpty {
             writeFieldByRegistry("oracleServiceName", value: svcName)
+        }
+        for (fieldId, value) in parsed.additionalFields where fieldId != MySQLLocalSocket.fieldKey {
+            writeFieldByRegistry(fieldId, value: value)
         }
         if let hex = parsed.statusColor, !hex.isEmpty {
             customization.color = ConnectionURLParser.connectionColor(fromHex: hex)
@@ -931,66 +1054,17 @@ final class ConnectionFormCoordinator {
         pasteboard: NSPasteboard = .general
     ) {
         guard isNew, !clipboardBannerDismissed, clipboardCandidate == nil else { return }
-        guard let raw = pasteboard.string(forType: .string) else { return }
-        let firstLine = raw
-            .components(separatedBy: .newlines)
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !firstLine.isEmpty else { return }
-
-        let parsed: ParsedConnection
-        do {
-            parsed = try ConnectionStringParser.parse(firstLine)
-        } catch {
-            return
-        }
-
-        if matchesExistingConnection(parsed: parsed, connectionStorage: connectionStorage) {
-            return
-        }
-
-        clipboardCandidate = parsed
+        guard let raw = pasteboard.string(forType: .string),
+              let candidate = ClipboardConnectionCandidate(clipboardText: raw),
+              !matchesExistingConnection(candidate.parsed, connectionStorage: connectionStorage)
+        else { return }
+        clipboardCandidate = candidate
     }
 
-    func applyClipboardCandidate(_ parsed: ParsedConnection) {
-        let oldType = network.type
-        network.type = parsed.type
-        if oldType != parsed.type {
-            applyTypeDefaults(parsed.type, includeNetwork: false)
-            auth.resetForType(parsed.type)
-            advanced.resetForType(parsed.type)
-        }
-
-        network.host = parsed.host
-        if parsed.port > 0 {
-            network.port = String(parsed.port)
-        } else {
-            network.port = String(parsed.type.defaultPort)
-        }
-        auth.username = parsed.username ?? ""
-        auth.password = parsed.password ?? ""
-        network.database = parsed.database ?? ""
+    func applyClipboardCandidate(_ candidate: ClipboardConnectionCandidate) {
+        applyParsed(candidate.parsed)
         auth.promptForPassword = false
-
-        if network.name.isEmpty {
-            let suggestion = parsed.database.map { "\(parsed.type.rawValue) \(parsed.host)/\($0)" }
-                ?? "\(parsed.type.rawValue) \(parsed.host)"
-            network.name = suggestion
-        }
-
-        if parsed.useSSL {
-            ssl.mode = .required
-        }
-
-        if parsed.type == .mongodb {
-            if let authSource = parsed.queryParameters["authSource"], !authSource.isEmpty {
-                writeFieldByRegistry("mongoAuthSource", value: authSource)
-            }
-            if parsed.rawScheme == "mongodb+srv" {
-                writeFieldByRegistry("mongoUseSrv", value: "true")
-            }
-        }
-
+        normalizeTransport()
         clipboardCandidate = nil
     }
 
@@ -1000,44 +1074,15 @@ final class ConnectionFormCoordinator {
     }
 
     private func matchesExistingConnection(
-        parsed: ParsedConnection,
+        _ parsed: ParsedConnectionURL,
         connectionStorage: ConnectionStorage
     ) -> Bool {
         connectionStorage.loadConnections().contains { saved in
-            saved.host == parsed.host
-                && saved.port == parsed.port
-                && saved.username == (parsed.username ?? "")
-        }
-    }
-
-    // MARK: - Mongo helpers
-
-    struct NormalizedHosts {
-        let hosts: String
-        let primaryHost: String
-        let primaryPort: Int
-    }
-
-    static func normalizeMongoHosts(_ raw: String, defaultPort: Int) -> NormalizedHosts {
-        let normalized = raw.split(separator: ",", omittingEmptySubsequences: false)
-            .map { segment -> String in
-                let trimmed = segment.trimmingCharacters(in: .whitespaces)
-                if trimmed.isEmpty { return "localhost:\(defaultPort)" }
-                if !trimmed.contains(":") { return "\(trimmed):\(defaultPort)" }
-                return trimmed
+            guard saved.username == parsed.username, saved.localSocketPath == parsed.localSocketPath else {
+                return false
             }
-            .joined(separator: ",")
-        let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
-        let parts = firstSegment.split(separator: ":", maxSplits: 1)
-        var host = "localhost"
-        var port = defaultPort
-        if let first = parts.first {
-            let derived = String(first).trimmingCharacters(in: .whitespaces)
-            if !derived.isEmpty { host = derived }
+            return parsed.localSocketPath != nil
+                || (saved.host == parsed.host && saved.port == parsed.resolvedPort)
         }
-        if parts.count > 1, let portValue = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
-            port = portValue
-        }
-        return NormalizedHosts(hosts: normalized, primaryHost: host, primaryPort: port)
     }
 }

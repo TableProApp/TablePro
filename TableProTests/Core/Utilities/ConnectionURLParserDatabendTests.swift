@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection URL Parser - Databend")
 struct ConnectionURLParserDatabendTests {
     @Test("databend:// is Databend's HTTP DSN and stays unsupported")
     func databendSchemeUnsupported() {

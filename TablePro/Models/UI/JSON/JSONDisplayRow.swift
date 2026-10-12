@@ -58,4 +58,11 @@ struct JSONDisplayRow: Identifiable, Equatable, Sendable {
         default: key.text != nil
         }
     }
+
+    /// Read from the decoded string, since the printed one carries quotes and escapes. Computed,
+    /// so the lines that are never drawn do not pay for it.
+    var decoration: TreeValueDecoration {
+        guard case .scalar(.string(let text)) = token else { return .none }
+        return TreeValueClassifier.classify(text)
+    }
 }

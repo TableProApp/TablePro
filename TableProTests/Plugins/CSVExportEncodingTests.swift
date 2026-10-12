@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Plugin text encoder")
 struct PluginTextEncoderTests {
     @Test("ASCII reaches the file unchanged in every encoding")
     func asciiIsStable() throws {
@@ -107,7 +106,6 @@ struct PluginTextEncoderTests {
     }
 }
 
-@Suite("CSV encoding report")
 struct CSVEncodingReportTests {
     @Test("A clean export warns about nothing")
     func cleanExportIsSilent() {

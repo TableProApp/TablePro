@@ -12,100 +12,33 @@ extension MSSQLPluginDriver {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard !definition.columns.isEmpty else { return nil }
-
-        let schema = _currentSchema
-        let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
-        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
-        let inlinePK = pkColumns.count == 1
-        var parts: [String] = definition.columns.map { mssqlColumnDefinition($0, inlinePK: inlinePK) }
-
-        if pkColumns.count > 1 {
-            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
-            parts.append("PRIMARY KEY (\(pkCols))")
-        }
-
-        for fk in definition.foreignKeys {
-            parts.append(mssqlForeignKeyDefinition(fk))
-        }
-
-        var sql = "CREATE TABLE \(qualifiedTable) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n);"
-
-        var indexStatements: [String] = []
-        for index in definition.indexes {
-            indexStatements.append(mssqlIndexDefinition(index, qualifiedTable: qualifiedTable))
-        }
-        if !indexStatements.isEmpty {
-            sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
-        }
-
-        return sql
+        MSSQLTableDefinitionSQL.createTable(definition, schema: currentSchemaName)
     }
 
-    private func mssqlColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
-        if col.autoIncrement {
-            def += " IDENTITY(1,1)"
-        }
-        if col.isNullable {
-            def += " NULL"
-        } else {
-            def += " NOT NULL"
-        }
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(defaultValue)"
-        }
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-        }
-        return def
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        MSSQLTableDefinitionSQL.createTableStatements(definition, schema: currentSchemaName)
     }
 
-    private func mssqlIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        var def = "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
-        if let type = index.indexType?.uppercased(), type == "CLUSTERED" {
-            def = "CREATE \(unique)CLUSTERED INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
-        } else if let type = index.indexType?.uppercased(), type == "NONCLUSTERED" {
-            def = "CREATE \(unique)NONCLUSTERED INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
-        }
-        return def
-    }
-
-    /// The referenced table is schema-qualified. An unqualified name resolves against the caller's
-    /// own default schema rather than the schema the table is being created in, so a foreign key
-    /// pointing at `sales.orders` used to be created against whatever `orders` that login could see,
-    /// or to fail with nothing naming the schema as the reason.
-    private func mssqlForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refSchema = fk.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? _currentSchema
-        let refTable = "\(quoteIdentifier(refSchema)).\(quoteIdentifier(fk.referencedTable))"
-        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
-        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(refTable)"
-        if !refCols.isEmpty {
-            def += " (\(refCols))"
-        }
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        if fk.onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(fk.onUpdate)"
-        }
-        return def
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        MSSQLTableDefinitionSQL.commentStatement(
+            objectType: objectType, schema: effectiveSchema(schema), object: name, comment: comment
+        )
     }
 
     // MARK: - ALTER TABLE DDL
 
     private func mssqlQualifiedTable(_ table: String) -> String {
-        "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
+        MSSQLTableDefinitionSQL.qualifiedTable(table, schema: currentSchemaName)
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(mssqlColumnDefinition(column, inlinePK: false))"
+        let columnSQL = MSSQLTableDefinitionSQL.columnDefinition(column, inlinePrimaryKey: nil)
+        let addColumn = "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(columnSQL)"
+        guard let comment = column.comment, !comment.isEmpty else { return addColumn }
+        let description = MSSQLTableDefinitionSQL.columnDescriptionStatement(
+            schema: currentSchemaName, table: table, column: column.name, comment: comment
+        )
+        return addColumn + ";\n" + description
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -116,7 +49,7 @@ extension MSSQLPluginDriver {
 
         // Rename column first so subsequent statements reference the correct name
         if oldColumn.name != newColumn.name {
-            let path = MSSQLStringLiteral.quoted("\(_currentSchema).\(table).\(oldColumn.name)")
+            let path = MSSQLStringLiteral.quoted("\(currentSchemaName).\(table).\(oldColumn.name)")
             let renamed = MSSQLStringLiteral.quoted(newColumn.name)
             stmts.append("EXEC sp_rename \(path), \(renamed), 'COLUMN'")
         }
@@ -158,7 +91,7 @@ extension MSSQLPluginDriver {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        mssqlIndexDefinition(index, qualifiedTable: mssqlQualifiedTable(table))
+        MSSQLTableDefinitionSQL.indexDefinition(index, qualifiedTable: mssqlQualifiedTable(table))
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -166,7 +99,7 @@ extension MSSQLPluginDriver {
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(mssqlForeignKeyDefinition(fk))"
+        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: currentSchemaName))"
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
@@ -234,5 +167,4 @@ extension MSSQLPluginDriver {
         }
         return stmts.isEmpty ? nil : stmts
     }
-
 }

@@ -13,6 +13,8 @@ internal final class ExportOutlineNode {
         case database(databaseID: UUID)
         case group(databaseID: UUID, objectKind: PluginExportObjectKind)
         case object(databaseID: UUID, objectID: UUID)
+        /// Stands in for the kinds a collapsed schema has not read yet, and keeps it expandable.
+        case pending(databaseID: UUID)
     }
 
     internal let kind: Kind
@@ -35,6 +37,8 @@ internal final class ExportOutlineNode {
             return "group:\(databaseID.uuidString):\(objectKind.rawValue)"
         case .object(let databaseID, let objectID):
             return "obj:\(databaseID.uuidString):\(objectID.uuidString)"
+        case .pending(let databaseID):
+            return "pending:\(databaseID.uuidString)"
         }
     }
 }
@@ -45,24 +49,28 @@ internal enum ExportOutlineTreeBuilder {
     /// "Tables" folder to reach them.
     internal static func build(from databases: [ExportDatabaseItem]) -> [ExportOutlineNode] {
         databases.map { database in
-            let kinds = database.presentKinds
-            guard kinds.count > 1 else {
-                return ExportOutlineNode(
-                    kind: .database(databaseID: database.id),
-                    children: database.objects.map {
-                        ExportOutlineNode(kind: .object(databaseID: database.id, objectID: $0.id))
-                    }
-                )
-            }
+            let pending = database.hasUnloadedObjects
+                ? [ExportOutlineNode(kind: .pending(databaseID: database.id))]
+                : []
             return ExportOutlineNode(
                 kind: .database(databaseID: database.id),
-                children: kinds.map { objectKind in
-                    ExportOutlineNode(
-                        kind: .group(databaseID: database.id, objectKind: objectKind),
-                        children: database.objects(ofKind: objectKind).map {
-                            ExportOutlineNode(kind: .object(databaseID: database.id, objectID: $0.id))
-                        }
-                    )
+                children: objectChildren(of: database) + pending
+            )
+        }
+    }
+
+    private static func objectChildren(of database: ExportDatabaseItem) -> [ExportOutlineNode] {
+        let kinds = database.presentKinds
+        guard kinds.count > 1 else {
+            return database.objects.map {
+                ExportOutlineNode(kind: .object(databaseID: database.id, objectID: $0.id))
+            }
+        }
+        return kinds.map { objectKind in
+            ExportOutlineNode(
+                kind: .group(databaseID: database.id, objectKind: objectKind),
+                children: database.objects(ofKind: objectKind).map {
+                    ExportOutlineNode(kind: .object(databaseID: database.id, objectID: $0.id))
                 }
             )
         }
@@ -73,7 +81,8 @@ internal enum ExportOutlineTreeBuilder {
     internal static func shapeFingerprint(of databases: [ExportDatabaseItem]) -> String {
         databases.map { database in
             let objects = database.objects.map { "\($0.kind.rawValue):\($0.id.uuidString)" }.joined(separator: ",")
-            return "\(database.id.uuidString)[\(objects)]"
+            let pending = database.hasUnloadedObjects ? "+pending" : ""
+            return "\(database.id.uuidString)[\(objects)]\(pending)"
         }
         .joined(separator: "|")
     }

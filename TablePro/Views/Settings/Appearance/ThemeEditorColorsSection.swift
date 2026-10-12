@@ -43,9 +43,8 @@ internal struct ThemeEditorColorsSection: View {
                         .foregroundStyle(.secondary)
                 }
 
-                ColorPicker("", selection: binding(for: slot), supportsOpacity: true)
+                ColorPicker(slot.label, selection: binding(for: slot), supportsOpacity: true)
                     .labelsHidden()
-                    .accessibilityLabel(Text(slot.label))
             }
             .contextMenu {
                 if case .hex = value, case let .system(name) = BuiltInThemes.default(for: theme.appearance)[keyPath: slot.keyPath] {
@@ -111,7 +110,7 @@ internal struct ThemeEditorColorsSection: View {
                 darkThemeId: appearance.preferredDarkThemeId
             )
         } catch {
-            Self.logger.error("Could not save theme: \(error.localizedDescription)")
+            Self.logger.error("Could not save theme: \(error.publicLogShape, privacy: .public)")
         }
     }
 }

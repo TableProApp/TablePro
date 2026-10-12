@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct CustomSlashCommandsSection: View {
-    @Bindable var storage: CustomSlashCommandStorage
+    @ObservedObject var storage: CustomSlashCommandStorage
     @State private var editing: CustomSlashCommand?
     @State private var isCreating = false
     @State private var saveError: String?
@@ -137,12 +137,21 @@ struct CustomSlashCommandEditorSheet: View {
             Form {
                 Section {
                     LabeledContent(String(localized: "Name")) {
-                        TextField("review", text: $draft.name)
+                        TextField("summarize", text: $draft.name)
                             .textFieldStyle(.roundedBorder)
                     }
                     LabeledContent(String(localized: "Description")) {
                         TextField(String(localized: "Optional one-line description"), text: $draft.description)
                             .textFieldStyle(.roundedBorder)
+                    }
+                } footer: {
+                    if SlashCommand.isBuiltIn(name: draft.name) {
+                        Text(String(
+                            format: String(localized: "/%@ is a built-in command. Typing it runs the built-in; this one runs only from the command menu."),
+                            draft.name.trimmingCharacters(in: .whitespaces).lowercased()
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                     }
                 }
                 Section {

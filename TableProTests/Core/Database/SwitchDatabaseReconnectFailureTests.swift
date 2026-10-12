@@ -36,6 +36,9 @@ struct SwitchDatabaseReconnectFailureTests {
             requiresReconnectForDatabaseSwitch: true,
             supportsDropDatabase: capabilities.supportsDropDatabase
         )
+        /// No second connection, so a switch still takes the reconnect this suite is about rather
+        /// than opening a connection of its own for the database.
+        capabilities.supportsConnectionPooling = false
         let snapshot = PluginMetadataSnapshot(
             displayName: Self.typeId, iconName: "cylinder", defaultPort: 1_234,
             requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
@@ -109,8 +112,12 @@ struct SwitchDatabaseReconnectFailureTests {
         let connection = makeSession()
         defer { cleanUp(connection.id) }
 
+        /// Counted for this connection only. Suites run side by side in one process, and a switch
+        /// another suite completes on its own connection announces on the same subject.
         var announced: [UUID] = []
-        let cancellable = AppEvents.shared.browseContainerChanged.sink { announced.append($0) }
+        let cancellable = AppEvents.shared.browseContainerChanged
+            .filter { $0 == connection.id }
+            .sink { announced.append($0) }
         defer { cancellable.cancel() }
 
         try? await DatabaseManager.shared.switchDatabase(

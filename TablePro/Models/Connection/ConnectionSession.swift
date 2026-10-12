@@ -15,6 +15,7 @@ struct ConnectionSession: Identifiable {
     var effectiveConnection: DatabaseConnection?
     var driver: DatabaseDriver?
     var status: ConnectionStatus = .disconnected
+    var effectiveQueryTimeoutSeconds: Int
     /// Answers whether `driver` can be believed. `status` cannot: it is `.connecting` throughout an
     /// ordinary database switch on the engines that reconnect to perform one, and `.disconnected` is
     /// this struct's own default value.
@@ -56,10 +57,18 @@ struct ConnectionSession: Identifiable {
     let connectedAt: Date
     var lastActiveAt: Date
 
-    init(connection: DatabaseConnection, driver: DatabaseDriver? = nil) {
+    init(
+        connection: DatabaseConnection,
+        driver: DatabaseDriver? = nil,
+        effectiveQueryTimeoutSeconds: Int? = nil
+    ) {
         self.id = connection.id
         self.connection = connection
         self.driver = driver
+        self.effectiveQueryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: effectiveQueryTimeoutSeconds ?? connection.queryTimeoutSeconds,
+            globalSeconds: 0
+        )
         self.safeModeLevel = connection.safeModeLevel
         self.connectedAt = Date()
         self.lastActiveAt = Date()
@@ -121,5 +130,25 @@ struct ConnectionSession: Identifiable {
             && tableOperationOptions == other.tableOperationOptions
             && browseSchema == other.browseSchema
             && browseDatabase == other.browseDatabase
+    }
+
+    /// Puts back the Truncate and Drop a save took off the queue and did not complete.
+    ///
+    /// Added back rather than assigned over: the user can stage more while the save waits on its
+    /// confirmation and its round trip, and an assignment erased those. An object staged again in the
+    /// meantime keeps its newer choice, and its options with it.
+    mutating func restoreStagedTableOperations(
+        truncates: Set<DatabaseTreeTableRef>,
+        deletes: Set<DatabaseTreeTableRef>,
+        options: [DatabaseTreeTableRef: TableOperationOptions]
+    ) {
+        let stagedMeanwhile = pendingTruncates.union(pendingDeletes)
+        let restoredTruncates = truncates.subtracting(stagedMeanwhile)
+        let restoredDeletes = deletes.subtracting(stagedMeanwhile)
+        pendingTruncates.formUnion(restoredTruncates)
+        pendingDeletes.formUnion(restoredDeletes)
+        for (table, value) in options where restoredTruncates.contains(table) || restoredDeletes.contains(table) {
+            tableOperationOptions[table] = value
+        }
     }
 }

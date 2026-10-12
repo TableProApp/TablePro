@@ -11,7 +11,6 @@ import Foundation
 import TableProImport
 import Testing
 
-@Suite("TeamLibraryModels")
 struct TeamLibraryModelsTests {
     @Test("pull response decodes the snake_case wire format")
     func decodesPullResponse() throws {
@@ -38,6 +37,26 @@ struct TeamLibraryModelsTests {
         #expect(response.connections[0].publishedBy == "owner@example.com")
         #expect(response.queryFolders[0].name == "ETL")
         #expect(response.queries[0].query == "select 1")
+    }
+
+    @Test("A pulled connection keeps its icon, and a malformed one is dropped")
+    func sanitizedPullNormalizesIcons() throws {
+        let json = """
+        {
+          "connections": [
+            {"id":"01A","payload":{"name":"Prod","host":"db","port":5432,"database":"app","username":"deploy","type":"PostgreSQL","iconName":"server.rack"}},
+            {"id":"01B","payload":{"name":"Junk","host":"db","port":5432,"database":"app","username":"deploy","type":"PostgreSQL","iconName":"Server Rack"}}
+          ],
+          "query_folders": [],
+          "queries": [],
+          "fetched_at":"2026-07-08T00:00:00Z"
+        }
+        """
+
+        let response = try JSONDecoder().decode(TeamLibraryPullResponse.self, from: Data(json.utf8)).sanitized()
+
+        #expect(response.connections[0].payload.iconName == "server.rack")
+        #expect(response.connections[1].payload.iconName == nil)
     }
 
     @Test("publish request encodes snake_case keys and preserves the payload encoding")

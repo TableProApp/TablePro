@@ -3,16 +3,17 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@MainActor @Observable
-final class RegistryClient {
+@MainActor
+final class RegistryClient: ObservableObject {
     static let shared = RegistryClient()
 
-    private(set) var manifest: RegistryManifest?
-    private(set) var fetchState: RegistryFetchState = .idle
-    private(set) var lastFetchDate: Date?
+    @Published private(set) var manifest: RegistryManifest?
+    @Published private(set) var fetchState: RegistryFetchState = .idle
+    @Published private(set) var lastFetchDate: Date?
 
     let session: URLSession
     static let supportedSchemaVersion = 2
@@ -32,8 +33,8 @@ final class RegistryClient {
     private let defaults: UserDefaults
     private let manifestCacheURL: URL
 
-    @ObservationIgnored private var inFlightFetch: Task<Void, Never>?
-    @ObservationIgnored private var lastFetchedURL: URL?
+    private var inFlightFetch: Task<Void, Never>?
+    private var lastFetchedURL: URL?
 
     var isUsingCustomRegistry: Bool {
         registryURL != Self.defaultRegistryURL

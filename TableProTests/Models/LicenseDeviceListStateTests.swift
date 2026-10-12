@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("LicenseDeviceListState")
 struct LicenseDeviceListStateTests {
     @Test("A failure carries its reason, and no other state pretends to have one")
     func onlyFailureCarriesAMessage() {
@@ -42,7 +41,6 @@ struct LicenseDeviceListStateTests {
     }
 }
 
-@Suite("LicenseManager unlicensed status")
 struct LicenseManagerUnlicensedStatusTests {
     /// `deactivate()` used to assign `.deactivated` straight onto `status`, which skipped the only
     /// place that publishes a change, so iCloud Sync went on reporting a healthy sync for a licence

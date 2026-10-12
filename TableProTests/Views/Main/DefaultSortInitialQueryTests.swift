@@ -4,13 +4,15 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Default sort resolves before the first table query is dispatched")
 @MainActor
 struct DefaultSortInitialQueryTests {
-    private func makeCoordinator(tableName: String) -> (MainContentCoordinator, QueryTabManager, Int) {
+    private func makeCoordinator(
+        tableName: String,
+        type: DatabaseType = .mysql
+    ) -> (MainContentCoordinator, QueryTabManager, Int) {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
+            connection: TestFixtures.makeConnection(type: type),
             tabManager: tabManager,
             changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
@@ -83,28 +85,32 @@ struct DefaultSortInitialQueryTests {
             SchemaColumnStore.Entry(columns: ["message", "level"], primaryKeys: [], columnTypes: [:]),
             for: coordinator.schemaColumnsKey("logs", scope: coordinator.selectedTabScope)
         )
-        let originalQuery = tabManager.tabs[index].content.query
 
         await withDefaultSortBehavior(.primaryKey) {
             let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
             #expect(ready)
         }
 
-        #expect(tabManager.tabs[index].content.query == originalQuery)
+        let query = tabManager.tabs[index].content.query
+        #expect(!query.localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(query.contains("`logs`"))
+        #expect(query.contains("LIMIT \(tabManager.tabs[index].pagination.pageSize)"))
         #expect(!tabManager.tabs[index].sortState.isSorting)
     }
 
     @Test("Schema fetch failure dispatches unsorted instead of blocking the first load")
     func schemaFetchFailureStillDispatches() async {
         let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
-        let originalQuery = tabManager.tabs[index].content.query
 
         await withDefaultSortBehavior(.primaryKey) {
             let ready = await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
             #expect(ready)
         }
 
-        #expect(tabManager.tabs[index].content.query == originalQuery)
+        let query = tabManager.tabs[index].content.query
+        #expect(!query.localizedCaseInsensitiveContains("ORDER BY"))
+        #expect(query.contains("`users`"))
+        #expect(!tabManager.tabs[index].sortState.isSorting)
     }
 
     @Test("None behavior takes the fast path and regenerates the browse query from current state")
@@ -151,6 +157,43 @@ struct DefaultSortInitialQueryTests {
         let query = tabManager.tabs[0].content.query
         #expect(query.contains("LIMIT 1000"))
         #expect(!query.contains("500"))
+    }
+
+    @Test("A Cassandra table never takes the primary key default sort, which CQL refuses to run")
+    func cassandraSkipsTheDefaultSort() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "events", type: .cassandra)
+        coordinator.schemaColumns.store(
+            SchemaColumnStore.Entry(columns: ["id", "day"], primaryKeys: ["id"], columnTypes: [:]),
+            for: coordinator.schemaColumnsKey("events", scope: coordinator.selectedTabScope)
+        )
+
+        await withDefaultSortBehavior(.primaryKey) {
+            await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+        }
+
+        #expect(!tabManager.tabs[index].sortState.isSorting)
+        #expect(!tabManager.tabs[index].content.query.localizedCaseInsensitiveContains("ORDER BY"))
+    }
+
+    @Test("A sort restored onto a Cassandra table is consumed without being applied")
+    func cassandraDropsARestoredSort() async {
+        let (coordinator, tabManager, index) = makeCoordinator(tableName: "events", type: .cassandra)
+        coordinator.schemaColumns.store(
+            SchemaColumnStore.Entry(columns: ["id", "day"], primaryKeys: ["id"], columnTypes: [:]),
+            for: coordinator.schemaColumnsKey("events", scope: coordinator.selectedTabScope)
+        )
+        tabManager.mutate(at: index) {
+            $0.pendingRestoredSort = [PersistedSortColumn(columnName: "day", direction: .descending)]
+            $0.restoredSortSource = .user
+        }
+
+        await withDefaultSortBehavior(.none) {
+            await coordinator.prepareTableTabFirstLoad(tabId: tabManager.tabs[index].id)
+        }
+
+        #expect(tabManager.tabs[index].pendingRestoredSort == nil)
+        #expect(!tabManager.tabs[index].sortState.isSorting)
+        #expect(!tabManager.tabs[index].content.query.localizedCaseInsensitiveContains("ORDER BY"))
     }
 
     @Test("A restored user sort is never overwritten by the default sort")

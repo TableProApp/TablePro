@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginTableInfo")
 struct PluginTableInfoTests {
     @Test("Init without comment leaves it nil")
     func initWithoutComment() {

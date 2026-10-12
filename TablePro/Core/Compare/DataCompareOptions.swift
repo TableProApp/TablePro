@@ -2,38 +2,62 @@
 //  DataCompareOptions.swift
 //  TablePro
 //
-//  How two rows are matched and how two values are judged equal.
-//  The set of columns used to compare is deliberately separate from the set
-//  written: an audit column can be excluded from matching while still being
-//  carried into the generated statement.
+//  How two values are judged equal and which kinds of difference are written.
+//  Which columns identify a row, take part, or are filtered belongs to each
+//  table's `DataTableScope`, not to these run-wide options.
 //
 
 import Foundation
 import TableProPluginKit
 
 internal struct DataCompareOptions: Codable, Hashable, Sendable {
-    internal var keyColumns: [String] = []
-    internal var excludedFromComparison: Set<String> = []
     internal var insertMissingRows = true
     internal var updateDifferingRows = true
     internal var deleteExtraRows = false
     internal var floatTolerance: Double = 0
     internal var timestampFractionalDigits = 6
     internal var maxRetainedEntries = 5_000
+    internal var maxRetainedIdenticalEntries = 1_000
 
     internal init() {}
 
     internal static let `default` = DataCompareOptions()
 
-    internal var hasKey: Bool {
-        !keyColumns.isEmpty
+    private enum CodingKeys: String, CodingKey {
+        case insertMissingRows
+        case updateDifferingRows
+        case deleteExtraRows
+        case floatTolerance
+        case timestampFractionalDigits
+        case maxRetainedEntries
+        case maxRetainedIdenticalEntries
     }
 
-    internal func comparisonColumns(from columns: [String]) -> [String] {
-        let keys = Set(keyColumns.map { $0.lowercased() })
-        return columns.filter { column in
-            let lowered = column.lowercased()
-            return !keys.contains(lowered) && !excludedFromComparison.contains(where: { $0.lowercased() == lowered })
+    internal init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = DataCompareOptions()
+        insertMissingRows = try container.decodeIfPresent(Bool.self, forKey: .insertMissingRows)
+            ?? fallback.insertMissingRows
+        updateDifferingRows = try container.decodeIfPresent(Bool.self, forKey: .updateDifferingRows)
+            ?? fallback.updateDifferingRows
+        deleteExtraRows = try container.decodeIfPresent(Bool.self, forKey: .deleteExtraRows)
+            ?? fallback.deleteExtraRows
+        floatTolerance = try container.decodeIfPresent(Double.self, forKey: .floatTolerance)
+            ?? fallback.floatTolerance
+        timestampFractionalDigits = try container.decodeIfPresent(Int.self, forKey: .timestampFractionalDigits)
+            ?? fallback.timestampFractionalDigits
+        maxRetainedEntries = try container.decodeIfPresent(Int.self, forKey: .maxRetainedEntries)
+            ?? fallback.maxRetainedEntries
+        maxRetainedIdenticalEntries = try container.decodeIfPresent(Int.self, forKey: .maxRetainedIdenticalEntries)
+            ?? fallback.maxRetainedIdenticalEntries
+    }
+
+    internal func writesRows(of kind: RowDiffKind) -> Bool {
+        switch kind {
+        case .insert: return insertMissingRows
+        case .update: return updateDifferingRows
+        case .delete: return deleteExtraRows
+        case .identical, .conflict: return false
         }
     }
 }
@@ -64,6 +88,31 @@ internal enum ComparisonRule: String, Codable, Hashable, Sendable {
     }
 }
 
+internal enum ValueComparisonKind: Hashable, Sendable {
+    case numeric
+    case temporal
+    case other
+
+    /// A driver that reports no type for a column still has two spellings of one instant to
+    /// reconcile. A numeric tolerance stays out of it: it is opt-in for the columns it names.
+    case unknown
+
+    internal init(columnType: ColumnType?) {
+        guard let columnType else {
+            self = .unknown
+            return
+        }
+        switch columnType {
+        case .integer, .decimal:
+            self = .numeric
+        case .date, .timestamp, .datetime:
+            self = .temporal
+        case .text, .boolean, .blob, .json, .enumType, .set, .spatial, .array:
+            self = .other
+        }
+    }
+}
+
 internal struct ValueComparison {
     internal let isEqual: Bool
     internal let rule: ComparisonRule
@@ -76,7 +125,11 @@ internal struct CellValueComparator {
         self.options = options
     }
 
-    internal func compare(_ lhs: PluginCellValue, _ rhs: PluginCellValue) -> ValueComparison {
+    internal func compare(
+        _ lhs: PluginCellValue,
+        _ rhs: PluginCellValue,
+        as kind: ValueComparisonKind = .other
+    ) -> ValueComparison {
         switch (lhs, rhs) {
         case (.null, .null):
             return ValueComparison(isEqual: true, rule: .nullEquality)
@@ -85,27 +138,40 @@ internal struct CellValueComparator {
         case (.bytes(let left), .bytes(let right)):
             return ValueComparison(isEqual: left == right, rule: .binaryContent)
         case (.text(let left), .text(let right)):
-            return compareText(left, right)
+            return compareText(left, right, as: kind)
         default:
             return ValueComparison(isEqual: false, rule: .typeMismatch)
         }
     }
 
-    private func compareText(_ lhs: String, _ rhs: String) -> ValueComparison {
+    private func compareText(_ lhs: String, _ rhs: String, as kind: ValueComparisonKind) -> ValueComparison {
         if lhs == rhs {
             return ValueComparison(isEqual: true, rule: .exactValue)
         }
-        if options.floatTolerance > 0,
-           let left = Double(lhs.trimmingCharacters(in: .whitespaces)),
-           let right = Double(rhs.trimmingCharacters(in: .whitespaces)) {
+        switch kind {
+        case .numeric:
+            guard options.floatTolerance > 0,
+                  let left = Double(lhs.trimmingCharacters(in: .whitespaces)),
+                  let right = Double(rhs.trimmingCharacters(in: .whitespaces)) else {
+                return ValueComparison(isEqual: false, rule: .exactValue)
+            }
             let equal = (left - right).magnitude <= options.floatTolerance
             return ValueComparison(isEqual: equal, rule: .floatTolerance)
+        case .temporal:
+            return compareInstants(lhs, rhs)
+        case .other:
+            return ValueComparison(isEqual: false, rule: .exactValue)
+        case .unknown:
+            return compareInstants(lhs, rhs)
         }
-        if let left = TimestampValue.parse(lhs), let right = TimestampValue.parse(rhs) {
-            let equal = left.equals(right, fractionalDigits: options.timestampFractionalDigits)
-            return ValueComparison(isEqual: equal, rule: .timestampPrecision)
+    }
+
+    private func compareInstants(_ lhs: String, _ rhs: String) -> ValueComparison {
+        guard let left = TimestampValue.parse(lhs), let right = TimestampValue.parse(rhs) else {
+            return ValueComparison(isEqual: false, rule: .exactValue)
         }
-        return ValueComparison(isEqual: false, rule: .exactValue)
+        let equal = left.equals(right, fractionalDigits: options.timestampFractionalDigits)
+        return ValueComparison(isEqual: equal, rule: .timestampPrecision)
     }
 }
 

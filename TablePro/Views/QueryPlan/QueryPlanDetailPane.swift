@@ -14,7 +14,7 @@ struct QueryPlanDetailPane: View {
         if let node {
             content(for: node)
         } else {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label(String(localized: "No Node Selected"), systemImage: "square.dashed")
             } description: {
                 Text(String(localized: "Select a step in the plan to see what it does."))

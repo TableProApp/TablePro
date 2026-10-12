@@ -12,10 +12,7 @@ import TableProPluginKit
 /// where AppKit dropped it whole as soon as the window narrowed. Every comparable client puts this
 /// in a bottom bar, and so does the rest of what this bar already reports.
 struct ExecutionIndicatorView: View {
-    let isExecuting: Bool
-    let lastTiming: PluginQueryTiming?
-    var onCancel: (() -> Void)?
-
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     /// Held back rather than the spinner inside it, so a query too fast to report leaves the
     /// previous duration standing instead of emptying the readout and changing its width twice.
     /// Clicking a table on a local database runs in single-digit milliseconds, and "Executing…"
@@ -24,7 +21,14 @@ struct ExecutionIndicatorView: View {
     /// The Stop button goes with it. Nothing needs cancelling inside the grace, and past it the
     /// button is there, which is what the HIG asks: "When it's feasible, let people halt
     /// processing."
-    @State private var showsExecution = false
+    let report: ExecutionSlot.Report
+    let isExecuting: Bool
+    /// Defaulted so a preview and a caller with nothing to protect read the same as before. A batch
+    /// whose commit is on the wire passes false: the spinner stays and the button dims, rather than
+    /// offering a cancel that cannot reach the server.
+    var canStop = true
+    var onCancel: (() -> Void)?
+
     @State private var showsBreakdown = false
 
     /// Why the two numbers differ, in the popover's own words. A client-measured first row carries
@@ -41,12 +45,13 @@ struct ExecutionIndicatorView: View {
     /// Resolved from the user's own binding rather than written into the string. A hint naming a
     /// key nobody bound is the same defect as a toolbar tooltip that outlived a rebind (#2185).
     private var cancelHint: String {
-        AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Cancel Query"), for: .cancelQuery)
+        settingsManager.keyboard.shortcutHint(String(localized: "Cancel Query"), for: .cancelQuery)
     }
 
     var body: some View {
         HStack(spacing: 4) {
-            if showsExecution {
+            switch report {
+            case .running:
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Query executing"))
@@ -62,17 +67,17 @@ struct ExecutionIndicatorView: View {
                 }
                 .buttonStyle(.plain)
                 .controlSize(.small)
+                .disabled(!canStop)
                 .accessibilityIdentifier("execution-stop")
                 .accessibilityLabel(String(localized: "Cancel Query"))
-                .help(cancelHint)
-            } else if let timing = lastTiming {
+                .help(canStop ? cancelHint : String(localized: "The batch is committing and cannot be stopped."))
+            case let .lastRun(timing):
                 durationReadout(timing)
             }
         }
-        .onChange(of: isExecuting) { _, nowExecuting in
+        .onChange(of: isExecuting) { nowExecuting in
             if nowExecuting { showsBreakdown = false }
         }
-        .loadingRevealGate(isActive: isExecuting, isRevealed: $showsExecution)
     }
 
     // MARK: - Readout
@@ -120,21 +125,21 @@ struct ExecutionIndicatorView: View {
 // MARK: - Preview
 
 #Preview("Executing") {
-    ExecutionIndicatorView(isExecuting: true, lastTiming: nil)
+    ExecutionIndicatorView(report: .running, isExecuting: true)
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }
 
 #Preview("Completed Fast") {
-    ExecutionIndicatorView(isExecuting: false, lastTiming: PluginQueryTiming(total: 0.023))
+    ExecutionIndicatorView(report: .lastRun(PluginQueryTiming(total: 0.023)), isExecuting: false)
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }
 
 #Preview("Split") {
     ExecutionIndicatorView(
-        isExecuting: false,
-        lastTiming: PluginQueryTiming(total: 3.421, firstRow: 0.012)
+        report: .lastRun(PluginQueryTiming(total: 3.421, firstRow: 0.012)),
+        isExecuting: false
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("list_types tool schema")
 struct UserDefinedTypeToolSchemaTests {
     @Test("list_types declares every field the bridge emits")
     func outputSchemaIsComplete() throws {
@@ -26,7 +25,8 @@ struct UserDefinedTypeToolSchemaTests {
         let schema = ListUserDefinedTypesTool.inputSchema
         #expect(schema["required"]?.arrayValue?.compactMap(\.stringValue) == ["connection_id"])
         let kinds = schema["properties"]?["kind"]?["enum"]?.arrayValue?.compactMap(\.stringValue)
-        #expect(kinds == ["enum", "composite", "domain", "range"])
+        #expect(kinds == ["enum", "composite", "domain", "range", "aliasType", "tableType", "clrType"])
+        #expect(kinds?.contains("other") == false)
     }
 
     @Test("list_types is registered as a read-only tool")

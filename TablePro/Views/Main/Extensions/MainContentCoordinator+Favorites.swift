@@ -6,6 +6,9 @@
 import AppKit
 import Combine
 import Foundation
+import os
+
+private let favoritesLogger = Logger(subsystem: "com.TablePro", category: "Favorites")
 
 extension MainContentCoordinator {
     func insertFavorite(_ favorite: SQLFavorite) {
@@ -37,29 +40,21 @@ extension MainContentCoordinator {
 
     func openLinkedFavorite(_ favorite: LinkedSQLFavorite) {
         guard let loaded = FileTextLoader.load(favorite.fileURL) else { return }
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
 
-        if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: favorite.fileURL) {
-            if let hosting = MainContentCoordinator.coordinator(forWindow: existing),
-               let match = hosting.tabManager.tabs.first(where: {
-                   $0.content.sourceFileURL == favorite.fileURL
-               }) {
-                /// Selecting it, not just raising its window. An editor tab used to be a window, so
-                /// raising the window was the whole of showing the tab; now a window holds every tab
-                /// and the command did nothing whenever the file's tab is not the one in front.
-                hosting.selectTabAndFocusWindow(match.id)
-                AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-                return
-            }
-            WindowLifecycleMonitor.shared.unregisterSourceFile(favorite.fileURL)
+        /// Any connection's tab, not only this window's selected one: the file can be open in a
+        /// workspace the window is not showing, and opening it here too made two buffers on one file.
+        if hostedTabRouting.revealTab(editing: favorite.fileURL) {
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+            return
         }
 
         if tabManager.tabs.isEmpty {
             tabManager.addTab(
                 initialQuery: loaded.content,
-                sourceFileURL: favorite.fileURL
+                sourceFileURL: favorite.fileURL,
+                sourceFileStamp: loaded.stamp,
+                sourceFileEncoding: loaded.textEncoding
             )
-            registerWindowForSourceFile(favorite.fileURL)
             return
         }
 
@@ -70,13 +65,10 @@ extension MainContentCoordinator {
            !tab.pendingChanges.hasChanges {
             tabManager.mutate(at: tabIndex) { tab in
                 tab.content.sourceFileURL = favorite.fileURL
-                tab.content.query = loaded.content
-                tab.content.savedFileContent = loaded.content
-                tab.content.loadMtime = mtime
+                FileTabBaseline.adopt(loaded, into: &tab.content)
                 tab.title = QueryTab.fileDisplayTitle(for: favorite.fileURL)
             }
             tabManager.markTabRenamed(tab.id)
-            registerWindowForSourceFile(favorite.fileURL)
             return
         }
 
@@ -85,19 +77,33 @@ extension MainContentCoordinator {
             tabType: .query,
             databaseName: browseDatabaseName,
             initialQuery: loaded.content,
-            sourceFileURL: favorite.fileURL
+            sourceFileURL: favorite.fileURL,
+            sourceFileStamp: loaded.stamp,
+            sourceFileEncoding: loaded.textEncoding
         )
         WindowManager.shared.openTab(payload: payload)
     }
 
-    private func registerWindowForSourceFile(_ url: URL) {
-        guard let windowId else { return }
-        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
-    }
-
-    func trashLinkedFavorite(_ favorite: LinkedSQLFavorite) {
-        var trashedURL: NSURL?
-        try? FileManager.default.trashItem(at: favorite.fileURL, resultingItemURL: &trashedURL)
+    @discardableResult
+    func trashLinkedFavorite(_ favorite: LinkedSQLFavorite) -> Bool {
+        do {
+            try FileManager.default.trashItem(at: favorite.fileURL, resultingItemURL: nil)
+            return true
+        } catch {
+            favoritesLogger.error(
+                """
+                Moving a linked SQL file to the Trash failed: \
+                file=\(favorite.fileURL.lastPathComponent, privacy: .private(mask: .hash)) \
+                error=\(error.publicLogShape, privacy: .public)
+                """
+            )
+            presentError(
+                String(localized: "Couldn't Move File to Trash"),
+                error.localizedDescription,
+                contentWindow
+            )
+            return false
+        }
     }
 
     func revealLinkedFavoriteInFinder(_ favorite: LinkedSQLFavorite) {

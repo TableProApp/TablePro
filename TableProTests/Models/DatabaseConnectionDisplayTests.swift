@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DatabaseConnection display")
 struct DatabaseConnectionDisplayTests {
     @Test("Relational connection shows database after host")
     func relationalShowsDatabase() {
@@ -18,7 +17,7 @@ struct DatabaseConnectionDisplayTests {
             database: "myapp_production", type: .mysql
         )
 
-        #expect(connection.connectionSubtitle == "localhost · myapp_production")
+        #expect(connection.connectionSubtitle == "localhost/myapp_production")
     }
 
     @Test("Non-default port is shown before the database")
@@ -28,7 +27,7 @@ struct DatabaseConnectionDisplayTests {
             database: "myapp_production", type: .mysql
         )
 
-        #expect(connection.connectionSubtitle == "localhost:3307 · myapp_production")
+        #expect(connection.connectionSubtitle == "localhost:3307/myapp_production")
     }
 
     @Test("Empty database leaves no trailing separator")
@@ -48,7 +47,7 @@ struct DatabaseConnectionDisplayTests {
             database: "analytics", type: .postgresql
         )
 
-        #expect(connection.connectionSubtitle == "db.example.com · analytics")
+        #expect(connection.connectionSubtitle == "db.example.com/analytics")
     }
 
     @Test("Two same-named, same-host connections differ by database")
@@ -91,7 +90,37 @@ struct DatabaseConnectionDisplayTests {
             database: "appdb", type: .mysql
         )
 
-        #expect(connection.connectionSubtitle == "~/run/mysql.sock · appdb")
+        #expect(connection.connectionSubtitle == "appdb on ~/run/mysql.sock")
+    }
+
+    @Test("A socket connection shows its socket in place of the host")
+    func localSocketReplacesHost() {
+        let socket = (NSHomeDirectory() as NSString)
+            .appendingPathComponent("Library/Application Support/Local/run/abc/mysql/mysqld.sock")
+        var connection = DatabaseConnection(
+            name: "Site", host: "localhost", port: 3_306, database: "local", type: .mysql
+        )
+        connection.localSocketPath = socket
+
+        #expect(connection.connectionSubtitle == "local on ~/Library/Application Support/Local/run/abc/mysql/mysqld.sock")
+
+        connection.database = ""
+        connection.host = ""
+        #expect(connection.connectionSubtitle == "~/Library/Application Support/Local/run/abc/mysql/mysqld.sock")
+    }
+
+    @Test("A socket left under an SSH tunnel shows the host the tunnel reaches")
+    func tunnelHidesLocalSocket() {
+        var sshConfig = SSHConfiguration()
+        sshConfig.enabled = true
+        sshConfig.host = "bastion.example.com"
+        var connection = DatabaseConnection(
+            name: "Project", host: "localhost", port: 3_306,
+            database: "myapp", type: .mysql, sshConfig: sshConfig
+        )
+        connection.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/mysql.sock"
+
+        #expect(connection.connectionSubtitle == "localhost/myapp via bastion.example.com")
     }
 
     @Test("File-based connection with no path falls back to the type name")
@@ -110,7 +139,7 @@ struct DatabaseConnectionDisplayTests {
             database: "", type: .redis, redisDatabase: 3
         )
 
-        #expect(connection.connectionSubtitle == "localhost · db 3")
+        #expect(connection.connectionSubtitle == "localhost/3")
     }
 
     @Test("Redis without an index shows only the host")
@@ -130,7 +159,7 @@ struct DatabaseConnectionDisplayTests {
             database: "ORCLPDB1", type: .oracle
         )
 
-        #expect(connection.connectionSubtitle == "ora.example.com · ORCLPDB1")
+        #expect(connection.connectionSubtitle == "ora.example.com/ORCLPDB1")
     }
 
     @Test("MongoDB replica set shows host count and database")
@@ -141,7 +170,7 @@ struct DatabaseConnectionDisplayTests {
             additionalFields: ["mongoHosts": "node1.example.com,node2.example.com,node3.example.com"]
         )
 
-        #expect(connection.connectionSubtitle == "node1.example.com (+2 more) · appdb")
+        #expect(connection.connectionSubtitle == "node1.example.com (+2 more)/appdb")
     }
 
     /// A Sentinel or Cluster connection leaves Host blank, so before the host list was described
@@ -211,7 +240,7 @@ struct DatabaseConnectionDisplayTests {
             database: "myapp", type: .mysql, sshConfig: sshConfig
         )
 
-        #expect(connection.connectionSubtitle == "localhost · myapp · via bastion.example.com")
+        #expect(connection.connectionSubtitle == "localhost/myapp via bastion.example.com")
     }
 
     @Test("Unknown future type is treated like a database role")
@@ -221,6 +250,6 @@ struct DatabaseConnectionDisplayTests {
             database: "mydb", type: DatabaseType(rawValue: "FutureDB")
         )
 
-        #expect(connection.connectionSubtitle == "future.example.com · mydb")
+        #expect(connection.connectionSubtitle == "future.example.com/mydb")
     }
 }

@@ -336,7 +336,7 @@ internal struct SQLTokenFormatter {
 
     private mutating func handleKeyword(_ token: SQLToken, prev: SQLToken?, next: SQLToken?, next2: SQLToken?) {
         let upper = token.upperValue
-        let kw = options.uppercaseKeywords ? upper : token.value
+        let kw = options.keywordCase.applied(upper: upper, original: token.value)
 
         switch upper {
         case "SELECT":
@@ -404,7 +404,7 @@ internal struct SQLTokenFormatter {
         case "TABLE", "AS":
             appendToken(kw)
         default:
-            if options.uppercaseKeywords && (functions.contains(upper) || dataTypes.contains(upper)) {
+            if options.keywordCase.rewritesKeywords, functions.contains(upper) || dataTypes.contains(upper) {
                 appendToken(token.value)
             } else {
                 appendToken(kw)
@@ -466,7 +466,7 @@ internal struct SQLTokenFormatter {
         // LEFT OUTER JOIN → skip 2 tokens (OUTER, JOIN)
         if next?.upperValue == "OUTER" && next2?.upperValue == "JOIN" {
             inSelectColumns = false
-            let joinKw = options.uppercaseKeywords ? "\(upper) OUTER JOIN" : "\(upper.lowercased()) outer join"
+            let joinKw = options.keywordCase.synthesized("\(upper) OUTER JOIN")
             newline()
             appendToken(joinKw)
             replaceTop(with: .join)
@@ -474,7 +474,7 @@ internal struct SQLTokenFormatter {
         // LEFT JOIN → skip 1 token (JOIN)
         } else if next?.upperValue == "JOIN" {
             inSelectColumns = false
-            let joinKw = options.uppercaseKeywords ? "\(upper) JOIN" : "\(upper.lowercased()) join"
+            let joinKw = options.keywordCase.synthesized("\(upper) JOIN")
             newline()
             appendToken(joinKw)
             replaceTop(with: .join)
@@ -499,7 +499,7 @@ internal struct SQLTokenFormatter {
         // Inside window function parens — stay inline
         if clauseStack.contains(.windowParen) {
             if next?.upperValue == "BY" {
-                let byKw = options.uppercaseKeywords ? "BY" : "by"
+                let byKw = options.keywordCase.synthesized("BY")
                 output += " " + kw + " " + byKw
                 afterNewline = false
                 skipCount = 1
@@ -510,7 +510,7 @@ internal struct SQLTokenFormatter {
         }
         inSelectColumns = false
         if next?.upperValue == "BY" {
-            let byKw = options.uppercaseKeywords ? "BY" : "by"
+            let byKw = options.keywordCase.synthesized("BY")
             newline()
             output += indentStr() + kw + " " + byKw
             afterNewline = false
@@ -530,7 +530,7 @@ internal struct SQLTokenFormatter {
 
         var line = kw
         if upper == "UNION" && next?.upperValue == "ALL" {
-            let allKw = options.uppercaseKeywords ? "ALL" : "all"
+            let allKw = options.keywordCase.synthesized("ALL")
             line += " " + allKw
             skipCount = 1 // skip ALL
         }
@@ -580,7 +580,7 @@ internal struct SQLTokenFormatter {
     private mutating func handleInsert(kw: String, next: SQLToken?) {
         if !isFirstClause { output += "\n" }
         if next?.upperValue == "INTO" {
-            let intoKw = options.uppercaseKeywords ? "INTO" : "into"
+            let intoKw = options.keywordCase.synthesized("INTO")
             output += kw + " " + intoKw
             skipCount = 1 // skip INTO
         } else {

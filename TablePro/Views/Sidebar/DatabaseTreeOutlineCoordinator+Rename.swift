@@ -21,13 +21,16 @@ extension DatabaseTreeOutlineCoordinator {
         let name: String
         switch target {
         case .table(let ref):
-            nodeId = isRecentRow ? DatabaseTreeNode.recentTableId(ref) : DatabaseTreeNode.tableId(ref)
+            nodeId = isRecentRow ? DatabaseTreeNode.recentTableId(ref) : tableNodeId(for: ref)
             name = ref.table.name
         case .container(let ref):
             nodeId = ref.kind == .schema
                 ? DatabaseTreeNode.schemaId(database: ref.database ?? "", schema: ref.schema ?? "")
                 : DatabaseTreeNode.databaseId(ref.database ?? "")
             name = ref.name
+        case .folder(let folder):
+            nodeId = DatabaseTreeNode.tableFolderId(folder.id)
+            name = folder.name
         }
 
         let row = outlineView.row(forItem: nodeCache[nodeId])
@@ -44,25 +47,14 @@ extension DatabaseTreeOutlineCoordinator {
         focus(cell)
     }
 
-    /// Re-installs a live edit after a reload, which drops every cell view. The typed value is
-    /// carried across so a refresh from another window does not swallow what the user has entered.
-    internal func restoreRenameAfterReload() {
-        guard let session = renameSession else { return }
-        guard let cell = renameCell(forNodeId: session.nodeId) else {
-            endRename(commit: false)
-            return
-        }
-        guard !cell.isRenaming else { return }
-        cell.beginRename(text: session.pendingName ?? session.originalName, delegate: self)
-        focus(cell)
-    }
-
+    /// Applies any reload the edit held back once it is over, commit or not.
     internal func endRename(commit: Bool) {
         guard let session = renameSession else { return }
         renameSession = nil
+        defer { applyDeferredReloadIfNeeded() }
 
-        /// The field is the authority while it exists. `pendingName` is the fallback for the case
-        /// where the row has already gone, which is the only way there is no field left to ask.
+        /// The field is the authority while it exists. `pendingName` is the fallback for a row that
+        /// is no longer on screen, the only way there is no field left to ask.
         var typed = session.pendingName ?? session.originalName
         if let cell = renameCell(forNodeId: session.nodeId) {
             typed = cell.endRename()
@@ -80,6 +72,8 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.renameTable(ref, to: newName)
         case .container(let ref):
             mainCoordinator?.renameContainer(ref, to: newName)
+        case .folder(let folder):
+            renameFolder(folder, to: newName)
         }
     }
 
@@ -87,6 +81,23 @@ extension DatabaseTreeOutlineCoordinator {
         guard let field = cell.editor else { return }
         outlineView?.window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
+    }
+
+    /// A table has two possible rows: its own, and the partition row a PostgreSQL partition draws
+    /// under its parent. Both resolve to the same reference, so the id comes from the row that is
+    /// actually on screen rather than from whichever node the cache happens to hold.
+    ///
+    /// Presence in `nodeCache` is not enough. The cache outlives a reload, so a table attached as a
+    /// partition keeps its old `.table` node there long after the tree stopped drawing it, and
+    /// renaming through that id asks the outline for row -1 and silently does nothing.
+    private func tableNodeId(for ref: DatabaseTreeTableRef) -> String {
+        let tableId = DatabaseTreeNode.tableId(ref)
+        let candidates = [nodeCache[tableId]].compactMap { $0 } + nodeCache.values.filter { node in
+            guard case .partition = node.kind else { return false }
+            return node.tableRef == ref
+        }
+        let mounted = candidates.first { (outlineView?.row(forItem: $0) ?? -1) >= 0 }
+        return mounted?.id ?? candidates.first?.id ?? tableId
     }
 
     private func renameCell(forNodeId nodeId: String) -> DatabaseTreeCellView? {

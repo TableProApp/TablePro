@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Database URL Scheme Detection")
 @MainActor
 struct DatabaseURLSchemeTests {
 
@@ -59,6 +58,16 @@ struct DatabaseURLSchemeTests {
             Issue.record("Expected success"); return
         }
         #expect(parsed.type == .tidb)
+    }
+
+    @Test("OceanBase scheme parses successfully")
+    func oceanbaseScheme() {
+        let result = ConnectionURLParser.parse("oceanbase://root%40sys:pass@localhost:2881/test")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .oceanbase)
+        #expect(parsed.username == "root@sys")
     }
 
     @Test("SQLite scheme parses successfully")
@@ -194,6 +203,17 @@ struct DatabaseURLSchemeTests {
         }
         #expect(parsed.type == .tidb)
         #expect(parsed.sshHost == "sshhost")
+    }
+
+    @Test("OceanBase+SSH scheme parses successfully")
+    func oceanbaseSshScheme() {
+        let result = ConnectionURLParser.parse("oceanbase+ssh://sshuser@sshhost:22/root%40sys:dbpass@dbhost/dbname")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .oceanbase)
+        #expect(parsed.sshHost == "sshhost")
+        #expect(parsed.username == "root@sys")
     }
 
     // MARK: - Unsupported Schemes

@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("DataGridCell accessory appearance")
 @MainActor
 struct DataGridCellAccessoryAppearanceTests {
     private struct InkMetrics {

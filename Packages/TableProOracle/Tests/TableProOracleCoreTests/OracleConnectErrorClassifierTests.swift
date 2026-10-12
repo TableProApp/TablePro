@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProOracleCore
+import XCTest
 
 final class OracleConnectErrorClassifierTests: XCTestCase {
     func testVerifierPrefixIsClassifiedWithItsFlag() {
@@ -11,6 +11,30 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
         XCTAssertEqual(OracleConnectErrorClassifier.classify("uncleanShutdown"), .connectionDropped)
         XCTAssertEqual(OracleConnectErrorClassifier.classify("serverVersionNotSupported"), .versionNotSupported)
         XCTAssertEqual(OracleConnectErrorClassifier.classify("advancedNegotiationFailed"), .advancedNegotiationFailed)
+        XCTAssertEqual(
+            OracleConnectErrorClassifier.classify("advancedNegotiationRequired"),
+            .advancedNegotiationRequired
+        )
+        XCTAssertEqual(
+            OracleConnectErrorClassifier.classify("loginHandshakeTimedOut"),
+            .loginHandshakeTimedOut
+        )
+    }
+
+    func testStalledLoginIsNotBlamedOnEncryption() {
+        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+            failure: .loginHandshakeTimedOut,
+            nativeNetworkEncryptionEnabled: true,
+            timedOut: true
+        ))
+    }
+
+    func testRequiredNegotiationIsAnEncryptionSignal() {
+        XCTAssertTrue(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+            failure: .advancedNegotiationRequired,
+            nativeNetworkEncryptionEnabled: true,
+            timedOut: false
+        ))
     }
 
     func testUnknownCodeFallsBackToConnectionFailed() {
@@ -64,6 +88,57 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
         XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("messageDecodingFailure"))
         XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("unexpectedBackendMessage"))
         XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("statementError"))
+    }
+
+    /// The table mirrors OracleNIO's own `ConnectionStateMachine.shouldCloseConnection(reason:)`,
+    /// which is internal and so cannot be called. Every case it names is pinned here.
+    func testChannelFatalTableMirrorsOracleNIO() {
+        for code in [
+            "clientClosesConnection",
+            "clientClosedConnection",
+            "failedToAddSSLHandler",
+            "failedToVerifyTLSCertificates",
+            "connectionError",
+            "messageDecodingFailure",
+            "missingParameter",
+            "unexpectedBackendMessage",
+            "serverVersionNotSupported",
+            "sidNotSupported",
+            "uncleanShutdown",
+            "unsupportedDataType",
+            "unsupportedVerifierType(0x939)",
+            "advancedNegotiationFailed",
+            "advancedNegotiationRequired",
+            "loginHandshakeTimedOut",
+            "nationalCharsetNotSupported"
+        ] {
+            XCTAssertTrue(OracleChannelFatalCode.isChannelFatal(code), code)
+        }
+
+        for code in ["statementCancelled", "missingStatement", "malformedStatement"] {
+            XCTAssertFalse(OracleChannelFatalCode.isChannelFatal(code), code)
+        }
+    }
+
+    /// ORA-28 is the session being killed and ORA-600 an internal error; OracleNIO closes the
+    /// channel on both and on no other server error.
+    func testServerErrorsAreFatalOnlyForKilledSessions() {
+        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 28))
+        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 600))
+        XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 942))
+        XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("server"))
+    }
+
+    /// A lost socket must not be reported as the server sending something the driver could not
+    /// read: `uncleanShutdown` and `connectionError` are the transport going away, and
+    /// `OracleConnectErrorClassifier` already calls the first of them a dropped connection.
+    func testClosuresAreToldApartByWhatTookTheChannel() {
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("clientClosedConnection"), .clientClose)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("clientClosesConnection"), .clientClose)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("uncleanShutdown"), .transportLoss)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("connectionError"), .transportLoss)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("messageDecodingFailure"), .protocolFailure)
+        XCTAssertEqual(OracleChannelFatalCode.closureKind("unexpectedBackendMessage"), .protocolFailure)
     }
 
     func testTLSClassifierRecognizesOracleWalletAndCipherErrors() {

@@ -23,3 +23,16 @@ public struct AWSCredentials: Sendable, Equatable {
         return expiration.timeIntervalSince(now) <= safetyWindow
     }
 }
+
+extension AWSCredentials: CustomStringConvertible, CustomDebugStringConvertible {
+    public var description: String {
+        "AWSCredentials(accessKeyId: \(redactedAccessKeyId), redacted)"
+    }
+
+    public var debugDescription: String { description }
+
+    private var redactedAccessKeyId: String {
+        guard accessKeyId.count > 4 else { return "…" }
+        return "\(accessKeyId.prefix(4))…"
+    }
+}

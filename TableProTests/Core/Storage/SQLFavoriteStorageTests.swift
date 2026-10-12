@@ -5,10 +5,10 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
 
-@Suite("SQLFavoriteStorage")
+@testable import TablePro
+
 struct SQLFavoriteStorageTests {
     private let storage: SQLFavoriteStorage
 
@@ -76,7 +76,7 @@ struct SQLFavoriteStorageTests {
         fav.name = "Updated"
         fav.keyword = "upd"
         let updated = await storage.updateFavorite(fav)
-        #expect(updated)
+        #expect(updated == .updatedExisting(previousConnectionId: nil))
 
         let fetched = await storage.fetchFavorites()
         let found = fetched.first { $0.id == fav.id }
@@ -89,11 +89,25 @@ struct SQLFavoriteStorageTests {
         let fav = makeFavorite()
         _ = await storage.addFavorite(fav)
 
-        let deleted = await storage.deleteFavorite(id: fav.id)
+        let deleted = await storage.deleteFavorites(ids: [fav.id]) != nil
         #expect(deleted)
 
         let fetched = await storage.fetchFavorites()
         #expect(!fetched.contains { $0.id == fav.id })
+    }
+
+    @Test("A query past 500,000 characters is stored and read back whole")
+    func largeQueryRoundTrips() async {
+        let query = (1...12_000)
+            .map { "INSERT INTO users (id, email) VALUES (\($0), 'user\($0)@example.com');" }
+            .joined(separator: "\n")
+        #expect((query as NSString).length > 500_000)
+        let fav = makeFavorite(name: "Seed users", query: query)
+
+        #expect(await storage.addFavorite(fav))
+
+        let fetched = await storage.fetchFavorite(id: fav.id)
+        #expect(fetched?.query == query)
     }
 
     // MARK: - Favorites in Folders
@@ -190,6 +204,26 @@ struct SQLFavoriteStorageTests {
         #expect(otherAvailable)
     }
 
+    /// A global keyword is in every connection's expansion map, so it collides with a keyword held
+    /// anywhere. Asking only about other global rows let one connection hold the same keyword
+    /// twice, which is a tie no expansion should have to break.
+    @Test("A keyword held by one connection is not free for a global favorite")
+    func aGlobalKeywordCollidesWithAScopedOne() async {
+        let connectionId = UUID()
+        let scoped = SQLFavorite(name: "Users", query: "SELECT 1", keyword: "u", connectionId: connectionId)
+        _ = await storage.addFavorite(scoped)
+
+        #expect(await storage.isKeywordAvailable("u", connectionId: nil) == false)
+    }
+
+    @Test("A keyword held by one connection is still free for another connection")
+    func aScopedKeywordIsFreeInAnotherConnection() async {
+        let scoped = SQLFavorite(name: "Users", query: "SELECT 1", keyword: "u", connectionId: UUID())
+        _ = await storage.addFavorite(scoped)
+
+        #expect(await storage.isKeywordAvailable("u", connectionId: UUID()))
+    }
+
     @Test("Keyword uniqueness excludes self")
     func keywordUniquenessExcludesSelf() async {
         let fav = makeFavorite(keyword: "sel")
@@ -272,45 +306,24 @@ struct SQLFavoriteStorageTests {
         #expect(survivor?.folderId == nil, "Its dangling folder reference is cleared")
     }
 
-    @Test("Orphan prune removes favorites and folders of dead connections only")
-    func pruneOrphanedFavorites() async {
-        let liveConnectionId = UUID()
-        let deadConnectionId = UUID()
-        let live = makeFavorite(name: "Live", keyword: "live", connectionId: liveConnectionId)
-        let dead = makeFavorite(name: "Dead", keyword: "dead", connectionId: deadConnectionId)
-        let global = makeFavorite(name: "Global", keyword: "glob")
-        let deadFolder = makeFolder(name: "Dead Folder", connectionId: deadConnectionId)
-        let liveFolder = makeFolder(name: "Live Folder", connectionId: liveConnectionId)
-
-        _ = await storage.addFavorite(live)
-        _ = await storage.addFavorite(dead)
-        _ = await storage.addFavorite(global)
-        _ = await storage.addFolder(deadFolder)
-        _ = await storage.addFolder(liveFolder)
-
-        let pruned = await storage.pruneOrphaned(retaining: [liveConnectionId])
-        #expect(pruned == 1)
-
-        let remaining = await storage.fetchFavorites()
-        #expect(remaining.contains { $0.id == live.id })
-        #expect(!remaining.contains { $0.id == dead.id })
-        #expect(remaining.contains { $0.id == global.id })
-
-        let folders = await storage.fetchFolders()
-        #expect(!folders.contains { $0.id == deadFolder.id })
-        #expect(folders.contains { $0.id == liveFolder.id })
-    }
-
-    @Test("Orphan prune is skipped when no active connections are known")
-    func pruneSkippedWithoutActiveConnections() async {
-        let scoped = makeFavorite(name: "Scoped", connectionId: UUID())
+    /// A connection absent from the local list is not a connection the user deleted. Saved Queries
+    /// and Connections are separate sync categories, so a device that syncs the first and not the
+    /// second holds queries whose connection will never be local, and the launch-time prune that
+    /// used to run here destroyed them permanently on every launch. Deleting a connection still
+    /// takes its queries with it, through `ConnectionLocalState`.
+    @Test("A saved query whose connection this device has never seen is kept")
+    func aQueryForAnUnknownConnectionSurvives() async {
+        let absentConnectionId = UUID()
+        let scoped = makeFavorite(name: "Scoped", connectionId: absentConnectionId)
+        let folder = makeFolder(name: "Scoped Folder", connectionId: absentConnectionId)
         _ = await storage.addFavorite(scoped)
-
-        let pruned = await storage.pruneOrphaned(retaining: [])
-        #expect(pruned == 0)
+        _ = await storage.addFolder(folder)
 
         let remaining = await storage.fetchFavorites()
+        let folders = await storage.fetchFolders()
+
         #expect(remaining.contains { $0.id == scoped.id })
+        #expect(folders.contains { $0.id == folder.id })
     }
 
     @Test("hasFavorites reflects scoped favorites only")

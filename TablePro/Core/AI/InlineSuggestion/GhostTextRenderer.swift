@@ -4,9 +4,9 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
+import TableProEditorKit
+import TableProTextEngine
 
 @MainActor
 final class GhostTextRenderer {
@@ -54,7 +54,7 @@ final class GhostTextRenderer {
             attributes: attrs
         )
 
-        // isFlipped = true in CodeEditTextView, so y=0 is top — coords match layoutManager directly
+        // isFlipped = true in TableProTextEngine, so y=0 is top — coords match layoutManager directly
         layer.frame = CGRect(
             x: rect.origin.x,
             y: rect.origin.y,

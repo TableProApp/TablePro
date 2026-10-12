@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 struct DatabaseSchemaKey: Hashable, Sendable, Codable {
@@ -19,13 +19,12 @@ struct DatabaseTableKey: Hashable, Sendable, Codable {
 }
 
 @MainActor
-@Observable
-internal final class WindowSidebarState {
-    @ObservationIgnored private let connectionId: UUID?
-    @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private var isLoaded = false
+internal final class WindowSidebarState: ObservableObject {
+    private let connectionId: UUID?
+    private let defaults: UserDefaults
+    private var isLoaded = false
 
-    var selectedTables: Set<DatabaseTreeTableRef> = []
+    @Published var selectedTables: Set<DatabaseTreeTableRef> = []
 
     /// How many rows are selected, which is not the same as how many tables. A table selected
     /// alongside a schema is an extension of a selection, not a pick, and the set of tables alone
@@ -33,7 +32,7 @@ internal final class WindowSidebarState {
     ///
     /// Only the object tree can select a row that is not a table, so every other writer goes
     /// through `selectTables(_:)` and the two stay consistent by construction.
-    private(set) var selectedRowCount = 0
+    @Published private(set) var selectedRowCount = 0
 
     func selectTables(_ tables: Set<DatabaseTreeTableRef>) {
         select(tables: tables, rowCount: tables.count)
@@ -56,11 +55,14 @@ internal final class WindowSidebarState {
     var acceptsObjectMarkRefresh: Bool {
         selectedTables.isEmpty && selectedRowCount == 0
     }
-    var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
-    var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
-    var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
-    var expandedTreeTables: Set<DatabaseTableKey> = [] { didSet { persistExpansion() } }
-    private(set) var treeObjectGroupExpansion: [DatabaseTreeObjectGroup: Bool] = [:] {
+    @Published var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
+    @Published var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
+    @Published var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
+    @Published var expandedTreeTables: Set<DatabaseTableKey> = [] { didSet { persistExpansion() } }
+    /// Folders are open until the user closes one, so this records the closed ones: a table the
+    /// open tab shows is only highlighted when its row is on screen.
+    @Published var collapsedTableFolders: Set<UUID> = [] { didSet { persistExpansion() } }
+    @Published private(set) var treeObjectGroupExpansion: [DatabaseTreeObjectGroup: Bool] = [:] {
         didSet { persistExpansion() }
     }
 
@@ -79,7 +81,7 @@ internal final class WindowSidebarState {
     /// An all-empty expansion set means "the user collapsed everything" just as much as it
     /// means "the user has never opened this tree", and seeding on the former would reopen
     /// nodes they deliberately closed. This records that the seed already happened.
-    private(set) var didSeedExpansion = false
+    @Published private(set) var didSeedExpansion = false
 
     /// Opens the tree on the connection's current location the first time it is shown, so a
     /// database whose objects all sit under one schema is not a row of closed triangles.
@@ -125,6 +127,7 @@ internal final class WindowSidebarState {
         var tables: [DatabaseTableKey]?
         var objectGroups: [PersistedObjectGroup]?
         var seeded: Bool?
+        var collapsedFolders: [UUID]?
     }
 
     private var storageKey: String? {
@@ -140,6 +143,7 @@ internal final class WindowSidebarState {
         expandedTreeDatabaseSchemas = Set(decoded.databaseSchemas)
         expandedTreeTables = Set(decoded.tables ?? [])
         treeObjectGroupExpansion = Self.objectGroupExpansion(from: decoded.objectGroups ?? [])
+        collapsedTableFolders = Set(decoded.collapsedFolders ?? [])
         didSeedExpansion = decoded.seeded ?? true
     }
 
@@ -148,7 +152,7 @@ internal final class WindowSidebarState {
 
         if expandedTreeSchemas.isEmpty, expandedTreeDatabases.isEmpty,
            expandedTreeDatabaseSchemas.isEmpty, expandedTreeTables.isEmpty,
-           treeObjectGroupExpansion.isEmpty,
+           treeObjectGroupExpansion.isEmpty, collapsedTableFolders.isEmpty,
            !didSeedExpansion {
             defaults.removeObject(forKey: storageKey)
             return
@@ -160,7 +164,8 @@ internal final class WindowSidebarState {
             databaseSchemas: Array(expandedTreeDatabaseSchemas),
             tables: Array(expandedTreeTables),
             objectGroups: Self.persistedObjectGroups(from: treeObjectGroupExpansion),
-            seeded: didSeedExpansion
+            seeded: didSeedExpansion,
+            collapsedFolders: Array(collapsedTableFolders)
         )
         if let data = try? JSONEncoder().encode(snapshot) {
             defaults.set(data, forKey: storageKey)

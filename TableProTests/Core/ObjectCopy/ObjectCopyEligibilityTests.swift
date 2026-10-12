@@ -229,9 +229,14 @@ final class ObjectCopyEligibilityTests: XCTestCase {
     /// CREATE. Running that is a read the runner would report as the view copied, after Replace
     /// had already dropped the target's.
     func testABareBodyIsNotAnExecutableDefinition() {
-        XCTAssertTrue(ObjectCopyEligibility.isExecutableDefinition("CREATE VIEW v AS SELECT 1"))
-        XCTAssertTrue(ObjectCopyEligibility.isExecutableDefinition("\n  create or replace view v AS SELECT 1"))
-        XCTAssertFalse(ObjectCopyEligibility.isExecutableDefinition("SELECT id, name FROM orders"))
-        XCTAssertFalse(ObjectCopyEligibility.isExecutableDefinition("   "))
+        let postgres = SQLScriptText(databaseType: .postgresql)
+
+        XCTAssertNil(SourceDefinitionDefect.of(definition: "CREATE VIEW v AS SELECT 1", sentAs: postgres))
+        XCTAssertNil(SourceDefinitionDefect.of(definition: "\n  create or replace view v AS SELECT 1", sentAs: postgres))
+        XCTAssertEqual(
+            SourceDefinitionDefect.of(definition: "SELECT id, name FROM orders", sentAs: postgres),
+            .notACreateStatement
+        )
+        XCTAssertEqual(SourceDefinitionDefect.of(definition: "   ", sentAs: postgres), .empty)
     }
 }

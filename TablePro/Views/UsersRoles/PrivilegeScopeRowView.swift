@@ -71,6 +71,7 @@ struct ScopeSummaryView: View {
                     Image(systemName: "arrow.up.forward.square")
                         .foregroundStyle(.secondary)
                         .help(String(localized: "Can grant these privileges to others."))
+                        .accessibilityLabel(String(localized: "Can grant these privileges to others."))
                 }
             }
 

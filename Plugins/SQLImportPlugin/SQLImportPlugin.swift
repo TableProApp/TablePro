@@ -3,13 +3,13 @@
 //  SQLImportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLImportPlugin")
 
     static let pluginName = "SQL Import"
@@ -19,11 +19,12 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Send
     static let formatDisplayName = "SQL"
     static let acceptedFileExtensions = ["sql", "gz"]
     static let iconName = "doc.text"
+    static let excludedDatabaseTypeIds = ["MongoDB", "Redis"]
 
     typealias Settings = SQLImportOptions
     static let settingsStorageId = "sql-import"
 
-    var settings = SQLImportOptions() {
+    @Published var settings = SQLImportOptions() {
         didSet { saveSettings() }
     }
 
@@ -72,7 +73,7 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Send
                 try progress.checkCancellation()
 
                 do {
-                    try await sink.execute(statement: statement)
+                    try await sink.execute(statement: statement, line: lineNumber)
                     executedCount += 1
                     progress.incrementStatement()
                 } catch {

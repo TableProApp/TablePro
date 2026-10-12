@@ -3,19 +3,20 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
 
-@MainActor @Observable
-final class RowEditingCoordinator {
-    @ObservationIgnored unowned let parent: MainContentCoordinator
+@MainActor
+final class RowEditingCoordinator: ObservableObject {
+    unowned let parent: MainContentCoordinator
 
     /// A save is between assembling its statements and hearing back.
     ///
     /// Nothing clears the pending changes until the write returns, so a second Cmd+S inside the
     /// round trip finds them still there, assembles the same statements again and commits them
     /// twice. Over a slow link that is easy to do by accident.
-    @ObservationIgnored private(set) var isSaveInFlight = false
+    private(set) var isSaveInFlight = false
 
     init(parent: MainContentCoordinator) {
         self.parent = parent
@@ -41,9 +42,8 @@ final class RowEditingCoordinator {
     // MARK: - Row Operations
 
     func addNewRow() {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
@@ -68,9 +68,8 @@ final class RowEditingCoordinator {
     }
 
     func deleteSelectedRows(indices: Set<Int>) {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               !indices.isEmpty else { return }
 
         let tabId = tab.id
@@ -112,9 +111,8 @@ final class RowEditingCoordinator {
     }
 
     func duplicateSelectedRow(index: Int) {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
@@ -166,6 +164,150 @@ final class RowEditingCoordinator {
         return Set(displayIDs.indices.filter { rowIDs.contains(displayIDs[$0]) })
     }
 
+    /// Stages a row inspector field edit exactly as the grid's own cell editor stages one: the
+    /// change, the shared `TableRows` buffer both surfaces read, and the repaint.
+    ///
+    /// The rows are named by `RowID` rather than by the display positions the selection carries,
+    /// and each contributes its own `oldValue`. A shared one is wrong the moment a multi-row
+    /// selection disagrees on the field, where the inspector holds no value for it at all.
+    /// Ends the typed run an inspector field was building, so the next thing to register an undo
+    /// step lands after it rather than inside it.
+    func endInspectorEditRun() {
+        parent.changeManager.endCoalescedUndoRun()
+    }
+
+    func stageInspectorFieldEdit(
+        columnIndex: Int,
+        value: PluginCellValue,
+        rowIDs: [RowID],
+        continuity: FieldEditContinuity
+    ) {
+        stageInspectorEdits(
+            valuesByRow: Dictionary(rowIDs.map { ($0, value) }, uniquingKeysWith: { first, _ in first }),
+            columnIndex: columnIndex,
+            continuity: continuity
+        )
+    }
+
+    /// Puts a field back to the values the inspector was configured with.
+    ///
+    /// A field the selected rows disagree on has no value of its own, and clearing it asks for each
+    /// row's own value back rather than for one value across all of them.
+    ///
+    /// `absentRowIDs` are the rows that had no field for the column, which it goes back to missing.
+    func revertInspectorFieldEdit(
+        columnIndex: Int,
+        valuesByRow: [RowID: PluginCellValue],
+        absentRowIDs: Set<RowID> = []
+    ) {
+        stageInspectorEdits(
+            valuesByRow: valuesByRow,
+            columnIndex: columnIndex,
+            continuity: .typing,
+            removingFieldFrom: absentRowIDs
+        )
+    }
+
+    /// Takes the field out of every row the inspector is showing, for an engine that tells a
+    /// missing field from NULL.
+    func stageInspectorFieldRemoval(columnIndex: Int, rowIDs: [RowID]) {
+        guard parent.changeManager.supportsFieldRemoval else { return }
+        stageInspectorEdits(
+            valuesByRow: Dictionary(rowIDs.map { ($0, PluginCellValue.null) }, uniquingKeysWith: { first, _ in first }),
+            columnIndex: columnIndex,
+            continuity: .discrete,
+            removingFieldFrom: Set(rowIDs)
+        )
+    }
+
+    private func stageInspectorEdits(
+        valuesByRow: [RowID: PluginCellValue],
+        columnIndex: Int,
+        continuity: FieldEditContinuity,
+        removingFieldFrom removedRowIDs: Set<RowID> = []
+    ) {
+        if continuity == .discrete {
+            endInspectorEditRun()
+        }
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !valuesByRow.isEmpty else { return }
+        let tabId = tab.id
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
+        guard tableRows.columns.indices.contains(columnIndex) else { return }
+        let columnName = tableRows.columns[columnIndex]
+        /// Before the rows are touched, not after: a column the server owns is refused when the
+        /// change is recorded, and editing here first would paint a value into the grid that no
+        /// statement will ever carry.
+        guard parent.changeManager.isColumnWritable(columnName) else { return }
+
+        var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
+        var removedCells: Set<CellPosition> = []
+        var editedRowIDs: Set<RowID> = []
+        for (rowID, value) in valuesByRow {
+            guard let storageRow = tableRows.index(of: rowID) else { continue }
+            let row = tableRows.rows[storageRow]
+            let values = Array(row.values)
+            let removesField = removedRowIDs.contains(rowID) && parent.changeManager.supportsFieldRemoval
+            let absence = FieldAbsence(
+                wasAbsent: row.isAbsent(columnIndex), isAbsent: removesField, originalRow: row.absentColumns
+            )
+            guard values.indices.contains(columnIndex),
+                  values[columnIndex] != value || absence.wasAbsent != absence.isAbsent else { continue }
+            if continuity == .typing {
+                parent.changeManager.recordTypedCellChange(
+                    rowID: rowID,
+                    columnIndex: columnIndex,
+                    columnName: columnName,
+                    oldValue: values[columnIndex],
+                    newValue: value,
+                    originalRow: values,
+                    absence: absence
+                )
+            } else {
+                parent.changeManager.recordCellChange(
+                    rowID: rowID,
+                    columnIndex: columnIndex,
+                    columnName: columnName,
+                    oldValue: values[columnIndex],
+                    newValue: value,
+                    originalRow: values,
+                    absence: absence
+                )
+            }
+            edits.append((row: storageRow, column: columnIndex, value: value))
+            if removesField {
+                removedCells.insert(CellPosition(row: storageRow, column: columnIndex))
+            }
+            editedRowIDs.insert(rowID)
+        }
+        guard !edits.isEmpty else { return }
+
+        parent.mutateActiveTableRows(for: tabId) { rows in rows.editMany(edits, absentCells: removedCells) }
+        parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
+        repaintInspectorEdit(rowIDs: editedRowIDs, columnIndex: columnIndex, in: tableRows)
+        parent.inspectorRowContentChanged.send()
+    }
+
+    /// `editMany` reports the rows it changed by their position in storage, and the grid reads a
+    /// delta's rows as display positions, so a sort or a value filter would repaint the wrong ones.
+    ///
+    /// Resolved in one pass over the display order rather than a search per row, because that order
+    /// is as long as the result.
+    private func repaintInspectorEdit(rowIDs: Set<RowID>, columnIndex: Int, in tableRows: TableRows) {
+        var positions: Set<CellPosition> = []
+        if let displayIDs = parent.activeGridDisplayIDs {
+            for (displayRow, rowID) in displayIDs.enumerated() where rowIDs.contains(rowID) {
+                positions.insert(CellPosition(row: displayRow, column: columnIndex))
+            }
+        } else {
+            for rowID in rowIDs {
+                guard let displayRow = tableRows.index(of: rowID) else { continue }
+                positions.insert(CellPosition(row: displayRow, column: columnIndex))
+            }
+        }
+        guard !positions.isEmpty else { return }
+        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(.cellsChanged(positions))
+    }
+
     func handleUndoResult(_ result: UndoResult) {
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
 
@@ -185,6 +327,9 @@ final class RowEditingCoordinator {
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(application.delta)
+        /// The row inspector reads its fields from the `TableRows` this just rewrote, and nothing
+        /// else in `InspectorTrigger` moves on an undo.
+        parent.gridDisplayRevision &+= 1
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
@@ -225,11 +370,14 @@ final class RowEditingCoordinator {
     }
 
     func pasteRows() {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tabType == .table else { return }
 
         let tabId = tab.id
+        /// Pasted rows hand the columns the server owns back to it, which only the schema names, so pasting waits for
+        /// it the way Add Row does rather than staging an identity value the save would send.
+        guard parent.tabSessionRegistry.tableRows(for: tabId).hasAuthoritativeSchema else { return }
         let columns = parent.tabSessionRegistry.tableRows(for: tabId).columns
 
         var pasteResult = RowOperationsManager.PasteRowsResult(pastedRows: [], delta: .none)

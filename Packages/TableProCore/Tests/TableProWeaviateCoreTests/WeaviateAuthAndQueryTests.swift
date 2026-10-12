@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProWeaviateCore
+import Testing
 
 @Suite("Weaviate auth and settings")
 struct WeaviateAuthTests {

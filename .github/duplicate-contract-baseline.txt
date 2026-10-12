@@ -1,11 +1,8 @@
-# Known divergent shared contracts pending Phase 1 consolidation (R-001 / R-002).
-# scripts/audit-refactor-health.sh --check fails when a shared contract diverges
-# that is NOT listed here. Burn this list down as contracts move into TableProCore;
-# never add a fresh entry just to make new divergence pass.
+# Production DatabaseType definitions other than the TableProCore source.
+# scripts/audit-refactor-health.sh --check fails when one appears that is not listed here.
+# Remove an entry when its definition moves into TableProCore; never add one to make a new copy pass.
 #
-# Format: <kind>:<key>
-#   pluginkit:<path under the PluginKit tree that differs or exists in only one tree>
-#   databasetype:<file defining a production DatabaseType other than the TableProCore source>
+# Format: databasetype:<file>
 
 # The macOS DatabaseType moved out of DatabaseConnection.swift into a file of its own so that
 # naming a database type stops costing the plugin registry at compile time. Same single

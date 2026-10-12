@@ -19,8 +19,8 @@ extension MainContentCoordinator {
         deletes: Set<DatabaseTreeTableRef>,
         options: [DatabaseTreeTableRef: TableOperationOptions],
         includeFKHandling: Bool = true
-    ) -> [String] {
-        tableOperationBuilder.generate(
+    ) throws -> [String] {
+        try tableOperationBuilder.generate(
             truncates: truncates,
             deletes: deletes,
             options: options,

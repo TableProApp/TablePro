@@ -91,18 +91,24 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(notes, body)
 
-    def test_features_precede_fixes_without_dropping_other_sections(self):
+    def test_sections_follow_keep_a_changelog_order_without_dropping_any(self):
         intro = "All changes in this release."
         fixed = "### Fixed\n\n- Fix one\n- Fix two"
         security = "### Security\n\n- Security fix"
         features = "### Added\n\n- Feature one\n  - Nested detail\n- Feature two"
         changed = "### Changed\n\n- Improvement"
+        deprecated = "### Deprecated\n\n- Deprecated behavior"
         removed = "### Removed\n\n- Removed behavior"
+        unknown = "### Notes\n\n- Unlisted heading"
         result, notes = self.extract(
-            "## [1.2.3]\n\n" + "\n\n".join([intro, fixed, security, features, changed, removed])
+            "## [1.2.3]\n\n"
+            + "\n\n".join([intro, unknown, fixed, security, removed, features, deprecated, changed])
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(notes, "\n\n".join([intro, features, changed, fixed, security, removed]) + "\n")
+        self.assertEqual(
+            notes,
+            "\n\n".join([intro, features, changed, deprecated, removed, fixed, security, unknown]) + "\n",
+        )
 
     def test_features_heading_aliases_are_first(self):
         for heading in ("Features", "New Features"):
@@ -134,6 +140,99 @@ class ReleaseNotesTests(unittest.TestCase):
         )
         if "### Added\n" in notes and "### Fixed\n" in notes:
             self.assertLess(notes.index("### Added\n"), notes.index("### Fixed\n"))
+
+
+class ReleaseHighlightsTests(unittest.TestCase):
+    """The lead block is what the update dialog and the feed read, so its fallback is load-bearing.
+
+    A version with no lead block must not fail the release: the script runs under `set -euo
+    pipefail` about forty minutes in, after both notarized builds.
+    """
+
+    def extract(self, changelog, version="1.2.3", highlights=True):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
+            out = work / "out.md"
+            args = ["bash", str(SCRIPT), version, "--out", str(out)]
+            if highlights:
+                args.append("--highlights-only")
+            result = subprocess.run(args, cwd=work, capture_output=True, text=True, timeout=10)
+            text = out.read_text(encoding="utf-8") if out.exists() else ""
+            return result, text
+
+    WITH_LEAD = (
+        "# Changelog\n\n"
+        "## [1.2.3] - 2026-01-01\n\n"
+        "Faster grid scrolling on wide results.\n"
+        "Map view for geometry columns.\n\n"
+        "### Added\n\n"
+        "- One.\n- Two.\n\n"
+        "### Fixed\n\n"
+        "- Three.\n"
+    )
+
+    WITHOUT_LEAD = (
+        "# Changelog\n\n"
+        "## [1.2.3] - 2026-01-01\n\n"
+        "### Added\n\n"
+        "- One.\n- Two.\n\n"
+        "### Fixed\n\n"
+        "- Three.\n"
+    )
+
+    def test_emits_only_the_lead_block(self):
+        result, notes = self.extract(self.WITH_LEAD)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Faster grid scrolling", notes)
+        self.assertIn("Map view", notes)
+        self.assertNotIn("### Added", notes)
+        self.assertNotIn("- One.", notes)
+
+    def test_highlights_are_separate_markdown_paragraphs(self):
+        expected = "Faster grid scrolling on wide results.\n\nMap view for geometry columns.\n"
+        spaced = self.WITH_LEAD.replace("results.\nMap", "results.\n\n\nMap")
+        for changelog in (self.WITH_LEAD, spaced):
+            with self.subTest(changelog=changelog):
+                result, notes = self.extract(changelog)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(notes, expected)
+
+    def test_falls_back_to_the_full_notes_when_there_is_no_lead_block(self):
+        result, notes = self.extract(self.WITHOUT_LEAD)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("### Added", notes)
+        self.assertIn("- Three.", notes)
+
+    def test_the_full_notes_are_unchanged_by_the_lead_block(self):
+        result, notes = self.extract(self.WITH_LEAD, highlights=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Faster grid scrolling", notes)
+        self.assertIn("### Added", notes)
+        self.assertIn("- Three.", notes)
+
+    def test_caps_a_long_lead_block(self):
+        lead = "".join(f"Line {n}.\n" for n in range(1, 12))
+        changelog = f"# Changelog\n\n## [1.2.3] - 2026-01-01\n\n{lead}\n### Added\n\n- One.\n"
+        result, notes = self.extract(changelog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len([line for line in notes.splitlines() if line.strip()]), 6)
+        self.assertIn("Line 6.", notes)
+        self.assertNotIn("Line 7.", notes)
+
+    def test_a_missing_version_still_fails(self):
+        result, _ = self.extract(self.WITH_LEAD, version="9.9.9")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_every_shipped_version_produces_highlights(self):
+        """No version has a lead block today, so every one must take the fallback cleanly."""
+        changelog = Path(__file__).resolve().parents[2].joinpath("CHANGELOG.md").read_text(encoding="utf-8")
+        versions = re.findall(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.M)
+        self.assertGreater(len(versions), 5)
+        for version in versions[:5]:
+            result, notes = self.extract(changelog, version=version)
+            self.assertEqual(result.returncode, 0, f"{version}: {result.stderr}")
+            self.assertTrue(notes.strip(), f"{version} produced empty highlights")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,13 @@ struct SyncRecordTypeTests {
         #expect(SyncRecordType.parse(recordName: "FavoriteTable_abc")?.type == .tableFavorite)
     }
 
+    @Test("A folder and the objects filed in it parse to their own types")
+    func tableFolderPrefixesResolveToTheirOwnTypes() {
+        #expect(SyncRecordType.parse(recordName: "TableFolder_abc")?.type == .tableFolder)
+        #expect(SyncRecordType.parse(recordName: "TableFolderItem_abc")?.type == .tableFolderItem)
+        #expect(SyncRecordType.parse(recordName: "TableFolderItem_abc")?.id == "abc")
+    }
+
     @Test("An ambiguous prefix keeps the whole identifier")
     func ambiguousPrefixesKeepTheIdentifier() {
         #expect(SyncRecordType.parse(recordName: "FavoriteFolder_abc")?.id == "abc")
@@ -80,7 +87,7 @@ struct SyncRecordTypeTests {
     }
 
     /// The limit CloudKit enforces counts UTF-16 code units, so a name of 128 emoji is over it at
-    /// 128 characters. `scripts/check-cloudkit-record-name-limit.sh` measures that.
+    /// 128 characters. `scripts/probes/check-cloudkit-record-name-limit.sh` measures that.
     @Test("The limit counts UTF-16 code units, not characters")
     func theLimitCountsUTF16CodeUnits() {
         let id = String(repeating: "😀", count: 200)
@@ -93,11 +100,11 @@ struct SyncRecordTypeTests {
     @Test("Shortening is stable, so two devices agree on the record")
     func shorteningIsDeterministic() {
         let id = String(repeating: "path/to/database.sqlite", count: 40)
-        #expect(SyncRecordType.settings.recordName(for: id) == SyncRecordType.settings.recordName(for: id))
-        #expect(
-            SyncRecordType.settings.recordName(for: id) == "Settings_sha256-"
-                + SyncRecordName.digest(of: id)
-        )
+        let firstCall = SyncRecordType.settings.recordName(for: id)
+        let secondCall = SyncRecordType.settings.recordName(for: id)
+
+        #expect(firstCall == secondCall)
+        #expect(firstCall == "Settings_sha256-" + SyncRecordName.digest(of: id))
     }
 
     @Test("Two long identifiers do not collapse onto one record")

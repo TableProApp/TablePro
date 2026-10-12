@@ -2,27 +2,36 @@
 //  JSONCodeEditor.swift
 //  TablePro
 //
-//  JSON text view backed by CodeEditSourceEditor (tree-sitter), sharing the
+//  JSON text view backed by TableProEditorKit (tree-sitter), sharing the
 //  app's editor theme and font with the SQL editor.
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 
 internal struct JSONCodeEditor: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
     let isEditable: Bool
 
     @State private var editorState = SourceEditorState()
     @State private var configuration: SourceEditorConfiguration
+    /// Held in `@State` so the editor is handed the same coordinator on every update. It names the
+    /// text view itself, which is where an accessibility identifier has to land: the SwiftUI
+    /// modifier names the representable and never reaches it.
+    @State private var coordinators: [any TextViewCoordinator]
     @Environment(\.colorScheme) private var colorScheme
 
-    init(text: Binding<String>, isEditable: Bool) {
+    init(text: Binding<String>, isEditable: Bool, accessibilityIdentifier: String? = nil) {
         self._text = text
         self.isEditable = isEditable
         self._configuration = State(wrappedValue: Self.makeConfiguration(isEditable: isEditable))
+        self._coordinators = State(
+            wrappedValue: accessibilityIdentifier.map { [EditorAccessibilityIdentifier($0)] } ?? []
+        )
     }
 
     var body: some View {
@@ -30,13 +39,17 @@ internal struct JSONCodeEditor: View {
             $text,
             language: .json,
             configuration: configuration,
-            state: $editorState
+            state: $editorState,
+            coordinators: coordinators
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: colorScheme) {
+        .onChange(of: colorScheme) { _ in
             rebuildConfiguration()
         }
-        .onChange(of: AppSettingsManager.shared.editor) {
+        .onChange(of: isEditable) { _ in
+            rebuildConfiguration()
+        }
+        .onChange(of: settingsManager.editor) { _ in
             rebuildConfiguration()
         }
         .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in

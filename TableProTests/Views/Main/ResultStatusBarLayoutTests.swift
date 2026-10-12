@@ -6,11 +6,23 @@
 import AppKit
 import Foundation
 import SwiftUI
+import TableProNumberFormatting
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
 
-@Suite("ResultStatusBar Layout")
+/// Every width from a wide window down well past the narrowest pane the window can produce.
+///
+/// The pane's floor is `defaultDetailMinThickness`, 400pt, and it cannot go below that:
+/// `NSSplitViewItem.minimumThickness` is a required constraint, measured to hold against both a
+/// window resize and a divider drag. The ladder's narrowest tier holds its shape down to 280pt, so
+/// the widths below 380 are the recorded margin rather than states the window can reach.
+///
+/// File scope rather than a member: `@Test(arguments:)` reads its arguments from a nonisolated
+/// context, which cannot touch a static on a `@MainActor` suite.
+private let statusBarHostWidths: [CGFloat] = [1_400, 1_200, 900, 720, 600, 500, 440, 400, 380, 320, 300]
+
 @MainActor
 struct ResultStatusBarLayoutTests {
     private func makeBar(
@@ -18,7 +30,11 @@ struct ResultStatusBarLayoutTests {
         hasColumns: Bool,
         tabType: TabType?,
         viewMode: ResultsViewMode,
-        pagination: PaginationState = PaginationState()
+        pagination: PaginationState = PaginationState(),
+        statusMessage: String? = nil,
+        structureFooter: StructureFooterCapability = StructureFooterCapability(),
+        selectionSummary: SelectionSummaryState? = nil,
+        lastTiming: PluginQueryTiming? = nil
     ) -> ResultStatusBar {
         let snapshot = StatusBarSnapshot(
             tabId: UUID(),
@@ -32,8 +48,9 @@ struct ResultStatusBarLayoutTests {
                 hasTableName: tabType == .table,
                 hasColumns: hasColumns
             ),
+            hasStructureActions: structureFooter.isActive,
             pagination: pagination,
-            statusMessage: nil
+            statusMessage: statusMessage
         )
         return ResultStatusBar(
             model: ResultStatusModel(snapshot: snapshot, viewMode: viewMode, selectedRowCount: 0),
@@ -57,7 +74,7 @@ struct ResultStatusBarLayoutTests {
                 isPersisted: tabType == .table,
                 presentationRequest: 0,
                 onChange: { _ in },
-                onDismiss: {}
+                onDismiss: { _ in }
             ),
             paginationCallbacks: PaginationCallbacks(
                 onFirst: {},
@@ -69,15 +86,21 @@ struct ResultStatusBarLayoutTests {
                 onGoToPage: { _ in },
                 onRequestExactCount: {}
             ),
-            structureFooter: StructureFooterCapability(),
+            structureFooter: structureFooter,
             execution: ExecutionReadout(
                 tabId: UUID(),
                 execution: TabExecutionRegistry(),
-                lastTiming: nil,
+                lastTiming: lastTiming,
                 onCancel: {}
             ),
+            selectionSummary: selectionSummary ?? SelectionSummaryState(),
             isRefreshingSchema: false,
             viewMode: .constant(viewMode),
+            resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
+            onActivateResultSet: { _ in },
+            onToggleResultSetPin: { _ in },
+            onCloseResultSet: { _ in },
+            onCloseOtherResultSets: { _ in },
             onToggleFilters: {},
             onFetchAll: {},
             onStructureAdd: {},
@@ -192,6 +215,496 @@ struct ResultStatusBarLayoutTests {
         #expect(!ResultsViewMode.structure.showsRowFilters)
     }
 
+    @Test("A first run's spinner stays on screen when its result lands and drops the bar a tier")
+    func revealedSpinnerOutlivesATierChangeAtTheLanding() async throws {
+        let tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        var registry = TabExecutionRegistry()
+        let host = NSHostingView(rootView: queryBar(tab: tab, rows: TableRows(), registry: registry))
+        let window = hostingWindow(for: host, width: Self.widthThatDropsAResultATier)
+        defer { window.contentView = nil }
+
+        #expect(spinners(in: host).isEmpty, "An idle tab showed a spinner")
+
+        let claim = registry.claim(tab.id)
+        host.rootView = queryBar(tab: tab, rows: TableRows(), registry: registry)
+        #expect(await settle(host) { !spinners(in: host).isEmpty }, "The first run never revealed a spinner")
+
+        let landed = queryBar(tab: tab, rows: Self.resultRows, registry: registry)
+        host.rootView = landed
+        host.layoutSubtreeIfNeeded()
+
+        #expect(landed.model.controls.showsModeSwitcher)
+        #expect(
+            views(NSSegmentedControl.self, in: host).isEmpty,
+            "The result did not drop the bar to the narrow tier, so no tier change was tested"
+        )
+        #expect(
+            !spinners(in: host).isEmpty,
+            "The tier the result brought in started unrevealed and hid a run that is still going"
+        )
+
+        let settled = registry.settle(claim)
+        #expect(settled)
+        let timing = PluginQueryTiming(total: 0.6)
+        host.rootView = queryBar(tab: tab, rows: Self.resultRows, registry: registry, timing: timing)
+        #expect(await settle(host) { spinners(in: host).isEmpty }, "The spinner outlived its dwell")
+    }
+
+    @Test("A spinner revealed on one query tab is not shown on the tab switched to")
+    func revealedSpinnerStaysWithItsTab() async throws {
+        let running = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let idle = QueryTab(title: "Query 2", query: "SELECT 2", tabType: .query)
+        var registry = TabExecutionRegistry()
+        _ = registry.claim(running.id)
+        let host = NSHostingView(rootView: queryBar(tab: running, rows: TableRows(), registry: registry))
+        let window = hostingWindow(for: host, width: 900)
+        defer { window.contentView = nil }
+
+        #expect(await settle(host) { !spinners(in: host).isEmpty }, "The running tab never revealed a spinner")
+
+        host.rootView = queryBar(tab: idle, rows: TableRows(), registry: registry)
+        host.layoutSubtreeIfNeeded()
+
+        #expect(spinners(in: host).isEmpty, "The tab switched to showed the other tab's Executing and Stop")
+    }
+
+    @Test("A tab already running past the grace shows its spinner as soon as it is switched to")
+    func longRunningTabRevealsWithoutASecondGrace() async throws {
+        let idle = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let running = QueryTab(title: "Query 2", query: "SELECT 2", tabType: .query)
+        var registry = TabExecutionRegistry()
+        _ = registry.claim(running.id, startedAt: .now.advanced(by: .seconds(-2)))
+        let host = NSHostingView(rootView: queryBar(tab: idle, rows: TableRows(), registry: registry))
+        let window = hostingWindow(for: host, width: 900)
+        defer { window.contentView = nil }
+
+        let switchedAt = ContinuousClock.now
+        host.rootView = queryBar(tab: running, rows: TableRows(), registry: registry)
+        #expect(await settle(host) { !spinners(in: host).isEmpty }, "The running tab never revealed a spinner")
+        #expect(
+            switchedAt.duration(to: .now) < LoadingRevealPolicy.grace,
+            "The grace restarted at the switch instead of counting from when the run began"
+        )
+    }
+
+    @Test("Structure mode keeps its segmented switcher at the narrowest pane the window allows")
+    func structureModeKeepsItsSegmentedSwitcherAtThePaneFloor() {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .structure,
+            structureFooter: StructureFooterCapability(
+                canAdd: true,
+                canRemove: true,
+                addLabel: "Add Column",
+                removeLabel: "Remove Column"
+            )
+        )
+        let host = NSHostingView(rootView: bar)
+        host.sizingOptions = []
+        host.frame = NSRect(x: 0, y: 0, width: MainSplitViewController.defaultDetailMinThickness, height: 28)
+        host.layoutSubtreeIfNeeded()
+
+        let modeCount = bar.snapshot.availableModes.count
+        #expect(modeCount > 1)
+        #expect(
+            views(NSSegmentedControl.self, in: host).contains { $0.segmentCount == modeCount },
+            "Structure mode reserved room for a readout it cannot show and fell back to the pull-down"
+        )
+    }
+
+    private static let widthThatDropsAResultATier: CGFloat = 300
+
+    private static let resultRows = TableRows.from(
+        queryRows: [[.text("1"), .text("a")]],
+        columns: ["id", "name"],
+        columnTypes: [.text(rawType: "INTEGER"), .text(rawType: "TEXT")]
+    )
+
+    private func queryBar(
+        tab: QueryTab,
+        rows: TableRows,
+        registry: TabExecutionRegistry,
+        timing: PluginQueryTiming? = nil
+    ) -> ResultStatusBar {
+        let snapshot = StatusBarSnapshot(tab: tab, tableRows: rows, isFetching: registry.isBusy(tab.id))
+        return ResultStatusBar(
+            model: ResultStatusModel(snapshot: snapshot, viewMode: .data, selectedRowCount: 0),
+            snapshot: snapshot,
+            filterState: TabFilterState(),
+            columnState: StatusBarColumnState(
+                hidden: [],
+                columns: [],
+                onToggle: { _ in },
+                onShowAll: {},
+                onHideAll: { _ in },
+                onReset: {},
+                onJumpToColumn: nil
+            ),
+            highlightState: StatusBarHighlightState(
+                rules: [],
+                columns: rows.columns,
+                isPersisted: false,
+                presentationRequest: 0,
+                onChange: { _ in },
+                onDismiss: { _ in }
+            ),
+            paginationCallbacks: PaginationCallbacks(
+                onFirst: {},
+                onPrevious: {},
+                onNext: {},
+                onLast: {},
+                onPageSizeChange: { _ in },
+                onShowAll: {},
+                onGoToPage: { _ in },
+                onRequestExactCount: {}
+            ),
+            structureFooter: StructureFooterCapability(),
+            execution: ExecutionReadout(tabId: tab.id, execution: registry, lastTiming: timing, onCancel: {}),
+            selectionSummary: SelectionSummaryState(),
+            isRefreshingSchema: false,
+            viewMode: .constant(.data),
+            resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
+            onActivateResultSet: { _ in },
+            onToggleResultSetPin: { _ in },
+            onCloseResultSet: { _ in },
+            onCloseOtherResultSets: { _ in },
+            onToggleFilters: {},
+            onFetchAll: {},
+            onStructureAdd: {},
+            onStructureRemove: {}
+        )
+    }
+
+    private func hostingWindow(for host: NSView, width: CGFloat) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: StatusBarChrome.height),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        return window
+    }
+
+    private func settle(_ host: NSView, until condition: () -> Bool) async -> Bool {
+        for _ in 0 ..< 150 {
+            host.layoutSubtreeIfNeeded()
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        host.layoutSubtreeIfNeeded()
+        return condition()
+    }
+
+    private func spinners(in view: NSView) -> [NSProgressIndicator] {
+        views(NSProgressIndicator.self, in: view)
+    }
+
+    private func views<Kind: NSView>(_ kind: Kind.Type, in view: NSView) -> [Kind] {
+        let own = (view as? Kind).map { [$0] } ?? []
+        return own + view.subviews.flatMap { views(kind, in: $0) }
+    }
+
+    // MARK: - Width
+
+    private static let wordyDriverMessage = """
+    ERROR: relation "public.some_extremely_long_table_name_nobody_would_choose" does not exist \
+    at character 15
+    """
+
+    /// The bar must never report a width larger than the pane hosting it.
+    ///
+    /// This is the defect in one assertion. Both of the bar's clusters were pinned with
+    /// `.fixedSize()`, so on a table tab in Data mode it wanted 766pt. The tab content column
+    /// adopted that width, `sizingOptions = []` kept the need invisible to Auto Layout, and SwiftUI
+    /// centred the oversized column inside the 440pt pane the window's own 720pt minimum leaves:
+    /// 163pt was unreachable at each edge, taking the grid's row numbers, its whole first column and
+    /// the entire pagination cluster with it.
+    @Test("The bar is never wider than its host", arguments: statusBarHostWidths)
+    func barNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        expectFills(bar, at: width)
+    }
+
+    @Test("The structure editor's bar is never wider than its host", arguments: statusBarHostWidths)
+    func structureBarNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .structure,
+            structureFooter: StructureFooterCapability(
+                canAdd: true,
+                canRemove: true,
+                addLabel: "Add Column",
+                removeLabel: "Remove Column"
+            )
+        )
+        expectFills(bar, at: width)
+    }
+
+    @Test("A query tab's bar is never wider than its host", arguments: statusBarHostWidths)
+    func queryBarNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .query,
+            viewMode: .data,
+            pagination: PaginationState(pageSize: 1_000)
+        )
+        expectFills(bar, at: width)
+    }
+
+    /// A wordy driver message must truncate rather than widen the bar. It is also why the readout
+    /// reports a constant ideal width: `ViewThatFits` chooses on a candidate's ideal size, so a width
+    /// read off the sentence would drop the whole bar a tier by itself.
+    @Test("A wordy driver message does not widen the bar", arguments: statusBarHostWidths)
+    func wordyStatusMessageDoesNotWidenTheBar(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000),
+            statusMessage: Self.wordyDriverMessage
+        )
+        expectFills(bar, at: width)
+    }
+
+    private static var estimatedPagination: PaginationState {
+        var pagination = PaginationState(totalRowCount: 22, pageSize: 1_000)
+        pagination.isApproximateRowCount = true
+        return pagination
+    }
+
+    @Test("A table with an estimate is never wider than its host", arguments: statusBarHostWidths)
+    func estimatedBarNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 22, hasColumns: true, tabType: .table, viewMode: .data, pagination: Self.estimatedPagination
+        )
+        #expect(bar.model.controls.showsExactCountAction)
+        expectFills(bar, at: width)
+    }
+
+    /// `ViewThatFits` picks a tier from each candidate's ideal width. With Count Exactly counted
+    /// inside the readout's constant, a table with an estimate stayed on the regular tier at widths
+    /// with no room for the sentence and the button together, and the bar drew "1-22 of ~22 r…"
+    /// beside "Count Ex…".
+    @Test("Count Exactly adds its own width to the width the bar asks for")
+    func exactCountActionWidensTheIdealWidth() {
+        let estimated = makeBar(
+            rowCount: 22, hasColumns: true, tabType: .table, viewMode: .data, pagination: Self.estimatedPagination
+        )
+        let exact = makeBar(
+            rowCount: 22,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 22, pageSize: 1_000)
+        )
+        #expect(!exact.model.controls.showsExactCountAction)
+
+        let extra = idealWidth(of: estimated) - idealWidth(of: exact)
+        #expect(extra > 40, "the bar asked for \(extra)pt more with Count Exactly on it")
+    }
+
+    /// A wordy driver message still adds nothing: it truncates instead of dropping the tier.
+    @Test("A driver message adds nothing to the width the bar asks for")
+    func statusMessageLeavesTheIdealWidthAlone() {
+        let plain = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        let wordy = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000),
+            statusMessage: Self.wordyDriverMessage
+        )
+        #expect(idealWidth(of: wordy) == idealWidth(of: plain))
+    }
+
+    // MARK: - Selection summary
+
+    /// Wide figures with a fraction, so the full line is the longest the ladder can draw.
+    private static func publishedSummary(coversWholeColumn: Bool = false) -> SelectionSummaryState {
+        var accumulator = NumericSummaryAccumulator()
+        for value in ["98765432109.875", "12345678901.5", "-4.25"] {
+            let accepted = accumulator.add(value)
+            #expect(accepted, "\(value) was not read as a number")
+        }
+        let state = SelectionSummaryState()
+        let owner = UUID()
+        state.activate(owner)
+        state.publish(
+            SelectionSummary(
+                valueCount: 4,
+                emptyCount: 1,
+                notANumberCount: 1,
+                numbers: accumulator.summary(),
+                coversWholeColumn: coversWholeColumn
+            ),
+            from: owner
+        )
+        return state
+    }
+
+    private var pagedTable: PaginationState {
+        PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+    }
+
+    @Test("The readout draws nothing until there is a summary")
+    func selectionSummaryReadoutDrawsOnlyWithASummary() {
+        func width(of state: SelectionSummaryState) -> CGFloat {
+            let host = NSHostingView(rootView: SelectionSummaryReadout(
+                state: state,
+                scopeNote: nil,
+                isPopoverPresented: .constant(false),
+                leadsWithSeparator: true
+            ))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.width
+        }
+
+        #expect(width(of: SelectionSummaryState()) == 0)
+        #expect(width(of: Self.publishedSummary()) > 0)
+    }
+
+    /// The Count Exactly treatment would drop the bar a tier every time a drag starts and bring it
+    /// back on the click that ends it, taking the titles off Columns and Filters mid-gesture.
+    @Test("A selection summary adds nothing to the width the bar asks for")
+    func selectionSummaryLeavesTheIdealWidthAlone() {
+        let plain = makeBar(rowCount: 1_000, hasColumns: true, tabType: .table, viewMode: .data, pagination: pagedTable)
+        let summarized = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: pagedTable,
+            selectionSummary: Self.publishedSummary(coversWholeColumn: true)
+        )
+        #expect(summarized.model.controls.showsSelectionSummary)
+        #expect(idealWidth(of: summarized) == idealWidth(of: plain))
+    }
+
+    @Test("A selection summary leaves the bar's height alone")
+    func heightIsConstantWithASelectionSummary() {
+        let plain = measuredHeight(of: makeBar(
+            rowCount: 1_000, hasColumns: true, tabType: .table, viewMode: .data, pagination: pagedTable
+        ))
+        let summarized = measuredHeight(of: makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: pagedTable,
+            selectionSummary: Self.publishedSummary()
+        ))
+        #expect(summarized == plain)
+        #expect(summarized >= StatusBarChrome.height)
+    }
+
+    /// Every element the readout zone can hold, at once: the sentence beside Count Exactly, then the
+    /// summary, a wordy driver message and the last run's timing in the report slot.
+    @Test("A bar carrying every readout element is never wider than its host", arguments: statusBarHostWidths)
+    func crowdedReadoutNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 22,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: Self.estimatedPagination,
+            statusMessage: Self.wordyDriverMessage,
+            selectionSummary: Self.publishedSummary(),
+            lastTiming: PluginQueryTiming(total: 3.421, firstRow: 0.012)
+        )
+        #expect(bar.model.controls.showsExactCountAction)
+        #expect(bar.model.controls.showsSelectionSummary)
+        #expect(bar.model.statusMessage != nil)
+        expectFills(bar, at: width)
+    }
+
+    private func idealWidth(of bar: ResultStatusBar) -> CGFloat {
+        let host = NSHostingView(rootView: bar)
+        host.layoutSubtreeIfNeeded()
+        return host.intrinsicContentSize.width
+    }
+
+    /// The narrowest tier has to fit the narrowest pane the window can produce, or `ViewThatFits`
+    /// falls through to a row that overflows anyway. `resolveDetailMinimumThickness` sets that
+    /// floor, so the two are checked against each other rather than against a literal that could
+    /// drift away from either.
+    @Test("The narrowest tier fits the narrowest pane the window allows")
+    func narrowestTierFitsTheNarrowestPane() {
+        let pane = MainSplitViewController.defaultDetailMinThickness
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        expectFills(bar, at: pane)
+    }
+
+    /// The grid shares a `VStack` with the bar, closed by a `.frame(maxWidth: .infinity)` that can
+    /// never report less than its widest child, which is how the bar's width reached the grid at
+    /// all. Measuring the column rather than the bar alone is what pins that path.
+    @Test("The content column around the bar is never wider than its host", arguments: statusBarHostWidths)
+    func contentColumnNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        let column = VStack(spacing: 0) {
+            Color.clear
+            bar
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        expectFills(column, at: width)
+    }
+
+    private func expectFills(_ content: some View, at width: CGFloat, sourceLocation: SourceLocation = #_sourceLocation) {
+        let measured = measureFrame(of: content, at: width)
+        #expect(measured.width == width, "the bar reported \(measured.width)pt inside a \(width)pt host", sourceLocation: sourceLocation)
+        #expect(measured.minX == 0, "the bar was placed at \(measured.minX) instead of the host's leading edge", sourceLocation: sourceLocation)
+    }
+
+    /// Where the content actually landed inside its host.
+    ///
+    /// A marker view rather than a rasterised image: SwiftUI draws these controls with no child
+    /// `NSView`s of their own, so walking the view tree finds nothing, and an offscreen bitmap of an
+    /// AppKit container reports its own artefacts. `sizingOptions = []` mirrors `WorkspacePanes`,
+    /// and it is the reason the defect is visible here at all: without it the host would simply grow
+    /// to whatever the bar asked for.
+    private func measureFrame(of content: some View, at width: CGFloat) -> CGRect {
+        let box = StatusBarFrameBox()
+        let host = NSHostingView(rootView: AnyView(content.overlay(StatusBarFrameProbe(box: box))))
+        host.sizingOptions = []
+        host.frame = NSRect(x: 0, y: 0, width: width, height: 240)
+        host.layoutSubtreeIfNeeded()
+        #expect(box.hostWidth == width, "the probe did not run inside a \(width)pt host")
+        return box.frame ?? CGRect(x: CGFloat.nan, y: CGFloat.nan, width: CGFloat.nan, height: CGFloat.nan)
+    }
+
     @Test("The find bar belongs to the grid it searches, unlike the filter panel")
     func findBarVisibilityByMode() {
         #expect(ResultsViewMode.data.showsFindBar)
@@ -201,6 +714,54 @@ struct ResultStatusBarLayoutTests {
 
         for mode in [ResultsViewMode.data, .json, .chart, .structure] where mode.showsFindBar {
             #expect(mode.showsRowFilters, "a mode that finds must also filter")
+        }
+    }
+}
+
+@MainActor
+private final class StatusBarFrameBox {
+    var frame: CGRect?
+    var hostWidth: CGFloat?
+}
+
+private struct StatusBarFrameProbe: NSViewRepresentable {
+    let box: StatusBarFrameBox
+
+    func makeNSView(context: Context) -> NSView { ProbeView(box: box) }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class ProbeView: NSView {
+        private let box: StatusBarFrameBox
+
+        init(box: StatusBarFrameBox) {
+            self.box = box
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("StatusBarFrameProbe does not support NSCoder init")
+        }
+
+        override func layout() {
+            super.layout()
+            guard let host = enclosingHostingView() else { return }
+            let measured = convert(bounds, to: host)
+            let hostWidth = host.bounds.width
+            MainActor.assumeIsolated {
+                box.frame = measured
+                box.hostWidth = hostWidth
+            }
+        }
+
+        private func enclosingHostingView() -> NSView? {
+            var candidate: NSView? = self
+            while let current = candidate {
+                if String(describing: type(of: current)).contains("NSHostingView") { return current }
+                candidate = current.superview
+            }
+            return nil
         }
     }
 }

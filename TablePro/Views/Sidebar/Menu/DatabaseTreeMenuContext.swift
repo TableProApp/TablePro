@@ -27,10 +27,16 @@ internal struct DatabaseTreeMenuContext {
     internal let maintenanceOperations: [PluginMaintenanceOperation]
     internal let dropEligibility: ContainerDropEligibility.Context
     internal let renameEligibility: ObjectRenameEligibility.Context
+    internal let schemaEditEligibility: SchemaEditEligibility.Context
+    internal let tableOperationEligibility: TableOperationEligibility.Context
     internal let containerEntityName: String
     internal let containerEntityNamePlural: String
     internal let schemaEntityName: String
     internal let schemaEntityNamePlural: String
+    /// Whether a drop takes the objects inside the container with it. SQL Server and BigQuery
+    /// refuse a non-empty schema outright, so promising a cascade there is a promise the engine
+    /// cannot keep, and the confirmation is the last thing the user reads before agreeing.
+    internal let supportsCascadeDrop: Bool
     internal let objectKindTitles: [SidebarObjectKind: String]
     internal let isFavorite: Bool
     /// Keyed per database rather than resolved for the clicked row alone, because a right-click
@@ -38,9 +44,13 @@ internal struct DatabaseTreeMenuContext {
     internal var favoriteDatabaseEnvironments: [String: FavoriteDatabaseEnvironment] = [:]
     internal let showObjectIcons: Bool
     internal let showObjectComments: Bool
+    internal let showSystemContainers: Bool
+    internal let showPartitions: Bool
     internal let rowSize: SidebarRowSizePreference
     internal var canFilterDatabases: Bool = false
     internal var hasDatabaseFilter: Bool = false
+    internal var canFilterSchemas: Bool = false
+    internal var hasSchemaFilter: Bool = false
     /// Copying reads the source and writes somewhere else, so it needs a driver that reports
     /// structure and a target that is not this connection's read-only self.
     internal var canCopyObjects: Bool = false
@@ -52,6 +62,45 @@ internal struct DatabaseTreeMenuContext {
     internal var canBackUp: Bool = false
     /// Whether the driver can offer a CREATE TYPE template. Read-only mode still hides the item.
     internal var canCreateType: Bool = false
+    /// Whether the driver can create a table, from `CreateTableEligibility`.
+    internal var canCreateTable: Bool = false
+    internal var canCreateView: Bool = false
+    internal var canCreateDatabase: Bool = false
     /// Which materialized-view and comment commands the driver has statements for.
     internal var objectToolSupport: DatabaseObjectToolEligibility.Support = .none
+    /// The folders a clicked table or view can be filed into, and what filing it would move. Nil on
+    /// every other row.
+    internal var tableFolderOptions: TableFolderMenuOptions?
+    /// Whether the flat list is on screen, the one shape whose folders belong to the browsed
+    /// database and schema rather than to a container row the user right-clicked.
+    internal var offersBrowsedFolders: Bool = false
+    /// Whether Show All Tables has a listing to open, so an engine without one is not offered a command
+    /// that does nothing.
+    internal var canShowAllTables: Bool = false
+}
+
+internal extension DatabaseTreeMenuContext {
+    // The raw capability, not `SchemaEditEligibility.canCreate`, which folds read-only in.
+    var creationFacts: SidebarCreationFacts {
+        SidebarCreationFacts(
+            canCreateTable: canCreateTable,
+            canCreateView: canCreateView,
+            supportsCreateSchema: schemaEditEligibility.supportsCreateSchema,
+            supportsCreateDatabase: canCreateDatabase,
+            offersBrowsedFolders: offersBrowsedFolders,
+            schemaEntityName: schemaEntityName,
+            activeDatabase: activeDatabase
+        )
+    }
+}
+
+/// Resolved by the coordinator rather than the spec, because which objects share a folder scope is
+/// a question for the session, and the spec stays a pure function of its inputs.
+internal struct TableFolderMenuOptions: Equatable {
+    internal let targets: [DatabaseTreeTableRef]
+    internal let folders: [TableFolder]
+    /// The folder every target already sits in, which is the one destination a move cannot use.
+    /// Nil when the targets are spread over several folders or some are in none.
+    internal let folderHoldingEveryTarget: UUID?
+    internal let hasFiledTargets: Bool
 }

@@ -40,7 +40,7 @@ internal enum CrossEngineDefaultValue {
         let upper = stripped.uppercased()
 
         if upper.hasPrefix("NEXTVAL(") { return .autoIncrement }
-        if upper == "NULL" { return .keep("NULL") }
+        if upper == "NULL" { return .none }
         if let now = currentTimestamp(upper, target: target) { return .keep(now) }
         if let today = currentDate(upper, target: target) { return .keep(today) }
         if let boolean = booleanLiteral(upper, kind: kind, target: target) { return .keep(boolean) }

@@ -30,15 +30,20 @@ struct TablePlusImporter: ForeignAppImporter {
     var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
     }
+    var readViewSetting: @Sendable (_ bundleIdentifier: String) -> [String: Any]? = {
+        CFPreferencesCopyAppValue("ViewSetting" as CFString, $0 as CFString) as? [String: Any]
+    }
 
     var dataDirectoryOverride: URL?
 
+    var savedQuerySupport: ForeignSavedQuerySupport { .globalFolder(named: displayName) }
+
     var connectionsFileURL: URL {
-        dataDirectory.appendingPathComponent("Connections.plist")
+        connectionsDirectory(viewSetting: viewSetting).appendingPathComponent("Connections.plist")
     }
 
     var groupsFileURL: URL {
-        dataDirectory.appendingPathComponent("ConnectionGroups.plist")
+        connectionsDirectory(viewSetting: viewSetting).appendingPathComponent("ConnectionGroups.plist")
     }
 
     func installedAppURL() -> URL? {
@@ -63,15 +68,18 @@ struct TablePlusImporter: ForeignAppImporter {
         home.appendingPathComponent("Library/Application Support/\(bundleIdentifier)/Data")
     }
 
-    func connectionCount() -> Int {
-        guard let data = try? Data(contentsOf: connectionsFileURL),
-              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
-              let array = plist as? [[String: Any]] else { return 0 }
-        return array.count
+    func inventory() -> ForeignAppInventory {
+        let prefs = viewSetting
+        return ForeignAppInventory(
+            connections: loadEntries(from: connectionsDirectory(viewSetting: prefs))?.count ?? 0,
+            savedQueries: TablePlusFavoriteReader.count(in: favoriteRoots(viewSetting: prefs))
+        )
     }
 
-    func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
-        let connectionsURL = connectionsFileURL
+    func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
+        let prefs = viewSetting
+        let connectionsFolder = connectionsDirectory(viewSetting: prefs)
+        let connectionsURL = connectionsFolder.appendingPathComponent("Connections.plist")
         guard FileManager.default.fileExists(atPath: connectionsURL.path) else {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
@@ -88,63 +96,88 @@ struct TablePlusImporter: ForeignAppImporter {
             throw ForeignAppImportError.unsupportedFormat("Expected array of dictionaries in Connections.plist")
         }
 
-        let groupMap = loadGroups()
-        var exportableConnections: [ExportableConnection] = []
-        var groupNames: Set<String> = []
-        var credentials: [String: ExportableCredentials] = [:]
+        let groupMap = loadGroups(from: connectionsFolder)
+        var records: [ForeignConnectionRecord] = []
         var credentialsAborted = false
 
         for entry in entries {
             try Task.checkCancellation()
             do {
-                let conn = try parseConnection(entry, groupMap: groupMap)
-                let index = exportableConnections.count
-                exportableConnections.append(conn)
-
-                if let groupName = conn.groupName {
-                    groupNames.insert(groupName)
+                let settings = try parseConnection(entry)
+                let connectionId = entry["ID"] as? String
+                var credentials: ExportableCredentials?
+                if request.includePasswords, !credentialsAborted, let connectionId {
+                    credentials = readCredentials(
+                        for: connectionId,
+                        databaseMode: TablePlusPasswordMode.resolve(entry["DatabasePasswordMode"]),
+                        serverMode: TablePlusPasswordMode.resolve(entry["ServerPasswordMode"]),
+                        abortFlag: &credentialsAborted
+                    )
                 }
-
-                if includePasswords, !credentialsAborted, let connId = entry["ID"] as? String {
-                    let creds = readCredentials(for: connId, abortFlag: &credentialsAborted)
-                    if creds.password != nil || creds.sshPassword != nil || creds.keyPassphrase != nil {
-                        credentials[String(index)] = creds
-                    }
-                }
+                let groupName = (entry["GroupID"] as? String).flatMap { $0.isEmpty ? nil : groupMap[$0] }
+                records.append(ForeignConnectionRecord(
+                    sourceId: connectionId,
+                    settings: settings,
+                    groupPath: groupName.map { [$0] } ?? [],
+                    credentials: credentials
+                ))
             } catch {
-                Self.logger.warning("Skipping TablePlus connection: \(error.localizedDescription)")
+                Self.logger.warning("Skipping a TablePlus connection that could not be read")
             }
         }
 
-        guard !exportableConnections.isEmpty else {
-            throw ForeignAppImportError.noConnectionsFound
-        }
+        let savedQueries = request.includeSavedQueries
+            ? try TablePlusFavoriteReader.savedQueries(
+                in: favoriteRoots(viewSetting: prefs),
+                limit: SavedQuerySize.maximumSyncableByteCount
+            )
+            : []
 
-        let groups: [ExportableGroup]? = groupNames.isEmpty ? nil : groupNames.map {
-            ExportableGroup(name: $0, color: nil)
-        }
-
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: "TablePlus Import",
-            connections: exportableConnections,
-            groups: groups,
-            tags: nil,
-            credentials: credentials.isEmpty ? nil : credentials
-        )
-
-        return ForeignAppImportResult(
-            envelope: envelope,
-            sourceName: displayName,
+        return try ForeignBundleAssembly.collect(
+            appName: displayName,
+            connections: records,
+            savedQueries: savedQueries,
             credentialsAborted: credentialsAborted
         )
     }
 
+    // MARK: - Locations
+
+    private var viewSetting: [String: Any] {
+        readViewSetting(installedBundleIdentifier ?? appBundleIdentifier) ?? [:]
+    }
+
+    // Moving the data in TablePlus preferences writes the connection files directly under the chosen folder.
+    private func connectionsDirectory(viewSetting: [String: Any]) -> URL {
+        Self.sharedPath(viewSetting["SharedConnectionPath"]) ?? dataDirectory
+    }
+
+    private func favoriteRoots(viewSetting: [String: Any]) -> [TablePlusFavoriteReader.Root] {
+        let favoriteRoot = (Self.sharedPath(viewSetting["SharedQueryPath"]) ?? dataDirectory)
+            .appendingPathComponent("Favorite", isDirectory: true)
+        return TablePlusFavoriteReader.roots(
+            favoriteRoot: favoriteRoot,
+            sharedFolders: TablePlusFavoriteReader.sharedFolders(in: viewSetting)
+        )
+    }
+
+    private static func sharedPath(_ raw: Any?) -> URL? {
+        guard let path = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else {
+            return nil
+        }
+        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
+    }
+
     // MARK: - Private
 
-    private func loadGroups() -> [String: String] {
-        guard let data = try? Data(contentsOf: groupsFileURL),
+    private func loadEntries(from directory: URL) -> [[String: Any]]? {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("Connections.plist")),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) else { return nil }
+        return plist as? [[String: Any]]
+    }
+
+    private func loadGroups(from directory: URL) -> [String: String] {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("ConnectionGroups.plist")),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
               let array = plist as? [[String: Any]] else { return [:] }
 
@@ -158,15 +191,13 @@ struct TablePlusImporter: ForeignAppImporter {
         return map
     }
 
-    private func parseConnection(
-        _ entry: [String: Any],
-        groupMap: [String: String]
-    ) throws -> ExportableConnection {
+    private func parseConnection(_ entry: [String: Any]) throws -> ExportableConnection {
         guard let name = entry["ConnectionName"] as? String else {
             throw ForeignAppImportError.parseError("Missing ConnectionName")
         }
 
-        let dbType = Self.databaseType(forDriver: entry["Driver"] as? String ?? "")
+        let driver = entry["Driver"] as? String ?? ""
+        let dbType = Self.databaseType(forDriver: driver)
         let filePathField = ForeignAppDatabaseType.localFilePathField(for: dbType)
         let filePath = filePathField == nil ? nil : (entry["DatabasePath"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 
@@ -181,27 +212,24 @@ struct TablePlusImporter: ForeignAppImporter {
         }
         let username = entry["DatabaseUser"] as? String ?? ""
         let database: String
-        var additionalFields: [String: String]?
+        var additionalFields: [String: String] = [:]
         switch (filePath, filePathField) {
         case (let path?, .database?):
             database = path
         case (let path?, .additionalField(let fieldId)?):
             database = ""
-            additionalFields = [fieldId: path]
+            additionalFields[fieldId] = path
         default:
             database = entry["DatabaseName"] as? String ?? ""
         }
-
-        let groupName: String?
-        if let groupId = entry["GroupID"] as? String, !groupId.isEmpty {
-            groupName = groupMap[groupId]
-        } else {
-            groupName = nil
+        if dbType == DatabaseType.dynamodb.rawValue {
+            additionalFields.merge(Self.dynamoDBFields(entry)) { _, imported in imported }
         }
 
-        let sshConfig = parseSSHConfig(entry)
-        let sslConfig = parseSSLConfig(entry)
-        let color = mapEnvironmentColor(entry["Enviroment"] as? String)
+        let databaseMode = TablePlusPasswordMode.resolve(entry["DatabasePasswordMode"])
+        if databaseMode.promptsForPassword, !Self.hidesBuiltInPassword(dbType, fields: additionalFields) {
+            additionalFields["promptForPassword"] = "true"
+        }
 
         return ExportableConnection(
             name: name,
@@ -210,18 +238,10 @@ struct TablePlusImporter: ForeignAppImporter {
             database: database,
             username: username,
             type: dbType,
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
-            color: color,
-            tagName: nil,
-            groupName: groupName,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: additionalFields,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            sshConfig: parseSSHConfig(entry),
+            sslConfig: parseSSLConfig(entry, driver: driver),
+            color: mapEnvironmentColor(entry["Enviroment"] as? String),
+            additionalFields: additionalFields.isEmpty ? nil : additionalFields
         )
     }
 
@@ -257,33 +277,31 @@ struct TablePlusImporter: ForeignAppImporter {
         return keyFileExists(PathPortability.expandHome(resolved)) ? resolved : ""
     }
 
-    private func parseSSLConfig(_ entry: [String: Any]) -> ExportableSSLConfig? {
+    private func parseSSLConfig(_ entry: [String: Any], driver: String) -> ExportableSSLConfig? {
         guard entry.keys.contains("tLSMode") else { return nil }
         let tlsMode = entry["tLSMode"] as? Int ?? 0
-
-        let mode: String
-        switch tlsMode {
-        case 0: mode = SSLMode.preferred.rawValue
-        case 1: mode = SSLMode.required.rawValue
-        case 2: mode = SSLMode.verifyCa.rawValue
-        case 3: mode = SSLMode.verifyIdentity.rawValue
-        default: return nil
-        }
+        let form = TablePlusTLSVocabulary.form(forDriver: driver)
+        guard tlsMode >= 0, tlsMode < form.modes.count else { return nil }
 
         let paths = entry["TlsKeyPaths"] as? [String] ?? []
-        func certPath(_ index: Int) -> String? {
-            guard index < paths.count, !paths[index].isEmpty else { return nil }
-            return paths[index]
+        func certPath(_ slot: Int?) -> String? {
+            guard let slot, slot < paths.count, !paths[slot].isEmpty else { return nil }
+            return paths[slot]
         }
         return ExportableSSLConfig(
-            mode: mode,
-            caCertificatePath: certPath(0),
-            clientCertificatePath: certPath(1),
-            clientKeyPath: certPath(2)
+            mode: form.modes[tlsMode].rawValue,
+            caCertificatePath: certPath(form.slots.certificateAuthority),
+            clientCertificatePath: certPath(form.slots.clientCertificate),
+            clientKeyPath: certPath(form.slots.clientKey)
         )
     }
 
-    private func readCredentials(for connectionId: String, abortFlag: inout Bool) -> ExportableCredentials {
+    private func readCredentials(
+        for connectionId: String,
+        databaseMode: TablePlusPasswordMode,
+        serverMode: TablePlusPasswordMode,
+        abortFlag: inout Bool
+    ) -> ExportableCredentials? {
         func read(_ account: String) -> String? {
             guard !abortFlag else { return nil }
             switch readKeychain(Self.keychainService, account) {
@@ -297,9 +315,10 @@ struct TablePlusImporter: ForeignAppImporter {
             }
         }
 
-        let dbPassword = read("\(connectionId)_database")
-        let sshPassword = read("\(connectionId)_server")
+        let dbPassword = databaseMode.storesPasswordInKeychain ? read("\(connectionId)_database") : nil
+        let sshPassword = serverMode.storesPasswordInKeychain ? read("\(connectionId)_server") : nil
         let keyPassphrase = read("\(connectionId)_server_key")
+        guard dbPassword != nil || sshPassword != nil || keyPassphrase != nil else { return nil }
         return ExportableCredentials(
             password: dbPassword,
             sshPassword: sshPassword,
@@ -308,6 +327,35 @@ struct TablePlusImporter: ForeignAppImporter {
             totpSecret: nil,
             pluginSecureFields: nil
         )
+    }
+
+    private static func hidesBuiltInPassword(_ typeId: String, fields: [String: String]) -> Bool {
+        guard let snapshot = PluginMetadataRegistry.shared.snapshot(for: DatabaseType(rawValue: typeId)) else {
+            return false
+        }
+        if snapshot.connection.hidesBuiltInPassword {
+            return true
+        }
+        return snapshot.connection.additionalConnectionFields.hidesPassword(forValues: fields)
+    }
+
+    // DynamoDB keeps its region in the host field and its access key ID in the user field.
+    private static func dynamoDBFields(_ entry: [String: Any]) -> [String: String] {
+        var fields = ["awsAuthMethod": "credentials"]
+        if let region = trimmedValue(entry["DatabaseHost"]) {
+            fields["awsRegion"] = region
+        }
+        if let accessKeyId = trimmedValue(entry["DatabaseUser"]) {
+            fields["awsAccessKeyId"] = accessKeyId
+        }
+        return fields
+    }
+
+    private static func trimmedValue(_ raw: Any?) -> String? {
+        guard let text = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return nil
+        }
+        return text
     }
 
     private static func databaseType(forDriver driver: String) -> String {

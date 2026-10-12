@@ -11,6 +11,9 @@ public enum SyncRecordType: String, CaseIterable, Sendable {
     case tableFavorite = "FavoriteTable"
     case favoriteDatabase = "FavoriteDatabase"
     case sshProfile = "SSHProfile"
+    case credentialProfile = "CredentialProfile"
+    case tableFolder = "TableFolder"
+    case tableFolderItem = "TableFolderItem"
 
     public var recordNamePrefix: String {
         switch self {
@@ -23,6 +26,9 @@ public enum SyncRecordType: String, CaseIterable, Sendable {
         case .tableFavorite: return "FavoriteTable_"
         case .favoriteDatabase: return "FavoriteDatabase_"
         case .sshProfile: return "SSHProfile_"
+        case .credentialProfile: return "CredentialProfile_"
+        case .tableFolder: return "TableFolder_"
+        case .tableFolderItem: return "TableFolderItem_"
         }
     }
 
@@ -58,7 +64,7 @@ public enum SyncRecordType: String, CaseIterable, Sendable {
 public enum SyncRecordName {
     /// Measured against the CloudKit framework: 255 UTF-16 code units pass and 256 raise, and the
     /// count is of UTF-16 units rather than characters or bytes (250 two-byte characters pass at
-    /// 500 UTF-8 bytes; 128 emoji raise at 256 UTF-16 units). `scripts/check-cloudkit-record-name-limit.sh`
+    /// 500 UTF-8 bytes; 128 emoji raise at 256 UTF-16 units). `scripts/probes/check-cloudkit-record-name-limit.sh`
     /// re-measures it.
     public static let maximumLength = 255
 

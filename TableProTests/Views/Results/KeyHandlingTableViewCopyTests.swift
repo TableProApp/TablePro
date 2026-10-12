@@ -32,7 +32,6 @@ private final class KeyHandlingCopyDelegateSpy: DataGridViewDelegate {
     }
 }
 
-@Suite("KeyHandlingTableView selection-scoped commands")
 @MainActor
 struct KeyHandlingTableViewCopyTests {
     private func makeSUT(

@@ -21,6 +21,12 @@ extension MainContentView {
         await coordinator.loadTableMetadata(tableName: tableName, for: tab)
     }
 
+    func loadTableInfo() async {
+        guard currentTab?.execution.lastExecutedAt != nil else { return }
+        await loadTableMetadataIfNeeded()
+        scheduleInspectorUpdate()
+    }
+
     func handleConnectionStatusChange() {
         let sessions = DatabaseManager.shared.activeSessions
         guard let session = sessions[connection.id] else { return }
@@ -48,7 +54,7 @@ extension MainContentView {
         if tabManager.selectedTab?.tabType == .table {
             coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
         } else {
-            coordinator.runQuery(trigger: trigger)
+            coordinator.runQuery(viewport: .firstRow, trigger: trigger)
         }
     }
 
@@ -60,6 +66,16 @@ extension MainContentView {
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled else { return }
             updateSidebarEditState()
+            updateInspectorContext()
+        }
+    }
+
+    func scheduleInspectorContextRefresh() {
+        guard trailingPaneState.inspector.viewMode == .json else { return }
+        inspectorContextRefreshTask?.cancel()
+        inspectorContextRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
             updateInspectorContext()
         }
     }
@@ -81,9 +97,11 @@ extension MainContentView {
     /// assistant was never revealed has nothing to tell.
     func updateAssistantContext() {
         guard trailingPaneState.assistant.isActivated else { return }
+        let snapshot = coordinator.assistantEditorSnapshot
         trailingPaneState.assistant.context = AssistantContext(
-            currentQuery: coordinator.tabManager.selectedTab?.content.query,
-            queryResults: cachedQueryResultsSummary()
+            currentQuery: snapshot.currentQuery,
+            queryResults: cachedQueryResultsSummary(),
+            editorTarget: snapshot.target
         )
     }
 

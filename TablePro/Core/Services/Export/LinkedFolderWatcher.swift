@@ -2,9 +2,6 @@
 //  LinkedFolderWatcher.swift
 //  TablePro
 //
-//  Watches linked folders for .tablepro connection files.
-//  Rescans on filesystem changes with 1s debounce.
-//
 
 import Combine
 import CryptoKit
@@ -20,15 +17,14 @@ struct LinkedConnection: Identifiable, Sendable {
 }
 
 @MainActor
-@Observable
-final class LinkedFolderWatcher {
+final class LinkedFolderWatcher: ObservableObject {
     static let shared = LinkedFolderWatcher()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderWatcher")
 
-    private(set) var linkedConnections: [LinkedConnection] = []
-    private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
+    @Published private(set) var linkedConnections: [LinkedConnection] = []
+    @Published private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
     private var debounceTask: Task<Void, Never>?
-    private var hasStarted = false
+    @Published private var hasStarted = false
 
     private init() {}
 
@@ -76,27 +72,26 @@ final class LinkedFolderWatcher {
         }
     }
 
-    /// Scans folders on a background thread to avoid blocking the main actor.
     nonisolated private static func scanFoldersAsync(_ folders: [LinkedFolder]) async -> [LinkedConnection] {
         await Task.detached(priority: .utility) {
             scanFolders(folders)
         }.value
     }
 
-    /// Pure scanning logic. Runs on any thread.
     nonisolated private static func scanFolders(_ folders: [LinkedFolder]) -> [LinkedConnection] {
         var results: [LinkedConnection] = []
+        var seenIds: Set<UUID> = []
         let fm = FileManager.default
 
         for folder in folders where folder.isEnabled {
             let expandedPath = folder.expandedPath
             guard fm.fileExists(atPath: expandedPath) else {
-                logger.warning("Linked folder not found: \(expandedPath, privacy: .public)")
+                logger.warning("Linked folder not found: \(expandedPath, privacy: .private(mask: .hash))")
                 continue
             }
 
             guard let contents = try? fm.contentsOfDirectory(atPath: expandedPath) else {
-                logger.warning("Cannot read linked folder: \(expandedPath, privacy: .public)")
+                logger.warning("Cannot read linked folder: \(expandedPath, privacy: .private(mask: .hash))")
                 continue
             }
 
@@ -104,18 +99,22 @@ final class LinkedFolderWatcher {
                 let fileURL = URL(fileURLWithPath: expandedPath).appendingPathComponent(filename)
                 guard let data = try? Data(contentsOf: fileURL) else { continue }
 
-                if ConnectionExportCrypto.isEncrypted(data) { continue }
+                if ConnectionBundleCodec.isEncrypted(data) { continue }
 
-                guard let envelope = try? ConnectionImportDecoder.decodeData(data) else { continue }
+                let bundle: ConnectionBundle
+                do {
+                    bundle = try ConnectionBundleCodec.decode(data)
+                } catch {
+                    logger.warning(
+                        "Skipped linked file \(filename, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)"
+                    )
+                    continue
+                }
 
-                for exportable in envelope.connections {
-                    let stableId = stableId(folderId: folder.id, connection: exportable)
-                    results.append(LinkedConnection(
-                        id: stableId,
-                        connection: exportable,
-                        folderId: folder.id,
-                        sourceFileURL: fileURL
-                    ))
+                for exportable in bundle.connections.map(\.settings) {
+                    let linked = linkedConnection(folderId: folder.id, sourceFileURL: fileURL, exportable: exportable)
+                    guard seenIds.insert(linked.id).inserted else { continue }
+                    results.append(linked)
                 }
             }
         }
@@ -132,7 +131,7 @@ final class LinkedFolderWatcher {
             let expandedPath = folder.expandedPath
             let fd = open(expandedPath, O_EVTONLY)
             guard fd >= 0 else {
-                Self.logger.warning("Cannot open linked folder for watching: \(expandedPath, privacy: .public)")
+                Self.logger.warning("Cannot open linked folder for watching: \(expandedPath, privacy: .private(mask: .hash))")
                 continue
             }
 
@@ -166,9 +165,33 @@ final class LinkedFolderWatcher {
 
     // MARK: - Stable IDs (SHA-256 based, deterministic across launches)
 
+    nonisolated static func linkedConnection(
+        folderId: UUID,
+        sourceFileURL: URL,
+        exportable: ExportableConnection
+    ) -> LinkedConnection {
+        LinkedConnection(
+            id: stableId(folderId: folderId, connection: exportable),
+            connection: exportable.withoutTunnelCommand().withoutStartupCommands(),
+            folderId: folderId,
+            sourceFileURL: sourceFileURL
+        )
+    }
+
     nonisolated static func stableId(folderId: UUID, connection: ExportableConnection) -> UUID {
-        let key = "\(folderId.uuidString)|\(connection.name)|\(connection.host)|\(connection.port)|\(connection.type)"
-        let digest = SHA256.hash(data: Data(key.utf8))
+        let fields = [
+            connection.name,
+            connection.host,
+            String(connection.port),
+            connection.type,
+            connection.database,
+            connection.username,
+        ]
+        return stableId(namespace: folderId, key: fields.joined(separator: "|"))
+    }
+
+    nonisolated static func stableId(namespace: UUID, key: String) -> UUID {
+        let digest = SHA256.hash(data: Data("\(namespace.uuidString)|\(key)".utf8))
         var bytes = Array(digest.prefix(16))
         // Set UUID version 5 and variant bits
         bytes[6] = (bytes[6] & 0x0F) | 0x50

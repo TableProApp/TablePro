@@ -13,32 +13,43 @@ struct CloudKitSyncEngineTests {
         try #require(!CloudKitSyncEngine.hasICloudEntitlement(), "Test host has the iCloud entitlement; skipping")
     }
 
-    @Test("accountStatus throws accountUnavailable without iCloud entitlement")
+    /// A build without the entitlement fails the way the server fails a missing entitlement, so it
+    /// is classified as the same blocker rather than as a signed-out account.
+    private func expectUnavailable(_ operation: () async throws -> Void) async {
+        do {
+            try await operation()
+            Issue.record("Expected the call to fail without the iCloud entitlement")
+        } catch {
+            #expect(SyncFailure(error) == .blocked(.unavailable))
+        }
+    }
+
+    @Test("accountStatus reports sync unavailable without iCloud entitlement")
     func accountStatusThrows() async throws {
         try skipIfEntitled()
         let engine = CloudKitSyncEngine()
-        await #expect(throws: SyncError.accountUnavailable) {
+        await expectUnavailable {
             _ = try await engine.accountStatus()
         }
     }
 
-    @Test("ensureZoneExists throws accountUnavailable without iCloud entitlement")
+    @Test("ensureZoneExists reports sync unavailable without iCloud entitlement")
     func ensureZoneExistsThrows() async throws {
         try skipIfEntitled()
         let engine = CloudKitSyncEngine()
-        await #expect(throws: SyncError.accountUnavailable) {
+        await expectUnavailable {
             try await engine.ensureZoneExists()
         }
     }
 
-    @Test("push with non-empty input throws accountUnavailable without iCloud entitlement")
+    @Test("push with non-empty input reports sync unavailable without iCloud entitlement")
     func pushThrows() async throws {
         try skipIfEntitled()
         let engine = CloudKitSyncEngine()
         let zoneID = await engine.currentZoneID
         let recordID = CKRecord.ID(recordName: SyncRecordType.connection.recordName(for: "test"), zoneID: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
-        await #expect(throws: SyncError.accountUnavailable) {
+        await expectUnavailable {
             try await engine.push(records: [record], deletions: [])
         }
     }
@@ -62,20 +73,20 @@ struct CloudKitSyncEngineTests {
         #expect(!outcome.hasFailures)
     }
 
-    @Test("pull throws accountUnavailable without iCloud entitlement")
+    @Test("pull reports sync unavailable without iCloud entitlement")
     func pullThrows() async throws {
         try skipIfEntitled()
         let engine = CloudKitSyncEngine()
-        await #expect(throws: SyncError.accountUnavailable) {
+        await expectUnavailable {
             _ = try await engine.pull(since: nil)
         }
     }
 
-    @Test("currentAccountId throws accountUnavailable without iCloud entitlement")
+    @Test("currentAccountId reports sync unavailable without iCloud entitlement")
     func currentAccountIdThrows() async throws {
         try skipIfEntitled()
         let engine = CloudKitSyncEngine()
-        await #expect(throws: SyncError.accountUnavailable) {
+        await expectUnavailable {
             _ = try await engine.currentAccountId()
         }
     }

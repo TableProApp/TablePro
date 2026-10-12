@@ -32,6 +32,15 @@ struct QueryResult {
 
     var columnMeta: [ResultColumnMeta]?
 
+    /// Per row, what the driver finds that row by again. Only the driver reads it.
+    var rowLocators: [String?]?
+
+    /// What the statement printed on the server, read on its own session.
+    var serverOutput: PluginServerOutput = .none
+
+    /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
+    var absentCells: [Int: Set<Int>] = [:]
+
     var isEmpty: Bool {
         rows.isEmpty
     }
@@ -109,16 +118,32 @@ enum DatabaseError: Error, LocalizedError {
 /// Information about a database table
 struct TableInfo: Identifiable, Hashable, Sendable {
     var id: String {
-        if let schema, !schema.isEmpty {
-            return "\(schema).\(name)_\(type.rawValue)"
-        }
-        return "\(name)_\(type.rawValue)"
+        "\(IdentityPath.qualified(name: name, schema: schema))_\(type.rawValue)"
     }
     let name: String
     let type: TableType
     let rowCount: Int?
     let schema: String?
     let comment: String?
+
+    /// How many partitions this table holds, when the engine reports it with the listing. Nil for
+    /// an engine that says nothing, which is not the same as zero: a partitioned table with no
+    /// partitions yet answers 0.
+    ///
+    /// It is not part of the table's identity, because the same table with one more partition is
+    /// the same table.
+    let partitionCount: Int?
+
+    /// Set for a MariaDB table declared `WITH SYSTEM VERSIONING`.
+    ///
+    /// A trait rather than a kind, because MariaDB reports `SYSTEM VERSIONED` for a partitioned
+    /// table and an unpartitioned one alike, and the object is a plain table for every other
+    /// decision: it takes rows, indexes, comments, a rename and a drop. Only TRUNCATE is refused,
+    /// measured as ERROR 4137 on 11.4.13.
+    ///
+    /// Outside `==` and `hash` for the reason `comment` and `partitionCount` are: the same table
+    /// with versioning turned on is the same table.
+    let isSystemVersioned: Bool
 
     enum TableType: String, Sendable, CaseIterable {
         case table = "TABLE"
@@ -128,35 +153,78 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case systemTable = "SYSTEM TABLE"
         case partitionedTable = "PARTITIONED TABLE"
         case externalTable = "EXTERNAL TABLE"
+        case sequence = "SEQUENCE"
 
         /// Whether a foreign key may point at this object. A view has no rows of its own to
         /// constrain, so a key that names one is a statement the server refuses.
         var isForeignKeyTarget: Bool {
             switch self {
             case .table, .partitionedTable: true
-            case .view, .materializedView, .foreignTable, .systemTable, .externalTable: false
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable, .sequence: false
             }
         }
 
         /// An external table lives in a catalog outside the database, has no
         /// primary key and no row identifier to target, and rejects UPDATE and
         /// DELETE, so the grid must not offer row editing for one.
+        ///
+        /// Measured on MariaDB 11.4.13: a sequence takes an INSERT but refuses UPDATE, DELETE and
+        /// TRUNCATE with ERROR 1031, so an editable grid over one offers two writes out of three
+        /// that the server always refuses.
         var allowsRowEditing: Bool {
             switch self {
-            case .view, .externalTable:
+            case .view, .materializedView, .externalTable, .sequence:
                 return false
-            case .table, .materializedView, .foreignTable, .systemTable, .partitionedTable:
+            case .table, .foreignTable, .systemTable, .partitionedTable:
                 return true
+            }
+        }
+
+        /// Whether the Backup Dump sheet lists this kind as an object to narrow a dump to.
+        ///
+        /// Measured: `mysqldump 8.4.11` and `mariadb-dump 12.3.3` write a partitioned table's
+        /// `CREATE TABLE ... PARTITION BY` and all of its rows when handed the parent by name, and
+        /// `mariadb-dump` writes `CREATE SEQUENCE` plus `DO SETVAL` for a sequence. A view carries
+        /// no rows and its definition rides with the schema, which is the gap this does not close.
+        var isBackupSelectable: Bool {
+            switch self {
+            case .table, .partitionedTable, .sequence:
+                return true
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable:
+                return false
+            }
+        }
+
+        /// Whether the import sheet may offer this kind as an existing table to insert into.
+        ///
+        /// Narrower than `isBackupSelectable`: a sequence is worth dumping and is not worth
+        /// importing rows into, since MariaDB stores exactly one row in one.
+        var acceptsImportedRows: Bool {
+            switch self {
+            case .table, .partitionedTable:
+                return true
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable, .sequence:
+                return false
             }
         }
     }
 
-    init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {
+    init(
+        name: String,
+        type: TableType,
+        rowCount: Int?,
+        schema: String? = nil,
+        comment: String? = nil,
+        partitionCount: Int? = nil,
+        isSystemVersioned: Bool = false
+    ) {
         self.name = name
         self.type = type
         self.rowCount = rowCount
         self.schema = schema
         self.comment = comment
+        self.partitionCount = partitionCount
+        self.isSystemVersioned = isSystemVersioned
     }
 
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {
@@ -191,6 +259,20 @@ struct ColumnInfo: Identifiable, Hashable {
     let allowedValues: [String]?
     let generationExpression: String?
     let generationKind: GenerationKind?
+    /// The server's own spellings of `dataType`, `defaultValue`, `generationExpression` and
+    /// `collation` for a `CREATE TABLE`. `PluginColumnInfo.ddlSpelling` and
+    /// `PluginColumnInfo.ddlCollation` say why they differ.
+    let ddlSpelling: String?
+    let ddlDefault: String?
+    let ddlGenerationExpression: String?
+    let ddlCollation: String?
+    /// The name the column is classified by where `dataType` is the server's declared spelling and
+    /// says nothing about what the column holds. `PluginColumnInfo.classificationTypeName` says why.
+    let classificationTypeName: String?
+
+    /// What a classifier reads. Every display reads `dataType`, and these differ on PostgreSQL:
+    /// `status` is shown and `ENUM` is classified, `posint` is shown and `INTEGER` is classified.
+    var typeNameForClassification: String { classificationTypeName ?? dataType }
 
     init(
         name: String,
@@ -206,7 +288,12 @@ struct ColumnInfo: Identifiable, Hashable {
         isGenerated: Bool = false,
         allowedValues: [String]? = nil,
         generationExpression: String? = nil,
-        generationKind: GenerationKind? = nil
+        generationKind: GenerationKind? = nil,
+        ddlSpelling: String? = nil,
+        ddlDefault: String? = nil,
+        ddlGenerationExpression: String? = nil,
+        ddlCollation: String? = nil,
+        classificationTypeName: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -222,6 +309,11 @@ struct ColumnInfo: Identifiable, Hashable {
         self.allowedValues = allowedValues
         self.generationExpression = generationExpression
         self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
+        self.classificationTypeName = classificationTypeName
     }
 }
 
@@ -254,6 +346,15 @@ struct IndexInfo: Identifiable, Hashable {
     let type: String  // BTREE, HASH, FULLTEXT, etc.
     let columnPrefixes: [String: Int]?
     let whereClause: String?
+    /// The entries of `columns` that are expressions. `PluginIndexInfo.expressions` says why a writer
+    /// needs to know.
+    let expressions: [String]?
+    let includedColumns: [String]?
+    /// The server's own spellings for a `CREATE INDEX` on another schema.
+    /// `PluginIndexInfo.ddlMethodAndKeys` says why they differ from the fields.
+    let ddlMethodAndKeys: String?
+    let ddlWhereClause: String?
+    let isValid: Bool
 
     init(
         name: String,
@@ -262,7 +363,12 @@ struct IndexInfo: Identifiable, Hashable {
         isPrimary: Bool,
         type: String,
         columnPrefixes: [String: Int]? = nil,
-        whereClause: String? = nil
+        whereClause: String? = nil,
+        expressions: [String]? = nil,
+        includedColumns: [String]? = nil,
+        ddlMethodAndKeys: String? = nil,
+        ddlWhereClause: String? = nil,
+        isValid: Bool = true
     ) {
         self.name = name
         self.columns = columns
@@ -271,6 +377,11 @@ struct IndexInfo: Identifiable, Hashable {
         self.type = type
         self.columnPrefixes = columnPrefixes
         self.whereClause = whereClause
+        self.expressions = expressions
+        self.includedColumns = includedColumns
+        self.ddlMethodAndKeys = ddlMethodAndKeys
+        self.ddlWhereClause = ddlWhereClause
+        self.isValid = isValid
     }
 }
 
@@ -281,6 +392,10 @@ struct ForeignKeyInfo: Identifiable, Hashable {
     let column: String
     let referencedTable: String
     let referencedColumn: String
+    /// Set only by an engine that names objects in three parts and reports a key pointing outside
+    /// the database it was read from. An engine with no schema layer names its referenced database
+    /// in `referencedSchema` instead, because that is the column its catalog puts it in.
+    let referencedDatabase: String?
     let referencedSchema: String?
     let onDelete: String  // CASCADE, SET NULL, RESTRICT, NO ACTION
     let onUpdate: String
@@ -290,6 +405,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
         column: String,
         referencedTable: String,
         referencedColumn: String,
+        referencedDatabase: String? = nil,
         referencedSchema: String? = nil,
         onDelete: String = "NO ACTION",
         onUpdate: String = "NO ACTION"
@@ -298,6 +414,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
         self.column = column
         self.referencedTable = referencedTable
         self.referencedColumn = referencedColumn
+        self.referencedDatabase = referencedDatabase
         self.referencedSchema = referencedSchema
         self.onDelete = onDelete
         self.onUpdate = onUpdate
@@ -322,7 +439,10 @@ struct TriggerInfo: Identifiable, Hashable {
     let attributes: [ObjectAttribute]
 
     var id: String {
-        [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ".")
+        IdentityPath.joined(
+            [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil },
+            separator: "."
+        )
     }
 
     init(

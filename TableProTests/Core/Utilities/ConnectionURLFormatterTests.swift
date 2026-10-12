@@ -5,10 +5,10 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
 
-@Suite("Connection URL Formatter")
+@testable import TablePro
+
 @MainActor
 struct ConnectionURLFormatterTests {
     // MARK: - Basic URLs
@@ -17,7 +17,7 @@ struct ConnectionURLFormatterTests {
     func testBasicMySQLURL() {
         let conn = DatabaseConnection(
             name: "", host: "localhost", port: 3_306, database: "testdb",
-            username: "root", type: .mysql
+            username: "root", type: .mysql, sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
         #expect(url == "mysql://root:pass@localhost/testdb")
@@ -27,7 +27,7 @@ struct ConnectionURLFormatterTests {
     func testDatabendCopiesAsMySQLURL() {
         let conn = DatabaseConnection(
             name: "", host: "warehouse", port: 3_307, database: "default",
-            username: "root", type: .databend
+            username: "root", type: .databend, sslConfig: SSLConfiguration(mode: DatabaseType.databend.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
         #expect(url == "mysql://root@warehouse:3307/default")
@@ -37,7 +37,7 @@ struct ConnectionURLFormatterTests {
     func testBasicPostgreSQLURL() {
         let conn = DatabaseConnection(
             name: "", host: "db.example.com", port: 5_432, database: "mydb",
-            username: "admin", type: .postgresql
+            username: "admin", type: .postgresql, sslConfig: SSLConfiguration(mode: DatabaseType.postgresql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "secret", sshPassword: nil)
         #expect(url == "postgresql://admin:secret@db.example.com/mydb")
@@ -49,7 +49,7 @@ struct ConnectionURLFormatterTests {
     func testDefaultPortOmittedMySQL() {
         let conn = DatabaseConnection(
             name: "", host: "localhost", port: 3_306, database: "db",
-            username: "root", type: .mysql
+            username: "root", type: .mysql, sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
         #expect(!url.contains(":3306"))
@@ -60,7 +60,7 @@ struct ConnectionURLFormatterTests {
     func testNonDefaultPortIncludedMySQL() {
         let conn = DatabaseConnection(
             name: "", host: "localhost", port: 3_307, database: "db",
-            username: "root", type: .mysql
+            username: "root", type: .mysql, sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
         #expect(url.contains(":3307"))
@@ -94,7 +94,7 @@ struct ConnectionURLFormatterTests {
     func testNoCredentialsWhenUsernameEmpty() {
         let conn = DatabaseConnection(
             name: "", host: "host", port: 3_306, database: "db",
-            username: "", type: .mysql
+            username: "", type: .mysql, sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
         #expect(url == "mysql://host/db")
@@ -104,7 +104,7 @@ struct ConnectionURLFormatterTests {
     func testUsernameWithoutPassword() {
         let conn = DatabaseConnection(
             name: "", host: "host", port: 3_306, database: "db",
-            username: "user", type: .mysql
+            username: "user", type: .mysql, sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
         #expect(url == "mysql://user@host/db")
@@ -114,7 +114,7 @@ struct ConnectionURLFormatterTests {
     func testUsernameWithEmptyPassword() {
         let conn = DatabaseConnection(
             name: "", host: "host", port: 3_306, database: "db",
-            username: "user", type: .mysql
+            username: "user", type: .mysql, sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "", sshPassword: nil)
         #expect(url == "mysql://user@host/db")
@@ -126,7 +126,7 @@ struct ConnectionURLFormatterTests {
     func testSpecialCharsInPasswordEncoded() {
         let conn = DatabaseConnection(
             name: "", host: "host", port: 5_432, database: "db",
-            username: "user", type: .postgresql
+            username: "user", type: .postgresql, sslConfig: SSLConfiguration(mode: DatabaseType.postgresql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "p@ss#word", sshPassword: nil)
         #expect(url.contains("p%40ss%23word"))
@@ -177,7 +177,8 @@ struct ConnectionURLFormatterTests {
 
         let conn = DatabaseConnection(
             name: "", host: "127.0.0.1", port: 3_306, database: "db",
-            username: "dbuser", type: .mysql, sshConfig: sshConfig
+            username: "dbuser", type: .mysql, sshConfig: sshConfig,
+            sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "dbpass", sshPassword: nil)
         #expect(url == "mysql+ssh://sshuser@sshhost:1234/dbuser:dbpass@127.0.0.1/db")
@@ -193,7 +194,8 @@ struct ConnectionURLFormatterTests {
 
         let conn = DatabaseConnection(
             name: "", host: "127.0.0.1", port: 3_306, database: "db",
-            username: "dbuser", type: .mysql, sshConfig: sshConfig
+            username: "dbuser", type: .mysql, sshConfig: sshConfig,
+            sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "dbpass", sshPassword: "sshpass")
         #expect(url == "mysql+ssh://sshuser:sshpass@sshhost:1234/dbuser:dbpass@127.0.0.1/db")
@@ -209,7 +211,8 @@ struct ConnectionURLFormatterTests {
 
         let conn = DatabaseConnection(
             name: "", host: "127.0.0.1", port: 3_306, database: "db",
-            username: "dbuser", type: .mysql, sshConfig: sshConfig
+            username: "dbuser", type: .mysql, sshConfig: sshConfig,
+            sslConfig: SSLConfiguration(mode: DatabaseType.mysql.defaultSSLMode)
         )
         let url = ConnectionURLFormatter.format(conn, password: "dbpass", sshPassword: nil)
         #expect(url == "mysql+ssh://sshuser@sshhost/dbuser:dbpass@127.0.0.1/db")
@@ -265,14 +268,113 @@ struct ConnectionURLFormatterTests {
         #expect(url.contains("sslmode=require"))
     }
 
-    @Test("SSL disabled produces no sslmode param")
+    @Test("SSL disabled produces no sslmode param where Disabled is the driver's default")
     func testSSLDisabledNoParam() {
         let conn = DatabaseConnection(
-            name: "", host: "host", port: 5_432, database: "db",
-            username: "user", type: .postgresql
+            name: "", host: "host", port: 27_017, database: "db",
+            username: "user", type: .mongodb
         )
         let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
         #expect(!url.contains("sslmode"))
+    }
+
+    @Test("SSL disabled is written out where the driver would otherwise pick another mode")
+    func testSSLDisabledWrittenWhereNotTheDefault() {
+        let postgres = DatabaseConnection(
+            name: "", host: "host", port: 5_432, database: "db", username: "user", type: .postgresql
+        )
+        let trino = DatabaseConnection(
+            name: "", host: "trino.example.com", port: 443, database: "hive", username: "analyst", type: .trino
+        )
+        let clickhouse = DatabaseConnection(
+            name: "", host: "ch.example.com", port: 8_443, database: "default", username: "default", type: .clickhouse
+        )
+        let trinoPlain = DatabaseConnection(
+            name: "", host: "trino.example.com", port: 8_080, database: "hive", username: "analyst", type: .trino
+        )
+        #expect(ConnectionURLFormatter.format(postgres, password: "", sshPassword: nil).contains("sslmode=disable"))
+        #expect(ConnectionURLFormatter.format(trino, password: "", sshPassword: nil).contains("sslmode=disable"))
+        #expect(ConnectionURLFormatter.format(clickhouse, password: "", sshPassword: nil).contains("sslmode=disable"))
+        #expect(!ConnectionURLFormatter.format(trinoPlain, password: "", sshPassword: nil).contains("sslmode"))
+    }
+
+    @Test("A mode the URL would resolve to anyway is left out")
+    func testDefaultModeIsOmitted() {
+        let postgres = DatabaseConnection(
+            name: "", host: "host", port: 5_432, database: "db", username: "user", type: .postgresql,
+            sslConfig: SSLConfiguration(mode: .preferred)
+        )
+        let trino = DatabaseConnection(
+            name: "", host: "trino.example.com", port: 8_080, database: "hive", username: "analyst", type: .trino,
+            sslConfig: SSLConfiguration(mode: .disabled)
+        )
+        #expect(!ConnectionURLFormatter.format(postgres, password: "", sshPassword: nil).contains("sslmode"))
+        #expect(!ConnectionURLFormatter.format(trino, password: "", sshPassword: nil).contains("sslmode"))
+    }
+
+    @Test("On a port that implies TLS the mode is always written, for clients that do not read the port")
+    func testModeOnTLSPortIsWritten() throws {
+        for mode in [SSLMode.verifyIdentity, .disabled] {
+            let trino = DatabaseConnection(
+                name: "", host: "trino.example.com", port: 443, database: "hive", username: "analyst", type: .trino,
+                sslConfig: SSLConfiguration(mode: mode)
+            )
+            let url = ConnectionURLFormatter.format(trino, password: "", sshPassword: nil)
+            #expect(url.contains(mode == .disabled ? "sslmode=disable" : "sslmode=verify-full"), "\(url)")
+            guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+                Issue.record("Could not parse \(url)")
+                continue
+            }
+            #expect(parsed.sslModeResolution.mode == mode)
+        }
+    }
+
+    @Test("A copied URL keeps the SSL mode when it is opened again")
+    func testSSLModeRoundTrips() {
+        for mode in [SSLMode.disabled, .preferred, .required] {
+            for type in [DatabaseType.postgresql, .mysql] {
+                expectRoundTrip(mode: mode, type: type)
+            }
+        }
+    }
+
+    private func expectRoundTrip(mode: SSLMode, type: DatabaseType) {
+        let conn = DatabaseConnection(
+            name: "", host: "db.example.com", port: type.defaultPort, database: "app",
+            username: "user", type: type, sslConfig: SSLConfiguration(mode: mode)
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "", sshPassword: nil)
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(TransientConnectionFactory.build(from: parsed).sslConfig.mode == mode, "\(url)")
+    }
+
+    @Test("A copied etcd URL keeps the TLS Mode its driver reads when it is opened again")
+    func etcdTLSModeRoundTrips() {
+        for tlsMode in ["Required", "VerifyCA", "VerifyIdentity", "Disabled"] {
+            let conn = DatabaseConnection(
+                name: "", host: "etcd.example.com", port: 2_379, database: "", username: "root", type: .etcd,
+                sslConfig: SSLConfiguration(mode: .disabled), additionalFields: ["etcdTlsMode": tlsMode]
+            )
+            let url = ConnectionURLFormatter.format(conn, password: "", sshPassword: nil)
+            guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+                Issue.record("\(url) did not parse")
+                continue
+            }
+            #expect(parsed.additionalFields["etcdTlsMode"] == tlsMode, "\(url)")
+        }
+    }
+
+    @Test("An etcd URL never carries the generic SSL Mode its driver ignores")
+    func etcdURLIgnoresTheGenericSSLMode() {
+        let conn = DatabaseConnection(
+            name: "", host: "etcd.example.com", port: 2_379, database: "", username: "root", type: .etcd,
+            sslConfig: SSLConfiguration(mode: .verifyIdentity), additionalFields: ["etcdTlsMode": "Disabled"]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "", sshPassword: nil)
+        #expect(!url.contains("sslmode"), "\(url)")
     }
 
     // MARK: - Connection Name
@@ -440,6 +542,30 @@ struct ConnectionURLFormatterTests {
         #expect(url == "redis://localhost/")
     }
 
+    @Test("Redis URL carries the Database Index field when no older index was saved")
+    func redisURLCarriesTheDatabaseIndexField() {
+        let conn = DatabaseConnection(
+            name: "", host: "localhost", port: 6_379, database: "",
+            username: "", type: .redis, additionalFields: ["redisDatabase": "4"]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "redis://localhost/4")
+    }
+
+    @Test("Redis URL writes an index, never a database name the parser would refuse")
+    func redisURLNeverWritesADatabaseName() {
+        let named = DatabaseConnection(
+            name: "", host: "localhost", port: 6_379, database: "cache",
+            username: "", type: .redis
+        )
+        let prefixed = DatabaseConnection(
+            name: "", host: "localhost", port: 6_379, database: "db4",
+            username: "", type: .redis
+        )
+        #expect(ConnectionURLFormatter.format(named, password: nil, sshPassword: nil) == "redis://localhost/")
+        #expect(ConnectionURLFormatter.format(prefixed, password: nil, sshPassword: nil) == "redis://localhost/4")
+    }
+
     // MARK: - MongoDB Auth Params
 
     @Test("MongoDB URL includes authSource")
@@ -527,5 +653,76 @@ struct ConnectionURLFormatterTests {
         #expect(parsed.host == "myhost")
         #expect(parsed.port == 9_495)
         #expect(parsed.database == "remotedb")
+    }
+
+    // MARK: - Unix socket
+
+    private func socketConnection(
+        _ path: String,
+        type: DatabaseType = .mysql,
+        host: String = "db.internal",
+        port: Int = 3_307
+    ) -> DatabaseConnection {
+        DatabaseConnection(
+            name: "", host: host, port: port, database: "local", username: "root", type: type,
+            sslConfig: SSLConfiguration(mode: type.defaultSSLMode),
+            additionalFields: [MySQLLocalSocket.fieldKey: path]
+        )
+    }
+
+    @Test("A socket connection copies as localhost, no port, and a percent-encoded socket")
+    func socketConnectionURL() {
+        let url = ConnectionURLFormatter.format(socketConnection("/tmp/mysql.sock"), password: "pw", sshPassword: nil)
+        #expect(url == "mysql://root:pw@localhost/local?socket=%2Ftmp%2Fmysql.sock")
+    }
+
+    @Test(
+        "A socket URL parses back to the same socket",
+        arguments: [
+            "/tmp/mysql.sock",
+            "/Users/me/Library/Application Support/Local/run/ab12/mysql/mysqld.sock",
+            "/tmp/a+b&c=d.sock",
+            "/tmp/(x).sock"
+        ]
+    )
+    func socketRoundTrip(_ path: String) throws {
+        for type in [DatabaseType.mysql, .mariadb] {
+            let url = ConnectionURLFormatter.format(socketConnection(path, type: type), password: nil, sshPassword: nil)
+            let parsed = try ConnectionURLParser.parse(url).get()
+            #expect(parsed.type == type)
+            #expect(parsed.localSocketPath == path)
+            #expect(parsed.host == "localhost")
+            #expect(parsed.database == "local")
+            #expect(parsed.username == "root")
+        }
+    }
+
+    @Test(
+        "A database name with URL delimiters keeps its socket and parses back",
+        arguments: ["shop#archive", "a?b", "100%", "my db", "a/b"]
+    )
+    func socketWithDelimitersInDatabase(_ database: String) throws {
+        var connection = socketConnection("/tmp/mysql.sock")
+        connection.database = database
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        let parsed = try ConnectionURLParser.parse(url).get()
+        #expect(parsed.database == database)
+        #expect(parsed.localSocketPath == "/tmp/mysql.sock")
+    }
+
+    @Test("A socket connection under an SSH tunnel copies the tunnel, not the socket")
+    func socketUnderTunnelIsNotWritten() {
+        var connection = socketConnection("/tmp/mysql.sock")
+        connection.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "bastion.example.com"))
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        #expect(url.hasPrefix("mysql+ssh://bastion.example.com/root@db.internal:3307/local"))
+        #expect(!url.contains("socket"))
+    }
+
+    @Test("A socket field on an engine without a socket mode is not written")
+    func socketOnOtherEngineIsNotWritten() {
+        let connection = socketConnection("/tmp/mysql.sock", type: .postgresql, host: "db.example.com", port: 5_432)
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        #expect(url == "postgresql://root@db.example.com/local")
     }
 }

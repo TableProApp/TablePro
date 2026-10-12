@@ -15,9 +15,11 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "MongoDB"
 
     static let supportsRenameTable = true
+    static let supportsDocumentEditing = true
+    static let supportsFieldRemoval = true
     static let databaseDisplayName = "MongoDB"
     static let iconName = "mongodb-icon"
-    static let defaultPort = 27017
+    static let defaultPort = 27_017
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "mongoHosts",
@@ -95,7 +97,13 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "MQL"
     static let editorLanguage: EditorLanguage = .javascript
     static let supportsForeignKeys = false
-    static let supportsSchemaEditing = false
+    static let supportsSchemaEditing = MongoDBStructureEditing.supportsSchemaEditing
+    static let supportsAddColumn = MongoDBStructureEditing.supportsAddColumn
+    static let supportsModifyColumn = MongoDBStructureEditing.supportsModifyColumn
+    static let supportsDropColumn = MongoDBStructureEditing.supportsDropColumn
+    static let supportsAddIndex = MongoDBStructureEditing.supportsAddIndex
+    static let supportsDropIndex = MongoDBStructureEditing.supportsDropIndex
+    static let supportsRenameView = false
     static let systemDatabaseNames: [String] = ["admin", "local", "config"]
     static let tableEntityName = "Collections"
     static let supportsForeignKeyDisable = false

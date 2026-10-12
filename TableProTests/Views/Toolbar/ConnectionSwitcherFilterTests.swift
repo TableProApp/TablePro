@@ -5,10 +5,10 @@
 
 import Foundation
 @testable import TablePro
+import TableProConnectionLibrary
 import TableProPluginKit
 import Testing
 
-@Suite("Connection Switcher Filter")
 struct ConnectionSwitcherFilterTests {
     @Test("Empty or whitespace query matches every connection")
     func emptyQueryMatches() {
@@ -49,7 +49,6 @@ struct ConnectionSwitcherFilterTests {
     }
 }
 
-@Suite("Connection Switcher Selection")
 struct ConnectionSwitcherSelectionTests {
     @Test("Empty list yields no selection")
     func emptyList() {
@@ -82,10 +81,24 @@ struct ConnectionSwitcherSelectionTests {
     }
 }
 
-@Suite("Connection Switcher Sections")
 struct ConnectionSwitcherSectionsTests {
     private func connection(_ name: String, groupId: UUID? = nil, sortOrder: Int = 0) -> DatabaseConnection {
         DatabaseConnection(name: name, groupId: groupId, sortOrder: sortOrder)
+    }
+
+    private func library(
+        _ connections: [DatabaseConnection],
+        groups: [ConnectionGroup],
+        lastConnected: [UUID: Date],
+        includesRecent: Bool = true
+    ) -> LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag> {
+        LibraryOutlineRequest(
+            connections: connections,
+            groups: groups,
+            tags: [],
+            lastConnected: lastConnected,
+            includesRecent: includesRecent
+        )
     }
 
     private func titles(_ sections: [FieldDrivenListSection<ConnectionSwitcherEntry>]) -> [String] {
@@ -226,8 +239,8 @@ struct ConnectionSwitcherSectionsTests {
         #expect(titles(sections) == ["ACTIVE CONNECTIONS", "ACME / EUROPE"])
     }
 
-    @Test("A group carries its own colour onto the header, and no colour means no dot")
-    func groupColourReachesTheHeader() {
+    @Test("A group header carries no colored dot, whatever color the group has")
+    func groupHeadersHaveNoDot() {
         let coloured = ConnectionGroup(name: "Prod", color: .red)
         let plain = ConnectionGroup(name: "Scratch", sortOrder: 1)
 
@@ -238,8 +251,93 @@ struct ConnectionSwitcherSectionsTests {
             isFiltering: false
         )
 
-        #expect(sections.first { $0.title == "PROD" }?.accentColor != nil)
-        #expect(sections.first { $0.title == "SCRATCH" }?.accentColor == nil)
+        #expect(sections.allSatisfy { $0.accentColor == nil })
+    }
+
+    @Test("Favorites and recent connections come before the groups and are not repeated in them")
+    func favoritesAndRecentLeadTheLibrary() {
+        let acme = ConnectionGroup(name: "Acme")
+        let favorite = connection("acme-prod", groupId: acme.id)
+        let recent = connection("acme-staging", groupId: acme.id)
+        let other = connection("acme-local", groupId: acme.id)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            saved: [favorite, recent, other],
+            groups: [acme],
+            isFiltering: false,
+            favorites: [favorite],
+            recent: [recent]
+        )
+
+        #expect(titles(sections) == ["ACTIVE CONNECTIONS", "FAVORITES", "RECENT", "ACME"])
+        #expect(names(sections) == [[], ["acme-prod"], ["acme-staging"], ["acme-local"]])
+    }
+
+    @Test("The library's favorites and recent connections lead the groups, newest recent first")
+    func libraryShortcutsLeadTheGroups() {
+        let acme = ConnectionGroup(name: "Acme")
+        var favorite = connection("acme-prod", groupId: acme.id, sortOrder: 0)
+        favorite.isFavorite = true
+        let older = connection("acme-staging", groupId: acme.id, sortOrder: 1)
+        let newer = connection("acme-qa", groupId: acme.id, sortOrder: 2)
+        let other = connection("acme-local", groupId: acme.id, sortOrder: 3)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            library: library(
+                [favorite, older, newer, other],
+                groups: [acme],
+                lastConnected: [
+                    favorite.id: Date(timeIntervalSince1970: 3),
+                    older.id: Date(timeIntervalSince1970: 1),
+                    newer.id: Date(timeIntervalSince1970: 2),
+                ]
+            ),
+            isFiltering: false
+        )
+
+        #expect(titles(sections) == ["ACTIVE CONNECTIONS", "FAVORITES", "RECENT", "ACME"])
+        #expect(names(sections) == [[], ["acme-prod"], ["acme-qa", "acme-staging"], ["acme-local"]])
+    }
+
+    @Test("Hiding Recent returns its connections to their normal group")
+    func hiddenRecentFallsBackToGroup() {
+        let acme = ConnectionGroup(name: "Acme")
+        let recent = connection("acme-staging", groupId: acme.id, sortOrder: 0)
+        let other = connection("acme-local", groupId: acme.id, sortOrder: 1)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            library: library(
+                [recent, other],
+                groups: [acme],
+                lastConnected: [recent.id: Date()],
+                includesRecent: false
+            ),
+            isFiltering: false
+        )
+
+        #expect(titles(sections) == ["ACTIVE CONNECTIONS", "ACME"])
+        #expect(names(sections) == [[], ["acme-staging", "acme-local"]])
+    }
+
+    @Test("A group nested past the cap still gets a section")
+    func deepGroupStillListed() {
+        let one = ConnectionGroup(name: "One")
+        let two = ConnectionGroup(name: "Two", parentId: one.id)
+        let three = ConnectionGroup(name: "Three", parentId: two.id)
+        let four = ConnectionGroup(name: "Four", parentId: three.id)
+        let five = ConnectionGroup(name: "Five", parentId: four.id)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            saved: [connection("deep", groupId: five.id)],
+            groups: [one, two, three, four, five],
+            isFiltering: false
+        )
+
+        #expect(titles(sections).last == "ONE / TWO / THREE / FOUR / FIVE")
     }
 
     /// A search is a lookup rather than a browse: one match in each of eight groups would otherwise
@@ -272,6 +370,110 @@ struct ConnectionSwitcherSectionsTests {
 
         #expect(rows.filter(\.isHeader).count == 1)
         #expect(rows.compactMap(\.itemId) == [open.id])
+    }
+
+    // MARK: - Moving a tab
+
+    private func ids(_ sections: [FieldDrivenListSection<ConnectionSwitcherEntry>]) -> [UUID] {
+        sections.flatMap { $0.items.map(\.id) }
+    }
+
+    private func openEntry(_ connection: DatabaseConnection) -> ConnectionSwitcherEntry {
+        ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: false, isConnected: true)
+    }
+
+    @Test("A move leaves its source out of the open connections")
+    func moveExcludesTheSourceFromOpen() {
+        let source = connection("dev")
+        let other = connection("prod")
+        let active = [openEntry(source), openEntry(other)]
+
+        let switching = ConnectionSwitcherSections.build(active: active, saved: [], groups: [], isFiltering: false)
+        let moving = ConnectionSwitcherSections.build(
+            active: active, saved: [], groups: [], isFiltering: false, excluding: source.id
+        )
+
+        #expect(ids(switching) == [source.id, other.id])
+        #expect(ids(moving) == [other.id])
+    }
+
+    @Test("A move leaves its source out of Favorites")
+    func moveExcludesTheSourceFromFavorites() {
+        var source = connection("dev", sortOrder: 0)
+        source.isFavorite = true
+        let other = connection("prod", sortOrder: 1)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            library: library([source, other], groups: [], lastConnected: [:]),
+            isFiltering: false,
+            excluding: source.id
+        )
+
+        #expect(!titles(sections).contains("FAVORITES"))
+        #expect(ids(sections) == [other.id])
+    }
+
+    /// Dropped before Recent is capped, or a one-row Recent would show nothing at all.
+    @Test("A move leaves its source out of Recent and lets the next connection take its place")
+    func moveExcludesTheSourceFromRecent() {
+        let source = connection("dev", sortOrder: 0)
+        let older = connection("prod", sortOrder: 1)
+        let request = LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag>(
+            connections: [source, older],
+            groups: [],
+            tags: [],
+            lastConnected: [source.id: Date(timeIntervalSince1970: 2), older.id: Date(timeIntervalSince1970: 1)],
+            recentLimit: 1
+        )
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [], library: request, isFiltering: false, excluding: source.id
+        )
+
+        let recent = sections.first { $0.title == "RECENT" }?.items.map(\.id)
+        #expect(recent == [older.id])
+        #expect(!ids(sections).contains(source.id))
+    }
+
+    @Test("A move leaves its source out of its group, and a group it emptied draws no header")
+    func moveExcludesTheSourceFromGroups() {
+        let acme = ConnectionGroup(name: "Acme")
+        let solo = ConnectionGroup(name: "Solo", sortOrder: 1)
+        let source = connection("dev", groupId: solo.id)
+        let sibling = connection("prod", groupId: acme.id)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [], saved: [source, sibling], groups: [acme, solo], isFiltering: false, excluding: source.id
+        )
+
+        #expect(titles(sections) == ["ACTIVE CONNECTIONS", "ACME"])
+        #expect(ids(sections) == [sibling.id])
+    }
+
+    @Test("A move leaves its source out of the connections in no group")
+    func moveExcludesTheSourceFromUngrouped() {
+        let source = connection("dev", sortOrder: 0)
+        let other = connection("scratch", sortOrder: 1)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [], saved: [source, other], groups: [], isFiltering: false, excluding: source.id
+        )
+
+        #expect(ids(sections) == [other.id])
+    }
+
+    @Test("A move leaves its source out of a filtered list")
+    func moveExcludesTheSourceWhileFiltering() {
+        let source = connection("dev")
+        let other = connection("dev-replica")
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [openEntry(source)], saved: [other], groups: [], isFiltering: true, excluding: source.id
+        )
+
+        #expect(titles(sections) == ["ACTIVE CONNECTIONS", "SAVED CONNECTIONS"])
+        #expect(ids(sections) == [other.id])
     }
 
     @Test("The row order the arrow keys walk is the order the sections draw")

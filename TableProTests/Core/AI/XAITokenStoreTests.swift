@@ -26,7 +26,6 @@ private actor FakeXAIRefresher: XAITokenRefreshing {
     }
 }
 
-@Suite("XAITokenStore")
 struct XAITokenStoreTests {
     private func tokens(refresh: String = "r", expiresIn: TimeInterval) -> XAITokens {
         XAITokens(

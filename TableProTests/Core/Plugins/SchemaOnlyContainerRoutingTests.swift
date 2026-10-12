@@ -13,7 +13,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Schema-only container routing")
 struct SchemaOnlyContainerRoutingTests {
     private func switchable(_ type: DatabaseType) -> [ContainerSwitchTarget] {
         PluginManager.shared.switchableContainers(for: type)

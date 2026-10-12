@@ -3,16 +3,28 @@ import Observation
 import os
 import TableProPluginKit
 
-enum ResultsViewMode: String, Equatable {
+/// `CaseIterable` so the View menu builds its Result View submenu from the case list rather than
+/// from a hand copy of it. Availability per tab is a different question and stays with
+/// `ResultsModeAvailability`, which `CaseIterable` cannot answer.
+enum ResultsViewMode: String, CaseIterable, Equatable {
     case data
     case structure
     case json
     case chart
+    case map
+    /// What the statement printed on the server, such as Oracle's `DBMS_OUTPUT`. Offered only for a result that
+    /// printed something.
+    case output
 
     /// How much of the loaded result the mode is showing, and how to load more. A chart draws the
     /// same buffer the grid does, so it needs the same scope controls: a warning that the chart is
-    /// incomplete is only useful next to the control that completes it.
+    /// incomplete is only useful next to the control that completes it. A map draws that same
+    /// buffer, so the same argument puts it here. Output is not drawn from the buffer at all.
     var showsResultScope: Bool {
+        self != .structure && self != .output
+    }
+
+    var reportsExecution: Bool {
         self != .structure
     }
 
@@ -20,6 +32,9 @@ enum ResultsViewMode: String, Equatable {
         self == .data || self == .json
     }
 
+    /// Map is deliberately out. A value filter set in Data mode still narrows the map, because the
+    /// map draws the display order rather than the whole buffer, but the filter chrome belongs
+    /// beside the grid it filters.
     var showsRowFilters: Bool {
         self == .data || self == .json
     }
@@ -29,6 +44,17 @@ enum ResultsViewMode: String, Equatable {
     /// its own search inside the tree view.
     var showsFindBar: Bool {
         self == .data
+    }
+
+    /// Whether a row selection means anything in this mode, and so whether the status bar should
+    /// report one.
+    ///
+    /// Deliberately its own question rather than a reuse of `showsColumnControls`, which is about
+    /// column chrome. Map both reads the selection, to highlight the chosen shape, and writes it,
+    /// when a shape is clicked, so a count the bar refuses to print is a count the reader cannot
+    /// see anywhere.
+    var reportsRowSelection: Bool {
+        self == .data || self == .json || self == .map
     }
 }
 
@@ -77,6 +103,7 @@ struct QueryTab: Identifiable, Equatable {
     var sessionHighlightRules: [HighlightRule] = []
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
+    var mapConfiguration: ResultMapConfiguration
     var hasUserInteraction: Bool
     var schemaVersion: Int
     var metadataVersion: Int
@@ -91,6 +118,7 @@ struct QueryTab: Identifiable, Equatable {
     /// offset is recomputed as `(page - 1) * pageSize`, so reading the index in a different size
     /// lands the tab on rows it was never showing.
     var restoredPageSize: Int?
+    var restoredRowAnchor: [String: String]?
     var restoredCursorOffset: Int?
     var restoredCursorLength: Int?
 
@@ -174,6 +202,7 @@ struct QueryTab: Identifiable, Equatable {
         self.valueFilter = GridValueFilterState()
         self.pagination = PaginationState()
         self.chartConfiguration = ResultChartConfiguration()
+        self.mapConfiguration = ResultMapConfiguration()
         self.hasUserInteraction = false
         self.schemaVersion = 0
         self.metadataVersion = 0
@@ -195,7 +224,8 @@ struct QueryTab: Identifiable, Equatable {
         self.content = TabQueryContent(
             query: persisted.query,
             queryParameters: persisted.queryParameters ?? [],
-            sourceFileURL: persisted.sourceFileURL
+            sourceFileURL: persisted.sourceFileURL,
+            sourceFileEncoding: persisted.sourceFileEncoding
         )
         self.execution = TabExecutionState()
         self.tableContext = TabTableContext(
@@ -208,7 +238,8 @@ struct QueryTab: Identifiable, Equatable {
         )
         self.display = TabDisplayState(
             erDiagramSchemaKey: persisted.erDiagramSchemaKey,
-            objectRef: persisted.objectRef
+            objectRef: persisted.objectRef,
+            versionHistorySubject: persisted.versionHistorySubject
         )
         self.pendingChanges = TabChangeSnapshot()
         self.selectedRowIndices = []
@@ -228,6 +259,7 @@ struct QueryTab: Identifiable, Equatable {
         self.valueFilter = GridValueFilterState()
         self.pagination = PaginationState(pageSize: defaultPageSize)
         self.chartConfiguration = ResultChartConfiguration()
+        self.mapConfiguration = ResultMapConfiguration()
         self.hasUserInteraction = false
         self.schemaVersion = 0
         self.metadataVersion = 0
@@ -296,11 +328,12 @@ struct QueryTab: Identifiable, Equatable {
             return pluginQuery
         }
 
-        switch PluginManager.shared.editorLanguage(for: databaseType) {
-        case .javascript:
-            let escaped = tableName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            return "db[\"\(escaped)\"].find({}).limit(\(pageSize))"
-        case .bash:
+        /// Keyed by engine: Elasticsearch, Typesense and Weaviate also highlight as JavaScript and etcd as a
+        /// command line, and none of them runs these. Without their plugin they reach the dialect, which throws.
+        switch databaseType {
+        case .mongodb:
+            return "\(MongoCollectionAccessor.expression(for: tableName)).find({}).limit(\(pageSize))"
+        case .redis:
             return "SCAN 0 MATCH * COUNT \(pageSize)"
         default:
             let dialect = try resolveSQLDialect(for: databaseType)
@@ -382,8 +415,10 @@ struct QueryTab: Identifiable, Equatable {
             databaseName: tableContext.databaseName,
             schemaName: tableContext.schemaName,
             sourceFileURL: content.sourceFileURL,
+            sourceFileEncoding: content.sourceFileEncoding,
             erDiagramSchemaKey: display.erDiagramSchemaKey,
             objectRef: display.objectRef,
+            versionHistorySubject: display.versionHistorySubject,
             queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
             sortColumns: persistedSort,
             sortSource: persistedSortSource,
@@ -412,6 +447,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.valueFilter == rhs.valueFilter
             && lhs.sessionHighlightRules == rhs.sessionHighlightRules
             && lhs.chartConfiguration == rhs.chartConfiguration
+            && lhs.mapConfiguration == rhs.mapConfiguration
             && lhs.display == rhs.display
             && lhs.tableContext.isEditable == rhs.tableContext.isEditable
             && lhs.tableContext.isView == rhs.tableContext.isView

@@ -3,12 +3,12 @@
 //  JSONExportPlugin
 //
 
+import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to JSON format"
@@ -20,7 +20,7 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sen
     typealias Settings = JSONExportOptions
     static let settingsStorageId = "json"
 
-    var settings = JSONExportOptions() {
+    @Published var settings = JSONExportOptions() {
         didSet { saveSettings() }
     }
 

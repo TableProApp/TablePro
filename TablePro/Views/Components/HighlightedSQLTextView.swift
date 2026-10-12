@@ -18,6 +18,8 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     /// view AppKit publishes, so the only way to name this element is to set it on the text view.
     var accessibilityIdentifier: String?
 
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
 
@@ -29,10 +31,10 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         textView.setAccessibilityLabel(String(localized: "Query preview"))
         textView.isEditable = false
         textView.isSelectable = true
-        textView.font = ThemeEngine.shared.editorFonts.font
+        textView.font = themeEngine.editorFonts.font
         textView.textContainerInset = NSSize(width: 12, height: 12)
-        textView.backgroundColor = ThemeEngine.shared.palette[.editorBackground]
-        textView.textColor = ThemeEngine.shared.palette[.editorText]
+        textView.backgroundColor = themeEngine.palette[.editorBackground]
+        textView.textColor = themeEngine.palette[.editorText]
 
         // Disable line wrapping
         textView.textContainer?.widthTracksTextView = false
@@ -48,15 +50,15 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
-        let editorFont = ThemeEngine.shared.editorFonts.font
+        let editorFont = themeEngine.editorFonts.font
         let fontChanged = textView.font != editorFont
         let textChanged = textView.string != sql
 
         if fontChanged {
             textView.font = editorFont
         }
-        textView.backgroundColor = ThemeEngine.shared.palette[.editorBackground]
-        textView.textColor = ThemeEngine.shared.palette[.editorText]
+        textView.backgroundColor = themeEngine.palette[.editorBackground]
+        textView.textColor = themeEngine.palette[.editorText]
 
         if textChanged {
             textView.string = sql
@@ -72,7 +74,7 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     }
 
     private var themeRevision: Int {
-        ThemeEngine.shared.revision
+        themeEngine.revision
     }
 
     func makeCoordinator() -> Coordinator {

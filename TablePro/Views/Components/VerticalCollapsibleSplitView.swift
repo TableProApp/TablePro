@@ -47,7 +47,7 @@ struct VerticalCollapsibleSplitView<TopContent: View, BottomContent: View>: NSVi
 
         // autosaveName is assigned after the items are added; setting it earlier does not record
         // the divider, and adjustSubviews then resets it.
-        splitViewController.splitView.autosaveName = NSSplitView.AutosaveName(SplitViewAutosaveName.current(autosaveName))
+        splitViewController.splitView.autosaveName = SplitViewAutosaveName.current(autosaveName)
 
         context.coordinator.topController = topController
         context.coordinator.bottomController = bottomController
@@ -59,9 +59,11 @@ struct VerticalCollapsibleSplitView<TopContent: View, BottomContent: View>: NSVi
         }
         context.coordinator.observeCollapse(of: bottomItem)
 
-        if isBottomCollapsed {
-            bottomItem.isCollapsed = true
-        }
+        /// Assigned either way, so the tab's own state wins over whatever the autosave record
+        /// restored. Collapsing only when the binding says so let a record that was saved collapsed
+        /// leave a pane collapsed against a tab whose `isResultsCollapsed` is false, and nothing
+        /// afterwards expanded it.
+        bottomItem.isCollapsed = isBottomCollapsed
 
         return splitViewController
     }

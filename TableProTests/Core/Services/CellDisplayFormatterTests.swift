@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("CellDisplayFormatter")
 @MainActor
 struct CellDisplayFormatterTests {
     @Test("nil input returns nil")

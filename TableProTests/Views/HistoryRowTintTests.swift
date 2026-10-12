@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("History row tints on a selection fill")
 @MainActor
 struct HistoryRowTintTests {
     private func entry(wasSuccessful: Bool) -> QueryHistoryEntry {
@@ -27,6 +26,7 @@ struct HistoryRowTintTests {
 
     /// Renders the row over the same fill AppKit paints for an emphasized selection, and counts the
     /// pixels that are still the raw tint rather than the selected-content colour.
+    @available(macOS 14.0, *)
     private func offTintPixels(
         wasSuccessful: Bool,
         connectionLabel: HistoryConnectionLabel?,
@@ -65,6 +65,7 @@ struct HistoryRowTintTests {
 
     /// The regression. A failed entry drew a fixed red glyph, which SwiftUI does not remap, so it
     /// sat on the accent fill at roughly 1.5:1 and read as a dark blob.
+    @available(macOS 14.0, *)
     @Test("The failure glyph leaves the accent fill when the row is emphasized")
     func failureGlyphAdaptsToProminence() {
         let standard = offTintPixels(
@@ -78,6 +79,8 @@ struct HistoryRowTintTests {
         #expect(increased == 0)
     }
 
+    @available(macOS 14.0, *)
+
     @Test("A successful entry never draws red at either prominence")
     func successGlyphIsNeverRed() {
         #expect(offTintPixels(wasSuccessful: true, connectionLabel: nil, prominence: .standard, matches: isRed) == 0)
@@ -86,8 +89,9 @@ struct HistoryRowTintTests {
 
     /// A connection colour is a stored value, so it stayed itself on the fill. Green is the clearest
     /// of the palette to count against an accent-blue background.
-    @Test("The connection dot leaves the accent fill when the row is emphasized")
-    func connectionDotAdaptsToProminence() {
+    @available(macOS 14.0, *)
+    @Test("The connection glyph leaves the accent fill when the row is emphasized")
+    func connectionGlyphAdaptsToProminence() {
         let label = HistoryConnectionLabel(name: "Chinook", color: .green)
 
         let standard = offTintPixels(

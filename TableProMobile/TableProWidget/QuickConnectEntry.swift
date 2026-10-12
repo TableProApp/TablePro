@@ -8,11 +8,21 @@ struct QuickConnectEntry: TimelineEntry {
         QuickConnectEntry(
             date: .now,
             connections: [
-                WidgetConnectionItem(id: UUID(), name: "Production", type: "PostgreSQL", sortOrder: 0),
-                WidgetConnectionItem(id: UUID(), name: "Local MySQL", type: "MySQL", sortOrder: 1),
-                WidgetConnectionItem(id: UUID(), name: "Redis Cache", type: "Redis", sortOrder: 2),
-                WidgetConnectionItem(id: UUID(), name: "Analytics", type: "ClickHouse", sortOrder: 3)
+                placeholderItem("Production", type: "PostgreSQL", asset: "postgresql-icon", sortOrder: 0),
+                placeholderItem("Local MySQL", type: "MySQL", asset: "mysql-icon", sortOrder: 1),
+                placeholderItem("Redis Cache", type: "Redis", asset: "redis-icon", sortOrder: 2),
+                placeholderItem("Analytics", type: "ClickHouse", asset: "clickhouse-icon", sortOrder: 3)
             ]
+        )
+    }
+
+    private static func placeholderItem(_ name: String, type: String, asset: String, sortOrder: Int) -> WidgetConnectionItem {
+        WidgetConnectionItem(
+            id: UUID(),
+            name: name,
+            type: type,
+            sortOrder: sortOrder,
+            glyph: ConnectionGlyph(source: .asset, name: asset)
         )
     }
 }

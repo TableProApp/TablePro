@@ -7,9 +7,9 @@
 //
 
 import AppKit
-import CodeEditLanguages
-@testable import CodeEditSourceEditor
-import CodeEditTextView
+import TableProEditorKit
+import TableProGrammars
+import TableProTextEngine
 
 @MainActor
 internal enum EditorControllerFixture {
@@ -96,7 +96,7 @@ internal enum EditorControllerFixture {
         )
     }
 
-    private static var theme: EditorTheme {
+    internal static var theme: EditorTheme {
         EditorTheme(
             text: EditorTheme.Attribute(color: .textColor),
             insertionPoint: .textColor,

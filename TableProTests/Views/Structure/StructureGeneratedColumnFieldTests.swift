@@ -12,7 +12,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Generated column structure fields")
+@MainActor
 struct StructureGeneratedColumnFieldTests {
     private func column() -> EditableColumnDefinition {
         var column = EditableColumnDefinition.placeholder()

@@ -32,13 +32,20 @@ struct ExecutionReadout: Equatable {
         execution.isBusy(tabId)
     }
 
-    /// Nothing to draw when no query has run and none is running. The toolbar used to hold an
-    /// em-dash placeholder there, which spent width to say nothing.
-    var isActive: Bool {
-        isExecuting || lastTiming != nil
+    /// Whether the Stop beside the spinner can still act. A batch whose `COMMIT` is on the wire
+    /// keeps the spinner and loses the button, because nothing can take that commit back.
+    var canStop: Bool {
+        execution.isStoppable(tabId)
+    }
+
+    var startedAt: ContinuousClock.Instant? {
+        execution.startedAt(tabId)
     }
 
     static func == (lhs: ExecutionReadout, rhs: ExecutionReadout) -> Bool {
-        lhs.isExecuting == rhs.isExecuting && lhs.lastTiming == rhs.lastTiming
+        lhs.isExecuting == rhs.isExecuting
+            && lhs.canStop == rhs.canStop
+            && lhs.startedAt == rhs.startedAt
+            && lhs.lastTiming == rhs.lastTiming
     }
 }

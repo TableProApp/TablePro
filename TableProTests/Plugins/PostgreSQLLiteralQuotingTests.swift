@@ -16,7 +16,6 @@ import Testing
 /// `PostgreSQLObjectQueries.quoteLiteral` is the single answer, and these cases pin both halves of
 /// it: an `E''` string whenever the value holds a backslash, and output byte-identical to plain
 /// quote doubling whenever it does not.
-@Suite("PostgreSQL literal quoting")
 struct PostgreSQLLiteralQuotingTests {
     private static let caps = PostgreSQLCapabilities.assumingModernWhenUnknown(170_000)
 
@@ -26,20 +25,35 @@ struct PostgreSQLLiteralQuotingTests {
     /// which is what makes that safe.
     private static func statements(schema: String, table: String) -> [String] {
         [
-            PostgreSQLSchemaQueries.fetchTables(
+            PostgreSQLTableListing.query(
                 schema: schema, includeMaterializedViews: true, includeForeignTables: true
             ),
+            PostgreSQLTableListing.query(
+                in: .schemas([schema, table]), includeMaterializedViews: true, includeForeignTables: true
+            ),
+            PostgreSQLTableListing.informationSchemaQuery(in: .schemas([schema, table])),
+            PostgreSQLSchemaQueries.enumLabelQuery(schema: schema, table: table),
+            PostgreSQLSchemaQueries.arrayTypeQuery(schema: schema, table: table),
+            PostgreSQLSchemaQueries.databaseMetadata(database: schema),
+            PostgreSQLObjectQueries.userDefinedTypeList(schemas: [schema], capabilities: caps),
+            CockroachRelationSQL.columnsQuery(schema: schema, table: table),
             PostgreSQLSchemaQueries.fetchPartitions(schema: schema, table: table),
             PostgreSQLSchemaQueries.columnsQuery(
                 schema: schema, table: table, capabilities: caps, includeMaterializedViews: true
             ),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: schema, table: table),
             PostgreSQLSchemaQueries.allTablesMetadata(schema: schema),
+            PostgreSQLSchemaQueries.approximateRowCount(schema: schema, table: table),
             PostgreSQLObjectQueries.routineList(schema: schema, capabilities: caps),
             PostgreSQLObjectQueries.triggerList(schema: schema, table: table),
             PostgreSQLObjectQueries.routineDefinitionByName(name: table, schema: schema, arguments: nil),
             PostgreSQLObjectQueries.userDefinedTypeList(schema: schema, identity: nil, capabilities: caps),
-            PostgreSQLIndexQueries.indexList(schema: schema, table: table),
+            PostgreSQLIndexQueries.indexList(schema: schema, table: table, capabilities: caps),
+            PostgreSQLIndexQueries.indexDDLQuery(schema: schema, table: table),
+            PostgreSQLIndexQueries.standaloneIndexQuery(schema: schema, table: table),
+            PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: schema, table: table),
+            PostgreSQLSchemaQueries.tableDDLColumnsQuery(schema: schema, table: table, capabilities: caps),
+            PostgreSQLSchemaQueries.rebuildColumnsQuery(schema: schema, table: table, capabilities: caps),
             PostgreSQLForeignKeyQueries.foreignKeyList(schema: schema, table: table, capabilities: caps),
             PostgreSQLSequenceQueries.sequenceList(
                 schema: schema, dependentOnTable: table, source: .sequencesView
@@ -59,7 +73,10 @@ struct PostgreSQLLiteralQuotingTests {
             RedshiftExternalSchemaQueries.listExternalColumns(
                 schema: schema, table: table, database: table
             ),
-            ColumnQueryShape.primaryKeyJoin(
+            ColumnQueryShape.informationSchemaPrimaryKeyJoin(
+                schema: schema, fragments: ColumnQueryShape.fragments(table: table)
+            ),
+            ColumnQueryShape.catalogPrimaryKeyJoin(
                 schema: schema, fragments: ColumnQueryShape.fragments(table: table)
             )
         ]
@@ -135,7 +152,6 @@ struct PostgreSQLLiteralQuotingTests {
 /// literal: `''E'a\\b''` is valid SQL that matches nothing, and a plain `'\(name)'` only misbehaves
 /// on a server running the legacy setting. So the guard is a source scan, the same shape
 /// `IndexDDLOwnershipTests` and `SyncMapperFieldAccessTests` use.
-@Suite("PostgreSQL literal quoting source scan")
 struct PostgreSQLLiteralQuotingSourceScanTests {
     /// `PostgreSQLObjectQueries` owns the quoting and is the one file allowed to write the quotes
     /// itself. `LibPQConnectionString` builds a libpq conninfo string, whose quoting rules are
@@ -194,6 +210,22 @@ struct PostgreSQLLiteralQuotingSourceScanTests {
         #expect(
             offenders.isEmpty,
             "These lines quote a literal themselves instead of calling quoteLiteral: \(offenders)"
+        )
+    }
+
+    @Test("No catalog lookup outside the schema queries resolves its schema through current_schema()")
+    func noCatalogLookupReadsTheSessionSchema() throws {
+        var offenders: [String] = []
+        for source in try Self.sources() where source.name != "PostgreSQLSchemaQueries.swift" {
+            for (offset, line) in source.text.components(separatedBy: "\n").enumerated()
+            where line.replacingOccurrences(of: " ", with: "").contains("nspname=current_schema()") {
+                offenders.append("\(source.name):\(offset + 1)")
+            }
+        }
+
+        #expect(
+            offenders.isEmpty,
+            "These lines read the session's schema instead of the one the caller named: \(offenders)"
         )
     }
 
