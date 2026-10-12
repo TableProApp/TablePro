@@ -338,7 +338,7 @@ impl BrowseTab {
         if let Some(strip) = self.filter_strip.as_ref() {
             strip.update_filter(set);
         }
-        let _ = sender.output(BrowseTabOutput::FetchPage);
+        self.emit_fetch_page(sender);
         let _ = sender.output(BrowseTabOutput::FetchRowCount);
         let _ = sender.output(BrowseTabOutput::StateChanged);
     }

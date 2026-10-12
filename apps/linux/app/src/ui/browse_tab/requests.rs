@@ -70,11 +70,19 @@ impl PageRequestTracker {
     pub(super) fn accepts(&self, request: BrowsePageRequest, current_offset: u64) -> bool {
         self.latest.get() == Some(request.id) && request.offset == current_offset
     }
+
+    pub(super) fn current_id(&self) -> Option<Uuid> {
+        self.latest.get()
+    }
+
+    pub(super) fn invalidate(&self) {
+        self.latest.set(Some(Uuid::new_v4()));
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::CellValueRequestTracker;
+    use super::{CellValueRequestTracker, PageRequestTracker};
 
     #[test]
     fn only_the_latest_full_value_response_is_current() {
@@ -84,5 +92,19 @@ mod tests {
 
         assert!(!requests.accepts(first));
         assert!(requests.accepts(latest));
+    }
+
+    #[test]
+    fn invalidating_a_page_rejects_pending_results_before_the_next_request_begins() {
+        let requests = PageRequestTracker::default();
+        let current = requests.begin(0);
+        let generation = requests.current_id();
+
+        requests.invalidate();
+
+        assert_ne!(requests.current_id(), generation);
+        assert!(!requests.accepts(current, 0));
+        let next = requests.begin(100);
+        assert!(requests.accepts(next, 100));
     }
 }

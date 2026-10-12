@@ -6,6 +6,50 @@ use super::*;
 
 const MAX_PASTE_CELLS: usize = 5_000;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::ui) struct PasteSnapshot {
+    page_request_id: Option<uuid::Uuid>,
+    row_keys: Vec<Option<crate::services::change_tracker::RowKey>>,
+}
+
+#[derive(Debug)]
+pub(in crate::ui) struct PasteTextInput {
+    pub(in crate::ui) row: u32,
+    pub(in crate::ui) col: usize,
+    pub(in crate::ui) row_key: Vec<Value>,
+    pub(in crate::ui) text: String,
+    pub(in crate::ui) snapshot: PasteSnapshot,
+}
+
+impl PasteSnapshot {
+    fn new(
+        page_request_id: Option<uuid::Uuid>,
+        row_keys: Vec<Option<crate::services::change_tracker::RowKey>>,
+    ) -> Self {
+        Self {
+            page_request_id,
+            row_keys,
+        }
+    }
+
+    fn matches(
+        &self,
+        current_page_request_id: Option<uuid::Uuid>,
+        target_rows: &[u32],
+        mut row_key_at: impl FnMut(u32) -> Option<crate::services::change_tracker::RowKey>,
+    ) -> bool {
+        if self.page_request_id != current_page_request_id {
+            return false;
+        }
+        target_rows.iter().all(|row| {
+            let Some(expected) = self.row_keys.get(*row as usize).and_then(Option::as_ref) else {
+                return false;
+            };
+            row_key_at(*row).as_ref() == Some(expected)
+        })
+    }
+}
+
 pub(super) fn parse_clipboard_grid(text: &str) -> Vec<Vec<String>> {
     let mut rows = Vec::new();
     let mut row = Vec::new();
@@ -101,18 +145,26 @@ pub(super) fn paste_shortcut(sender: ComponentSender<BrowseTab>) -> gtk::Shortcu
 
 impl BrowseTab {
     pub(super) fn handle_paste(&mut self, row: u32, col: usize, row_key: Vec<Value>, sender: ComponentSender<Self>) {
+        if !self.row_position_still_holds(row, &row_key) {
+            let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
+                "The rows changed since you clicked the cell, so nothing was pasted"
+            )));
+            return;
+        }
         let Some(display) = gdk::Display::default() else {
             return;
         };
         let clipboard = display.clipboard();
+        let snapshot = self.capture_paste_snapshot();
         glib::spawn_future_local(async move {
             if let Ok(Some(text)) = clipboard.read_text_future().await {
-                sender.input(BrowseTabInput::PasteText {
+                sender.input(BrowseTabInput::PasteText(PasteTextInput {
                     row,
                     col,
                     row_key,
                     text: text.to_string(),
-                });
+                    snapshot,
+                }));
             }
         });
     }
@@ -142,15 +194,16 @@ impl BrowseTab {
             })
     }
 
-    pub(super) fn handle_paste_text(
-        &mut self,
-        row: u32,
-        col: usize,
-        row_key: &[Value],
-        text: &str,
-        sender: ComponentSender<Self>,
-    ) {
-        if !self.row_position_still_holds(row, row_key) {
+    pub(super) fn handle_paste_text(&mut self, input: PasteTextInput, sender: ComponentSender<Self>) {
+        let PasteTextInput {
+            row,
+            col,
+            row_key,
+            text,
+            snapshot,
+        } = input;
+        if snapshot.page_request_id != self.page_requests.current_id() || !self.row_position_still_holds(row, &row_key)
+        {
             let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
                 "The rows changed since you clicked the cell, so nothing was pasted"
             )));
@@ -160,7 +213,7 @@ impl BrowseTab {
         let cells = match paste_plan(
             row,
             col,
-            &parse_clipboard_grid(text),
+            &parse_clipboard_grid(&text),
             loaded,
             self.current_columns.len(),
         ) {
@@ -170,6 +223,15 @@ impl BrowseTab {
                 return;
             }
         };
+        let target_rows: Vec<u32> = cells.iter().map(|cell| cell.row).collect();
+        if !snapshot.matches(self.page_requests.current_id(), &target_rows, |position| {
+            self.paste_row_key_at(position)
+        }) {
+            let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
+                "That row moved while you were editing. The change was not applied."
+            )));
+            return;
+        }
         if let Some(message) = cells.iter().find_map(|cell| self.check_paste_cell(cell).err()) {
             let _ = sender.output(BrowseTabOutput::ShowToast(message));
             return;
@@ -177,6 +239,21 @@ impl BrowseTab {
         for cell in cells {
             self.handle_grid_cell_edited(cell.row, cell.col, cell.text, Vec::new(), sender.clone());
         }
+    }
+
+    fn capture_paste_snapshot(&self) -> PasteSnapshot {
+        let row_keys = (0..self.row_count_loaded())
+            .map(|position| self.paste_row_key_at(position))
+            .collect();
+        PasteSnapshot::new(self.page_requests.current_id(), row_keys)
+    }
+
+    fn paste_row_key_at(&self, position: u32) -> Option<crate::services::change_tracker::RowKey> {
+        let row = self.row_object_at(position)?;
+        if let Some(draft_id) = row.draft_id() {
+            return Some(crate::services::change_tracker::RowKey::Draft(draft_id));
+        }
+        self.row_key_at(position).map(|(key, _)| key)
     }
 
     fn row_count_loaded(&self) -> u32 {
@@ -228,5 +305,38 @@ mod tests {
     fn a_huge_paste_is_refused_before_any_cell_is_touched() {
         let big = vec![vec!["x".to_string(); 100]; 100];
         assert!(paste_plan(0, 0, &big, 20_000, 200).is_err());
+    }
+
+    #[test]
+    fn a_pending_paste_requires_the_same_page_generation_and_target_row_identities() {
+        use crate::services::change_tracker::RowKey;
+        use tablepro_core::Value;
+
+        let first = RowKey::from_pk_values(&[Value::Int(1)]).unwrap();
+        let second = RowKey::from_pk_values(&[Value::Int(2)]).unwrap();
+        let draft = RowKey::Draft(7);
+        let generation = uuid::Uuid::new_v4();
+        let snapshot = PasteSnapshot::new(
+            Some(generation),
+            vec![Some(first.clone()), Some(second.clone()), Some(draft.clone())],
+        );
+        let unchanged = [Some(first.clone()), Some(second.clone()), Some(draft.clone())];
+        let reordered = [Some(second.clone()), Some(first.clone()), Some(draft.clone())];
+        let replaced_draft = [Some(first.clone()), Some(second.clone()), Some(RowKey::Draft(8))];
+        let missing = [Some(first.clone()), None, Some(draft)];
+
+        assert!(snapshot.matches(Some(generation), &[0, 1, 2], |position| {
+            unchanged[position as usize].clone()
+        }));
+        assert!(!snapshot.matches(Some(uuid::Uuid::new_v4()), &[0], |position| {
+            unchanged[position as usize].clone()
+        }));
+        assert!(!snapshot.matches(Some(generation), &[0, 1], |position| {
+            reordered[position as usize].clone()
+        }));
+        assert!(!snapshot.matches(Some(generation), &[2], |position| {
+            replaced_draft[position as usize].clone()
+        }));
+        assert!(!snapshot.matches(Some(generation), &[0, 1], |position| missing[position as usize].clone()));
     }
 }
