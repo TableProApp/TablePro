@@ -78,7 +78,10 @@ impl<'a> Lexer<'a> {
             b';' if delimiter.is_none() => self.plain(ScriptTokenKind::Semicolon, start + 1),
             b'(' => self.plain(ScriptTokenKind::OpenParen, start + 1),
             b')' => self.plain(ScriptTokenKind::CloseParen, start + 1),
-            b if b.is_ascii_digit() => self.plain(ScriptTokenKind::Number, self.word_end(start + 1, delimiter)),
+            b if b.is_ascii_digit() => self.plain(ScriptTokenKind::Number, self.number_end(start, delimiter)),
+            b'.' if next.is_some_and(|b| b.is_ascii_digit()) && !self.follows_dot(start) => {
+                self.plain(ScriptTokenKind::Number, self.number_end(start, delimiter))
+            }
             b if self.is_word_start(b) => self.word(start, delimiter),
             _ => self.plain(ScriptTokenKind::Punct, start + 1),
         }
@@ -297,6 +300,39 @@ impl<'a> Lexer<'a> {
             end += 1;
         }
         end
+    }
+
+    /// A numeric constant as SQL spells it: digits, an optional fraction
+    /// and an optional exponent, so `0.5` and `1.5e-3` stay one token.
+    /// Letters and underscores glued on after that (`0x1F`, `1_000`, a
+    /// malformed `1abc`) stay part of it, as they did before.
+    fn number_end(&self, start: usize, delimiter: Option<&str>) -> usize {
+        let digit_at = |at: usize| self.bytes.get(at).is_some_and(u8::is_ascii_digit);
+        let mut end = start;
+        while digit_at(end) {
+            end += 1;
+        }
+        if self.bytes.get(end) == Some(&b'.') && self.bytes.get(end + 1) != Some(&b'.') {
+            end += 1;
+            while digit_at(end) {
+                end += 1;
+            }
+        }
+        if matches!(self.bytes.get(end), Some(b'e' | b'E')) {
+            let sign = usize::from(matches!(self.bytes.get(end + 1), Some(b'+' | b'-')));
+            if digit_at(end + 1 + sign) {
+                end += 1 + sign;
+                while digit_at(end) {
+                    end += 1;
+                }
+            }
+        }
+        self.word_end(end, delimiter)
+    }
+
+    /// The second dot of a `1..2` range is punctuation, not the start of `.2`.
+    fn follows_dot(&self, at: usize) -> bool {
+        at.checked_sub(1).and_then(|before| self.bytes.get(before)) == Some(&b'.')
     }
 
     fn is_word_start(&self, b: u8) -> bool {

@@ -494,3 +494,38 @@ fn lexer_matches_sqlparser_where_engines_agree() {
         assert_eq!(ours, theirs, "{grammar:?} {text:?}");
     }
 }
+
+#[test]
+fn numeric_constants_are_one_token() {
+    let cases = [
+        ("0.5", "0.5"),
+        (".5", ".5"),
+        ("1.", "1."),
+        ("1e-3", "1e-3"),
+        ("1.5E+10", "1.5E+10"),
+        ("0x1F", "0x1F"),
+        ("1_000", "1_000"),
+    ];
+    for (literal, expected) in cases {
+        let text = format!("SELECT {literal} FROM t");
+        let plan = plan(SqlGrammar::PostgreSql, &text);
+        let numbers: Vec<&str> = plan
+            .tokens(0..text.len())
+            .filter(|token| token.kind == ScriptTokenKind::Number)
+            .map(|token| &text[token.range.clone()])
+            .collect();
+        assert_eq!(numbers, [expected], "lexing {literal}");
+    }
+}
+
+#[test]
+fn a_qualified_name_and_a_range_keep_their_dots() {
+    let text = "SELECT t.a, a[1:2], 1..2 FROM t";
+    let plan = plan(SqlGrammar::PostgreSql, text);
+    let numbers: Vec<&str> = plan
+        .tokens(0..text.len())
+        .filter(|token| token.kind == ScriptTokenKind::Number)
+        .map(|token| &text[token.range.clone()])
+        .collect();
+    assert_eq!(numbers, ["1", "2", "1", "2"]);
+}
