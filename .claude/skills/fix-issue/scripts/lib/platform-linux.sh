@@ -433,12 +433,20 @@ platform_step() {
             require_tool dbus-run-session
             require_tool gnome-keyring-daemon
             log="$(new_log secrets)"
-            # A private bus with a throwaway keyring, so the tests never touch the user's real one.
-            run_appending "$log" dbus-run-session -- bash -c \
+            # gnome-keyring-daemon keeps its keyrings under XDG_DATA_HOME and its control socket
+            # under XDG_RUNTIME_DIR. A private bus alone left both pointing at the user's own, so
+            # this step rewrote the developer's login keyring with the test password. Both now
+            # point at a directory that exists only for this run.
+            local keyring_home
+            keyring_home="$(mktemp -d)" || { STATUS=INCONCLUSIVE; note "cause: no temporary directory for the throwaway keyring. Nothing was run."; emit "" 2; }
+            mkdir -m 700 "$keyring_home/data" "$keyring_home/run"
+            run_appending "$log" env XDG_DATA_HOME="$keyring_home/data" XDG_RUNTIME_DIR="$keyring_home/run" \
+                dbus-run-session -- bash -c \
                 "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci > /dev/null \
                 && meson devenv -C '$BUILD_DIR' --workdir '$LINUX_DIR' \
                     cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
             code=$?
+            rm -rf "$keyring_home"
             report_tests "$log" 0
             [ $code -ne 0 ] && [ "$STATUS" = PASS ] && STATUS=FAIL
             diagnose_environment "$log" && STATUS=INCONCLUSIVE
