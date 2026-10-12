@@ -51,6 +51,8 @@ tokio-postgres = { version = "0.7.18", default-features = false, features = ["ru
 postgres-types = { version = "0.2.14", features = ["with-chrono-0_4"] }
 postgres-protocol = "0.6.12"
 deadpool-postgres = { version = "0.14.2", default-features = false, features = ["rt_tokio_1"] }
+deadpool = { version = "0.13.1", default-features = false, features = ["managed", "rt_tokio_1"] }
+clickhouse-types = "0.1.3"
 # The provider comes from the ClientConfig the driver builds, so neither
 # provider feature is needed, and leaving both off keeps ring out.
 tokio-postgres-rustls = { version = "0.14.0", default-features = false }

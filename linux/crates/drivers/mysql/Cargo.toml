@@ -14,17 +14,25 @@ tablepro-core = { path = "../../core" }
 tablepro-net = { path = "../../net" }
 async-trait.workspace = true
 chrono.workspace = true
-futures.workspace = true
+deadpool.workspace = true
+futures-util.workspace = true
 secrecy.workspace = true
 sqlx = { workspace = true, features = ["mysql", "mysql-rsa", "tls-rustls-aws-lc-rs"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
 
 [dev-dependencies]
-rust_decimal.workspace = true
-serde_json.workspace = true
-testcontainers.workspace = true
-testcontainers-modules = { workspace = true, features = ["mysql"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-uuid.workspace = true
+tablepro-test-fixtures = { path = "../../test-fixtures" }
+tablepro-test-support = { path = "../../test-support" }
+async-trait.workspace = true
+chrono.workspace = true
+secrecy.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
