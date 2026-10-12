@@ -160,9 +160,17 @@ targets:
           # Copied whole below. A plain glob flattens it into Resources/ and the
           # inventory then cannot find its texts/ directory.
           - Resources/ThirdPartyLicenses
+          # The tablepro shim, copied below to Contents/SharedSupport/bin. Contents/MacOS
+          # cannot hold it: the volume is case-insensitive and TablePro already lives there.
+          - CLI/tablepro
       - path: TablePro/Resources/ThirdPartyLicenses
         type: folder
         buildPhase: resources
+      - path: TablePro/CLI/tablepro
+        buildPhase:
+          copyFiles:
+            destination: sharedSupport
+            subpath: bin
       # The Redis plugin's own readings of a database index and of redis-cli quoting, so the
       # app classifies, quotes and resolves a Redis statement exactly as the driver will.
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift

@@ -464,7 +464,7 @@ struct ExportDialog: View {
                 if availableFormats.isEmpty && formatsToOffer.isEmpty {
                     HStack {
                         Spacer()
-                        Text("No export formats available. Enable export plugins in Settings > Plugins.")
+                        Text("No export formats available.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Spacer()

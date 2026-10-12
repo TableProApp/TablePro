@@ -9,12 +9,8 @@ import Testing
 @testable import TablePro
 
 private struct StubPolicy: ManagedPolicyReading {
-    var managed: Set<String> = []
-    var bools: [String: Bool] = [:]
     var strings: [String: String] = [:]
 
-    func isManaged(_ policy: ManagedPolicy) -> Bool { managed.contains(policy.key) }
-    func bool(_ policy: ManagedPolicy) -> Bool { bools[policy.key] ?? false }
     func string(_ policy: ManagedPolicy) -> String? { strings[policy.key] }
 }
 
@@ -99,31 +95,19 @@ struct ManagedPolicyReaderTests {
             fatalError("Could not create an isolated UserDefaults suite")
         }
         for (key, value) in values { defaults.set(value, forKey: key) }
-        return ManagedPolicyReader(defaults: defaults, applicationID: suiteName)
+        return ManagedPolicyReader(defaults: defaults)
     }
 
-    @Test("an unset boolean policy reads false rather than nil")
-    func unsetBoolIsFalse() {
+    @Test("an unset policy reads nil")
+    func unsetPolicyIsNil() {
         let reader = makeReader([:])
-        #expect(reader.bool(.mcpServerDisabled) == false)
-        #expect(reader.bool(.aiAssistantDisabled) == false)
-        #expect(reader.bool(.pluginInstallDisabled) == false)
+        #expect(reader.string(.minimumSafeModeLevel) == nil)
     }
 
     @Test("a set policy value is read back")
     func readsSetValues() {
-        let reader = makeReader([
-            ManagedPolicy.mcpServerDisabled.key: true,
-            ManagedPolicy.minimumSafeModeLevel.key: SafeModeLevel.readOnly.rawValue,
-        ])
-        #expect(reader.bool(.mcpServerDisabled))
+        let reader = makeReader([ManagedPolicy.minimumSafeModeLevel.key: SafeModeLevel.readOnly.rawValue])
         #expect(reader.string(.minimumSafeModeLevel) == SafeModeLevel.readOnly.rawValue)
-    }
-
-    @Test("a value set by the user rather than by a profile is not reported as managed")
-    func userSetValueIsNotManaged() {
-        let reader = makeReader([ManagedPolicy.mcpServerDisabled.key: true])
-        #expect(reader.isManaged(.mcpServerDisabled) == false)
     }
 
     @Test("policy keys are distinct and namespaced apart from the settings blobs")

@@ -11,7 +11,7 @@ import Foundation
 ///
 /// This holds only for names resolved at SQL level. A `SYS.`-qualified name inside a PL/SQL block resolves through
 /// PL/SQL, which reaches a package named `SYS` in the current schema first, so app-issued PL/SQL reaches a system
-/// package through a SQL-level `CALL` instead (see ``OracleServerOutput`` and the server-side export block).
+/// package through a SQL-level `CALL` instead (see ``OracleServerOutput``).
 public enum OracleDictionary {
     public static let owner = "SYS"
 

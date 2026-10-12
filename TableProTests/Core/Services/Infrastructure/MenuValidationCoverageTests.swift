@@ -10,7 +10,7 @@ import Testing
 @MainActor
 private func flatten(_ menu: NSMenu) -> [NSMenuItem] {
     menu.items.flatMap { item -> [NSMenuItem] in
-        guard let submenu = item.submenu, submenu !== NSApp.servicesMenu else { return [item] }
+        guard let submenu = item.submenu else { return [item] }
         return [item] + flatten(submenu)
     }
 }
@@ -40,7 +40,7 @@ struct MenuValidationCoverageTests {
     @Test("Every command the window owns is decided rather than left enabled by default")
     func everyOwnedSelectorIsDecided() {
         let context = MenuValidationContext()
-        let undecided = flatten(MainMenuBuilder.build(keyboard: KeyboardSettings()))
+        let undecided = flatten(MainMenuBuilder.build(keyboard: KeyboardSettings()).bar)
             .filter { !$0.isSeparatorItem && $0.submenu == nil }
             .compactMap(\.action)
             .filter { MainSplitViewController.instancesRespond(to: $0) }

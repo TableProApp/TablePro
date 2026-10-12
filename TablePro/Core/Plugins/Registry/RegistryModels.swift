@@ -133,17 +133,6 @@ extension RegistryPlugin {
 
         throw PluginError.noCompatibleBinary
     }
-
-    // Themes carry no native code, so PluginKit ABI does not apply; match on architecture only.
-    func resolvedThemeBinary(for arch: PluginArchitecture = .current) throws -> RegistryBinary {
-        if let match = binaries.first(where: { $0.architecture == arch }) {
-            return match
-        }
-        if let any = binaries.first {
-            return any
-        }
-        throw PluginError.noCompatibleBinary
-    }
 }
 
 struct RegistryAuthor: Codable, Sendable {
@@ -151,23 +140,16 @@ struct RegistryAuthor: Codable, Sendable {
     let url: String?
 }
 
-enum RegistryCategory: String, Codable, Sendable, CaseIterable, Identifiable {
+enum RegistryCategory: String, Codable, Sendable {
     case databaseDriver = "database-driver"
     case exportFormat = "export-format"
     case importFormat = "import-format"
-    case theme = "theme"
     case other = "other"
 
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .databaseDriver: String(localized: "Database Drivers")
-        case .exportFormat: String(localized: "Export Formats")
-        case .importFormat: String(localized: "Import Formats")
-        case .theme: String(localized: "Themes")
-        case .other: String(localized: "Other")
-        }
+    // One entry with a category this app does not know must not fail the whole manifest.
+    init(from decoder: any Decoder) throws {
+        let rawValue = try decoder.singleValueContainer().decode(String.self)
+        self = RegistryCategory(rawValue: rawValue) ?? .other
     }
 }
 
