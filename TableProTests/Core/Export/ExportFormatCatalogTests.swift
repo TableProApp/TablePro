@@ -73,7 +73,6 @@ private final class StubAardvark: StubExportFormat, @unchecked Sendable {
 }
 
 struct ExportFormatCatalogTests {
-
     private func ids(_ plugins: [any ExportFormatPlugin]) -> [String] {
         plugins.map { type(of: $0).formatId }
     }
@@ -117,5 +116,14 @@ struct ExportFormatCatalogTests {
             ExportFormatCatalog.sorted([StubZebra(), StubParquet(), StubSQL(), StubCSV()]))
         #expect(forwards == backwards)
         #expect(forwards == ["csv", "sql", "parquet", "zebra"])
+    }
+
+    @Test("Parquet is offered for install until it is installed")
+    func parquetIsOfferedUntilInstalled() {
+        let offered = ExportFormatCatalog.notInstalled(installedFormatIds: ["csv", "sql"])
+        #expect(offered.map(\.formatId) == ["parquet"])
+        #expect(offered.first?.registryPluginId == "com.TablePro.ParquetExportPlugin")
+
+        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: ["csv", "parquet"]).isEmpty)
     }
 }

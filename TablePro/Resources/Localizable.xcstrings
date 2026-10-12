@@ -93124,6 +93124,9 @@
         }
       }
     },
+    "Install %@…" : {
+
+    },
     "Install it with “brew install libpq” and link it." : {
       "localizations" : {
         "fr" : {
@@ -93329,6 +93332,9 @@
           }
         }
       }
+    },
+    "Install the %@ plugin?" : {
+
     },
     "Install Theme" : {
       "localizations" : {
@@ -177556,6 +177562,9 @@
           }
         }
       }
+    },
+    "TablePro writes this format with a plugin it downloads from the plugin registry." : {
+
     },
     "TABLEPRO_BEANCOUNT_PYTHON points to a Python executable that cannot import beancount at %@" : {
       "extractionState" : "manual",

@@ -22,6 +22,12 @@ struct PluginSettingsSnapshot {
         }
     }
 
+    mutating func include(_ plugin: any SettablePluginDiscoverable) {
+        guard !entries.contains(where: { $0.plugin === plugin }),
+              let data = plugin.snapshotSettingsData() else { return }
+        entries.append((plugin, data))
+    }
+
     mutating func recapture(_ plugin: any SettablePluginDiscoverable) {
         guard let index = entries.firstIndex(where: { $0.plugin === plugin }),
               let data = plugin.snapshotSettingsData() else { return }

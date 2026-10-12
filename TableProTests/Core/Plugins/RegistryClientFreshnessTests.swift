@@ -236,6 +236,60 @@ struct RegistryClientFreshnessTests {
         }
     }
 
+    @Test("an offered export format is found in the registry by its plugin id")
+    func exportFormatResolvesByRegistryId() async throws {
+        let fresh = manifestData(includingTestPlugin: true)
+        MockRegistryProtocol.reset(responses: [(200, fresh), (200, fresh), (200, fresh)])
+        let (client, defaults, tempDir) = try makeEnvironment()
+        let manager = PluginManager(
+            userDefaults: defaults,
+            builtInPluginsURL: nil,
+            userPluginsDir: tempDir.appendingPathComponent("Plugins", isDirectory: true)
+        )
+        let format = InstallableExportFormat(
+            formatId: "freshness",
+            displayName: "Freshness",
+            registryPluginId: "com.test.freshness-driver"
+        )
+
+        do {
+            try await manager.installMissingExportFormat(format, registryClient: client) { _ in }
+            Issue.record("Expected install to fail at compatibility validation")
+        } catch let error as PluginError {
+            guard case .incompatibleWithCurrentApp = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+        }
+    }
+
+    @Test("an offered export format missing from the registry reports not found")
+    func exportFormatMissingFromRegistry() async throws {
+        let empty = manifestData(includingTestPlugin: false)
+        MockRegistryProtocol.reset(responses: [(200, empty), (200, empty)])
+        let (client, defaults, tempDir) = try makeEnvironment()
+        let manager = PluginManager(
+            userDefaults: defaults,
+            builtInPluginsURL: nil,
+            userPluginsDir: tempDir.appendingPathComponent("Plugins", isDirectory: true)
+        )
+        let format = InstallableExportFormat(
+            formatId: "freshness",
+            displayName: "Freshness",
+            registryPluginId: "com.test.freshness-driver"
+        )
+
+        do {
+            try await manager.installMissingExportFormat(format, registryClient: client) { _ in }
+            Issue.record("Expected install to fail")
+        } catch let error as PluginError {
+            guard case .notFound = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+        }
+    }
+
     @Test("registryPlugin resolves by database type id")
     func registryPluginLookup() throws {
         let manifest = try JSONDecoder().decode(RegistryManifest.self, from: manifestData(includingTestPlugin: true))

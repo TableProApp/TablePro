@@ -25,15 +25,27 @@ internal final class PluginInstallProgressPresenter {
 
     internal init() {}
 
+    // Ended before the caller presents a failure, since a second sheet on the window would queue.
+    internal static func run(
+        title: String,
+        window: NSWindow? = nil,
+        _ install: (_ progress: @escaping @MainActor @Sendable (Double) -> Void) async throws -> Void
+    ) async throws {
+        let presenter = PluginInstallProgressPresenter()
+        presenter.begin(title: title, window: window)
+        defer { presenter.end() }
+        try await install { fraction in presenter.update(fraction: fraction) }
+    }
+
     /// Presented as a sheet on the window the user was working in, and as a free-standing panel
     /// when there is none, which is how a Finder open before any window exists reaches the screen.
-    internal func begin(title: String) {
+    internal func begin(title: String, window: NSWindow? = nil) {
         guard panel == nil else { return }
         label.stringValue = title
         let panel = makePanel()
         self.panel = panel
 
-        guard let parent = AlertHelper.resolveWindow(nil) else {
+        guard let parent = AlertHelper.resolveWindow(window) else {
             panel.center()
             panel.makeKeyAndOrderFront(nil)
             return

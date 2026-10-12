@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Panel and status colors in the theme editor, covering the results, inspector, structure, compare and query plan panes.
 - Themes that name a system color for a slot, so the built-in themes keep the system's own contrast settings.
 - Reason shown in Settings > Appearance for a theme file that could not be loaded.
+- Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
 
 ### Changed
 
