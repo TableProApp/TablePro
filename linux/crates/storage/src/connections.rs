@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tablepro_core::AuthMode;
+use tablepro_core::credentials::SecretKind;
+use tablepro_core::{AuthMode, TlsConfig};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -19,7 +20,10 @@ pub struct SavedConnection {
     pub port: u16,
     pub database: String,
     pub username: String,
-    pub use_tls: bool,
+    /// Required, with no default: a file without it was written before
+    /// TLS modes existed, and guessing a mode for it could silently
+    /// connect in the clear.
+    pub tls: TlsConfig,
     #[serde(default)]
     pub read_only: bool,
     #[serde(default)]
@@ -42,6 +46,75 @@ pub struct SavedConnection {
     /// connection starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+}
+
+impl SavedConnection {
+    /// What a secret of this connection belongs to, in the user's own
+    /// terms. Seahorse and the credential prompt both show it, so it
+    /// has to identify the connection without TablePro open.
+    pub fn secret_target(&self, kind: SecretKind) -> String {
+        match kind {
+            SecretKind::DatabasePassword => self.database_target(),
+            SecretKind::SshPassword => self.ssh_target(),
+            SecretKind::SshPassphrase => self.passphrase_target(),
+        }
+    }
+
+    /// Whether the keyring is meant to hold a passphrase for the SSH
+    /// key. Without one the key is unencrypted, or ssh asks for it.
+    pub fn has_stored_passphrase(&self) -> bool {
+        matches!(
+            self.ssh.as_ref().map(|ssh| &ssh.auth),
+            Some(SavedSshAuth::PrivateKey {
+                has_passphrase: true,
+                ..
+            })
+        )
+    }
+
+    /// The SSH key file, when the connection names one.
+    pub fn ssh_key_path(&self) -> Option<&Path> {
+        match self.ssh.as_ref().map(|ssh| &ssh.auth) {
+            Some(SavedSshAuth::PrivateKey { path, .. }) => path.as_deref(),
+            _ => None,
+        }
+    }
+
+    fn database_target(&self) -> String {
+        let mut target = String::new();
+        if !self.username.is_empty() {
+            target.push_str(&self.username);
+            target.push('@');
+        }
+        target.push_str(&self.host);
+        target.push(':');
+        target.push_str(&self.port.to_string());
+        if !self.database.is_empty() {
+            target.push('/');
+            target.push_str(&self.database);
+        }
+        target
+    }
+
+    fn ssh_target(&self) -> String {
+        let Some(ssh) = &self.ssh else {
+            return self.host.clone();
+        };
+        match ssh.username.as_deref().filter(|user| !user.is_empty()) {
+            Some(user) => format!("{user}@{}", ssh.host),
+            None => ssh.host.clone(),
+        }
+    }
+
+    /// A passphrase belongs to a key file, so the path identifies it
+    /// better than the host. Without a path the key comes from the agent
+    /// or the SSH config, and the host is all there is.
+    fn passphrase_target(&self) -> String {
+        match self.ssh_key_path() {
+            Some(path) => path.display().to_string(),
+            None => self.ssh_target(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -408,7 +481,7 @@ mod tests {
             port: 5432,
             database: "app".to_owned(),
             username: "postgres".to_owned(),
-            use_tls: true,
+            tls: TlsConfig::verify_full(),
             read_only: false,
             auth_mode: AuthMode::Password,
             ssh: None,
@@ -428,7 +501,7 @@ mod tests {
         assert_eq!(copy.port, source.port);
         assert_eq!(copy.database, source.database);
         assert_eq!(copy.username, source.username);
-        assert_eq!(copy.use_tls, source.use_tls);
+        assert_eq!(copy.tls, source.tls);
         assert_eq!(copy.driver_id, source.driver_id);
     }
 
@@ -485,7 +558,7 @@ mod tests {
             port: 5432,
             database: "postgres".into(),
             username: "postgres".into(),
-            use_tls: false,
+            tls: TlsConfig::disabled(),
             read_only: false,
             auth_mode: AuthMode::Password,
             ssh: None,
@@ -589,7 +662,7 @@ mod tests {
         let root = TempDir::new().expect("tempdir");
         seed(
             &root,
-            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","use_tls":false,"auth_mode":"from_the_future"}]}"#,
+            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"},"auth_mode":"from_the_future"}]}"#,
         );
 
         let refused = store(&root).load_blocking();
@@ -599,6 +672,91 @@ mod tests {
         assert!(
             matches!(refused, Err(StorageError::DocumentUnavailable(_))),
             "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn saved_connection_requires_tls_field() {
+        let root = TempDir::new().expect("tempdir");
+        seed(
+            &root,
+            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","use_tls":true}]}"#,
+        );
+
+        let refused = store(&root).load_blocking();
+
+        // A list written before TLS modes is refused rather than read as
+        // a guess, which could connect in the clear.
+        assert!(
+            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+            "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn a_tls_configuration_round_trips_with_its_files() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mut connection = sample_connection();
+        connection.tls = TlsConfig {
+            ca_file: Some(PathBuf::from("/etc/ssl/db-ca.pem")),
+            server_name: Some("db.example.com".to_owned()),
+            ..TlsConfig::verify_full()
+        };
+
+        store.upsert_blocking(connection.clone()).expect("upsert");
+        let list = store.load_blocking().expect("load");
+
+        assert_eq!(list[0].tls, connection.tls);
+    }
+
+    fn with_ssh(auth: SavedSshAuth) -> SavedConnection {
+        SavedConnection {
+            ssh: Some(SavedSshConfig {
+                host: "bastion.example.com".to_owned(),
+                port: Some(2222),
+                username: Some("deploy".to_owned()),
+                jump_hosts: Vec::new(),
+                auth,
+            }),
+            database: "shop".to_owned(),
+            ..sample_connection()
+        }
+    }
+
+    #[test]
+    fn secret_targets_name_what_each_secret_unlocks() {
+        let key = with_ssh(SavedSshAuth::PrivateKey {
+            path: Some(PathBuf::from("/home/u/.ssh/id_ed25519")),
+            has_passphrase: true,
+        });
+
+        assert_eq!(
+            key.secret_target(SecretKind::DatabasePassword),
+            "postgres@localhost:5432/shop"
+        );
+        assert_eq!(key.secret_target(SecretKind::SshPassword), "deploy@bastion.example.com");
+        assert_eq!(key.secret_target(SecretKind::SshPassphrase), "/home/u/.ssh/id_ed25519");
+        assert!(key.has_stored_passphrase());
+        assert_eq!(key.ssh_key_path(), Some(Path::new("/home/u/.ssh/id_ed25519")));
+    }
+
+    #[test]
+    fn a_passphrase_without_a_key_file_names_the_host() {
+        let agent_key = with_ssh(SavedSshAuth::PrivateKey {
+            path: None,
+            has_passphrase: false,
+        });
+
+        assert_eq!(
+            agent_key.secret_target(SecretKind::SshPassphrase),
+            "deploy@bastion.example.com"
+        );
+        assert!(!agent_key.has_stored_passphrase());
+        assert_eq!(
+            sample_connection().secret_target(SecretKind::SshPassword),
+            "localhost",
+            "no SSH section falls back to the database host"
         );
     }
 

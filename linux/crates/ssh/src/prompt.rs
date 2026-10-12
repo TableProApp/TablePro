@@ -58,6 +58,9 @@ impl AskpassPrompt {
                 secret: true,
             }]
         };
+        // Nothing an askpass answer gives is stored: the prompt comes
+        // from inside ssh, which knows nothing of the keyring, so it
+        // never offers to remember.
         let (purpose, fields, offer_remember) = match self {
             Self::Notification { .. } => return None,
             Self::HostKeyConfirmation {
@@ -80,9 +83,9 @@ impl AskpassPrompt {
                     reason,
                 },
                 secret_field("Passphrase"),
-                true,
+                false,
             ),
-            Self::Password { .. } => (PromptPurpose::SshPassword { reason }, secret_field("Password"), true),
+            Self::Password { .. } => (PromptPurpose::SshPassword { reason }, secret_field("Password"), false),
             Self::KeyboardInteractive { text } | Self::Other { text } => (
                 PromptPurpose::SshKeyboardInteractive {
                     name: String::new(),
@@ -238,7 +241,7 @@ mod tests {
             }
         );
         assert_eq!(prompt.fields.len(), 1);
-        assert!(prompt.offer_remember);
+        assert!(!prompt.offer_remember, "an askpass answer is never stored");
 
         let other = AskpassPrompt::Other {
             text: "PIN: ".to_owned(),

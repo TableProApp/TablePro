@@ -4,6 +4,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
 
+use zeroize::Zeroizing;
+
 const MAX_FRAME: usize = 65_536;
 const ANSWER: u8 = 0x00;
 
@@ -22,7 +24,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn request_answer() -> Option<Vec<u8>> {
+fn request_answer() -> Option<Zeroizing<Vec<u8>>> {
     let socket = env::var_os("TABLEPRO_ASKPASS_SOCKET")?;
     let hint = env::var_os("SSH_ASKPASS_PROMPT").unwrap_or_default();
     let prompt = env::args_os().nth(1).unwrap_or_default();
@@ -32,7 +34,7 @@ fn request_answer() -> Option<Vec<u8>> {
     write_frame(&mut stream, prompt.as_bytes())?;
     let reply = read_frame(&mut stream)?;
     match reply.split_first() {
-        Some((&ANSWER, answer)) => Some(answer.to_vec()),
+        Some((&ANSWER, answer)) => Some(Zeroizing::new(answer.to_vec())),
         _ => None,
     }
 }
@@ -46,14 +48,14 @@ fn write_frame(stream: &mut UnixStream, bytes: &[u8]) -> Option<()> {
     stream.write_all(bytes).ok()
 }
 
-fn read_frame(stream: &mut UnixStream) -> Option<Vec<u8>> {
+fn read_frame(stream: &mut UnixStream) -> Option<Zeroizing<Vec<u8>>> {
     let mut length = [0u8; 4];
     stream.read_exact(&mut length).ok()?;
     let length = usize::try_from(u32::from_be_bytes(length)).ok()?;
     if length > MAX_FRAME {
         return None;
     }
-    let mut frame = vec![0u8; length];
+    let mut frame = Zeroizing::new(vec![0u8; length]);
     stream.read_exact(&mut frame).ok()?;
     Some(frame)
 }

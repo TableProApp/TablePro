@@ -40,6 +40,8 @@ impl std::fmt::Display for TaskPanic {
     }
 }
 
+impl std::error::Error for TaskPanic {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

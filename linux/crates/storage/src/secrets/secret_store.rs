@@ -70,10 +70,10 @@ impl SecretStore {
 impl SecretVault for SecretStore {
     async fn store(&self, id: Uuid, kind: SecretKind, secret: &SecretString, label: &str) -> Result<(), SecretError> {
         let attributes = secret_attributes::for_secret(&self.schema, id, kind);
-        let value = secret.expose_secret().to_owned();
+        // The one copy is the oo7::Secret, which zeroes itself on drop.
         self.with_keyring(async |keyring| {
             keyring
-                .create_item(label, &attributes, oo7::Secret::text(&value), true)
+                .create_item(label, &attributes, oo7::Secret::text(secret.expose_secret()), true)
                 .await
         })
         .await
@@ -98,8 +98,8 @@ impl SecretVault for SecretStore {
         let Some(secret) = secret else {
             return Ok(SecretLookup::NotStored);
         };
-        // oo7::Secret zeroes itself on drop, so nothing is copied out
-        // when the bytes are not text.
+        // oo7::Secret zeroes itself on drop, and the one copy taken out
+        // moves straight into a SecretString, which zeroes it too.
         let text = std::str::from_utf8(secret.as_bytes()).map_err(|_| SecretError::InvalidEncoding)?;
         Ok(SecretLookup::Found(SecretString::from(text.to_owned())))
     }

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::error::Error;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -24,7 +25,7 @@ const SSHD_SCRIPT: &str = "apk add --no-cache openssh >/dev/null \
     && exec /usr/sbin/sshd -D -e -p 2222 -o PasswordAuthentication=yes -o KbdInteractiveAuthentication=no -o AllowTcpForwarding=yes";
 
 struct Fixture {
-    _container: ContainerAsync<GenericImage>,
+    container: ContainerAsync<GenericImage>,
     _temp: tempfile::TempDir,
     host: String,
     port: u16,
@@ -68,7 +69,7 @@ async fn start() -> TestResult<Fixture> {
         askpass_program: PathBuf::from(env!("CARGO_BIN_EXE_tablepro-askpass")),
     };
     Ok(Fixture {
-        _container: container,
+        container,
         _temp: temp,
         host,
         port,
@@ -105,23 +106,73 @@ async fn connect(
     replies: Vec<PromptReply>,
 ) -> (Result<Arc<SshSession>, TransportError>, Arc<FakePrompter>) {
     let prompter = Arc::new(FakePrompter::new(replies));
-    let result = match config(fixture, auth) {
-        Ok(config) => {
-            SshSession::connect(
-                &config,
-                &fixture.services,
-                &LivenessPolicy::DESKTOP,
-                CredentialInteraction::Attended(prompter.clone()),
-                CancellationToken::new(),
-            )
-            .await
-        }
+    let result = connect_with(
+        fixture,
+        auth,
+        &LivenessPolicy::DESKTOP,
+        CredentialInteraction::Attended(prompter.clone()),
+        CancellationToken::new(),
+    )
+    .await;
+    (result, prompter)
+}
+
+async fn connect_with(
+    fixture: &Fixture,
+    auth: SshAuth,
+    liveness: &LivenessPolicy,
+    interaction: CredentialInteraction,
+    cancel: CancellationToken,
+) -> Result<Arc<SshSession>, TransportError> {
+    match config(fixture, auth) {
+        Ok(config) => SshSession::connect(&config, &fixture.services, liveness, interaction, cancel).await,
         Err(error) => Err(SshFailure::Protocol {
             detail: error.to_string(),
         }
         .into()),
+    }
+}
+
+fn password_auth() -> SshAuth {
+    SshAuth::Password {
+        password: SecretString::from("s3cret"),
+    }
+}
+
+/// Socket inodes a process holds open, read from its fd links.
+fn socket_inodes(pid: &str) -> HashSet<u64> {
+    let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return HashSet::new();
     };
-    (result, prompter)
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| std::fs::read_link(entry.path()).ok())
+        .filter_map(|target| {
+            let target = target.to_string_lossy().into_owned();
+            target.strip_prefix("socket:[")?.strip_suffix(']')?.parse::<u64>().ok()
+        })
+        .collect()
+}
+
+/// Inodes of every TCP socket in LISTEN state (state 0A) in this
+/// network namespace.
+fn listening_tcp_inodes() -> HashSet<u64> {
+    ["/proc/self/net/tcp", "/proc/self/net/tcp6"]
+        .iter()
+        .filter_map(|table| std::fs::read_to_string(table).ok())
+        .flat_map(|table| {
+            table
+                .lines()
+                .skip(1)
+                .filter_map(|row| {
+                    let fields: Vec<&str> = row.split_whitespace().collect();
+                    (fields.get(3) == Some(&"0A"))
+                        .then(|| fields.get(9)?.parse::<u64>().ok())
+                        .flatten()
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn process_alive(pid: u32) -> bool {
@@ -284,4 +335,155 @@ async fn changed_key_reports_file_and_line_then_forget_allows_new_key() {
     let (session, prompter) = connect(&fixture, auth, vec![accept()]).await;
     assert!(session.is_ok());
     assert_eq!(prompter.requests().len(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn first_hop_is_the_destination_ssh_resolved() {
+    let fixture = start().await.unwrap();
+    let (session, _) = connect(&fixture, password_auth(), vec![accept()]).await;
+    let session = session.unwrap();
+
+    let first_hop = session.first_hop_endpoint().unwrap();
+
+    assert_eq!(first_hop.port(), fixture.port);
+    assert_eq!(first_hop.host(), fixture.host);
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn no_loopback_listener_while_tunnelled() {
+    let fixture = start().await.unwrap();
+    let (session, _) = connect(&fixture, password_auth(), vec![accept()]).await;
+    let session = session.unwrap();
+    let target = NetworkEndpoint::new("127.0.0.1", 2222).unwrap();
+    let transport = session.forward(target, &LivenessPolicy::DESKTOP).await.unwrap();
+    let _stream = transport.open().await.unwrap();
+
+    let listening = listening_tcp_inodes();
+    let master = session.master_pid().unwrap().to_string();
+    let ours: HashSet<u64> = socket_inodes("self").union(&socket_inodes(&master)).copied().collect();
+
+    assert!(
+        ours.is_disjoint(&listening),
+        "a TCP listener carries the tunnel: {:?}",
+        ours.intersection(&listening).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn reroute_reuses_session() {
+    let fixture = start().await.unwrap();
+    let (session, _) = connect(&fixture, password_auth(), vec![accept()]).await;
+    let session = session.unwrap();
+    let pid = session.master_pid().unwrap();
+    let first = session
+        .forward(
+            NetworkEndpoint::new("127.0.0.1", 2222).unwrap(),
+            &LivenessPolicy::DESKTOP,
+        )
+        .await
+        .unwrap();
+
+    let rerouted = first
+        .reroute(NetworkEndpoint::new("localhost", 2222).unwrap())
+        .await
+        .unwrap();
+
+    let (TransportRoute::UnixSocket(first_socket), TransportRoute::UnixSocket(second_socket)) =
+        (first.route(), rerouted.route())
+    else {
+        panic!("an ssh forward routes through a unix socket");
+    };
+    assert_ne!(first_socket, second_socket);
+    assert_eq!(
+        first_socket.parent(),
+        second_socket.parent(),
+        "the reroute started another master"
+    );
+    assert_eq!(session.master_pid(), Some(pid));
+    let mut stream = rerouted.open().await.unwrap();
+    let mut banner = [0u8; 8];
+    stream.read_exact(&mut banner).await.unwrap();
+    assert_eq!(&banner, b"SSH-2.0-");
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn cancel_during_handshake_returns_cancelled() {
+    let fixture = start().await.unwrap();
+    let prompter = Arc::new(FakePrompter::new([accept()]).with_delay(Duration::from_secs(60)));
+    let cancel = CancellationToken::new();
+    let cancelling = {
+        let cancel = cancel.clone();
+        async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            cancel.cancel();
+        }
+    };
+
+    let started = tokio::time::Instant::now();
+    let (outcome, ()) = tokio::join!(
+        connect_with(
+            &fixture,
+            SshAuth::Agent,
+            &LivenessPolicy::DESKTOP,
+            CredentialInteraction::Attended(prompter.clone()),
+            cancel,
+        ),
+        cancelling,
+    );
+
+    assert!(matches!(
+        outcome,
+        Err(TransportError::Ssh(SshFailure::InteractionCancelled))
+    ));
+    assert!(started.elapsed() < Duration::from_secs(10));
+    assert_eq!(prompter.requests().len(), 1, "the cancel came before the prompt");
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn keepalive_detects_black_hole() {
+    let fixture = start().await.unwrap();
+    let liveness = LivenessPolicy {
+        ssh_keepalive_interval: Duration::from_secs(1),
+        ssh_keepalive_max: 2,
+        ..LivenessPolicy::DESKTOP
+    };
+    let prompter = Arc::new(FakePrompter::new([accept()]));
+    let session = connect_with(
+        &fixture,
+        password_auth(),
+        &liveness,
+        CredentialInteraction::Attended(prompter),
+        CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    fixture.container.pause().await.unwrap();
+    let closed = tokio::time::timeout(Duration::from_secs(5), session.closed()).await;
+    fixture.container.unpause().await.unwrap();
+
+    assert!(
+        closed.is_ok(),
+        "a paused server was not noticed within the keepalive window"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn session_closed_fires_when_bastion_stops() {
+    let fixture = start().await.unwrap();
+    let (session, _) = connect(&fixture, password_auth(), vec![accept()]).await;
+    let session = session.unwrap();
+
+    fixture.container.stop_with_timeout(Some(5)).await.unwrap();
+
+    tokio::time::timeout(Duration::from_secs(30), session.closed())
+        .await
+        .unwrap();
+    assert!(session.is_closed());
 }

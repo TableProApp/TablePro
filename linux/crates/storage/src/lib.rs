@@ -1,5 +1,6 @@
 mod connection_color;
 mod connections;
+mod credentials;
 pub mod document;
 mod document_problem;
 pub mod drafts;
@@ -16,6 +17,10 @@ pub use connection_color::ConnectionColor;
 pub use connections::{
     ConnectionListSnapshot, ConnectionListState, ConnectionStore, ImportReport, RemoveOutcome, SavedConnection,
     SavedSshAuth, SavedSshConfig, duplicate,
+};
+pub use credentials::{
+    CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretLabeler,
+    english_secret_label,
 };
 pub use document_problem::{DocumentProblem, DocumentProblemKind};
 pub use drafts::{DraftId, DraftScope, DraftStore};

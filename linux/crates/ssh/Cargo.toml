@@ -17,7 +17,6 @@ path = "src/bin/tablepro-askpass.rs"
 tablepro-core = { path = "../core" }
 async-trait.workspace = true
 futures.workspace = true
-russh.workspace = true
 secrecy.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "process", "net", "time", "sync", "fs"] }

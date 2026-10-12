@@ -9,14 +9,30 @@ publish = false
 name = "tablepro_session"
 path = "src/lib.rs"
 
+[features]
+# FakeConnector and FakeCredentialSource for the tests of crates that
+# start sessions. Never on in a release build.
+fakes = ["dep:tablepro-test-support"]
+
 [dependencies]
+tablepro-core = { path = "../core" }
+tablepro-net = { path = "../net" }
+tablepro-ssh = { path = "../ssh" }
+tablepro-storage = { path = "../storage" }
+tablepro-test-support = { path = "../test-support", optional = true }
 futures.workspace = true
+secrecy.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
+tablepro-driver-postgres = { path = "../drivers/postgres" }
+tablepro-test-fixtures = { path = "../test-fixtures" }
+tablepro-test-support = { path = "../test-support" }
+tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "sync"] }
 
 [lints]
