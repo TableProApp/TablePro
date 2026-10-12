@@ -18,15 +18,11 @@ internal enum ConnectionRecoveryPerformer {
 
     internal static func perform(
         _ action: ConnectionRecoveryAction,
-        for connection: DatabaseConnection,
-        retry: @escaping @MainActor () -> Void
+        for connection: DatabaseConnection
     ) {
         switch action {
         case .installPlugin:
             WelcomeRouter.shared.routePluginInstall(connection)
-        case .enablePlugin(let pluginId):
-            PluginManager.shared.setEnabled(true, pluginId: pluginId)
-            retry()
         case .openPluginSettings(let pluginId):
             PluginsSettingsNavigation.shared.reveal(pluginId: pluginId)
             WindowOpener.shared.openSettings(tab: .plugins)

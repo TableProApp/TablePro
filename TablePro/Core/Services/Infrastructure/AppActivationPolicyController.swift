@@ -72,11 +72,33 @@ internal final class AppActivationPolicyController {
         }
     }
 
+    /// For a prompt another process caused. Taking focus would hand it the keystrokes the person
+    /// was typing elsewhere, so the app gets a Dock icon to bounce and waits to be chosen.
+    @discardableResult
+    internal func requestAttention() -> Int? {
+        enterForeground()
+        guard !NSApp.isActive else { return nil }
+        return NSApp.requestUserAttention(.criticalRequest)
+    }
+
+    internal func endAttentionRequest(_ request: Int?) {
+        guard let request else { return }
+        NSApp.cancelUserAttentionRequest(request)
+    }
+
     /// For a path that puts a window on screen without asking to come forward. The window does not
     /// exist yet at this point, so this promotes outright rather than counting windows.
     @discardableResult
     internal func enterForeground() -> Bool {
         apply(.foreground)
+    }
+
+    /// A process a machine launched that has nothing on screen for the person.
+    internal var isIdleMachineSession: Bool {
+        AppActivationPolicyDecision.role(
+            origin: origin,
+            hasUserFacingWindow: hasUserFacingWindow(excluding: nil)
+        ) == .background
     }
 
     /// A closing window is still visible and still in `NSApp.windows` while `willCloseNotification`

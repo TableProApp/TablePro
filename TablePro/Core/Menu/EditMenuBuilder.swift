@@ -9,13 +9,16 @@ import AppKit
 /// them to the Edit menu itself.
 @MainActor
 enum EditMenuBuilder {
+    /// Retained for the menu's lifetime, which is the app's: `NSMenu.delegate` is unowned.
+    private static let delegate = EditMenuDelegate()
+
     /// A key of its own: French names this menu "Édition" but an Edit button "Modifier".
     static var title: String {
         String(localized: "menu.edit", defaultValue: "Edit", comment: "The Edit menu in the menu bar")
     }
 
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
-        MenuItemFactory.menu(title, items: [
+        let edit = MenuItemFactory.menu(title, items: [
             MenuItemFactory.item(
                 String(localized: "Undo"),
                 action: Selector(("undo:")),
@@ -101,9 +104,20 @@ enum EditMenuBuilder {
                 shortcut: .restorePreviousValues,
                 keyboard: keyboard
             ),
-            MenuItemFactory.separator,
+            dataSeparator(),
             tabularEditingSubmenu(keyboard: keyboard)
         ])
+        if let menu = edit.submenu {
+            menu.delegate = delegate
+            EditDataMenuGroup.setShown(false, in: menu)
+        }
+        return edit
+    }
+
+    private static func dataSeparator() -> NSMenuItem {
+        let separator = MenuItemFactory.separator
+        separator.identifier = EditDataMenuGroup.separatorIdentifier
+        return separator
     }
 
     private static func copySpecialSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
@@ -172,7 +186,7 @@ enum EditMenuBuilder {
     }
 
     private static func tabularEditingSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
-        MenuItemFactory.submenu(String(localized: "Data"), items: [
+        let data = MenuItemFactory.submenu(String(localized: "Data"), items: [
             MenuItemFactory.item(
                 String(localized: "Insert Row Above"),
                 action: #selector(DataFileSplitViewController.dataFileInsertRowAbove(_:))
@@ -261,6 +275,8 @@ enum EditMenuBuilder {
                 action: #selector(DataFileSplitViewController.dataFileImportIntoTable(_:))
             )
         ])
+        data.identifier = EditDataMenuGroup.submenuIdentifier
+        return data
     }
 
     private static func changeCaseSubmenu() -> NSMenuItem {

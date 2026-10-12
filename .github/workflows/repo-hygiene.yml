@@ -7,6 +7,8 @@ name: Repo Hygiene
 # Runs on ubuntu, where minutes are free on a public repo, and finishes in well under a minute.
 
 on:
+  # No paths filter on pull_request: a workflow skipped by one never reports, so its gate could not
+  # be a required check. The changes job below does the filtering instead.
   pull_request:
     paths:
       - "scripts/**"
@@ -34,6 +36,8 @@ on:
       - ".github/scripts/**"
       - ".github/plugin-registry.json"
       - ".github/duplicate-contract-baseline.txt"
+      - ".github/hub-ratchet-baseline.json"
+      - ".claude/skills/**/*.sh"
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
@@ -52,8 +56,41 @@ permissions:
   contents: read
 
 jobs:
+  # Keep this list and the push paths above identical.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the checks need to run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          RUN=$(scripts/ci/detect-changed-paths.sh \
+            --event "$EVENT_NAME" \
+            --base "$BASE_SHA" \
+            'scripts/' '\.github/workflows/' '\.github/actions/' '\.github/scripts/' \
+            '\.github/plugin-registry\.json$' '\.github/duplicate-contract-baseline\.txt$' \
+            '\.github/hub-ratchet-baseline\.json$' '\.claude/skills/.*\.sh$' \
+            'Plugins/.*\.swift$' 'TablePro/.*\.swift$' 'Packages/.*\.swift$' 'TableProTests/.*\.swift$' \
+            'project\.yml$' \
+            'TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$' \
+            'TablePro/Resources/ThirdPartyLicenses/licenses\.yml$' '\.swiftlint\.yml$')
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+
   lint:
     name: Lint workflows and scripts
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -179,6 +216,9 @@ jobs:
       - name: Validate the appcast merge
         run: python3 scripts/ci/test_merge_appcast.py
 
+      - name: Validate the delta naming
+        run: python3 scripts/ci/test_name_deltas.py
+
       - name: Validate release withdrawal
         run: python3 scripts/ci/test_pull_release.py
 
@@ -194,3 +234,34 @@ jobs:
       # job in macos-tests.yml where the toolchain and the libraries already are.
       - name: Check the shared-contract drift gates
         run: scripts/audit-refactor-health.sh --check
+
+      # The modularization moves features out of the main window's hubs. Each count may only go down.
+      - name: Check no hub grew past its recorded size
+        run: python3 scripts/ci/check-hub-ratchet.py
+
+      - name: Validate the hub ratchet
+        run: python3 scripts/ci/test_check_hub_ratchet.py
+
+  # The one check to mark required on main.
+  gate:
+    name: Repo Hygiene Gate
+    if: always()
+    needs: [changes, lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the checks to have passed or been skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+              case "$result" in
+                  success|skipped) ;;
+                  *)
+                      echo "A repo hygiene job reported '$result'." >&2
+                      exit 1
+                      ;;
+              esac
+          done

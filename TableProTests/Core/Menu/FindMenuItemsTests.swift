@@ -14,7 +14,7 @@ import Testing
 @MainActor
 struct FindMenuItemsTests {
     private func findSubmenu() throws -> NSMenu {
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
         let edit = try #require(menu.items.first { $0.title == EditMenuBuilder.title }?.submenu)
         return try #require(edit.items.first { $0.title == String(localized: "Find") }?.submenu)
     }

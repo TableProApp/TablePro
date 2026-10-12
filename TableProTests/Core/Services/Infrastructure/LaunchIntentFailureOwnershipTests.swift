@@ -13,7 +13,7 @@ import Testing
 
 @MainActor
 struct LaunchIntentFailureOwnershipTests {
-    private static let underlying = PluginError.pluginDisabled(pluginId: "com.TablePro.SQLiteDriver", pluginName: "SQLite")
+    private static let underlying = PluginError.pluginLoadFailed(pluginId: "com.TablePro.SQLiteDriver", pluginName: "SQLite", reason: nil)
 
     @Test("A file open whose connect failed in its window names that window's connection")
     func fileOpenFailureNamesItsConnection() {
