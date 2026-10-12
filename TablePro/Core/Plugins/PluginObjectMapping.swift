@@ -232,12 +232,6 @@ extension UserDefinedTypeInfo.Field {
     }
 }
 
-extension EnumLabelPlacement {
-    var pluginPlacement: PluginEnumLabelPlacement {
-        PluginEnumLabelPlacement(anchor: anchor, placesBefore: placesBefore)
-    }
-}
-
 extension UserDefinedTypeInfo {
     init(_ type: PluginUserDefinedTypeInfo) {
         self.init(
