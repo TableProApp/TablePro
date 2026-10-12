@@ -389,7 +389,9 @@ struct ExportDialog: View {
         }
         // A profile picked while this one waited for its reads is the user's latest choice.
         guard application == profileApplication else { return }
-        config.formatId = profile.formatId
+        if availableFormatIds.contains(profile.formatId) {
+            config.formatId = profile.formatId
+        }
         databaseItems = normalizedForCurrentFormat(
             ExportProfileStorage.apply(profile, to: databaseItems)
                 .clearingRowScopes(unavailableOn: databaseType))
@@ -428,7 +430,7 @@ struct ExportDialog: View {
                 if availableFormats.isEmpty {
                     HStack {
                         Spacer()
-                        Text("No export formats available. Enable export plugins in Settings > Plugins.")
+                        Text("No export formats available.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Spacer()

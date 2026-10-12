@@ -23,7 +23,7 @@ private final class NamedCloseTarget: CloseCommandNaming {
 
 @MainActor
 private func fileMenu() -> NSMenu {
-    let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+    let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
     return menu.items.first { $0.title == String(localized: "File") }?.submenu ?? NSMenu()
 }
 

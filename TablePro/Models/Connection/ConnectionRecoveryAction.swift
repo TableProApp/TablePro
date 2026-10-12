@@ -7,7 +7,6 @@ import Foundation
 
 internal enum ConnectionRecoveryAction: Equatable, Sendable {
     case installPlugin
-    case enablePlugin(pluginId: String)
     case openPluginSettings(pluginId: String?)
     case editConnection
 
@@ -15,8 +14,6 @@ internal enum ConnectionRecoveryAction: Equatable, Sendable {
         switch self {
         case .installPlugin:
             return String(localized: "Install Plugin…")
-        case .enablePlugin:
-            return String(localized: "Enable Plugin")
         case .openPluginSettings:
             return String(localized: "Open Plugin Settings")
         case .editConnection:
@@ -26,7 +23,7 @@ internal enum ConnectionRecoveryAction: Equatable, Sendable {
 
     internal var symbolName: String {
         switch self {
-        case .installPlugin, .enablePlugin, .openPluginSettings:
+        case .installPlugin, .openPluginSettings:
             return "puzzlepiece.extension"
         case .editConnection:
             return "exclamationmark.triangle"

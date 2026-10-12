@@ -170,7 +170,8 @@ private struct SettingsPaneContent: View {
         case .mcp:
             MCPSettingsView(settings: $settingsManager.mcp)
         case .plugins:
-            PluginsSettingsView()
+            InstalledPluginsView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .sync:
             SyncSettingsView()
         case .account:

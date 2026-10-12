@@ -14,7 +14,7 @@ struct TableLoadHistoryStoreTests {
         osVersion: "macOS 15.2.0"
     )
 
-    private static let encoder = TableLoadHistoryStore.makeEncoder(prettyPrinted: false)
+    private static let encoder = TableLoadHistoryStore.makeEncoder()
 
     private func makeStore() -> (store: TableLoadHistoryStore, fileURL: URL) {
         let fileURL = FileManager.default.temporaryDirectory
@@ -71,23 +71,30 @@ struct TableLoadHistoryStoreTests {
         try write(lines.joined(separator: "\n") + "\n", to: fileURL)
     }
 
-    // MARK: - Round trip
+    /// Decodes every line strictly, so a line the store should have dropped fails the test.
+    private func storedRecords(at fileURL: URL) throws -> [TableLoadPerformanceRecord] {
+        let decoder = TableLoadHistoryStore.makeDecoder()
+        return try Data(contentsOf: fileURL)
+            .split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: true)
+            .map { try decoder.decode(TableLoadPerformanceRecord.self, from: Data($0)) }
+    }
 
-    @Test("An appended record survives a new store over the same file")
+    // MARK: - Appending
+
+    @Test("A record appended by a new store over the same file joins the ones before it")
     func appendedRecordSurvivesReopening() async throws {
         let (store, fileURL) = makeStore()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
-        await store.append(record(totalMs: 640))
+        await store.append(record(recordedAt: moment(10), totalMs: 640))
+        await TableLoadHistoryStore(fileURL: fileURL).append(record(totalMs: 7))
 
-        let reopened = TableLoadHistoryStore(fileURL: fileURL)
-        let records = await reopened.records()
-        #expect(records.count == 1)
-        #expect(records.first?.totalMs == 640)
+        let records = try storedRecords(at: fileURL)
+        #expect(records.map(\.totalMs) == [640, 7])
     }
 
     @Test("Every appended record is kept, in the order they were written")
-    func keepsEveryAppendedRecord() async {
+    func keepsEveryAppendedRecord() async throws {
         let (store, fileURL) = makeStore()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
@@ -95,17 +102,19 @@ struct TableLoadHistoryStoreTests {
             await store.append(record(recordedAt: moment(100 - index), totalMs: index))
         }
 
-        let records = await store.records()
+        let records = try storedRecords(at: fileURL)
         #expect(records.map(\.totalMs) == (0..<20).map(Double.init))
     }
 
-    @Test("A store with no file behaves as an empty one")
-    func missingFileReadsAsEmpty() async {
+    @Test("A store with no file starts one with its first record")
+    func missingFileStartsWithFirstRecord() async throws {
         let (store, fileURL) = makeStore()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
-        let records = await store.records()
-        #expect(records.isEmpty)
+        await store.append(record(totalMs: 7))
+
+        let records = try storedRecords(at: fileURL)
+        #expect(records.map(\.totalMs) == [7])
     }
 
     @Test("The history file is readable only by its owner")
@@ -122,7 +131,7 @@ struct TableLoadHistoryStoreTests {
 
     // MARK: - Retention
 
-    @Test("Records past the retention window are dropped when the store is next opened")
+    @Test("Records past the retention window are dropped when the store is next written to")
     func dropsRecordsPastTheRetentionWindow() async throws {
         let (store, fileURL) = makeStore()
         defer { try? FileManager.default.removeItem(at: fileURL) }
@@ -137,8 +146,10 @@ struct TableLoadHistoryStoreTests {
             to: fileURL
         )
 
-        let records = await store.records()
-        #expect(records.map(\.totalMs) == [2, 3])
+        await store.append(record(totalMs: 4))
+
+        let records = try storedRecords(at: fileURL)
+        #expect(records.map(\.totalMs) == [2, 3, 4])
     }
 
     @Test("The oldest records go first once the count cap is passed")
@@ -153,10 +164,12 @@ struct TableLoadHistoryStoreTests {
             to: fileURL
         )
 
-        let records = await store.records()
+        await store.append(record(totalMs: total))
+
+        let records = try storedRecords(at: fileURL)
         #expect(records.count == TableLoadHistoryStore.maxRecords)
-        #expect(records.first?.totalMs == Double(overflow))
-        #expect(records.last?.totalMs == Double(total - 1))
+        #expect(records.first?.totalMs == Double(overflow + 1))
+        #expect(records.last?.totalMs == Double(total))
     }
 
     /// Padded so the byte cap binds before the count cap does, which is the only way to see it act.
@@ -176,10 +189,12 @@ struct TableLoadHistoryStoreTests {
             to: fileURL
         )
 
-        let records = await store.records()
+        await store.append(record(totalMs: total, padding: padding))
+
+        let records = try storedRecords(at: fileURL)
         #expect(records.count < total)
-        #expect(records.count > 0)
-        #expect(records.last?.totalMs == Double(total - 1))
+        #expect(!records.isEmpty)
+        #expect(records.last?.totalMs == Double(total))
 
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         let size = try #require(attributes[.size] as? Int)
@@ -197,8 +212,10 @@ struct TableLoadHistoryStoreTests {
         let torn = try String(line(for: record(totalMs: 99)).dropLast(20))
         try write(intact.joined(separator: "\n") + "\n" + torn, to: fileURL)
 
-        let records = await store.records()
-        #expect(records.map(\.totalMs) == [0, 1, 2])
+        await store.append(record(totalMs: 7))
+
+        let records = try storedRecords(at: fileURL)
+        #expect(records.map(\.totalMs) == [0, 1, 2, 7])
     }
 
     @Test("A line of garbage in the middle costs only that line")
@@ -210,80 +227,35 @@ struct TableLoadHistoryStoreTests {
         let second = try line(for: record(recordedAt: moment(100), totalMs: 2))
         try write("\(first)\nnot json at all\n\(second)\n", to: fileURL)
 
-        let records = await store.records()
-        #expect(records.map(\.totalMs) == [1, 2])
+        await store.append(record(totalMs: 3))
+
+        let records = try storedRecords(at: fileURL)
+        #expect(records.map(\.totalMs) == [1, 2, 3])
     }
 
-    @Test("A file of nothing but garbage reads as empty and still accepts new records")
+    @Test("A file of nothing but garbage still accepts new records")
     func recoversFromAWhollyUnreadableFile() async throws {
         let (store, fileURL) = makeStore()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
         try write("}{\n\u{1}\u{2}\u{3}\n[not json\n", to: fileURL)
 
-        let recovered = await store.records()
-        #expect(recovered.isEmpty)
-
         await store.append(record(totalMs: 7))
-        let records = await store.records()
+
+        let records = try storedRecords(at: fileURL)
         #expect(records.map(\.totalMs) == [7])
     }
 
-    @Test("An empty file reads as empty")
+    @Test("An empty file accepts new records")
     func recoversFromAnEmptyFile() async throws {
         let (store, fileURL) = makeStore()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
         try write("", to: fileURL)
 
-        let records = await store.records()
-        #expect(records.isEmpty)
-    }
+        await store.append(record(totalMs: 7))
 
-    // MARK: - Export
-
-    @Test("Exporting the same history twice produces the same bytes")
-    func exportIsDeterministic() async {
-        let (store, fileURL) = makeStore()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-
-        for index in 0..<5 {
-            await store.append(record(recordedAt: moment(50 - index), totalMs: index))
-        }
-
-        let first = await store.exportJSON()
-        let second = await store.exportJSON()
-        #expect(first == second)
-        #expect(first.isEmpty == false)
-    }
-
-    @Test("The export decodes back into the records the store holds")
-    func exportDecodesBackToItsRecords() async throws {
-        let (store, fileURL) = makeStore()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-
-        await store.append(record(recordedAt: moment(10), totalMs: 42))
-
-        let exported = await store.exportJSON()
-        let decoded = try TableLoadHistoryStore.makeDecoder().decode(
-            [TableLoadPerformanceRecord].self,
-            from: exported
-        )
-
-        #expect(decoded.count == 1)
-        #expect(decoded.first?.totalMs == 42)
-    }
-
-    @Test("An empty history exports an empty array rather than nothing")
-    func exportsAnEmptyArrayForAnEmptyHistory() async throws {
-        let (store, fileURL) = makeStore()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-
-        let exported = await store.exportJSON()
-        let decoded = try TableLoadHistoryStore.makeDecoder().decode(
-            [TableLoadPerformanceRecord].self,
-            from: exported
-        )
-        #expect(decoded.isEmpty)
+        let records = try storedRecords(at: fileURL)
+        #expect(records.map(\.totalMs) == [7])
     }
 }

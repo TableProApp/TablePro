@@ -50,9 +50,9 @@ struct NotificationSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
-        thresholdSeconds = try container.decodeIfPresent(Int.self, forKey: .thresholdSeconds)
-            ?? Self.defaultThresholdSeconds
-        disabledKindIds = try container.decodeIfPresent(Set<String>.self, forKey: .disabledKindIds) ?? []
+        let fallback = Self.default
+        isEnabled = container.decodeSetting(.isEnabled, default: fallback.isEnabled)
+        thresholdSeconds = container.decodeSetting(.thresholdSeconds, default: fallback.thresholdSeconds)
+        disabledKindIds = Set(container.decodeSettingElements(.disabledKindIds) as [String])
     }
 }
