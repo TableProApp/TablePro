@@ -25,8 +25,8 @@
     </ul>
   </description>
   <launchable type="desktop-id">com.tablepro.linux.desktop</launchable>
-  <url type="homepage">https://github.com/cozyGarage/TablePro</url>
-  <url type="bugtracker">https://github.com/cozyGarage/TablePro/issues</url>
+  <url type="homepage">https://github.com/cozyGarage/BookiE</url>
+  <url type="bugtracker">https://github.com/cozyGarage/BookiE/issues</url>
   <developer id="com.tablepro">
     <name>BookiE contributors</name>
   </developer>

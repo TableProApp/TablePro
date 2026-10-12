@@ -125,9 +125,9 @@ impl App {
             .application_icon(crate::config::APP_ID)
             .developer_name(crate::tr!("BookiE contributors"))
             .version(env!("CARGO_PKG_VERSION"))
-            .website("https://github.com/cozyGarage/TablePro")
-            .issue_url("https://github.com/cozyGarage/TablePro/issues")
-            .support_url("https://github.com/cozyGarage/TablePro/discussions")
+            .website("https://github.com/cozyGarage/BookiE")
+            .issue_url("https://github.com/cozyGarage/BookiE/issues")
+            .support_url("https://github.com/cozyGarage/BookiE/discussions")
             .copyright(crate::tr!("© 2025–2026 TablePro Authors"))
             .license_type(gtk::License::Agpl30)
             .comments(crate::tr!(
@@ -135,7 +135,7 @@ impl App {
             ))
             .build();
         dialog.set_developers(&[
-            "BookiE contributors https://github.com/cozyGarage/TablePro",
+            "BookiE contributors https://github.com/cozyGarage/BookiE",
             "TablePro Authors https://github.com/TableProApp/TablePro",
         ]);
         dialog.set_translator_credits(&crate::tr!("translator-credits"));

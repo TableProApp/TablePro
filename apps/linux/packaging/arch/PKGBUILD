@@ -11,7 +11,7 @@ arch=('x86_64')
 provides=("tablepro=$pkgver")
 conflicts=('tablepro')
 replaces=('tablepro')
-url="https://github.com/cozygarage/TablePro"
+url="https://github.com/cozyGarage/BookiE"
 license=('AGPL-3.0-or-later')
 depends=('gtk4>=1:4.14' 'glib2>=2.80' 'libadwaita>=1:1.5' 'gtksourceview5>=5.12' 'libsecret' 'openssl' 'krb5' 'sqlite')
 makedepends=('rust>=1:1.98' 'pkgconf' 'clang' 'gettext')

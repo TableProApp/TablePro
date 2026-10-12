@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="bookie-gettext-") as temporary:
         "xgettext", "--language=Rust", "--keyword=tr!", "--keyword=tr", "--from-code=UTF-8",
         "--package-name=BookiE", "--package-version=0.1.6-dev",
         "--copyright-holder=BookiE contributors and TablePro Authors",
-        "--msgid-bugs-address=https://github.com/cozyGarage/TablePro/issues",
+        "--msgid-bugs-address=https://github.com/cozyGarage/BookiE/issues",
         "--output=" + str(root / "apps/linux/po/tablepro.pot"),
         *[str(path.relative_to(root)) for path in files],
     ], cwd=stage, check=True)

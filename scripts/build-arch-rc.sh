@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tag="${TABLEPRO_RC_TAG:-}"
-remote="${TABLEPRO_RC_REMOTE:-https://github.com/cozygarage/TablePro.git}"
+remote="${TABLEPRO_RC_REMOTE:-https://github.com/cozyGarage/BookiE.git}"
 version="${TABLEPRO_RC_VERSION:?Set TABLEPRO_RC_VERSION to the candidate package version}"
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-z]+[0-9]+)?$ ]]; then
   echo "invalid candidate version: $version (use e.g. 0.1.1 or 0.1.1rc1)" >&2
