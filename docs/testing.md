@@ -202,6 +202,10 @@ For ordinary UI changes, test the affected flow manually and include before and 
 
 Where each check runs is owned by [CI tiers in the validation playbook](validation-playbook.md#ci-tiers). GitHub runs the cheap tier on pull requests; Forgejo runs the merge tier on branch pushes. Documentation-only changes skip the heavy path. Do not treat a skipped GitHub merge-tier job as a pass.
 
+### Gating several pull requests at once
+
+Gates are serialised by a host lock and one full run takes 10 to 20 minutes, so a queue of N pull requests costs N runs. `scripts/forgejo-train.sh BRANCH BRANCH...` merges the named remote branches onto `origin/linux` in a throwaway worktree, skips any that conflict, and gates the result as a single run. A pass proves the combination; a fail means gating the branches one at a time. `FORGEJO_TRAIN_DRY=1` only builds the train. `CHANGELOG.md` and the PostgreSQL `connection_paths.rs` registry merge by union (`.gitattributes`), because every pull request appends to them and they were the usual cause of conflicts.
+
 ### Reading a red run
 
 `scripts/classify-ci-failure.py --run RUN_ID` (or `--log FILE`) tags each failed job from its log. It reads `FORGEJO_API` or derives it from the `forgejo` remote, and the token from `~/.config/forgejo/token`, like `scripts/forgejo-gate.sh`.
