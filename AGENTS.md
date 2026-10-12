@@ -73,6 +73,7 @@ The workspace manifest is `Cargo.toml`. [ARCHITECTURE.md](ARCHITECTURE.md) has t
 - `crates/storage`: saved connections, Secret Service access, query history and the audit journal.
 - `crates/ssh`: SSH tunnels through built-in `russh` or system OpenSSH.
 - `crates/transport`: connection assembly for the GUI and `agentd`: driver options, SSH chain, tunnel and the service endpoint used for certificate verification.
+- `crates/app-services`: GTK-free application logic moved out of `apps/linux/app/src/services` in stages ([ADR 0018](docs/decisions/0018-headless-app-services-crate.md)); it must not depend on `gtk4`, `libadwaita`, `glib` or `relm4`.
 - `crates/mcp`: MCP authentication, scopes, connection allowlists, rate limits, tools and transport.
 - `crates/agentd`: headless MCP process and composition root without GTK.
 - `crates/drivers/*`: one static crate per engine, implementing `core` traits, never depending on the app.

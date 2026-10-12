@@ -21,6 +21,7 @@ kerberos = ["tablepro-driver-mssql/kerberos"]
 duckdb = ["dep:tablepro-driver-duckdb"]
 
 [dependencies]
+tablepro-app-services = { path = "../../../crates/app-services" }
 tablepro-core = { path = "../../../crates/core" }
 tablepro-policy = { path = "../../../crates/policy" }
 tablepro-mcp = { path = "../../../crates/mcp" }

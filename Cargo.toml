@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "apps/linux/app",
+    "crates/app-services",
     "crates/core",
     "crates/policy",
     "tests/release",

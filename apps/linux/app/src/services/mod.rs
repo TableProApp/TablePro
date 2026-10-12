@@ -1,5 +1,7 @@
+pub use tablepro_app_services::{
+    approval_wait, ordered_refresh, read_scopes, recent_tabs, request_generation, single_flight, structure_tracker,
+};
 pub mod approval_router;
-pub mod approval_wait;
 pub mod catalog;
 pub mod change_tracker;
 pub mod column_widths;
@@ -14,19 +16,13 @@ pub mod gtk_approval;
 pub mod mcp_service;
 pub mod named_filter_presets;
 pub mod operation_control;
-pub mod ordered_refresh;
 pub mod persistence_stores;
 pub mod preferences;
 pub mod query_parameters;
 pub mod quick_switcher;
-pub mod read_scopes;
-pub mod recent_tabs;
-pub mod request_generation;
 pub mod sidebar_tree;
-pub mod single_flight;
 pub mod single_instance;
 mod state_file;
-pub mod structure_tracker;
 pub mod window_registry;
 pub mod window_state;
 mod workspace_disk;

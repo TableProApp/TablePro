@@ -8,7 +8,7 @@ The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/Bo
 
 | Path | Holds |
 | --- | --- |
-| `crates/` | Platform-neutral crates: `core`, `policy`, `storage`, `ssh`, `transport`, `mcp`, `agentd`, and `drivers/*`. None depends on GTK. |
+| `crates/` | Platform-neutral crates: `core`, `policy`, `storage`, `ssh`, `transport`, `app-services`, `mcp`, `agentd`, and `drivers/*`. None depends on GTK. |
 | `apps/linux/` | The GTK application (`app/`) and what only it needs: `data/`, `po/`, `flatpak/`, `packaging/`. |
 | `tests/` | Cross-crate test crates (`release/`, `driver-tls/`), fixtures and shared test data (`data/`). Unit tests stay beside their code; per-crate integration tests stay in `crates/<name>/tests`. |
 | `scripts/`, `ci/`, `vendor/`, `docs/` | Tooling, CI helpers, vendored patches and documentation. |

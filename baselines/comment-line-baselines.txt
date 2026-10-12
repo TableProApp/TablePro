@@ -19,7 +19,7 @@ apps/linux/app/src/services/operation_control.rs 8
 apps/linux/app/src/services/preferences.rs 9
 apps/linux/app/src/services/single_instance.rs 24
 apps/linux/app/src/services/state_file.rs 2
-apps/linux/app/src/services/structure_tracker.rs 23
+crates/app-services/src/structure_tracker.rs 23
 apps/linux/app/src/services/window_registry.rs 3
 apps/linux/app/src/services/workspace_state.rs 37
 apps/linux/app/src/ui/activity_dialog.rs 6

@@ -6188,6 +6188,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "sourceview5",
+ "tablepro-app-services",
  "tablepro-core",
  "tablepro-driver-clickhouse",
  "tablepro-driver-duckdb",
@@ -6213,6 +6214,16 @@ dependencies = [
  "uuid",
  "whoami",
  "zip 8.6.0",
+]
+
+[[package]]
+name = "tablepro-app-services"
+version = "0.1.0"
+dependencies = [
+ "tablepro-core",
+ "tokio",
+ "tokio-util",
+ "uuid",
 ]
 
 [[package]]

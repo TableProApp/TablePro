@@ -10,7 +10,7 @@ import sys
 OLD = re.compile(
     r"(?<![\w./\-])linux/(crates|scripts|docs|ci|vendor|packaging|flatpak|po|data|tests|testdata"
     r"|Cargo\.(toml|lock)|ARCHITECTURE\.md|ROADMAP\.md)\b"
-    r"|(?<![\w.\-])crates/(app|release-tests|driver-tls-tests)\b|(?<![\w.\-])testdata/value-contract"
+    r"|(?<![\w.\-])crates/(app(?![\w\-])|release-tests|driver-tls-tests)\b|(?<![\w.\-])testdata/value-contract"
     r"|^\s*cd\s+['\"]?linux['\"]?\s*(?:#.*)?$"
 )
 SKIP = ("docs/archive/", "docs/evidence/", "CHANGELOG.md",

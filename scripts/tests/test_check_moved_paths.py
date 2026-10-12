@@ -22,6 +22,13 @@ class MovedPathTests(unittest.TestCase):
             new.write_text("tag linux-v0.1.5 and com.tablepro.linux and crates/core\n")
             self.assertEqual([hit[0] for hit in moved.stale([str(old), str(new)])], [str(old)])
 
+    def test_the_app_services_crate_is_not_the_old_app_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old, new = Path(tmp, "a.md"), Path(tmp, "b.md")
+            old.write_text("see crates/app and crates/app/src\n")
+            new.write_text("see crates/app-services and crates/app_core\n")
+            self.assertEqual([hit[0] for hit in moved.stale([str(old), str(new)])], [str(old)] * 1)
+
 
 if __name__ == "__main__":
     unittest.main()
