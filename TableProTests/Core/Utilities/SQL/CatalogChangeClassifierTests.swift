@@ -152,6 +152,16 @@ struct CatalogChangeClassifierTests {
         #expect(kinds("db.dropDatabase()", .mongodb) == .everything)
     }
 
+    @Test("A Firebase write refreshes the sidebar, since it can create a collection or a node")
+    func firebaseWritesRefresh() {
+        for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
+            #expect(kinds("GET users", type).isEmpty)
+            #expect(kinds("FIREBASE_BROWSE:e30=", type).isEmpty)
+            #expect(kinds("POST invoices {\"total\": 1}", type) == .everything)
+            #expect(kinds("DELETE users/alice", type) == .everything)
+        }
+    }
+
     @Test("Redis commands never change the catalog")
     func redisIsIgnored() {
         #expect(kinds("FLUSHDB", .redis).isEmpty)

@@ -690,6 +690,21 @@ struct QueryClassifierNonSqlTests {
         #expect(!QueryClassifier.isWriteQuery(search, databaseType: .weaviate))
     }
 
+    @Test("Firebase request lines are tiered by their verb, and a grid page is a read")
+    func firebaseTiers() {
+        for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
+            #expect(!QueryClassifier.isWriteQuery("FIREBASE_BROWSE:e30=", databaseType: type))
+            #expect(!QueryClassifier.isWriteQuery("GET users/alice", databaseType: type))
+            #expect(!QueryClassifier.isWriteQuery("get /chats?shallow=true", databaseType: type))
+            #expect(!QueryClassifier.isWriteQuery("QUERY {\"structuredQuery\": {}}", databaseType: type))
+            #expect(QueryClassifier.isWriteQuery("PATCH users/alice {\"age\": 31}", databaseType: type))
+            #expect(QueryClassifier.isWriteQuery("POST users {}", databaseType: type))
+            #expect(QueryClassifier.isWriteQuery("PUT /config/maintenance false", databaseType: type))
+            #expect(QueryClassifier.isWriteQuery("SELECT * FROM users", databaseType: type))
+            #expect(QueryClassifier.classifyTier("DELETE users/alice", databaseType: type) == .destructive)
+        }
+    }
+
     @Test("A console body declaring a mutation is classified the same as a bare one")
     func weaviateConsoleBodyIsRead() {
         #expect(QueryClassifier.isWriteQuery(

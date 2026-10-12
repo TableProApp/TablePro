@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reason shown in Settings > Appearance for a theme file that could not be loaded.
 - Setting in Settings > General to hide the version and Check for Updates on the Welcome window.
 - Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
+- Cloud Firestore and Firebase Realtime Database as a registry plugin over their REST APIs. (#2504)
 
 ### Changed
 

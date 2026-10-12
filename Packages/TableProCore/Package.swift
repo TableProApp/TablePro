@@ -27,6 +27,7 @@ let package = Package(
         .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
+        .library(name: "TableProFirebaseCore", targets: ["TableProFirebaseCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
         .library(name: "TableProJavaScriptText", targets: ["TableProJavaScriptText"]),
@@ -150,6 +151,11 @@ let package = Package(
             name: "TableProWeaviateCore",
             dependencies: [],
             path: "Sources/TableProWeaviateCore"
+        ),
+        .target(
+            name: "TableProFirebaseCore",
+            dependencies: [],
+            path: "Sources/TableProFirebaseCore"
         ),
         .target(
             name: "TableProR2SQLCore",
@@ -300,6 +306,11 @@ let package = Package(
             name: "TableProSpannerCoreTests",
             dependencies: ["TableProSpannerCore", "TableProGoogleCloud"],
             path: "Tests/TableProSpannerCoreTests"
+        ),
+        .testTarget(
+            name: "TableProFirebaseCoreTests",
+            dependencies: ["TableProFirebaseCore"],
+            path: "Tests/TableProFirebaseCoreTests"
         ),
         .testTarget(
             name: "TableProWeaviateCoreTests",

@@ -11,7 +11,7 @@ import Testing
 /// this registry, `snippets/driver-counts.mdx` in TableProApp/docs, and the marketing site. Nothing at runtime
 /// reconciles them, and by August 2026 they read 28, 27 and 25 at once.
 ///
-/// The answer is 37, and the reason it once read 28 is worth keeping. Turso is served by
+/// The answer is 39, and the reason it once read 28 is worth keeping. Turso is served by
 /// the libSQL plugin and was the only alias in `reverseTypeIndex` with no curated entry of its
 /// own, so it was the only type the picker could not offer before its plugin was installed.
 /// ScyllaDB is the shape every other alias already had: an alias of Cassandra with a curated
@@ -24,7 +24,7 @@ import Testing
 /// `scripts/check-docs-against-source.py` reads this registry and holds the docs half.
 ///
 /// The count is taken from the built-in defaults rather than from `allRegisteredTypeIds()`.
-/// Both answer 37 under XCTest, where no plugin bundle ever loads, but the registry is a
+/// Both answer 39 under XCTest, where no plugin bundle ever loads, but the registry is a
 /// process-global singleton and suites that register a synthetic type run alongside this one.
 @MainActor
 struct PluginMetadataRegistryTypeCountTests {
@@ -33,7 +33,7 @@ struct PluginMetadataRegistryTypeCountTests {
         "CockroachDB", "Dameng", "Databend", "DuckDB", "DynamoDB", "Elasticsearch", "etcd", "Kafka",
         "libSQL", "MariaDB", "MongoDB", "MySQL", "Oracle", "PGlite", "PostgreSQL", "Redis", "Redshift",
         "SAP HANA", "ScyllaDB", "Snowflake", "Spanner", "SQL Server", "SQLite", "SurrealDB", "Teradata", "TiDB",
-        "Trino", "Turso", "Typesense", "Weaviate", "OceanBase"
+        "Trino", "Turso", "Typesense", "Weaviate", "OceanBase", "Firestore", "Firebase Realtime Database"
     ]
 
     private static func builtInTypeIds() -> Set<String> {
@@ -42,10 +42,10 @@ struct PluginMetadataRegistryTypeCountTests {
         return Set(curated + registry)
     }
 
-    @Test("The app ships 37 database types before any plugin loads")
+    @Test("The app ships 39 database types before any plugin loads")
     func builtInDefaultsCoverTwentyNineTypes() {
         let ids = Self.builtInTypeIds()
-        #expect(ids.count == 37)
+        #expect(ids.count == 39)
         #expect(ids == Self.expectedTypeIds)
     }
 
@@ -68,7 +68,8 @@ struct PluginMetadataRegistryTypeCountTests {
         "CockroachDB": "PostgreSQL",
         "PGlite": "PostgreSQL",
         "ScyllaDB": "Cassandra",
-        "Turso": "libSQL"
+        "Turso": "libSQL",
+        "Firebase Realtime Database": "Firestore"
     ]
 
     @Test("Every alias carries a curated entry of its own")

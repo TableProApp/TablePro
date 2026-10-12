@@ -173,6 +173,21 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/etcd"
     },
+    "firebase": {
+      "target": "FirebaseDriverPlugin",
+      "bundleName": "FirebaseDriverPlugin",
+      "bundleId": "com.TablePro.FirebaseDriverPlugin",
+      "bundled": false,
+      "displayName": "Firebase Driver",
+      "summary": "Cloud Firestore and Firebase Realtime Database driver over their REST APIs",
+      "databaseTypeIds": [
+        "Firestore",
+        "Firebase Realtime Database"
+      ],
+      "icon": "firebase-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/firebase"
+    },
     "hana": {
       "target": "HanaDriver",
       "bundleName": "HanaDriver",

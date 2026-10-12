@@ -857,6 +857,8 @@ private extension QueryClassifier {
             return trimmed.isEmpty ? .safe : typesenseClassification(trimmed)
         case .weaviate:
             return trimmed.isEmpty ? .safe : weaviateClassification(trimmed)
+        case .firestore, .firebaseRealtimeDatabase:
+            return trimmed.isEmpty ? .safe : firebaseClassification(trimmed)
         default:
             return nil
         }
@@ -1020,5 +1022,23 @@ private extension QueryClassifier {
             return .safe
         }
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    /// The Firebase driver runs a grid page as a tagged spec and everything else as a request line
+    /// whose verb says what it does, so the verb is the whole classification. An unknown verb is a
+    /// write, which keeps the read-only gate shut on text the driver would refuse anyway.
+    static func firebaseClassification(_ trimmed: String) -> QueryClassification {
+        if trimmed.hasPrefix("FIREBASE_BROWSE:") {
+            return .safe
+        }
+        let verb = trimmed.prefix { !$0.isWhitespace }.uppercased()
+        switch verb {
+        case "GET", "QUERY":
+            return .safe
+        case "DELETE":
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
+        default:
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        }
     }
 }
