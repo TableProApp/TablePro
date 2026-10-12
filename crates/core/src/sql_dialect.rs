@@ -7,8 +7,10 @@ use crate::{ColumnInfo, Value};
 mod postgres_enum_tests;
 
 mod error;
+mod pg_native_text;
 #[path = "sql_dialect/updates.rs"]
 mod updates;
+pub(crate) use pg_native_text::{postgres_native_text_cast_type, text_cast_placeholder};
 
 pub use error::BuildSqlError;
 pub use updates::{
@@ -103,6 +105,7 @@ fn postgres_text_cast_type(column: &ColumnInfo, value: &Value) -> Option<String>
         .or_else(|| postgres_temporal_cast_type(&column.data_type))
         .or_else(|| postgres_numeric_cast_type(&column.data_type))
         .map(str::to_owned)
+        .or_else(|| postgres_native_text_cast_type(&column.data_type))
 }
 
 pub fn explain_statement(driver_id: &str, sql: &str) -> Option<String> {
@@ -292,9 +295,7 @@ pub fn build_insert_from_draft(
         col_idents.push(quote_ident(driver_id, &col.name));
         let placeholder = placeholder_for(driver_id, params.len());
         let value_sql = if driver_id == "postgres" {
-            postgres_text_cast_type(col, &values[i])
-                .map(|type_name| format!("{placeholder}::text::{type_name}"))
-                .unwrap_or(placeholder)
+            text_cast_placeholder(col, &values[i], placeholder)
         } else {
             placeholder
         };
@@ -435,9 +436,14 @@ pub(super) fn keyed_where_clause(
             if matches!(value, Value::Null) {
                 return format!("{ident} IS NULL");
             }
-            let clause = format!("{ident} = {}", placeholder_for(driver_id, params.len()));
+            let placeholder = placeholder_for(driver_id, params.len());
+            let value_sql = if driver_id == "postgres" {
+                text_cast_placeholder(&columns[col_idx], value, placeholder)
+            } else {
+                placeholder
+            };
             params.push(value.clone());
-            clause
+            format!("{ident} = {value_sql}")
         })
         .collect();
     clauses.join(" AND ")

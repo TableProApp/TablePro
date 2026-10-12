@@ -1,6 +1,6 @@
 use super::{
     BuildSqlError, build_update, checked_pk_indexes, keyed_where_clause, placeholder_for, postgres_text_cast_type,
-    qualified_table, quote_ident,
+    qualified_table, quote_ident, text_cast_placeholder,
 };
 use crate::{ColumnInfo, Value};
 
@@ -178,10 +178,14 @@ fn optimistic_predicate(
 ) -> Result<String, BuildSqlError> {
     let placeholder = placeholder_for(driver_id, params.len());
     let predicate = match driver_id {
+        "postgres" if column.data_type.trim().eq_ignore_ascii_case("json") => {
+            format!("{name}::jsonb IS NOT DISTINCT FROM {placeholder}::jsonb")
+        }
+        "postgres" if column.data_type.trim().eq_ignore_ascii_case("xml") => {
+            format!("{name}::text IS NOT DISTINCT FROM {placeholder}::text")
+        }
         "postgres" => {
-            let value_sql = postgres_text_cast_type(column, old_value)
-                .map(|type_name| format!("{placeholder}::text::{type_name}"))
-                .unwrap_or(placeholder);
+            let value_sql = text_cast_placeholder(column, old_value, placeholder);
             format!("{name} IS NOT DISTINCT FROM {value_sql}")
         }
         "sqlite" | "duckdb" => format!("{name} IS NOT DISTINCT FROM {placeholder}"),

@@ -5,7 +5,8 @@ use crate::import::csv_import::{CsvImportOptions, CsvSheet};
 use crate::query::{ColumnInfo, Value};
 use crate::sql_dialect::{
     BuildSqlError, IdentError, build_insert_from_draft, placeholder_for, postgres_array_cast_type,
-    postgres_numeric_cast_type, postgres_temporal_cast_type, quote_ident, validate_ident,
+    postgres_native_text_cast_type, postgres_numeric_cast_type, postgres_temporal_cast_type, quote_ident,
+    validate_ident,
 };
 
 /// Rows committed per transaction. Small enough that a failure loses
@@ -195,6 +196,7 @@ fn insert_statement(
                 || postgres_array_cast_type(&column.data_type).is_some()
                 || postgres_numeric_cast_type(&column.data_type).is_some()
                 || postgres_temporal_cast_type(&column.data_type).is_some()
+                || postgres_native_text_cast_type(&column.data_type).is_some()
             {
                 Value::Text(String::new())
             } else {
