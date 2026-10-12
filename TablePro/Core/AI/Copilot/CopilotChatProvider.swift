@@ -29,6 +29,7 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
     private var isProgressHandlerRegistered = false
     private var isInvokeClientToolHandlerRegistered = false
     private var registeredToolNames: Set<String> = []
+    private var adoptedServerGeneration: Int?
     /// One continuation per Copilot conversation.
     ///
     /// A single slot meant the most recently started stream owned every tool invocation, so with
@@ -53,9 +54,8 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
                     return
                 }
                 do {
-                    guard let client = CopilotService.shared.client else {
-                        throw CopilotError.serverNotRunning
-                    }
+                    let client = try await CopilotService.shared.runningClient()
+                    self.adoptServer(generation: CopilotService.shared.generation)
                     guard CopilotService.shared.isAuthenticated else {
                         throw CopilotError.authenticationFailed(
                             String(localized: "Not signed in to GitHub Copilot")
@@ -87,7 +87,7 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
 
                     if state.conversationId == nil {
                         let systemPrefix = options.systemPrompt.map { $0 + "\n\n" } ?? ""
-                        let conversationTurns = [CopilotConversationTurn(
+                        let conversationTurns = Self.priorExchanges(in: turns) + [CopilotConversationTurn(
                             request: systemPrefix + userMessage,
                             response: "",
                             turnId: ""
@@ -153,6 +153,48 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
         }
     }
 
+    /// A conversation created for a session that already has turns (a restarted server, a changed
+    /// chat mode) carries the earlier exchanges, or Copilot answers without the context the
+    /// transcript shows.
+    static func priorExchanges(in turns: [ChatTurnWire]) -> [CopilotConversationTurn] {
+        guard let lastUserIndex = turns.lastIndex(where: { $0.role == .user }) else { return [] }
+        var exchanges: [CopilotConversationTurn] = []
+        var request: String?
+        var response = ""
+        for turn in turns[..<lastUserIndex] {
+            switch turn.role {
+            case .user:
+                let text = turn.plainText
+                guard !text.isEmpty else { continue }
+                if let request {
+                    exchanges.append(CopilotConversationTurn(request: request, response: response, turnId: ""))
+                }
+                request = text
+                response = ""
+            case .assistant:
+                response += turn.plainText
+            case .system:
+                continue
+            }
+        }
+        if let request {
+            exchanges.append(CopilotConversationTurn(request: request, response: response, turnId: ""))
+        }
+        return exchanges
+    }
+
+    /// Conversations, tools and handlers live in the server process, so a restarted server (AI
+    /// turned off and on, a crash, the idle stop) starts this provider over.
+    @MainActor
+    private func adoptServer(generation: Int) {
+        guard adoptedServerGeneration != generation else { return }
+        adoptedServerGeneration = generation
+        conversations.removeAll()
+        isProgressHandlerRegistered = false
+        isInvokeClientToolHandlerRegistered = false
+        registeredToolNames = []
+    }
+
     private func registerStream(
         _ continuation: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation,
         for conversationId: String,
@@ -162,6 +204,8 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
         streamsByConversation.withLock { $0[conversationId] = continuation }
     }
 
+    /// Never starts the server: the chat panel lists every configured provider's models on open,
+    /// and listing is not a use of Copilot.
     func fetchAvailableModels() async throws -> [AIModelInfo] {
         guard let client = await CopilotService.shared.client else {
             throw CopilotError.serverNotRunning

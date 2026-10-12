@@ -178,7 +178,9 @@ resolve_path() {
     done
     # A gitignored path is per-developer or downloaded, so a fresh checkout not having it is the
     # expected state, and flagging Secrets.xcconfig or Libs/*.a would train everyone to ignore this.
-    if git check-ignore -q "$token" 2> /dev/null; then
+    # A pattern ending in a slash, like Libs/dylibs/, matches only a directory, and git cannot tell
+    # that a path it has never seen is one, so an absent directory is asked about with the slash.
+    if git check-ignore -q "$token" 2> /dev/null || git check-ignore -q "$token/" 2> /dev/null; then
         printf '%s\t (gitignored, optional by design)\n' "$token"
         return 0
     fi
