@@ -381,6 +381,7 @@ impl App {
                 BrowseTabOutput::OpenReferencedRow { schema, table, filter } => {
                     AppMsg::OpenReferencedRow { schema, table, filter }
                 }
+                BrowseTabOutput::ChooseReferencedRow(targets) => AppMsg::ChooseReferencedRow(targets),
                 BrowseTabOutput::FetchPage => AppMsg::FetchBrowsePage(tab_id),
                 BrowseTabOutput::FetchColumns => AppMsg::FetchBrowseColumns(tab_id),
                 BrowseTabOutput::FetchRowCount => AppMsg::FetchBrowseRowCount(tab_id),

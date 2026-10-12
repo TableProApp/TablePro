@@ -7,7 +7,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 ### Added
 - PostgreSQL and SQLite query plans open in a Tree tab of the Explain dialog.
 - Ctrl+V pastes tab-separated text from a spreadsheet into grid cells, all or nothing.
-- A foreign key cell offers Go to Referenced Row.
+- When a cell belongs to multiple foreign keys, Go to Referenced Row lets you choose the target table.
 - ENUM and SET cells on MySQL and MariaDB, and enum cells on PostgreSQL, are edited from a list of members.
 - A preference chooses how NULL is displayed in the grid.
 - Browse filters can be saved, applied, renamed and deleted per connection, schema and table.

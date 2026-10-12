@@ -364,6 +364,7 @@ pub enum BrowseTabOutput {
         table: String,
         filter: tablepro_core::FilterSet,
     },
+    ChooseReferencedRow(Vec<reference::ReferencedRowTarget>),
     /// Tab needs the next page of rows fetched (state is in the slot).
     FetchPage,
     /// Tab needs schema columns fetched.
@@ -423,7 +424,7 @@ mod chrome;
 mod grid_messages;
 mod grid_render;
 mod paste;
-mod reference;
+pub(crate) mod reference;
 mod requests;
 mod row_ops;
 mod selection;
