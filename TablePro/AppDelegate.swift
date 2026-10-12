@@ -198,7 +198,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        persistOpenConnectionsForRecovery()
+        SessionRecoveryTracker.saveOnQuit()
         /// Synchronously, because an actor hop at terminate may never be scheduled: a session killed
         /// mid-reply used to come back with its last turn missing.
         AgentSessionRegistry.shared.persistSynchronouslyForTermination()
@@ -209,13 +209,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         CloudSQLProxyManager.shared.terminateAllProcessesSync()
         TunnelCommandManager.shared.terminateAllProcessesSync()
         RemoteSQLiteTransportManager.shared.terminateAllProcessesSync()
-    }
-
-    private func persistOpenConnectionsForRecovery() {
-        let connectionIds = SessionRecoveryTracker.connectionIds()
-        let origin = AppActivationPolicyController.shared.origin
-        guard RecoveryConnectionList.shouldSaveOnQuit(connectionIds, origin: origin) else { return }
-        LastOpenConnectionsStorage.shared.save(connectionIds: connectionIds)
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

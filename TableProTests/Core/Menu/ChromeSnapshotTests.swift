@@ -94,20 +94,9 @@ private enum ChromeSnapshot {
         """
     }
 
-    // MainMenuBuilder.build assigns NSApp's Services, Window and Help menus. The app's own are put
-    // back so the test host keeps the menu bar it launched with.
     private static func menuBarEntries() -> [String] {
-        let app = NSApplication.shared
-        let services = app.servicesMenu
-        let windows = app.windowsMenu
-        let help = app.helpMenu
-        defer {
-            app.servicesMenu = services
-            app.windowsMenu = windows
-            app.helpMenu = help
-        }
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
-        return entries(in: menu, path: [], appKitOwned: app.servicesMenu)
+        let built = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        return entries(in: built.bar, path: [], appKitOwned: built.servicesMenu)
     }
 
     // AppKit fills the Services menu and appends open windows to the Window menu, so neither is
