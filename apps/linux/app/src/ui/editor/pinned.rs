@@ -76,6 +76,7 @@ impl SqlEditor {
                 &self.grid_sender,
                 self.connection_id,
                 self.database.clone(),
+                self.result_view_settings.clone(),
             );
             return;
         }
@@ -93,6 +94,7 @@ mod tests {
 
     fn rows(sql: &str) -> StatementOutcome {
         StatementOutcome {
+            identity: super::super::StatementIdentity::default(),
             sql_preview: sql.into(),
             elapsed_ms: 1,
             kind: StatementOutcomeKind::Rows(Vec::new()),
@@ -128,6 +130,21 @@ mod tests {
         assert!(shown[0].pinned);
         assert_eq!(shown[0].sql_preview, "SELECT 1");
         assert!(!shown[1].pinned);
+    }
+
+    #[test]
+    fn pinning_keeps_the_statement_identity_used_by_local_result_settings() {
+        let identity = super::super::StatementIdentity {
+            statement_index: 2,
+            digest: [9; 32],
+        };
+        let mut outcome = rows("SELECT 1");
+        outcome.identity = identity;
+        let mut pins = PinnedResults::default();
+        pins.show(vec![outcome]);
+
+        assert_eq!(pins.pin_last(), 1);
+        assert_eq!(pins.pins[0].identity, identity);
     }
 
     #[test]

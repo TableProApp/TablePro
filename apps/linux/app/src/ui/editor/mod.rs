@@ -65,6 +65,7 @@ pub struct SqlEditor {
     cancel_button: gtk::Button,
     pin_button: gtk::Button,
     pinned: pinned::PinnedResults,
+    result_view_settings: crate::ui::grid::local_filter::LocalResultSettingsStore,
     running_spinner: gtk::Spinner,
     results_holder: gtk::Box,
     status: gtk::Label,
@@ -97,10 +98,17 @@ pub struct SqlEditorInit {
 
 #[derive(Debug, Clone)]
 pub struct StatementOutcome {
+    pub identity: StatementIdentity,
     pub sql_preview: String,
     pub elapsed_ms: u128,
     pub kind: StatementOutcomeKind,
     pub pinned: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct StatementIdentity {
+    pub statement_index: usize,
+    pub digest: [u8; 32],
 }
 
 #[derive(Debug, Clone)]
@@ -504,6 +512,7 @@ impl SimpleComponent for SqlEditor {
             cancel_button: widgets.cancel_button.clone(),
             pin_button: widgets.pin_button.clone(),
             pinned: pinned::PinnedResults::default(),
+            result_view_settings: Default::default(),
             running_spinner: widgets.running_spinner.clone(),
             results_holder: widgets.results_holder.clone(),
             status: widgets.status.clone(),
@@ -698,6 +707,7 @@ impl SimpleComponent for SqlEditor {
                     &self.grid_sender,
                     self.connection_id,
                     self.database.clone(),
+                    self.result_view_settings.clone(),
                 );
             }
 

@@ -1,8 +1,10 @@
 use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 
-use super::{StatementOutcome, StatementOutcomeKind};
+use super::{StatementIdentity, StatementOutcome, StatementOutcomeKind};
+use crate::ui::grid::local_filter::{LocalResultSettingsStore, ResultViewKey};
 use crate::ui::grid::{GridMsg, TabGridContext, build_column_view};
+use sha2::{Digest, Sha256};
 use tablepro_core::sql_syntax::script::BatchErrorPolicy;
 use tablepro_core::{DriverError, OperationControl};
 
@@ -106,10 +108,12 @@ async fn run_tracked_statements(
     let stops_on_error = error_policy == BatchErrorPolicy::StopScript;
     let mut out = Vec::with_capacity(statements.len());
     let mut aborted = false;
-    for sql in statements.into_iter() {
+    for (statement_index, sql) in statements.into_iter().enumerate() {
+        let identity = statement_identity(statement_index, &sql);
         let preview = sql_preview(&sql);
         if aborted {
             out.push(StatementOutcome {
+                identity,
                 sql_preview: preview,
                 elapsed_ms: 0,
                 kind: StatementOutcomeKind::NotRun,
@@ -123,6 +127,7 @@ async fn run_tracked_statements(
             Ok(bound) => bound,
             Err(reason) => {
                 out.push(StatementOutcome {
+                    identity,
                     sql_preview: preview,
                     elapsed_ms: 0,
                     kind: StatementOutcomeKind::Error(reason),
@@ -146,6 +151,7 @@ async fn run_tracked_statements(
             }
         };
         out.push(StatementOutcome {
+            identity,
             sql_preview: preview,
             elapsed_ms: started
                 .elapsed()
@@ -156,6 +162,17 @@ async fn run_tracked_statements(
         });
     }
     ScriptRunResult::Completed(out)
+}
+
+fn statement_identity(statement_index: usize, sql: &str) -> StatementIdentity {
+    let mut digest = Sha256::new();
+    digest.update((statement_index as u64).to_be_bytes());
+    digest.update((sql.len() as u64).to_be_bytes());
+    digest.update(sql.as_bytes());
+    StatementIdentity {
+        statement_index,
+        digest: digest.finalize().into(),
+    }
 }
 
 fn failure_message(error: &DriverError, written: &str, sent: &str) -> String {
@@ -207,41 +224,20 @@ fn build_outcome_widget(
     grid_sender: &relm4::Sender<GridMsg>,
     connection_id: Option<uuid::Uuid>,
     database: std::sync::Arc<crate::services::database_service::DatabaseService>,
+    settings_store: LocalResultSettingsStore,
 ) -> gtk::Widget {
     match &o.kind {
         StatementOutcomeKind::Rows(result_sets) if result_sets.len() > 1 => {
-            let stack = adw::ViewStack::new();
-            let labels = result_sets
-                .iter()
-                .enumerate()
-                .map(|(index, result)| {
-                    crate::tr!("Result set {n} ({rows})")
-                        .replace("{n}", &(index + 1).to_string())
-                        .replace("{rows}", &result.rows.len().to_string())
-                })
-                .collect::<Vec<_>>();
-            for (index, result) in result_sets.iter().enumerate() {
-                let widget = build_result_set_widget(result, grid_sender, connection_id, database.clone());
-                stack.add_titled(&widget, Some(&format!("set{index}")), &labels[index]);
-            }
-            let dropdown = gtk::DropDown::from_strings(&labels.iter().map(String::as_str).collect::<Vec<_>>());
-            dropdown.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Result set"))]);
-            dropdown.connect_selected_notify({
-                let stack = stack.downgrade();
-                move |dropdown| {
-                    if let Some(stack) = stack.upgrade() {
-                        stack.set_visible_child_name(&format!("set{}", dropdown.selected()));
-                    }
-                }
-            });
-            let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            holder.append(&dropdown);
-            holder.append(&stack);
-            holder.upcast()
+            build_multi_result_widget(o, result_sets, grid_sender, connection_id, database, settings_store)
         }
-        StatementOutcomeKind::Rows(result_sets) if let Some(result) = result_sets.first() => {
-            build_result_set_widget(result, grid_sender, connection_id, database)
-        }
+        StatementOutcomeKind::Rows(result_sets) if let Some(result) = result_sets.first() => build_result_set_widget(
+            result,
+            grid_sender,
+            connection_id,
+            database,
+            settings_store,
+            result_view_key(o.identity, 0),
+        ),
         StatementOutcomeKind::Rows(_) => {
             let ms = o.elapsed_ms.to_string();
             adw::StatusPage::builder()
@@ -261,6 +257,51 @@ fn build_outcome_widget(
             .build()
             .upcast(),
     }
+}
+
+fn build_multi_result_widget(
+    outcome: &StatementOutcome,
+    result_sets: &[std::sync::Arc<tablepro_core::QueryResult>],
+    grid_sender: &relm4::Sender<GridMsg>,
+    connection_id: Option<uuid::Uuid>,
+    database: std::sync::Arc<crate::services::database_service::DatabaseService>,
+    settings_store: LocalResultSettingsStore,
+) -> gtk::Widget {
+    let stack = adw::ViewStack::new();
+    let labels = result_sets
+        .iter()
+        .enumerate()
+        .map(|(index, result)| {
+            crate::tr!("Result set {n} ({rows})")
+                .replace("{n}", &(index + 1).to_string())
+                .replace("{rows}", &result.rows.len().to_string())
+        })
+        .collect::<Vec<_>>();
+    for (index, result) in result_sets.iter().enumerate() {
+        let widget = build_result_set_widget(
+            result,
+            grid_sender,
+            connection_id,
+            database.clone(),
+            settings_store.clone(),
+            result_view_key(outcome.identity, index),
+        );
+        stack.add_titled(&widget, Some(&format!("set{index}")), &labels[index]);
+    }
+    let dropdown = gtk::DropDown::from_strings(&labels.iter().map(String::as_str).collect::<Vec<_>>());
+    dropdown.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Result set"))]);
+    dropdown.connect_selected_notify({
+        let stack = stack.downgrade();
+        move |dropdown| {
+            if let Some(stack) = stack.upgrade() {
+                stack.set_visible_child_name(&format!("set{}", dropdown.selected()));
+            }
+        }
+    });
+    let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    holder.append(&dropdown);
+    holder.append(&stack);
+    holder.upcast()
 }
 
 fn error_page(idx: usize, message: &str) -> adw::StatusPage {
@@ -285,6 +326,8 @@ fn build_result_set_widget(
     grid_sender: &relm4::Sender<GridMsg>,
     connection_id: Option<uuid::Uuid>,
     database: std::sync::Arc<crate::services::database_service::DatabaseService>,
+    settings_store: LocalResultSettingsStore,
+    settings_key: ResultViewKey,
 ) -> gtk::Widget {
     if result.columns.is_empty() {
         return adw::StatusPage::builder()
@@ -294,7 +337,8 @@ fn build_result_set_widget(
             .build()
             .upcast();
     }
-    let local_result_view = super::super::grid::local_filter::LocalResultView::new(result.clone());
+    let local_result_view =
+        super::super::grid::local_filter::LocalResultView::new(result.clone(), settings_store, settings_key);
     let (column_view, _selection) = build_column_view(
         result,
         &result.columns,
@@ -463,7 +507,9 @@ pub(crate) fn render_outcomes(
     grid_sender: &relm4::Sender<GridMsg>,
     connection_id: Option<uuid::Uuid>,
     database: std::sync::Arc<crate::services::database_service::DatabaseService>,
+    settings_store: LocalResultSettingsStore,
 ) {
+    settings_store.retain(&result_view_keys(outcomes));
     if outcomes.is_empty() {
         let placeholder = adw::StatusPage::builder()
             .title(crate::tr!("Empty query"))
@@ -475,13 +521,20 @@ pub(crate) fn render_outcomes(
         return;
     }
     if outcomes.len() == 1 {
-        let widget = build_outcome_widget(&outcomes[0], 0, grid_sender, connection_id, database);
+        let widget = build_outcome_widget(&outcomes[0], 0, grid_sender, connection_id, database, settings_store);
         holder.append(&widget);
         return;
     }
     let stack = adw::ViewStack::new();
     for (idx, o) in outcomes.iter().enumerate() {
-        let widget = build_outcome_widget(o, idx, grid_sender, connection_id, database.clone());
+        let widget = build_outcome_widget(
+            o,
+            idx,
+            grid_sender,
+            connection_id,
+            database.clone(),
+            settings_store.clone(),
+        );
         let icon = match &o.kind {
             StatementOutcomeKind::Rows(_) => "view-grid-symbolic",
             StatementOutcomeKind::Error(_) => "dialog-error-symbolic",
@@ -503,10 +556,34 @@ pub(crate) fn render_outcomes(
     }
 }
 
+fn result_view_key(identity: StatementIdentity, result_set_index: usize) -> ResultViewKey {
+    ResultViewKey {
+        statement_identity: identity,
+        result_set_index,
+    }
+}
+
+fn result_view_keys(outcomes: &[StatementOutcome]) -> std::collections::HashSet<ResultViewKey> {
+    outcomes
+        .iter()
+        .flat_map(|outcome| match &outcome.kind {
+            StatementOutcomeKind::Rows(result_sets) => result_sets
+                .iter()
+                .enumerate()
+                .map(|(index, _)| result_view_key(outcome.identity, index))
+                .collect::<Vec<_>>(),
+            StatementOutcomeKind::Error(_) | StatementOutcomeKind::NotRun => Vec::new(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::session_mode::StatementTarget;
-    use super::{BatchErrorPolicy, ScriptRunResult, StatementOutcomeKind, run_statements, sql_preview, summary_label};
+    use super::{
+        BatchErrorPolicy, ScriptRunResult, StatementIdentity, StatementOutcomeKind, run_statements, sql_preview,
+        statement_identity, summary_label,
+    };
     use super::{statement_subject, uses_drop_down};
     use tablepro_core::{ConnectOptions, DatabaseDriver};
 
@@ -804,6 +881,7 @@ mod tests {
     #[test]
     fn a_pinned_result_is_named_by_its_statement_without_a_run_number() {
         let outcome = super::StatementOutcome {
+            identity: StatementIdentity::default(),
             sql_preview: "select * from public.users".into(),
             elapsed_ms: 3,
             kind: StatementOutcomeKind::Rows(Vec::new()),
@@ -816,6 +894,13 @@ mod tests {
     fn sql_preview_collapses_whitespace_and_truncates() {
         let preview = sql_preview("SELECT *\n  FROM   users\n  WHERE id = 1");
         assert_eq!(preview, "SELECT * FROM users WHERE id = 1");
+    }
+
+    #[test]
+    fn statement_identity_changes_when_position_or_sql_changes() {
+        assert_ne!(statement_identity(0, "SELECT 1"), statement_identity(1, "SELECT 1"));
+        assert_ne!(statement_identity(0, "SELECT 1"), statement_identity(0, "SELECT 2"));
+        assert_eq!(statement_identity(0, "SELECT 1"), statement_identity(0, "SELECT 1"));
     }
 
     #[test]

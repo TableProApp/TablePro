@@ -125,6 +125,7 @@ mod tests {
         let buffer = sourceview5::Buffer::new(None::<&relm4::gtk::TextTagTable>);
         buffer.set_text("SELECT 1;\nSELECT x;\nSELECT 3;");
         let outcome = |kind| StatementOutcome {
+            identity: super::super::StatementIdentity::default(),
             sql_preview: String::new(),
             elapsed_ms: 0,
             kind,

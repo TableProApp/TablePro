@@ -6,6 +6,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Added
 - SQL query and pinned result grids can filter loaded rows by a cell's native value without running the SQL again; the grid shows the visible and loaded counts.
+- SQL result filters and sorting stay in place when the same statement is rerun or its result is pinned or unpinned, and selected rows stay attached to the same materialized result.
 - Plain-clicking a table opens a temporary preview tab that the next table click can replace; preview tabs are not restored after restart, while editing or choosing **Keep Tab** makes one persistent.
 - PostgreSQL and SQLite query plans open in a Tree tab of the Explain dialog.
 - Ctrl+V pastes tab-separated text from a spreadsheet into grid cells, all or nothing.
