@@ -75,12 +75,10 @@ internal struct ThemeDefinition: Identifiable, Equatable, Sendable {
     var status: StatusThemeColors
 
     internal static let builtInPrefix = "tablepro."
-    internal static let registryPrefix = "registry."
     internal static let userPrefix = "user."
 
     internal var isBuiltIn: Bool { id.hasPrefix(Self.builtInPrefix) }
-    internal var isRegistry: Bool { id.hasPrefix(Self.registryPrefix) }
-    internal var isEditable: Bool { !isBuiltIn && !isRegistry }
+    internal var isEditable: Bool { !isBuiltIn }
 }
 
 /// The single registry every slot goes through. A slot exists here because a call site reads it,

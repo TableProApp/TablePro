@@ -46,7 +46,6 @@ struct ConnectionWindowPhaseMachineTests {
     func actionRequiredKeepsItsAction() {
         let actions: [ConnectionRecoveryAction] = [
             .installPlugin,
-            .enablePlugin(pluginId: "com.TablePro.SQLiteDriver"),
             .openPluginSettings(pluginId: nil),
             .editConnection
         ]
@@ -82,12 +81,11 @@ struct ConnectionWindowPhaseMachineTests {
     }
 
     /// A fix offered for one database type names that type's plugin, so once the type changes it
-    /// would enable or reveal a plugin the connection no longer uses.
+    /// would reveal a plugin the connection no longer uses.
     @Test("A new database type retires every fix offered for the old one")
     func typeChangeRetiresEveryAction() {
         let actions: [ConnectionRecoveryAction] = [
             .installPlugin,
-            .enablePlugin(pluginId: "com.TablePro.SQLiteDriver"),
             .openPluginSettings(pluginId: nil),
             .editConnection
         ]
@@ -219,10 +217,10 @@ struct ConnectionWindowPhaseMachineTests {
     /// A connect driven from outside the window, opening a file or a table from a URL, is not the
     /// window's attempt, so the window learns its result only from the session going away. That
     /// used to read as "Disconnected" with Reconnect, for a connection that never connected and
-    /// whose only fix was switching its plugin on.
+    /// whose only fix was in Settings > Plugins.
     @Test("A connect the window did not start that failed for its plugin offers the plugin's fix")
     func unownedFailedConnectKeepsItsFix() {
-        let action = ConnectionRecoveryAction.enablePlugin(pluginId: "com.TablePro.SQLiteDriver")
+        let action = ConnectionRecoveryAction.openPluginSettings(pluginId: "com.TablePro.SQLiteDriver")
         let phase = ConnectionWindowPhaseMachine.onSessionChanged(
             phase: .connecting,
             session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .connectFailed(Self.failure, action)),
@@ -304,7 +302,7 @@ struct ConnectionWindowPhaseMachineTests {
         #expect(ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.disconnected(nil))))
 
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.cancelled)))
-        #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.actionRequired(Self.failure, .enablePlugin(pluginId: "p")))))
+        #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.actionRequired(Self.failure, .installPlugin))))
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .connecting))
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .connected))
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .closing))
