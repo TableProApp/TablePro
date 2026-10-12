@@ -11,18 +11,37 @@ path = "src/lib.rs"
 
 [dependencies]
 tablepro-core = { path = "../../core" }
+tablepro-net = { path = "../../net" }
 async-trait.workspace = true
 chrono.workspace = true
+# lz4 stays off: with it on, fetch_bytes asks for compressed responses,
+# and JSON over a kept-alive HTTP connection is cheap without it.
 clickhouse.workspace = true
+clickhouse-types.workspace = true
+http.workspace = true
+hyper-rustls.workspace = true
+hyper-util.workspace = true
+rustls-pki-types.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
+sqlparser.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "rt", "sync", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tower-service.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-testcontainers = { workspace = true, features = ["http_wait_plain"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tablepro-test-fixtures = { path = "../../test-fixtures" }
+tablepro-test-support = { path = "../../test-support" }
+async-trait.workspace = true
+chrono.workspace = true
+rustls.workspace = true
+secrecy.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tokio-util = { workspace = true, features = ["rt"] }
+uuid.workspace = true
 
 [lints]
 workspace = true
