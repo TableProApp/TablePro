@@ -109,16 +109,19 @@ final class MCPPairingService {
 
     let store: PairingExchangeStore
     private let rateLimiter: MCPRateLimiter
+    private let serverManager: MCPServerManager
     private var pruneTask: Task<Void, Never>?
 
     init(
         store: PairingExchangeStore = PairingExchangeStore(),
         rateLimiter: MCPRateLimiter = MCPRateLimiter(
             pairingPolicy: MCPPairingService.exchangeRateLimitPolicy
-        )
+        ),
+        serverManager: MCPServerManager = .shared
     ) {
         self.store = store
         self.rateLimiter = rateLimiter
+        self.serverManager = serverManager
         startPruneLoop()
     }
 
@@ -142,9 +145,9 @@ final class MCPPairingService {
             throw DatabaseAccessError.invalidArgument(error.localizedMessage)
         }
 
-        await MCPServerManager.shared.lazyStart()
+        try await serverManager.lazyStart()
 
-        guard let tokenStore = MCPServerManager.shared.tokenStore else {
+        guard let tokenStore = serverManager.tokenStore else {
             Self.logger.error("Token store unavailable after lazyStart")
             throw DatabaseAccessError.dataSourceError("Token store unavailable")
         }
