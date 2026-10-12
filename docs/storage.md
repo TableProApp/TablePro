@@ -100,16 +100,16 @@ When changing storage behavior:
 A connection bundle is a single JSON document a user exports and another machine imports. It is not a storage location: nothing reads or writes it automatically.
 
 ```json
-{"format": "tablepro.connection-bundle", "version": 2, "producer": "...", "exported_at": "...", "payload": {...}}
+{"format": "tablepro.connection-bundle", "version": 3, "producer": "...", "exported_at": "...", "payload": {...}}
 ```
 
-Version 2 is written by current exports. Imports continue to accept version 1 bundles, which carry only legacy connection-level SSH secrets when encrypted.
+Version 3 is written by current exports. Imports continue to accept versions 1 and 2; version 1 bundles carry only legacy connection-level SSH secrets when encrypted.
 
 `payload.kind` is `plaintext` or `encrypted`, matched by hand rather than through an internally tagged enum, because `#[serde(deny_unknown_fields)]` does not reach through `#[serde(tag = ...)]`.
 
 ### What a bundle carries
 
-Exported: `id`, `name`, `driver_id`, `host`, `port`, `socket_dir`, `database`, `username`, `tls_mode`, `tls_root_cert`, `read_only`, `auth_mode`, `environment`, `ssh`, plus the group, tags and colour from the organisation sidecar.
+Exported: `id`, `name`, `driver_id`, `host`, `port`, `socket_dir`, `socket_path`, `database`, `username`, `tls_mode`, `tls_root_cert`, `read_only`, `auth_mode`, `environment`, `ssh`, plus the group, tags and colour from the organisation sidecar.
 
 Withheld: `use_tls` (the legacy boolean `tls_mode` replaced, so no bundle can claim `use_tls: true, tls_mode: disabled`), `last_opened_at` (local telemetry), unknown keys carried from a newer version, the contents of `tls_root_cert` and any SSH private key (paths only), and policy `connection_overrides`.
 
@@ -147,4 +147,4 @@ On an in-place update safety never downgrades: `read_only` is the OR of both, `e
 
 `apply_import` takes the connection-file lock once and rewrites the file in a single pass, so a plan lands whole rather than as N upserts racing another process.
 
-Exporting a bundle is not recorded in the audit journal. The journal is hash-chained and its event schema is SQL-shaped, so carrying a non-SQL event through it needs its own change.
+Exporting and importing a bundle each write an administrative audit event (`connection_bundle_export`, `connection_bundle_import`) to the journal. Acceptance on the installed package is tracked as B4-22 ([#566](https://github.com/cozyGarage/BookiE/issues/566)).

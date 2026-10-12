@@ -215,7 +215,7 @@ A text or JSON cell over 40,000 bytes shows a shortened value ending in `… (+N
 ## Result headers, selection statistics, error copy and connection strip
 
 - [ ] Browse a table: each column header shows its name, a key marker for primary and foreign keys, and the lower-case type beneath it, in light and dark.
-- [ ] Select several rows of a numeric column: the selection badge tooltip lists the column's sum and average. A text column is not listed.
+- [ ] Select several rows of a numeric column: the selection badge popover lists the column's count, sum, average, min and max, and Copy summary copies them. A text column is not listed.
 - [ ] Run a failing statement in the editor: Copy error places the exact error text on the clipboard.
 - [ ] Tag a connection red and open it: the strip above the workspace tabs is red in light and dark. Change the tag: the strip follows without a restart.
 
@@ -238,5 +238,5 @@ A text or JSON cell over 40,000 bytes shows a shortened value ending in `… (+N
 
 - Creating a table from a CSV file falls back to PostgreSQL-leaning type names on ClickHouse, MongoDB, Redis and DuckDB. Only PostgreSQL, MySQL, SQLite and SQL Server have real type-name tables, and none of the four fallback engines was exercised.
 - Bundle export and import are covered at the byte level in unit tests and by the keyring tier, but no end-to-end round trip between two real profiles has been run.
-- Bundle export and import write **no** audit-journal entries. `AuditEvent` is SQL-shaped and hash-chained, so an administrative-event class needs its own ADR before that gap can be closed. See `storage.md`.
+- Bundle export and import write administrative audit events. Run a bundle round trip and confirm both events appear in `audit.jsonl` (B4-22).
 - SQL-format export and copied INSERT statements now preserve binary values on PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse, with real-engine tests for NULL, empty blobs and all 256 byte values. DuckDB binary SQL literals also have a NULL/empty/all-byte round-trip regression in the B3 ledger; installed acceptance is still pending. Other lossless-contract requirements remain under B3.

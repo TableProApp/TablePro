@@ -27,7 +27,7 @@ Click a table in the sidebar. The sidebar groups tables and views under each sch
 - **Find**: Ctrl+Alt+F lists loaded rows that contain a text.
 - **Long values**: cells longer than 8 KiB show the start of the value and its size. **View Value** opens the whole value; copy, export and edits always use the full value.
 - **Row inspector**: shows every column of the selected row with its type.
-- **Selection totals**: select several rows to see sums and averages of numeric columns in the selection badge tooltip.
+- **Selection statistics**: select several rows and open the selection badge to see count, sum, average, min and max per numeric column; **Copy summary** copies them.
 
 ## Run SQL
 
