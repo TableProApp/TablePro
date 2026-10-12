@@ -44,6 +44,16 @@ rust_decimal = { version = "1", default-features = false, features = ["serde", "
 # the build free of another C dependency.
 rust_xlsxwriter = { version = "0.99", default-features = false, features = ["chrono"] }
 futures = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+bytes = "1"
+fallible-iterator = "0.2"
+tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime"] }
+postgres-types = { version = "0.2.14", features = ["with-chrono-0_4"] }
+postgres-protocol = "0.6.12"
+deadpool-postgres = { version = "0.14.2", default-features = false, features = ["rt_tokio_1"] }
+# The provider comes from the ClientConfig the driver builds, so neither
+# provider feature is needed, and leaving both off keeps ring out.
+tokio-postgres-rustls = { version = "0.14.0", default-features = false }
 libsqlite3-sys = ">=0.30.1, <0.38.0"
 num-bigint = { version = "0.4", default-features = false, features = ["std"] }
 proptest = "1.11"

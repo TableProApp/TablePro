@@ -13,20 +13,33 @@ path = "src/lib.rs"
 tablepro-core = { path = "../../core" }
 tablepro-net = { path = "../../net" }
 async-trait.workspace = true
+bytes.workspace = true
 chrono.workspace = true
-futures.workspace = true
-rust_decimal.workspace = true
+deadpool-postgres.workspace = true
+fallible-iterator.workspace = true
+futures-util.workspace = true
+postgres-protocol.workspace = true
+postgres-types.workspace = true
+rustls.workspace = true
 secrecy.workspace = true
-serde_json.workspace = true
-sqlx = { workspace = true, features = ["postgres", "bit-vec", "tls-rustls-aws-lc-rs"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio-postgres.workspace = true
+tokio-postgres-rustls.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 tablepro-test-fixtures = { path = "../../test-fixtures" }
+tablepro-test-support = { path = "../../test-support" }
+async-trait.workspace = true
+chrono.workspace = true
+futures-util.workspace = true
 rustls.workspace = true
-testcontainers.workspace = true
-testcontainers-modules = { workspace = true, features = ["postgres"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+secrecy.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tokio-util = { workspace = true, features = ["rt"] }
+uuid.workspace = true
 
 [lints]
 workspace = true
