@@ -133,6 +133,25 @@ struct AISettingsProviderDecodingTests {
         #expect(settings.maxSchemaTables == 42)
     }
 
+    @Test("A stored Cursor provider row is dropped and the rest of AI settings load")
+    func removedCursorRowIsDropped() throws {
+        let json = """
+        {
+            "inlineSuggestionsEnabled": true,
+            "activeProviderID": "\(otherID.uuidString)",
+            "providers": [
+                {"id": "\(otherID.uuidString)", "type": "cursor", "name": "Cursor"},
+                {"id": "\(keptID.uuidString)", "type": "xai"}
+            ]
+        }
+        """
+        let settings = try decode(json)
+        #expect(settings.providers.map(\.id) == [keptID])
+        #expect(settings.providers.first?.type == .xai)
+        #expect(settings.activeProvider == nil)
+        #expect(settings.inlineSuggestionsEnabled == true)
+    }
+
     @Test("A provider row without an id is dropped")
     func rowWithoutIDIsDropped() throws {
         let json = """
