@@ -45,7 +45,7 @@ fn by_name<'a>(names: &[String], columns: &'a [ColumnInfo]) -> Result<Vec<KeyCom
 
 #[cfg(test)]
 mod tests {
-    use crate::column::{CatalogType, ColumnDefault, ColumnKind, ColumnType, IntegerKind, ReadForm, SqlTypeExpr};
+    use crate::column::{ColumnDefault, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm};
     use crate::meta::EngineRowId;
 
     use super::*;
@@ -53,13 +53,16 @@ mod tests {
     fn column(name: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.to_owned(),
-            column_type: ColumnType::new(
-                SqlTypeExpr::from_catalog_text("integer"),
-                ColumnKind::Integer(IntegerKind::I32),
-                CatalogType::Oid(23),
-                false,
-                ReadForm::Native,
-            ),
+            column_type: ColumnType {
+                name: "integer".to_owned(),
+                kind: ColumnKind::Integer(IntegerKind {
+                    width: IntegerWidth::W32,
+                    signed: true,
+                }),
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
             nullable: false,
             primary_key: true,
             is_auto_increment: false,

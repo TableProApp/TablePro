@@ -168,7 +168,7 @@ fn require_list(rule: &FilterRule) -> Result<&Vec<String>, BuildFilterError> {
 /// Driven by the column's kind rather than its type name, so a new
 /// engine spelling never needs a new branch here. A binary column gets
 /// only the null tests: there is no text form of a blob to compare.
-pub fn operators_for(kind: crate::column::ColumnKind) -> &'static [FilterOp] {
+pub fn operators_for(kind: &crate::column::ColumnKind) -> &'static [FilterOp] {
     use crate::column::ColumnKind;
 
     const NULL_ONLY: &[FilterOp] = &[FilterOp::IsNull, FilterOp::IsNotNull];
@@ -209,20 +209,27 @@ pub fn operators_for(kind: crate::column::ColumnKind) -> &'static [FilterOp] {
     ];
 
     match kind {
-        ColumnKind::Binary | ColumnKind::Array | ColumnKind::Geometry => NULL_ONLY,
-        ColumnKind::Text(_) | ColumnKind::Json | ColumnKind::Enumeration | ColumnKind::Set | ColumnKind::Other => {
-            TEXTUAL
-        }
+        ColumnKind::Bytes { .. }
+        | ColumnKind::Spatial
+        | ColumnKind::Array { .. }
+        | ColumnKind::Variant
+        | ColumnKind::Composite => NULL_ONLY,
+        ColumnKind::Text { .. }
+        | ColumnKind::Json { .. }
+        | ColumnKind::Enum { .. }
+        | ColumnKind::Xml
+        | ColumnKind::Other => TEXTUAL,
         // An interval is ordered, so it compares rather than matching
         // as text.
         ColumnKind::Integer(_)
-        | ColumnKind::Decimal
+        | ColumnKind::Decimal { .. }
+        | ColumnKind::Money { .. }
         | ColumnKind::Float(_)
         | ColumnKind::Date
-        | ColumnKind::Time
-        | ColumnKind::Timestamp
+        | ColumnKind::Time { .. }
+        | ColumnKind::Timestamp { .. }
         | ColumnKind::Interval => COMPARISON,
-        ColumnKind::Boolean | ColumnKind::Uuid | ColumnKind::BitString | ColumnKind::Network => EQUALITY,
+        ColumnKind::Bool(_) | ColumnKind::Uuid | ColumnKind::BitString { .. } | ColumnKind::Network(_) => EQUALITY,
     }
 }
 
@@ -249,7 +256,7 @@ pub fn build_filter(
             .iter()
             .find(|column| column.name == rule.column)
             .ok_or_else(|| BuildFilterError::UnknownColumn(rule.column.clone()))?;
-        if !operators_for(column.column_type.kind()).contains(&rule.op) {
+        if !operators_for(&column.column_type.kind).contains(&rule.op) {
             return Err(BuildFilterError::OperatorNotAllowed {
                 column: rule.column.clone(),
                 op: rule.op,
@@ -398,7 +405,7 @@ fn bind_pattern(
 #[cfg(test)]
 mod dialect_filter_tests {
     use crate::column::{
-        CatalogType, ColumnDefault, ColumnInfo, ColumnKind, ColumnType, IntegerKind, ReadForm, SqlTypeExpr, TextKind,
+        ColumnDefault, ColumnInfo, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, TextLength,
     };
     use crate::dialect::TestDialect;
     use crate::value::Value;
@@ -408,13 +415,13 @@ mod dialect_filter_tests {
     fn column(name: &str, kind: ColumnKind) -> ColumnInfo {
         ColumnInfo {
             name: name.to_owned(),
-            column_type: ColumnType::new(
-                SqlTypeExpr::from_catalog_text("t"),
+            column_type: ColumnType {
+                name: "t".to_owned(),
                 kind,
-                CatalogType::Unknown,
-                false,
-                ReadForm::Native,
-            ),
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
             nullable: true,
             primary_key: false,
             is_auto_increment: false,
@@ -426,9 +433,25 @@ mod dialect_filter_tests {
 
     fn columns() -> Vec<ColumnInfo> {
         vec![
-            column("name", ColumnKind::Text(TextKind::Variable)),
-            column("age", ColumnKind::Integer(IntegerKind::I32)),
-            column("photo", ColumnKind::Binary),
+            column(
+                "name",
+                ColumnKind::Text {
+                    length: TextLength::Varying(50),
+                },
+            ),
+            column(
+                "age",
+                ColumnKind::Integer(IntegerKind {
+                    width: IntegerWidth::W32,
+                    signed: true,
+                }),
+            ),
+            column(
+                "photo",
+                ColumnKind::Bytes {
+                    length: TextLength::Unbounded,
+                },
+            ),
         ]
     }
 
@@ -543,11 +566,27 @@ mod dialect_filter_tests {
 
     #[test]
     fn operators_for_interval_are_comparison_not_text() {
-        let interval = operators_for(ColumnKind::Interval);
+        let interval = operators_for(&ColumnKind::Interval);
 
         assert!(interval.contains(&FilterOp::Between), "{interval:?}");
         assert!(interval.contains(&FilterOp::Lt), "{interval:?}");
         assert!(!interval.contains(&FilterOp::Contains), "{interval:?}");
+    }
+
+    #[test]
+    fn a_kind_with_no_comparable_text_gets_only_the_null_tests() {
+        let array = ColumnKind::Array {
+            element: Box::new(ColumnKind::Uuid),
+        };
+        for kind in [ColumnKind::Spatial, ColumnKind::Composite, ColumnKind::Variant, array] {
+            assert_eq!(
+                operators_for(&kind),
+                &[FilterOp::IsNull, FilterOp::IsNotNull],
+                "{kind:?}"
+            );
+        }
+        assert!(operators_for(&ColumnKind::Money { scale: Some(2) }).contains(&FilterOp::Between));
+        assert!(operators_for(&ColumnKind::Xml).contains(&FilterOp::Contains));
     }
 
     #[test]

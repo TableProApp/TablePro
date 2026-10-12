@@ -1,4 +1,4 @@
-use crate::column::{ColumnInfo, ColumnType, SqlExpression, SqlTypeExpr};
+use crate::column::{ColumnInfo, ColumnType, SqlExpression};
 use crate::meta::{EngineRowId, EngineRowIdPart};
 use crate::sql_syntax::{ExpressionSyntaxError, SqlGrammar, TypeSyntaxError, parse_expression, parse_type};
 use crate::statement::{BoundParam, ParamType};
@@ -91,7 +91,7 @@ impl SqlDialect for TestDialect {
 
     fn parse_type(&self, text: &str) -> Result<ColumnType, TypeSyntaxError> {
         let parsed = parse_type(SqlGrammar::PostgreSql, text, crate::sql_syntax::MAX_TYPE_LEN)?;
-        Ok(ColumnType::untyped_text(SqlTypeExpr::from_catalog_text(parsed.text)))
+        Ok(ColumnType::untyped_text(parsed.text))
     }
 
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
@@ -102,24 +102,34 @@ impl SqlDialect for TestDialect {
 
 /// The parameter type a column takes, reduced to what the tests need.
 fn param_type_for(column: &ColumnInfo) -> ParamType {
-    use crate::column::{ColumnKind, FloatKind, IntegerKind};
+    use crate::column::{BoolStorage, ColumnKind, FloatWidth, IntegerWidth, TemporalZone};
 
-    match column.column_type.kind() {
-        ColumnKind::Boolean => ParamType::Bool,
-        ColumnKind::Integer(IntegerKind::I16 | IntegerKind::U8 | IntegerKind::I8) => ParamType::Int16,
-        ColumnKind::Integer(IntegerKind::I32 | IntegerKind::U16) => ParamType::Int32,
-        ColumnKind::Integer(IntegerKind::U64 | IntegerKind::U128) => ParamType::UInt64,
-        ColumnKind::Integer(_) => ParamType::Int64,
-        ColumnKind::Decimal => ParamType::Decimal,
-        ColumnKind::Float(FloatKind::F32) => ParamType::Float32,
-        ColumnKind::Float(FloatKind::F64) => ParamType::Float64,
+    match &column.column_type.kind {
+        ColumnKind::Bool(BoolStorage::Native) => ParamType::Bool,
+        ColumnKind::Bool(BoolStorage::Integer) => ParamType::Int64,
+        ColumnKind::Integer(kind) => match (kind.width, kind.signed) {
+            (IntegerWidth::W8 | IntegerWidth::W16, true) | (IntegerWidth::W8, false) => ParamType::Int16,
+            (IntegerWidth::W24 | IntegerWidth::W32, true) | (IntegerWidth::W16 | IntegerWidth::W24, false) => {
+                ParamType::Int32
+            }
+            (IntegerWidth::W64 | IntegerWidth::W128 | IntegerWidth::W256, false) => ParamType::UInt64,
+            _ => ParamType::Int64,
+        },
+        ColumnKind::Decimal { .. } | ColumnKind::Money { .. } => ParamType::Decimal,
+        ColumnKind::Float(FloatWidth::F32) => ParamType::Float32,
+        ColumnKind::Float(FloatWidth::F64) => ParamType::Float64,
         ColumnKind::Uuid => ParamType::Uuid,
-        ColumnKind::Json => ParamType::Json,
+        ColumnKind::Json { .. } => ParamType::Json,
         ColumnKind::Date => ParamType::Date,
-        ColumnKind::Time => ParamType::Time,
-        ColumnKind::Timestamp => ParamType::Timestamp,
+        ColumnKind::Time { with_offset: false, .. } => ParamType::Time,
+        ColumnKind::Time { with_offset: true, .. } => ParamType::TimeTz,
+        ColumnKind::Timestamp {
+            zone: TemporalZone::Offset,
+            ..
+        } => ParamType::TimestampTz,
+        ColumnKind::Timestamp { .. } => ParamType::Timestamp,
         ColumnKind::Interval => ParamType::Interval,
-        ColumnKind::Binary | ColumnKind::BitString => ParamType::Bytes,
+        ColumnKind::Bytes { .. } | ColumnKind::BitString { .. } => ParamType::Bytes,
         _ => ParamType::Text,
     }
 }

@@ -15,7 +15,7 @@ pub enum EditParseError {
     Required,
     #[error("enter a whole number")]
     InvalidInteger,
-    #[error("this column holds {kind:?} values, and this number is outside its range")]
+    #[error("this column holds {kind} integers, and this number is outside its range")]
     IntegerOutOfRange { kind: IntegerKind },
     #[error("enter a number")]
     InvalidFloat,

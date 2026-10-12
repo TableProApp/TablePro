@@ -4,7 +4,7 @@ use std::str::FromStr;
 use num_bigint::BigInt;
 use thiserror::Error;
 
-use crate::column::IntegerKind;
+use crate::column::{IntegerKind, IntegerWidth};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WideInteger(BigInt);
@@ -47,39 +47,33 @@ impl WideInteger {
     }
 }
 
-/// Built once: ten `BigInt` pairs constructed per call would dominate a
-/// bulk insert's validation.
+/// Built once: fourteen `BigInt` pairs constructed per call would
+/// dominate a bulk insert's validation.
 fn bounds(kind: IntegerKind) -> &'static (BigInt, BigInt) {
     use std::sync::OnceLock;
 
-    static BOUNDS: OnceLock<[(BigInt, BigInt); 10]> = OnceLock::new();
-    let table = BOUNDS.get_or_init(|| {
-        [
-            (BigInt::from(i8::MIN), BigInt::from(i8::MAX)),
-            (BigInt::from(0), BigInt::from(u8::MAX)),
-            (BigInt::from(i16::MIN), BigInt::from(i16::MAX)),
-            (BigInt::from(0), BigInt::from(u16::MAX)),
-            (BigInt::from(i32::MIN), BigInt::from(i32::MAX)),
-            (BigInt::from(0), BigInt::from(u32::MAX)),
-            (BigInt::from(i64::MIN), BigInt::from(i64::MAX)),
-            (BigInt::from(0), BigInt::from(u64::MAX)),
-            (BigInt::from(i128::MIN), BigInt::from(i128::MAX)),
-            (BigInt::from(0), BigInt::from(u128::MAX)),
-        ]
-    });
-    let index = match kind {
-        IntegerKind::I8 => 0,
-        IntegerKind::U8 => 1,
-        IntegerKind::I16 => 2,
-        IntegerKind::U16 => 3,
-        IntegerKind::I32 => 4,
-        IntegerKind::U32 => 5,
-        IntegerKind::I64 => 6,
-        IntegerKind::U64 => 7,
-        IntegerKind::I128 => 8,
-        IntegerKind::U128 => 9,
+    static BOUNDS: OnceLock<[[(BigInt, BigInt); 2]; 7]> = OnceLock::new();
+    let table = BOUNDS.get_or_init(|| IntegerWidth::ALL.map(|width| [false, true].map(|signed| range(width, signed))));
+    let width = match kind.width {
+        IntegerWidth::W8 => 0,
+        IntegerWidth::W16 => 1,
+        IntegerWidth::W24 => 2,
+        IntegerWidth::W32 => 3,
+        IntegerWidth::W64 => 4,
+        IntegerWidth::W128 => 5,
+        IntegerWidth::W256 => 6,
     };
-    &table[index]
+    &table[width][usize::from(kind.signed)]
+}
+
+fn range(width: IntegerWidth, signed: bool) -> (BigInt, BigInt) {
+    let bits = width.bits();
+    if signed {
+        let half = BigInt::from(1) << (bits - 1);
+        (-half.clone(), half - 1)
+    } else {
+        (BigInt::from(0), (BigInt::from(1) << bits) - 1)
+    }
 }
 
 impl FromStr for WideInteger {
@@ -154,40 +148,65 @@ mod fits_tests {
         text.parse().expect("a valid integer")
     }
 
+    fn kind(width: IntegerWidth, signed: bool) -> IntegerKind {
+        IntegerKind { width, signed }
+    }
+
     #[test]
-    fn wide_integer_fits_every_integer_kind() {
-        let cases: [(IntegerKind, &str, &str); 10] = [
-            (IntegerKind::I8, "-128", "127"),
-            (IntegerKind::U8, "0", "255"),
-            (IntegerKind::I16, "-32768", "32767"),
-            (IntegerKind::U16, "0", "65535"),
-            (IntegerKind::I32, "-2147483648", "2147483647"),
-            (IntegerKind::U32, "0", "4294967295"),
-            (IntegerKind::I64, "-9223372036854775808", "9223372036854775807"),
-            (IntegerKind::U64, "0", "18446744073709551615"),
+    fn wide_integer_fits_integer_kind() {
+        let cases = [
+            (kind(IntegerWidth::W8, true), "-128", "127"),
+            (kind(IntegerWidth::W8, false), "0", "255"),
+            (kind(IntegerWidth::W16, true), "-32768", "32767"),
+            (kind(IntegerWidth::W16, false), "0", "65535"),
+            (kind(IntegerWidth::W24, true), "-8388608", "8388607"),
+            (kind(IntegerWidth::W24, false), "0", "16777215"),
+            (kind(IntegerWidth::W32, true), "-2147483648", "2147483647"),
+            (kind(IntegerWidth::W32, false), "0", "4294967295"),
             (
-                IntegerKind::I128,
+                kind(IntegerWidth::W64, true),
+                "-9223372036854775808",
+                "9223372036854775807",
+            ),
+            (kind(IntegerWidth::W64, false), "0", "18446744073709551615"),
+            (
+                kind(IntegerWidth::W128, true),
                 "-170141183460469231731687303715884105728",
                 "170141183460469231731687303715884105727",
             ),
-            (IntegerKind::U128, "0", "340282366920938463463374607431768211455"),
+            (
+                kind(IntegerWidth::W128, false),
+                "0",
+                "340282366920938463463374607431768211455",
+            ),
+            (
+                kind(IntegerWidth::W256, true),
+                "-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+                "57896044618658097711785492504343953926634992332820282019728792003956564819967",
+            ),
+            (
+                kind(IntegerWidth::W256, false),
+                "0",
+                "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+            ),
         ];
 
         for (kind, low, high) in cases {
-            assert!(wide(low).fits(kind), "{kind:?} rejected its own minimum {low}");
-            assert!(wide(high).fits(kind), "{kind:?} rejected its own maximum {high}");
+            assert!(wide(low).fits(kind), "{kind} rejected its own minimum {low}");
+            assert!(wide(high).fits(kind), "{kind} rejected its own maximum {high}");
 
             let below = format!("{}", wide(low).0 - 1);
             let above = format!("{}", wide(high).0 + 1);
-            assert!(!wide(&below).fits(kind), "{kind:?} accepted {below}");
-            assert!(!wide(&above).fits(kind), "{kind:?} accepted {above}");
+            assert!(!wide(&below).fits(kind), "{kind} accepted {below}");
+            assert!(!wide(&above).fits(kind), "{kind} accepted {above}");
         }
     }
 
     #[test]
     fn an_unsigned_kind_rejects_a_negative_value() {
-        for kind in IntegerKind::ALL.into_iter().filter(|kind| !kind.is_signed()) {
-            assert!(!wide("-1").fits(kind), "{kind:?} accepted -1");
+        for width in IntegerWidth::ALL {
+            let unsigned = kind(width, false);
+            assert!(!wide("-1").fits(unsigned), "{unsigned} accepted -1");
         }
     }
 }

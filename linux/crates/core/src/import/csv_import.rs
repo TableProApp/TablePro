@@ -184,7 +184,7 @@ fn cell_for(text: &str, column: &ColumnInfo, options: &CsvImportOptions) -> Resu
         }
         // An empty string is a value in its own right for a text
         // column, and the marker being empty is the common case.
-        if options.null_marker.is_empty() && column.column_type.kind().accepts_empty_string() {
+        if options.null_marker.is_empty() && column.column_type.kind.accepts_empty_string() {
             return Ok(CellInput::Value(crate::value::Value::Text(String::new())));
         }
         return Ok(CellInput::Value(crate::value::Value::Null));
@@ -207,7 +207,7 @@ fn delimiter_byte(delimiter: CsvDelimiter) -> u8 {
 mod tests {
     use super::*;
     use crate::column::{
-        CatalogType, ColumnDefault, ColumnKind, ColumnType, IntegerKind, ReadForm, SqlExpression, SqlTypeExpr, TextKind,
+        ColumnDefault, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, SqlExpression, TextLength,
     };
     use crate::value::Value;
 
@@ -218,13 +218,13 @@ mod tests {
     fn column(name: &str, kind: ColumnKind, sql: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.to_owned(),
-            column_type: ColumnType::new(
-                SqlTypeExpr::from_catalog_text(sql),
+            column_type: ColumnType {
+                name: sql.to_owned(),
                 kind,
-                CatalogType::Unknown,
-                true,
-                ReadForm::Native,
-            ),
+                catalog: None,
+                dynamic_storage: true,
+                read_form: ReadForm::Native,
+            },
             nullable: true,
             primary_key: false,
             is_auto_increment: false,
@@ -235,11 +235,24 @@ mod tests {
     }
 
     fn text_column(name: &str) -> ColumnInfo {
-        column(name, ColumnKind::Text(TextKind::Variable), "text")
+        column(
+            name,
+            ColumnKind::Text {
+                length: TextLength::Unbounded,
+            },
+            "text",
+        )
     }
 
     fn int_column(name: &str) -> ColumnInfo {
-        column(name, ColumnKind::Integer(IntegerKind::I64), "bigint")
+        column(
+            name,
+            ColumnKind::Integer(IntegerKind {
+                width: IntegerWidth::W64,
+                signed: true,
+            }),
+            "bigint",
+        )
     }
 
     #[test]

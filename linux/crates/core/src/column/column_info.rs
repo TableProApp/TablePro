@@ -43,20 +43,25 @@ impl ColumnInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{ColumnKind, IntegerKind, ReadForm, SqlExpression, SqlTypeExpr};
+    use super::super::{CatalogType, ColumnKind, IntegerKind, IntegerWidth, ReadForm, SqlExpression, SqlTypeExpr};
     use super::*;
-    use crate::column::CatalogType;
 
     fn column(name: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.to_owned(),
-            column_type: ColumnType::new(
-                SqlTypeExpr::from_catalog_text("integer"),
-                ColumnKind::Integer(IntegerKind::I32),
-                CatalogType::Oid(23),
-                false,
-                ReadForm::Native,
-            ),
+            column_type: ColumnType {
+                name: "integer".to_owned(),
+                kind: ColumnKind::Integer(IntegerKind {
+                    width: IntegerWidth::W32,
+                    signed: true,
+                }),
+                catalog: Some(CatalogType {
+                    declaration: SqlTypeExpr::from_catalog_text("integer"),
+                    cast_target: SqlTypeExpr::from_catalog_text("integer"),
+                }),
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
             nullable: false,
             primary_key: false,
             is_auto_increment: false,

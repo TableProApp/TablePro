@@ -14,7 +14,7 @@
 
 use thiserror::Error;
 
-use crate::column::ColumnInfo;
+use crate::column::{ColumnInfo, ColumnType};
 use crate::query::{ForeignKeyInfo, IndexInfo};
 use crate::sql_dialect::quote_ident;
 
@@ -171,12 +171,23 @@ fn default_text(default: &crate::column::ColumnDefault) -> Option<String> {
     }
 }
 
+/// The type a column was declared with, which is what DDL restates.
+///
+/// Without a catalogue spelling it is empty, so restating the column
+/// fails validation rather than splicing the display name.
+fn declared_type(column_type: &ColumnType) -> &str {
+    column_type
+        .catalog
+        .as_ref()
+        .map_or("", |catalog| catalog.declaration.as_sql())
+}
+
 impl DraftColumn {
     /// Build a `DraftColumn` from a `ColumnInfo` returned by
     /// `fetch_columns` so the user starts with the live state and
     /// edits diff against `original`.
     pub fn from_info(info: ColumnInfo) -> Self {
-        let data_type = info.column_type.name().as_sql().to_owned();
+        let data_type = declared_type(&info.column_type).to_owned();
         let nullable = info.nullable;
         let primary_key = info.primary_key;
         let auto_increment = info.is_auto_increment;
@@ -217,7 +228,7 @@ impl DraftColumn {
         match &self.original {
             None => true,
             Some(orig) => {
-                orig.column_type.name().as_sql() != self.data_type
+                declared_type(&orig.column_type) != self.data_type
                     || orig.nullable != self.nullable
                     || orig.primary_key != self.primary_key
                     || orig.is_auto_increment != self.auto_increment
@@ -795,7 +806,7 @@ pub fn build_alter_column(
             // user's other edits when more than one attribute moved.
             let original = column.original.as_ref();
             let type_changed = original
-                .map(|o| o.column_type.name().as_sql() != column.data_type)
+                .map(|o| declared_type(&o.column_type) != column.data_type)
                 .unwrap_or(true);
             let nullable_changed = original.map(|o| o.nullable != column.nullable).unwrap_or(false);
             let default_changed = original
@@ -856,7 +867,7 @@ pub fn build_alter_column(
         "mssql" => {
             let original = column.original.as_ref();
             let type_changed = original
-                .map(|o| o.column_type.name().as_sql() != column.data_type)
+                .map(|o| declared_type(&o.column_type) != column.data_type)
                 .unwrap_or(true);
             let nullable_changed = original.map(|o| o.nullable != column.nullable).unwrap_or(false);
             let default_changed = original
@@ -1324,18 +1335,23 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
 
 #[cfg(test)]
 mod tests {
-    use crate::column::{CatalogType, ColumnKind, ColumnType, ReadForm, SqlTypeExpr, TextKind};
+    use crate::column::{CatalogType, ColumnKind, ReadForm, SqlTypeExpr, TextLength};
 
     /// A column type carrying only the server's spelling, which is all
     /// the DDL builder reads.
     fn test_column_type(name: &str) -> ColumnType {
-        ColumnType::new(
-            SqlTypeExpr::from_catalog_text(name),
-            ColumnKind::Text(TextKind::Variable),
-            CatalogType::Unknown,
-            true,
-            ReadForm::Native,
-        )
+        ColumnType {
+            name: name.to_owned(),
+            kind: ColumnKind::Text {
+                length: TextLength::Unbounded,
+            },
+            catalog: Some(CatalogType {
+                declaration: SqlTypeExpr::from_catalog_text(name),
+                cast_target: SqlTypeExpr::from_catalog_text(name),
+            }),
+            dynamic_storage: true,
+            read_form: ReadForm::Native,
+        }
     }
 
     use super::*;

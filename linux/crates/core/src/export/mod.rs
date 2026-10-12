@@ -75,28 +75,30 @@ fn finish(writer: ::csv::Writer<Vec<u8>>) -> Result<String, EncodeError> {
 
 #[cfg(test)]
 mod test_columns {
-    use crate::column::{CatalogType, ColumnKind, ColumnType, ReadForm, ResultColumn, SqlTypeExpr, TextKind};
+    use crate::column::{ColumnKind, ColumnType, ReadForm, ResultColumn, TextLength};
 
     pub fn text_type() -> ColumnType {
-        ColumnType::new(
-            SqlTypeExpr::from_catalog_text("text"),
-            ColumnKind::Text(TextKind::Variable),
-            CatalogType::Unknown,
-            true,
-            ReadForm::Native,
-        )
+        ColumnType {
+            name: "text".to_owned(),
+            kind: ColumnKind::Text {
+                length: TextLength::Unbounded,
+            },
+            catalog: None,
+            dynamic_storage: true,
+            read_form: ReadForm::Native,
+        }
     }
 
-    pub fn typed(name: &str, sql: &str, kind: ColumnKind) -> ResultColumn {
+    pub fn typed(name: &str, type_name: &str, kind: ColumnKind) -> ResultColumn {
         ResultColumn::new(
             name,
-            ColumnType::new(
-                SqlTypeExpr::from_catalog_text(sql),
+            ColumnType {
+                name: type_name.to_owned(),
                 kind,
-                CatalogType::Unknown,
-                false,
-                ReadForm::Native,
-            ),
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
         )
     }
 

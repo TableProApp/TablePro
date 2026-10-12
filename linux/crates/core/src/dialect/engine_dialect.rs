@@ -1,4 +1,7 @@
-use crate::column::{ColumnInfo, ColumnType, SqlExpression, SqlTypeExpr, classify_type_name, has_dynamic_storage};
+use crate::column::{
+    BoolStorage, CatalogType, ColumnInfo, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm,
+    SqlExpression, SqlTypeExpr, TemporalZone, TextLength, classify_type_name, has_dynamic_storage,
+};
 use crate::edit::parse_literal_text;
 use crate::meta::{EngineRowId, EngineRowIdPart};
 use crate::sql_dialect::{placeholder_for, quote_ident};
@@ -99,7 +102,7 @@ impl SqlDialect for EngineDialect {
             // A row address is text the server parses back into its own
             // address type.
             BindTarget::EngineRowId(_) => ParamType::Text,
-            BindTarget::Column(column) => param_type_for(&column.column_type),
+            BindTarget::Column(column) => param_type_for(column)?,
         };
         let param = BoundParam::new(value, param_type)?;
         // `placeholder_for` counts from zero.
@@ -226,13 +229,19 @@ impl SqlDialect for EngineDialect {
     fn parse_type(&self, text: &str) -> Result<ColumnType, TypeSyntaxError> {
         let parsed = parse_type(self.grammar, text, MAX_TYPE_LEN)?;
         let kind = classify_type_name(&parsed.text);
-        Ok(ColumnType::new(
-            SqlTypeExpr::from_catalog_text(parsed.text),
+        let declaration = SqlTypeExpr::from_catalog_text(parsed.text.as_str());
+        Ok(ColumnType {
+            dynamic_storage: has_dynamic_storage(&kind),
             kind,
-            crate::column::CatalogType::Unknown,
-            has_dynamic_storage(kind),
-            crate::column::ReadForm::Native,
-        ))
+            // Before the column exists its declaration is the only
+            // spelling there is, and nothing binds against a draft.
+            catalog: Some(CatalogType {
+                cast_target: declaration.clone(),
+                declaration,
+            }),
+            name: parsed.text,
+            read_form: ReadForm::Native,
+        })
     }
 
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
@@ -269,32 +278,62 @@ fn expanded_row_comparison(key_sql: &[String], markers: &[String], comparison: &
 }
 
 /// The parameter type a column takes.
-fn param_type_for(column_type: &ColumnType) -> ParamType {
-    use crate::column::{ColumnKind, FloatKind, IntegerKind};
-
-    match column_type.kind() {
-        ColumnKind::Boolean => ParamType::Bool,
-        ColumnKind::Integer(IntegerKind::I8 | IntegerKind::U8 | IntegerKind::I16) => ParamType::Int16,
-        ColumnKind::Integer(IntegerKind::U16 | IntegerKind::I32) => ParamType::Int32,
-        ColumnKind::Integer(IntegerKind::U64 | IntegerKind::U128) => ParamType::UInt64,
-        ColumnKind::Integer(_) => ParamType::Int64,
-        ColumnKind::Decimal => ParamType::Decimal,
-        ColumnKind::Float(FloatKind::F32) => ParamType::Float32,
-        ColumnKind::Float(FloatKind::F64) => ParamType::Float64,
-        ColumnKind::Text(crate::column::TextKind::Fixed) => ParamType::FixedText,
-        ColumnKind::Binary => ParamType::Bytes,
+fn param_type_for(column: &ColumnInfo) -> Result<ParamType, BindError> {
+    let column_type = &column.column_type;
+    Ok(match &column_type.kind {
+        ColumnKind::Bool(BoolStorage::Native) => ParamType::Bool,
+        ColumnKind::Bool(BoolStorage::Integer) => ParamType::Int64,
+        ColumnKind::Integer(kind) => integer_param_type(*kind),
+        ColumnKind::Decimal { .. } | ColumnKind::Money { .. } => ParamType::Decimal,
+        ColumnKind::Float(FloatWidth::F32) => ParamType::Float32,
+        ColumnKind::Float(FloatWidth::F64) => ParamType::Float64,
+        ColumnKind::Text {
+            length: TextLength::Fixed(_),
+        } => ParamType::FixedText,
+        ColumnKind::Bytes { .. } => ParamType::Bytes,
         ColumnKind::Date => ParamType::Date,
-        ColumnKind::Time => ParamType::Time,
-        ColumnKind::Timestamp => ParamType::Timestamp,
+        ColumnKind::Time { with_offset: false, .. } => ParamType::Time,
+        ColumnKind::Time { with_offset: true, .. } => ParamType::TimeTz,
+        ColumnKind::Timestamp {
+            zone: TemporalZone::Offset,
+            ..
+        } => ParamType::TimestampTz,
+        ColumnKind::Timestamp { .. } => ParamType::Timestamp,
         ColumnKind::Interval => ParamType::Interval,
         ColumnKind::Uuid => ParamType::Uuid,
-        ColumnKind::Json => ParamType::Json,
+        ColumnKind::Json { binary: false } => ParamType::Json,
+        ColumnKind::Json { binary: true } => ParamType::JsonBinary,
         // A type only the server names binds as text and is cast on the
-        // way in.
-        ColumnKind::Enumeration | ColumnKind::Set | ColumnKind::Network | ColumnKind::Geometry | ColumnKind::Other => {
-            ParamType::ServerText(column_type.name().clone())
+        // way in, to the type the catalogue gave: guessing a cast from
+        // the display name could pick the wrong type.
+        ColumnKind::Enum { .. }
+        | ColumnKind::Network(_)
+        | ColumnKind::Xml
+        | ColumnKind::Spatial
+        | ColumnKind::Variant
+        | ColumnKind::Composite
+        | ColumnKind::Other => match &column_type.catalog {
+            Some(catalog) => ParamType::ServerText(catalog.cast_target.clone()),
+            None => {
+                return Err(BindError::MissingCatalogType {
+                    column: column.name.clone(),
+                });
+            }
+        },
+        ColumnKind::Text { .. } | ColumnKind::BitString { .. } | ColumnKind::Array { .. } => ParamType::Text,
+    })
+}
+
+fn integer_param_type(kind: IntegerKind) -> ParamType {
+    match (kind.width, kind.signed) {
+        (IntegerWidth::W8 | IntegerWidth::W16, true) | (IntegerWidth::W8, false) => ParamType::Int16,
+        (IntegerWidth::W24 | IntegerWidth::W32, true) | (IntegerWidth::W16 | IntegerWidth::W24, false) => {
+            ParamType::Int32
         }
-        _ => ParamType::Text,
+        (IntegerWidth::W64 | IntegerWidth::W128 | IntegerWidth::W256, false) => ParamType::UInt64,
+        (IntegerWidth::W64 | IntegerWidth::W128 | IntegerWidth::W256, true) | (IntegerWidth::W32, false) => {
+            ParamType::Int64
+        }
     }
 }
 
@@ -384,7 +423,7 @@ mod tests {
     #[test]
     fn a_number_is_a_bare_literal_and_text_is_quoted() {
         let dialect = dialect_for("postgres");
-        let column = ColumnType::untyped_text(SqlTypeExpr::from_catalog_text("text"));
+        let column = ColumnType::untyped_text("text");
 
         assert_eq!(dialect.literal(&Value::Int(7), &column), Ok("7".to_owned()));
         assert_eq!(
@@ -397,7 +436,7 @@ mod tests {
     #[test]
     fn bytes_have_no_portable_literal() {
         let dialect = dialect_for("postgres");
-        let column = ColumnType::untyped_text(SqlTypeExpr::from_catalog_text("bytea"));
+        let column = ColumnType::untyped_text("bytea");
 
         let error = dialect.literal(&Value::Bytes(vec![0xff]), &column).expect_err("a blob");
 
@@ -406,7 +445,7 @@ mod tests {
 
     #[test]
     fn sql_server_has_no_boolean_literal() {
-        let column = ColumnType::untyped_text(SqlTypeExpr::from_catalog_text("bit"));
+        let column = ColumnType::untyped_text("bit");
 
         assert_eq!(
             dialect_for("mssql").literal(&Value::Bool(true), &column),
@@ -415,6 +454,87 @@ mod tests {
         assert_eq!(
             dialect_for("postgres").literal(&Value::Bool(true), &column),
             Ok("true".to_owned())
+        );
+    }
+
+    fn info(kind: ColumnKind, catalog: Option<&str>) -> ColumnInfo {
+        ColumnInfo {
+            name: "mood".to_owned(),
+            column_type: ColumnType {
+                name: "mood".to_owned(),
+                kind,
+                catalog: catalog.map(|text| CatalogType {
+                    declaration: SqlTypeExpr::from_catalog_text(text),
+                    cast_target: SqlTypeExpr::from_catalog_text(text),
+                }),
+                dynamic_storage: true,
+                read_form: ReadForm::Native,
+            },
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            is_generated: false,
+            default: crate::column::ColumnDefault::None,
+            comment: None,
+        }
+    }
+
+    #[test]
+    fn a_server_named_type_binds_as_text_cast_to_its_catalogue_type() {
+        let mood = info(
+            ColumnKind::Enum {
+                labels: vec!["happy".to_owned()],
+                multiple: false,
+            },
+            Some("public.mood"),
+        );
+
+        let placeholder = dialect_for("postgres")
+            .placeholder(1, Value::Text("happy".to_owned()), BindTarget::Column(&mood))
+            .expect("a bound enum");
+
+        assert_eq!(
+            placeholder.param.as_ref().map(BoundParam::param_type),
+            Some(&ParamType::ServerText(SqlTypeExpr::from_catalog_text("public.mood")))
+        );
+    }
+
+    #[test]
+    fn a_server_named_type_without_a_catalogue_type_is_not_guessed() {
+        let mood = info(ColumnKind::Other, None);
+
+        let error = dialect_for("postgres")
+            .placeholder(1, Value::Text("happy".to_owned()), BindTarget::Column(&mood))
+            .expect_err("a cast from nothing");
+
+        assert_eq!(
+            error,
+            BindError::MissingCatalogType {
+                column: "mood".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn an_offset_timestamp_binds_with_its_offset() {
+        let column = info(
+            ColumnKind::Timestamp {
+                fractional_digits: None,
+                zone: TemporalZone::Offset,
+            },
+            None,
+        );
+
+        let error = dialect_for("postgres")
+            .placeholder(1, Value::Text("2024-06-15".to_owned()), BindTarget::Column(&column))
+            .expect_err("text for a timestamptz");
+
+        assert_eq!(
+            error,
+            BindError::ValueTypeMismatch {
+                expected: "TimestampTz",
+                found: "Text"
+            }
         );
     }
 

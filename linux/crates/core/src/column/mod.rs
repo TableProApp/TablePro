@@ -1,17 +1,23 @@
+mod catalog_type;
 mod classify;
 mod column_info;
 mod column_type;
 mod default;
+mod integer_kind;
 mod kind;
+mod kind_parts;
 mod read_form;
 mod result_column;
 mod sql_type_expr;
 
+pub use catalog_type::CatalogType;
 pub use classify::{classify_type_name, has_dynamic_storage};
 pub use column_info::ColumnInfo;
-pub use column_type::{CatalogType, ColumnType};
+pub use column_type::ColumnType;
 pub use default::ColumnDefault;
-pub use kind::{ColumnKind, FloatKind, IntegerKind, TextKind};
+pub use integer_kind::{IntegerKind, IntegerWidth};
+pub use kind::ColumnKind;
+pub use kind_parts::{BoolStorage, FloatWidth, NetworkFamily, TemporalZone, TextLength, TimeRange};
 pub use read_form::ReadForm;
 pub use result_column::ResultColumn;
 pub use sql_type_expr::{SqlExpression, SqlTypeExpr};

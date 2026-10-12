@@ -141,7 +141,7 @@ pub fn render_json(columns: &[ResultColumn], rows: &[Vec<Value>]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::column::ColumnKind;
+    use crate::column::{ColumnKind, IntegerKind, IntegerWidth, TemporalZone};
 
     use super::super::test_columns::{cols, typed};
     use super::*;
@@ -174,9 +174,19 @@ mod tests {
             typed(
                 "bigint unsigned",
                 "bigint unsigned",
-                ColumnKind::Integer(crate::column::IntegerKind::U64),
+                ColumnKind::Integer(IntegerKind {
+                    width: IntegerWidth::W64,
+                    signed: false,
+                }),
             ),
-            typed("amount", "numeric(40,20)", ColumnKind::Decimal),
+            typed(
+                "amount",
+                "numeric(40,20)",
+                ColumnKind::Decimal {
+                    precision: Some(40),
+                    scale: Some(20),
+                },
+            ),
         ];
         let row = vec![
             Value::UInt(u64::MAX),
@@ -198,7 +208,14 @@ mod tests {
 
     #[test]
     fn a_decimal_fills_out_its_column_scale() {
-        let columns = vec![typed("amount", "numeric(38,10)", ColumnKind::Decimal)];
+        let columns = vec![typed(
+            "amount",
+            "numeric(38,10)",
+            ColumnKind::Decimal {
+                precision: Some(38),
+                scale: Some(10),
+            },
+        )];
         let row = vec![Value::Decimal("1".parse().expect("a decimal"))];
 
         let text = row_to_json(&columns, &row);
@@ -208,7 +225,7 @@ mod tests {
 
     #[test]
     fn a_json_column_embeds_its_document_rather_than_a_string_of_one() {
-        let columns = vec![typed("payload", "jsonb", ColumnKind::Json)];
+        let columns = vec![typed("payload", "jsonb", ColumnKind::Json { binary: true })];
         let row = vec![Value::Json(
             crate::value::JsonText::parse(r#"{"a": [1, 2]}"#.to_owned()).expect("valid json"),
         )];
@@ -230,7 +247,14 @@ mod tests {
 
     #[test]
     fn a_timestamp_goes_out_in_the_form_readers_expect() {
-        let columns = vec![typed("at", "timestamp(3)", ColumnKind::Timestamp)];
+        let columns = vec![typed(
+            "at",
+            "timestamp(3)",
+            ColumnKind::Timestamp {
+                fractional_digits: Some(3),
+                zone: TemporalZone::Naive,
+            },
+        )];
         let stamp = chrono::NaiveDate::from_ymd_opt(2024, 6, 15)
             .expect("a date")
             .and_hms_milli_opt(12, 0, 0, 500)

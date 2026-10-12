@@ -1,5 +1,5 @@
 use crate::column::{
-    CatalogType, ColumnDefault, ColumnInfo, ColumnKind, ColumnType, IntegerKind, ReadForm, SqlTypeExpr, TextKind,
+    ColumnDefault, ColumnInfo, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, TextLength,
 };
 use crate::dialect::TestDialect;
 use crate::edit::CellInput;
@@ -11,13 +11,13 @@ use super::*;
 fn column(name: &str, kind: ColumnKind) -> ColumnInfo {
     ColumnInfo {
         name: name.to_owned(),
-        column_type: ColumnType::new(
-            SqlTypeExpr::from_catalog_text("t"),
+        column_type: ColumnType {
+            name: "t".to_owned(),
             kind,
-            CatalogType::Unknown,
-            false,
-            ReadForm::Native,
-        ),
+            catalog: None,
+            dynamic_storage: false,
+            read_form: ReadForm::Native,
+        },
         nullable: true,
         primary_key: false,
         is_auto_increment: false,
@@ -27,11 +27,23 @@ fn column(name: &str, kind: ColumnKind) -> ColumnInfo {
     }
 }
 
+fn bigint() -> ColumnKind {
+    ColumnKind::Integer(IntegerKind {
+        width: IntegerWidth::W64,
+        signed: true,
+    })
+}
+
 fn columns() -> Vec<ColumnInfo> {
     vec![
-        column("id", ColumnKind::Integer(IntegerKind::I64)),
-        column("name", ColumnKind::Text(TextKind::Variable)),
-        column("tenant", ColumnKind::Integer(IntegerKind::I64)),
+        column("id", bigint()),
+        column(
+            "name",
+            ColumnKind::Text {
+                length: TextLength::Unbounded,
+            },
+        ),
+        column("tenant", bigint()),
     ]
 }
 

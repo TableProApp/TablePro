@@ -273,18 +273,20 @@ fn build_where_clause(
 
 #[cfg(test)]
 mod tests {
-    use crate::column::{CatalogType, ColumnKind, ColumnType, ReadForm, SqlTypeExpr, TextKind};
+    use crate::column::{ColumnKind, ColumnType, ReadForm, TextLength};
 
     /// A column type carrying only the server's spelling, which is all
     /// these builders read.
     fn test_column_type(name: &str) -> ColumnType {
-        ColumnType::new(
-            SqlTypeExpr::from_catalog_text(name),
-            ColumnKind::Text(TextKind::Variable),
-            CatalogType::Unknown,
-            true,
-            ReadForm::Native,
-        )
+        ColumnType {
+            name: name.to_owned(),
+            kind: ColumnKind::Text {
+                length: TextLength::Unbounded,
+            },
+            catalog: None,
+            dynamic_storage: true,
+            read_form: ReadForm::Native,
+        }
     }
 
     use super::*;

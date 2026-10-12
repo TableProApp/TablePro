@@ -53,18 +53,21 @@ impl QueryResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::column::{CatalogType, ColumnKind, ColumnType, IntegerKind, ReadForm, SqlTypeExpr};
+    use crate::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm};
 
     fn columns() -> Vec<ResultColumn> {
         vec![ResultColumn::new(
             "id",
-            ColumnType::new(
-                SqlTypeExpr::from_catalog_text("integer"),
-                ColumnKind::Integer(IntegerKind::I32),
-                CatalogType::Oid(23),
-                false,
-                ReadForm::Native,
-            ),
+            ColumnType {
+                name: "integer".to_owned(),
+                kind: ColumnKind::Integer(IntegerKind {
+                    width: IntegerWidth::W32,
+                    signed: true,
+                }),
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
         )]
     }
 

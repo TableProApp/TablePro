@@ -23,7 +23,7 @@ pub fn value_text(value: &Value, column: &ColumnType) -> Option<String> {
             format!(
                 "{}{}",
                 stamp.format("%Y-%m-%d %H:%M:%S"),
-                fraction_text(stamp.nanosecond(), column.fractional_digits())
+                fraction_text(stamp.nanosecond(), column.kind.fractional_digits())
             )
         }),
         Value::TimestampTz(stamp) => temporal_text(stamp, |stamp| {
@@ -31,18 +31,18 @@ pub fn value_text(value: &Value, column: &ColumnType) -> Option<String> {
             format!(
                 "{}{}{}",
                 stamp.format("%Y-%m-%d %H:%M:%S"),
-                fraction_text(stamp.nanosecond(), column.fractional_digits()),
+                fraction_text(stamp.nanosecond(), column.kind.fractional_digits()),
                 stamp.format("%:z")
             )
         }),
-        Value::Decimal(decimal) => Some(decimal_text(decimal, column.decimal_scale())),
+        Value::Decimal(decimal) => Some(decimal_text(decimal, column.kind.decimal_scale())),
         other => value_to_text(other),
     }
 }
 
 /// The digits a time type declares, in the width `SqlTime` formats at.
 fn second_digits(column: &ColumnType) -> Option<u8> {
-    column.fractional_digits().map(|digits| digits.min(9) as u8)
+    column.kind.fractional_digits().map(|digits| digits.min(9))
 }
 
 /// The fractional second, at the digits the column declares.
@@ -50,7 +50,7 @@ fn second_digits(column: &ColumnType) -> Option<u8> {
 /// With no declared precision the fraction is the one the value
 /// carries, trimmed, because inventing digits would claim a precision
 /// the column never promised.
-fn fraction_text(nanos: u32, digits: Option<u32>) -> String {
+fn fraction_text(nanos: u32, digits: Option<u8>) -> String {
     let nanos = nanos.min(999_999_999);
     let Some(digits) = digits else {
         return match nanos {
@@ -61,7 +61,7 @@ fn fraction_text(nanos: u32, digits: Option<u32>) -> String {
     if digits == 0 {
         return String::new();
     }
-    let digits = digits.min(9) as usize;
+    let digits = usize::from(digits.min(9));
     let mut text = format!("{nanos:09}");
     text.truncate(digits);
     format!(".{text}")
@@ -182,17 +182,39 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::column::{CatalogType, ColumnKind, ReadForm, SqlTypeExpr};
+    use crate::column::{ColumnKind, ReadForm, TemporalZone, TimeRange};
     use crate::value::{JsonText, SqlTime, Temporal};
 
-    fn typed(sql: &str, kind: ColumnKind) -> ColumnType {
-        ColumnType::new(
-            SqlTypeExpr::from_catalog_text(sql),
+    fn typed(name: &str, kind: ColumnKind) -> ColumnType {
+        ColumnType {
+            name: name.to_owned(),
             kind,
-            CatalogType::Unknown,
-            false,
-            ReadForm::Native,
-        )
+            catalog: None,
+            dynamic_storage: false,
+            read_form: ReadForm::Native,
+        }
+    }
+
+    fn time(fractional_digits: Option<u8>) -> ColumnKind {
+        ColumnKind::Time {
+            fractional_digits,
+            with_offset: false,
+            range: TimeRange::TimeOfDay,
+        }
+    }
+
+    fn stamp(fractional_digits: Option<u8>, zone: TemporalZone) -> ColumnKind {
+        ColumnKind::Timestamp {
+            fractional_digits,
+            zone,
+        }
+    }
+
+    fn decimal(precision: u32, scale: u32) -> ColumnKind {
+        ColumnKind::Decimal {
+            precision: Some(precision),
+            scale: Some(scale),
+        }
     }
 
     fn date(year: i32, month: u32, day: u32) -> Value {
@@ -293,7 +315,7 @@ mod tests {
 
     #[test]
     fn a_timestamp_keeps_the_microseconds_its_column_declares() {
-        let column = typed("timestamp(6)", ColumnKind::Timestamp);
+        let column = typed("timestamp(6)", stamp(Some(6), TemporalZone::Naive));
         let stamp = Value::Timestamp(Temporal::Finite(
             NaiveDate::from_ymd_opt(2024, 6, 15)
                 .expect("a date")
@@ -312,15 +334,15 @@ mod tests {
         let value = Value::Time(SqlTime::new(false, 12, 0, 0, 123_456_000).expect("a time"));
 
         assert_eq!(
-            value_text(&value, &typed("time(3)", ColumnKind::Time)).as_deref(),
+            value_text(&value, &typed("time(3)", time(Some(3)))).as_deref(),
             Some("12:00:00.123")
         );
         assert_eq!(
-            value_text(&value, &typed("time(0)", ColumnKind::Time)).as_deref(),
+            value_text(&value, &typed("time(0)", time(Some(0)))).as_deref(),
             Some("12:00:00")
         );
         assert_eq!(
-            value_text(&value, &typed("time", ColumnKind::Time)).as_deref(),
+            value_text(&value, &typed("time", time(None))).as_deref(),
             Some("12:00:00.123456"),
             "a column with no declared precision kept the value's own fraction"
         );
@@ -328,7 +350,7 @@ mod tests {
 
     #[test]
     fn a_timestamp_with_a_zone_keeps_its_offset() {
-        let column = typed("timestamptz(3)", ColumnKind::Timestamp);
+        let column = typed("timestamptz(3)", stamp(Some(3), TemporalZone::Offset));
         let stamp = chrono::DateTime::parse_from_rfc3339("2024-06-15T12:00:00.5+05:30").expect("a timestamp");
         let value = Value::TimestampTz(Temporal::Finite(crate::value::OffsetTimestamp::from_datetime(stamp)));
 
@@ -340,7 +362,7 @@ mod tests {
 
     #[test]
     fn a_decimal_fills_out_the_scale_its_column_declares() {
-        let column = typed("numeric(38,10)", ColumnKind::Decimal);
+        let column = typed("numeric(38,10)", decimal(38, 10));
 
         assert_eq!(
             value_text(&Value::Decimal("1".parse().expect("a decimal")), &column).as_deref(),
@@ -354,7 +376,7 @@ mod tests {
 
     #[test]
     fn a_decimal_wider_than_its_column_keeps_every_digit() {
-        let column = typed("numeric(10,2)", ColumnKind::Decimal);
+        let column = typed("numeric(10,2)", decimal(10, 2));
         let value = Value::Decimal("1.23456".parse().expect("a decimal"));
 
         assert_eq!(

@@ -1,7 +1,5 @@
 use thiserror::Error;
 
-use crate::column::SqlTypeExpr;
-
 /// Why a value could not become a bound parameter.
 ///
 /// Binding is where a wrong type is caught, before the SQL reaches the
@@ -15,8 +13,8 @@ pub enum BindError {
         expected: &'static str,
         found: &'static str,
     },
-    #[error("binding to {type_name} needs the column's catalogue type, which is not known here")]
-    MissingCatalogType { type_name: SqlTypeExpr },
+    #[error("binding to {column} needs the column's catalogue type, which is not known here")]
+    MissingCatalogType { column: String },
     #[error("this value could not be read from the server, so it cannot be written back: {reason}")]
     Undecodable { reason: String },
     #[error("{found} cannot be represented as {expected}")]

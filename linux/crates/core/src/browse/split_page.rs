@@ -74,7 +74,7 @@ fn is_readable(value: &Value) -> bool {
 mod tests {
     use std::sync::Arc;
 
-    use crate::column::{CatalogType, ColumnKind, ColumnType, IntegerKind, ReadForm, ResultColumn, SqlTypeExpr};
+    use crate::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, ResultColumn};
     use crate::meta::EngineRowIdPart;
     use crate::value::{UndecodableReason, UndecodedValue};
 
@@ -83,13 +83,16 @@ mod tests {
     fn column(name: &str) -> ResultColumn {
         ResultColumn::new(
             name,
-            ColumnType::new(
-                SqlTypeExpr::from_catalog_text("integer"),
-                ColumnKind::Integer(IntegerKind::I32),
-                CatalogType::Oid(23),
-                false,
-                ReadForm::Native,
-            ),
+            ColumnType {
+                name: "integer".to_owned(),
+                kind: ColumnKind::Integer(IntegerKind {
+                    width: IntegerWidth::W32,
+                    signed: true,
+                }),
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
         )
     }
 
