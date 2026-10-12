@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tablepro command ships inside the app. Settings > General shows the Terminal line that links it; no administrator prompt.
 - MCP server runs only while Enable MCP Server is on in Settings > MCP. Clients and pairing no longer start it while it is off.
 - Edit > Data shown only in data file windows.
-- Delta updates from the last five releases, about 6 MB instead of the full 34 MB download.
+- Smaller updates: about 6 MB from any of the last five releases and 21 MB from older ones, down from 34 MB.
 
 ### Removed
 

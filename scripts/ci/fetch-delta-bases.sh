@@ -35,8 +35,10 @@ while IFS= read -r tag; do
     if [ "$PICKED" -ge "$COUNT" ]; then
         break
     fi
+    # Releases before the switch to tar.xz carry a zip.
     for arch in arm64 x86_64; do
-        gh release download "$tag" --pattern "TablePro-${tag#v}-${arch}.zip" --dir "$DEST/$arch"
+        gh release download "$tag" --dir "$DEST/$arch" \
+            --pattern "TablePro-${tag#v}-${arch}.tar.xz" --pattern "TablePro-${tag#v}-${arch}.zip"
     done
     PICKED=$((PICKED + 1))
 done <<EOF

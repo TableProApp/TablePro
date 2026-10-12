@@ -193,7 +193,7 @@ the same sitting as the tag.
 - Keep unrelated work out of the release commit. A lint fix made on the way goes first, as its own
   Conventional Commit of at most 72 characters.
 
-The tag runs `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and ZIP, Sparkle signatures,
+The tag runs `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and tar.xz, Sparkle signatures,
 deltas from the previous five releases, the GitHub Release with notes from `CHANGELOG.md`, then
 `appcast.xml`. The release is created as a draft holding every asset and published in one step, only
 when `lint`, `test`, `build` and `registry-readiness` pass. The job fails when the tag disagrees with

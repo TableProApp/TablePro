@@ -42,7 +42,7 @@ def generated(deltas, arch="arm64", prefix=PREFIX):
         "            <sparkle:version>140</sparkle:version>\n"
         "            <sparkle:shortVersionString>0.81.0</sparkle:shortVersionString>\n"
         f"{delta_block}"
-        f'            <enclosure url="{prefix}TablePro-0.81.0-{arch}.zip" length="33851296" '
+        f'            <enclosure url="{prefix}TablePro-0.81.0-{arch}.tar.xz" length="21188768" '
         'type="application/octet-stream" sparkle:edSignature="sig=="/>\n'
         "        </item>\n"
         "    </channel>\n"

@@ -125,7 +125,7 @@ For everything: docs, commits, CHANGELOG, UI strings, errors, PR descriptions. S
 ## CI
 
 - **PRs:** `macos-tests.yml`, `ios-tests.yml`, `swiftlint.yml` (pinned, `--strict`), `pr-title.yml` (Conventional Commits, at most 72 characters) and `repo-hygiene.yml` (actionlint, shellcheck and the repo's source-scanning checks).
-- **Releases:** `build.yml` runs on `v*` tags and produces the DMG, the ZIP and the Sparkle feed, with notes taken from `CHANGELOG.md`.
+- **Releases:** `build.yml` runs on `v*` tags and produces the DMG, the tar.xz update archive, its deltas and the Sparkle feed, with notes taken from `CHANGELOG.md`.
 - **Plugins:** `build-plugin.yml` runs on `plugin-<slug>-v*` tags, where the slug is a key in `.github/plugin-registry.json`.
 
 ## Area rules
