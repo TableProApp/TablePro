@@ -586,9 +586,7 @@ struct MCPTokenStoreTests {
             #expect(permissions.scopes.contains(.connectionsDisplay) == false)
         }
         #expect(MCPPrincipal.inAppAssistant.has(.connectionsDisplay) == false)
-        #expect(MCPPrincipal.anonymousLoopback.has(.connectionsDisplay) == false)
         #expect(MCPPrincipal.inAppAssistant.scopes == MCPScope.fullAccessSet)
-        #expect(MCPScope.connectionsDisplay.requiresIssuedToken)
         #expect(MCPScope.optionalGrants == [.connectionsDisplay])
     }
 

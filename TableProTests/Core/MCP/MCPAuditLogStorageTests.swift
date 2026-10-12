@@ -22,7 +22,7 @@ struct MCPAuditLogStorageTests {
 
     private func makeEntry(
         category: AuditCategory = .tool,
-        tokenId: UUID? = nil,
+        tokenId: UUID = UUID(),
         tokenName: String? = nil,
         connectionId: UUID? = nil,
         timestamp: Date = Date(),

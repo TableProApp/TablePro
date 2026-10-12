@@ -4,7 +4,7 @@ import Foundation
 internal struct MCPServerComposition {
     internal let tokenStore: MCPTokenStore
     internal let rateLimiter: MCPRateLimiter
-    internal let authenticator: MCPCompositeAuthenticator
+    internal let authenticator: MCPBearerTokenAuthenticator
     internal let services: MCPToolServices
     internal let activityLedger: MCPClientActivityLedger
     internal let subscriptions: MCPSubscriptionRegistry
@@ -17,16 +17,9 @@ internal struct MCPServerComposition {
         services.authPolicy
     }
 
-    internal static func build(
-        port: UInt16,
-        settings: MCPSettings,
-        tokenStore: MCPTokenStore
-    ) -> MCPServerComposition {
+    internal static func build(port: UInt16, tokenStore: MCPTokenStore) -> MCPServerComposition {
         let rateLimiter = MCPRateLimiter()
-        let authenticator = MCPCompositeAuthenticator(
-            bearer: MCPBearerTokenAuthenticator(tokenStore: tokenStore, rateLimiter: rateLimiter),
-            requireAuthentication: settings.requireAuthentication
-        )
+        let authenticator = MCPBearerTokenAuthenticator(tokenStore: tokenStore, rateLimiter: rateLimiter)
         let transport = MCPHttpServerTransport(
             configuration: .loopback(port: port),
             authenticator: authenticator
@@ -71,6 +64,5 @@ internal struct MCPServerComposition {
         await subscriptions.closeAll()
         await dispatcher.cancelAllInflight()
         await transport.stop()
-        await services.authPolicy.clearAllApprovals()
     }
 }

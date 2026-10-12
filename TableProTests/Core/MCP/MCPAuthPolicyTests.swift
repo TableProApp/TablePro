@@ -2,11 +2,9 @@
 //  MCPAuthPolicyTests.swift
 //  TableProTests
 //
-//  The protocol is stateless, so an approval can no longer hang off a session id: it is keyed on
-//  the token that earned it and expires on its own. A second token inherits nothing, and revoking
+//  An approval is keyed on the token that earned it. A second token inherits nothing, and revoking
 //  a token drops the approvals it was carrying. Scope is enforced here too, not only in the
-//  settings UI: an anonymous caller may not write and may not administer, whatever scopes it
-//  claims to hold, and a refusal names the missing scope back to the client (RFC 6750
+//  settings UI, and a refusal names the missing scope back to the client (RFC 6750
 //  `insufficient_scope`).
 //
 
@@ -59,7 +57,7 @@ struct MCPAuthPolicyTests {
     }
 
     private func makePrincipal(
-        tokenId: UUID? = UUID(),
+        tokenId: UUID = UUID(),
         scopes: Set<MCPScope> = MCPScope.fullAccessSet,
         connectionAccess: ConnectionAccess = .all,
         fingerprint: String = "fp"
@@ -208,23 +206,6 @@ struct MCPAuthPolicyTests {
         }
     }
 
-    @Test("An anonymous caller may not run the destructive-confirmation tool, admin scope or not")
-    func anonymousIsRefusedTheAdminTool() async throws {
-        let policy = makePolicy(makeSnapshot())
-
-        let decision = try await policy.authorize(
-            principal: makePrincipal(tokenId: nil, scopes: MCPScope.fullAccessSet),
-            tool: "confirm_destructive_operation",
-            connectionId: connectionA
-        )
-
-        guard case .deniedInsufficientScope(let required, _) = decision else {
-            Issue.record("Expected an insufficient scope refusal for an anonymous caller, got \(decision)")
-            return
-        }
-        #expect(required == [.admin])
-    }
-
     @Test("An issued token without the admin scope may not run the destructive-confirmation tool")
     func readWriteTokenIsRefusedTheAdminTool() async throws {
         let policy = makePolicy(makeSnapshot())
@@ -240,24 +221,6 @@ struct MCPAuthPolicyTests {
             return
         }
         #expect(required == [.admin])
-    }
-
-    @Test("An anonymous caller may not write, even carrying the write scope")
-    func anonymousIsRefusedAWrite() async throws {
-        let policy = makePolicy(makeSnapshot())
-
-        let decision = try await policy.authorize(
-            principal: makePrincipal(tokenId: nil, scopes: MCPScope.readWriteSet),
-            tool: "execute_query",
-            connectionId: connectionA,
-            sql: "DELETE FROM users WHERE id = 1"
-        )
-
-        guard case .deniedInsufficientScope(let required, _) = decision else {
-            Issue.record("Expected an insufficient scope refusal for an anonymous write, got \(decision)")
-            return
-        }
-        #expect(required == [.toolsWrite])
     }
 
     @Test("A read-only token may not write")
@@ -441,7 +404,7 @@ struct MCPAuthPolicyTests {
         let clock = MCPTestClock()
         let policy = makePolicy(
             makeSnapshot(policy: .askEachTime),
-            ledger: MCPApprovalLedger(ttl: .seconds(1_800), clock: clock, store: MCPInMemoryApprovalStore())
+            ledger: MCPApprovalLedger(clock: clock, store: MCPInMemoryApprovalStore())
         )
         let principal = makePrincipal()
         await policy.recordApproval(principal: principal, connectionId: connectionA)

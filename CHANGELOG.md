@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
 - Fonts from the theme file.
+- Require authentication switch in Settings > MCP. Every MCP request needs a token, including one from this Mac.
 
 ### Fixed
 

@@ -1,10 +1,10 @@
 import Foundation
 
 public struct MCPLegacySessionOwner: Sendable, Hashable {
-    public let tokenId: UUID?
+    public let tokenId: UUID
     public let tokenFingerprint: String
 
-    public init(tokenId: UUID?, tokenFingerprint: String) {
+    public init(tokenId: UUID, tokenFingerprint: String) {
         self.tokenId = tokenId
         self.tokenFingerprint = tokenFingerprint
     }

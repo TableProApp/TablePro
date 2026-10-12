@@ -34,9 +34,8 @@ protocol MCPApprovalStoring: Sendable {
 /// Durable, revocable MCP connection grants, device-local.
 ///
 /// A grant is a security decision the user made, so it outlives the session that earned it: the
-/// server is torn down and rebuilt whenever the port or the authentication toggle changes, and the
-/// app is relaunched far more often than that. It is never synced, for the same reason MCP tokens
-/// are not.
+/// server is torn down and rebuilt whenever the port changes, and the app is relaunched far more
+/// often than that. It is never synced, for the same reason MCP tokens are not.
 actor MCPApprovalStore: MCPApprovalStoring {
     static let shared = MCPApprovalStore()
 
