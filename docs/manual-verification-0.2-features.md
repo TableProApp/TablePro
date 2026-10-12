@@ -36,6 +36,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] Separator and header-row detection are right for a comma file, a semicolon file, and a file with no header.
 - [ ] The preview grid matches the file.
 - [ ] Column mapping is prefilled sensibly and can be changed.
+- [ ] For SQLite `id INTEGER PRIMARY KEY`, a CSV `id` header stays on Skip, explains that the database generates the value, and importing source IDs 51 and 52 stores generated IDs 1 and 2.
 - [ ] Creating a table shows a name and an inferred type per column, both editable before anything runs.
 - [ ] Approval is requested **once** for the whole import, not per batch.
 - [ ] Progress advances and Cancel stops it.

@@ -115,6 +115,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- CSV import previews now keep auto-increment and generated columns on Skip and explain that the database supplies their values.
 - Grid edits and spreadsheet paste preserve line breaks inside text values.
 
 - MySQL and MariaDB connections with TLS Disabled no longer use a saved client certificate or key
