@@ -20,9 +20,10 @@ use crate::argv::{ControlOp, master_args};
 use crate::askpass_bridge::AskpassBridge;
 use crate::first_hop::resolve_first_hop;
 use crate::known_hosts::spawn_failure;
+use crate::password_owner::resolve_password_owner;
 use crate::stderr_classify::{ClassifyContext, classify};
 use crate::supervisor::{ForwardCancel, Supervisor, TASKS, run_control};
-use crate::{SshConfig, SshServices, lock};
+use crate::{SshAuth, SshConfig, SshServices, lock};
 
 const CONTROL_SUFFIX: &str = ".0123456789abcdef";
 const STDERR_TAIL_LIMIT: usize = 65_536;
@@ -71,6 +72,10 @@ impl SshSession {
                 return Err(error);
             }
         };
+        let password_owner = match config.auth {
+            SshAuth::Password { .. } => resolve_password_owner(&services.ssh_program, config).await,
+            SshAuth::Agent | SshAuth::PrivateKey { .. } | SshAuth::KeyboardInteractive => None,
+        };
         let spawned = Command::new(&services.ssh_program)
             .args(master_args(config, &control, liveness))
             .env("SSH_ASKPASS", &services.askpass_program)
@@ -95,7 +100,13 @@ impl SshSession {
             .stderr
             .take()
             .map(|stderr| TASKS.spawn(collect_stderr(stderr, stderr_tail.clone())));
-        let mut bridge = AskpassBridge::new(owner_uid, config.destination.to_string(), interaction, &config.auth);
+        let mut bridge = AskpassBridge::new(
+            owner_uid,
+            config.destination.to_string(),
+            interaction,
+            &config.auth,
+            password_owner,
+        );
         let (outcome, first_hop) = tokio::join!(
             handshake(
                 &mut child,

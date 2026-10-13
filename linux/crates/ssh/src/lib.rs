@@ -7,6 +7,7 @@ mod destination;
 mod first_hop;
 mod forward;
 mod known_hosts;
+mod password_owner;
 mod prompt;
 mod runtime;
 mod runtime_cell;

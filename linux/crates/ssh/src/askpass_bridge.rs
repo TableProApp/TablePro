@@ -27,6 +27,8 @@ pub(crate) struct AskpassBridge {
     target: String,
     interaction: CredentialInteraction,
     password: Option<SecretString>,
+    /// The `user@host` whose password prompt the stored password answers.
+    password_owner: Option<String>,
     passphrase: Option<SecretString>,
     used_password: bool,
     used_passphrase: bool,
@@ -34,7 +36,13 @@ pub(crate) struct AskpassBridge {
 }
 
 impl AskpassBridge {
-    pub fn new(owner_uid: u32, target: String, interaction: CredentialInteraction, auth: &SshAuth) -> Self {
+    pub fn new(
+        owner_uid: u32,
+        target: String,
+        interaction: CredentialInteraction,
+        auth: &SshAuth,
+        password_owner: Option<String>,
+    ) -> Self {
         let (password, passphrase) = match auth {
             SshAuth::Password { password } => (Some(password.clone()), None),
             SshAuth::PrivateKey { passphrase, .. } => (None, passphrase.clone()),
@@ -45,11 +53,18 @@ impl AskpassBridge {
             target,
             interaction,
             password,
+            password_owner,
             passphrase,
             used_password: false,
             used_passphrase: false,
             declined_host_key: None,
         }
+    }
+
+    fn owns_password(&self, user_host: &str) -> bool {
+        self.password_owner
+            .as_deref()
+            .is_some_and(|owner| owner.eq_ignore_ascii_case(user_host))
     }
 
     pub fn declined_host_key(&self) -> Option<&DeclinedHostKey> {
@@ -77,7 +92,10 @@ impl AskpassBridge {
             tracing::info!(notification = %text, "ssh notification");
             return Reply::Answer(Zeroizing::new(String::new()));
         }
-        if matches!(prompt, AskpassPrompt::Password { .. })
+        // A jump host asks first, through the same askpass, and must not be
+        // handed the destination's password.
+        if let AskpassPrompt::Password { user_host } = prompt
+            && self.owns_password(user_host)
             && let Some(secret) = self.password.take()
         {
             self.used_password = true;
@@ -95,7 +113,9 @@ impl AskpassBridge {
             return Reply::Cancel;
         };
         let reason = match prompt {
-            AskpassPrompt::Password { .. } if self.used_password => PromptReason::Rejected,
+            AskpassPrompt::Password { user_host } if self.used_password && self.owns_password(user_host) => {
+                PromptReason::Rejected
+            }
             AskpassPrompt::Passphrase { .. } if self.used_passphrase => PromptReason::Rejected,
             _ => PromptReason::NotStored,
         };
@@ -188,7 +208,13 @@ mod tests {
     }
 
     fn bridge(interaction: CredentialInteraction, auth: &SshAuth) -> AskpassBridge {
-        AskpassBridge::new(current_uid(), "deploy@bastion".to_owned(), interaction, auth)
+        AskpassBridge::new(
+            current_uid(),
+            "deploy@bastion".to_owned(),
+            interaction,
+            auth,
+            Some("deploy@bastion".to_owned()),
+        )
     }
 
     async fn exchange(bridge: &mut AskpassBridge, hint: &str, text: &str) -> Vec<u8> {
@@ -246,6 +272,52 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_jump_host_is_never_given_the_destination_password() {
+        let prompter = Arc::new(FakePrompter::new([PromptReply::Submitted {
+            values: vec![SecretString::from("jump-typed")],
+            remember: false,
+        }]));
+        let auth = SshAuth::Password {
+            password: SecretString::from("s3cret"),
+        };
+        let mut bridge = bridge(CredentialInteraction::Attended(prompter.clone()), &auth);
+
+        assert_eq!(
+            exchange(&mut bridge, "", "ops@jump1's password: ").await,
+            b"\x00jump-typed"
+        );
+        let requests = prompter.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].target, "ops@jump1");
+        assert_eq!(
+            requests[0].purpose,
+            PromptPurpose::SshPassword {
+                reason: PromptReason::NotStored
+            }
+        );
+        assert_eq!(
+            exchange(&mut bridge, "", "deploy@bastion's password: ").await,
+            b"\x00s3cret"
+        );
+    }
+
+    #[tokio::test]
+    async fn without_a_resolved_owner_the_stored_password_is_not_sent() {
+        let auth = SshAuth::Password {
+            password: SecretString::from("s3cret"),
+        };
+        let mut bridge = AskpassBridge::new(
+            current_uid(),
+            "bastion".to_owned(),
+            CredentialInteraction::Unattended,
+            &auth,
+            None,
+        );
+
+        assert_eq!(exchange(&mut bridge, "", "deploy@bastion's password: ").await, [CANCEL]);
+    }
+
     /// The bridge has to answer the older wording too, or ssh gets no
     /// answer and reports the host key as unverified.
     #[tokio::test]
@@ -296,6 +368,7 @@ mod tests {
             "bastion".to_owned(),
             CredentialInteraction::Unattended,
             &SshAuth::Agent,
+            None,
         );
         let (client, server) = UnixStream::pair().unwrap();
         bridge.handle(server).await.unwrap();

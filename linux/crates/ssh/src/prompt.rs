@@ -95,6 +95,11 @@ impl AskpassPrompt {
                 false,
             ),
         };
+        // Behind a jump host, the host asking is not the destination.
+        let target = match self {
+            Self::Password { user_host } => user_host.as_str(),
+            _ => target,
+        };
         Some(CredentialPrompt {
             purpose,
             target: target.to_owned(),
@@ -231,9 +236,8 @@ mod tests {
         let password = AskpassPrompt::Password {
             user_host: "deploy@bastion".to_owned(),
         };
-        let prompt = password
-            .credential_prompt("deploy@bastion", PromptReason::NotStored)
-            .unwrap();
+        let prompt = password.credential_prompt("prod", PromptReason::NotStored).unwrap();
+        assert_eq!(prompt.target, "deploy@bastion", "the host asking, not the destination");
         assert_eq!(
             prompt.purpose,
             PromptPurpose::SshPassword {

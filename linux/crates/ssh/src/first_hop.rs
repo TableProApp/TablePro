@@ -47,7 +47,11 @@ pub(crate) async fn resolve_first_hop(ssh_program: &Path, config: &SshConfig) ->
     None
 }
 
-async fn lookup(ssh_program: &Path, destination: &SshDestination, jumps: &[SshDestination]) -> Option<String> {
+pub(crate) async fn lookup(
+    ssh_program: &Path,
+    destination: &SshDestination,
+    jumps: &[SshDestination],
+) -> Option<String> {
     let mut args: Vec<OsString> = vec!["-G".into()];
     if !jumps.is_empty() {
         let hops: Vec<String> = jumps.iter().map(ToString::to_string).collect();
