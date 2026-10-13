@@ -248,15 +248,9 @@ async fn alter_default_on_column_with_named_constraint() {
         .await
         .expect("the definition");
     let state = state.column("state").expect("state");
-    assert!(
-        state
-            .attributes
-            .default_constraint_name
-            .as_deref()
-            .is_some_and(|name| name != "DF]state"),
-        "{:?}",
-        state.attributes.default_constraint_name
-    );
+    // The new default goes back under the old constraint's name, so a
+    // named constraint keeps its name through the change.
+    assert_eq!(state.attributes.default_constraint_name.as_deref(), Some("DF]state"));
     assert_eq!(state.info.default, ColumnDefault::Literal(Value::Int(1)));
 }
 
