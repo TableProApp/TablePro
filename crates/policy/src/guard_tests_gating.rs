@@ -620,3 +620,55 @@ async fn list_objects_audit_target_leaves_out_the_schema_for_unscoped_kinds() {
     let events = audit.events.lock().expect("event lock");
     assert!(events.iter().any(|event| event.targets == vec!["role".to_string()]));
 }
+
+#[tokio::test]
+async fn transaction_control_on_the_shared_connection_is_denied_before_dispatch() {
+    for driver_id in ["postgres", "mysql", "sqlite", "mssql"] {
+        for statement in ["BEGIN", "START TRANSACTION", "COMMIT", "ROLLBACK", "SELECT 1; BEGIN"] {
+            let executes = Arc::new(AtomicUsize::new(0));
+            let queries = Arc::new(AtomicUsize::new(0));
+            let audit = Arc::new(SequenceAuditSink::new(vec![]));
+            let mut guard_context = context(
+                Principal::human_gui(),
+                Environment::Local,
+                PolicyConfig::default(),
+                Arc::new(AutoApproveSink),
+                audit.clone(),
+                Arc::new(AuditState::new()),
+            );
+            guard_context.driver_id = driver_id.into();
+            let guard = PolicyGuard::new(
+                Arc::new(QueryCountingConn {
+                    queries: queries.clone(),
+                }),
+                guard_context,
+            );
+
+            let executed = guard.execute(statement).await;
+            let queried = guard.query(statement).await;
+
+            assert!(
+                executed.is_err(),
+                "{driver_id}: execute({statement}) reached a pooled connection"
+            );
+            assert!(
+                queried.is_err(),
+                "{driver_id}: query({statement}) reached a pooled connection"
+            );
+            assert_eq!(queries.load(Ordering::SeqCst), 0, "{driver_id}: {statement}");
+            assert_eq!(executes.load(Ordering::SeqCst), 0);
+            let events = audit.events.lock().expect("audit events");
+            assert!(!events.is_empty(), "{driver_id}: {statement}: the denial is audited");
+            assert!(
+                events
+                    .iter()
+                    .all(|event| event.decision_rule.contains("transaction_control_needs_session")),
+                "{driver_id}: {statement}: {:?}",
+                events
+                    .iter()
+                    .map(|event| event.decision_rule.clone())
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+}
