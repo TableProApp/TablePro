@@ -41,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exported arrays wrote each row of a multi-dimensional array as a quoted string.
 - Markdown export broke its table when a column name held a pipe.
 - Closed tabs, earlier result pages and structure edits kept using memory until TablePro quit.
+- A page read before a filter, sort or page change could replace the newer page when it arrived late.
+- Closing a table tab left its query running on the server until it finished.
+- Refresh did not show a column added to the table since the tab opened.
+- A table tab kept the old header of a column renamed in the Structure tab.
+- A table or structure tab whose read failed while the connection was lost kept its error page after the reconnect.
+- A refresh that failed replaced the rows in a table tab with an error page.
+- Switching connections could show the previous connection's tables in the sidebar, or its reconnect banner.
+- Switching connections during a table drop could close the new connection's tabs on a table of the same name.
 
 ### Security
 

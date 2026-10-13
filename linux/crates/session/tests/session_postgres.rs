@@ -280,6 +280,70 @@ async fn saturated_pool_operation_busy_probe_ok_stays_online() {
     );
 }
 
+/// How many backends other than the admin's own are running a
+/// `pg_sleep(30)` right now.
+async fn sleeping_backends(admin: &Arc<dyn Connection>) -> Option<i64> {
+    let result = admin
+        .query_bound(
+            &statement(
+                "SELECT count(*) FROM pg_stat_activity \
+                 WHERE state = 'active' AND query LIKE '%pg_sleep(30)%' AND pid <> pg_backend_pid()",
+            ),
+            RowLimit::EDITOR_DEFAULT,
+            within(WAIT),
+        )
+        .await
+        .expect("the activity count");
+    match result.rows.first().and_then(|row| row.first()) {
+        Some(Value::Int(count)) => Some(*count),
+        _ => None,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn run_cancellable_stops_server_statement() {
+    let fixture = PostgresFixture::start(HbaMode::Password).await.expect("PostgreSQL");
+    let connector = connector(isolated_ssh().services);
+    let session = start(
+        connector.clone(),
+        establish(&connector, request(direct_target(&fixture))).await,
+    );
+    let admin = admin(&fixture).await;
+    let cancel = CancellationToken::new();
+    let running = {
+        let session = session.clone();
+        let cancel = cancel.clone();
+        tasks().spawn_task(async move {
+            session
+                .run_cancellable(OperationKind::Page, &cancel, |lease, options| async move {
+                    let sleep = statement("SELECT pg_sleep(30)::text");
+                    Ok(lease.query_bound(&sleep, RowLimit::EDITOR_DEFAULT, options).await?)
+                })
+                .await
+        })
+    };
+    let started = tokio::time::Instant::now();
+    while sleeping_backends(&admin).await.expect("an integer count") == 0 {
+        assert!(started.elapsed() < WAIT, "the statement never started");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    cancel.cancel();
+    let stopped = tokio::time::Instant::now();
+    let outcome = running.await.expect("the operation task");
+    while sleeping_backends(&admin).await.expect("an integer count") > 0 {
+        assert!(
+            stopped.elapsed() < Duration::from_secs(2),
+            "the server kept running the statement after its caller let go"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    assert_eq!(outcome.map(|_| ()), Err(OperationError::Cancelled));
+    assert!(stopped.elapsed() < Duration::from_secs(2));
+}
+
 fn ssh_target(sshd: &OpenSshFixture, postgres: &PostgresFixture, key: &Path) -> RequestTarget {
     let postgres_host = postgres.network_alias().expect("PostgreSQL on the test network");
     RequestTarget::Network {

@@ -3,13 +3,14 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::{CallOptions, EditorSession, EditorSessionOptions, WorkspaceSettings};
+use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo};
+use tablepro_core::{CallOptions, ColumnInfo, EditorSession, EditorSessionOptions, TableRef, WorkspaceSettings};
 use tokio::sync::watch;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tokio_util::task::AbortOnDropHandle;
 use uuid::Uuid;
 
-use super::{CatalogSnapshot, SessionDeps};
+use super::{ObjectListSnapshot, SchemaCatalog, SessionDeps};
 use crate::connect::{ConnectionMetadata, PendingSession};
 use crate::health::{
     LinkGeneration, MonitorContext, MonitorMailbox, MonitorSignal, ReachabilityTarget, ReconnectPlan, SessionHealth,
@@ -33,7 +34,7 @@ pub struct Session {
     mailbox: Arc<MonitorMailbox>,
     health: watch::Receiver<SessionHealth>,
     link: Arc<ConnectionLink>,
-    catalog: watch::Receiver<CatalogSnapshot>,
+    catalog: Arc<SchemaCatalog>,
     tasks: Tasks,
     close_timeout: Duration,
     cancel: CancellationToken,
@@ -55,11 +56,6 @@ impl Session {
         let link = Arc::new(ConnectionLink::new(parts.established));
         let mailbox = Arc::new(MonitorMailbox::new());
         let (health_sender, health) = watch::channel(SessionHealth::Online);
-        let (catalog_sender, catalog) = watch::channel(CatalogSnapshot {
-            generation: link.generation(),
-            schemas: parts.schemas.into(),
-            objects: parts.objects.into(),
-        });
         let cancel = CancellationToken::new();
         let runner = OperationRunner::new(
             link.clone(),
@@ -68,6 +64,12 @@ impl Session {
             health.clone(),
             cancel.clone(),
         );
+        let catalog = Arc::new(SchemaCatalog::new(
+            parts.schemas,
+            parts.objects,
+            runner.clone(),
+            deps.tasks.clone(),
+        ));
         let context = MonitorContext {
             link: link.clone(),
             plan: ReconnectPlan {
@@ -81,7 +83,7 @@ impl Session {
             health: health_sender,
             mailbox: mailbox.clone(),
             cancel: cancel.clone(),
-            catalog: catalog_sender,
+            catalog: catalog.clone(),
             reachability: reachability.clone(),
             close_timeout,
         };
@@ -137,6 +139,12 @@ impl Session {
         self.link.lease().map(|lease| lease.dialect())
     }
 
+    /// Which connection is current. A request issued under an older one
+    /// may have failed because that connection went away.
+    pub fn link_generation(&self) -> LinkGeneration {
+        self.link.generation()
+    }
+
     /// Ticks each time a reconnect replaces the connection.
     pub fn link_changes(&self) -> watch::Receiver<LinkGeneration> {
         self.link.subscribe()
@@ -146,9 +154,38 @@ impl Session {
         self.health.clone()
     }
 
-    /// The catalog of the current connection, as read when it connected.
-    pub fn catalog(&self) -> watch::Receiver<CatalogSnapshot> {
-        self.catalog.clone()
+    /// What the window knows about the database's schemas, objects and
+    /// columns, shared by every view.
+    pub fn catalog(&self) -> &SchemaCatalog {
+        &self.catalog
+    }
+
+    pub async fn schemas(&self) -> Result<Arc<[SchemaInfo]>, Arc<OperationError>> {
+        self.catalog.schemas().await
+    }
+
+    pub async fn objects(&self, scope: ObjectScope) -> Result<Arc<[ObjectInfo]>, Arc<OperationError>> {
+        self.catalog.objects(scope).await
+    }
+
+    pub async fn refresh_objects(&self, scope: ObjectScope) -> Result<Arc<[ObjectInfo]>, Arc<OperationError>> {
+        self.catalog.refresh_objects(scope).await
+    }
+
+    pub async fn columns(&self, table: TableRef) -> Result<Arc<[ColumnInfo]>, Arc<OperationError>> {
+        self.catalog.columns(table).await
+    }
+
+    pub async fn refresh_columns(&self, table: TableRef) -> Result<Arc<[ColumnInfo]>, Arc<OperationError>> {
+        self.catalog.refresh_columns(table).await
+    }
+
+    pub fn invalidate_table(&self, table: &TableRef) {
+        self.catalog.invalidate_table(table);
+    }
+
+    pub fn subscribe_objects(&self, scope: ObjectScope) -> watch::Receiver<ObjectListSnapshot> {
+        self.catalog.subscribe(scope)
     }
 
     pub fn signal(&self, signal: MonitorSignal) {
@@ -358,7 +395,7 @@ mod tests {
         assert!(session.read_only());
         assert!(session.current_dialect().is_some());
         assert_eq!(session.reachability(), ReachabilityTarget::Local);
-        assert_eq!(session.catalog().borrow().generation, LinkGeneration::FIRST);
+        assert_eq!(*session.link_changes().borrow(), LinkGeneration::FIRST);
         assert_eq!(session.metadata().name, "Fake");
     }
 

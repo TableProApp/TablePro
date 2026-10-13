@@ -27,4 +27,4 @@ pub use health::{FailureCause, LinkGeneration, MonitorSignal, ReachabilityTarget
 pub use link::{CloseReport, ConnectionLease, EstablishedConnection};
 pub use operation::{DeadlinePolicy, DefaultDeadlines, OperationError, OperationKind, OperationRunner};
 pub use registry::{ClaimError, RegistryEvent, SessionClaim, SessionKey, SessionRegistry};
-pub use session::{CatalogSnapshot, Session, SessionDeps, close_editor_sessions};
+pub use session::{ObjectListSnapshot, SchemaCatalog, Session, SessionDeps, close_editor_sessions};

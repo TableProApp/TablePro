@@ -1,32 +1,23 @@
 //! Add-Index and Add-Foreign-Key form dialogs for the Structure tab.
 //!
-//! Split out of `structure_tab.rs` so that file can stay focused on
-//! the SimpleComponent itself. Both dialogs follow the same skeleton
-//! (`build_form_dialog`): an `adw::Dialog` carrying a custom HeaderBar
-//! with Cancel + suggested-action buttons and a vertically-scrolling
-//! content box. Per HIG, AlertDialog is for confirmation prompts; data
-//! entry forms belong on AdwDialog with explicit headerbar buttons.
-//!
-//! Form fields use AdwEntryRow / AdwSwitchRow / AdwComboRow inside an
-//! AdwPreferencesGroup — the same pattern GNOME Settings uses for
-//! every "Add account / Add network / Add printer" dialog. Raw
-//! GtkEntry + sibling labels was the quick-MVP layout but it doesn't
-//! pick up the rounded-corner / row-separator styling and breaks
-//! typing flow (the title float of AdwEntryRow doubles as the
-//! placeholder, halving vertical space).
+//! A form is an `adw::Dialog` with Cancel and a suggested action in
+//! its header bar: the HIG keeps AlertDialog for confirmations. Its
+//! fields are rows in an AdwPreferencesGroup, as in GNOME Settings'
+//! "Add" dialogs.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use relm4::adw::prelude::*;
-use relm4::{ComponentSender, adw, gtk};
+use gtk4 as gtk;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_core::ddl::ReferentialAction;
 use tablepro_core::meta::IndexKey;
 use tablepro_core::sql_ddl::DraftColumn;
 use tablepro_core::{ForeignKeyInfo, IndexInfo};
 
-use super::structure_tab::{StructureTab, StructureTabInput, StructureTabOutput};
+use super::structure_tab::{StructureTabInput, StructureTabOutput, StructureTabSender};
 
 /// `(column name, checkbox)` pairs, shared between the dialog body
 /// and the submit handler so the latter can collect which columns the
@@ -92,22 +83,14 @@ fn build_form_dialog(title: &str, submit_label: &str) -> (adw::Dialog, gtk::Box,
     (dialog, content, submit_btn)
 }
 
-/// Build a section header label sized as a small caption — used
-/// above sub-groupings inside form dialogs. AdwPreferencesGroup
-/// already handles its own header, so this is for the "Columns"
-/// label that sits above the column checklist (which is itself a
-/// boxed-list, not a PreferencesGroup).
+/// A heading for the column checklist, which is a boxed list rather
+/// than a PreferencesGroup with a title of its own.
 fn section_label(title: &str) -> gtk::Label {
     let label = gtk::Label::builder().label(title).xalign(0.0).build();
     label.add_css_class("heading");
     label
 }
 
-/// Build a boxed-list `ListBox` of `AdwActionRow` + `CheckButton` —
-/// one per draft column — for picking columns inside a form dialog.
-/// Returns the list (so the caller can `body.append` it) plus the
-/// shared `Rc` of name/check pairs so the submit handler can extract
-/// which columns the user ticked.
 fn build_column_checklist(columns: &[DraftColumn]) -> (gtk::ListBox, ColumnChecks) {
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
     list.add_css_class("boxed-list");
@@ -124,11 +107,7 @@ fn build_column_checklist(columns: &[DraftColumn]) -> (gtk::ListBox, ColumnCheck
     (list, checks)
 }
 
-pub(super) fn present_index_dialog(
-    parent: &gtk::Widget,
-    columns: &[DraftColumn],
-    sender: ComponentSender<StructureTab>,
-) {
+pub(super) fn present_index_dialog(parent: &gtk::Widget, columns: &[DraftColumn], sender: StructureTabSender) {
     let (dialog, body, submit_btn) =
         build_form_dialog(&crate::i18n::gettext("Add Index"), &crate::i18n::gettext("Add"));
 
@@ -162,7 +141,7 @@ pub(super) fn present_index_dialog(
         if name.trim().is_empty() {
             // Toast instead of silent no-op so the user knows why
             // their click didn't land.
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Index name is required.",
             )));
             return;
@@ -173,7 +152,7 @@ pub(super) fn present_index_dialog(
             .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
             .collect();
         if cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Select at least one column.",
             )));
             return;
@@ -201,15 +180,13 @@ pub(super) fn present_fk_dialog(
     parent: &gtk::Widget,
     columns: &[DraftColumn],
     driver_id: &str,
-    sender: ComponentSender<StructureTab>,
+    sender: StructureTabSender,
 ) {
     let fk_actions = tablepro_core::sql_ddl::supported_fk_actions(driver_id);
     let action_labels = action_labels(fk_actions);
     let (dialog, body, submit_btn) =
         build_form_dialog(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("Add"));
 
-    // Name in its own AdwPreferencesGroup at the top — matches the
-    // shape of the column-edit drawer + every other GNOME form.
     let name_group = adw::PreferencesGroup::builder().build();
     let name_row = adw::EntryRow::builder()
         .title(crate::i18n::gettext("Name"))
@@ -222,9 +199,8 @@ pub(super) fn present_fk_dialog(
     let (columns_list, column_checks) = build_column_checklist(columns);
     body.append(&columns_list);
 
-    // Reference target + ON DELETE / ON UPDATE in a second group.
-    // Reference columns stay free-text — wiring up an async fetch of
-    // the referenced table's columns is out of scope for an MVP.
+    // The referenced columns are typed: the dialog does not read the
+    // other table.
     let ref_group = adw::PreferencesGroup::builder()
         .title(crate::i18n::gettext("References"))
         .build();
@@ -257,13 +233,13 @@ pub(super) fn present_fk_dialog(
         let name = name_row.text().to_string();
         let ref_table = ref_table_row.text().to_string();
         if name.trim().is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Foreign key name is required.",
             )));
             return;
         }
         if ref_table.trim().is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Reference table is required.",
             )));
             return;
@@ -274,7 +250,7 @@ pub(super) fn present_fk_dialog(
             .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
             .collect();
         if cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Select at least one source column.",
             )));
             return;
@@ -286,16 +262,15 @@ pub(super) fn present_fk_dialog(
             .filter(|s| !s.is_empty())
             .collect();
         if ref_cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Reference columns are required.",
             )));
             return;
         }
-        // Source and reference column counts must match — `(a, b) → (x)`
-        // is structurally invalid SQL. Drivers reject it, but with an
-        // opaque error after Save instead of an inline guard.
+        // The server would reject it too, but only at Save and in its
+        // own words.
         if ref_cols.len() != cols.len() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Source and reference column counts must match.",
             )));
             return;

@@ -4,18 +4,17 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use relm4::adw::prelude::*;
-use relm4::gtk::gio;
-use relm4::{ComponentSender, adw, gtk};
+use gtk4 as gtk;
+use gtk4::gio;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_core::sql_ddl::DraftColumn;
 
-use super::{ColumnField, StructureTab, StructureTabInput};
+use super::{ColumnField, StructureTabInput, StructureTabSender};
 
-/// Curated type lists per driver. Free-text input still allowed via
-/// the combo box's editable entry; this list seeds the dropdown so
-/// common types are one click away. Order matters — most-common at
-/// the top.
+/// The type suggestions per driver, most common first. Any other type
+/// can still be typed.
 pub(super) fn driver_types(driver_id: &str) -> &'static [&'static str] {
     match driver_id {
         "postgres" => &[
@@ -117,11 +116,8 @@ pub(super) fn default_type_for(driver_id: &str) -> String {
     }
 }
 
-/// Render a draft column's summary line for the collapsed expander
-/// header — `varchar(255) · NOT NULL · Primary key`. Order: type,
-/// nullability, primary key, auto-increment. Empty parts are skipped
-/// so a freshly-added column with default state shows the minimum
-/// useful information.
+/// The collapsed row's summary, such as `varchar(255) · NOT NULL ·
+/// Primary key`.
 fn format_column_subtitle(col: &DraftColumn) -> String {
     let mut parts: Vec<String> = Vec::new();
     if !col.data_type.trim().is_empty() {
@@ -141,24 +137,17 @@ fn format_column_subtitle(col: &DraftColumn) -> String {
     parts.join(" · ")
 }
 
-/// Build one collapsible column row as `adw::ExpanderRow`. Collapsed
-/// state shows the column name (title) + summary subtitle; expanded
-/// reveals one `AdwEntryRow` / `AdwSwitchRow` per editable attribute.
-/// SQLite-restricted fields render as `set_sensitive(false)` with
-/// explanatory tooltips so the user understands why they can't edit.
-/// Non-original (newly-added) columns always allow full editing —
-/// those become `AddColumn` ops which SQLite accepts at execution.
+/// A field SQLite cannot alter is insensitive, with a tooltip saying
+/// why; a new column is fully editable, since SQLite accepts it as an
+/// `ADD COLUMN`.
 ///
-/// `suppress_emit` lets the caller mark a window during which signal
-/// callbacks should NOT push edits onto the model. Used during
-/// `rebuild_columns_view` to silence the `changed` / `toggled`
-/// emissions GTK fires while initial values are stamped onto the
-/// freshly-built widgets.
+/// While `suppress_emit` is set, the signals GTK fires as the initial
+/// values go in are not taken for edits.
 pub(super) fn build_column_expander_row(
     index: usize,
     col: &DraftColumn,
     driver_id: &str,
-    sender: ComponentSender<StructureTab>,
+    sender: StructureTabSender,
     suppress_emit: Rc<Cell<bool>>,
     popover_registry: Rc<RefCell<Vec<gtk::Popover>>>,
 ) -> adw::ExpanderRow {
@@ -171,8 +160,7 @@ pub(super) fn build_column_expander_row(
         .build();
     row.set_widget_name(&format!("col-row-{index}"));
 
-    // Trash button as a header-suffix on the expander row itself —
-    // remains visible whether the row is expanded or collapsed.
+    // On the header, so it shows whether or not the row is expanded.
     let remove_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
         .tooltip_text(crate::i18n::gettext("Remove column"))
@@ -210,10 +198,8 @@ pub(super) fn build_column_expander_row(
     });
     row.add_row(&name_row);
 
-    // Type (AdwEntryRow — free text). A suffix MenuButton offers the
-    // curated `driver_types()` suggestions; free-text input remains the
-    // primary path so custom types like `decimal(10,2)` or Postgres
-    // `enum` literals work without enumeration.
+    // Free text, so `decimal(10,2)` or an enum type need no list; the
+    // menu only suggests.
     let type_row = adw::EntryRow::builder().title(crate::i18n::gettext("Type")).build();
     type_row.set_text(&col.data_type);
     if limit_for_existing && !driver_can_alter_existing_column(driver_id) {
@@ -359,27 +345,11 @@ pub(super) fn build_column_expander_row(
     row
 }
 
-/// Build a suffix MenuButton for the type AdwEntryRow that opens a
-/// native `gtk::PopoverMenu` listing curated `driver_types()` for
-/// `driver_id`. Selecting an entry rewrites the target row's text
-/// (which fires the row's `changed` signal — the existing handler
-/// picks up the new value). Free-text input via the entry stays as
-/// the primary path.
+/// A picked type is written into `target`, whose `changed` handler
+/// takes it like typed text. Each button has its own action group, so
+/// two columns' menus never share the `types.apply` action.
 ///
-/// Implementation: a `gio::Menu` model + `MenuButton.set_menu_model`
-/// causes GTK to render a `gtk::PopoverMenu` automatically. That is
-/// the same widget powering app menus, right-click menus, and
-/// gnome-menus across the desktop, so the rendering is identical to
-/// every other GNOME menu the user has ever seen — proper menu-item
-/// padding, hover/active states, separators, focus ring, all native.
-///
-/// Each type-name menu item activates a single SimpleAction
-/// (`types.apply`) parameterised by the type string. The action is
-/// stored in a per-button action group so two columns' menus don't
-/// collide on the action name.
-///
-/// Returns the button plus the auto-built PopoverMenu so the caller
-/// can pop it down before the row goes.
+/// The popover comes back too, to be popped down before its row goes.
 fn build_type_suggestions_button(driver_id: &str, target: &adw::EntryRow) -> (gtk::MenuButton, gtk::Popover) {
     // Per-button action group: one action `apply` keyed by `String`
     // parameter. Each menu item activates `types.apply::<typename>`.

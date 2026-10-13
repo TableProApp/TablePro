@@ -4,13 +4,14 @@ use std::rc::Rc;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
-use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
+use relm4::{ComponentSender, adw, gtk};
 
 use uuid::Uuid;
 
 use crate::services::workspace_state::{self, ConnectionWorkspaceState, WorkspaceTabRecord};
-use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput};
+use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest, SaveRequest};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
+use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
 
 use super::{
     App, AppMsg, CLOSED_TABS_CAPACITY, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceTab,
@@ -138,11 +139,7 @@ impl App {
                     sort_col,
                     sort_asc,
                 } => {
-                    // The persisted `mode` field is now ignored — Data
-                    // and Structure are separate AdwTabPages. Restoring
-                    // a Table record always opens the Data side; if the
-                    // user had a Structure tab open, that's captured as
-                    // a separate `WorkspaceTabRecord::Structure` record.
+                    // A Structure tab is a record of its own now.
                     let _ = mode;
                     self.append_table_tab(
                         schema.clone(),
@@ -182,48 +179,31 @@ impl App {
         };
         let tab_id = Uuid::new_v4();
         let driver_id = self.driver_id().to_string();
-        let init = crate::ui::structure_tab::StructureTabInit {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let structure = StructureTab::new(StructureTabInit {
             tracker: self.structure_trackers.register(tab_id),
             schema: schema.clone(),
             table: String::new(),
-            mode: crate::ui::structure_tab::StructureMode::New,
+            mode: StructureMode::New,
             driver_id,
-            // New mode has nothing to introspect (no real table yet).
-            defer_initial_fetch: false,
-        };
-        let controller =
-            crate::ui::structure_tab::StructureTab::builder()
-                .launch(init)
-                .forward(sender.input_sender(), move |out| match out {
-                    crate::ui::structure_tab::StructureTabOutput::DirtyChanged(dirty) => {
-                        AppMsg::StructureTabDirtyChanged(tab_id, dirty)
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::FetchStructure => {
-                        AppMsg::FetchStructureData { tab_id }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::ExecuteTransaction { statements } => {
-                        AppMsg::ExecuteStructureTransaction { tab_id, statements }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::DropTableRequested { schema, table } => {
-                        AppMsg::DropTablePrompt { schema, table }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
-                    crate::ui::structure_tab::StructureTabOutput::ShowAlert { title, body } => {
-                        AppMsg::ShowAlert { title, body }
-                    }
-                });
+            session,
+            tasks: self.context.tasks.clone(),
+        });
+        connect_structure(&structure, tab_id, sender.input_sender());
 
-        let page = tab_view.append(controller.widget());
+        let page = tab_view.append(&structure);
         page.set_title(&crate::i18n::gettext("New Table"));
         write_workspace_tab_id(&page, tab_id);
 
         let slot = super::StructureTabSlot {
             id: tab_id,
-            controller,
+            structure,
             page: page.clone(),
             schema,
             table: String::new(),
-            mode: crate::ui::structure_tab::StructureMode::New,
+            mode: StructureMode::New,
         };
         self.workspace_tabs
             .borrow_mut()
@@ -260,7 +240,10 @@ impl App {
         let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
         let read_only = self.read_only;
 
-        let browse_init = BrowseTabInit {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let browse = BrowseTab::new(BrowseTabInit {
             tracker: self.change_trackers.register(tab_id),
             schema: schema.clone(),
             table: table.clone(),
@@ -271,36 +254,12 @@ impl App {
             initial_sort: sort,
             column_widths: self.storage.column_widths().clone(),
             filter_settings: self.storage.filter_settings().clone(),
-        };
-        let browse = BrowseTab::builder()
-            .launch(browse_init)
-            .forward(sender.input_sender(), move |out| match out {
-                BrowseTabOutput::FetchPage => AppMsg::FetchBrowsePage(tab_id),
-                BrowseTabOutput::FetchColumns => AppMsg::FetchBrowseColumns(tab_id),
-                BrowseTabOutput::FetchRowCount => AppMsg::FetchBrowseRowCount(tab_id),
-                BrowseTabOutput::StateChanged => AppMsg::WorkspaceTabsChanged,
-                BrowseTabOutput::CopyRowAsInsert { row_position } => AppMsg::CopyRowAsInsert { tab_id, row_position },
-                BrowseTabOutput::CopyToClipboard(text) => AppMsg::CopyToClipboard(text),
-                BrowseTabOutput::ExportResults { result, name, target } => {
-                    AppMsg::ExportResults { result, name, target }
-                }
-                BrowseTabOutput::SchemaWordsChanged(_words) => AppMsg::WorkspaceSchemaWordsChanged,
-                BrowseTabOutput::ShowSelectionAlert { title, body } => AppMsg::ShowAlert { title, body },
-                BrowseTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
-                BrowseTabOutput::DirtyChanged(dirty) => AppMsg::BrowseTabDirtyChanged(tab_id, dirty),
-                BrowseTabOutput::ExecuteTransaction {
-                    table,
-                    columns,
-                    changes,
-                } => AppMsg::ExecuteBrowseTransaction {
-                    tab_id,
-                    table,
-                    columns,
-                    changes,
-                },
-            });
+            session,
+            tasks: self.context.tasks.clone(),
+        });
+        connect_browse(&browse, tab_id, sender.input_sender());
 
-        let page = tab_view.append(browse.widget());
+        let page = tab_view.append(&browse);
         let label = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
         page.set_title(&label);
         if let Some(tip) = browse_tab_tooltip(schema.as_deref(), &table, &label) {
@@ -341,49 +300,31 @@ impl App {
         };
         let tab_id = Uuid::new_v4();
         let driver_id = self.driver_id().to_string();
-        let mode = crate::ui::structure_tab::StructureMode::Edit;
-        let init = crate::ui::structure_tab::StructureTabInit {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let mode = StructureMode::Edit;
+        let structure = StructureTab::new(StructureTabInit {
             tracker: self.structure_trackers.register(tab_id),
             schema: schema.clone(),
             table: table.clone(),
             mode,
             driver_id,
-            defer_initial_fetch: false,
-        };
-        let controller =
-            crate::ui::structure_tab::StructureTab::builder()
-                .launch(init)
-                .forward(sender.input_sender(), move |out| match out {
-                    crate::ui::structure_tab::StructureTabOutput::DirtyChanged(dirty) => {
-                        AppMsg::StructureTabDirtyChanged(tab_id, dirty)
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::FetchStructure => {
-                        AppMsg::FetchStructureData { tab_id }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::ExecuteTransaction { statements } => {
-                        AppMsg::ExecuteStructureTransaction { tab_id, statements }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::DropTableRequested { schema, table } => {
-                        AppMsg::DropTablePrompt { schema, table }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
-                    crate::ui::structure_tab::StructureTabOutput::ShowAlert { title, body } => {
-                        AppMsg::ShowAlert { title, body }
-                    }
-                });
+            session,
+            tasks: self.context.tasks.clone(),
+        });
+        connect_structure(&structure, tab_id, sender.input_sender());
 
-        let page = tab_view.append(controller.widget());
+        let page = tab_view.append(&structure);
         let title = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
-        // Disambiguate from the Data-side tab with the same base name
-        // by suffixing the structure tab title — "products · Structure".
-        // GNOME uses U+00B7 middle dot as the canonical separator
-        // (Files, Builder, Console all do this for compound titles).
+        // Told apart from the table's own tab, with the middle dot GNOME
+        // apps use in compound titles.
         page.set_title(&format!("{title} · {}", crate::i18n::gettext("Structure")));
         write_workspace_tab_id(&page, tab_id);
 
         let slot = super::StructureTabSlot {
             id: tab_id,
-            controller,
+            structure,
             page: page.clone(),
             schema,
             table,
@@ -480,9 +421,6 @@ impl App {
                 WorkspaceTab::Table(s) => s.page.clone(),
             });
             let Some(page) = page else { return };
-            // Tab title without the dirty bullet — the heading reads
-            // as the natural-language name of the tab (`categories`),
-            // not `• categories`. Strip a leading "• " if present.
             let raw_title = page.title().to_string();
             let tab_label = raw_title.strip_prefix("• ").unwrap_or(&raw_title).to_string();
             // Cancel | Discard(destructive) | Save(suggested), Save is
@@ -612,12 +550,8 @@ impl App {
         let Some(removed) = removed else {
             return;
         };
-        // Snapshot the closed tab into the reopen stack BEFORE running
-        // the per-kind teardown below — the BrowseModel still has its
-        // pagination + sort state intact, and the EditorTabSlot still
-        // owns the latest query buffer. New-mode Structure drafts are
-        // skipped because the table they describe doesn't exist yet,
-        // so reopening a draft would be useless.
+        // Before the teardown, while the tab still has its page, sort
+        // and query.
         if let Some(descriptor) = describe_closed_tab(&removed) {
             push_closed_tab(&self.closed_tabs_stack, descriptor);
         }
@@ -637,10 +571,12 @@ impl App {
                     .discard(&tablepro_storage::DraftScope::default(), slot.draft);
             }
             WorkspaceTab::Structure(slot) => {
+                slot.structure.shutdown();
                 self.structure_trackers.unregister(slot.id);
                 self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
             WorkspaceTab::Table(slot) => {
+                slot.browse.shutdown();
                 self.change_trackers.unregister(slot.id);
                 self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
@@ -732,21 +668,8 @@ impl App {
         }
     }
 
-    /// Sidebar-click dispatcher. Two behaviours:
-    ///
-    /// - `SwitchOrAppend` (plain click): if a Browse tab for
-    ///   `(schema, table)` is already open, activate it; otherwise
-    ///   append a new Browse tab. Never closes anything — tabs only
-    ///   go away when the user clicks the X.
-    /// - `NewTab` (Ctrl+click / right-click "Open in new tab"): always
-    ///   append a new tab even if the same table is already open.
-    ///
-    /// The earlier "smart-replace" sub-case (close active + append new
-    /// in one step) was dropped because AdwTabView's close-page
-    /// animation overlapped with the append, producing a visual flash
-    /// where the user briefly saw the closing tab and the new tab
-    /// side by side. Always-append is what every modern DB client
-    /// (TablePlus, DBeaver, DataGrip, Beekeeper) does anyway.
+    /// A sidebar click never replaces the active tab: AdwTabView's
+    /// close animation overlapped the append and flashed both tabs.
     pub(super) fn dispatch_select_table(
         &mut self,
         schema: Option<String>,
@@ -785,6 +708,59 @@ impl App {
         // sidebar right-click "Edit Structure" action.
         let page_size = u64::from(self.settings.default_page_size());
         self.append_table_tab(schema, name, 0, page_size, None, sender);
+    }
+
+    /// Ctrl+F / Filter button: toggle the inline filter strip on the
+    /// active Browse tab.
+    pub(super) fn on_show_filter_dialog(&self) {
+        let Some(id) = self.selected_browse_tab_id() else {
+            self.show_toast(&crate::i18n::gettext("Open a table to filter rows."));
+            return;
+        };
+        self.dispatch_to_tab(id, BrowseTabInput::ToggleFilterStrip);
+    }
+
+    pub(super) fn on_refresh_active_tab(&self) {
+        let Some(id) = self.selected_browse_tab_id() else {
+            return;
+        };
+        let dirty = self
+            .change_trackers
+            .get(id)
+            .is_some_and(|tracker| tracker.pending_count() > 0);
+        if !dirty {
+            self.dispatch_to_tab(id, BrowseTabInput::Refresh);
+            return;
+        }
+        // A refetch replaces the rows and with them every pending edit,
+        // so F5 mid-edit asks first, as closing a dirty tab does.
+        let dialog = adw::AlertDialog::new(
+            Some(&crate::i18n::gettext("Discard pending changes?")),
+            Some(&crate::i18n::gettext(
+                "Refreshing reloads the table from the database and drops every unsaved edit on this tab.",
+            )),
+        );
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("discard", &crate::i18n::gettext("Discard and refresh"));
+        dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let workspace_tabs = self.workspace_tabs.clone();
+        dialog.connect_response(None, move |dlg: &adw::AlertDialog, response: &str| {
+            dlg.close();
+            if response != "discard" {
+                return;
+            }
+            let browse = workspace_tabs
+                .borrow()
+                .get(&id)
+                .and_then(|tab| tab.browse_tab())
+                .cloned();
+            if let Some(browse) = browse {
+                browse.send(BrowseTabInput::DiscardAndRefresh);
+            }
+        });
+        dialog.present(Some(&self.window));
     }
 
     /// Persist workspace tabs for the active connection. Walks
@@ -860,17 +836,14 @@ fn do_persist_workspace_state(
                 if s.table.is_empty() {
                     continue;
                 }
-                let model = s.browse.model();
-                let sort = model.current_sort();
+                let sort = s.browse.current_sort();
                 WorkspaceTabRecord::Table {
                     schema: s.schema.clone(),
                     table: s.table.clone(),
-                    // `mode` is a legacy field — Table records always
-                    // describe a Data-side Browse tab now. Structure
-                    // tabs persist as separate `Structure` records.
+                    // A Structure tab is a record of its own now.
                     mode: crate::services::workspace_state::PersistedTableMode::Data,
-                    offset: model.current_offset(),
-                    page_size: model.page_size(),
+                    offset: s.browse.current_offset(),
+                    page_size: s.browse.page_size(),
                     sort_col: sort.map(|(c, _)| c),
                     sort_asc: sort.map(|(_, a)| a),
                 }
@@ -894,11 +867,8 @@ impl App {
         self.sync_sidebar_selection();
     }
 
-    /// Highlight the sidebar row matching the active Browse tab's
-    /// `(schema, table)`. When the active tab is an Editor (or there
-    /// are no tabs), clear the sidebar selection — leaving a stale
-    /// row highlighted while the user is in the editor would imply
-    /// the editor is showing that table's data, which it isn't.
+    /// With no Table tab active, no row stays selected: one would say
+    /// the editor shows that table.
     fn sync_sidebar_selection(&self) {
         let listbox = self.sidebar_factory.widget();
         let Some((schema, table)) = self.selected_browse_slot_table() else {
@@ -934,15 +904,7 @@ impl App {
         let id = self.selected_workspace_tab_id()?;
         let tabs = self.workspace_tabs.borrow();
         let slot = tabs.get(&id)?;
-        // Treat both legacy `Browse` and unified `Table` (regardless of
-        // active mode) as candidates — the Browse-side controller is
-        // present in both. Save / Discard / Find paths route through
-        // this helper.
-        if slot.browse_controller().is_some() {
-            Some(id)
-        } else {
-            None
-        }
+        if slot.browse_tab().is_some() { Some(id) } else { None }
     }
 
     pub(super) fn selected_browse_slot_table(&self) -> Option<(Option<String>, String)> {
@@ -956,10 +918,8 @@ impl App {
         let mut words: Vec<String> = self.table_names.clone();
         let tabs = self.workspace_tabs.borrow();
         for tab in tabs.values() {
-            if let Some(controller) = tab.browse_controller() {
-                for col in controller.model().columns() {
-                    words.push(col.name.clone());
-                }
+            if let Some(browse) = tab.browse_tab() {
+                words.extend(browse.columns().into_iter().map(|column| column.name));
             }
         }
         words.sort_unstable();
@@ -973,17 +933,9 @@ impl App {
         distinct.len()
     }
 
-    /// Refresh a browse tab's title based on its tracker dirty state.
-    /// Mirrors GNOME Text Editor's leading "•" prefix convention for
-    /// unsaved buffers. The base label is recomputed (not stored) so
-    /// schema disambiguation stays correct if other tabs change.
-    ///
-    /// Also flips `set_needs_attention` on the AdwTabPage so the tab
-    /// bar's pulsing dot appears for background tabs that have unsaved
-    /// edits — matches AdwTabView's intended use and surfaces the
-    /// dirty state when the user is in another tab. The flag is
-    /// suppressed for the currently-selected tab since the user is
-    /// actively looking at it (the "•" title prefix is enough cue).
+    /// The label is built again rather than stored, so the schema
+    /// prefix follows the other tabs. Only a background tab asks for
+    /// attention; the selected one has its "•" in view.
     pub(super) fn refresh_browse_tab_dirty(&self, tab_id: uuid::Uuid, dirty: bool) {
         let schemas_count = self.sidebar_schemas_distinct();
         let tabs = self.workspace_tabs.borrow();
@@ -1012,16 +964,21 @@ impl App {
     }
 
     pub(super) fn teardown_workspace_tabs(&mut self) {
-        // Synchronous flush — debouncer would skip the write since
-        // teardown drops state before the 500ms timer would fire.
+        // The debounced write would run after the state is gone.
         self.do_persist_workspace_state_now();
         self.cancel_all_editor_runs();
         // The pending edits name rows of the connection going away, so
         // they cannot be saved after it.
         for tab in self.workspace_tabs.borrow().values() {
             match tab {
-                WorkspaceTab::Structure(slot) => self.structure_trackers.unregister(slot.id),
-                WorkspaceTab::Table(slot) => self.change_trackers.unregister(slot.id),
+                WorkspaceTab::Structure(slot) => {
+                    slot.structure.shutdown();
+                    self.structure_trackers.unregister(slot.id);
+                }
+                WorkspaceTab::Table(slot) => {
+                    slot.browse.shutdown();
+                    self.change_trackers.unregister(slot.id);
+                }
                 WorkspaceTab::Editor(_) => {}
             }
         }
@@ -1052,13 +1009,14 @@ impl App {
     /// Browse-side controller in both legacy `Browse` slots and the
     /// unified `Table` slot.
     pub(super) fn dispatch_to_tab(&self, tab_id: Uuid, msg: BrowseTabInput) {
-        if let Some(controller) = self
+        let browse = self
             .workspace_tabs
             .borrow()
             .get(&tab_id)
-            .and_then(|t| t.browse_controller())
-        {
-            let _ = controller.sender().send(msg);
+            .and_then(|t| t.browse_tab())
+            .cloned();
+        if let Some(browse) = browse {
+            browse.send(msg);
         }
     }
 
@@ -1098,11 +1056,6 @@ impl App {
     }
 
     pub(super) fn on_replace_active_tab_query(&mut self, text: String, sender: ComponentSender<Self>) {
-        // If an editor tab is active, replace its buffer in-place. If a
-        // browse tab is active (or no tab at all), fall back to opening
-        // a new editor tab with the query — silent no-op was the prior
-        // (annoying) behaviour for users invoking from history while
-        // browsing.
         if let Some(id) = self.selected_workspace_tab_id()
             && let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&id)
         {
@@ -1320,22 +1273,17 @@ fn browse_tab_tooltip(schema: Option<&str>, table: &str, label: &str) -> Option<
 fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
     match slot {
         WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor { query: s.query.clone() }),
-        WorkspaceTab::Table(s) => {
-            let model = s.browse.model();
-            let sort = model.current_sort();
-            Some(ClosedTabDescriptor::Table {
-                schema: s.schema.clone(),
-                table: s.table.clone(),
-                offset: model.current_offset(),
-                page_size: model.page_size(),
-                sort,
-            })
-        }
+        WorkspaceTab::Table(s) => Some(ClosedTabDescriptor::Table {
+            schema: s.schema.clone(),
+            table: s.table.clone(),
+            offset: s.browse.current_offset(),
+            page_size: s.browse.page_size(),
+            sort: s.browse.current_sort(),
+        }),
         WorkspaceTab::Structure(s) => match s.mode {
-            // New-Table drafts have no entity to point at and lose
-            // their in-progress DDL on close — nothing to reopen.
-            crate::ui::structure_tab::StructureMode::New => None,
-            crate::ui::structure_tab::StructureMode::Edit => Some(ClosedTabDescriptor::Structure {
+            // A draft names no table to reopen.
+            StructureMode::New => None,
+            StructureMode::Edit => Some(ClosedTabDescriptor::Structure {
                 schema: s.schema.clone(),
                 table: s.table.clone(),
             }),
@@ -1361,10 +1309,7 @@ impl App {
         }
         let descriptor = self.closed_tabs_stack.borrow_mut().pop_back();
         let Some(descriptor) = descriptor else {
-            // Stack empty — nothing to reopen. Toast keeps the
-            // shortcut from feeling broken when the user hits it
-            // before having closed anything (or after a reconnect
-            // wiped the stack).
+            // Without a toast the shortcut would read as broken.
             self.show_toast(&crate::i18n::gettext("No recently closed tab"));
             return;
         };
@@ -1393,10 +1338,8 @@ impl App {
     }
 }
 
-/// Returns a tooltip for an Editor tab. Empty for blank queries; for
-/// non-empty queries, a 200-char preview — but only when distinct from
-/// the (truncated) label, so non-truncated labels don't get a redundant
-/// hover popup.
+/// At most 200 characters of the query, and none when the label
+/// already shows them.
 fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
     let q = query.trim();
     if q.is_empty() {
@@ -1418,6 +1361,64 @@ fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
     }
     let preview = format!("{}…", &q[..last_idx]);
     if preview == label { None } else { Some(preview) }
+}
+
+/// The structure tab's signals, as this window's inputs for the tab.
+fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
+    let dirty = input.clone();
+    structure.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::StructureTabDirtyChanged(tab_id, is_dirty)));
+    let execute = input.clone();
+    structure.connect_execute(move |_, statements| {
+        execute.emit(AppMsg::ExecuteStructureTransaction { tab_id, statements });
+    });
+    let drop_table = input.clone();
+    structure.connect_drop_table_requested(move |_, schema, table| {
+        drop_table.emit(AppMsg::DropTablePrompt { schema, table });
+    });
+    let toast = input.clone();
+    structure.connect_toast(move |_, text| toast.emit(AppMsg::ShowToast(text)));
+    let alert = input.clone();
+    structure.connect_alert(move |_, title, body| alert.emit(AppMsg::ShowAlert { title, body }));
+}
+
+/// The browse tab's signals, as this window's inputs for the tab.
+fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
+    let state = input.clone();
+    browse.connect_state_changed(move |_| state.emit(AppMsg::WorkspaceTabsChanged));
+    let columns = input.clone();
+    browse.connect_columns_changed(move |_| columns.emit(AppMsg::WorkspaceSchemaWordsChanged));
+    let copy_row = input.clone();
+    browse.connect_copy_row_as_insert(move |_, row_position| {
+        copy_row.emit(AppMsg::CopyRowAsInsert { tab_id, row_position });
+    });
+    let clipboard = input.clone();
+    browse.connect_copy_to_clipboard(move |_, text| clipboard.emit(AppMsg::CopyToClipboard(text)));
+    let export = input.clone();
+    browse.connect_export_results(move |_, ExportRequest { result, name, target }| {
+        export.emit(AppMsg::ExportResults { result, name, target });
+    });
+    let alert = input.clone();
+    browse.connect_alert(move |_, title, body| alert.emit(AppMsg::ShowAlert { title, body }));
+    let toast = input.clone();
+    browse.connect_toast(move |_, text| toast.emit(AppMsg::ShowToast(text)));
+    let dirty = input.clone();
+    browse.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::BrowseTabDirtyChanged(tab_id, is_dirty)));
+    let save = input.clone();
+    browse.connect_save_requested(
+        move |_,
+              SaveRequest {
+                  table,
+                  columns,
+                  changes,
+              }| {
+            save.emit(AppMsg::ExecuteBrowseTransaction {
+                tab_id,
+                table,
+                columns,
+                changes,
+            });
+        },
+    );
 }
 
 /// Forward an editor tab's signals into the window. The toast overlay

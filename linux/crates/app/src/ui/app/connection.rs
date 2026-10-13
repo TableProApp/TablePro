@@ -4,12 +4,12 @@ use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
 use relm4::{ComponentController, ComponentSender, adw, gtk};
 
-use tablepro_core::meta::ObjectInfo;
+use tablepro_core::meta::{ObjectInfo, ObjectScope};
 use tablepro_session::connect::AttemptGeneration;
 use tablepro_session::runtime::{ProcessHold, WatchForwarder};
 use tablepro_session::{
-    ClaimError, ConnectAttempts, ConnectError, CredentialSource, MonitorSignal, PendingSession, Session, SessionClaim,
-    SessionHealth, SessionKey,
+    ClaimError, ConnectAttempts, ConnectError, CredentialSource, MonitorSignal, ObjectListSnapshot, PendingSession,
+    Session, SessionClaim, SessionHealth, SessionKey,
 };
 use tablepro_storage::SavedConnection;
 use uuid::Uuid;
@@ -18,6 +18,7 @@ use tablepro_session::RequestTarget;
 use tablepro_session::connect::StoreConnectionWrites;
 
 use crate::services::active_session::ActiveSession;
+use crate::services::from_session::FromSession;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill, ConnectSubmission, FormField};
 use crate::ui::error_text::TlsRemedy;
 use crate::ui::file_read::{FileReadError, read_capped_file};
@@ -77,11 +78,38 @@ pub(crate) struct SessionLinks {
     key: SessionKey,
     _claim: SessionClaim,
     _health: WatchForwarder,
-    _catalog: WatchForwarder,
+    /// Feeds the sidebar and the editor's completion words. Dropped
+    /// before the session shuts down, so a list read for a session the
+    /// window let go of never repaints it.
+    _catalog_watch: WatchForwarder,
 }
 
 fn spawn_local(future: futures::future::LocalBoxFuture<'static, ()>) {
     glib::spawn_future_local(future);
+}
+
+/// Deliver each new object list the session's catalog commits for the
+/// sidebar's scope. The list on screen when the watch starts is not
+/// delivered again, and a refresh that failed keeps the list it had.
+pub(super) fn catalog_watch(
+    session: &Arc<Session>,
+    mut deliver: impl FnMut(FromSession<ObjectListSnapshot>) + 'static,
+) -> WatchForwarder {
+    let objects = session.subscribe_objects(ObjectScope::DefaultSchema);
+    let origin = Arc::downgrade(session);
+    let mut shown = objects.borrow().generation;
+    WatchForwarder::new(
+        objects,
+        move |snapshot: ObjectListSnapshot| {
+            if snapshot.generation != shown {
+                shown = snapshot.generation;
+                deliver(FromSession::new(origin.clone(), snapshot));
+            } else if let Some(error) = &snapshot.last_error {
+                tracing::warn!(%error, "the table list could not be read again");
+            }
+        },
+        spawn_local,
+    )
 }
 
 impl App {
@@ -268,31 +296,23 @@ impl App {
         claim.attach(&session);
         self.context.active.replace(session.clone());
 
-        let catalog = session.catalog();
-        let first = catalog.borrow().clone();
+        let first = session.subscribe_objects(ObjectScope::DefaultSchema).borrow().clone();
         let health_sender = sender.clone();
+        let health_origin = Arc::downgrade(&session);
         let catalog_sender = sender.clone();
-        let mut shown = first.generation;
         self.session_links = Some(SessionLinks {
             key,
             _claim: claim,
             _health: WatchForwarder::new(
                 session.health(),
-                move |health| health_sender.input(AppMsg::HealthChanged(health)),
-                spawn_local,
-            ),
-            // A reconnect reads the catalog again; the first one is
-            // already on screen.
-            _catalog: WatchForwarder::new(
-                catalog,
-                move |snapshot: tablepro_session::CatalogSnapshot| {
-                    if snapshot.generation != shown {
-                        shown = snapshot.generation;
-                        catalog_sender.input(AppMsg::CatalogChanged(snapshot.objects.to_vec()));
-                    }
+                move |health| {
+                    health_sender.input(AppMsg::HealthChanged(FromSession::new(health_origin.clone(), health)));
                 },
                 spawn_local,
             ),
+            _catalog_watch: catalog_watch(&session, move |update| {
+                catalog_sender.input(AppMsg::CatalogChanged(update));
+            }),
         });
         for warning in warnings {
             self.show_toast(&warning);
@@ -369,11 +389,8 @@ impl App {
         // a tab via sidebar click or Ctrl+T.
         self.ensure_workspace_root(sender.clone());
         self.content_holder.set_content(Some(&self.workspace_outer_stack));
-        let browsable = browsable(objects);
-        self.table_names = browsable.iter().map(|object| object.name.clone()).collect();
-        tracing::info!(driver = %driver_id, table_count = browsable.len(), "workspace ready");
-        self.repopulate_sidebar(&browsable);
-        self.rebuild_schema_buffer();
+        tracing::info!(driver = %driver_id, table_count = objects.len(), "workspace ready");
+        self.show_objects(&objects);
         self.refresh_window_title();
         // Restore tabs (browse + editor) persisted from the prior session
         // for this connection.
@@ -422,9 +439,7 @@ impl App {
         // Persist + tear down workspace tabs before dropping the
         // session (persist needs the active connection id).
         self.teardown_workspace_tabs();
-        // Drop reopen-stack entries — they reference tables in the
-        // connection we're about to release. Reopening one against a
-        // different connection would target a non-existent table.
+        // The closed tabs name tables of the connection being released.
         self.clear_closed_tabs_stack();
         self.session_links = None;
         close_session(&self.context.active, &*self.context.hold);
@@ -492,13 +507,8 @@ impl App {
     }
 
     pub(super) fn on_delete_connection(&self, id: Uuid, sender: ComponentSender<Self>) {
-        // Connection deletion wipes the saved entry and ALL associated
-        // keyring credentials (db password, SSH password, SSH passphrase).
-        // Irreversible (no Undo can recover keyring entries) so we
-        // confirm unconditionally — the previous `confirm_destructive`
-        // preference gate let users skip it, but per HIG (and GNOME
-        // Files' bookmark-delete behaviour) destructive keyring writes
-        // need confirmation regardless of preferences.
+        // The delete takes the keyring secrets with it and has no undo,
+        // so it asks whatever the preferences say.
         let connection_name = self
             .saved_connections
             .iter()
@@ -816,9 +826,17 @@ impl App {
         });
     }
 
-    /// Only what the grid can page through goes in the sidebar.
-    pub(super) fn repopulate_sidebar(&mut self, objects: &[ObjectInfo]) {
+    /// The session's objects in the sidebar and among the editor's
+    /// completion words.
+    pub(super) fn show_objects(&mut self, objects: &[ObjectInfo]) {
         let objects = browsable(objects.to_vec());
+        self.table_names = objects.iter().map(|object| object.name.clone()).collect();
+        self.repopulate_sidebar(objects);
+        self.rebuild_schema_buffer();
+    }
+
+    /// Only what the grid can page through goes in the sidebar.
+    fn repopulate_sidebar(&mut self, objects: Vec<ObjectInfo>) {
         {
             let mut schemas = self.sidebar_schemas.borrow_mut();
             schemas.clear();
@@ -846,14 +864,8 @@ impl App {
     }
 
     pub(super) fn refresh_window_title(&self) {
-        // Subtitle: "<connection> · <driver>" when connected, empty
-        // otherwise. The active table goes in the tab title (where it
-        // already lives) — duplicating it in the WindowTitle subtitle
-        // both overruns the slot's intended ~7-word capacity and
-        // pretends the subtitle is the canonical "where am I?" widget
-        // when the tab strip already serves that role. Matches GNOME
-        // Builder (subtitle = branch name only) and Text Editor
-        // (subtitle = filename only) — short, single-purpose.
+        // The table is in the tab title already, so the subtitle leaves
+        // it out, as GNOME Builder's names only the branch.
         let metadata = self.context.active.metadata();
         let connection_name = metadata.as_ref().map(|m| m.name.as_str());
         let active = self.selected_browse_slot_table();
@@ -877,10 +889,8 @@ impl App {
         self.window.set_title(Some(&os_title));
         self.window_title.set_subtitle(&subtitle);
 
-        // Sidebar header acts as a breadcrumb: the title shows the
-        // active connection name when connected, falling back to the
-        // generic "Tables" label on the welcome screen. Subtitle stays
-        // empty — the driver / host already lives in the main header.
+        // The sidebar's header has no subtitle: the main header already
+        // names the driver.
         match connection_name {
             Some(name) => {
                 self.sidebar_title.set_title(name);
@@ -1151,6 +1161,9 @@ fn failed_banner_text(cause: tablepro_session::FailureCause) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+    use std::rc::Rc;
     use std::time::Duration;
 
     use tablepro_core::LivenessPolicy;
@@ -1159,9 +1172,10 @@ mod tests {
     use tablepro_session::operation::DefaultDeadlines;
     use tablepro_session::runtime::CountingHold;
     use tablepro_session::{FailureCause, SessionDeps};
-    use tablepro_test_support::ConnectionScript;
+    use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
     use super::*;
+    use crate::test_support::FakeSession;
 
     fn read(path: &std::path::Path) -> Result<Vec<u8>, String> {
         let file = gio::File::for_path(path);
@@ -1242,6 +1256,118 @@ mod tests {
         crate::test_support::wait_until(Duration::from_secs(5), || hold.live() == 0).expect("the close to end");
         assert!(session.is_shut_down());
         assert!(connection.is_closed(), "the connection was cut off rather than closed");
+    }
+
+    fn names(snapshot: &ObjectListSnapshot) -> Vec<String> {
+        snapshot.objects.iter().map(|object| object.name.clone()).collect()
+    }
+
+    /// The window's input queue, holding what the catalog watch posted
+    /// until the window handles it.
+    type Queue = Rc<RefCell<VecDeque<FromSession<ObjectListSnapshot>>>>;
+
+    fn post_to(queue: &Queue) -> impl FnMut(FromSession<ObjectListSnapshot>) + 'static {
+        let queue = queue.clone();
+        move |update| queue.borrow_mut().push_back(update)
+    }
+
+    /// Handle the queued lists the way the window's `CatalogChanged` does.
+    fn handle(queue: &Queue, active: &ActiveSession, sidebar: &mut Vec<String>) {
+        let queued: Vec<_> = queue.borrow_mut().drain(..).collect();
+        for update in queued {
+            if let Some(snapshot) = update.if_current(active) {
+                *sidebar = names(&snapshot);
+            }
+        }
+    }
+
+    fn refresh_objects(
+        session: &Arc<Session>,
+        runtime: &crate::runtime::AppRuntime,
+    ) -> impl Future<Output = ()> + use<> {
+        let session = session.clone();
+        let refreshing = runtime
+            .tasks()
+            .spawn_task(async move { session.refresh_objects(ObjectScope::DefaultSchema).await });
+        async move {
+            let _ = refreshing.await;
+        }
+    }
+
+    #[gtk4::test]
+    fn late_catalog_commit_after_disconnect_leaves_sidebar_untouched() {
+        let runtime = crate::test_support::test_runtime();
+        let mut first = ConnectionScript::default();
+        first.list_objects.always(FakeReply::Late {
+            after: Duration::from_millis(300),
+            outcome: Ok(vec![object("from_a", ObjectKind::Table)]),
+        });
+        let a = FakeSession::start(first, [], runtime.tasks());
+        let mut second = ConnectionScript::default();
+        second
+            .list_objects
+            .always(FakeReply::ok(vec![object("from_b", ObjectKind::Table)]));
+        let b = FakeSession::start(second, [], runtime.tasks());
+        let active = ActiveSession::new();
+        active.replace(a.session.clone());
+        let queue = Queue::default();
+        let mut sidebar = Vec::new();
+        let watching_a = catalog_watch(&a.session, post_to(&queue));
+        let late = refresh_objects(&a.session, &runtime);
+        let counters = a.connection.counters();
+        crate::test_support::wait_until(Duration::from_secs(5), || {
+            CallCounters::get(&counters.list_objects) == 1
+        })
+        .expect("A's list was asked for");
+
+        // Disconnect A and adopt B, in the order the window does.
+        drop(watching_a);
+        drop(a.session.begin_shutdown());
+        active.replace(b.session.clone());
+        let _watching_b = catalog_watch(&b.session, post_to(&queue));
+        let refreshed_b = refresh_objects(&b.session, &runtime);
+        crate::test_support::finish_on_main(Duration::from_secs(5), async move {
+            refreshed_b.await;
+            late.await;
+        })
+        .expect("both lists to land");
+        crate::test_support::drain_main_context();
+        handle(&queue, &active, &mut sidebar);
+
+        assert_eq!(
+            names(&a.session.subscribe_objects(ObjectScope::DefaultSchema).borrow()),
+            ["from_a"],
+            "A's late list never landed, so the test proved nothing"
+        );
+        assert_eq!(sidebar, ["from_b"]);
+    }
+
+    #[gtk4::test]
+    fn a_list_queued_before_a_switch_is_not_shown() {
+        let runtime = crate::test_support::test_runtime();
+        let mut first = ConnectionScript::default();
+        first
+            .list_objects
+            .always(FakeReply::ok(vec![object("from_a", ObjectKind::Table)]));
+        let a = FakeSession::start(first, [], runtime.tasks());
+        let b = FakeSession::start(ConnectionScript::default(), [], runtime.tasks());
+        let active = ActiveSession::new();
+        active.replace(a.session.clone());
+        let queue = Queue::default();
+        let mut sidebar = vec!["from_b".to_owned()];
+        let watching_a = catalog_watch(&a.session, post_to(&queue));
+        crate::test_support::finish_on_main(Duration::from_secs(5), refresh_objects(&a.session, &runtime))
+            .expect("A's list to land");
+        crate::test_support::wait_until(Duration::from_secs(5), || queue.borrow().len() == 1)
+            .expect("A's list was posted to the window");
+
+        // B's SessionReady was ahead of A's list in the queue.
+        drop(watching_a);
+        drop(a.session.begin_shutdown());
+        active.replace(b.session.clone());
+        handle(&queue, &active, &mut sidebar);
+
+        assert_eq!(sidebar, ["from_b"], "A's list replaced B's sidebar");
     }
 
     fn object(name: &str, kind: ObjectKind) -> ObjectInfo {

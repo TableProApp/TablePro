@@ -4,7 +4,7 @@ use tablepro_core::statement::SqlBuildError;
 use tablepro_core::{DriverError, ErrorCategory};
 use thiserror::Error;
 
-use crate::runtime::TaskPanic;
+use crate::runtime::{TaskFailure, TaskPanic};
 
 /// Why an operation produced no value.
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -35,6 +35,17 @@ impl OperationError {
             Self::Sql(_) | Self::Browse(_) | Self::Build(_) | Self::Panicked(_) | Self::Cancelled | Self::Closed => {
                 None
             }
+        }
+    }
+}
+
+/// A task that never answered is reported like the operation it ran: a
+/// panic as the bug it is, an abort as the app stopping the work.
+impl From<TaskFailure> for OperationError {
+    fn from(failure: TaskFailure) -> Self {
+        match failure {
+            TaskFailure::Panicked(panic) => Self::Panicked(panic),
+            TaskFailure::Aborted => Self::Cancelled,
         }
     }
 }
