@@ -4,6 +4,8 @@ mod auth_errors;
 mod drop_constraint_index;
 #[path = "enum_labels.rs"]
 mod enum_labels;
+#[path = "filter_types.rs"]
+mod filter_types;
 #[path = "float4_display.rs"]
 mod float4_display;
 #[path = "network_paths.rs"]

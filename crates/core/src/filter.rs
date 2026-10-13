@@ -26,7 +26,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::query::{ColumnInfo, Value};
-use crate::sql_dialect::{placeholder_for, quote_ident};
+use crate::sql_dialect::{placeholder_for, quote_ident, text_cast_placeholder};
 
 /// One operator in a filter rule. Operator names are user-visible in
 /// the dialog (the dropdown labels live next to this enum in the UI
@@ -349,6 +349,9 @@ fn build_rule_sql(
 fn filter_placeholder(driver_id: &str, col: &ColumnInfo, index: usize) -> String {
     let placeholder = placeholder_for(driver_id, index);
     let Some(enum_type) = col.enum_type.as_ref().filter(|_| driver_id == "postgres") else {
+        if driver_id == "postgres" && matches!(column_kind(col), Kind::Text) {
+            return text_cast_placeholder(col, &Value::Text(String::new()), placeholder);
+        }
         return placeholder;
     };
     let array_suffix = if col.data_type.trim().ends_with("[]") { "[]" } else { "" };
@@ -412,8 +415,15 @@ fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
+fn column_kind(col: &ColumnInfo) -> Kind {
+    if col.enum_type.is_some() || col.domain_type.is_some() {
+        return Kind::Text;
+    }
+    classify(&col.data_type.to_ascii_lowercase())
+}
+
 fn parse_value_for(col: &ColumnInfo, text: &str) -> Result<Value, BuildFilterError> {
-    let kind = classify(&col.data_type.to_ascii_lowercase());
+    let kind = column_kind(col);
     let trimmed = text.trim();
     match kind {
         Kind::Text | Kind::Json => Ok(Value::Text(text.to_string())),
@@ -516,6 +526,18 @@ enum Kind {
 fn classify(lower: &str) -> Kind {
     if lower == "tinyint(1)" || lower == "boolean" || lower == "bool" {
         return Kind::Bool;
+    }
+    let is_timetz = lower.starts_with("time") && !lower.starts_with("timestamp") && lower.contains("with time zone");
+    if is_timetz
+        || lower == "timetz"
+        || lower.starts_with("interval")
+        || lower.ends_with("range")
+        || lower.contains("multirange")
+    {
+        return Kind::Text;
+    }
+    if lower == "time without time zone" {
+        return Kind::Time;
     }
     if lower == "uuid" {
         return Kind::Uuid;

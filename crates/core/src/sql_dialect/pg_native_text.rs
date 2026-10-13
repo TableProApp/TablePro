@@ -17,6 +17,10 @@ pub(crate) fn postgres_native_text_cast_type(data_type: &str) -> Option<String> 
     Some(match base {
         "inet" | "cidr" | "macaddr" | "macaddr8" | "xml" | "tsvector" | "tsquery" => format!("pg_catalog.{base}"),
         "interval" => "pg_catalog.interval".to_string(),
+        "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange" | "int4multirange"
+        | "int8multirange" | "nummultirange" | "tsmultirange" | "tstzmultirange" | "datemultirange" => {
+            format!("pg_catalog.{base}")
+        }
         _ if base.starts_with("interval ") => "pg_catalog.interval".to_string(),
         "bit" => format!("pg_catalog.bit{}", length(modifier)?),
         "bit varying" | "varbit" => format!("pg_catalog.varbit{}", length(modifier)?),
