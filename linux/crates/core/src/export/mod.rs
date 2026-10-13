@@ -23,7 +23,7 @@ pub use in_clause::{InClause, render_in_clause};
 pub use json::{render_json, row_to_json};
 pub use json_field_names::json_field_names;
 pub use markdown::render_markdown;
-pub use sql::{literal, render_sql_insert};
+pub use sql::{literal, render_insert, render_sql_insert};
 pub use tsv::{render_tsv, tsv_writer_builder};
 pub use value_text::{value_text, value_to_text};
 pub use xlsx::render_xlsx;

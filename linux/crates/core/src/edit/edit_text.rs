@@ -17,7 +17,7 @@ pub enum EditText {
 /// committing it would write the shortened form back. A value with no
 /// text form the parser could read back is read-only.
 pub fn edit_text(value: &Value, column: &ColumnType) -> EditText {
-    if let Some(reason) = read_only_kind(&column.kind) {
+    if let Some(reason) = read_only_reason(&column.kind) {
         return EditText::ReadOnly(reason);
     }
     match value {
@@ -35,7 +35,7 @@ pub fn edit_text(value: &Value, column: &ColumnType) -> EditText {
 
 /// The kinds whose values have no text the parser takes back. Matches
 /// what `parse_literal_text` refuses, so a cell that opens can commit.
-fn read_only_kind(kind: &ColumnKind) -> Option<ReadOnlyReason> {
+pub fn read_only_reason(kind: &ColumnKind) -> Option<ReadOnlyReason> {
     match kind {
         ColumnKind::Bytes { .. } => Some(ReadOnlyReason::Bytes),
         ColumnKind::Spatial => Some(ReadOnlyReason::Spatial),

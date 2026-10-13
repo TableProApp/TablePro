@@ -1,5 +1,6 @@
-use crate::column::ResultColumn;
-use crate::dialect::SqlDialect;
+use crate::column::{ColumnInfo, ResultColumn};
+use crate::dialect::{LiteralError, SqlDialect};
+use crate::meta::TableRef;
 use crate::value::Value;
 
 /// Rows as `INSERT` statements, in the engine's own spelling.
@@ -47,6 +48,44 @@ pub fn render_sql_insert(
         ));
     }
     out
+}
+
+/// One row as an `INSERT` the user can paste and run.
+///
+/// Unlike an export, a value with no literal is an error rather than a
+/// marked `NULL`: a single statement copied to run again is worth
+/// nothing with a cell quietly swapped out. Generated columns are left
+/// out, since the server refuses a value for them.
+pub fn render_insert(
+    dialect: &dyn SqlDialect,
+    table: &TableRef,
+    columns: &[ColumnInfo],
+    row: &[Value],
+) -> Result<String, LiteralError> {
+    let table_sql = dialect.qualify(table);
+    let mut names = Vec::with_capacity(columns.len());
+    let mut values = Vec::with_capacity(columns.len());
+    for (index, column) in columns.iter().enumerate() {
+        if !column.is_writable() {
+            continue;
+        }
+        names.push(dialect.quote_identifier(&column.name));
+        values.push(match row.get(index) {
+            Some(value) => dialect.literal(value, &column.column_type)?,
+            None => "NULL".to_owned(),
+        });
+    }
+    if names.is_empty() {
+        return Ok(dialect
+            .insert_default_row(&table_sql)
+            .map(|sql| format!("{sql};"))
+            .unwrap_or_default());
+    }
+    Ok(format!(
+        "INSERT INTO {table_sql} ({}) VALUES ({});",
+        names.join(", "),
+        values.join(", ")
+    ))
 }
 
 /// One cell as a literal, or a marked `NULL` where the engine has no
@@ -133,5 +172,48 @@ mod tests {
     #[test]
     fn a_result_with_no_columns_writes_nothing() {
         assert_eq!(render("t", &[], &[]), "");
+    }
+
+    fn column(name: &str, generated: bool) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_owned(),
+            column_type: crate::column::ColumnType::untyped_text("text"),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            is_generated: generated,
+            default: crate::column::ColumnDefault::None,
+            comment: None,
+        }
+    }
+
+    #[test]
+    fn render_insert_qualifies_schema_and_skips_generated() {
+        let columns = [column("id", false), column("total", true), column("name", false)];
+        let row = [Value::Int(1), Value::Int(9), Value::Text("O'Brien".into())];
+
+        let sql = render_insert(
+            &TestDialect::default(),
+            &TableRef::new(Some("sales".to_owned()), "orders"),
+            &columns,
+            &row,
+        );
+
+        assert_eq!(
+            sql.as_deref(),
+            Ok("INSERT INTO \"sales\".\"orders\" (\"id\", \"name\") VALUES (1, 'O''Brien');")
+        );
+    }
+
+    #[test]
+    fn render_insert_refuses_a_value_with_no_literal() {
+        let sql = render_insert(
+            &TestDialect::default(),
+            &TableRef::unqualified("t"),
+            &[column("blob", false)],
+            &[Value::Bytes(vec![0xde, 0xad])],
+        );
+
+        assert!(matches!(sql, Err(LiteralError::Unrepresentable { .. })), "{sql:?}");
     }
 }
