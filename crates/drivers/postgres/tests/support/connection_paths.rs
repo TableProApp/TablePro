@@ -16,6 +16,8 @@ mod network_paths;
 mod null_binding;
 #[path = "scenario_table.rs"]
 mod scenario_table;
+#[path = "schema_introspection.rs"]
+mod schema_introspection;
 #[path = "stale_plan.rs"]
 mod stale_plan;
 #[path = "touched_insert.rs"]
