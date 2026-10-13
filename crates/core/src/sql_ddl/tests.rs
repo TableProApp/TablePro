@@ -119,6 +119,7 @@ fn create_table_with_schema() {
 fn create_table_with_secondary_index() {
     let cols = vec![nn(pk(ai(dc("id", "integer")))), nn(dc("email", "text"))];
     let idx = IndexInfo {
+        constraint: None,
         name: "users_email_idx".into(),
         columns: vec!["email".into()],
         unique: true,
@@ -135,6 +136,7 @@ fn create_table_with_secondary_index() {
 fn create_table_skips_primary_index() {
     let cols = vec![nn(pk(ai(dc("id", "integer"))))];
     let pk_idx = IndexInfo {
+        constraint: None,
         name: "users_pkey".into(),
         columns: vec!["id".into()],
         unique: true,
@@ -722,6 +724,7 @@ fn reorder_column_sqlite_rejected() {
 #[test]
 fn create_index_basic() {
     let idx = IndexInfo {
+        constraint: None,
         name: "users_email_idx".into(),
         columns: vec!["email".into()],
         unique: true,
@@ -737,6 +740,7 @@ fn create_index_basic() {
 #[test]
 fn create_index_refuses_a_partial_index_instead_of_dropping_its_predicate() {
     let idx = IndexInfo {
+        constraint: None,
         name: "active_email".into(),
         columns: vec!["email".into()],
         unique: true,
@@ -750,6 +754,7 @@ fn create_index_refuses_a_partial_index_instead_of_dropping_its_predicate() {
 #[test]
 fn create_index_compound_columns() {
     let idx = IndexInfo {
+        constraint: None,
         name: "idx_a_b".into(),
         columns: vec!["a".into(), "b".into()],
         unique: false,
@@ -763,6 +768,7 @@ fn create_index_compound_columns() {
 #[test]
 fn create_index_rejects_empty_name() {
     let idx = IndexInfo {
+        constraint: None,
         name: "".into(),
         columns: vec!["x".into()],
         unique: false,
@@ -776,6 +782,7 @@ fn create_index_rejects_empty_name() {
 #[test]
 fn create_index_mssql() {
     let idx = IndexInfo {
+        constraint: None,
         name: "idx_a_b".into(),
         columns: vec!["a".into(), "b".into()],
         unique: true,

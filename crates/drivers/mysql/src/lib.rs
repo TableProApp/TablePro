@@ -342,6 +342,7 @@ impl Connection for MysqlConnection {
             let non_unique: i64 = r.try_get(1).unwrap_or(0);
             let column: String = r.get(2);
             let entry = by_name.entry(name.clone()).or_insert_with(|| IndexInfo {
+                constraint: None,
                 name: name.clone(),
                 columns: Vec::new(),
                 unique: non_unique == 0,

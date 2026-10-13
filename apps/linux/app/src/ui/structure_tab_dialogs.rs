@@ -166,6 +166,7 @@ pub(super) fn present_index_dialog(
             return;
         }
         sender_for_resp.input(StructureTabInput::AddIndex(IndexInfo {
+            constraint: None,
             name,
             columns: cols,
             unique: unique_row.is_active(),

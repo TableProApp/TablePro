@@ -63,6 +63,7 @@ async fn a_created_table_matches_the_drafted_columns_indexes_and_keys() {
                 draft("label", "text", false, false),
             ],
             indexes: vec![IndexInfo {
+                constraint: None,
                 name: "ddl_parent_label_key".into(),
                 columns: vec!["label".into()],
                 unique: true,

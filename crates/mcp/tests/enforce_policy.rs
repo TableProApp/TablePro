@@ -798,6 +798,7 @@ impl Connection for StubConn {
     }
     async fn fetch_indexes(&self, _: Option<&str>, _: &str) -> Result<Vec<IndexInfo>, DriverError> {
         Ok(vec![IndexInfo {
+            constraint: None,
             name: "items_pkey".into(),
             columns: vec!["id".into()],
             unique: true,

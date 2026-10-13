@@ -79,6 +79,7 @@ mod tests {
     #[test]
     fn a_partial_index_subtitle_names_its_predicate() {
         let index = IndexInfo {
+            constraint: None,
             name: "active_email".into(),
             columns: vec!["lower(email)".into()],
             unique: true,

@@ -34,6 +34,23 @@ pub fn build_create_index(
     ))
 }
 
+pub fn build_drop_constraint(
+    driver_id: &str,
+    schema: Option<&str>,
+    table: &str,
+    constraint: &str,
+) -> Result<String, BuildDdlError> {
+    if constraint.trim().is_empty() {
+        return Err(BuildDdlError::EmptyIndexName);
+    }
+    validate_table(table)?;
+    Ok(format!(
+        "ALTER TABLE {} DROP CONSTRAINT {}",
+        qualified_table(driver_id, schema, table),
+        quote_ident(driver_id, constraint)
+    ))
+}
+
 pub fn build_drop_index(
     driver_id: &str,
     schema: Option<&str>,

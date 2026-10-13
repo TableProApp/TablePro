@@ -510,7 +510,10 @@ impl Connection for PgConnection {
                     WHERE k.ordinality <= ix.indnkeyatts
                     ORDER BY k.ordinality
                 ) AS columns,
-                pg_catalog.pg_get_expr(ix.indpred, ix.indrelid, true) AS predicate
+                pg_catalog.pg_get_expr(ix.indpred, ix.indrelid, true) AS predicate,
+                (SELECT c.conname::text FROM pg_catalog.pg_constraint c
+                 WHERE c.conindid = ix.indexrelid AND c.conrelid = ix.indrelid
+                   AND c.contype IN ('p', 'u', 'x') LIMIT 1) AS constraint_name
             FROM pg_catalog.pg_class t
             JOIN pg_catalog.pg_namespace n ON t.relnamespace = n.oid
             JOIN pg_catalog.pg_index ix ON ix.indrelid = t.oid
@@ -532,6 +535,7 @@ impl Connection for PgConnection {
                     primary: r.try_get(2).map_err(map_sqlx_error)?,
                     columns: r.try_get(3).map_err(map_sqlx_error)?,
                     predicate: r.try_get(4).map_err(map_sqlx_error)?,
+                    constraint: r.try_get(5).map_err(map_sqlx_error)?,
                 })
             })
             .collect()

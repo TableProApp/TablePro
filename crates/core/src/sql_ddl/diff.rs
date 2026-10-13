@@ -1,7 +1,9 @@
 use crate::query::{ColumnInfo, ForeignKeyInfo, IndexInfo};
 
 use super::column::{build_add_column, build_alter_column, build_drop_column, build_rename_column};
-use super::index_fk::{build_add_foreign_key, build_create_index, build_drop_foreign_key, build_drop_index};
+use super::index_fk::{
+    build_add_foreign_key, build_create_index, build_drop_constraint, build_drop_foreign_key, build_drop_index,
+};
 use super::table::{build_create_table, build_rename_table};
 use super::types::{BuildDdlError, DraftColumn, StructureOp};
 
@@ -72,6 +74,7 @@ pub fn diff_to_ops(
                 schema: schema_owned.clone(),
                 table: table.clone(),
                 index_name: idx.name.clone(),
+                constraint: idx.constraint.clone(),
             });
         }
     }
@@ -198,9 +201,15 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
             schema,
             table,
             index_name,
+            constraint,
         } = op
         {
-            out.push(build_drop_index(driver_id, schema.as_deref(), table, index_name)?);
+            out.push(match constraint {
+                Some(constraint) if driver_id == "postgres" => {
+                    build_drop_constraint(driver_id, schema.as_deref(), table, constraint)?
+                }
+                _ => build_drop_index(driver_id, schema.as_deref(), table, index_name)?,
+            });
         }
     }
     for op in ops {

@@ -91,6 +91,43 @@ fn an_unchanged_empty_string_default_is_not_an_edit() {
     assert!(with_default(None, Some("''")).differs_beyond_name());
 }
 
+fn index(name: &str, constraint: Option<&str>) -> crate::query::IndexInfo {
+    crate::query::IndexInfo {
+        name: name.into(),
+        columns: vec!["email".into()],
+        unique: true,
+        primary: false,
+        predicate: None,
+        constraint: constraint.map(str::to_string),
+    }
+}
+
+fn drop_statements(driver_id: &str, original: &[crate::query::IndexInfo]) -> Vec<String> {
+    let ops = super::diff::diff_to_ops(None, "t", "t", &[], &[], original, &[], &[], &[]);
+    super::materialize_ops(&ops, driver_id).unwrap()
+}
+
+#[test]
+fn a_postgres_index_owned_by_a_constraint_is_dropped_through_the_constraint() {
+    let owned = [index("t_email_key", Some("t_email_key")), index("t_plain", None)];
+    assert_eq!(
+        drop_statements("postgres", &owned),
+        vec![
+            r#"ALTER TABLE "t" DROP CONSTRAINT "t_email_key""#,
+            r#"DROP INDEX IF EXISTS "t_plain""#,
+        ]
+    );
+}
+
+#[test]
+fn another_engine_drops_the_index_by_name_even_when_a_constraint_is_recorded() {
+    let owned = [index("t_email_key", Some("t_email_key"))];
+    assert_eq!(
+        drop_statements("mysql", &owned),
+        vec!["ALTER TABLE `t` DROP INDEX `t_email_key`"]
+    );
+}
+
 #[test]
 fn a_postgres_type_change_drops_the_default_first_and_sets_it_again_afterwards() {
     let mut column = loaded(Some("0"));

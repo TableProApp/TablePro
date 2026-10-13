@@ -550,6 +550,7 @@ impl Connection for MssqlConnection {
             match out.iter_mut().find(|ix| ix.name == name) {
                 Some(ix) => ix.columns.push(col),
                 None => out.push(IndexInfo {
+                    constraint: None,
                     name,
                     columns: vec![col],
                     unique,

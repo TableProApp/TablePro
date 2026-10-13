@@ -368,6 +368,7 @@ impl Connection for ClickhouseConnection {
             return Ok(Vec::new());
         }
         Ok(vec![IndexInfo {
+            constraint: None,
             name: format!("{}_sorting_key", row.name),
             columns,
             // A MergeTree primary key is a sparse sorting key, not a

@@ -376,6 +376,7 @@ pub enum StructureOp {
         schema: Option<String>,
         table: String,
         index_name: String,
+        constraint: Option<String>,
     },
     AddForeignKey {
         schema: Option<String>,
