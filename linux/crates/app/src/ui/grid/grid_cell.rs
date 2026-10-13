@@ -137,7 +137,6 @@ impl GridCell {
         let _ = self.imp().drawing.set(drawing);
     }
 
-    /// Show `row`, and draw it again each time its revision moves.
     pub(super) fn bind(&self, row: &RowObject) {
         let lock = match self.imp().drawing.get() {
             Some(drawing) => drawing.lock(row.id()),
@@ -163,7 +162,6 @@ impl GridCell {
         self.take_edit();
     }
 
-    /// Draw the bound row as the tracker has it now.
     pub(super) fn render(&self) {
         #[cfg(test)]
         self.imp().renders.set(self.imp().renders.get() + 1);

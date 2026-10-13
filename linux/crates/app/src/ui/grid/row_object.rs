@@ -91,7 +91,6 @@ impl RowObject {
         self.imp().cells.get()?.get(column)
     }
 
-    /// Tell the cells bound to this row that its pending state changed.
     pub(crate) fn bump_revision(&self) {
         let revision = &self.imp().revision;
         revision.set(revision.get().wrapping_add(1));

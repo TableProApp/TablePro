@@ -37,7 +37,6 @@ impl ColumnDrawing {
         }
     }
 
-    /// The value as the tracker has it, pending edits and state included.
     pub fn draw(&self, cell: &GridCell, row: &RowObject) {
         let (value, pending_classes) = self.tab_ctx.bind_state(row, cell.column());
         draw_cell(cell, &value, &pending_classes, cell.lock().is_none(), self.auto_filled);
