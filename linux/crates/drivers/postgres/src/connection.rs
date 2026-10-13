@@ -362,7 +362,7 @@ impl Connection for PgConnection {
                         return (link, Err(error));
                     }
                     let result = match link.client() {
-                        Ok(client) => stream(client, &read, sink.as_mut()).await,
+                        Ok(client) => stream(client, link.standard_conforming_strings(), &read, sink.as_mut()).await,
                         Err(error) => Err(error),
                     };
                     (link, result)

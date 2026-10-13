@@ -5,8 +5,7 @@ use futures_util::StreamExt;
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken};
 use tablepro_core::{
-    DriverError, ReadOnlyRefusal, ResultEvent, ResultSink, RowLimit, RunEnd, ServerCode, ServerNotice, SinkFlow,
-    Truncation, Value,
+    DriverError, ResultEvent, ResultSink, RowLimit, RunEnd, ServerCode, ServerNotice, SinkFlow, Truncation, Value,
 };
 use tokio_postgres::SimpleQueryMessage;
 
@@ -20,7 +19,7 @@ use super::stop_watch::{Interrupt, StopWatch};
 use super::transaction_tracker::{KnownState, Next, PROBE_RELEASE, PROBE_SAVEPOINT, probe_answer};
 use crate::cancel::acknowledges_stop;
 use crate::catalog::text_column;
-use crate::errors::{map_error, sqlstate};
+use crate::errors::{map_error, read_only_refusal, sqlstate};
 
 /// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
 /// grid slows the read instead of growing a queue.
@@ -403,18 +402,6 @@ fn end_after_stop(interrupt: Interrupt, error: &DriverError) -> RunEnd {
     }
 }
 
-/// Inside the read-only wrapper, a statement that cannot run in a
-/// transaction block at all (VACUUM, CREATE DATABASE) fails with 25001,
-/// which here means the read-only rule refused it.
-fn read_only_refusal(error: DriverError) -> DriverError {
-    match error {
-        DriverError::Server(diagnostics) if diagnostics.sqlstate() == Some("25001") => {
-            DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(diagnostics))
-        }
-        other => other,
-    }
-}
-
 impl SessionCore {
     fn standard_conforming_strings(&self) -> bool {
         self.conforming.load(Ordering::SeqCst)
@@ -423,7 +410,7 @@ impl SessionCore {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::{ServerDiagnostics, TimeoutPhase};
+    use tablepro_core::TimeoutPhase;
 
     use super::*;
 
@@ -449,18 +436,5 @@ mod tests {
                 server_cancelled: false
             }
         );
-    }
-
-    #[test]
-    fn vacuum_in_the_read_only_wrapper_is_a_read_only_refusal() {
-        let vacuum = DriverError::reported(ServerDiagnostics::new(
-            Some(ServerCode::SqlState("25001".to_owned())),
-            "VACUUM cannot run inside a transaction block",
-        ));
-
-        assert!(matches!(
-            read_only_refusal(vacuum),
-            DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(_))
-        ));
     }
 }

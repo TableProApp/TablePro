@@ -125,6 +125,19 @@ pub(crate) fn sqlstate(error: &DriverError) -> Option<&str> {
     }
 }
 
+/// Inside a read-only transaction the driver opened, a statement that
+/// cannot run in a transaction block at all (VACUUM, CREATE DATABASE),
+/// or one that tries to make it writable, fails with 25001, which there
+/// means the read-only rule refused it.
+pub(crate) fn read_only_refusal(error: DriverError) -> DriverError {
+    match error {
+        DriverError::Server(diagnostics) if diagnostics.sqlstate() == Some("25001") => {
+            DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(diagnostics))
+        }
+        other => other,
+    }
+}
+
 /// What a pool refusal means. A wait that runs out means every slot is
 /// busy, which is the server having no room rather than a dead link.
 pub(crate) fn map_pool_error(error: &PoolError) -> DriverError {
@@ -236,6 +249,25 @@ mod tests {
             Some("57014")
         );
         assert_eq!(sqlstate(&DriverError::Busy), None);
+    }
+
+    #[test]
+    fn a_25001_in_a_read_only_transaction_is_a_read_only_refusal() {
+        let refused = [
+            "VACUUM cannot run inside a transaction block",
+            "transaction read-write mode must be set before any query",
+        ];
+        for message in refused {
+            assert!(
+                matches!(
+                    read_only_refusal(map_diagnostics(diagnostics("25001", message))),
+                    DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(_))
+                ),
+                "{message}"
+            );
+        }
+        let other = map_diagnostics(diagnostics("42P01", "relation does not exist"));
+        assert_eq!(read_only_refusal(other.clone()), other);
     }
 
     #[test]
