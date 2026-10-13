@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use tablepro_core::edit::parse_literal_text;
 use tablepro_core::meta::TableRef;
-use tablepro_core::save::{ChangeSet, RowUpdate, plan_save};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{CallOptions, DriverError, ErrorCategory, Value, WriteBatch};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -20,11 +20,10 @@ async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableR
         .position(|column| column.name == "label")
         .expect("a label column");
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
             assignments: vec![(label, Value::Text("changed".to_owned()))],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     plan_save(connection.dialect().as_ref(), table, &columns, &identity, &changes)
         .expect("a save plan")
@@ -52,11 +51,10 @@ async fn edited_xml_cell_saves() {
         .expect("an identity");
     let edited = parse_literal_text("<b>edited</b>", &columns[1].column_type).expect("an XML edit");
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: vec![(1, edited)],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
         .expect("a save plan")
@@ -93,11 +91,10 @@ async fn datetime_key_with_a_third_of_a_millisecond_saves() {
         .expect("an identity");
     let key = browse(connection.as_ref(), &table).await.remove(0).remove(0);
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![key],
             assignments: vec![(1, Value::Text("changed".to_owned()))],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
         .expect("a save plan")

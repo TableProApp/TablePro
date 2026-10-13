@@ -6,7 +6,7 @@ use tablepro_core::browse::{PageRequest, build_page, split_page};
 use tablepro_core::edit::CellInput;
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{PagePosition, RowIdentity, TableRef};
-use tablepro_core::save::{ChangeSet, RowInsert, RowUpdate, plan_save};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::value::{
     BitString, JsonText, OffsetTimestamp, OtherValue, SqlDecimal, SqlInterval, SqlTime, Temporal, TimeWithOffset,
 };
@@ -130,10 +130,9 @@ async fn round_trip_matrix() {
     let table = TableRef::new(Some("public".to_owned()), "matrix");
     let written = matrix_row();
     let changes = ChangeSet {
-        inserts: vec![RowInsert {
+        changes: vec![RowChange::Insert {
             cells: written.iter().cloned().map(CellInput::Value).collect(),
         }],
-        ..ChangeSet::default()
     };
 
     save(connection.as_ref(), &table, &changes).await;
@@ -177,11 +176,10 @@ async fn set_null_saves_typed_null() {
     .await;
     let table = TableRef::new(Some("public".to_owned()), "t");
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: (1..=4).map(|column| (column, Value::Null)).collect(),
-        }],
-        ..ChangeSet::default()
+        })],
     };
 
     save(connection.as_ref(), &table, &changes).await;
@@ -209,11 +207,10 @@ async fn char10_key_update_affects_one_row() {
         .await
         .expect("the identity");
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Text("ab".to_owned())],
             assignments: vec![(1, Value::Text("changed".to_owned()))],
-        }],
-        ..ChangeSet::default()
+        })],
     };
 
     save(connection.as_ref(), &table, &changes).await;

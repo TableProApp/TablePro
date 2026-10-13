@@ -7,10 +7,10 @@ use crate::statement::{GuardedStatement, RowGuard, Statement};
 use crate::value::Value;
 use crate::write_batch::{WriteBatch, WriteKind};
 
-use super::{ChangeOrigin, ChangeSet, SavePlan};
+use super::{ChangeSet, RowChange, SavePlan};
 
-/// The batch that writes what the user changed, inserts first, then
-/// updates, then deletes.
+/// The batch that writes what the user changed, one statement per
+/// change, in the change set's order.
 ///
 /// Every update and delete carries a guard that proves it touched
 /// exactly the row it names, chosen by how far the key and the engine's
@@ -30,20 +30,20 @@ pub fn plan_save(
     let mut steps = Vec::with_capacity(changes.step_count());
     let mut origins = Vec::with_capacity(changes.step_count());
 
-    for (index, insert) in changes.inserts.iter().enumerate() {
-        let statement = build_insert(dialect, table, columns, &insert.cells)?;
-        steps.push(GuardedStatement::unguarded(statement));
-        origins.push(ChangeOrigin::Insert(index));
-    }
-    for (index, update) in changes.updates.iter().enumerate() {
-        let statement = build_update(dialect, table, columns, identity, &update.key, &update.assignments)?;
-        steps.push(guarded(dialect, table, columns, identity, &update.key, statement)?);
-        origins.push(ChangeOrigin::Update(index));
-    }
-    for (index, key) in changes.deletes.iter().enumerate() {
-        let statement = build_delete(dialect, table, columns, identity, key)?;
-        steps.push(guarded(dialect, table, columns, identity, key, statement)?);
-        origins.push(ChangeOrigin::Delete(index));
+    for (index, change) in changes.changes.iter().enumerate() {
+        let step = match change {
+            RowChange::Insert { cells } => GuardedStatement::unguarded(build_insert(dialect, table, columns, cells)?),
+            RowChange::Update(update) => {
+                let statement = build_update(dialect, table, columns, identity, &update.key, &update.assignments)?;
+                guarded(dialect, table, columns, identity, &update.key, statement)?
+            }
+            RowChange::Delete { key } => {
+                let statement = build_delete(dialect, table, columns, identity, key)?;
+                guarded(dialect, table, columns, identity, key, statement)?
+            }
+        };
+        steps.push(step);
+        origins.push(index);
     }
 
     Ok(SavePlan {
@@ -84,7 +84,7 @@ mod tests {
     use crate::dialect::TestDialect;
     use crate::edit::CellInput;
     use crate::meta::EngineRowId;
-    use crate::save::{RowInsert, RowUpdate};
+    use crate::save::RowUpdate;
 
     use super::*;
 
@@ -135,16 +135,26 @@ mod tests {
         }
     }
 
+    fn insert(name: &str) -> RowChange {
+        RowChange::Insert {
+            cells: vec![CellInput::Default, CellInput::Value(Value::Text(name.to_owned()))],
+        }
+    }
+
+    fn update(key: Value, name: &str) -> RowChange {
+        RowChange::Update(RowUpdate {
+            key: vec![key],
+            assignments: vec![(1, Value::Text(name.to_owned()))],
+        })
+    }
+
+    fn delete(key: Value) -> RowChange {
+        RowChange::Delete { key: vec![key] }
+    }
+
     fn one_of_each(key: Value) -> ChangeSet {
         ChangeSet {
-            inserts: vec![RowInsert {
-                cells: vec![CellInput::Default, CellInput::Value(Value::Text("new".to_owned()))],
-            }],
-            updates: vec![RowUpdate {
-                key: vec![key.clone()],
-                assignments: vec![(1, Value::Text("renamed".to_owned()))],
-            }],
-            deletes: vec![vec![key]],
+            changes: vec![insert("new"), update(key.clone(), "renamed"), delete(key)],
         }
     }
 
@@ -232,40 +242,30 @@ mod tests {
     }
 
     #[test]
-    fn plan_save_origins_align_with_steps() {
+    fn plan_save_keeps_the_change_order_and_origins_align_with_steps() {
         let changes = ChangeSet {
-            inserts: vec![
-                RowInsert {
-                    cells: vec![CellInput::Default, CellInput::Value(Value::Text("a".to_owned()))],
-                },
-                RowInsert {
-                    cells: vec![CellInput::Default, CellInput::Value(Value::Text("b".to_owned()))],
-                },
+            changes: vec![
+                delete(Value::Int(2)),
+                insert("a"),
+                update(Value::Int(1), "c"),
+                insert("b"),
+                delete(Value::Int(3)),
             ],
-            updates: vec![RowUpdate {
-                key: vec![Value::Int(1)],
-                assignments: vec![(1, Value::Text("c".to_owned()))],
-            }],
-            deletes: vec![vec![Value::Int(2)], vec![Value::Int(3)]],
         };
 
         let plan = plan(&TestDialect::exact(), &by_id(), &changes);
 
-        assert_eq!(
-            plan.origins,
-            vec![
-                ChangeOrigin::Insert(0),
-                ChangeOrigin::Insert(1),
-                ChangeOrigin::Update(0),
-                ChangeOrigin::Delete(0),
-                ChangeOrigin::Delete(1),
-            ]
-        );
+        assert_eq!(plan.origins, vec![0, 1, 2, 3, 4]);
         assert_eq!(plan.origins.len(), plan.batch.steps.len());
-        assert!(plan.batch.steps[0].statement.sql().starts_with("INSERT"));
-        assert!(plan.batch.steps[2].statement.sql().starts_with("UPDATE"));
-        assert!(plan.batch.steps[4].statement.sql().starts_with("DELETE"));
-        assert_eq!(plan.origin(4), Some(ChangeOrigin::Delete(1)));
+        let verbs: Vec<_> = plan
+            .batch
+            .steps
+            .iter()
+            .map(|step| step.statement.sql().split(' ').next().unwrap_or_default())
+            .collect();
+        assert_eq!(verbs, vec!["DELETE", "INSERT", "UPDATE", "INSERT", "DELETE"]);
+        assert_eq!(plan.origin(4), Some(4));
+        assert_eq!(plan.origin(5), None);
     }
 
     #[test]
@@ -280,8 +280,7 @@ mod tests {
     #[test]
     fn an_unkeyed_table_takes_inserts_but_refuses_row_changes() {
         let inserts_only = ChangeSet {
-            inserts: one_of_each(Value::Int(7)).inserts,
-            ..ChangeSet::default()
+            changes: vec![insert("new")],
         };
 
         let plan = plan(&TestDialect::exact(), &RowIdentity::Unordered, &inserts_only);

@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use tablepro_core::save::{ChangeSet, RowUpdate};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{
     CommitResolution, CommitToken, Connection, DriverError, ReadOnlyRefusal, RunEnd, ServerCode, StatementOutcome,
     Value, WriteKind,
@@ -72,11 +72,10 @@ async fn duplicate_sorting_key_edit_sends_no_mutation_row_guard_failed() {
     let before = count(connection.as_ref(), &mutations).await;
 
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: vec![(1, Value::Text("x".to_owned()))],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let batch = planned(connection.as_ref(), &table(&name), &changes).await;
     let outcome = connection.write_batch(&batch, within(CALL)).await;
@@ -157,11 +156,10 @@ async fn write_statements_never_carry_max_execution_time() {
     )
     .await;
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(1)],
             assignments: vec![(1, Value::Text("b".to_owned()))],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let batch = planned(connection.as_ref(), &table(&name), &changes).await;
     connection.write_batch(&batch, within(CALL)).await.expect("the edit");

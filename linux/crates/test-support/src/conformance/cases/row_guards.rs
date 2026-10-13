@@ -1,5 +1,5 @@
 use tablepro_core::meta::RowIdentity;
-use tablepro_core::save::{ChangeSet, RowUpdate, plan_save};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::statement::RowGuard;
 use tablepro_core::value::Value;
 use tablepro_core::{ColumnInfo, Connection, DriverError, TableRef, WriteBatch, WriteKind};
@@ -77,11 +77,10 @@ fn relabel(
     id: i64,
 ) -> Result<WriteBatch, ConformanceFailure> {
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![Value::Int(id)],
             assignments: vec![(label, Value::Text("changed".to_owned()))],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let plan = plan_save(connection.dialect().as_ref(), table, columns, identity, &changes)
         .map_err(ConformanceFailure::setup)?;

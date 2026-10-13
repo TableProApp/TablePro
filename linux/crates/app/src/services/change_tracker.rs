@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
-use tablepro_core::save::{ChangeOrigin, ChangeSet, RowInsert, RowUpdate};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
@@ -476,8 +476,8 @@ impl TabChangeTracker {
                 .zip(&draft.values)
                 .map(|(column, value)| draft_cell(column, value))
                 .collect();
-            tracked.changes.inserts.push(RowInsert { cells });
-            tracked.inserts.push(StatementSource::Insert {
+            tracked.changes.changes.push(RowChange::Insert { cells });
+            tracked.sources.push(StatementSource::Insert {
                 draft_id: draft.draft_id,
             });
         }
@@ -497,11 +497,11 @@ impl TabChangeTracker {
             };
             require_key(columns)?;
             assignments.sort_by_key(|(col, _)| *col);
-            tracked.changes.updates.push(RowUpdate {
+            tracked.changes.changes.push(RowChange::Update(RowUpdate {
                 key: key.iter().map(|part| part.value().clone()).collect(),
                 assignments,
-            });
-            tracked.updates.push(StatementSource::Update { row_key });
+            }));
+            tracked.sources.push(StatementSource::Update { row_key });
         }
 
         for row_key in self.deletes.keys() {
@@ -509,11 +509,10 @@ impl TabChangeTracker {
                 continue;
             };
             require_key(columns)?;
-            tracked
-                .changes
-                .deletes
-                .push(key.iter().map(|part| part.value().clone()).collect());
-            tracked.deletes.push(StatementSource::Delete {
+            tracked.changes.changes.push(RowChange::Delete {
+                key: key.iter().map(|part| part.value().clone()).collect(),
+            });
+            tracked.sources.push(StatementSource::Delete {
                 row_key: row_key.clone(),
             });
         }
@@ -526,20 +525,13 @@ impl TabChangeTracker {
 #[derive(Debug, Clone, Default)]
 pub struct TrackedChanges {
     pub changes: ChangeSet,
-    inserts: Vec<StatementSource>,
-    updates: Vec<StatementSource>,
-    deletes: Vec<StatementSource>,
+    sources: Vec<StatementSource>,
 }
 
 impl TrackedChanges {
-    /// The grid row behind one step of the planned save.
-    pub fn source(&self, origin: ChangeOrigin) -> Option<StatementSource> {
-        match origin {
-            ChangeOrigin::Insert(index) => self.inserts.get(index),
-            ChangeOrigin::Update(index) => self.updates.get(index),
-            ChangeOrigin::Delete(index) => self.deletes.get(index),
-        }
-        .cloned()
+    /// The grid row behind one change, by its position in `changes`.
+    pub fn source(&self, change: usize) -> Option<StatementSource> {
+        self.sources.get(change).cloned()
     }
 }
 
@@ -807,11 +799,12 @@ mod tests {
 
         let tracked = t.change_set(&columns).unwrap();
 
-        assert_eq!(tracked.changes.updates.len(), 1);
-        assert_eq!(tracked.changes.updates[0].key, vec![Value::Int(1), Value::Int(2)]);
         assert_eq!(
-            tracked.changes.updates[0].assignments,
-            vec![(2, Value::Text("new".into()))]
+            tracked.changes.changes,
+            vec![RowChange::Update(RowUpdate {
+                key: vec![Value::Int(1), Value::Int(2)],
+                assignments: vec![(2, Value::Text("new".into()))],
+            })]
         );
         assert_eq!(
             pk_identity(&columns),
@@ -838,12 +831,14 @@ mod tests {
         let tracked = t.change_set(&columns).unwrap();
 
         assert_eq!(
-            tracked.changes.inserts[0].cells,
-            vec![
-                CellInput::Default,
-                CellInput::Value(Value::Text("draft".into())),
-                CellInput::Default
-            ]
+            tracked.changes.changes,
+            vec![RowChange::Insert {
+                cells: vec![
+                    CellInput::Default,
+                    CellInput::Value(Value::Text("draft".into())),
+                    CellInput::Default
+                ]
+            }]
         );
     }
 
