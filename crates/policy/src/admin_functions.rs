@@ -57,6 +57,10 @@ const ADMINISTRATIVE_FUNCTIONS: &[&str] = &[
     "query_to_xml",
     "query_to_xml_and_xmlschema",
     "query_to_xmlschema",
+    "crosstab",
+    "crosstab2",
+    "crosstab3",
+    "crosstab4",
     "lo_creat",
     "lo_from_bytea",
     "lo_truncate",
@@ -73,8 +77,16 @@ const ADMINISTRATIVE_FUNCTION_PREFIXES: &[&str] =
 
 pub(crate) fn is_administrative_function_name(name: &str) -> bool {
     let lowered = name.to_ascii_lowercase();
-    ADMINISTRATIVE_FUNCTIONS.contains(&lowered.as_str())
-        || ADMINISTRATIVE_FUNCTION_PREFIXES
-            .iter()
-            .any(|prefix| lowered.starts_with(prefix))
+    is_administrative_function_exact_name(&lowered) || is_administrative_function_prefix(&lowered)
+}
+
+pub(crate) fn is_administrative_function_exact_name(name: &str) -> bool {
+    ADMINISTRATIVE_FUNCTIONS.contains(&name.to_ascii_lowercase().as_str())
+}
+
+pub(crate) fn is_administrative_function_prefix(name: &str) -> bool {
+    let lowered = name.to_ascii_lowercase();
+    ADMINISTRATIVE_FUNCTION_PREFIXES
+        .iter()
+        .any(|prefix| lowered.starts_with(prefix))
 }

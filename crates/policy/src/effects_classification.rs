@@ -1,7 +1,7 @@
 use sqlparser::dialect::Dialect;
 use sqlparser::tokenizer::{Token, Tokenizer};
 
-use crate::admin_functions::is_administrative_function_name;
+use crate::admin_functions::{is_administrative_function_exact_name, is_administrative_function_prefix};
 use crate::classify::{StatementClass, StatementDetails};
 use crate::effects::Effects;
 use sqlparser::ast::{CopySource, CopyTarget, Set, Statement};
@@ -181,7 +181,9 @@ pub(crate) fn sql_effects_from_tokens(sql: &str, dialect: &dyn Dialect, driver_i
         if !call {
             continue;
         }
-        if is_administrative_function_name(name) || is_engine_administrative_function_name(driver_id, name) {
+        let known_function = is_administrative_function_exact_name(name)
+            || (is_administrative_function_prefix(name) && function_prefix_is_system_scoped(&tokens, index));
+        if known_function || is_engine_administrative_function_name(driver_id, name) {
             effects = effects.union(Effects::ADMIN);
             legacy_administrative_call = true;
         }
@@ -199,6 +201,22 @@ pub(crate) fn sql_effects_from_tokens(sql: &str, dialect: &dyn Dialect, driver_i
         }
     }
     (effects, legacy_administrative_call)
+}
+
+fn function_prefix_is_system_scoped(tokens: &[Token], index: usize) -> bool {
+    let mut previous = tokens[..index]
+        .iter()
+        .rev()
+        .filter(|token| !matches!(token, Token::Whitespace(_)));
+    if !matches!(previous.next(), Some(Token::Period)) {
+        return true;
+    }
+    matches!(
+        previous.next(),
+        Some(Token::Word(schema))
+            if schema.value == "pg_catalog"
+                || (schema.quote_style.is_none() && schema.value.eq_ignore_ascii_case("pg_catalog"))
+    )
 }
 
 fn is_host_or_file_access_function(driver_id: &str, name: &str) -> bool {

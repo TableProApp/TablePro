@@ -49,7 +49,11 @@ fn dynamic_sql_and_side_effect_functions_are_administrative() {
         "SELECT * FROM pg_logical_slot_get_changes('s', NULL, NULL)",
         "SELECT pg_ls_logicalsnapdir()",
         "SELECT pg_ls_replslotdir('x')",
+        "SELECT pg_catalog.pg_ls_future_builtin()",
+        "SELECT PG_CATALOG.pg_ls_future_builtin()",
+        "SELECT pg_ls_future_builtin()",
         "SELECT * FROM crosstab('select 1, 2')",
+        "SELECT * FROM public.crosstab('select 1, 2')",
         "SELECT public.PG_NOTIFY('c', 'x')",
     ] {
         assert_eq!(class(sql), StatementClass::Administrative, "{sql}");
@@ -64,6 +68,20 @@ fn ordinary_reads_stay_reads() {
         "SELECT count(*) FROM pg_stat_activity",
         "SELECT * FROM pg_stat_database",
         "SELECT pg_size_pretty(pg_database_size(current_database()))",
+    ] {
+        assert_eq!(class(sql), StatementClass::Select, "{sql}");
+    }
+}
+
+#[test]
+fn schema_qualified_user_functions_with_admin_prefixes_stay_reads() {
+    for sql in [
+        "SELECT public.pg_ls_customer_data()",
+        "SELECT app.pg_logical_report()",
+        "SELECT reporting.pg_replication_status()",
+        "SELECT app.pg_stat_reset_report()",
+        "SELECT app.crosstab_report()",
+        "SELECT \"PG_CATALOG\".pg_ls_customer_data()",
     ] {
         assert_eq!(class(sql), StatementClass::Select, "{sql}");
     }
