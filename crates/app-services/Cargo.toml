@@ -12,9 +12,14 @@ path = "src/lib.rs"
 
 [dependencies]
 tablepro-core = { path = "../core" }
+tablepro-storage = { path = "../storage" }
+serde.workspace = true
+tracing.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

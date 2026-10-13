@@ -27,7 +27,7 @@ struct State<T> {
 }
 
 impl<T: Default + Clone + Serialize + DeserializeOwned + Send + 'static> StateFile<T> {
-    pub(super) fn memory() -> Self {
+    pub fn memory() -> Self {
         Self::with_writer(T::default(), None, |_| Ok(()))
     }
 

@@ -6220,9 +6220,14 @@ dependencies = [
 name = "tablepro-app-services"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "tablepro-core",
+ "tablepro-storage",
+ "tempfile",
  "tokio",
  "tokio-util",
+ "tracing",
  "uuid",
 ]
 

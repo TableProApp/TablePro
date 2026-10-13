@@ -7,7 +7,7 @@ pub fn xdg_config_path(filename: &str) -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-    Some(base.join(crate::config::storage_dir_name()).join(filename))
+    Some(base.join(tablepro_storage::storage_dir_name()).join(filename))
 }
 
 pub fn backup_file_if_exists(path: &Path, backup: &Path) -> std::io::Result<()> {
@@ -41,18 +41,58 @@ pub fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
-    glib::file_set_contents_full(
-        path,
-        bytes,
-        glib::FileSetContentsFlags::CONSISTENT | glib::FileSetContentsFlags::DURABLE,
-        0o600,
-    )
-    .map_err(std::io::Error::other)
+    write_durably(path, bytes)
+}
+
+fn write_durably(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("settings path has no file name"))?;
+    let mut temp_name = std::ffi::OsString::from(".");
+    temp_name.push(name);
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    temp_name.push(format!(".tmp-{}-{serial}", std::process::id()));
+    let temp = parent.join(temp_name);
+    let written = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&temp, path)?;
+        std::fs::File::open(parent)?.sync_all()
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    written
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rewrite_replaces_the_content_and_leaves_no_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        atomic_write_bytes(&path, b"first").unwrap();
+        atomic_write_bytes(&path, b"second").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"second");
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["settings.json"]);
+    }
 
     #[test]
     fn writes_are_private_and_do_not_follow_symlinks() {

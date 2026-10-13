@@ -22,7 +22,7 @@ Create a workspace crate for application logic that has no GUI dependency. It ma
 
 Staged moves, each its own reviewed change:
 
-1. The 33 GTK-free service files move as they are. First batch moved: `approval_wait`, `ordered_refresh`, `read_scopes`, `recent_tabs`, `request_generation`, `single_flight`, `structure_tracker`; the app re-exports them from `services` so call sites did not change. Public names and behaviour do not change.
+1. The 33 GTK-free service files move as they are. First batches moved: `approval_wait`, `column_widths`, `config_io` (the glib atomic write is now a std temp-file, fsync and rename), `filter_settings`, `state_file`, `ordered_refresh`, `read_scopes`, `recent_tabs`, `request_generation`, `single_flight`, `structure_tracker`; the app re-exports them from `services` so call sites did not change. Public names and behaviour do not change.
 2. The glib-touching files are split: the logic moves, a thin adapter for configuration paths and settings stays in the application.
 3. A tab and workspace model is extracted from `ui/app/workspace_tabs.rs`: the list of tabs, which tab is closing, preview versus kept, and the steps "save then close" and "replace preview". It is plain data with transitions that the GTK layer calls and renders. The `AdwTabView` handshake stays in the widget layer and becomes a thin consequence of the model's state.
 

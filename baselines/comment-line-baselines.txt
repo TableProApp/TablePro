@@ -12,13 +12,13 @@ apps/linux/app/src/services/change_tracker_row_identity.rs 39
 apps/linux/app/src/services/connection_monitor.rs 2
 apps/linux/app/src/services/connection_service.rs 15
 apps/linux/app/src/services/database_service.rs 41
-apps/linux/app/src/services/filter_settings.rs 12
+crates/app-services/src/filter_settings.rs 12
 apps/linux/app/src/services/gtk_approval.rs 13
 apps/linux/app/src/services/mcp_service.rs 4
 apps/linux/app/src/services/operation_control.rs 8
 apps/linux/app/src/services/preferences.rs 9
 apps/linux/app/src/services/single_instance.rs 24
-apps/linux/app/src/services/state_file.rs 2
+crates/app-services/src/state_file.rs 2
 crates/app-services/src/structure_tracker.rs 23
 apps/linux/app/src/services/window_registry.rs 3
 apps/linux/app/src/services/workspace_state.rs 37

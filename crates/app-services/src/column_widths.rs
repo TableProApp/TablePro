@@ -44,7 +44,6 @@ impl ColumnWidthStore {
         ))
     }
 
-    #[cfg(test)]
     pub fn load_in(dir: &std::path::Path) -> Self {
         Self::load_at(
             dir.join("column_widths.json"),
