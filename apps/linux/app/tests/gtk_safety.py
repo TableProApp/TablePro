@@ -2234,6 +2234,57 @@ def committed_editor_ddl_refreshes_sidebar(database, base):
 committed_editor_ddl_refreshes_sidebar.environment = "local"
 
 
+def mysql_unix_socket_endpoint_is_available_in_installed_form(_database, _base):
+    def focus_combo(name):
+        for _ in range(30):
+            combo = wait_for_node(name=name, role=pyatspi.ROLE_COMBO_BOX)
+            if combo.getState().contains(pyatspi.STATE_FOCUSED):
+                return combo
+            press_x11_key("Tab")
+        raise AssertionError(f"{name} combo is not keyboard reachable: {accessible_snapshot()}")
+
+    def choose_combo_option(name, arrow_count):
+        choice_labels = {
+            ("Driver", 2): ("PostgreSQL", "MySQL"),
+            ("Endpoint", 1): ("Network", "Unix socket"),
+            ("Endpoint", 0): ("Unix socket", "Network"),
+        }
+        if find_node(name=name, role=pyatspi.ROLE_COMBO_BOX) is None:
+            current, selected = choice_labels[(name, arrow_count)]
+            invoke(wait_for_node(name=current, role=pyatspi.ROLE_PUSH_BUTTON))
+            invoke(wait_for_node(name=selected, role=pyatspi.ROLE_PUSH_BUTTON))
+            return
+        focus_combo(name)
+        press_x11_key("space")
+        press_x11_key("Home")
+        press_x11_key("Down", presses=arrow_count)
+        press_x11_key("Return")
+
+    invoke(wait_for_node(name="New connection", role=pyatspi.ROLE_PUSH_BUTTON))
+    wait_for_node(name="Connect to PostgreSQL")
+    choose_combo_option("Driver", 2)
+    wait_for_node(name="Connect to MySQL")
+    choose_combo_option("Endpoint", 1)
+
+    socket_path = wait_for_node(name="Socket path", role=pyatspi.ROLE_TEXT)
+    path_text = socket_path.queryText()
+    assert path_text.getText(0, path_text.characterCount) == "/run/mysqld/mysqld.sock"
+    socket_path.queryEditableText().setTextContents("/tmp/bookie-mysql.sock")
+    wait_for_node(name="Host", role=pyatspi.ROLE_TEXT, present=False)
+
+    choose_combo_option("Endpoint", 0)
+    wait_for_node(name="Host", role=pyatspi.ROLE_TEXT)
+    wait_for_node(name="Socket path", role=pyatspi.ROLE_TEXT, present=False)
+    choose_combo_option("Endpoint", 1)
+    socket_path = wait_for_node(name="Socket path", role=pyatspi.ROLE_TEXT)
+    path_text = socket_path.queryText()
+    assert path_text.getText(0, path_text.characterCount) == "/tmp/bookie-mysql.sock"
+
+
+mysql_unix_socket_endpoint_is_available_in_installed_form.environment = "local"
+mysql_unix_socket_endpoint_is_available_in_installed_form.requires_editor = False
+
+
 def new_connection_form_keeps_title_and_help_text_visible(_database, _base):
     invoke(wait_for_node(name="New connection", role=pyatspi.ROLE_PUSH_BUTTON))
     wait_for_node(name="Connect to PostgreSQL")
@@ -2257,6 +2308,7 @@ def main():
     scenarios = [
         jump_to_column_keyboard_search,
         committed_editor_ddl_refreshes_sidebar,
+        mysql_unix_socket_endpoint_is_available_in_installed_form,
         new_connection_form_keeps_title_and_help_text_visible,
         sql_character_warnings_leave_query_unchanged,
         malformed_sql_is_blocked_before_approval,
