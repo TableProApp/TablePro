@@ -297,7 +297,7 @@ impl PolicySession {
         });
         let rows = result.as_ref().ok().map(|value| value.rows.len() as u64);
         self.guard
-            .audit_transaction_result(&operation, start, &result, rows)
+            .audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::Interactive)
             .await?;
         if let Some(pending) = pending_write.as_mut() {
             pending.disarm();

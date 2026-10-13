@@ -404,7 +404,8 @@ impl Connection for PolicyGuard {
             .caught_write("EXECUTE IN TRANSACTION", self.inner.execute_in_transaction(statements))
             .await;
         let rows = result.as_ref().ok().map(|values| values.iter().sum());
-        self.audit_transaction_result(&operation, start, &result, rows).await?;
+        self.audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::AtomicBatch)
+            .await?;
         pending_write.disarm();
         result
     }
@@ -446,7 +447,8 @@ impl Connection for PolicyGuard {
             )
             .await;
         let rows = result.as_ref().ok().map(|values| values.iter().sum());
-        self.audit_transaction_result(&operation, start, &result, rows).await?;
+        self.audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::AtomicBatch)
+            .await?;
         pending_write.disarm();
         result
     }
@@ -683,7 +685,9 @@ where
             .await
             .map(|value| guard.mask_result_for_analysis(Some(&authorization.analysis), value));
         let rows = result.as_ref().ok().map(|value| value.rows.len() as u64);
-        guard.audit_transaction_result(&operation, start, &result, rows).await?;
+        guard
+            .audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::Interactive)
+            .await?;
         pending_write.disarm();
         return result;
     }
@@ -694,7 +698,9 @@ where
         .await
         .map(|value| guard.mask_result_for_analysis(Some(&authorization.analysis), value));
     let rows = result.as_ref().ok().map(|value| value.rows.len() as u64);
-    guard.audit_transaction_result(&operation, start, &result, rows).await?;
+    guard
+        .audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::Interactive)
+        .await?;
     result
 }
 
@@ -775,7 +781,7 @@ impl Transaction for PolicyTransaction {
         let result = self.guard.caught_write("EXECUTE", self.inner.execute(sql)).await;
         let rows = result.as_ref().ok().map(|value| value.rows_affected);
         self.guard
-            .audit_transaction_result(&operation, start, &result, rows)
+            .audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::Interactive)
             .await?;
         pending_write.disarm();
         result
@@ -802,7 +808,7 @@ impl Transaction for PolicyTransaction {
             .await;
         let rows = result.as_ref().ok().map(|value| value.rows_affected);
         self.guard
-            .audit_transaction_result(&operation, start, &result, rows)
+            .audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::Interactive)
             .await?;
         pending_write.disarm();
         result
@@ -829,7 +835,7 @@ impl Transaction for PolicyTransaction {
             .await;
         let rows = result.as_ref().ok().map(|value| value.rows_affected);
         self.guard
-            .audit_transaction_result(&operation, start, &result, rows)
+            .audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::Interactive)
             .await?;
         pending_write.disarm();
         result
@@ -864,7 +870,7 @@ impl Transaction for PolicyTransaction {
             .await;
         let rows = result.as_ref().ok().map(|value| value.rows_affected);
         self.guard
-            .audit_transaction_result(&operation, start, &result, rows)
+            .audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::Interactive)
             .await?;
         pending_write.disarm();
         result

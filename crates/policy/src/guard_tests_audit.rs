@@ -59,6 +59,14 @@ fn confirmed_transaction_rollback_is_not_audited_as_an_unknown_outcome() {
     assert_eq!(super::super::error_category(&error), AuditErrorCategory::Transaction);
 }
 
+#[test]
+fn read_only_transaction_error_is_a_known_failure_without_disabling_writes() {
+    assert_eq!(
+        super::super::interactive_transaction_error_outcome(&DriverError::ReadOnly),
+        (AuditTerminalStatus::Failed, AuditTransactionOutcome::Failed, false)
+    );
+}
+
 #[tokio::test]
 async fn post_execution_audit_failure_poisons_shared_state() {
     let executes = Arc::new(AtomicUsize::new(0));
@@ -264,7 +272,7 @@ async fn batch_query_error_records_unknown_and_poisons_state() {
 }
 
 #[tokio::test]
-async fn interactive_transaction_execute_query_error_records_unknown_and_poisons_state() {
+async fn interactive_transaction_query_error_does_not_poison_later_governed_writes() {
     let state = Arc::new(AuditState::new());
     let audit = Arc::new(SequenceAuditSink::new(vec![]));
     let guard = PolicyGuard::new(
@@ -285,12 +293,22 @@ async fn interactive_transaction_execute_query_error_records_unknown_and_poisons
         .await
         .expect_err("transaction query error must surface");
 
-    assert!(state.governed_writes_disabled());
+    assert!(!state.governed_writes_disabled());
+    {
+        let events = audit.events.lock().expect("event lock");
+        let outcome = events.last().expect("transaction statement outcome");
+        assert_eq!(outcome.terminal_status, AuditTerminalStatus::Failed);
+        assert_eq!(outcome.transaction_outcome, AuditTransactionOutcome::Failed);
+        assert_eq!(outcome.error_category, Some(AuditErrorCategory::Query));
+    }
+    guard
+        .execute("INSERT INTO jobs(id) VALUES (2)")
+        .await
+        .expect_err("later write reaches the driver and reports its query error");
     let events = audit.events.lock().expect("event lock");
-    let outcome = events.last().expect("transaction statement outcome");
-    assert_eq!(outcome.terminal_status, AuditTerminalStatus::Unknown);
-    assert_eq!(outcome.transaction_outcome, AuditTransactionOutcome::Unknown);
-    assert_eq!(outcome.error_category, Some(AuditErrorCategory::Query));
+    let later_outcome = events.last().expect("later write outcome");
+    assert_eq!(later_outcome.terminal_status, AuditTerminalStatus::Failed);
+    assert_eq!(later_outcome.error_category, Some(AuditErrorCategory::Query));
 }
 
 #[tokio::test]

@@ -61,6 +61,12 @@ struct PolicyTransaction {
     batch_id: Uuid,
 }
 
+#[derive(Clone, Copy)]
+enum TransactionAuditMode {
+    AtomicBatch,
+    Interactive,
+}
+
 struct Authorization {
     decision: Decision,
     analysis: StatementAnalysis,
@@ -760,6 +766,7 @@ impl PolicyGuard {
         start: Instant,
         result: &Result<T, DriverError>,
         rows: Option<u64>,
+        mode: TransactionAuditMode,
     ) -> Result<(), DriverError> {
         let audit_result = match result {
             Ok(_) => {
@@ -776,7 +783,11 @@ impl PolicyGuard {
                 .await
             }
             Err(error) => {
-                let (terminal_status, transaction_outcome, disables_governed_writes) = transaction_error_outcome(error);
+                let outcome = match mode {
+                    TransactionAuditMode::AtomicBatch => transaction_error_outcome(error),
+                    TransactionAuditMode::Interactive => interactive_transaction_error_outcome(error),
+                };
+                let (terminal_status, transaction_outcome, disables_governed_writes) = outcome;
                 if disables_governed_writes {
                     self.ctx.audit_state.disable_governed_writes();
                 }
@@ -893,6 +904,15 @@ fn transaction_error_outcome(error: &DriverError) -> (AuditTerminalStatus, Audit
         DriverError::TimedOut => (AuditTerminalStatus::TimedOut, AuditTransactionOutcome::Pending, false),
         DriverError::Transaction { .. } => (AuditTerminalStatus::Failed, AuditTransactionOutcome::RolledBack, false),
         _ => (AuditTerminalStatus::Unknown, AuditTransactionOutcome::Unknown, true),
+    }
+}
+
+fn interactive_transaction_error_outcome(error: &DriverError) -> (AuditTerminalStatus, AuditTransactionOutcome, bool) {
+    match error {
+        DriverError::Query { .. } | DriverError::ReadOnly => {
+            (AuditTerminalStatus::Failed, AuditTransactionOutcome::Failed, false)
+        }
+        _ => transaction_error_outcome(error),
     }
 }
 
