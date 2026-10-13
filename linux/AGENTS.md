@@ -54,4 +54,9 @@ From the repository root, through the verification wrapper, which keeps the full
 
 ## CI
 
-`.github/workflows/build-linux.yml` runs on a pull request that touches `linux/`: **Fast checks** (format, both clippy runs, build, every Meson suite, the Secret Service tests, `meson dist`), **Translations** (the POT template, with gettext 0.24) and **Docker tests**, one job per driver and SSH package.
+`.github/workflows/build-linux.yml` runs on a pull request that touches `linux/`:
+
+- **Fast checks**: format, both clippy runs, build, every Meson suite, the Secret Service tests, `meson dist`.
+- **Translations**: the POT template, with gettext 0.24.
+- **Docker tests** (`integration`): one matrix job per package on the host runner, for the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` and `tablepro-test-fixtures`.
+- **Docker tests (tablepro-session)** (`integration-session`) and **Docker tests (tablepro)** (`integration-app`): in the fast job's `ubuntu:26.04` image with the host's Docker socket, because the session crate links GLib 2.88 and the app GTK 4.22, which the host runner lacks. The app job runs only its named test targets, since the `startup` test needs Meson.
