@@ -341,7 +341,7 @@ GLib.MainLoop().run()
                 text = open(status).read()
             except OSError:
                 continue
-            if not executable.endswith("/usr/bin/tablepro"):
+            if not executable.endswith(("/usr/bin/tablepro", "/usr/bin/bookie")):
                 continue
             fields = dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
             return int(fields["VmRSS"].split()[0]), int(fields["VmHWM"].split()[0])
@@ -356,7 +356,7 @@ GLib.MainLoop().run()
                 raw_environment = open(status.replace("status", "environ"), "rb").read()
             except OSError:
                 continue
-            if executable.endswith("/usr/bin/tablepro"):
+            if executable.endswith(("/usr/bin/tablepro", "/usr/bin/bookie")):
                 break
         else:
             raise AssertionError("application process not found")
