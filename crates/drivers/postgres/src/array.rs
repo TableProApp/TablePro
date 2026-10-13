@@ -287,15 +287,8 @@ fn element_text(oid: u32, text_element: bool, bytes: &[u8]) -> Option<String> {
         21 => i16::from_be_bytes(bytes.try_into().ok()?).to_string(),
         23 => i32::from_be_bytes(bytes.try_into().ok()?).to_string(),
         26 => u32::from_be_bytes(bytes.try_into().ok()?).to_string(),
-        700 => {
-            let value = f32::from_be_bytes(bytes.try_into().ok()?);
-            if value.is_finite() {
-                value.to_string()
-            } else {
-                float_text(f64::from(value))
-            }
-        }
-        701 => float_text(f64::from_be_bytes(bytes.try_into().ok()?)),
+        700 => crate::decode::float4_text(f32::from_be_bytes(bytes.try_into().ok()?)),
+        701 => crate::decode::float8_text(f64::from_be_bytes(bytes.try_into().ok()?)),
         1700 => match crate::numeric::decode_binary(bytes)? {
             Value::Decimal(value) => value.to_string(),
             Value::Text(value) => value,
@@ -320,18 +313,6 @@ fn temporal_element(oid: u32, bytes: &[u8]) -> Option<String> {
         _ => return None,
     };
     crate::temporal::array_text(value)
-}
-
-fn float_text(value: f64) -> String {
-    if value.is_nan() {
-        "NaN".into()
-    } else if value == f64::INFINITY {
-        "Infinity".into()
-    } else if value == f64::NEG_INFINITY {
-        "-Infinity".into()
-    } else {
-        value.to_string()
-    }
 }
 
 #[cfg(test)]

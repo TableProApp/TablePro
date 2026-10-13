@@ -2,6 +2,8 @@
 mod add_column_primary_key;
 #[path = "auth_errors.rs"]
 mod auth_errors;
+#[path = "decoded_text_oracle.rs"]
+mod decoded_text_oracle;
 #[path = "drop_constraint_index.rs"]
 mod drop_constraint_index;
 #[path = "enum_labels.rs"]

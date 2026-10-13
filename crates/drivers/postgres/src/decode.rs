@@ -198,17 +198,47 @@ fn format_lexeme(word: &str, raw_positions: &[u8]) -> String {
 fn decode_point(bytes: &[u8]) -> Option<String> {
     let pair = <[u8; 16]>::try_from(bytes).ok()?;
     let (x, y) = pair.split_at(8);
-    let coordinate = |half: &[u8]| Some(format_float8(f64::from_be_bytes(half.try_into().ok()?)));
+    let coordinate = |half: &[u8]| Some(float8_text(f64::from_be_bytes(half.try_into().ok()?)));
     Some(format!("({},{})", coordinate(x)?, coordinate(y)?))
 }
 
-fn format_float8(value: f64) -> String {
-    if value.is_nan() {
-        "NaN".into()
-    } else if value.is_infinite() {
-        if value > 0.0 { "Infinity" } else { "-Infinity" }.into()
-    } else {
-        value.to_string()
+pub(crate) fn float8_text(value: f64) -> String {
+    float_text(
+        value.is_finite().then(|| format!("{value:e}")),
+        value.to_string(),
+        value,
+        15,
+    )
+}
+
+pub(crate) fn float4_text(value: f32) -> String {
+    float_text(
+        value.is_finite().then(|| format!("{value:e}")),
+        value.to_string(),
+        f64::from(value),
+        6,
+    )
+}
+
+fn float_text(scientific: Option<String>, plain: String, value: f64, exponent_limit: i32) -> String {
+    let Some(scientific) = scientific else {
+        return if value.is_nan() {
+            "NaN".into()
+        } else if value > 0.0 {
+            "Infinity".into()
+        } else {
+            "-Infinity".into()
+        };
+    };
+    let Some((mantissa, exponent)) = scientific.split_once('e') else {
+        return plain;
+    };
+    match exponent.parse::<i32>() {
+        Ok(exponent) if exponent < -4 || exponent >= exponent_limit => {
+            let sign = if exponent < 0 { '-' } else { '+' };
+            format!("{mantissa}e{sign}{:02}", exponent.abs())
+        }
+        _ => plain,
     }
 }
 
@@ -517,5 +547,35 @@ mod tests {
         );
         assert_eq!(decode_int_range(&range[..range.len() - 1], 4), None);
         assert_eq!(decode_int_range(&[range, vec![0]].concat(), 4), None);
+    }
+    #[test]
+    fn floats_switch_to_exponent_form_where_the_server_does() {
+        for (value, expected) in [
+            (1e14, "100000000000000"),
+            (1e15, "1e+15"),
+            (1.5e-4, "0.00015"),
+            (1e-4, "0.0001"),
+            (1e-5, "1e-05"),
+            (1.5e21, "1.5e+21"),
+            (5e-324, "5e-324"),
+            (-2.5e-7, "-2.5e-07"),
+            (0.0, "0"),
+            (-0.0, "-0"),
+            (123456789.5, "123456789.5"),
+        ] {
+            assert_eq!(float8_text(value), expected, "float8 {value:e}");
+        }
+        for (value, expected) in [
+            (999999.0_f32, "999999"),
+            (1e6, "1e+06"),
+            (1.6777216e7, "1.6777216e+07"),
+            (1.5e-5, "1.5e-05"),
+            (0.1, "0.1"),
+        ] {
+            assert_eq!(float4_text(value), expected, "float4 {value:e}");
+        }
+        assert_eq!(float8_text(f64::NAN), "NaN");
+        assert_eq!(float8_text(f64::INFINITY), "Infinity");
+        assert_eq!(float4_text(f32::NEG_INFINITY), "-Infinity");
     }
 }
