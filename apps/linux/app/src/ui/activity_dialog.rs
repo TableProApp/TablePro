@@ -267,6 +267,7 @@ fn value_to_string(v: &Value) -> String {
         Value::Decimal(d) => d.to_string(),
         Value::Uuid(u) => u.to_string(),
         Value::Json(j) => j.to_string(),
+        Value::JsonText(j) => j.clone(),
         Value::Undecodable(type_name) => format!("<undecodable {type_name}>"),
     }
 }

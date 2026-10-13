@@ -148,7 +148,7 @@ pub fn equality_rule(column: &str, value: &Value) -> Option<FilterRule> {
         Value::DateTime(dt) => dt.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
         Value::TimestampTz(ts) => ts.to_rfc3339(),
         Value::Uuid(u) => u.to_string(),
-        Value::Json(_) | Value::Bytes(_) | Value::Undecodable(_) => return None,
+        Value::Json(_) | Value::JsonText(_) | Value::Bytes(_) | Value::Undecodable(_) => return None,
     };
     Some(FilterRule {
         column: column.to_string(),

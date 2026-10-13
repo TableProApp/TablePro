@@ -16,6 +16,7 @@ pub(super) fn body(value: &Value) -> String {
         Value::Null => readonly_null_sentinel(),
         Value::Bytes(bytes) if is_binary(bytes) => hex_dump(bytes),
         Value::Json(json) => serde_json::to_string_pretty(json).unwrap_or_else(|_| json.to_string()),
+        Value::JsonText(json) => json.clone(),
         other => pretty_if_json(value_to_full_edit_text(other)),
     };
     capped(text)

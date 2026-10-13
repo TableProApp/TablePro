@@ -257,6 +257,10 @@ fn preview_value(value: &Value) -> Option<CellPreview> {
                 byte_count: text.len(),
             })
         }
+        Value::JsonText(json) if json.len() > PREVIEW_BYTES => Some(CellPreview {
+            value: Value::JsonText(json[..json.floor_char_boundary(PREVIEW_BYTES)].to_owned()),
+            byte_count: json.len(),
+        }),
         Value::Bytes(bytes) if bytes.len() > PREVIEW_BYTES => Some(CellPreview {
             value: Value::Bytes(bytes[..PREVIEW_BYTES].to_vec()),
             byte_count: bytes.len(),

@@ -121,6 +121,7 @@ pub fn render_sql_literal(driver_id: &str, value: &Value) -> Result<String, Lite
         Value::Uuid(id) => string_literal(driver_id, &id.to_string()),
         Value::Json(_) if driver_id == "clickhouse" => return Err(LiteralError::Unsupported),
         Value::Json(json) => string_literal(driver_id, &json.to_string()),
+        Value::JsonText(json) => string_literal(driver_id, json),
         Value::Undecodable(_) => return Err(LiteralError::Undecodable),
     })
 }

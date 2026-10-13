@@ -15,6 +15,7 @@ candidate inventory as a release commitment.
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
 | UI-38 | Local filters and sorting for materialized SQL results | Exact-value filtering and local sort are implemented; settings are retained per statement/result set across reruns and pin/unpin. Selection follows the same materialized result, and app-restart persistence is not included |
+| UI-39 | Full-value text and JSON editor | B3 exact PostgreSQL JSON source carrier first; GTK editor remains UX follow-up under #610 |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
 | UI-17b, UI-22, UI-23, UI-26 | Preview tabs, code folding, typed PostgreSQL activity console, editable SSH profiles | accepted for later; split panes and the docked query history panel have landed (#630, #619); PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |

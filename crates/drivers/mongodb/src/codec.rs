@@ -37,7 +37,9 @@ pub(super) fn value_to_bson(value: &Value) -> Result<Bson, DriverError> {
             bytes: value.as_bytes().to_vec(),
         }),
         Value::Json(value) => Bson::try_from(value.clone()).map_err(|_| unsupported())?,
-        Value::DateTime(_) | Value::TimestampTz(_) | Value::Undecodable(_) => return Err(unsupported()),
+        Value::DateTime(_) | Value::TimestampTz(_) | Value::JsonText(_) | Value::Undecodable(_) => {
+            return Err(unsupported());
+        }
     })
 }
 

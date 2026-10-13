@@ -144,6 +144,33 @@ pub(super) fn needs_text_type_inference(params: &[Value]) -> bool {
     params.iter().any(|param| matches!(param, Value::Null | Value::Text(_)))
 }
 
+struct PgJsonText<'a>(&'a str);
+
+impl Type<Postgres> for PgJsonText<'_> {
+    fn type_info() -> PgTypeInfo {
+        PgTypeInfo::with_name("JSON")
+    }
+
+    fn compatible(type_info: &PgTypeInfo) -> bool {
+        type_info.name().eq_ignore_ascii_case("json")
+    }
+}
+
+impl Encode<'_, Postgres> for PgJsonText<'_> {
+    fn encode_by_ref(&self, buffer: &mut PgArgumentBuffer) -> Result<IsNull, sqlx::error::BoxDynError> {
+        buffer.extend(self.0.as_bytes());
+        Ok(IsNull::No)
+    }
+
+    fn produces(&self) -> Option<PgTypeInfo> {
+        Some(PgTypeInfo::with_name("JSON"))
+    }
+
+    fn size_hint(&self) -> usize {
+        self.0.len()
+    }
+}
+
 struct PgUntypedNull;
 
 impl Type<Postgres> for PgUntypedNull {
@@ -598,6 +625,7 @@ pub(super) fn bind_pg_params<'q>(
             (Value::Int(value), _) => query.bind(*value),
             (Value::Float(value), _) => query.bind(*value),
             (Value::Text(value), _) => query.bind(value.clone()),
+            (Value::JsonText(value), _) => query.bind(PgJsonText(value)),
             (Value::Bytes(value), _) => query.bind(value.clone()),
             (Value::Date(value), _) => query.bind(*value),
             (Value::Time(value), _) => query.bind(*value),
@@ -625,6 +653,7 @@ pub(super) fn pg_parameter_type_infos(params: &[Value]) -> Vec<PgTypeInfo> {
             Value::Int(_) => <i64 as Type<Postgres>>::type_info(),
             Value::Float(_) => <f64 as Type<Postgres>>::type_info(),
             Value::Text(_) => <String as Type<Postgres>>::type_info(),
+            Value::JsonText(_) => PgJsonText::type_info(),
             Value::Bytes(_) => <Vec<u8> as Type<Postgres>>::type_info(),
             Value::Date(_) => <chrono::NaiveDate as Type<Postgres>>::type_info(),
             Value::Time(_) => <chrono::NaiveTime as Type<Postgres>>::type_info(),

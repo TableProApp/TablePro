@@ -1,3 +1,4 @@
+use serde::ser::SerializeMap;
 use std::collections::HashSet;
 use std::io::{self, Write};
 
@@ -33,16 +34,73 @@ pub fn row_to_json(columns: &[ColumnInfo], row: &[Value]) -> serde_json::Value {
     row_to_json_object(&json_field_names(columns), row)
 }
 
+pub fn render_row_json(columns: &[ColumnInfo], row: &[Value]) -> String {
+    let names = json_field_names(columns);
+    raw_json_object(&names, row)
+        .and_then(|object| serde_json::to_string_pretty(&object))
+        .unwrap_or_else(|_| "{}".to_string())
+}
+
 pub fn render_json(columns: &[ColumnInfo], rows: &[Vec<Value>]) -> String {
     let names = json_field_names(columns);
     let values = rows
         .iter()
-        .map(|row| row_to_json_object(&names, row))
-        .collect::<Vec<_>>();
+        .map(|row| raw_json_object(&names, row))
+        .collect::<Result<Vec<_>, _>>();
+    let Ok(values) = values else {
+        return "[]".to_string();
+    };
     match serde_json::to_string_pretty(&values) {
         Ok(output) => output,
         Err(_) => "[]".to_string(),
     }
+}
+
+struct RawJsonObject(Vec<(String, JsonExportValue)>);
+
+enum JsonExportValue {
+    Raw(Box<serde_json::value::RawValue>),
+    Value(serde_json::Value),
+}
+
+impl serde::Serialize for JsonExportValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Raw(value) => serde::Serialize::serialize(value, serializer),
+            Self::Value(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+
+impl serde::Serialize for RawJsonObject {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (name, value) in &self.0 {
+            map.serialize_entry(name, value)?;
+        }
+        map.end()
+    }
+}
+
+fn raw_json_object(names: &[String], row: &[Value]) -> Result<RawJsonObject, serde_json::Error> {
+    let mut object = Vec::with_capacity(names.len());
+    for (index, name) in names.iter().enumerate() {
+        let encoded = match row.get(index) {
+            Some(Value::JsonText(source)) => serde_json::value::RawValue::from_string(source.clone())
+                .map(JsonExportValue::Raw)
+                .unwrap_or_else(|_| JsonExportValue::Value(serde_json::Value::String(source.clone()))),
+            Some(value) => JsonExportValue::Value(value_to_json(value)),
+            None => JsonExportValue::Value(serde_json::Value::Null),
+        };
+        object.push((name.clone(), encoded));
+    }
+    Ok(RawJsonObject(object))
 }
 
 pub(crate) fn row_to_json_object(names: &[String], row: &[Value]) -> serde_json::Value {
@@ -96,7 +154,8 @@ impl ResultWriter for JsonWriter {
         if index != 0 {
             output.write_all(b",\n")?;
         }
-        serde_json::to_writer(&mut *output, &row_to_json_object(&self.names, row)).map_err(io::Error::from)?;
+        let object = raw_json_object(&self.names, row).map_err(io::Error::from)?;
+        serde_json::to_writer(&mut *output, &object).map_err(io::Error::from)?;
         Ok(())
     }
 
@@ -125,6 +184,20 @@ mod tests {
             output,
             serde_json::json!([{"value": "NaN"}, {"value": "inf"}, {"value": "-inf"}, {"value": null}])
         );
+    }
+
+    #[test]
+    fn json_text_export_keeps_source_tokens_and_duplicate_keys() {
+        let columns = vec![column("value")];
+        let source = "{ \"z\": 1, \"z\": 2, \"n\": 1.0000000000000000000000000000000000000001 }";
+        let row = vec![Value::JsonText(source.into())];
+
+        let output = render_json(&columns, std::slice::from_ref(&row));
+        let row_output = render_row_json(&columns, &row);
+
+        assert!(output.contains(source));
+        assert!(row_output.contains(source));
+        assert!(!row_output.contains("\\\"z\\\""));
     }
 
     #[test]

@@ -229,7 +229,7 @@ pub(super) fn install_grid_context_menus(
                     sender.send(GridMsg::IncompleteRowData).ok();
                     return;
                 };
-                let json = serde_json::to_string_pretty(&export::row_to_json(&columns, &row)).unwrap_or_default();
+                let json = export::render_row_json(&columns, &row);
                 sender.send(GridMsg::ShowRowAsJson(json)).ok();
             })
             .build()

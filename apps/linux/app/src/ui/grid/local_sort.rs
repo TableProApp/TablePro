@@ -64,7 +64,7 @@ fn comparable_kind(value: &Value) -> Option<std::mem::Discriminant<Value>> {
         | Value::TimestampTz(_)
         | Value::Decimal(_)
         | Value::Uuid(_) => Some(std::mem::discriminant(value)),
-        Value::Null | Value::Json(_) | Value::Undecodable(_) => None,
+        Value::Null | Value::Json(_) | Value::JsonText(_) | Value::Undecodable(_) => None,
     }
 }
 

@@ -28,7 +28,7 @@ pub(super) fn literal(value: &Value) -> Result<String, DriverError> {
         }
         Value::Decimal(d) => format!("toDecimal128('{d}', {})", d.scale()),
         Value::Uuid(u) => format!("toUUID('{u}')"),
-        Value::Json(_) => {
+        Value::Json(_) | Value::JsonText(_) => {
             return Err(DriverError::Unsupported(
                 "ClickHouse nested values cannot be edited losslessly without their native type metadata".into(),
             ));

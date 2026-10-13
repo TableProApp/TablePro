@@ -113,6 +113,7 @@ fn value_to_text(value: &Value, cap: impl Fn(&str) -> String) -> String {
         Value::Decimal(d) => d.to_string(),
         Value::Uuid(u) => u.to_string(),
         Value::Json(j) => cap(&j.to_string()),
+        Value::JsonText(j) => cap(j),
         Value::Undecodable(type_name) => format!("<undecodable {type_name}>"),
     }
 }
@@ -124,7 +125,7 @@ pub fn value_to_display_text(value: &Value) -> String {
 pub(crate) fn preview_to_display_text(preview: &crate::ui::row_object::CellPreview) -> String {
     let total = crate::tr!("{n} bytes total").replace("{n}", &preview.byte_count.to_string());
     match &preview.value {
-        Value::Text(text) => format!("{text}… ({total})"),
+        Value::Text(text) | Value::JsonText(text) => format!("{text}… ({total})"),
         Value::Bytes(bytes) => {
             let head = bytes
                 .iter()

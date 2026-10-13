@@ -28,7 +28,7 @@ pub use csv::{
 pub use error::ExportError;
 pub use file::{ResultExport, ResultFormat, SqlTarget, write_result_file};
 pub use in_clause::{InClause, render_in_clause};
-pub use json::{json_field_names, render_json, row_to_json};
+pub use json::{json_field_names, render_json, render_row_json, row_to_json};
 pub use markdown::render_markdown;
 pub use paged::{RowPage, write_paged_file};
 pub use xlsx::MAX_WORKBOOK_ROWS;
@@ -48,6 +48,7 @@ pub(crate) fn value_to_text(value: &Value) -> Option<String> {
         Value::Decimal(value) => Some(value.to_string()),
         Value::Uuid(value) => Some(value.to_string()),
         Value::Json(value) => Some(value.to_string()),
+        Value::JsonText(value) => Some(value.clone()),
         Value::Undecodable(type_name) => Some(undecodable_marker(type_name)),
     }
 }

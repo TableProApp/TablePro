@@ -400,40 +400,47 @@ fn extract_value(row: &PgRow, idx: usize, type_name: &str) -> Result<Value, Driv
     if raw.is_null() {
         return Ok(Value::Null);
     }
+    Ok(extract_non_null_value(row, idx, type_name, &raw))
+}
+
+fn extract_non_null_value(row: &PgRow, idx: usize, type_name: &str, raw: &sqlx::postgres::PgValueRef<'_>) -> Value {
     if matches!(raw.type_info().kind(), sqlx::postgres::PgTypeKind::Enum(_)) {
-        return Ok(extract_enum_value(&raw, idx, type_name));
+        return extract_enum_value(raw, idx, type_name);
     }
     if matches!(raw.type_info().kind(), sqlx::postgres::PgTypeKind::Array(_)) {
-        return Ok(array::decode(&raw).unwrap_or_else(|| undecodable(idx, type_name)));
+        return array::decode(raw).unwrap_or_else(|| undecodable(idx, type_name));
     }
     if type_name == "NUMERIC" {
         let value = match raw.format() {
             sqlx::postgres::PgValueFormat::Binary => raw.as_bytes().ok().and_then(numeric::decode_binary),
             sqlx::postgres::PgValueFormat::Text => raw.as_str().ok().and_then(numeric::decode_text),
         };
-        return Ok(value.unwrap_or_else(|| undecodable(idx, type_name)));
+        return value.unwrap_or_else(|| undecodable(idx, type_name));
+    }
+    if type_name == "JSON" {
+        return extract_json_text(raw, idx, type_name);
     }
     if raw.format() == sqlx::postgres::PgValueFormat::Binary {
         if matches!(type_name, "TIME" | "TIMETZ") {
-            return Ok(raw
+            return raw
                 .as_bytes()
                 .ok()
                 .and_then(|bytes| temporal::decode_time(bytes, type_name == "TIMETZ"))
-                .unwrap_or_else(|| undecodable(idx, type_name)));
+                .unwrap_or_else(|| undecodable(idx, type_name));
         }
         if matches!(type_name, "DATE" | "TIMESTAMP" | "TIMESTAMPTZ") {
-            return Ok(raw
+            return raw
                 .as_bytes()
                 .ok()
                 .and_then(|bytes| temporal::decode_temporal(bytes, type_name))
-                .unwrap_or_else(|| undecodable(idx, type_name)));
+                .unwrap_or_else(|| undecodable(idx, type_name));
         }
         if let Some(text) = raw
             .as_bytes()
             .ok()
             .and_then(|bytes| decode::decode_pg_binary_text(type_name, bytes))
         {
-            return Ok(Value::Text(text));
+            return Value::Text(text);
         }
     }
     let decoded = match type_name {
@@ -450,11 +457,17 @@ fn extract_value(row: &PgRow, idx: usize, type_name: &str) -> Result<Value, Driv
             .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
             .map(Value::TimestampTz),
         "UUID" => row.try_get::<uuid::Uuid, _>(idx).map(Value::Uuid),
-        "JSON" | "JSONB" => row.try_get::<serde_json::Value, _>(idx).map(Value::Json),
+        "JSONB" => row.try_get::<serde_json::Value, _>(idx).map(Value::Json),
         "BYTEA" => row.try_get::<Vec<u8>, _>(idx).map(Value::Bytes),
         _ => row.try_get::<String, _>(idx).map(Value::Text),
     };
-    Ok(decoded.unwrap_or_else(|_| undecodable(idx, type_name)))
+    decoded.unwrap_or_else(|_| undecodable(idx, type_name))
+}
+
+fn extract_json_text(raw: &sqlx::postgres::PgValueRef<'_>, idx: usize, type_name: &str) -> Value {
+    raw.as_str()
+        .map(|value| Value::JsonText(value.to_owned()))
+        .unwrap_or_else(|_| undecodable(idx, type_name))
 }
 
 fn float4_as_f64(value: f32) -> f64 {
