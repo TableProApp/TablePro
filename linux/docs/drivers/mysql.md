@@ -50,7 +50,7 @@ sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its 
 
 - `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`.
 - `Require` encrypts without checking the certificate. A server that does not offer TLS is reported as `ServerRefusedTls`.
-- `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the Mozilla roots compiled into sqlx plus the connection's CA file, and **not** the system's CA store ([Trust](../../ARCHITECTURE.md#trust)). A server certificate from a private CA always needs the CA file.
+- `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
 - The name checked is the host sqlx dials, so a server name override works only through an SSH forward, where the dial goes to a socket path (`ServerNameOverride::SshForwardOnly`).
 - A client certificate and key are sent when set, for `REQUIRE X509` logins.
 - With TLS off, `caching_sha2_password` sends the password encrypted with the server's RSA key, never in clear text, also over an SSH forward's socket.

@@ -76,23 +76,17 @@ impl MysqlEndpoint {
         if let Some(database) = target.database.as_deref().filter(|name| !name.is_empty()) {
             options = options.database(database);
         }
+        if target.tls.mode == TlsMode::VerifyFull {
+            // sqlx seeds its own Mozilla roots and takes any other trust
+            // only as PEM, so the system store and the CA file go in as
+            // one bundle: what PostgreSQL and ClickHouse trust too.
+            let roots = tablepro_net::tls::mysql_ca_bundle_pem(&target.tls)
+                .map_err(|error| tls_setup_failed(error, tablepro_core::TlsFailure::CaFileInvalid))?;
+            options = options.ssl_ca_from_pem(roots);
+        }
         if target.tls.mode != TlsMode::Disable {
-            if let Some(ca_file) = &target.tls.ca_file {
-                let pem = std::fs::read(ca_file).map_err(|error| ConfigError::CaFile {
-                    path: ca_file.clone(),
-                    problem: tablepro_core::CertificateFileProblem::Unreadable {
-                        detail: error.to_string(),
-                    },
-                })?;
-                options = options.ssl_ca_from_pem(pem);
-            }
-            let identity = tablepro_net::tls::client_identity_pem(&target.tls).map_err(|error| match error {
-                tablepro_net::tls::TlsSetupError::Config(config) => DriverError::Config(config),
-                other => DriverError::Tls {
-                    failure: tablepro_core::TlsFailure::ClientIdentityInvalid,
-                    detail: other.to_string(),
-                },
-            })?;
+            let identity = tablepro_net::tls::client_identity_pem(&target.tls)
+                .map_err(|error| tls_setup_failed(error, tablepro_core::TlsFailure::ClientIdentityInvalid))?;
             if let Some(identity) = identity {
                 options = options
                     .ssl_client_cert_from_pem(identity.certificate)
@@ -234,6 +228,16 @@ pub(crate) fn no_limits() -> SessionLimits {
         read_only: false,
         statement_timeout: None,
         lock_timeout: Duration::ZERO,
+    }
+}
+
+fn tls_setup_failed(error: tablepro_net::tls::TlsSetupError, failure: tablepro_core::TlsFailure) -> DriverError {
+    match error {
+        tablepro_net::tls::TlsSetupError::Config(config) => DriverError::Config(config),
+        other => DriverError::Tls {
+            failure,
+            detail: other.to_string(),
+        },
     }
 }
 
