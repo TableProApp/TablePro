@@ -38,7 +38,7 @@ impl ConnectDialog {
 
     pub(super) fn apply_socket_visibility(&self, endpoint: EndpointFormState) {
         let selected = endpoint.uses_local_socket();
-        self.port
+        self.port_row
             .set_visible(endpoint.shows_port() && !(selected && self.local_socket_is_file()));
         self.socket_dir.set_visible(endpoint.shows_socket_rows());
         self.resolved_socket

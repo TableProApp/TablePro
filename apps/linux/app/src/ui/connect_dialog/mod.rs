@@ -21,11 +21,14 @@ use crate::services::database_service::ReconnectParams;
 pub struct ConnectDialog {
     registry: Arc<DriverRegistry>,
     drivers: Vec<DriverEntry>,
-    driver_combo: adw::ComboRow,
-    endpoint_combo: adw::ComboRow,
+    driver_row: adw::ActionRow,
+    driver_combo: AccessibleChoice,
+    endpoint_row: adw::ActionRow,
+    endpoint_combo: AccessibleChoice,
     name: adw::EntryRow,
     host: adw::EntryRow,
-    port: adw::SpinRow,
+    port_row: adw::ActionRow,
+    port: gtk::SpinButton,
     socket_dir: adw::EntryRow,
     resolved_socket: adw::ActionRow,
     database: adw::EntryRow,
@@ -33,13 +36,14 @@ pub struct ConnectDialog {
     username: adw::EntryRow,
     password: adw::PasswordEntryRow,
     auth_combo: adw::ComboRow,
-    tls_mode: adw::ComboRow,
+    tls_row: adw::ActionRow,
+    tls_mode: AccessibleChoice,
     tls_root_cert: adw::EntryRow,
     tls_client_cert: adw::EntryRow,
     tls_client_key: adw::EntryRow,
     read_only: adw::SwitchRow,
-    connect_timeout: adw::SpinRow,
-    query_timeout: adw::SpinRow,
+    connect_timeout: gtk::SpinButton,
+    query_timeout: gtk::SpinButton,
     environment: adw::ComboRow,
     auth_group: adw::PreferencesGroup,
     ssh: SshSection,
@@ -66,17 +70,11 @@ struct DriverEntry {
     maturity: DriverMaturity,
 }
 
-const AUTH_MODE_ROWS: [AuthMode; 2] = [AuthMode::Password, AuthMode::Kerberos];
-
 fn auth_mode_label(mode: AuthMode) -> String {
     match mode {
         AuthMode::Password => crate::tr!("Password"),
         AuthMode::Kerberos => crate::tr!("Windows (Kerberos)"),
     }
-}
-
-fn auth_mode_for_row(row: u32) -> AuthMode {
-    AUTH_MODE_ROWS.get(row as usize).copied().unwrap_or_default()
 }
 
 fn selected_path(row: &adw::EntryRow) -> Option<std::path::PathBuf> {
@@ -86,12 +84,15 @@ fn selected_path(row: &adw::EntryRow) -> Option<std::path::PathBuf> {
 }
 
 mod browse;
+mod controls;
 mod entry_activation;
 mod form;
 mod identity;
 mod prefill;
 mod socket_endpoint;
 
+pub(super) use controls::AUTH_MODE_ROWS;
+use controls::{AccessibleChoice, auth_mode_for_row, choice_row, timeout_rows, timeout_value};
 use form::{AuthFormState, EndpointFormState, default_driver_row, socket_directory_is_valid, test_result_text};
 use identity::{ConnectionIdentity, find_existing, saved_connection_name};
 pub use prefill::{ConnectionPrefill, has_jump_chain, load_prefill};
@@ -157,7 +158,7 @@ impl Component for ConnectDialog {
     view! {
         adw::Dialog {
             set_title: &crate::tr!("Connect"),
-            set_content_width: 560,
+            set_content_width: 580,
             set_content_height: 720,
             connect_closed => ConnectDialogInput::Closed,
 
@@ -188,24 +189,18 @@ impl Component for ConnectDialog {
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
         let names: Vec<String> = drivers.iter().map(|d| d.display_name.clone()).collect();
-        let names_ref: Vec<&str> = names.iter().map(String::as_str).collect();
-        let driver_model = gtk::StringList::new(&names_ref);
-
-        let driver_combo = adw::ComboRow::builder()
-            .title(crate::tr!("Driver"))
-            .model(&driver_model)
-            .selected(default_driver_row(&drivers))
-            .build();
+        let (driver_row, driver_combo) = choice_row(crate::tr!("Driver"), None, names);
+        driver_combo.set_selected(default_driver_row(&drivers));
         let sender_for_combo = sender.clone();
-        driver_combo.connect_selected_notify(move |row| {
-            sender_for_combo.input(ConnectDialogInput::DriverChanged(row.selected()));
+        driver_combo.connect_selected_notify(move |selected| {
+            sender_for_combo.input(ConnectDialogInput::DriverChanged(selected));
         });
 
-        let endpoint_combo = adw::ComboRow::builder()
-            .title(crate::tr!("Endpoint"))
-            .subtitle(crate::tr!("Connect over the network or a local Unix socket"))
-            .model(&gtk::StringList::new(&["Network", "Unix socket"]))
-            .build();
+        let (endpoint_row, endpoint_combo) = choice_row(
+            crate::tr!("Endpoint"),
+            Some(crate::tr!("Connect over the network or a local Unix socket")),
+            vec!["Network".to_string(), "Unix socket".to_string()],
+        );
         let sender_for_endpoint = sender.clone();
         endpoint_combo.connect_selected_notify(move |_| {
             sender_for_endpoint.input(ConnectDialogInput::EndpointChanged);
@@ -216,10 +211,11 @@ impl Component for ConnectDialog {
             .title(crate::tr!("Host"))
             .text("localhost")
             .build();
-        // Port is a u16 1-65535. AdwSpinRow enforces the range natively;
-        // no parse + fallback dance, no inline-error CSS to maintain.
-        let port = adw::SpinRow::with_range(1.0, 65535.0, 1.0);
-        port.set_title(&crate::tr!("Port"));
+        let port_row = adw::ActionRow::builder().title(crate::tr!("Port")).build();
+        let port = gtk::SpinButton::with_range(1.0, 65535.0, 1.0);
+        port.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Port"))]);
+        port_row.add_suffix(&port);
+        port_row.set_activatable_widget(Some(&port));
         let sender_for_port = sender.clone();
         port.connect_value_notify(move |_| sender_for_port.input(ConnectDialogInput::InputChanged));
         let socket_dir = adw::EntryRow::builder()
@@ -232,13 +228,12 @@ impl Component for ConnectDialog {
         database_file_picker.set_visible(false);
         let username = adw::EntryRow::builder().title(crate::tr!("Username")).build();
         let password = adw::PasswordEntryRow::builder().title(crate::tr!("Password")).build();
-        let tls_mode = adw::ComboRow::builder()
-            .title(crate::tr!("TLS"))
-            .subtitle(crate::tr!("How the client encrypts and verifies the server"))
-            .build();
-        let tls_labels: Vec<&str> = TlsMode::ALL.iter().map(|m| m.label()).collect();
-        let tls_model = gtk::StringList::new(&tls_labels);
-        tls_mode.set_model(Some(&tls_model));
+        let tls_choices = TlsMode::ALL.iter().map(|mode| mode.label().to_string()).collect();
+        let (tls_row, tls_mode) = choice_row(
+            crate::tr!("TLS"),
+            Some(crate::tr!("How the client encrypts and verifies the server")),
+            tls_choices,
+        );
         tls_mode.set_selected(TlsMode::VerifyFull.index());
         let tls_root_cert = adw::EntryRow::builder()
             .title(crate::tr!("Certificate authority"))
@@ -290,11 +285,11 @@ impl Component for ConnectDialog {
         // Options / SSH. AdwPreferencesPage renders them with the
         // standard Adwaita section spacing & headers.
         let connection_group = adw::PreferencesGroup::builder().title(crate::tr!("Connection")).build();
-        connection_group.add(&driver_combo);
+        connection_group.add(&driver_row);
         connection_group.add(&name);
-        connection_group.add(&endpoint_combo);
+        connection_group.add(&endpoint_row);
         connection_group.add(&host);
-        connection_group.add(&port);
+        connection_group.add(&port_row);
         connection_group.add(&socket_dir);
         connection_group.add(&resolved_socket);
         connection_group.add(&database);
@@ -319,14 +314,14 @@ impl Component for ConnectDialog {
         auth_group.add(&password);
 
         let options_group = adw::PreferencesGroup::builder().title(crate::tr!("Options")).build();
-        options_group.add(&tls_mode);
+        options_group.add(&tls_row);
         options_group.add(&tls_root_cert);
         options_group.add(&tls_client_cert);
         options_group.add(&tls_client_key);
         options_group.add(&read_only);
-        let (connect_timeout, query_timeout) = timeout_rows();
-        options_group.add(&connect_timeout);
-        options_group.add(&query_timeout);
+        let (connect_timeout_row, connect_timeout, query_timeout_row, query_timeout) = timeout_rows();
+        options_group.add(&connect_timeout_row);
+        options_group.add(&query_timeout_row);
         options_group.add(&environment);
 
         let test_button = gtk::Button::builder().label(crate::tr!("Test")).build();
@@ -377,10 +372,13 @@ impl Component for ConnectDialog {
         let mut model = ConnectDialog {
             registry: init.registry,
             drivers: drivers.clone(),
+            driver_row,
             driver_combo,
+            endpoint_row,
             endpoint_combo,
             name,
             host,
+            port_row,
             port,
             socket_dir,
             resolved_socket,
@@ -389,6 +387,7 @@ impl Component for ConnectDialog {
             username,
             password,
             auth_combo,
+            tls_row,
             tls_mode,
             tls_root_cert,
             tls_client_cert,
@@ -838,10 +837,10 @@ impl ConnectDialog {
         let endpoint = self.endpoint_state();
         let socket = endpoint.uses_local_socket();
         let network = endpoint.shows_network();
-        self.endpoint_combo.set_visible(endpoint.shows_endpoint_choice());
+        self.endpoint_row.set_visible(endpoint.shows_endpoint_choice());
         self.host.set_visible(network);
         self.apply_socket_visibility(endpoint);
-        self.tls_mode.set_visible(network);
+        self.tls_row.set_visible(network);
         self.auth_group.set_visible(!self.form.file_based);
         self.ssh.set_visible(network);
         if socket {
@@ -908,7 +907,7 @@ impl ConnectDialog {
             }
             _ => String::new(),
         };
-        self.driver_combo.set_subtitle(&subtitle);
+        self.driver_row.set_subtitle(&subtitle);
     }
 
     fn show_toast(&self, message: &str) {
@@ -1215,39 +1214,5 @@ async fn rollback_saved_connection(
     match previous {
         Some(connection) => save_one(connection).await,
         None => tablepro_storage::delete_connection(id).await,
-    }
-}
-
-fn timeout_rows() -> (adw::SpinRow, adw::SpinRow) {
-    let connect = adw::SpinRow::with_range(0.0, 600.0, 1.0);
-    connect.set_title(&crate::tr!("Connect timeout (seconds)"));
-    connect.set_subtitle(&crate::tr!("0 uses the default of 30 seconds"));
-    let query = adw::SpinRow::with_range(0.0, 86_400.0, 1.0);
-    query.set_title(&crate::tr!("Query timeout (seconds)"));
-    query.set_subtitle(&crate::tr!("0 uses the timeout set in Preferences"));
-    (connect, query)
-}
-
-fn timeout_value(seconds: f64) -> Option<u32> {
-    let whole = seconds.round();
-    (whole >= 1.0).then(|| whole.min(f64::from(u32::MAX)) as u32)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_zero_timeout_means_use_the_default() {
-        assert_eq!(timeout_value(0.0), None);
-        assert_eq!(timeout_value(0.4), None);
-        assert_eq!(timeout_value(45.0), Some(45));
-    }
-
-    #[test]
-    fn auth_mode_rows_decode_to_their_modes() {
-        assert_eq!(auth_mode_for_row(0), AuthMode::Password);
-        assert_eq!(auth_mode_for_row(1), AuthMode::Kerberos);
-        assert_eq!(auth_mode_for_row(7), AuthMode::Password);
     }
 }

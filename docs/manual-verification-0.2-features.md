@@ -55,6 +55,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 
 ## Connection dialog and browse shortcuts
 
+- [ ] Screen readers can activate Driver, Endpoint and TLS, and announce Port, Connect timeout and Query timeout. GTK AT-SPI scenario passed in Xvfb on 2026-10-13; native Hyprland verification is pending. The sidebar search, saved-filter name and colour picker are outside this connection-form check, [#658](https://github.com/cozyGarage/BookiE/issues/658).
 - [ ] New connection defaults match the selected driver; no PostgreSQL defaults leak into another engine. Switching drivers and editing a saved connection preserves intended custom values. **2026-10-12 Hyprland dark:** defaults passed for all seven drivers; switching drivers resets typed port, database and username, [#653](https://github.com/cozyGarage/BookiE/issues/653).
 - [ ] For MySQL/MariaDB, select a local Unix socket and confirm the form shows a socket-file path while hiding host and port. Switch back to Network and confirm the socket path is hidden and host/port return.
 - [ ] Connect through a real local MySQL/MariaDB socket, save the connection, reopen it, and confirm the socket path and endpoint mode remain selected. Export and re-import a bundle and confirm the same endpoint is retained.

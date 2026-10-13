@@ -2294,6 +2294,23 @@ def new_connection_form_keeps_title_and_help_text_visible(_database, _base):
     wait_for_node(name="Block writes at the policy layer")
     help_width = tls_help.queryComponent().getExtents(pyatspi.DESKTOP_COORDS).width
     assert help_width >= 350, f"TLS help text has too little layout width: {help_width}px"
+    for name in ("Driver", "Endpoint", "TLS"):
+        wait_for_node(name=name, role=pyatspi.ROLE_LIST_ITEM)
+    for name in ("PostgreSQL", "Network", "Verify Full"):
+        control = wait_for_node(name=name, role=pyatspi.ROLE_PUSH_BUTTON)
+        actions = control.queryAction()
+        names = [actions.getName(index).lower() for index in range(actions.nActions)]
+        assert any(action in {"click", "activate", "press", "toggle", "default.activate"} for action in names), (
+            f"{name} has no accessible activation action: {names!r}"
+        )
+    for name in ("Port", "Connect timeout (seconds)", "Query timeout (seconds)"):
+        wait_for_node(name=name)
+    invoke(wait_for_node(name="PostgreSQL", role=pyatspi.ROLE_PUSH_BUTTON))
+    invoke(wait_for_node(name="MySQL", role=pyatspi.ROLE_PUSH_BUTTON))
+    wait_for_node(name="Connect to MySQL")
+    invoke(wait_for_node(name="Network", role=pyatspi.ROLE_PUSH_BUTTON))
+    invoke(wait_for_node(name="Unix socket", role=pyatspi.ROLE_PUSH_BUTTON))
+    wait_for_node(name="Socket path")
 
 
 new_connection_form_keeps_title_and_help_text_visible.environment = "local"
