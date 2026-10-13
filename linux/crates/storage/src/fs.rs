@@ -106,9 +106,9 @@ pub fn move_aside_blocking(path: &Path, now: std::time::SystemTime) -> Result<st
 
     for attempt in 0..MAX_MOVE_ASIDE_ATTEMPTS {
         let candidate = if attempt == 0 {
-            parent.join(format!("{name}.corrupt-{seconds}"))
+            parent.join(format!("{name}{MOVED_ASIDE}{seconds}"))
         } else {
-            parent.join(format!("{name}.corrupt-{seconds}-{attempt}"))
+            parent.join(format!("{name}{MOVED_ASIDE}{seconds}-{attempt}"))
         };
         match std::fs::symlink_metadata(&candidate) {
             Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -134,6 +134,39 @@ pub fn move_aside_blocking(path: &Path, now: std::time::SystemTime) -> Result<st
 }
 
 const MAX_MOVE_ASIDE_ATTEMPTS: u32 = 1_000;
+
+/// What `move_aside_blocking` puts between the old name and the time.
+const MOVED_ASIDE: &str = ".corrupt-";
+
+/// Whether a copy of `path` that `move_aside_blocking` moved aside is
+/// still beside it.
+pub fn moved_aside_exists_blocking(path: &Path) -> Result<bool, StorageError> {
+    let Some(name) = path.file_name() else {
+        return Ok(false);
+    };
+    let prefix = format!("{}{MOVED_ASIDE}", name.to_string_lossy());
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let entries = match std::fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
+        Err(source) => {
+            return Err(StorageError::Io {
+                path: parent.to_owned(),
+                source,
+            });
+        }
+    };
+    for entry in entries {
+        let entry = entry.map_err(|source| StorageError::Io {
+            path: parent.to_owned(),
+            source,
+        })?;
+        if entry.file_name().to_string_lossy().starts_with(&prefix) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
 
 #[cfg(test)]
 mod tests {
@@ -239,6 +272,23 @@ mod tests {
         assert_eq!(std::fs::read(&first).expect("read"), b"first");
         assert_eq!(std::fs::read(&second).expect("read"), b"second");
         assert!(!file.exists(), "the original was left behind");
+    }
+
+    #[test]
+    fn moved_aside_exists_only_for_that_file() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let file = root.path().join("a.json");
+        let other = root.path().join("a.json2");
+        std::fs::write(&file, b"a").expect("seed");
+        std::fs::write(&other, b"b").expect("seed");
+        assert!(!moved_aside_exists_blocking(&file).expect("list"));
+
+        move_aside_blocking(&other, std::time::SystemTime::now()).expect("move");
+        assert!(!moved_aside_exists_blocking(&file).expect("list"));
+        move_aside_blocking(&file, std::time::SystemTime::now()).expect("move");
+
+        assert!(moved_aside_exists_blocking(&file).expect("list"));
+        assert!(!moved_aside_exists_blocking(&root.path().join("missing").join("a.json")).expect("no directory"));
     }
 
     #[test]

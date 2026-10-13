@@ -58,6 +58,18 @@ impl DraftStore {
         }
     }
 
+    /// Rename a draft that could not be read out of the way, and give the
+    /// name it now has. `retain_blocking` leaves the renamed file alone,
+    /// so its bytes stay there to recover.
+    pub fn move_aside_blocking(
+        &self,
+        scope: &DraftScope,
+        id: DraftId,
+        now: std::time::SystemTime,
+    ) -> Result<PathBuf, StorageError> {
+        crate::fs::move_aside_blocking(&self.draft_path(scope, id), now)
+    }
+
     /// Delete every draft in the scope that no tab references any more,
     /// so a workspace that loses tabs does not leave files behind.
     pub fn retain_blocking(&self, scope: &DraftScope, keep: &HashSet<DraftId>) -> Result<usize, StorageError> {
@@ -189,6 +201,22 @@ mod tests {
         assert_eq!(store.read_blocking(&scope(), kept).expect("read"), Some("keep".into()));
         assert_eq!(store.read_blocking(&scope(), dropped).expect("read"), None);
         assert!(foreign.exists(), "retain deleted a file it did not write");
+    }
+
+    #[test]
+    fn a_draft_moved_aside_survives_retain() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root);
+        let id = DraftId::new();
+        store.write_blocking(&scope(), id, "SELECT 1").expect("write");
+
+        let moved = store
+            .move_aside_blocking(&scope(), id, std::time::SystemTime::now())
+            .expect("move aside");
+        store.retain_blocking(&scope(), &HashSet::new()).expect("retain");
+
+        assert_eq!(store.read_blocking(&scope(), id).expect("read"), None);
+        assert_eq!(std::fs::read(&moved).expect("the moved draft"), b"SELECT 1");
     }
 
     #[test]
