@@ -155,8 +155,18 @@ impl DdlDialect for PgDialect {
             let changed = alteration.changed;
             if changed.column_type {
                 let resolved = draft.column_type.resolve(self, &draft.name)?;
+                // A new type takes its own default collation unless the
+                // change names the one the column had.
+                let collation = alteration
+                    .original
+                    .attributes
+                    .collation
+                    .as_ref()
+                    .filter(|_| collatable(&resolved.column_type.kind))
+                    .map(|collation| format!(" COLLATE {}", self.collation(collation)))
+                    .unwrap_or_default();
                 actions.push(format!(
-                    "ALTER COLUMN {name} TYPE {} USING {name}::{}",
+                    "ALTER COLUMN {name} TYPE {}{collation} USING {name}::{}",
                     resolved.sql, resolved.sql
                 ));
             }
@@ -270,6 +280,15 @@ impl PgDialect {
             Some(literal) => format!("COMMENT ON COLUMN {target} IS {literal}"),
             None => format!("COMMENT ON COLUMN {target} IS NULL"),
         }
+    }
+}
+
+/// Whether a type takes a COLLATE clause: text, and arrays of it.
+fn collatable(kind: &ColumnKind) -> bool {
+    match kind {
+        ColumnKind::Text { .. } => true,
+        ColumnKind::Array { element } => collatable(element),
+        _ => false,
     }
 }
 
@@ -470,6 +489,31 @@ mod tests {
               DEFAULT 0"
             ]
         );
+    }
+
+    #[test]
+    fn pg_type_change_keeps_collation_for_text_only() {
+        let mut original = users();
+        original.columns[1].attributes.collation = Some(CollationName::new(Some("pg_catalog".to_owned()), "C"));
+        let mut code = column("code", "character varying(10)", false);
+        code.attributes.collation = Some(CollationName::new(Some("pg_catalog".to_owned()), "C"));
+        original.columns.push(code);
+
+        let plan = alter(&original, |draft| {
+            draft.columns[1].column_type = DraftType::Typed("varchar(320)".to_owned());
+            draft.columns[3].column_type = DraftType::Typed("integer".to_owned());
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"email\" TYPE varchar(320) COLLATE \
+                 \"pg_catalog\".\"C\" USING \"email\"::varchar(320), ALTER COLUMN \"code\" TYPE integer USING \
+                 \"code\"::integer"
+            ]
+        );
+        assert!(collatable(&dialect().parse_type("text[]").expect("a type").kind));
+        assert!(!collatable(&dialect().parse_type("uuid").expect("a type").kind));
     }
 
     #[test]
