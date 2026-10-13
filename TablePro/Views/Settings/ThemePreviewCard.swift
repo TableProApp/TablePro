@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// A few lines of SQL and a few grid rows in a theme's colors: the only two surfaces a theme
-/// colors. Slots the theme leaves out resolve in the theme's own appearance.
+/// A miniature window in a theme's colors: the window background with a secondary caption on it,
+/// around a few lines of SQL and a few grid rows. Slots the theme leaves out resolve in the theme's
+/// own appearance.
 internal struct ThemePreviewCard: View {
     internal let theme: ThemeDefinition
 
@@ -76,11 +77,20 @@ internal struct ThemePreviewCard: View {
     private static let columnWidths: [CGFloat] = [28, 72, 56]
 
     internal var body: some View {
-        VStack(spacing: 0) {
-            editor
-            grid
+        VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: theme.name)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            VStack(spacing: 0) {
+                editor
+                grid
+            }
+            .font(.system(size: 11, design: .monospaced))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         }
-        .font(.system(size: 11, design: .monospaced))
+        .padding(8)
+        .background(color(.windowBackdrop))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)

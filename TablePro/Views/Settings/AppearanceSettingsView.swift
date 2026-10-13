@@ -22,7 +22,7 @@ internal struct AppearanceSettingsView: View {
                 themePicker(ThemeSlotChoice(slot: .light, savedId: settings.preferredLightThemeId, themes: catalog.themes))
                 themePicker(ThemeSlotChoice(slot: .dark, savedId: settings.preferredDarkThemeId, themes: catalog.themes))
             } footer: {
-                Text("Themes color the SQL editor and the data grid. Everything else follows the system appearance.")
+                Text("Themes color the editor, the data grid, other content views and the window background. Controls, sidebars and Settings follow the system appearance.")
             }
 
             CustomThemesSection(settings: $settings)

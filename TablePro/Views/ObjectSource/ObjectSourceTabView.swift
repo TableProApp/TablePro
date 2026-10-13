@@ -185,7 +185,7 @@ struct ObjectSourceTabView: View {
         case .loading:
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .textBackgroundColor))
+                .themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
         case .failed(let message):
             UnavailableStateView {
                 Label("Source Unavailable", systemImage: "exclamationmark.triangle")
@@ -196,7 +196,7 @@ struct ObjectSourceTabView: View {
                     Task { await loader.load() }
                 }
             }
-            .background(Color(nsColor: .textBackgroundColor))
+            .themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
         case .loaded:
             ObjectSourceView(
                 source: loader.source,

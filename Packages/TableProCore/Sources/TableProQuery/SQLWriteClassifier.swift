@@ -10,10 +10,10 @@ import TableProSQLGrammar
 /// taught, or anything hidden behind a leading comment, runs unguarded.
 ///
 /// The batch is split into statements the way its engine lexes it, by the grammar the Mac reads
-/// too, and under every reading the engine could be using: iOS drivers send the whole text in one
-/// call, so a `DELETE` hidden behind a quote only one reading closes still runs. On an engine that
-/// needs no `;`, every statement that begins inside one is read as well, because SQL Server runs
-/// `SELECT 1` followed by `DROP TABLE t` as two statements.
+/// too, and under every reading the engine could be using: the run splits by one reading, and a
+/// `DELETE` hidden behind a quote that only another reading closes still reaches the server. On an
+/// engine that needs no `;`, every statement that begins inside one is read as well, because SQL
+/// Server runs `SELECT 1` followed by `DROP TABLE t` as two statements.
 public enum SQLWriteClassifier {
     /// `EXPLAIN` and `PRAGMA` are deliberately absent: `EXPLAIN ANALYZE DELETE …` runs the delete on
     /// PostgreSQL, and `PRAGMA journal_mode = WAL` writes on SQLite and DuckDB.

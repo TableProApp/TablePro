@@ -7,6 +7,7 @@
 //  `.editorText` through `self.editorText` and for `.gridSelection` through `.gridSelectionText`.
 //
 
+import AppKit
 import Foundation
 @testable import TablePro
 import Testing
@@ -71,6 +72,8 @@ struct ThemeSlotCoverageTests {
 
         for slot in ThemeSlot.allCases {
             switch slot.group {
+            case .window:
+                #expect(slot.rawValue.hasPrefix("window."), "\(slot.rawValue)")
             case .editor:
                 #expect(slot.rawValue.hasPrefix("editor."), "\(slot.rawValue)")
                 #expect(!slot.rawValue.hasPrefix("editor.syntax."), "\(slot.rawValue)")
@@ -87,6 +90,16 @@ struct ThemeSlotCoverageTests {
         let grouped = ThemeSlotGroup.allCases.flatMap(\.slots)
         #expect(Set(grouped) == Set(ThemeSlot.allCases))
         #expect(grouped.count == ThemeSlot.allCases.count)
+    }
+
+    /// The theme editor lists one section per group in this order, so the window leads the sheet.
+    @Test("The window group comes first and holds only the window background")
+    func windowGroupLeads() {
+        #expect(ThemeSlotGroup.allCases.first == .window)
+        #expect(ThemeSlotGroup.window.slots == [.windowBackdrop])
+        #expect(ThemeSlot.windowBackdrop.rawValue == "window.background")
+        #expect(ThemeSlot.windowBackdrop.nativeColor === NSColor.windowBackgroundColor)
+        #expect(ThemeSlot.allCases.filter(\.yieldsToIncreasedContrast) == [.windowBackdrop])
     }
 
     // MARK: - Bundled themes

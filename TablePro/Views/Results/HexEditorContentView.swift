@@ -212,11 +212,13 @@ struct HexEditorBody: View {
     }
 }
 
-// MARK: - Hex Dump Display View (Read-Only)
-
 private struct HexDumpDisplayView: NSViewRepresentable {
     let text: String
     let font: NSFont
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -230,6 +232,10 @@ private struct HexDumpDisplayView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.backgroundColor = NSColor.textBackgroundColor
         textView.textColor = NSColor.secondaryLabelColor
+        context.coordinator.themeStyle = ThemeTextViewStyle(
+            textView: textView,
+            natives: ThemeTextViewStyle.Natives(of: textView)
+        )
         textView.string = text
 
         return scrollView
@@ -244,9 +250,12 @@ private struct HexDumpDisplayView: NSViewRepresentable {
             textView.string = text
         }
     }
-}
 
-// MARK: - Hex Input Text View (Editable)
+    @MainActor
+    final class Coordinator {
+        var themeStyle: ThemeTextViewStyle?
+    }
+}
 
 private struct HexInputTextView: NSViewRepresentable {
     @Binding var text: String
@@ -268,6 +277,10 @@ private struct HexInputTextView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.backgroundColor = NSColor.textBackgroundColor
         textView.textColor = NSColor.labelColor
+        context.coordinator.themeStyle = ThemeTextViewStyle(
+            textView: textView,
+            natives: ThemeTextViewStyle.Natives(of: textView)
+        )
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
@@ -294,11 +307,10 @@ private struct HexInputTextView: NSViewRepresentable {
         }
     }
 
-    // MARK: - Coordinator
-
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: HexInputTextView
         var isUpdating = false
+        var themeStyle: ThemeTextViewStyle?
 
         init(_ parent: HexInputTextView) {
             self.parent = parent

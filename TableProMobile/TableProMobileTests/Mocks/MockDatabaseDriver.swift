@@ -2,6 +2,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 import TableProPluginKit
+import TableProSQLGrammar
 
 final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     enum MockError: Error { case scripted }
@@ -13,6 +14,10 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedDatabases: [String] = []
     var scriptedSchemas: [String] = []
     var scriptedTransactionState: DriverTransactionState = .unknown
+    /// Answered in order, one per call, before falling back to `scriptedTransactionState`.
+    var scriptedTransactionStates: [DriverTransactionState] = []
+    /// Answered in order, one per call, then nil.
+    var scriptedLexicalFacts: [SQLSessionLexicalFacts?] = []
 
     private(set) var executedQueries: [String] = []
     private(set) var fetchColumnsCalls: Int = 0
@@ -27,6 +32,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool = true
     var serverVersion: String? = "Mock 1.0"
     var holdsSuspensionBlockingResource: Bool = false
+    var sendsBatchesWhole: Bool = false
     var usesBackslashEscaping: Bool = false
 
     func escapeStringLiteral(_ value: String) -> String {
@@ -84,7 +90,15 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     func commitTransaction() async throws { didCommitTransaction = true }
     func rollbackTransaction() async throws { didRollbackTransaction = true }
-    func sessionTransactionState() async -> DriverTransactionState { scriptedTransactionState }
+    func sessionLexicalFacts() async -> SQLSessionLexicalFacts? {
+        guard !scriptedLexicalFacts.isEmpty else { return nil }
+        return scriptedLexicalFacts.removeFirst()
+    }
+
+    func sessionTransactionState() async -> DriverTransactionState {
+        guard !scriptedTransactionStates.isEmpty else { return scriptedTransactionState }
+        return scriptedTransactionStates.removeFirst()
+    }
 }
 
 final class MockSecureStore: SecureStore, @unchecked Sendable {

@@ -352,6 +352,13 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             Self.logger.debug("SHOW TABLE not available, falling back to manual reconstruction")
         }
 
+        /// `pg_attribute` lists a view's columns as it lists a table's, so a view is looked up before
+        /// the reconstruction below, which rebuilt a view as a `CREATE TABLE` of its columns.
+        let view = try await execute(query: Self.viewDefinitionQuery(view: table, schema: resolvedSchema))
+        if let ddl = view.rows.first?[safe: 0]?.asText {
+            return ddl
+        }
+
         let columnsQuery = """
             SELECT
                 quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) ||
@@ -427,19 +434,20 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let viewLiteral = PostgreSQLObjectQueries.quoteLiteral(view)
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
-            FROM pg_views
-            WHERE viewname = \(viewLiteral)
-              AND schemaname = \(schemaLiteral)
-            """
-        let result = try await execute(query: query)
+        let result = try await execute(query: Self.viewDefinitionQuery(view: view, schema: schema ?? core.currentSchema))
         guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
             throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
         }
         return ddl
+    }
+
+    private static func viewDefinitionQuery(view: String, schema: String) -> String {
+        """
+        SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
+        FROM pg_views
+        WHERE viewname = \(PostgreSQLObjectQueries.quoteLiteral(view))
+          AND schemaname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+        """
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

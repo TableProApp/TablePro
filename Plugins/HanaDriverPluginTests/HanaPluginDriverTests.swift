@@ -260,6 +260,20 @@ final class HanaPluginDriverTests: XCTestCase {
         XCTAssertEqual(result.rows.count, 2)
     }
 
+    /// `SYS.TABLES` has no row for a view, so Show DDL reported every view as a missing table.
+    func testTableDDLAnswersAViewWithItsDefinition() async throws {
+        let session = HanaFakeSession()
+        session.respond(HanaEnvelopes.empty)
+        session.respond(HanaEnvelopes.rows(["DEFINITION"], [[.text("SELECT ID FROM ORDERS WHERE OPEN = 1")]]))
+        let driver = HanaPluginDriver(config: config(), session: session)
+        try await driver.connect()
+
+        let ddl = try await driver.fetchTableDDL(table: "OPEN_ORDERS", schema: "APP")
+
+        XCTAssertEqual(ddl, "CREATE VIEW \"APP\".\"OPEN_ORDERS\" AS\nSELECT ID FROM ORDERS WHERE OPEN = 1")
+        XCTAssertEqual(session.executed.count, 2)
+    }
+
     func testExplainWithParametersIsExecutedAsTyped() async throws {
         let session = HanaFakeSession()
         let driver = HanaPluginDriver(config: config(), session: session)

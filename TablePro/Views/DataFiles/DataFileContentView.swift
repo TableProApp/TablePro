@@ -27,8 +27,9 @@ struct DataFileContentView: View {
             }
             Divider()
             DataFileStatusBar(controller: controller)
+                .modifier(DetailPaneStatusBarMaterial())
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .themeBackground(.windowBackdrop, native: Color(nsColor: .windowBackgroundColor))
     }
 
     @ViewBuilder
@@ -89,7 +90,7 @@ struct DataFileContentView: View {
             systemImage: hasRows ? "line.3.horizontal.decrease.circle" : "doc"
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor))
+        .themeBackground(.gridBackground, native: Color(nsColor: .textBackgroundColor))
     }
 
     private var configuration: DataGridConfiguration {

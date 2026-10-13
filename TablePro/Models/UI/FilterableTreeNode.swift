@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import Foundation
 
 internal protocol FilterableTreeNode: Identifiable {
@@ -169,9 +168,6 @@ internal struct TreeSiblingCounter {
 
 // MARK: - Row Content
 
-/// Shared by the JSON and PHP tree viewers, the results tree and the JSON row inspector. These are
-/// system colors on purpose: a theme colors only the SQL editor and the data grid, so a value reads
-/// the same here under every theme.
 internal enum TreeValueTone: Equatable, Sendable {
     case key
     case container
@@ -181,18 +177,6 @@ internal enum TreeValueTone: Equatable, Sendable {
     case serialized
     case reference
     case muted
-
-    var color: NSColor {
-        switch self {
-        case .key, .container: return .systemBlue
-        case .string: return .systemRed
-        case .number: return .systemPurple
-        case .literal: return .systemOrange
-        case .serialized: return .systemTeal
-        case .reference: return .systemGray
-        case .muted: return .secondaryLabelColor
-        }
-    }
 }
 
 internal struct TreeRowContent: Equatable, Sendable {

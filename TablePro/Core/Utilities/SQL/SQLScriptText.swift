@@ -160,7 +160,7 @@ internal struct SQLScriptText {
     }
 
     /// A terminator written after a line comment would be part of the comment, so it goes on a line of its own.
-    private func endedBySemicolon(_ statement: String) -> String {
+    internal func endedBySemicolon(_ statement: String) -> String {
         guard !statement.hasSuffix(";") else { return statement }
         return codeShape(of: statement).endsInLineComment ? "\(statement)\n;" : "\(statement);"
     }

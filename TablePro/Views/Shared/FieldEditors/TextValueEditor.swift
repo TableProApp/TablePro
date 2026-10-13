@@ -12,12 +12,20 @@ import SwiftUI
 /// `TextEditor` leaves AppKit's quote, dash and text substitutions on with no API to reach them,
 /// which would rewrite a value on its way to the database.
 internal struct TextValueEditor: NSViewRepresentable {
+    internal enum Style {
+        /// The system text colors.
+        case plain
+        /// The editor's colors while the active theme sets them.
+        case code
+    }
+
     @Binding var text: String
     var isEditable: Bool = true
     var font: NSFont
     var borderType: NSBorderType = .noBorder
     var movesFocusOnTab: Bool = false
     var textContainerInset = NSSize(width: 4, height: 6)
+    var style: Style = .plain
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -84,6 +92,18 @@ internal struct TextValueEditor: NSViewRepresentable {
         if !textView.isSelectable {
             textView.isSelectable = true
         }
+        applyStyle(to: textView, coordinator: coordinator)
+    }
+
+    private func applyStyle(to textView: NSTextView, coordinator: Coordinator) {
+        switch style {
+        case .plain:
+            coordinator.themeStyle?.detach()
+            coordinator.themeStyle = nil
+        case .code:
+            guard coordinator.themeStyle == nil else { return }
+            coordinator.themeStyle = ThemeTextViewStyle(textView: textView)
+        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -93,6 +113,7 @@ internal struct TextValueEditor: NSViewRepresentable {
         /// moved" without bridging the whole NSString back, which costs 45ms on a 1 MB value and
         /// would run on every SwiftUI update pass.
         var lastAppliedText: String = ""
+        var themeStyle: ThemeTextViewStyle?
 
         init(text: Binding<String>, movesFocusOnTab: Bool) {
             self.text = text

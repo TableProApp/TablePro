@@ -66,7 +66,7 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
 
     func execute(query: String) async throws -> QueryResult {
         let start = Date()
-        let args = parseRedisCommand(query)
+        let args = Self.parseRedisCommand(query)
         guard !args.isEmpty else {
             throw RedisError.queryFailed("Empty command")
         }
@@ -175,9 +175,16 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
         try await actor.command(arguments)
     }
 
-    private func parseRedisCommand(_ input: String) -> [String] {
+    /// Swift reads "\r\n" as one `Character`, so it is listed whole beside "\r" and "\n". Line breaks
+    /// separate arguments outside quotes, as they do in the Mac's `RedisArgumentCodec`.
+    private static let argumentSeparators: Set<Character> = [" ", "\t", "\n", "\r", "\r\n"]
+
+    /// A quote opens an argument even when nothing is inside it: `LPUSH l "" x` pushes two values, and dropping the
+    /// empty one pushed only `x`.
+    static func parseRedisCommand(_ input: String) -> [String] {
         var args: [String] = []
         var current = ""
+        var hasArgument = false
         var inQuote: Character?
         var escape = false
 
@@ -189,6 +196,7 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
             }
             if ch == "\\" {
                 escape = true
+                hasArgument = true
                 continue
             }
             if let q = inQuote {
@@ -201,18 +209,21 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
             }
             if ch == "\"" || ch == "'" {
                 inQuote = ch
+                hasArgument = true
                 continue
             }
-            if ch == " " || ch == "\t" {
-                if !current.isEmpty {
+            if argumentSeparators.contains(ch) {
+                if hasArgument {
                     args.append(current)
                     current = ""
+                    hasArgument = false
                 }
                 continue
             }
             current.append(ch)
+            hasArgument = true
         }
-        if !current.isEmpty { args.append(current) }
+        if hasArgument { args.append(current) }
         return args
     }
 }

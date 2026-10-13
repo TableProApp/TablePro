@@ -139,11 +139,12 @@ internal final class TreeOutlineCellView: NSTableCellView, NSTextFieldDelegate {
         return true
     }
 
-    private func applyStyle() {
+    /// Also run on a theme change: a field redraws only when it is handed a new color.
+    internal func applyStyle() {
         guard let content else { return }
         let isEmphasized = backgroundStyle == .emphasized
         let selectedText = NSColor.alternateSelectedControlTextColor
-        let secondary = isEmphasized ? selectedText.withAlphaComponent(0.7) : NSColor.secondaryLabelColor
+        let secondary = isEmphasized ? selectedText.withAlphaComponent(0.7) : TreeValueTone.muted.color
 
         keyField.textColor = isEmphasized ? selectedText : TreeValueTone.key.color
         separatorField.textColor = secondary

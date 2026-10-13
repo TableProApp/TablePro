@@ -98,6 +98,8 @@ internal extension ThemeSlot {
     /// `withAlphaComponent` on a system color outside one freezes it at the current appearance.
     var nativeColor: NSColor {
         switch self {
+        case .windowBackdrop: return .windowBackgroundColor
+
         case .editorBackground: return .textBackgroundColor
         case .editorText, .syntaxOperator: return .textColor
         case .editorCursor: return NativeThemeColors.insertionPoint

@@ -10,6 +10,8 @@ struct AIChatWalkthroughBlockView: View {
 
     @EnvironmentObject private var viewModel: AIChatViewModel
     @Environment(\.commandActions) private var actions
+    @Environment(\.colorSchemeContrast) private var contrast
+    @ObservedObject private var themeEngine = ThemeEngine.shared
 
     @State private var expandedStepIDs: Set<UUID> = []
     @State private var activeAnchor: SqlWalkthroughAnchor?
@@ -111,7 +113,7 @@ struct AIChatWalkthroughBlockView: View {
                 .padding(.vertical, 2)
             }
             .frame(maxHeight: 260)
-            .background(Color(nsColor: .textBackgroundColor))
+            .themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .onChange(of: scrollTarget) { target in
                 guard let target else { return }
@@ -136,11 +138,8 @@ struct AIChatWalkthroughBlockView: View {
         case .removed: "-"
         case .context: " "
         }
-        let tint: Color? = switch line.kind {
-        case .added: .green.opacity(0.16)
-        case .removed: .red.opacity(0.16)
-        case .context: nil
-        }
+        let lineKind = TextDiffView.lineKind(line.kind)
+        let tint = lineKind.map { lineTint(for: $0) }
         let statusLabel: String = switch line.kind {
         case .added: String(localized: "Added")
         case .removed: String(localized: "Removed")
@@ -153,6 +152,7 @@ struct AIChatWalkthroughBlockView: View {
                 .frame(width: 10)
             Text(line.text.isEmpty ? " " : line.text)
                 .font(.system(.body, design: .monospaced))
+                .diffLineForeground(lineKind)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 8)
@@ -205,11 +205,12 @@ struct AIChatWalkthroughBlockView: View {
 
     private func splitRow(_ row: SplitRow, side: SqlWalkthroughAnchor.Side) -> some View {
         let marker = SplitDiffMarker.resolve(kind: row.kind, side: side)
-        let tint: Color? = switch (row.kind, side) {
-        case (.removed, .before), (.changed, .before): .red.opacity(0.16)
-        case (.added, .after), (.changed, .after): .green.opacity(0.16)
+        let lineKind: RowDiffKind? = switch (row.kind, side) {
+        case (.removed, .before), (.changed, .before): .delete
+        case (.added, .after), (.changed, .after): .insert
         default: nil
         }
+        let tint = lineKind.map { lineTint(for: $0) }
         return HStack(alignment: .top, spacing: 6) {
             if differentiateWithoutColor, let glyph = marker?.glyph {
                 Text(verbatim: glyph)
@@ -219,6 +220,7 @@ struct AIChatWalkthroughBlockView: View {
             }
             Text(row.text ?? " ")
                 .font(.system(.body, design: .monospaced))
+                .diffLineForeground(lineKind)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 8)
@@ -241,10 +243,11 @@ struct AIChatWalkthroughBlockView: View {
                         HStack(alignment: .top, spacing: 8) {
                             Text(verbatim: "\(index + 1)")
                                 .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(.tertiary)
+                                .themeForeground(.editorLineNumber, native: .tertiary)
                                 .frame(width: 28, alignment: .trailing)
                             Text(text.isEmpty ? " " : text)
                                 .font(.system(.body, design: .monospaced))
+                                .themeForeground(.editorText, native: .primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .id(index + 1)
@@ -256,7 +259,7 @@ struct AIChatWalkthroughBlockView: View {
                 }
             }
             .frame(maxHeight: 220)
-            .background(Color(nsColor: .textBackgroundColor))
+            .themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .onChange(of: scrollTarget) { target in
                 guard let target else { return }
@@ -329,11 +332,11 @@ struct AIChatWalkthroughBlockView: View {
     private func anchoredSnippet(_ snippet: String) -> some View {
         Text(snippet)
             .font(.system(.caption, design: .monospaced))
-            .foregroundStyle(.primary)
+            .themeForeground(.editorText, native: .primary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(8)
-            .background(Color(nsColor: .textBackgroundColor))
+            .themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
@@ -409,6 +412,14 @@ struct AIChatWalkthroughBlockView: View {
     }
 
     // MARK: - Backgrounds
+
+    private func lineTint(for kind: RowDiffKind) -> Color {
+        CompareStatusStyle.lineTint(for: kind, native: Self.nativeTint(for: kind), engine: themeEngine, contrast: contrast)
+    }
+
+    internal static func nativeTint(for kind: RowDiffKind) -> Color {
+        kind == .delete ? .red.opacity(0.16) : .green.opacity(0.16)
+    }
 
     private func rowBackground(base: Color?, unified line: DiffUnifiedLine) -> Color {
         if let anchor = activeAnchor, unifiedLineMatches(line, anchor: anchor) {

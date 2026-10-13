@@ -286,8 +286,17 @@ extension MSSQLPluginDriver {
         }
     }
 
+    /// A view answers with its own definition. Its columns are listed like a table's, and a column
+    /// over an identity column reports `IsIdentity`, so a table rebuilt from them read
+    /// `CREATE TABLE ... IDENTITY(1,1)` for a view that declares nothing of the kind.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let qualified = MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table)
+        let resolvedSchema = effectiveSchema(schema)
+        let module = try await storedModule(schema: resolvedSchema, name: table)
+        if MSSQLObjectQueries.isView(objectType: module?[safe: 2].flatMap { $0 } ?? "") {
+            return try MSSQLObjectQueries.viewSource(row: module, schema: resolvedSchema, name: table)
+        }
+
+        let qualified = MSSQLSchemaQueries.bracketed(schema: resolvedSchema, table: table)
         let cols = try await fetchColumns(table: table, schema: schema)
         let indexes = try await fetchIndexes(table: table, schema: schema)
         let fks = try await fetchForeignKeys(table: table, schema: schema)
@@ -320,10 +329,14 @@ extension MSSQLPluginDriver {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let viewLiteral = MSSQLStringLiteral.quoted("\(effectiveSchema(schema)).\(view)")
-        let sql = "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID(\(viewLiteral))"
-        let result = try await execute(query: sql)
-        return result.rows.first?.first?.asText ?? ""
+        let resolvedSchema = effectiveSchema(schema)
+        let module = try await storedModule(schema: resolvedSchema, name: view)
+        return try MSSQLObjectQueries.viewSource(row: module, schema: resolvedSchema, name: view)
+    }
+
+    private func storedModule(schema: String, name: String) async throws -> [String?]? {
+        let result = try await execute(query: MSSQLObjectQueries.moduleDefinition(schema: schema, name: name))
+        return result.rows.first.map { $0.map(\.asText) }
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

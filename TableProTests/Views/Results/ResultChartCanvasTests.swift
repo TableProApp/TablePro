@@ -178,6 +178,75 @@ struct ResultChartCanvasTests {
         #expect(widest - narrowest <= 4)
     }
 
+    @Test("The plot stands in for the grid: its background under a theme, its own wash by default")
+    func plotTakesTheGridBackground() throws {
+        try ThemeTestFixture.preservingEngine {
+            let view = ResultChartCanvas(projection: singleSeriesProjection, chartType: .bar)
+                .frame(width: 640, height: 360)
+                .accentColor(.red)
+            let total = 640 * 360
+            let theme = try ThemeTestFixture.filled(hex: "#FFD0E0", colorScheme: .light)
+            let wash = try ThemeTestFixture.filled(
+                Color(nsColor: .controlBackgroundColor).opacity(0.45), colorScheme: .light
+            )
+
+            try ThemeTestFixture.adopt([:], appearance: .light)
+            let native = try #require(ThemeTestFixture.render(view, colorScheme: .light))
+            #expect(ThemeTestFixture.count(in: native, where: { ThemeTestFixture.matches($0, theme) }) == 0)
+            #expect(ThemeTestFixture.count(in: native, where: { ThemeTestFixture.matches($0, wash) }) > total / 5)
+
+            try ThemeTestFixture.adopt([.gridBackground: "#FFD0E0"], appearance: .light)
+            let themed = try #require(ThemeTestFixture.render(view, colorScheme: .light))
+            #expect(ThemeTestFixture.count(in: themed, where: { ThemeTestFixture.matches($0, theme) }) > total / 5)
+            #expect(ThemeTestFixture.count(in: themed, where: { ThemeTestFixture.matches($0, wash) }) < total / 50)
+        }
+    }
+
+    @Test("The plot's grid lines take the grid line color under a theme")
+    func gridLinesTakeTheGridLineColor() throws {
+        try ThemeTestFixture.preservingEngine {
+            let view = ResultChartCanvas(projection: singleSeriesProjection, chartType: .bar)
+                .frame(width: 640, height: 360)
+                .accentColor(.red)
+
+            try ThemeTestFixture.adopt([.gridBackground: "#000000"], appearance: .light)
+            let native = try #require(ThemeTestFixture.render(view, colorScheme: .light))
+            try ThemeTestFixture.adopt([.gridBackground: "#000000", .gridLine: "#0000FF"], appearance: .light)
+            let themed = try #require(ThemeTestFixture.render(view, colorScheme: .light))
+
+            #expect(bluePixelCount(in: native) == 0)
+            #expect(bluePixelCount(in: themed) > 200)
+        }
+    }
+
+    private func bluePixelCount(in rep: NSBitmapImageRep) -> Int {
+        var count = 0
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard let color = ThemeTestFixture.pixel(rep, x: x, y: y) else { continue }
+                if color.blueComponent - max(color.redComponent, color.greenComponent) > 0.3 { count += 1 }
+            }
+        }
+        return count
+    }
+
+    private var singleSeriesProjection: ResultChartProjection {
+        ResultChartProjection(
+            points: [
+                bandPoint(index: 0, x: "A", y: 10, group: 0),
+                bandPoint(index: 1, x: "B", y: 20, group: 1),
+                bandPoint(index: 2, x: "C", y: 15, group: 2),
+            ],
+            xAxisKind: .category,
+            limits: [],
+            loadedRowCount: 3,
+            skippedRowCount: 0,
+            xAxisLabel: "Category",
+            yAxisLabel: "Amount",
+            seriesLabel: nil
+        )
+    }
+
     private func bandPoint(index: Int, x: String, y: Int, group: Int) -> ResultChartProjection.Point {
         ResultChartProjection.Point(
             sourceIndex: index,

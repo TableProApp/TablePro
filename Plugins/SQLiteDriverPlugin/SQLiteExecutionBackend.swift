@@ -268,6 +268,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             try bind(parameters, to: statement, db: db)
         }
 
+        let totalChangesBefore = sqlite3_total_changes64(db)
         let firstStep = SQLiteResultColumns.stepFirst(statement)
         let columnCount = firstStep.count
         let columns = firstStep.names
@@ -289,7 +290,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 
-        let rowsAffected = columns.isEmpty ? Int(sqlite3_changes(db)) : 0
+        let rowsAffected = columns.isEmpty ? Self.changes(of: db, sinceTotal: totalChangesBefore) : 0
         return SQLiteRawResult(
             columns: columns,
             columnTypeNames: columnTypeNames,
@@ -298,6 +299,13 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             executionTime: Date().timeIntervalSince(startTime),
             isTruncated: truncated
         )
+    }
+
+    /// `sqlite3_changes64` keeps the count of the last INSERT, UPDATE or DELETE, so a statement that
+    /// wrote nothing, DDL included, would report it again. The total moves only when this one wrote.
+    private static func changes(of db: OpaquePointer, sinceTotal totalBefore: Int64) -> Int {
+        guard sqlite3_total_changes64(db) != totalBefore else { return 0 }
+        return Int(sqlite3_changes64(db))
     }
 
     func streamQuery(

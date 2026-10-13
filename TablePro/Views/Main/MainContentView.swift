@@ -246,6 +246,7 @@ struct MainContentView: View {
                 operation: operation,
                 tableName: tableName,
                 databaseName: database ?? coordinator.browseDatabaseName,
+                databaseType: connection.type,
                 preview: { options in
                     coordinator.maintenancePreview(
                         operation: operation,

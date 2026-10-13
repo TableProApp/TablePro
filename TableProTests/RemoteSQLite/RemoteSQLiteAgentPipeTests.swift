@@ -142,6 +142,21 @@ struct RemoteSQLiteAgentPipeTests {
     }
 
     @Test(.enabled(if: RemoteSQLiteAgentPipeTests.hasPython3))
+    func statementThatWritesNothingReportsNoRowsAfterAWrite() throws {
+        try withEmptyDatabase { _, agent in
+            _ = try agent.runExecute("CREATE TABLE t(a INTEGER)")
+            _ = try agent.runExecute("INSERT INTO t VALUES(1), (2), (3)")
+            guard case .ok(_, _, let createChanges, _) = try agent.runExecute("CREATE TABLE u(b INTEGER)"),
+                  case .ok(_, _, let deleteChanges, _) = try agent.runExecute("DELETE FROM t WHERE a > 9") else {
+                Issue.record("statement failed")
+                return
+            }
+            #expect(createChanges == 0)
+            #expect(deleteChanges == 0)
+        }
+    }
+
+    @Test(.enabled(if: RemoteSQLiteAgentPipeTests.hasPython3))
     func fts3TokenizerIsDeniedByTheAuthorizer() throws {
         try withEmptyDatabase { _, agent in
             guard case .error(let message) = try agent.runExecute("SELECT fts3_tokenizer('evil', x'4141414141414141')") else {

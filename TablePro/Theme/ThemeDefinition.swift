@@ -5,10 +5,10 @@ internal enum ThemeAppearance: String, Codable, CaseIterable, Sendable {
     case dark
 }
 
-/// A theme is a set of overrides for the two surfaces it may color, the SQL editor and the data
-/// grid. A slot it leaves out draws in the color AppKit itself uses there, so Default Light and
-/// Default Dark declare nothing but syntax colors and render exactly like a native text view and
-/// table, following Accent, Highlight and Increase Contrast.
+/// A theme is a set of overrides for the content views and the window backdrop. A slot it leaves out
+/// draws in the color AppKit itself uses there, so Default Light and Default Dark declare nothing but
+/// syntax colors and render exactly like a native app, following Accent, Highlight and Increase
+/// Contrast.
 internal struct ThemeDefinition: Identifiable, Equatable, Sendable {
     var id: String
     var name: String
@@ -24,6 +24,21 @@ internal struct ThemeDefinition: Identifiable, Equatable, Sendable {
 
     internal func isOverridden(_ slot: ThemeSlot) -> Bool {
         overrides[slot] != nil
+    }
+
+    /// The format has no increased-contrast variant, so a slot that yields to Increase Contrast draws
+    /// native in an increased-contrast appearance even where the theme sets it.
+    internal func isOverridden(_ slot: ThemeSlot, in appearance: NSAppearance) -> Bool {
+        isOverridden(slot, highContrast: appearance.isHighContrast)
+    }
+
+    internal func isOverridden(_ slot: ThemeSlot, highContrast: Bool) -> Bool {
+        isOverridden(slot) && !(slot.yieldsToIncreasedContrast && highContrast)
+    }
+
+    internal func color(for slot: ThemeSlot, in appearance: NSAppearance) -> NSColor {
+        guard slot.yieldsToIncreasedContrast, appearance.isHighContrast else { return color(for: slot) }
+        return slot.nativeColor
     }
 
     /// Syntax has no system color, so a syntax slot the theme leaves out takes the same-appearance
@@ -48,6 +63,8 @@ internal struct ThemeDefinition: Identifiable, Equatable, Sendable {
 /// which `ThemeSlotCoverageTests` enforces. The document decoder, the encoder and the theme editor
 /// all enumerate this list rather than keeping their own copies.
 internal enum ThemeSlot: String, CaseIterable, Sendable {
+    case windowBackdrop = "window.background"
+
     case editorBackground = "editor.background"
     case editorText = "editor.text"
     case editorCursor = "editor.cursor"
@@ -87,6 +104,8 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
 
     internal var group: ThemeSlotGroup {
         switch self {
+        case .windowBackdrop:
+            return .window
         case .editorBackground, .editorText, .editorCursor, .editorSelection,
              .editorCurrentLine, .editorCurrentStatement, .editorLineNumber, .editorInvisibles:
             return .editor
@@ -101,9 +120,14 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
         }
     }
 
+    /// Only the backdrop: content slots keep the theme under Increase Contrast, as they always have.
+    internal var yieldsToIncreasedContrast: Bool {
+        group == .window
+    }
+
     internal var label: String {
         switch self {
-        case .editorBackground, .gridBackground: return String(localized: "Background")
+        case .windowBackdrop, .editorBackground, .gridBackground: return String(localized: "Background")
         case .editorText, .gridText: return String(localized: "Text")
         case .editorCursor: return String(localized: "Cursor")
         case .editorSelection, .gridSelection: return String(localized: "Selection")
@@ -139,12 +163,14 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
 }
 
 internal enum ThemeSlotGroup: String, CaseIterable, Sendable {
+    case window
     case editor
     case syntax
     case dataGrid
 
     internal var label: String {
         switch self {
+        case .window: return String(localized: "Window")
         case .editor: return String(localized: "Editor")
         case .syntax: return String(localized: "Syntax")
         case .dataGrid: return String(localized: "Data Grid")

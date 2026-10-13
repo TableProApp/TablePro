@@ -106,8 +106,10 @@ internal final class TreeOutlineView: SidebarOutlineView {
 }
 
 /// Unemphasized while its value holds a text selection, which is unreadable on the accent color.
-internal final class TreeOutlineRowView: NSTableRowView {
-    internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("TreeOutlineRow")
+internal class TreeOutlineRowView: NSTableRowView {
+    internal class var reuseIdentifier: NSUserInterfaceItemIdentifier {
+        NSUserInterfaceItemIdentifier("TreeOutlineRow")
+    }
 
     private var requestedEmphasis: Bool?
 
@@ -137,5 +139,34 @@ internal final class TreeOutlineRowView: NSTableRowView {
         for case let cell as NSTableCellView in subviews where cell.backgroundStyle != style {
             cell.backgroundStyle = style
         }
+    }
+}
+
+/// The tree row while the theme sets the outline's background or selection.
+internal final class ThemedTreeOutlineRowView: TreeOutlineRowView, ThemeTableRowDrawing {
+    override internal class var reuseIdentifier: NSUserInterfaceItemIdentifier {
+        NSUserInterfaceItemIdentifier("ThemedTreeOutlineRow")
+    }
+
+    internal weak var chrome: ThemeTableChrome?
+
+    override internal func drawBackground(in dirtyRect: NSRect) {
+        guard chrome?.drawBackground(of: self, in: dirtyRect) == true else {
+            super.drawBackground(in: dirtyRect)
+            return
+        }
+    }
+
+    override internal func drawSelection(in dirtyRect: NSRect) {
+        guard let chrome else {
+            super.drawSelection(in: dirtyRect)
+            return
+        }
+        chrome.drawSelection(of: self, in: dirtyRect) { super.drawSelection(in: $0) }
+    }
+
+    override internal var interiorBackgroundStyle: NSView.BackgroundStyle {
+        let native = super.interiorBackgroundStyle
+        return chrome?.interiorBackgroundStyle(of: self, native: native) ?? native
     }
 }

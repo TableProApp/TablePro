@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-/// The `CREATE TABLE` the Structure DDL view shows and a SQL export replays, built from the catalog's columns.
+/// The `CREATE TABLE` and `CREATE VIEW` the Structure DDL view shows and a SQL export replays, built from the catalog.
 ///
 /// `DBMS_METADATA.GET_DDL` is not used: on the wrong object type it raises ORA-31603, which leaves oracle-nio's
 /// connection state machine broken.
@@ -22,6 +22,14 @@ internal enum OracleTableDDL {
     ) -> String {
         let definitions = columns.map { "    " + columnDefinition($0, quote: quote) }
         return "CREATE TABLE \(qualifiedTable) (\n" + definitions.joined(separator: ",\n") + "\n);"
+    }
+
+    /// `TEXT_VC` is the view's query alone, so its column names go in the header: a view declared
+    /// `v (public_id) AS SELECT internal_id ...` replayed without them exposes `INTERNAL_ID`, and one
+    /// over an unaliased expression cannot be recreated at all. `DBMS_METADATA` writes the list too.
+    static func createView(qualifiedView: String, columns: [String], query: String, quote: (String) -> String) -> String {
+        let columnList = columns.isEmpty ? "" : " (" + columns.map(quote).joined(separator: ", ") + ")"
+        return "CREATE OR REPLACE VIEW \(qualifiedView)\(columnList) AS\n\(query)"
     }
 
     static func columnDefinition(_ column: PluginColumnInfo, quote: (String) -> String) -> String {

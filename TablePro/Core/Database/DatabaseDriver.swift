@@ -228,7 +228,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// pattern and type, rather than by table filters. Nil when the driver has no such count.
     func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int?
 
-    /// Fetch the DDL (CREATE TABLE statement) for a specific table
+    /// The statement that creates the named relation: a view answers with its own `CREATE VIEW`.
     func fetchTableDDL(table: String) async throws -> String
 
     /// The CREATE INDEX statements this table needs that `fetchTableDDL` does not already declare.

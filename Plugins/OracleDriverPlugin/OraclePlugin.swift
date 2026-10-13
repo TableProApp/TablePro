@@ -459,6 +459,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                             )))
                         case .rows(let batch):
                             continuation.yield(.rows(batch.map { $0.map(\.asPluginCell) }))
+                        case .affectedRows:
+                            // The plugin stream carries rows only. The app sends writes and DDL through
+                            // `execute`, which reports the count, and bounds only reads through this stream.
+                            break
                         }
                     }
                     continuation.finish()
@@ -631,9 +635,16 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return sizes
     }
 
+    /// `ALL_TAB_COLS` lists a view's columns as it lists a table's, so a view is looked up first:
+    /// without it Show DDL rebuilt a view as a `CREATE TABLE` of its columns.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        OracleTableDDL.createTable(
-            qualifiedTable: "\(quoteIdentifier(effectiveSchema(schema))).\(quoteIdentifier(table))",
+        let owner = effectiveSchema(schema)
+        let view = try await execute(query: OracleSchemaQueries.viewDefinition(schema: owner, view: table))
+        if !view.rows.isEmpty {
+            return try await viewStatement(from: view, schema: owner, view: table)
+        }
+        return OracleTableDDL.createTable(
+            qualifiedTable: "\(quoteIdentifier(owner)).\(quoteIdentifier(table))",
             columns: try await fetchColumns(table: table, schema: schema),
             quote: quoteIdentifier
         )
@@ -643,16 +654,32 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // ALL_VIEWS.TEXT is LONG (crashes OracleNIO). TEXT_VC is VARCHAR2(4000), safe.
         // Do NOT use DBMS_METADATA.GET_DDL — wrong object type triggers ORA-31603
         // which corrupts OracleNIO's connection state machine.
-        let sql = OracleSchemaQueries.viewDefinition(schema: effectiveSchema(schema), view: view)
-        let result = try await execute(query: sql)
-        guard let body = result.rows.first?.first?.asText,
+        let owner = effectiveSchema(schema)
+        let result = try await execute(query: OracleSchemaQueries.viewDefinition(schema: owner, view: view))
+        return try await viewStatement(from: result, schema: owner, view: view)
+    }
+
+    /// `TEXT_VC` is the view's `SELECT` and nothing else, so it needs the header a dump replays.
+    /// Written bare it made the restore run a query and create no view.
+    private func viewStatement(from result: PluginQueryResult, schema: String, view: String) async throws -> String {
+        guard let row = result.rows.first, let body = row.first?.asText,
               !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw OraclePluginError(core: .queryFailed(
                 String(format: String(localized: "Oracle returned no definition for view '%@'."), view)))
         }
-        /// `TEXT_VC` is the view's `SELECT` and nothing else, so it needs the header a dump replays.
-        /// Written bare it made the restore run a query and create no view.
-        return "CREATE OR REPLACE VIEW \(quoteIdentifier(effectiveSchema(schema))).\(quoteIdentifier(view)) AS\n\(body)"
+        guard !OracleSchemaQueries.isViewTextTruncated(
+            storedLength: row[safe: 1]?.asText, returnedLength: row[safe: 2]?.asText
+        ) else {
+            throw OraclePluginError(core: .queryFailed(String(
+                localized: "Oracle returns only the first 4000 bytes of this view's definition, so the full text cannot be read."
+            )))
+        }
+        return OracleTableDDL.createView(
+            qualifiedView: "\(quoteIdentifier(schema)).\(quoteIdentifier(view))",
+            columns: try await fetchColumns(table: view, schema: schema).map(\.name),
+            query: body,
+            quote: quoteIdentifier
+        )
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

@@ -20,6 +20,10 @@ struct ServerOutputTextView: NSViewRepresentable {
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         textView.textContainerInset = NSSize(width: 8, height: 8)
+        context.coordinator.themeStyle = ThemeTextViewStyle(
+            textView: textView,
+            natives: ThemeTextViewStyle.Natives(of: textView)
+        )
         textView.setAccessibilityLabel(String(localized: "Server output"))
         textView.setAccessibilityIdentifier("server-output-text")
         textView.string = text
@@ -29,5 +33,14 @@ struct ServerOutputTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView, textView.string != text else { return }
         textView.string = text
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    @MainActor
+    final class Coordinator {
+        var themeStyle: ThemeTextViewStyle?
     }
 }

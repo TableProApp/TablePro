@@ -22,7 +22,7 @@ internal struct AgentProposedStatementsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List(statements) { statement in
-                row(statement)
+                AgentProposedStatementRow(statement: statement)
                     .contextMenu {
                         Button(String(localized: "Copy")) {
                             NSPasteboard.general.clearContents()
@@ -33,14 +33,20 @@ internal struct AgentProposedStatementsView: View {
             .listStyle(.inset)
         }
     }
+}
 
-    /// Statement at the data-grid value font, metadata at `.caption`, matching the app's other list
-    /// of statements with state under them. A stored value drawn at a system text style is the
-    /// two-font-domain defect: it looks right only until the user changes one of the two settings.
-    private func row(_ statement: ProposedStatement) -> some View {
+/// Statement at the data-grid value font, metadata at `.caption`, matching the app's other list
+/// of statements with state under them. A stored value drawn at a system text style is the
+/// two-font-domain defect: it looks right only until the user changes one of the two settings.
+internal struct AgentProposedStatementRow: View {
+    internal let statement: ProposedStatement
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(statement.sql)
                 .font(ThemeEngine.shared.valueFontSwiftUI)
+                // The list has no selection, so a theme color here never sits on a selected-row fill.
+                .themeForeground(.editorText, native: .primary)
                 .lineLimit(4)
                 .textSelection(.enabled)
             HStack(spacing: 4) {

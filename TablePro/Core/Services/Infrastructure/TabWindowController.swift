@@ -93,6 +93,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     private var activity: NSUserActivity?
 
+    private let windowBackdrop: ThemeWindowBackdrop
+
     /// `adopting` carries a connection that is moving here from another window, whole. Everything
     /// the user has in it lives on that object, so the window takes it rather than building a
     /// second one around the same connection.
@@ -123,6 +125,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.subtitle = splitVC.windowSubtitle
         window.representedURL = splitVC.windowRepresentedURL
         splitVC.installTabStripAccessory(on: window)
+        windowBackdrop = ThemeWindowBackdrop(window: window)
 
         super.init(window: window)
 
