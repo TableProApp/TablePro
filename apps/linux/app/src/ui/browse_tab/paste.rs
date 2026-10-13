@@ -50,21 +50,44 @@ impl PasteSnapshot {
     }
 }
 
+fn is_spreadsheet_quoted_cell(after_open: &[char]) -> bool {
+    let mut needs_quoting = false;
+    let mut index = 0;
+    while let Some(&c) = after_open.get(index) {
+        index += 1;
+        match c {
+            '"' if after_open.get(index) == Some(&'"') => {
+                needs_quoting = true;
+                index += 1;
+            }
+            '"' => {
+                let ends_cell = matches!(after_open.get(index), None | Some('\t' | '\n' | '\r'));
+                return ends_cell && needs_quoting;
+            }
+            '\t' | '\n' => needs_quoting = true,
+            _ => {}
+        }
+    }
+    false
+}
+
 pub(super) fn parse_clipboard_grid(text: &str) -> Vec<Vec<String>> {
     let mut rows = Vec::new();
     let mut row = Vec::new();
     let mut cell = String::new();
     let mut quoted = false;
     let mut was_quoted = false;
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
+    let chars: Vec<char> = text.chars().collect();
+    let mut index = 0;
+    while let Some(&c) = chars.get(index) {
+        index += 1;
         match c {
-            '"' if quoted && chars.peek() == Some(&'"') => {
+            '"' if quoted && chars.get(index) == Some(&'"') => {
                 cell.push('"');
-                chars.next();
+                index += 1;
             }
             '"' if quoted => quoted = false,
-            '"' if cell.is_empty() && !was_quoted => {
+            '"' if cell.is_empty() && !was_quoted && is_spreadsheet_quoted_cell(&chars[index..]) => {
                 quoted = true;
                 was_quoted = true;
             }
@@ -72,7 +95,7 @@ pub(super) fn parse_clipboard_grid(text: &str) -> Vec<Vec<String>> {
                 row.push(std::mem::take(&mut cell));
                 was_quoted = false;
             }
-            '\r' if !quoted && chars.peek() == Some(&'\n') => {}
+            '\r' if !quoted && chars.get(index) == Some(&'\n') => {}
             '\n' if !quoted => {
                 row.push(std::mem::take(&mut cell));
                 rows.push(std::mem::take(&mut row));
@@ -289,6 +312,15 @@ mod tests {
         );
         assert_eq!(parse_clipboard_grid("x\t\ty\n"), grid(&[&["x", "", "y"]]));
         assert_eq!(parse_clipboard_grid("a\"b\tc"), grid(&[&["a\"b", "c"]]));
+    }
+
+    #[test]
+    fn a_leading_quote_on_ordinary_text_is_kept() {
+        assert_eq!(parse_clipboard_grid("\"abc\""), grid(&[&["\"abc\""]]));
+        assert_eq!(parse_clipboard_grid("\"a\", \"b\"\tx"), grid(&[&["\"a\", \"b\"", "x"]]));
+        assert_eq!(parse_clipboard_grid("\"abc\tdef"), grid(&[&["\"abc", "def"]]));
+        assert_eq!(parse_clipboard_grid("\"\"\n\"x\""), grid(&[&["\"\""], &["\"x\""]]));
+        assert_eq!(parse_clipboard_grid("\"a\tb\"x"), grid(&[&["\"a", "b\"x"]]));
     }
 
     #[test]
