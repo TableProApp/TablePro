@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
 - `real` values showed extra digits in the grid, copies and exports, such as 0.10000000149011612 for 0.1.
+- Excel export rounded integers past 2^53 and wrote decimals as text when their column padded the scale.
 - Exported arrays wrote each row of a multi-dimensional array as a quoted string.
 
 ### Security
