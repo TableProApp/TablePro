@@ -10,8 +10,7 @@ const CASE: &str = "read_only_connection_refuses_writes";
 
 /// Case 7: a read-only connection refuses a save, and its editor refuses
 /// both a row change and a schema change.
-pub async fn read_only_connection_refuses_writes<E: ConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn read_only_connection_refuses_writes<E: ConformanceEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let owner = connect(CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, owner.as_ref(), "read_only").await?;
     let reader = connect(CASE, &engine, WorkspaceSettings::workspace(true)).await?;

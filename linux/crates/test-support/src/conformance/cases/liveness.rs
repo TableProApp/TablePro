@@ -12,8 +12,9 @@ const DEADLINE: Duration = Duration::from_secs(1);
 /// Case 12: once the route goes quiet, a read reports the connection
 /// lost within its deadline plus the cancel grace, and the link says so
 /// to everything watching it.
-pub async fn lost_transport_reports_connection_lost<E: NetworkConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn lost_transport_reports_connection_lost<E: NetworkConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let liveness = test_liveness();
     let (options, fault) = engine.faulty_connect_options(writable(), liveness).await?;
     let connection = dial(CASE, E::driver(), options).await??;

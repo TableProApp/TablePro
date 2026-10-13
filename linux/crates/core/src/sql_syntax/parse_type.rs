@@ -49,7 +49,9 @@ pub fn parse_type(grammar: SqlGrammar, text: &str, max_len: usize) -> Result<Val
     if text.chars().count() > max_len {
         return Err(TypeSyntaxError::TooLong { max: max_len });
     }
-    reject_comments(grammar, text)?;
+    if contains_comment(grammar, text) {
+        return Err(TypeSyntaxError::Comment);
+    }
 
     let mut parser = Parser::new(grammar.parser_dialect())
         .with_recursion_limit(RECURSION_LIMIT)
@@ -71,28 +73,18 @@ pub fn parse_type(grammar: SqlGrammar, text: &str, max_len: usize) -> Result<Val
 
 pub(crate) const RECURSION_LIMIT: usize = 64;
 
-/// A comment swallows every clause after it, so a type or expression
-/// carrying one cannot be pasted into DDL safely.
-pub(crate) fn reject_comment_tokens(grammar: SqlGrammar, text: &str) -> Result<(), ()> {
-    let tokens = Tokenizer::new(grammar.parser_dialect(), text)
-        .tokenize_with_location()
-        .map_err(|_| ())?;
-    let has_comment = tokens.iter().any(|token| {
-        matches!(
-            token.token,
-            Token::Whitespace(Whitespace::SingleLineComment { .. } | Whitespace::MultiLineComment(_))
-        )
-    });
-    if has_comment { Err(()) } else { Ok(()) }
-}
-
-fn reject_comments(grammar: SqlGrammar, text: &str) -> Result<(), TypeSyntaxError> {
-    match reject_comment_tokens(grammar, text) {
-        Ok(()) => Ok(()),
-        // A tokenizer failure is reported by the parser below with a
-        // better message, so only the comment case stops here.
-        Err(()) if text.contains("--") || text.contains("/*") => Err(TypeSyntaxError::Comment),
-        Err(()) => Ok(()),
+/// A comment, MySQL's `#` included, swallows every clause after it.
+/// Text the tokenizer refuses is left to the parser's message unless it
+/// opens a comment, such as an unterminated `/*`.
+pub(crate) fn contains_comment(grammar: SqlGrammar, text: &str) -> bool {
+    match Tokenizer::new(grammar.parser_dialect(), text).tokenize_with_location() {
+        Ok(tokens) => tokens.iter().any(|token| {
+            matches!(
+                token.token,
+                Token::Whitespace(Whitespace::SingleLineComment { .. } | Whitespace::MultiLineComment(_))
+            )
+        }),
+        Err(_) => text.contains("--") || text.contains("/*"),
     }
 }
 
@@ -239,6 +231,11 @@ mod tests {
             let error = parse(SqlGrammar::PostgreSql, text).expect_err(text);
             assert_eq!(error, TypeSyntaxError::Comment, "{text}");
         }
+    }
+
+    #[test]
+    fn parse_type_rejects_a_mysql_hash_comment() {
+        assert_eq!(parse(SqlGrammar::MySql, "int # x"), Err(TypeSyntaxError::Comment));
     }
 
     #[test]

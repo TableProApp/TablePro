@@ -218,7 +218,8 @@ pub(crate) fn single_count(rows: &[Vec<Value>]) -> Option<u64> {
 }
 
 /// Ask the server, through an editor session, how many statements are
-/// running, until `done` holds or `limit` passes.
+/// running, until `done` holds or `limit` passes. `limit` is checked
+/// between counts, so each count carries its own deadline.
 pub(crate) async fn wait_for_running(
     case: &'static str,
     monitor: &dyn EditorSession,
@@ -228,7 +229,8 @@ pub(crate) async fn wait_for_running(
 ) -> Result<u64, ConformanceFailure> {
     let give_up = Instant::now() + limit;
     loop {
-        let rows = run_completed(case, monitor, count_sql, run_options()).await?.rows();
+        let counting = run_options().with_deadline(Some(CALL_DEADLINE));
+        let rows = run_completed(case, monitor, count_sql, counting).await?.rows();
         let Some(running) = single_count(&rows) else {
             return Err(ConformanceFailure::setup(format!(
                 "the running-statement count returned {rows:?}, not one integer"
@@ -244,5 +246,29 @@ pub(crate) async fn wait_for_running(
             ));
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{FakeEditorSession, FakeRun, Replies};
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_running_fails_when_a_count_never_answers() {
+        let mut runs = Replies::default();
+        runs.always(FakeRun::until_stopped());
+        let monitor = FakeEditorSession::new(runs);
+
+        let waited = tokio::time::timeout(
+            CALL_DEADLINE * 2,
+            wait_for_running("case", &monitor, "SELECT count", |_| true, Duration::from_secs(1)),
+        )
+        .await;
+
+        assert!(
+            matches!(&waited, Ok(Err(ConformanceFailure::Expectation { case: "case", detail })) if detail.contains("TimedOut")),
+            "{waited:?}"
+        );
     }
 }

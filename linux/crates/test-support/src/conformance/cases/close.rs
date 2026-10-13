@@ -7,8 +7,7 @@ const CASE: &str = "close_is_idempotent";
 
 /// Case 14: closing twice is fine and quick, and a call after the close
 /// fails rather than reopening the pool or hanging.
-pub async fn close_is_idempotent<E: ConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn close_is_idempotent<E: ConformanceEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let liveness = test_liveness();
     let connection = connect(CASE, &engine, writable()).await?;
     connection.probe(within(liveness.probe_timeout)).await?;

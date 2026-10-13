@@ -17,7 +17,12 @@
 ///
 /// `suite_flags_match_driver_capabilities` is always emitted and never
 /// ignored: it fails when `endpoint` or `editor_transactions` disagrees
-/// with the driver's capabilities.
+/// with the driver's capabilities. `pool`, `unsupported_types` and
+/// `bounded_ddl` have no capability to check against.
+///
+/// A case that has not finished `CASE_LIMIT` after its engine started
+/// fails with its name, so a driver that ignores a deadline or a cancel
+/// cannot hold the test run.
 ///
 /// The example compiles every case against the test-support fakes; a
 /// driver's integration target supplies its own engine instead.
@@ -147,51 +152,61 @@ macro_rules! connection_conformance_suite {
     ) => {
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             lists_created_table_with_primary_key_and_unique_identity,
             $crate::conformance::cases::metadata::lists_created_table_with_primary_key_and_unique_identity::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             calls_share_one_call_options,
             $crate::conformance::cases::metadata::calls_share_one_call_options::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             query_bound_times_out_within_deadline_plus_cancel_grace,
             $crate::conformance::cases::deadlines::query_bound_times_out_within_deadline_plus_cancel_grace::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             editor_cancel_reports_cancelled_and_session_stays_ready,
             $crate::conformance::cases::cancellation::editor_cancel_reports_cancelled_and_session_stays_ready::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             read_only_connection_refuses_writes,
             $crate::conformance::cases::read_only::read_only_connection_refuses_writes::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             write_batch_commits_every_step,
             $crate::conformance::cases::writes::write_batch_commits_every_step::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             failed_write_batch_outcome_matches_dml_atomicity,
             $crate::conformance::cases::writes::failed_write_batch_outcome_matches_dml_atomicity::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             row_guard_mismatch_applies_nothing,
             $crate::conformance::cases::row_guards::row_guard_mismatch_applies_nothing::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             close_is_idempotent,
             $crate::conformance::cases::close::close_is_idempotent::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             stream_read_streams_every_row_in_bounded_batches,
             $crate::conformance::cases::streaming::stream_read_streams_every_row_in_bounded_batches::<$engine>
         }
@@ -217,17 +232,27 @@ macro_rules! connection_conformance_suite {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __conformance_case {
-    (true, $name:ident, $case:expr) => {
+    (true, $engine:ty as $kind:ident, $name:ident, $case:expr) => {
         #[::tokio::test(flavor = "multi_thread", worker_threads = 2)]
         #[ignore = "requires docker"]
         async fn $name() -> ::core::result::Result<(), $crate::conformance::ConformanceFailure> {
-            ($case)().await
+            $crate::conformance::run_case(
+                ::core::stringify!($name),
+                <$engine as $crate::conformance::$kind>::start(),
+                $case,
+            )
+            .await
         }
     };
-    (false, $name:ident, $case:expr) => {
+    (false, $engine:ty as $kind:ident, $name:ident, $case:expr) => {
         #[::tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn $name() -> ::core::result::Result<(), $crate::conformance::ConformanceFailure> {
-            ($case)().await
+            $crate::conformance::run_case(
+                ::core::stringify!($name),
+                <$engine as $crate::conformance::$kind>::start(),
+                $case,
+            )
+            .await
         }
     };
 }
@@ -260,11 +285,13 @@ macro_rules! __conformance_endpoint_cases {
     (network, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             dropped_caller_stops_server_statement,
             $crate::conformance::cases::cancellation::dropped_caller_stops_server_statement::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             lost_transport_reports_connection_lost,
             $crate::conformance::cases::liveness::lost_transport_reports_connection_lost::<$engine>
         }
@@ -278,6 +305,7 @@ macro_rules! __conformance_pool_case {
     (pooled, network, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             probe_succeeds_while_every_pool_slot_is_busy,
             $crate::conformance::cases::pool::probe_succeeds_while_every_network_pool_slot_is_busy::<$engine>
         }
@@ -285,6 +313,7 @@ macro_rules! __conformance_pool_case {
     (pooled, file, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             probe_succeeds_while_every_pool_slot_is_busy,
             $crate::conformance::cases::pool::probe_succeeds_while_every_pool_slot_is_busy::<$engine>
         }
@@ -299,6 +328,7 @@ macro_rules! __conformance_editor_case {
     (true, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             row_limit_keeps_transaction_and_later_statements,
             $crate::conformance::cases::row_limit::row_limit_keeps_transaction_and_later_statements::<$engine>
         }
@@ -312,6 +342,7 @@ macro_rules! __conformance_types_case {
     (true, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             unsupported_types_never_decode_as_null,
             $crate::conformance::cases::type_fallback::unsupported_types_never_decode_as_null::<$engine>
         }
@@ -325,6 +356,7 @@ macro_rules! __conformance_ddl_case {
     (true, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
+            $engine as ConformanceEngine,
             schema_changes_batch_is_not_bounded_by_statement_timeout,
             $crate::conformance::cases::statement_timeout::schema_changes_batch_is_not_bounded_by_statement_timeout::<$engine>
         }

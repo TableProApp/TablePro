@@ -1,5 +1,5 @@
-//! One file per area of the contract. Every case starts its own engine
-//! and returns a `ConformanceFailure` rather than panicking.
+//! One file per area of the contract. Every case gets an engine started
+//! for it alone and returns a `ConformanceFailure` rather than panicking.
 
 pub mod cancellation;
 pub mod close;

@@ -69,16 +69,17 @@ fn describe(outcome: &Result<Arc<dyn Connection>, DriverError>) -> String {
 }
 
 /// TLS case 1.
-pub async fn verify_full_with_issuing_ca_connects<E: TlsConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn verify_full_with_issuing_ca_connects<E: TlsConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let tls = verified(&engine, engine.ca_file());
     connects::<E>(ISSUING_CASE, engine.connect_options(tls)).await
 }
 
 /// TLS case 2.
-pub async fn verify_full_with_unrelated_ca_reports_unknown_issuer<E: TlsConformanceEngine>()
--> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn verify_full_with_unrelated_ca_reports_unknown_issuer<E: TlsConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let tls = verified(&engine, engine.unrelated_ca_file());
     let outcome = open::<E>(UNRELATED_CASE, engine.connect_options(tls)).await?;
     expect(
@@ -89,9 +90,9 @@ pub async fn verify_full_with_unrelated_ca_reports_unknown_issuer<E: TlsConforma
 }
 
 /// TLS case 3.
-pub async fn verify_full_with_wrong_server_name_reports_name_mismatch<E: TlsConformanceEngine>()
--> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn verify_full_with_wrong_server_name_reports_name_mismatch<E: TlsConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let tls = verified(&engine, engine.ca_file());
     let outcome = open::<E>(NAME_CASE, engine.name_mismatch_connect_options(tls)).await?;
     expect(
@@ -102,8 +103,7 @@ pub async fn verify_full_with_wrong_server_name_reports_name_mismatch<E: TlsConf
 }
 
 /// TLS case 4.
-pub async fn require_connects_without_ca<E: TlsConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn require_connects_without_ca<E: TlsConformanceEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let tls = TlsConfig {
         mode: TlsMode::Require,
         ca_file: None,
@@ -114,8 +114,9 @@ pub async fn require_connects_without_ca<E: TlsConformanceEngine>() -> Result<()
 }
 
 /// TLS case 5.
-pub async fn disable_against_tls_only_server_is_refused<E: TlsConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn disable_against_tls_only_server_is_refused<E: TlsConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let expected = engine.plaintext_rejection_category();
     let outcome = open::<E>(DISABLE_CASE, engine.connect_options(TlsConfig::disabled())).await?;
     let refused = matches!(&outcome, Err(error) if error.category() == expected);
@@ -126,8 +127,9 @@ pub async fn disable_against_tls_only_server_is_refused<E: TlsConformanceEngine>
 
 /// TLS case 6: the certificate principal gets in with its certificate
 /// and is refused without it.
-pub async fn client_identity_is_required_by_the_server<E: ClientIdentityEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn client_identity_is_required_by_the_server<E: ClientIdentityEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let with_identity = TlsConfig {
         client_identity: Some(engine.client_identity()),
         ..verified(&engine, engine.ca_file())

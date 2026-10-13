@@ -13,9 +13,9 @@ const DEADLINE: Duration = Duration::from_secs(1);
 
 /// Case 2: a read that never finishes returns a statement timeout within
 /// its deadline plus the cancel grace, and the connection still works.
-pub async fn query_bound_times_out_within_deadline_plus_cancel_grace<E: ConformanceEngine>()
--> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn query_bound_times_out_within_deadline_plus_cancel_grace<E: ConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let bound = DEADLINE + test_liveness().cancel_grace + SCHEDULING_SLACK;
     let connection = connect(CASE, &engine, writable()).await?;
     let unbounded = statement(&engine.unbounded_statement_sql(&unique("deadline")));
@@ -92,7 +92,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn deadline_case_fails_when_bound_exceeded() {
-        let outcome = query_bound_times_out_within_deadline_plus_cancel_grace::<FakeEngine<Overruns>>().await;
+        let outcome = query_bound_times_out_within_deadline_plus_cancel_grace(FakeEngine::<Overruns>::new()).await;
 
         assert!(
             matches!(&outcome, Err(ConformanceFailure::Expectation { case: CASE, detail }) if detail.contains("past the")),
@@ -102,7 +102,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn deadline_case_passes_when_the_driver_stops_at_the_deadline() {
-        query_bound_times_out_within_deadline_plus_cancel_grace::<FakeEngine<Honours>>()
+        query_bound_times_out_within_deadline_plus_cancel_grace(FakeEngine::<Honours>::new())
             .await
             .unwrap();
     }

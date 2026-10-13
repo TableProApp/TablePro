@@ -179,10 +179,10 @@ impl EditorSession for FakeEditorSession {
     }
 
     async fn close(&self) {
-        self.closes.fetch_add(1, Ordering::SeqCst);
+        let first = self.closes.fetch_add(1, Ordering::SeqCst) == 0;
         self.closing.cancel();
         *lock(&self.state) = EditorSessionState::Lost;
-        if self.closes.load(Ordering::SeqCst) == 1 {
+        if first {
             self.close_behaviour.run().await;
         }
         self.closed.store(true, Ordering::SeqCst);
@@ -195,10 +195,12 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
+    use futures::future::BoxFuture;
     use tablepro_core::value::Value;
     use tablepro_core::{ResultEvent, RowLimit};
 
     use super::*;
+    use crate::close_race::{ROUNDS, pending_closes};
 
     #[derive(Default)]
     struct Discard;
@@ -316,5 +318,20 @@ mod tests {
         assert!(session.is_closed());
         assert_eq!(session.close_count(), 2);
         assert_eq!(session.state(), EditorSessionState::Lost);
+    }
+
+    fn close_session(session: &FakeEditorSession) -> BoxFuture<'_, ()> {
+        session.close()
+    }
+
+    #[test]
+    fn concurrent_closes_run_the_close_behaviour_once() {
+        let pending = pending_closes(
+            ROUNDS,
+            || FakeEditorSession::with_close(Replies::default(), CloseBehaviour::Hang),
+            close_session,
+        );
+
+        assert!(pending.iter().all(|&hung| hung == 1), "{pending:?}");
     }
 }

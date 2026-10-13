@@ -11,9 +11,9 @@ const KEPT_ROWS: u64 = 100;
 
 /// Case 6: a run that stops at its row limit inside a transaction keeps
 /// the transaction, and what runs after it still commits.
-pub async fn row_limit_keeps_transaction_and_later_statements<E: EditorTransactionEngine>()
--> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn row_limit_keeps_transaction_and_later_statements<E: EditorTransactionEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let connection = connect(CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, connection.as_ref(), "row_limit").await?;
     let dialect = connection.dialect();

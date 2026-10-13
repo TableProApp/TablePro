@@ -7,9 +7,9 @@ const CASE: &str = "lists_created_table_with_primary_key_and_unique_identity";
 
 /// Case 1: a table the suite creates shows up in the default schema, its
 /// key column is marked, and its rows can be named again by that key.
-pub async fn lists_created_table_with_primary_key_and_unique_identity<E: ConformanceEngine>()
--> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn lists_created_table_with_primary_key_and_unique_identity<E: ConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let connection = connect(CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, connection.as_ref(), "metadata").await?;
 
@@ -50,8 +50,7 @@ const SHARED_CASE: &str = "calls_share_one_call_options";
 /// One operation hands the same options to each of its calls, as a page
 /// does for its columns, its row identity and its rows: a call that
 /// finishes leaves them usable for the next.
-pub async fn calls_share_one_call_options<E: ConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn calls_share_one_call_options<E: ConformanceEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let connection = connect(SHARED_CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, connection.as_ref(), "shared").await?;
     let options = within(CALL_DEADLINE);

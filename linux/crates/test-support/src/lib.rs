@@ -8,6 +8,8 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 mod call_counters;
 mod close_behaviour;
+#[cfg(test)]
+mod close_race;
 pub mod conformance;
 mod connection_script;
 mod fake_connection;

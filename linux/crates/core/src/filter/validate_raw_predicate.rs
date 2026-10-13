@@ -17,6 +17,7 @@ pub fn validate_raw_predicate(dialect: &dyn SqlDialect, text: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use crate::dialect::TestDialect;
+    use crate::sql_syntax::SqlGrammar;
 
     use super::*;
 
@@ -45,6 +46,16 @@ mod tests {
     #[test]
     fn a_comment_that_would_swallow_the_rest_is_refused() {
         assert_eq!(validate("a = 1 --"), Err(ExpressionSyntaxError::Comment));
+    }
+
+    #[test]
+    fn a_mysql_hash_comment_is_refused() {
+        let mysql = TestDialect::exact().parsing_as(SqlGrammar::MySql);
+
+        assert_eq!(
+            validate_raw_predicate(&mysql, "a = 1 # x"),
+            Err(ExpressionSyntaxError::Comment)
+        );
     }
 
     #[test]

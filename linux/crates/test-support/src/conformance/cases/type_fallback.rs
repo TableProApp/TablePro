@@ -9,8 +9,9 @@ const CASE: &str = "unsupported_types_never_decode_as_null";
 
 /// Case 13: a value of a type the driver has no decoder for still reads
 /// back as something, never as a NULL that would hide it.
-pub async fn unsupported_types_never_decode_as_null<E: TypedConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn unsupported_types_never_decode_as_null<E: TypedConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let cases = engine.unsupported_type_cases();
     expect(CASE, !cases.is_empty(), || {
         "the engine declares unsupported types but lists none".to_owned()
