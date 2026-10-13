@@ -93,7 +93,7 @@ impl<S: Server> ConformanceEngine for MySqlEngine<S> {
     /// SLEEP alone in a SELECT returns 1 when killed, with no error, so
     /// it sits in a WHERE clause, where a KILL fails the statement.
     fn unbounded_statement_sql(&self, marker: &str) -> String {
-        format!("SELECT 1 FROM DUAL WHERE SLEEP(3600) = 0 /* {marker} */")
+        format!("SELECT /* {marker} */ 1 FROM DUAL WHERE SLEEP(3600) = 0")
     }
 
     async fn blocking_statement_sql(&self, marker: &str, hold: Duration) -> Result<String, ConformanceFailure> {
