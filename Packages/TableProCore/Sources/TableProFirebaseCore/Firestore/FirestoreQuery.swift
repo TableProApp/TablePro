@@ -130,6 +130,8 @@ public enum FirestoreQueryBuilder {
         localized: "Firestore cannot filter with %@. It supports =, !=, <, <=, >, >=, IN, NOT IN, BETWEEN, STARTS WITH, IS NULL, and CONTAINS on an array field."
     )
     public static let rawFilterColumn = "__RAW__"
+    /// Kept out of the localized key, so a translator never edits JSON and a test can run it.
+    static let rawFilterExample = #"{"unaryFilter": {"field": {"fieldPath": "email"}, "op": "IS_NULL"}}"#
 
     /// `typeOf` answers the type a field was last seen holding, so `zip = 30` compares against the
     /// string "30" when zip is a string field.
@@ -347,15 +349,12 @@ public enum FirestoreQueryBuilder {
     /// The raw filter row takes a REST `Filter` object as written in the Firestore API reference,
     /// which is the only way to reach a nested field or a composite the filter bar cannot draw.
     private static func rawFilter(_ text: String) throws -> FirebaseJSON {
-        let json: FirebaseJSON
-        do {
-            json = try FirebaseJSON.parse(text)
-        } catch {
-            throw FirebaseError.configuration(String(localized: "A raw Firestore filter is a JSON Filter object, such as {\"fieldFilter\": {...}}."))
-        }
-        guard let members = json.objectValue, members.count == 1,
+        let refusal = FirebaseError.configuration(
+            String(format: String(localized: "A raw Firestore filter is a JSON Filter object, such as %@."), rawFilterExample)
+        )
+        guard let json = try? FirebaseJSON.parse(text), let members = json.objectValue, members.count == 1,
               let key = members.keys.first, ["fieldFilter", "unaryFilter", "compositeFilter"].contains(key) else {
-            throw FirebaseError.configuration(String(localized: "A raw Firestore filter is a JSON Filter object, such as {\"fieldFilter\": {...}}."))
+            throw refusal
         }
         return json
     }
