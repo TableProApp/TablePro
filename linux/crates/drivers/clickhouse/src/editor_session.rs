@@ -212,7 +212,9 @@ mod tests {
     /// The server notices a KILL inside `sleep` only once a second, so
     /// with a shorter grace the stopped run gives up its response while
     /// the server still holds the session, and a run sent at once would
-    /// be refused with 373.
+    /// be refused with 373. The next run has a deadline, which bounds its
+    /// wait; without one the grace would, and it is shorter than the
+    /// server takes here.
     #[tokio::test]
     #[ignore = "requires docker"]
     async fn a_run_right_after_a_stop_waits_for_the_stopped_query() {
@@ -240,7 +242,13 @@ mod tests {
                 Box::new(Discard),
             )
             .await;
-        let next = run(&session, "SELECT 1").await;
+        let next = session
+            .run(
+                UserSql::new("SELECT 1"),
+                RunOptions::new(CancellationToken::new()).with_deadline(Some(Duration::from_secs(10))),
+                Box::new(Discard),
+            )
+            .await;
 
         assert_eq!(stopped.map(|summary| summary.end), Ok(RunEnd::Cancelled));
         assert_eq!(next.map(|summary| summary.end), Ok(RunEnd::Completed));

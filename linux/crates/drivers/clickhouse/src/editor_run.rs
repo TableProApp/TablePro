@@ -63,7 +63,11 @@ impl EditorRun {
         if let Some(previous) = previous {
             // The wait is the run's own, under its stop and its deadline,
             // so it is as long as the server takes and no longer than the
-            // user lets it.
+            // user lets it. A run with no deadline gives up at the cancel
+            // grace instead, so a stopped query that never ends cannot
+            // hold it for good; a session still locked then refuses it
+            // with 373.
+            let give_up = deadline.is_none().then(|| started + self.grace);
             tokio::select! {
                 interrupt = stop.triggered() => {
                     self.lingering.left(previous);
@@ -73,6 +77,9 @@ impl EditorRun {
                     if let Err(error) = ended {
                         tracing::debug!(%error, "waiting for a stopped editor query to end failed");
                     }
+                }
+                () = reached(give_up) => {
+                    tracing::debug!("a stopped editor query did not end within the cancel grace");
                 }
             }
         }
@@ -238,6 +245,14 @@ async fn kill_within(control: &clickhouse::Client, query_id: Uuid, grace: Durati
     }
 }
 
+/// Ends at `at`, or never without one.
+async fn reached(at: Option<Instant>) {
+    match at {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
+    }
+}
+
 /// What stops a run, and when the stop was sent.
 struct Stop {
     cancel: CancellationToken,
@@ -261,16 +276,10 @@ impl Stop {
     }
 
     async fn triggered(&self) -> Interrupt {
-        let deadline = async {
-            match self.deadline {
-                Some(at) => tokio::time::sleep_until(at).await,
-                None => std::future::pending().await,
-            }
-        };
         tokio::select! {
             () = self.cancel.cancelled() => Interrupt::Cancelled,
             () = self.shutdown.cancelled() => Interrupt::Cancelled,
-            () = deadline => Interrupt::DeadlineElapsed,
+            () = reached(self.deadline) => Interrupt::DeadlineElapsed,
         }
     }
 
@@ -285,10 +294,7 @@ impl Stop {
     }
 
     async fn gave_up(&self) {
-        match self.give_up {
-            Some(at) => tokio::time::sleep_until(at).await,
-            None => std::future::pending().await,
-        }
+        reached(self.give_up).await;
     }
 
     /// How a stopped run ends. The server's 394 or its own timeout is the
@@ -401,12 +407,14 @@ impl Emitter {
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use tablepro_core::{ServerCode, ServerDiagnostics};
+    use tokio::task::JoinHandle;
 
     use super::*;
 
-    #[tokio::test]
-    async fn a_kill_the_server_never_answers_gives_up_at_the_grace() {
+    /// A route that takes every request and never answers one.
+    async fn silent_route() -> (clickhouse::Client, JoinHandle<()>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("a listener");
         let address = listener.local_addr().expect("an address");
         let silent = tokio::spawn(async move {
@@ -415,13 +423,72 @@ mod tests {
                 held.push(socket);
             }
         });
-        let control = clickhouse::Client::default().with_url(format!("http://{address}"));
+        (
+            clickhouse::Client::default().with_url(format!("http://{address}")),
+            silent,
+        )
+    }
+
+    /// A port nothing listens on, so a request is refused at once.
+    async fn closed_route() -> clickhouse::Client {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("a listener");
+        let address = listener.local_addr().expect("an address");
+        drop(listener);
+        clickhouse::Client::default().with_url(format!("http://{address}"))
+    }
+
+    struct Discard;
+
+    #[async_trait]
+    impl ResultSink for Discard {
+        async fn accept(&mut self, _event: ResultEvent) -> SinkFlow {
+            SinkFlow::Continue
+        }
+    }
+
+    #[tokio::test]
+    async fn a_kill_the_server_never_answers_gives_up_at_the_grace() {
+        let (control, silent) = silent_route().await;
 
         let killing = kill_within(&control, Uuid::new_v4(), Duration::from_millis(200));
 
         assert!(
             tokio::time::timeout(Duration::from_secs(10), killing).await.is_ok(),
             "the KILL waited on a server that never answered"
+        );
+        silent.abort();
+    }
+
+    /// The control route never answers the `KILL ... SYNC`, and the run has
+    /// no deadline, so only the grace ends the wait. The statement then
+    /// goes out, to a session route that refuses it.
+    #[tokio::test]
+    async fn a_run_without_a_deadline_stops_waiting_for_a_stopped_query_at_the_grace() {
+        let (control, silent) = silent_route().await;
+        let lingering = Arc::new(LingeringQuery::default());
+        lingering.left(Uuid::new_v4());
+        let run = EditorRun {
+            session: closed_route().await,
+            control,
+            statement_timeout: None,
+            grace: Duration::from_millis(200),
+            shutdown: CancellationToken::new(),
+            lingering,
+        };
+
+        let running = run.run(
+            UserSql::new("SELECT 1"),
+            RunOptions::new(CancellationToken::new()),
+            Box::new(Discard),
+        );
+        let outcome = tokio::time::timeout(Duration::from_secs(10), running).await;
+
+        assert_eq!(
+            outcome.map(|ran| ran.map(|summary| summary.end)),
+            Ok(Err(DriverError::ConnectionLost {
+                during: LossPhase::Statement
+            })),
+            "the run waited past the grace for a query the server never ended"
         );
         silent.abort();
     }
