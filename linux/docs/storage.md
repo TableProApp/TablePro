@@ -84,7 +84,7 @@ base directories and their fallbacks.
 | `column_widths_file()` | `$XDG_CONFIG_HOME/<dir>/column_widths.json` |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
-| `workspace_state_file()` | `$XDG_STATE_HOME/<dir>/workspace_state.json` |
+| `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces` |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
 | `instance_lock()` | `$XDG_RUNTIME_DIR/app/<app-id>/tablepro.lock` |
 

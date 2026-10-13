@@ -79,9 +79,9 @@ impl ObjectImpl for SqlEditor {
                 Signal::builder("run-state-changed")
                     .param_types([bool::static_type()])
                     .build(),
-                Signal::builder("query-changed")
-                    .param_types([String::static_type()])
-                    .build(),
+                // No text: the buffer can be megabytes, and a listener
+                // reads only what it needs from it.
+                Signal::builder("content-changed").build(),
                 Signal::builder("copy-to-clipboard")
                     .param_types([String::static_type()])
                     .build(),

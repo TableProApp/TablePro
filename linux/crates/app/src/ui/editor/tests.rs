@@ -244,6 +244,19 @@ fn format_keeps_the_old_text_one_undo_away() {
 }
 
 #[gtk4::test]
+fn typing_emits_content_changed_without_text() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let changes = SignalLog::connect(&harness.editor, "content-changed", |values| values.len());
+    let buffer = harness.editor.buffer();
+
+    buffer.insert(&mut buffer.end_iter(), " ");
+    buffer.insert(&mut buffer.end_iter(), "2");
+
+    // One emission per change, carrying the editor and nothing else.
+    assert_eq!(changes.take(), [1, 1]);
+}
+
+#[gtk4::test]
 fn dropped_non_utf8_file_is_rejected() {
     let harness = editor_with(answering(), "SELECT 1");
     let root = tempfile::tempdir().expect("tempdir");

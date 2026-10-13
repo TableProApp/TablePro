@@ -392,10 +392,10 @@ impl App {
         tracing::info!(driver = %driver_id, table_count = objects.len(), "workspace ready");
         self.show_objects(&objects);
         self.refresh_window_title();
-        // Restore tabs (browse + editor) persisted from the prior session
-        // for this connection.
+        if let Some(key) = self.session_key().cloned() {
+            self.restore_workspace_tabs(key, sender.clone());
+        }
         if let Some(connection_id) = self.context.active.metadata().map(|metadata| metadata.id) {
-            self.restore_workspace_tabs(connection_id, sender.clone());
             // Stamp `last_opened_at = now()` then reload connections so
             // the popover + welcome view re-sort with the fresh
             // timestamp. Sequencing matters: ReloadConnections reads
@@ -419,6 +419,12 @@ impl App {
         sender.input(AppMsg::ReloadConnections);
     }
 
+    /// The key this window's session is claimed under, which its saved
+    /// tabs are kept by.
+    pub(super) fn session_key(&self) -> Option<&SessionKey> {
+        self.session_links.as_ref().map(|links| &links.key)
+    }
+
     pub(super) fn on_disconnect(&mut self, sender: ComponentSender<Self>) {
         self.confirm_teardown(Teardown::Disconnect, AppMsg::ForceDisconnect, sender);
     }
@@ -436,8 +442,8 @@ impl App {
     /// held until the close ends, so quitting right after a disconnect
     /// does not cut the connection off mid-close.
     fn release_session(&mut self, _sender: ComponentSender<Self>) {
-        // Persist + tear down workspace tabs before dropping the
-        // session (persist needs the active connection id).
+        // The tabs are saved under the session's key, which goes with
+        // the session links below.
         self.teardown_workspace_tabs();
         // The closed tabs name tables of the connection being released.
         self.clear_closed_tabs_stack();

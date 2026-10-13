@@ -235,14 +235,15 @@ The Structure tab is **snapshot + diff**, not per-op log. `original_*` snapshots
 |---|---|---|
 | Saved connections | JSON, `g_file_set_contents_full` CONSISTENT + DURABLE, 0600 | `$XDG_CONFIG_HOME/tablepro/connections.json` |
 | Connection passwords + SSH secrets | libsecret via `oo7` (Secret Service / KWallet) | keyring item per connection UUID |
-| Per-connection workspace tabs | JSON, durable write, debounced 500 ms | `$XDG_STATE_HOME/tablepro/workspace_state.json` |
+| Workspace tabs, one file per session | JSON, durable write, debounced 500 ms, off the GTK thread | `$XDG_STATE_HOME/tablepro/workspaces/<connection id>.json`, `file-<sha256 of the URI>.json` for an unsaved file |
+| Editor tab text | one file per tab, debounced 500 ms | `$XDG_DATA_HOME/tablepro/drafts/<workspace name>/` |
 | Query history | SQLite + FTS5 virtual table, 0600 | `$XDG_STATE_HOME/tablepro/history.db` |
 | Application preferences | GSettings | schema `app.tablepro.TablePro` |
 | Window size / maximized | GSettings | schema `app.tablepro.TablePro` |
 | Per-table column widths | JSON, durable write | `$XDG_CONFIG_HOME/tablepro/column_widths.json` |
 | Single-instance lock | `flock` on an empty file | `$XDG_RUNTIME_DIR/app/<app-id>/tablepro.lock` |
 
-Forward compat: `WorkspaceTabRecord` uses `#[serde(other)] Unknown` so an old binary reading a newer file silently skips unknown variants instead of failing the whole load. `clamp_connection` runs on load to migrate legacy variants (`Browse`, `Structure { schema, table }`) into the unified `Table` shape.
+`WorkspaceStore` reads a session's file once its session is adopted, and the window writes the tab list only after that read, so a write never lands on tabs not yet restored. A file that cannot be read, or that another version wrote, is left as it is and nothing is written over it until the user picks Reset on the toast, which moves it aside as `<name>.json.corrupt-<seconds>`. Writes go through one task that keeps the newest record per file. Editor records carry a draft id, never the text, and the editor's `content-changed` signal carries no text either: the tab label reads at most 200 characters.
 
 `SavedConnection::last_opened_at: Option<DateTime<Utc>>` is stamped on each successful connect via `touch_last_opened`. The welcome view sorts by recency-first with alphabetical tiebreaker; never-opened entries fall to the bottom.
 

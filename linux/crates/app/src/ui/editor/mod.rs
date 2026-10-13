@@ -254,11 +254,11 @@ impl SqlEditor {
         )
     }
 
-    pub fn connect_query_changed<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+    pub fn connect_content_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
-            "query-changed",
+            "content-changed",
             false,
-            glib::closure_local!(move |editor: &Self, text: String| f(editor, text)),
+            glib::closure_local!(move |editor: &Self| f(editor)),
         )
     }
 
@@ -551,9 +551,9 @@ impl SqlEditor {
         ));
 
         let weak = self.downgrade();
-        buffer.connect_changed(move |buffer| {
+        buffer.connect_changed(move |_| {
             if let Some(editor) = weak.upgrade() {
-                editor.emit_by_name::<()>("query-changed", &[&buffer_text(buffer)]);
+                editor.emit_by_name::<()>("content-changed", &[]);
             }
         });
 

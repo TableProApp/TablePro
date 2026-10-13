@@ -65,10 +65,9 @@ fn start() -> Result<(), StartupError> {
     // Single-instance gate: belt-and-suspenders flock on top of
     // gtk::Application's DBus-based uniqueness, since the latter
     // silently lets two processes through when DBus is unavailable.
-    // A second instance corrupts workspace_state.json via concurrent
-    // read-modify-write. Hold the lock through the entire `start`.
+    // A second instance would write the same state files beside this
+    // one. Hold the lock through the entire `start`.
     let paths = tablepro_storage::StoragePaths::from_glib(config::storage_dir_name(), config::APP_ID);
-    services::install_paths(paths.clone());
 
     let _instance_lock = match services::single_instance::acquire(&paths) {
         Ok(lock) => Some(lock),
