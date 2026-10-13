@@ -57,6 +57,8 @@ protocol DataGridViewDelegate: AnyObject {
     /// A checkbox cell's state, or nil when that row offers no checkbox.
     func dataGridCheckboxState(row: Int, column: Int) -> Bool?
     func dataGridSetCheckbox(_ isOn: Bool, rows: IndexSet, column: Int)
+    /// What an assistive client reads for a cell in place of its drawn text, or nil to read the text.
+    func dataGridAccessibilityText(row displayRow: Int, column: Int) -> String?
     /// Nil lets the grid derive the rules from its column types and display formats.
     func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy?
 }
@@ -68,6 +70,7 @@ extension DataGridViewDelegate {
     func dataGridMenuOptions(forRow row: Int, columnIndex: Int) -> [GridMenuOption]? { nil }
     func dataGridCheckboxState(row: Int, column: Int) -> Bool? { nil }
     func dataGridSetCheckbox(_ isOn: Bool, rows: IndexSet, column: Int) {}
+    func dataGridAccessibilityText(row displayRow: Int, column: Int) -> String? { nil }
     func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy? { nil }
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {}
     func dataGridDeleteRows(_ indices: Set<Int>) {}

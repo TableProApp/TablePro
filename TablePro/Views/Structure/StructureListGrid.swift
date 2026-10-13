@@ -11,6 +11,8 @@ import TableProPluginKit
 internal struct StructureListRow<ID: Hashable>: Hashable {
     internal let id: ID
     internal let values: [String]
+    /// Keyed by column, for a cell whose drawn text reads wrong aloud, such as YES for Enabled.
+    internal var spokenValues: [Int: String] = [:]
 }
 
 /// Selected row ids held by reference: a read made during a SwiftUI update gets a `State` or `Binding` snapshot.
@@ -29,6 +31,7 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
 
     internal private(set) var tableRows = TableRows()
     internal private(set) var rowIDs: [ID] = []
+    private var spokenValues: [[Int: String]] = []
     private var loadedKey: Int?
     private weak var coordinator: TableViewCoordinator?
 
@@ -46,6 +49,7 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
 
         let listed = rows()
         rowIDs = listed.map(\.id)
+        spokenValues = listed.map(\.spokenValues)
         tableRows = TableRows.from(
             queryRows: listed.map { $0.values.map(PluginCellValue.text) },
             columns: columns,
@@ -107,6 +111,10 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
         tableViewCoordinator.hasRestoredSelection = false
     }
 
+    internal func dataGridAccessibilityText(row: Int, column: Int) -> String? {
+        rowIndex(forDisplayRow: row).flatMap { spokenValues[$0][column] }
+    }
+
     internal func dataGridSortStateChanged(_ state: SortState) {
         onSortStateChanged?(state)
     }
@@ -121,11 +129,12 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
     }
 }
 
-/// A nil `sortState` turns header sorting off. `defaultWidths` follows `columns` by index.
+/// A nil `sortState` turns header sorting off. `defaultWidths` and `minimumWidths` follow `columns` by index.
 internal struct StructureListGrid<ID: Hashable>: View {
     internal let model: StructureListGridModel<ID>
     internal let columns: [String]
     internal var defaultWidths: [CGFloat] = []
+    internal var minimumWidths: [CGFloat] = []
     internal let contentKey: Int
     internal let rows: () -> [StructureListRow<ID>]
     internal let databaseType: DatabaseType
@@ -144,6 +153,10 @@ internal struct StructureListGrid<ID: Hashable>: View {
             filled.columnWidths[column] = width
         }
         return filled
+    }
+
+    internal static func minimumWidths(_ widths: [CGFloat], columns: [String]) -> [String: CGFloat] {
+        Dictionary(zip(columns, widths), uniquingKeysWith: { first, _ in first })
     }
 
     internal var body: some View {
@@ -165,7 +178,8 @@ internal struct StructureListGrid<ID: Hashable>: View {
                 databaseType: databaseType,
                 supportsColumnCommands: false,
                 supportsValueFilter: false,
-                supportsColumnSort: sortState != nil
+                supportsColumnSort: sortState != nil,
+                columnMinimumWidths: Self.minimumWidths(minimumWidths, columns: columns)
             ),
             delegate: model,
             selectedRowIndices: model.selection(get: selectedIDs, set: select),

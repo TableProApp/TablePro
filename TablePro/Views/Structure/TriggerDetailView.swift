@@ -2,8 +2,6 @@
 //  TriggerDetailView.swift
 //  TablePro
 //
-//  Read-only master-detail view of a table's triggers.
-//
 
 import Combine
 import SwiftUI
@@ -47,6 +45,7 @@ final class TriggerInspectorState: ObservableObject {
 
 enum TriggerListColumns {
     static let nameColumn = 0
+    static let enabledColumn = 3
 
     static var defaultSort: SortState {
         SortState(
@@ -64,10 +63,19 @@ enum TriggerListColumns {
         showsEnabled ? [220, 90, 150, 70] : [240, 90, 160]
     }
 
+    internal static func minimumWidths(showsEnabled: Bool) -> [CGFloat] {
+        showsEnabled ? [140, 70, 90, 60] : [140, 70, 90]
+    }
+
     static func values(for trigger: TriggerInfo, showsEnabled: Bool) -> [String] {
         let base = [trigger.name, trigger.timing, trigger.event]
         guard showsEnabled else { return base }
         return base + [trigger.enabled.map { $0 ? "YES" : "NO" } ?? ""]
+    }
+
+    static func spokenValues(for trigger: TriggerInfo, showsEnabled: Bool) -> [Int: String] {
+        guard showsEnabled, let enabled = trigger.enabled else { return [:] }
+        return [enabledColumn: enabled ? String(localized: "Enabled") : String(localized: "Disabled")]
     }
 
     static func sorted(_ triggers: [TriggerInfo], by state: SortState) -> [TriggerInfo] {
@@ -295,7 +303,11 @@ internal struct TriggerListPane: View {
         let showsEnabled = showsEnabled
         let inspector = state
         let rows = inspector.displayed(triggers).map { trigger in
-            StructureListRow(id: trigger.id, values: TriggerListColumns.values(for: trigger, showsEnabled: showsEnabled))
+            StructureListRow(
+                id: trigger.id,
+                values: TriggerListColumns.values(for: trigger, showsEnabled: showsEnabled),
+                spokenValues: TriggerListColumns.spokenValues(for: trigger, showsEnabled: showsEnabled)
+            )
         }
         var hasher = Hasher()
         hasher.combine(rows)
@@ -303,6 +315,7 @@ internal struct TriggerListPane: View {
             model: grid,
             columns: TriggerListColumns.titles(showsEnabled: showsEnabled),
             defaultWidths: TriggerListColumns.widths(showsEnabled: showsEnabled),
+            minimumWidths: TriggerListColumns.minimumWidths(showsEnabled: showsEnabled),
             contentKey: hasher.finalize(),
             rows: { rows },
             databaseType: databaseType,

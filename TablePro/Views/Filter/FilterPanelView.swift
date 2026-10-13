@@ -48,7 +48,9 @@ struct FilterPanelView: View {
             focusedFilterId = addDefaultFilter(columns: newColumns)
         }
         .sheet(isPresented: $showSQLSheet) {
-            SQLPreviewSheet(sql: generatedSQL)
+            if let sqlPreview = configuration.sqlPreview {
+                SQLPreviewSheet(sql: generatedSQL, databaseType: sqlPreview.filterPreviewDatabaseType)
+            }
         }
     }
 

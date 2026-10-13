@@ -20,7 +20,7 @@ struct SQLCodeFieldThemeTests {
     @Test("The filter's SQL preview is a code view on the editor background")
     func filterPreview() throws {
         try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
-            let window = ThemeTestFixture.host(SQLPreviewSheet(sql: "id = 1"), size: NSSize(width: 480, height: 300))
+            let window = ThemeTestFixture.host(SQLPreviewSheet(sql: "id = 1", databaseType: .mysql), size: NSSize(width: 480, height: 300))
             let textView = try #require(ThemeTestFixture.textViews(in: window).first)
             #expect(textView.string == "id = 1")
             #expect(!textView.isEditable)
@@ -37,7 +37,7 @@ struct SQLCodeFieldThemeTests {
     @Test("An empty filter still says it has no conditions")
     func filterPreviewEmpty() throws {
         try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
-            let window = ThemeTestFixture.host(SQLPreviewSheet(sql: ""), size: NSSize(width: 480, height: 300))
+            let window = ThemeTestFixture.host(SQLPreviewSheet(sql: "", databaseType: .mysql), size: NSSize(width: 480, height: 300))
             let textView = try #require(ThemeTestFixture.textViews(in: window).first)
             #expect(textView.string == "(no conditions)")
             withExtendedLifetime(window) {}

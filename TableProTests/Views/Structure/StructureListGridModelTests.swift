@@ -185,6 +185,29 @@ struct StructureListGridModelTests {
         #expect(StructureListGrid<String>.layout(stored, columns: columns, defaultWidths: []) == stored)
     }
 
+    @Test("Minimum widths follow the columns by index and name nothing past them")
+    func minimumWidthsFollowColumns() {
+        #expect(StructureListGrid<String>.minimumWidths([140, 70], columns: columns) == ["Name": 140, "Timing": 70])
+        #expect(StructureListGrid<String>.minimumWidths([140], columns: columns) == ["Name": 140])
+        #expect(StructureListGrid<String>.minimumWidths([], columns: columns).isEmpty)
+    }
+
+    @Test("A spoken value is answered for its display row and column, and nothing else is")
+    func answersSpokenValues() {
+        let model = StructureListGridModel<String>()
+        _ = model.ensureLoaded(key: 1, columns: columns) {
+            [
+                StructureListRow(id: "a", values: ["alpha", "YES"], spokenValues: [1: "Enabled"]),
+                StructureListRow(id: "b", values: ["beta", "NO"]),
+            ]
+        }
+
+        #expect(model.dataGridAccessibilityText(row: 0, column: 1) == "Enabled")
+        #expect(model.dataGridAccessibilityText(row: 0, column: 0) == nil)
+        #expect(model.dataGridAccessibilityText(row: 1, column: 1) == nil)
+        #expect(model.dataGridAccessibilityText(row: 5, column: 1) == nil)
+    }
+
     @Test("The grid is named for the list it shows")
     func namesTheGrid() {
         let tableView = NSTableView()

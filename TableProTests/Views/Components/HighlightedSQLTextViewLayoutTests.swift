@@ -17,6 +17,9 @@ struct HighlightedSQLTextViewLayoutTests {
 
     private static let longStatement = #"VACUUM (FULL, FREEZE, VERBOSE, ANALYZE) "public"."orders_with_a_very_long_table_name_for_testing""#
 
+    private static let longRequest =
+        #"UpdateContinuousBackups {"PointInTimeRecoverySpecification":{"PointInTimeRecoveryEnabled":false},"TableName":"orders_with_a_very_long_table_name"}"#
+
     private static let maintenanceSize = NSSize(width: 420, height: 520)
 
     private var lineHeight: CGFloat {
@@ -54,7 +57,7 @@ struct HighlightedSQLTextViewLayoutTests {
     @Test("A long filter clause wraps inside the preview instead of running past its edge")
     func filterPreviewWraps() throws {
         try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
-            let window = ThemeTestFixture.host(SQLPreviewSheet(sql: Self.longClause), size: NSSize(width: 480, height: 300))
+            let window = ThemeTestFixture.host(SQLPreviewSheet(sql: Self.longClause, databaseType: .mysql), size: NSSize(width: 480, height: 300))
             let textView = try #require(ThemeTestFixture.textViews(in: window).first)
             let scrollView = try #require(textView.enclosingScrollView)
 
@@ -82,6 +85,28 @@ struct HighlightedSQLTextViewLayoutTests {
 
             #expect(textView.textContainer?.widthTracksTextView == true)
             #expect(!scrollView.hasHorizontalScroller)
+            #expect(scrollView.frame.height > lineHeight * 2 + insets)
+            #expect(scrollView.frame.height < lineHeight * CGFloat(MaintenanceSheet.previewMaxLines) + insets)
+
+            let used = usedSize(of: textView)
+            #expect(used.width <= textWidth(in: scrollView, textView: textView) + 0.5)
+            #expect(used.height + insets <= scrollView.contentSize.height + 0.5)
+            withExtendedLifetime(window) {}
+        }
+    }
+
+    @Test("A JSON request wraps in the same fitted preview and shows all of it")
+    func maintenancePreviewFitsJSONRequest() throws {
+        try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            let window = ThemeTestFixture.host(
+                maintenanceSheet([Self.longRequest], databaseType: .dynamodb),
+                size: Self.maintenanceSize
+            )
+            let textView = try #require(ThemeTestFixture.textViews(in: window).first)
+            let scrollView = try #require(textView.enclosingScrollView)
+            let insets = textView.textContainerInset.height * 2
+
+            #expect(textView.string == Self.longRequest)
             #expect(scrollView.frame.height > lineHeight * 2 + insets)
             #expect(scrollView.frame.height < lineHeight * CGFloat(MaintenanceSheet.previewMaxLines) + insets)
 

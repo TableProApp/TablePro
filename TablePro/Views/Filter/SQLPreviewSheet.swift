@@ -7,6 +7,7 @@ import SwiftUI
 
 struct SQLPreviewSheet: View {
     let sql: String
+    let databaseType: DatabaseType
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
 
@@ -16,7 +17,7 @@ struct SQLPreviewSheet: View {
                 .font(.body.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            HighlightedSQLTextView(sql: sql.isEmpty ? "(no conditions)" : sql, lineLayout: .wrapped)
+            HighlightedSQLTextView(sql: sql.isEmpty ? "(no conditions)" : sql, databaseType: databaseType, lineLayout: .wrapped)
                 .frame(maxHeight: 180)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(

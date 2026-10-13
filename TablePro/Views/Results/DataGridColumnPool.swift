@@ -89,6 +89,7 @@ final class DataGridColumnPool {
         firstClickSortDirection: SortDirection,
         supportsColumnSort: Bool = true,
         supportsValueFilter: Bool = true,
+        minimumWidths: [String: CGFloat] = [:],
         widthCalculator: (String, Int) -> CGFloat
     ) -> Bool {
         attach(to: tableView)
@@ -117,6 +118,7 @@ final class DataGridColumnPool {
                     columnType: slot < columnTypes.count ? columnTypes[slot] : nil,
                     comment: comment,
                     width: resolvedWidth,
+                    minWidth: minimumWidths[columnName] ?? DataGridMetrics.dataColumnMinWidth,
                     isEditable: isEditable,
                     firstClickSortDirection: firstClickSortDirection,
                     supportsColumnSort: supportsColumnSort,
@@ -264,6 +266,7 @@ final class DataGridColumnPool {
         columnType: ColumnType?,
         comment: String?,
         width: CGFloat,
+        minWidth: CGFloat,
         isEditable: Bool,
         firstClickSortDirection: SortDirection,
         supportsColumnSort: Bool = true,
@@ -295,9 +298,7 @@ final class DataGridColumnPool {
             column.headerCell.setAccessibilityLabel(label)
         }
 
-        if column.width != width {
-            column.width = width
-        }
+        applyWidth(max(width, minWidth), minWidth: minWidth, to: column)
         if column.isEditable != isEditable {
             column.isEditable = isEditable
         }
@@ -311,6 +312,19 @@ final class DataGridColumnPool {
         if column.sortDescriptorPrototype?.key != name
             || column.sortDescriptorPrototype?.ascending != prototypeAscending {
             column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: prototypeAscending)
+        }
+    }
+
+    /// Raising `minWidth` past `width` moves the width without updating the table's column geometry, so the width goes in first.
+    private func applyWidth(_ width: CGFloat, minWidth: CGFloat, to column: NSTableColumn) {
+        if column.minWidth > minWidth {
+            column.minWidth = minWidth
+        }
+        if column.width != width {
+            column.width = width
+        }
+        if column.minWidth != minWidth {
+            column.minWidth = minWidth
         }
     }
 
