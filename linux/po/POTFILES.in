@@ -14,7 +14,9 @@ crates/app/src/runtime/deliver.rs
 crates/app/src/runtime/gio_process_hold.rs
 crates/app/src/runtime/mod.rs
 crates/app/src/services/active_session.rs
+crates/app/src/services/cell_overlay.rs
 crates/app/src/services/change_tracker.rs
+crates/app/src/services/change_tracker_registry.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_service.rs
 crates/app/src/services/mod.rs
@@ -23,6 +25,12 @@ crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
 crates/app/src/services/single_instance.rs
 crates/app/src/services/structure_tracker.rs
+crates/app/src/services/structure_tracker_handle.rs
+crates/app/src/services/structure_tracker_registry.rs
+crates/app/src/services/tab_registry.rs
+crates/app/src/services/tab_tracker_handle.rs
+crates/app/src/services/tracker_delta.rs
+crates/app/src/services/tracker_edit.rs
 crates/app/src/services/workspace_state.rs
 crates/app/src/storage.rs
 crates/app/src/test_support.rs
@@ -35,6 +43,7 @@ crates/app/src/test_support/unlabelled_widget.rs
 crates/app/src/test_support/wait_timed_out.rs
 crates/app/src/test_support/widget_lookup.rs
 crates/app/src/ui/app/browse.rs
+crates/app/src/ui/app/connect_flow.rs
 crates/app/src/ui/app/connection.rs
 crates/app/src/ui/app/import.rs
 crates/app/src/ui/app/mod.rs
