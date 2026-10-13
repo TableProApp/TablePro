@@ -1,8 +1,6 @@
 # Validation playbook
 
-Evidence availability checked October 3: some dated `target/quality` links below may be missing from a fresh clone. They remain historical references, not current passes. See [the evidence consistency review](archive/architecture-consistency-review-2026-10-03.md#evidence-audit) and its inventory for exact paths; retrieve exact-SHA artifacts or rerun before using missing raw proof for acceptance.
-
-Use this page to select checks, hand work to another agent, and review its evidence. The executable catalog is [test-layers.json](../scripts/test-layers.json). [Testing](testing.md) describes fixtures; [the sprint plan](bookie-0.2-sprint.md) owns B3 and B4–B6 completion. A green layer certifies only its named scope.
+Use this page to select checks, hand off work, and review evidence. The executable catalog is [test-layers.json](../scripts/test-layers.json). [Testing](testing.md) describes fixtures; [the sprint plan](bookie-0.2-sprint.md) owns milestone order and acceptance. A green layer certifies only its named scope.
 
 ## Current desktop target
 
@@ -10,7 +8,7 @@ The [current continuation](bookie-0.2-sprint.md#current-continuation) orders B3,
 
 ## Start here
 
-Run from the repository root, using the repository's Rust toolchain. Agents configured with RTK should prefix commands with `rtk proxy` so raw diagnostics are retained.
+Run commands from the repository root with the toolchain required by the repository.
 
 ### Local pre-push gate
 
@@ -101,41 +99,29 @@ Build/package, mutation, coverage and acceptance retain their existing entrypoin
 
 ## Hosted checks
 
-Build Linux owns the cheap-tier regression jobs (`pin-revision`, parallel `preflight` and `fast`) and its final `Linux regression gate`; its merge-tier jobs run on its weekly schedule and on dispatch, not on pushes. Each migrated layer job uploads reports even after failure. Missing artifacts fail visibly. Linux Security runs policy tests and supply-chain checks in independent jobs, including when a GTK build fails. Linux CI contracts tests the validation infrastructure without waiting for a Rust build. Linux test quality owns mutation/coverage on its weekly schedule and on `workflow_dispatch` only (not on push). CodeQL (Rust, Python, workflow files) and SonarCloud run as reference scans. Security, quality and scan results are separate from the Build regression gate; review all of them at the same SHA.
+Check every required result against the exact commit under review. A skipped check is not a pass, and a green fast tier does not certify tests that only run in a separate acceptance tier. The current workflow files and [AGENTS.md](../AGENTS.md) define which checks run for each change and where acceptance happens.
 
-Scan findings are advice, not a gate. Fix a real finding in a small pull request. Mark a wrong one "False positive" or "Won't fix" in the tool with a one-line reason, and record the reasoning here when it is a framework pattern others will meet again.
+Treat static-analysis findings as evidence to review. Fix valid findings in a focused change. For a confirmed false positive or accepted exception, record a short reason in the tool; keep a reusable explanation here only when it helps other contributors.
 
-Actions are pinned to commits. Jobs use read-only repository permissions and ordinary `pull_request`, not privileged execution of PR code. Test fixtures use disposable data and synthetic credentials. Do not give untrusted PR code access to production databases or an unattended personal desktop/self-hosted runner.
-
-On 2026-09-27 the fork's default branch was `main`, while these changes lived on `linux`. GitHub schedules require the workflow on the default branch; manual dispatch availability also depends on workflow registration. See the official [schedule and dispatch rules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows). Do not infer execution from a cron declaration. Push/PR runs provide current evidence; confirm the workflow is registered before relying on dispatch:
-
-```bash
-gh workflow list --repo cozyGarage/BookiE
-gh workflow run build-linux.yml --repo cozyGarage/BookiE --ref linux -f ref=<full-commit-sha>
-gh run list --repo cozyGarage/BookiE --branch linux
-gh run view <run-id> --repo cozyGarage/BookiE --log-failed
-gh run download <run-id> --repo cozyGarage/BookiE --dir /tmp/bookie-run-<run-id>
-```
-
-Check `headSha` and the report's resolved commit. Branch names move. Registering these workflows on the default branch and choosing branch-protection/ruleset requirements remain repository-administration tasks; this change does not modify either. Path-filtered workflows may not run for unrelated changes. Do not require a permanently absent check without reviewing those path filters.
+Use isolated fixtures with synthetic data and credentials. Do not put credentials, customer data, personal file paths, internal host names or machine-specific instructions in source, test output or committed evidence. Keep untrusted change validation isolated from production data and personal sessions.
 
 ## Build reuse and safe parallel work
 
-Keep `target` on disk and reuse the existing lockfile/toolchain. Do not run `cargo clean` to fix a test failure. Feature/profile/RUSTFLAGS changes can trigger rebuilds; DuckDB's native build is expensive. Run narrow tests before wider layers.
+Reuse the existing build cache, lockfile and toolchain. Do not run `cargo clean` to fix a test failure. Feature, profile and compiler-flag changes can trigger rebuilds; run the narrow reproducer before wider layers.
 
-The layer runner holds a nonblocking checkout lock. A second layer runner fails before executing commands. Raw Cargo, legacy scripts and mutation tools do not take that lock: coordinate them explicitly. Never run concurrent Cargo or mutation jobs against a shared target directory. One agent uses one worktree and its `target/` directory; parallel owners need separate worktrees or turns. Docker Compose fixtures also share project names; serialize fixture runs on a shared Docker daemon even across worktrees. Do not clean up another agent's containers or volumes.
+Avoid concurrent builds or fixture runs that share mutable state. Use the repository's layer runner and fixture isolation rules. Do not stop or remove resources owned by another task.
 
 ## Agent task template
 
 Copy this and fill in every field:
 
 ```text
-Repository/worktree: <absolute path>; branch: linux; expected full SHA: <sha>
+Repository and branch: <name>; expected full SHA: <sha>
 Goal: <one invariant or failure>; sprint scope: B3 / B4–B6 acceptance
 Allowed edits: <paths>; other agent-owned paths: <paths>
 Run layers: <catalog names>; narrow reproducer: <exact command>
-Environment available: <Docker/GTK/VM/keyring/network/tool versions>
-Shared target and Docker fixture reservation: <owner/time or isolated setup>
+Available test prerequisites: <relevant tools or fixtures>
+Shared resource reservation: <owner/time or isolated setup>
 Fix authorization: <test only / reproduce then fix>; push authorization: <yes/no>
 Return: initial failure, cause, patch, tests before/after, report paths, SHA,
         skipped/blocked/not-run scopes, unresolved risks and hosted run URLs.
@@ -174,11 +160,9 @@ Secure connection coverage is engine-specific. Track valid auth, rejected auth, 
 
 B3 requires closed correctness findings and their regressions. B4–B6 additionally require the planned installed-package, Wayland, upgrade/rollback and candidate soak evidence. Docker supplies deterministic servers and Xvfb supplies automated GTK interaction. Current installed acceptance uses Arch/Omarchy under native Wayland, on the host or an Arch VM with Hyprland. GNOME/Debian VM qualification is the required next phase after Arch. Xvfb and widget passes cannot certify either native Wayland target. No workflow here automatically publishes a release or waives an acceptance gate.
 
-## SonarCloud triage
+## Static-analysis triage
 
-Confirm a framework-specific finding against the native platform before changing source.
-
-Automatic Analysis (Autoscan) and CI analysis cannot both run for `cozyGarage_BookiE`. Automatic Analysis is off and the `SONAR_TOKEN` repository secret is set, so the `sonar-rust` workflow analyses Rust, Python and the other files on pushes and pull requests to `linux`. Pull requests from forks have no secret and skip the scan.
+Confirm framework-specific findings against the framework's documented behavior before changing source. Record a concise disposition for confirmed false positives and avoid adding source suppressions unless the analyzer cannot express the exception another way.
 
 ### GTK CSS node selectors
 
@@ -194,4 +178,4 @@ Disposition: confirmed framework-specific false positives from the web CSS analy
 
 ## CI tiers
 
-A pull request and a push to `linux` or `main` on GitHub run the cheap tier only: guards, formatting, Clippy, the unit and sandbox tiers, the GTK widget tier, security, Flatpak (path filtered; pull requests build the default profile only, while push and `workflow_dispatch` also build the development profile) and the workflow contracts. Build Linux pins the tested revision in a cheap `pin-revision` job, then runs `preflight` and `fast` in parallel (they share sccache and a `linux-build` rust-cache key; only `preflight` writes the rust-cache, and only on `pull_request` or push to `linux`/`main`, so schedule/dispatch cannot poison the default-branch cache). The `Linux regression gate` still `needs` both with `if: always()` and `check-ci-jobs.py`, so a failed or skipped `preflight` fails the workflow even when `fast` is green. The `fast` job uses the pre-baked GHCR image `ghcr.io/cozygarage/bookie/ci-debian-testing-gtk` (Dockerfile at `ci/debian-testing-gtk/`). Build Linux `ensure-ci-gtk-image` pulls the Dockerfile-hash tag or builds and pushes it so `fast` does not run apt; it exposes only that tag (`df-<hash>`) as a job output and `fast` rebuilds the full image name in the workflow, because publishing the full `ghcr.io/...` path as an output is skipped when it overlaps a secret value such as `DOCKERHUB_USERNAME`. Refresh the base packages with `.github/workflows/ci-debian-testing-gtk.yml` on `workflow_dispatch`, the weekly schedule, or a push that changes that Dockerfile or workflow (after that workflow exists on `linux`). GitHub Actions jobs that pull from Docker Hub (`debian:testing` job containers for schedule/dispatch jobs, testcontainers, Compose) log in with repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` when those secrets are set; forks without secrets skip login and pull anonymously. Forgejo merge jobs call `scripts/docker-hub-login.sh` with Forgejo secrets of the same names (configured on the lab, independent of the GitHub secret store); without those secrets they pull anonymously. Forgejo is the acceptance and merge gate: it runs the merge tier on every branch push (see [AGENTS.md](../AGENTS.md) Validation). That tier is split into parallel jobs on the Debian executors: the installed GTK suite in three shards (`TABLEPRO_GTK_SHARD=i/3`), one job per driver fixture, the consumer, socket and SSH fixtures, driver TLS, the PostgreSQL release fixture, the keyring tier, the two real-server end-to-end runs, the distro floor with the package test per distro (including an upgrade from the released 0.1.5 `.deb`), the DuckDB driver and DuckDB app build, the ClickHouse, MySQL approval and MongoDB installed GTK scenarios and the `supply-chain` layer (cargo-deny and cargo-audit). GitHub Build Linux still defines the former merge jobs (`gtk-safety`, `integration`, `b4-rollback`, `driver-tls`, `postgres-release`, `duckdb`) as `MERGE_ONLY` in `scripts/check-ci-jobs.py`, but they run only on schedule or `workflow_dispatch`, not on pull request or push; `test_ci_workflow.py` fails if the workflow guards and that set disagree. Linux test quality (mutation and coverage) runs on its weekly schedule and on `workflow_dispatch` only; it does not run on push. Forgejo also runs the whole `ci.yml` on the `linux` tip every day at midnight (22:00 UTC in summer) as a daily report; the maintainer's laptop timer `bookie-daily-report` summarises that run. Forgejo's nightly workflow (`.forgejo/workflows/nightly.yml`, an hour later) runs unit-tier coverage, sharded `cargo-mutants`, the shared `values` layer (900 s per crate until TEST-26 shares database servers), the installed GTK suite on a native Ubuntu 24.04 runner (informational until TEST-28 is resolved), a GTK soak of six runs of five retry-free installed attempts at one commit, and an Arch package build in an `archlinux` container with an upgrade from the released package (`scripts/test-arch-package-container.sh`). The installed GTK suite waits 15 seconds for each accessible node by default; the Forgejo workflow sets `TABLEPRO_GTK_WAIT_SECONDS` to 45 because shared executors otherwise time out on load. It also sets `TABLEPRO_GTK_SCENARIO_RETRIES` to 1, so a scenario that fails once (the TEST-31 start-up flake) runs again and the retry is printed as `RETRY:`; a second failure fails the job, and the nightly soak sets no retries. A green GitHub check only means the cheap tier ran; Docker, installed GTK and distro acceptance stay on Forgejo. `scripts/forgejo-gate.sh [branch]` pushes the branch to the `forgejo` remote, waits for its run (60 minutes by default) and lists the jobs that did not pass. A newer push cancels the running tier for a feature branch but never for `linux`. A red merge run is reconciled on `linux` afterwards. On Forgejo, merge runs are never cancelled by a newer push to `linux`; only feature-branch runs cancel in progress. On GitHub, pull request runs of Build Linux, Flatpak, CodeQL, Sonar and Linux CI contracts cancel when a newer push arrives; Linux Security and those analysis/contracts workflows also cancel superseded push runs; Linux test quality keeps in-flight scheduled mutation and coverage runs (`cancel-in-progress: false`).
+CI is split into fast feedback and slower integration or acceptance checks. Read the workflow definitions and [AGENTS.md](../AGENTS.md) for current triggers, required gates and ownership. A pull request is ready only when its required checks pass at the current head SHA. Skipped, cancelled, timed-out or unavailable checks are not passes. Scheduled runs and local results can add evidence, but do not replace a required check on the reviewed commit.
