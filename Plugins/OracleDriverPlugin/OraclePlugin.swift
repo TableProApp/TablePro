@@ -636,7 +636,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let owner = effectiveSchema(schema)
         let view = try await execute(query: OracleSchemaQueries.viewDefinition(schema: owner, view: table))
         if !view.rows.isEmpty {
-            return try viewStatement(from: view, schema: owner, view: table)
+            return try await viewStatement(from: view, schema: owner, view: table)
         }
         return OracleTableDDL.createTable(
             qualifiedTable: "\(quoteIdentifier(owner)).\(quoteIdentifier(table))",
@@ -651,12 +651,12 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // which corrupts OracleNIO's connection state machine.
         let owner = effectiveSchema(schema)
         let result = try await execute(query: OracleSchemaQueries.viewDefinition(schema: owner, view: view))
-        return try viewStatement(from: result, schema: owner, view: view)
+        return try await viewStatement(from: result, schema: owner, view: view)
     }
 
     /// `TEXT_VC` is the view's `SELECT` and nothing else, so it needs the header a dump replays.
     /// Written bare it made the restore run a query and create no view.
-    private func viewStatement(from result: PluginQueryResult, schema: String, view: String) throws -> String {
+    private func viewStatement(from result: PluginQueryResult, schema: String, view: String) async throws -> String {
         guard let row = result.rows.first, let body = row.first?.asText,
               !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw OraclePluginError(core: .queryFailed(
@@ -669,7 +669,12 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 localized: "Oracle returns only the first 4000 bytes of this view's definition, so the full text cannot be read."
             )))
         }
-        return "CREATE OR REPLACE VIEW \(quoteIdentifier(schema)).\(quoteIdentifier(view)) AS\n\(body)"
+        return OracleTableDDL.createView(
+            qualifiedView: "\(quoteIdentifier(schema)).\(quoteIdentifier(view))",
+            columns: try await fetchColumns(table: view, schema: schema).map(\.name),
+            query: body,
+            quote: quoteIdentifier
+        )
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

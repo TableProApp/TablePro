@@ -10,10 +10,17 @@ import TableProSQLGrammar
 /// because the stored batch keeps its leading comments, and a comment can read `CREATE VIEW` too.
 public struct MSSQLModuleHeader: Sendable, Equatable {
     /// Where the whole name sits in the definition, in UTF-16 units, from its first part to its last.
-    public let nameRange: NSRange
+    public var nameRange: NSRange {
+        guard let first = partRanges.first, let last = partRanges.last else { return NSRange(location: 0, length: 0) }
+        return NSRange(location: first.location, length: NSMaxRange(last) - first.location)
+    }
 
     /// The name's parts without their quotes, the schema first when the header names one.
     public let nameParts: [String]
+
+    /// Where each part sits, quotes included, so a rename replaces the parts and keeps what lies
+    /// between them.
+    public let partRanges: [NSRange]
 
     /// The header of `definition`, which must open with `CREATE [OR ALTER] <objectKeyword>` or
     /// `ALTER <objectKeyword>`, or nil when it does not or names its object with more than two parts.
@@ -35,35 +42,49 @@ public struct MSSQLModuleHeader: Sendable, Equatable {
         guard cursor.keyword(objectKeyword) else { return nil }
         cursor.skipTrivia()
 
-        let start = cursor.index
         var parts: [String] = []
-        var end = start
+        var ranges: [NSRange] = []
         while true {
+            let start = cursor.index
             guard let part = cursor.identifier() else { return nil }
             parts.append(part)
-            end = cursor.index
+            ranges.append(NSRange(location: start, length: cursor.index - start))
             cursor.skipTrivia()
             guard cursor.consumePeriod() else { break }
             cursor.skipTrivia()
         }
         guard (1...2).contains(parts.count) else { return nil }
-        return MSSQLModuleHeader(nameRange: NSRange(location: start, length: end - start), nameParts: parts)
+        return MSSQLModuleHeader(nameParts: parts, partRanges: ranges)
     }
 
-    /// `definition` with its header naming `[schema].[name]` when the name it declares is not the object's own.
-    /// A header that already names the object, with or without its schema, is left exactly as it was written.
+    /// `definition` with its header naming the object as it is named now. Only a stale part is
+    /// replaced, so a comment between the parts stays, and a stale unqualified name gains its schema.
+    /// A header that already names the object is left exactly as it was written.
     public static func namingObject(
         in definition: String,
         objectKeyword: String,
         schema: String,
         name: String
     ) -> String {
-        guard let header = parse(definition, objectKeyword: objectKeyword) else { return definition }
-        let declaredSchema = header.nameParts.count == 2 ? header.nameParts.first : nil
-        let isCurrent = header.nameParts.last == name && (declaredSchema == nil || declaredSchema == schema)
-        guard !isCurrent else { return definition }
-        let current = MSSQLSchemaQueries.bracketed(schema: schema, table: name)
-        return (definition as NSString).replacingCharacters(in: header.nameRange, with: current)
+        guard let header = parse(definition, objectKeyword: objectKeyword),
+              let nameRange = header.partRanges.last
+        else { return definition }
+        let text = definition as NSString
+        let bracketedName = "[\(MSSQLSchemaQueries.escapeBracket(name))]"
+        let bracketedSchema = "[\(MSSQLSchemaQueries.escapeBracket(schema))]"
+
+        guard header.nameParts.count == 2, let schemaRange = header.partRanges.first else {
+            guard header.nameParts.last != name else { return definition }
+            return text.replacingCharacters(in: nameRange, with: "\(bracketedSchema).\(bracketedName)")
+        }
+        var renamed = definition
+        if header.nameParts[1] != name {
+            renamed = (renamed as NSString).replacingCharacters(in: nameRange, with: bracketedName)
+        }
+        if header.nameParts[0] != schema {
+            renamed = (renamed as NSString).replacingCharacters(in: schemaRange, with: bracketedSchema)
+        }
+        return renamed
     }
 }
 

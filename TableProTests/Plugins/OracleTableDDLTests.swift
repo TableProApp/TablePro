@@ -101,4 +101,20 @@ struct OracleTableDDLTests {
             );
             """)
     }
+
+    /// Measured on Oracle 23 Free: `v (public_id) AS SELECT internal_id` replayed from `TEXT_VC` alone
+    /// exposed `INTERNAL_ID`.
+    @Test("A view names its columns in the header, since its stored text is the query alone")
+    func viewNamesItsColumns() {
+        let ddl = OracleTableDDL.createView(
+            qualifiedView: "\"HR\".\"V\"", columns: ["PUBLIC_ID", "n\"x"], query: "SELECT internal_id, 1 FROM t", quote: quote
+        )
+        #expect(ddl == "CREATE OR REPLACE VIEW \"HR\".\"V\" (\"PUBLIC_ID\", \"n\"\"x\") AS\nSELECT internal_id, 1 FROM t")
+    }
+
+    @Test("A view whose columns could not be listed keeps the bare header")
+    func viewWithoutColumnsKeepsTheBareHeader() {
+        let ddl = OracleTableDDL.createView(qualifiedView: "\"HR\".\"V\"", columns: [], query: "SELECT 1 FROM dual", quote: quote)
+        #expect(ddl == "CREATE OR REPLACE VIEW \"HR\".\"V\" AS\nSELECT 1 FROM dual")
+    }
 }

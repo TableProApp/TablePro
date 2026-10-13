@@ -11,6 +11,15 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertEqual(MSSQLSchemaQueries.escapeBracket("weird]name"), "weird]]name")
     }
 
+    /// A name `sp_rename` accepted verbatim must not close its brackets early and start a new batch.
+    func testEscapeBracketDoublesABracketBeforeACombiningMark() {
+        XCTAssertEqual(MSSQLSchemaQueries.escapeBracket("v]\u{0301}\nGO"), "v]]\u{0301}\nGO")
+        XCTAssertEqual(
+            MSSQLSchemaQueries.bracketed(schema: "dbo", table: "v]\u{0301}"),
+            "[dbo].[v]]\u{0301}]"
+        )
+    }
+
     func testBracketedComposesIdentifier() {
         XCTAssertEqual(MSSQLSchemaQueries.bracketed(schema: "dbo", table: "Users"), "[dbo].[Users]")
         XCTAssertEqual(MSSQLSchemaQueries.bracketed(schema: "weird]", table: "x"), "[weird]]].[x]")

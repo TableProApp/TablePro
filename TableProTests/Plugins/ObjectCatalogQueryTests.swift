@@ -384,7 +384,7 @@ struct MSSQLObjectQueryTests {
         let renamed = try MSSQLObjectQueries.viewSource(
             row: ["CREATE VIEW dbo.v_old AS SELECT 2 AS y", "0", "V "], schema: "dbo", name: "v_new"
         )
-        #expect(renamed == "CREATE VIEW [dbo].[v_new] AS SELECT 2 AS y")
+        #expect(renamed == "CREATE VIEW dbo.[v_new] AS SELECT 2 AS y")
     }
 
     @Test("An encrypted view, a withheld definition and a missing view are three different errors")

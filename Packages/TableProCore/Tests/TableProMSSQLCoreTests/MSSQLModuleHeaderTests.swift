@@ -56,14 +56,29 @@ final class MSSQLModuleHeaderTests: XCTestCase {
             schema: "dbo",
             name: "v_new"
         )
-        XCTAssertEqual(renamed, "CREATE VIEW [dbo].[v_new] AS SELECT 2 AS y\n")
+        XCTAssertEqual(renamed, "CREATE VIEW dbo.[v_new] AS SELECT 2 AS y\n")
     }
 
     func testRenamesAStaleSchema() {
         let moved = MSSQLModuleHeader.namingObject(
             in: "CREATE VIEW dbo.v AS SELECT 1", objectKeyword: "VIEW", schema: "sales", name: "v"
         )
-        XCTAssertEqual(moved, "CREATE VIEW [sales].[v] AS SELECT 1")
+        XCTAssertEqual(moved, "CREATE VIEW [sales].v AS SELECT 1")
+    }
+
+    func testKeepsWhatLiesBetweenTheParts() {
+        let renamed = MSSQLModuleHeader.namingObject(
+            in: "CREATE VIEW dbo /* keep this */ . old_name AS SELECT 1 AS n",
+            objectKeyword: "VIEW",
+            schema: "dbo",
+            name: "new_name"
+        )
+        XCTAssertEqual(renamed, "CREATE VIEW dbo /* keep this */ . [new_name] AS SELECT 1 AS n")
+
+        let both = MSSQLModuleHeader.namingObject(
+            in: "CREATE VIEW dbo/*a*/./*b*/old AS SELECT 1", objectKeyword: "VIEW", schema: "sales", name: "new"
+        )
+        XCTAssertEqual(both, "CREATE VIEW [sales]/*a*/./*b*/[new] AS SELECT 1")
     }
 
     func testAnUnqualifiedStaleNameGainsItsSchema() {
@@ -91,7 +106,14 @@ final class MSSQLModuleHeaderTests: XCTestCase {
         let renamed = MSSQLModuleHeader.namingObject(
             in: "CREATE VIEW dbo.v AS SELECT 1", objectKeyword: "VIEW", schema: "dbo", name: "a]b"
         )
-        XCTAssertEqual(renamed, "CREATE VIEW [dbo].[a]]b] AS SELECT 1")
+        XCTAssertEqual(renamed, "CREATE VIEW dbo.[a]]b] AS SELECT 1")
+    }
+
+    func testANewNameCannotCloseItsBracketsEarly() {
+        let renamed = MSSQLModuleHeader.namingObject(
+            in: "CREATE VIEW dbo.a AS SELECT 1", objectKeyword: "VIEW", schema: "dbo", name: "v]\u{0301}\nGO\nDROP TABLE t"
+        )
+        XCTAssertEqual(renamed, "CREATE VIEW dbo.[v]]\u{0301}\nGO\nDROP TABLE t] AS SELECT 1")
     }
 
     func testLeavesUnreadableTextAlone() {
