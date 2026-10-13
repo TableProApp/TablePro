@@ -43,41 +43,7 @@ async fn mysql_failed_batch_federated_write_survives_rollback() {
     )
     .await
     .unwrap();
-
-    let batch = vec![
-        ("INSERT INTO federated_batch_effects VALUES (2)".into(), vec![]),
-        ("INSERT INTO missing_federated_batch_effects VALUES (3)".into(), vec![]),
-    ];
-    let error = conn
-        .execute_in_transaction(&batch)
-        .await
-        .expect_err("the absent table must fail after the FEDERATED write");
-    assert!(
-        matches!(error, DriverError::Transaction { statement_index: 1, .. }),
-        "the failed statement index must be preserved, got {error:?}"
-    );
-
-    let observer = sqlx::mysql::MySqlPoolOptions::new()
-        .connect_with(
-            sqlx::mysql::MySqlConnectOptions::new()
-                .host(&opts.host)
-                .port(opts.port)
-                .username(&opts.username)
-                .password(opts.password.expose_secret())
-                .database(&opts.database),
-        )
-        .await
-        .unwrap();
-    let rows = sqlx::query_scalar::<_, i32>("SELECT id FROM federated_remote_effects ORDER BY id")
-        .fetch_all(&observer)
-        .await
-        .unwrap();
-    assert_eq!(
-        rows,
-        [1, 2],
-        "the remote InnoDB write is independent of local batch rollback"
-    );
-    observer.close().await;
+    assert_federated_dml_effects_survive_rollback(conn.as_ref(), &opts).await;
     conn.close().await.unwrap();
     container.stop().await.unwrap();
 }
@@ -99,24 +65,36 @@ async fn mariadb_failed_batch_federated_write_survives_rollback() {
     )
     .await
     .unwrap();
-
-    let batch = vec![
-        ("INSERT INTO federated_batch_effects VALUES (2)".into(), vec![]),
-        ("INSERT INTO missing_federated_batch_effects VALUES (3)".into(), vec![]),
-    ];
-    let error = conn
-        .execute_in_transaction(&batch)
-        .await
-        .expect_err("the absent table must fail after the FEDERATED write");
-    assert!(
-        matches!(error, DriverError::Transaction { statement_index: 1, .. }),
-        "the failed statement index must be preserved, got {error:?}"
-    );
-
-    let rows = remote_federated_rows(&opts).await;
-    assert_eq!(rows, [1, 2], "the remote write is independent of local rollback");
+    assert_federated_dml_effects_survive_rollback(conn.as_ref(), &opts).await;
     conn.close().await.unwrap();
     container.stop().await.unwrap();
+}
+
+async fn assert_federated_dml_effects_survive_rollback(conn: &dyn Connection, opts: &ConnectOptions) {
+    let cases = [
+        ("INSERT INTO federated_batch_effects VALUES (2)", vec![1, 2]),
+        ("UPDATE federated_batch_effects SET id = 20 WHERE id = 2", vec![1, 20]),
+        ("DELETE FROM federated_batch_effects WHERE id = 20", vec![1]),
+    ];
+    for (statement, expected_rows) in cases {
+        let batch = vec![
+            (statement.to_string(), vec![]),
+            ("INSERT INTO missing_federated_batch_effects VALUES (3)".into(), vec![]),
+        ];
+        let error = conn
+            .execute_in_transaction(&batch)
+            .await
+            .expect_err("the absent table must fail after the FEDERATED write");
+        assert!(
+            matches!(error, DriverError::Transaction { statement_index: 1, .. }),
+            "the failed statement index must be preserved, got {error:?}"
+        );
+        assert_eq!(
+            remote_federated_rows(opts).await,
+            expected_rows,
+            "remote effects from {statement} must remain after local rollback"
+        );
+    }
 }
 
 async fn start_mariadb_with_federated() -> (testcontainers::ContainerAsync<GenericImage>, ConnectOptions) {
