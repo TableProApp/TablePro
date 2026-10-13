@@ -270,6 +270,8 @@ pub enum AppMsg {
     OpenConnect,
     /// A connect worked; adopt its session in this window.
     SessionReady(Box<ReadySession>),
+    /// The user kept the tabs the connect would have replaced.
+    SessionDeclined(Box<ReadySession>),
     /// The connect dialog's Connect: connect, then save the entry.
     ConnectSubmitted(Box<super::connect_dialog::ConnectSubmission>),
     /// The same, once the user agreed to close the open workspace.
@@ -1053,6 +1055,7 @@ impl SimpleComponent for App {
         match msg {
             AppMsg::OpenConnect => self.on_open_connect(sender),
             AppMsg::SessionReady(ready) => self.on_session_ready(*ready, sender),
+            AppMsg::SessionDeclined(ready) => self.on_session_declined(*ready),
             AppMsg::ConnectSubmitted(submission) => self.on_connect_submission(*submission, sender),
             AppMsg::ConnectSubmissionConfirmed(submission) => self.connect_submission(*submission, sender),
             AppMsg::ConnectFailed {
