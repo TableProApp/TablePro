@@ -96,6 +96,43 @@ fn selected_text_is_the_only_sql_sent() {
 }
 
 #[gtk4::test]
+fn run_at_cursor_selects_executed_statement() {
+    let harness = editor_with(answering(), "SELECT 'tên';\nSELECT 2 FROM t;\nSELECT 3;");
+    let buffer = harness.editor.buffer();
+    buffer.place_cursor(&buffer.iter_at_offset(20));
+
+    harness.editor.run_at_cursor();
+    assert!(harness.editor.is_running(), "the run did not start");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+
+    assert_eq!(sent(&harness.fake), ["SELECT 2 FROM t"]);
+    let (start, end) = buffer.selection_bounds().expect("the statement is selected");
+    assert_eq!((start.offset(), end.offset()), (14, 29));
+}
+
+#[gtk4::test]
+fn run_at_cursor_during_a_run_leaves_the_buffer_alone() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::until_stopped());
+    let harness = editor_with(runs, "SELECT pg_sleep(60);\nSELECT 2;");
+    let buffer = harness.editor.buffer();
+    harness.editor.run();
+    wait_until(WAIT, || !harness.fake.texts().is_empty()).expect("the first statement to start");
+    let sent_before = sent(&harness.fake);
+    buffer.place_cursor(&buffer.iter_at_offset(23));
+
+    harness.editor.run_at_cursor();
+
+    assert!(
+        buffer.selection_bounds().is_none(),
+        "a statement that did not run was selected"
+    );
+    assert_eq!(sent(&harness.fake), sent_before);
+    harness.editor.stop();
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+}
+
+#[gtk4::test]
 fn a_script_fills_the_results_list_one_line_per_statement() {
     let mut runs = Replies::default();
     runs.when_sql_contains(
@@ -116,6 +153,30 @@ fn a_script_fills_the_results_list_one_line_per_statement() {
     assert_eq!(sent(&harness.fake), ["SELECT 1", "SELECT * FROM boom"]);
     assert_eq!(states.take(), [true, false]);
     assert!(harness.editor.imp().run_button.is_sensitive());
+}
+
+#[gtk4::test]
+fn a_long_script_that_fails_early_builds_one_result_page() {
+    let mut runs = Replies::default();
+    runs.when_sql_contains(
+        "boom",
+        FakeRun::failed(DriverError::server("relation \"boom\" does not exist")),
+    );
+    runs.always(FakeRun::completed(Vec::new()));
+    let script: Vec<String> = std::iter::once("SELECT * FROM boom;".to_owned())
+        .chain((1..2_000).map(|n| format!("SELECT {n};")))
+        .collect();
+    let harness = editor_with(runs, &script.join("\n"));
+
+    run_and_wait(&harness);
+
+    let results = &harness.editor.imp().results;
+    assert_eq!(results.n_entries(), 2_000);
+    assert_eq!(
+        results.imp().stack.pages().n_items(),
+        2,
+        "pages were built for lines nobody opened"
+    );
 }
 
 #[gtk4::test]
