@@ -193,13 +193,16 @@ pub(super) fn build_column_expander_row(
     name_row.set_widget_name(&format!("col-name-{index}"));
     let sender_for_name = sender.clone();
     let suppress_for_name = suppress_emit.clone();
-    let row_for_name = row.clone();
+    // The row owns this entry, so the entry holds the row weakly.
+    let row_for_name = row.downgrade();
     name_row.connect_changed(move |e| {
         if suppress_for_name.get() {
             return;
         }
         let text = e.text().to_string();
-        row_for_name.set_title(&glib::markup_escape_text(&text));
+        if let Some(row) = row_for_name.upgrade() {
+            row.set_title(&glib::markup_escape_text(&text));
+        }
         sender_for_name.input(StructureTabInput::ColumnEdited {
             index,
             field: ColumnField::Name(text),
@@ -376,18 +379,17 @@ pub(super) fn build_column_expander_row(
 /// collide on the action name.
 ///
 /// Returns the button plus the auto-built PopoverMenu so the caller
-/// can register it for popdown on rebuild — otherwise an open menu
-/// would keep its captured target alive and dispatch a click into a
-/// detached AdwEntryRow.
+/// can pop it down before the row goes.
 fn build_type_suggestions_button(driver_id: &str, target: &adw::EntryRow) -> (gtk::MenuButton, gtk::Popover) {
     // Per-button action group: one action `apply` keyed by `String`
     // parameter. Each menu item activates `types.apply::<typename>`.
     let action_group = gio::SimpleActionGroup::new();
     let apply_action = gio::SimpleAction::new("apply", Some(&String::static_variant_type()));
-    let target_for_action = target.clone();
+    // The entry owns this button and its actions.
+    let target_for_action = target.downgrade();
     apply_action.connect_activate(move |_, param| {
-        if let Some(s) = param.and_then(|v| v.get::<String>()) {
-            target_for_action.set_text(&s);
+        if let (Some(s), Some(target)) = (param.and_then(|v| v.get::<String>()), target_for_action.upgrade()) {
+            target.set_text(&s);
         }
     });
     action_group.add_action(&apply_action);
