@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use tablepro_core::statement::{RowGuard, Statement};
 use tablepro_core::{DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
+use tiberius::Command;
 use tokio::time::Instant;
 
 use crate::cancel::{MssqlStop, StopProgress, acknowledged_stop, unconfirmed_stop};
@@ -115,9 +116,27 @@ impl Write<'_> {
     /// a probe rather than with this number.
     async fn execute(&mut self, statement: &Statement) -> Result<u64, Interrupt> {
         let params = encode_params(statement.params())?;
+        if params.is_empty() {
+            return self.execute_unparameterised(statement.sql()).await;
+        }
         let refs = as_sql(&params);
         let executed = self.watch.finish(self.client.execute(statement.sql(), &refs)).await?;
         Ok(executed.total())
+    }
+
+    /// sp_executesql with its statement alone. tiberius's `execute` always
+    /// passes `@params`, even empty, and with it SQL Server refuses a
+    /// statement that has to start a batch, such as CREATE VIEW or CREATE
+    /// TRIGGER.
+    async fn execute_unparameterised(&mut self, sql: &str) -> Result<u64, Interrupt> {
+        let client = &mut *self.client;
+        let running = async move {
+            let mut command = Command::new("sp_executesql");
+            command.bind_param("@stmt", sql);
+            let done = command.exec(client).await?.into_command_result().await?;
+            Ok(done.rows_affected().iter().sum())
+        };
+        self.watch.finish(running).await
     }
 
     /// COMMIT is sent with no regard for a stop: one that races the
