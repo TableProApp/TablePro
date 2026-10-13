@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-13",
+  "source_commit": "ecdc8568d59a3b017a3587b71c04a660a283f443",
+  "source_sha256": {
+    "crates/drivers/mysql/tests/shared/mysql_atomic.rs": "d8aaea84ced51abf75d89141940dba0dd3cd0374ae9ad503cf60087b4466689d",
+    "crates/drivers/mysql/tests/shared/mysql_atomic_parts/federated.rs": "9f6a567fd6a50431266fe31ae279b76e6937772808b3cb793d1104717b5cca9d"
+  },
+  "scope": "B4-11 MySQL-family failed-batch effects",
+  "fixtures": [
+    "MySQL 8.1 testcontainers fixture",
+    "MariaDB 11 testcontainers fixture"
+  ],
+  "command": "CARGO_TARGET_DIR=/home/trung/Projects/bookie-b4-postgres-snapshot-pages/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic:: -- --include-ignored --test-threads=1",
+  "runtime": "Omarchy Linux host with Docker Engine 29.7.2 and rustc 1.98.1; compiled target cache reused from another BookiE worktree",
+  "result": "23 passed; 0 failed; 0 ignored; 78 filtered out; 168.90 seconds; exit code 0",
+  "coverage": [
+    "Failed-batch rollback with MyISAM, MEMORY, CSV, ARCHIVE and BLACKHOLE tables.",
+    "MariaDB Aria and MyISAM MERGE effects that survive transactional rollback.",
+    "A MySQL FEDERATED write that reaches a remote InnoDB table before a later batch statement fails.",
+    "Direct writes, trigger-driven INSERT, UPDATE and DELETE effects, auto-increment allocation, trigger session state, pinned-session LAST_INSERT_ID and advisory-lock state."
+  ],
+  "not_established": [
+    "Other optional or vendor-specific engines and side-effect classes remain open.",
+    "Frozen-candidate, package-installed, GitHub acceptance beyond the applicable check tiers, and Forgejo acceptance remain separate."
+  ],
+  "result_log": "result.txt",
+  "result_log_sha256": "c620bf16852d7d9db98a5458ef7c84d10a3dfcd7efdab2bd984801ab06ad9b96"
+}

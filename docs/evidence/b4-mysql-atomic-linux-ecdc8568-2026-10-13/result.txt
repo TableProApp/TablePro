@@ -1,0 +1,3 @@
+Tested source: ecdc8568d59a3b017a3587b71c04a660a283f443
+Command: CARGO_TARGET_DIR=/home/trung/Projects/bookie-b4-postgres-snapshot-pages/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic:: -- --include-ignored --test-threads=1
+Result: cargo test: 23 passed, 78 filtered out (1 suite, 168.90s)
