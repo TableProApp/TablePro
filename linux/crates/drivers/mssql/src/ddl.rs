@@ -201,6 +201,10 @@ impl DdlDialect for MssqlDialect {
                 }
                 parts.push(if draft.nullable { "NULL" } else { "NOT NULL" }.to_owned());
                 statements.push(alter(parts.join(" ")));
+                // ALTER COLUMN takes a mask only in a statement of its own.
+                if let Some(function) = &attributes.masking_function {
+                    statements.push(alter(format!("ALTER COLUMN {name} ADD {}", masked_with(function))));
+                }
             }
             if changed.default {
                 let column_type = draft.column_type.column_type(self, &draft.name)?;
@@ -251,9 +255,9 @@ impl DdlDialect for MssqlDialect {
 }
 
 impl MssqlDialect {
-    /// `name type [COLLATE c] [SPARSE] [IDENTITY(1,1)] NULL|NOT NULL
-    /// [DEFAULT (..)]`, or a computed column read from the catalogue as
-    /// `name AS (..)`.
+    /// `name type [COLLATE c] [SPARSE] [MASKED WITH (..)] [IDENTITY(1,1)]
+    /// NULL|NOT NULL [DEFAULT (..)]`, or a computed column read from the
+    /// catalogue as `name AS (..)`.
     fn column_definition(&self, column: &DraftColumn) -> Result<String, BuildDdlError> {
         let name = self.quote_identifier(&column.name);
         let attributes = column.original.as_ref().map(|original| &original.attributes);
@@ -279,6 +283,7 @@ impl MssqlDialect {
             if attributes.sparse {
                 parts.push("SPARSE".to_owned());
             }
+            parts.extend(attributes.masking_function.as_deref().map(masked_with));
         }
         let identity = column.auto_increment
             || attributes.is_some_and(|attributes| attributes.identity == IdentityStyle::MssqlIdentity);
@@ -340,6 +345,10 @@ fn collation_permission(attributes: &ColumnAttributes) -> Permission {
         }
         _ => Permission::Allowed,
     }
+}
+
+fn masked_with(function: &str) -> String {
+    format!("MASKED WITH (FUNCTION = {})", national_literal(function))
 }
 
 fn plain_name(name: &str) -> bool {
@@ -562,6 +571,7 @@ mod tests {
         original.columns.push(weight);
         let mut code = column("code", "varchar(10)", None);
         code.attributes.collation = Some(CollationName::new(None, "Latin1_General_BIN"));
+        code.attributes.masking_function = Some("partial(1,\"X's\",0)".to_owned());
         original.columns.push(code);
 
         let plan = alter(&original, |draft| {
@@ -576,13 +586,15 @@ mod tests {
                 "ALTER TABLE [dbo].[orders] ALTER COLUMN [note] nvarchar(20) COLLATE Latin1_General_100_CS_AS NOT NULL",
                 "ALTER TABLE [dbo].[orders] ALTER COLUMN [weight] bigint SPARSE NULL",
                 "ALTER TABLE [dbo].[orders] ALTER COLUMN [code] int NULL",
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [code] ADD MASKED WITH (FUNCTION = N'partial(1,\"X''s\",0)')",
             ]
         );
         assert_eq!(
             sql(dialect().create_table_script(&original))[0],
             "CREATE TABLE [dbo].[orders] (\n  [id] int NOT NULL,\n  [status] int NULL DEFAULT ((0)),\n  [note] \
              nvarchar(20) COLLATE Latin1_General_100_CS_AS NULL,\n  [weight] int SPARSE NULL,\n  [code] varchar(10) \
-             COLLATE Latin1_General_BIN NULL,\n  PRIMARY KEY ([id])\n)"
+             COLLATE Latin1_General_BIN MASKED WITH (FUNCTION = N'partial(1,\"X''s\",0)') NULL,\n  PRIMARY KEY \
+             ([id])\n)"
         );
     }
 

@@ -14,7 +14,7 @@ async fn read(connection: &dyn Connection) -> TableDefinition {
 }
 
 /// ALTER COLUMN gives the column the database's collation and drops
-/// SPARSE unless the statement restates them.
+/// SPARSE and a data mask unless the plan restates them.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn nullability_change_keeps_column_collation() {
@@ -24,7 +24,8 @@ async fn nullability_change_keeps_column_collation() {
         connection.as_ref(),
         &[
             "CREATE TABLE dbo.kept (id int PRIMARY KEY, code varchar(20) COLLATE Latin1_General_BIN NULL, \
-           name nvarchar(40) COLLATE Latin1_General_100_CS_AS NOT NULL, weight int SPARSE NULL)",
+           name nvarchar(40) COLLATE Latin1_General_100_CS_AS NOT NULL, weight int SPARSE NULL, \
+           email varchar(50) MASKED WITH (FUNCTION = 'partial(1,\"X''s\",2)') NULL)",
         ],
     )
     .await;
@@ -35,6 +36,7 @@ async fn nullability_change_keeps_column_collation() {
             "code" => column.nullable = false,
             "name" => column.column_type = DraftType::Typed("nvarchar(80)".to_owned()),
             "weight" => column.column_type = DraftType::Typed("bigint".to_owned()),
+            "email" => column.column_type = DraftType::Typed("varchar(80)".to_owned()),
             _ => {}
         }
     }
@@ -66,4 +68,12 @@ async fn nullability_change_keeps_column_collation() {
     assert_eq!(column("name").info.column_type.name, "nvarchar(80)");
     assert!(column("weight").attributes.sparse);
     assert_eq!(column("weight").info.column_type.name, "bigint");
+    let mask = |definition: &TableDefinition| {
+        definition
+            .column("email")
+            .and_then(|column| column.attributes.masking_function.clone())
+    };
+    assert!(mask(&before).is_some_and(|function| function.starts_with("partial(")));
+    assert_eq!(mask(&after), mask(&before));
+    assert_eq!(column("email").info.column_type.name, "varchar(80)");
 }

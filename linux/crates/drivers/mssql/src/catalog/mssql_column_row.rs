@@ -9,8 +9,9 @@ use super::sql_server_type::{CatalogFacts, SqlServerType};
 /// An alias type is classified by the system type it is stored as,
 /// which `TYPE_NAME(system_type_id)` names; a CLR type keeps its own
 /// name. A collation is reported only where it differs from the
-/// database's, which is the default a column takes, and the last column
-/// says whether its code page differs too.
+/// database's, which is the default a column takes, and the column after
+/// it says whether its code page differs too. The last is the function
+/// of the column's data mask, if it has one.
 pub(crate) const COLUMNS_SQL: &str = "SELECT \
         c.name, \
         t.name, \
@@ -38,11 +39,14 @@ pub(crate) const COLUMNS_SQL: &str = "SELECT \
         CAST(ISNULL(cc.is_persisted, 0) AS int), \
         CAST(CASE WHEN COLLATIONPROPERTY(c.collation_name, 'CodePage') \
                   <> COLLATIONPROPERTY(CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128)), 'CodePage') \
-             THEN 1 ELSE 0 END AS int) \
+             THEN 1 ELSE 0 END AS int), \
+        mc.masking_function \
     FROM sys.columns c \
     JOIN sys.types t ON t.user_type_id = c.user_type_id \
     LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id \
     LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id \
+    LEFT JOIN sys.masked_columns mc ON mc.object_id = c.object_id AND mc.column_id = c.column_id \
+        AND mc.is_masked = 1 \
     LEFT JOIN ( \
         SELECT ic.object_id, ic.column_id \
         FROM sys.index_columns ic \
@@ -71,6 +75,7 @@ pub(crate) struct MssqlColumnRow {
     pub(crate) sparse: bool,
     pub(crate) computed_definition: Option<String>,
     pub(crate) persisted: bool,
+    pub(crate) masking_function: Option<String>,
 }
 
 impl MssqlColumnRow {
@@ -105,6 +110,7 @@ impl MssqlColumnRow {
             sparse: cells.flag(18),
             computed_definition: cells.text(19),
             persisted: cells.flag(20),
+            masking_function: cells.text(22),
         })
     }
 }
