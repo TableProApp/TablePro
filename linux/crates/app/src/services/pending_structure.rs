@@ -35,18 +35,22 @@ impl PendingStructure {
         }
     }
 
+    /// A default the parser refused is still the user's edit: the draft
+    /// cannot hold it, so without counting it here a close would drop it
+    /// without asking.
     pub fn has_changes(&self) -> bool {
-        match self.original {
+        let drafted = match self.original {
             Some(_) => !self.changes.is_empty(),
             None => !self.draft.columns.is_empty(),
-        }
+        };
+        drafted || !self.unparsed_defaults.is_empty()
     }
 
     /// The edits the action bar counts. A new table is one.
     pub fn change_count(&self) -> usize {
         match self.original {
-            Some(_) => self.changes.change_count(),
-            None => usize::from(!self.draft.columns.is_empty()),
+            Some(_) => self.changes.change_count() + self.unparsed_defaults.len(),
+            None => usize::from(!self.draft.columns.is_empty() || !self.unparsed_defaults.is_empty()),
         }
     }
 
@@ -204,6 +208,16 @@ mod tests {
         assert_eq!(edited(|draft| draft.columns[1].nullable = false).check(), Ok(()));
         assert_eq!(unnamed.operation(), DdlOperation::AlterTable);
         assert_eq!(created().operation(), DdlOperation::CreateTable);
+    }
+
+    #[test]
+    fn a_default_the_parser_refused_is_a_pending_change() {
+        let mut typed_default = edited(|_| {});
+        typed_default.unparsed_defaults = vec!["total".to_owned()];
+
+        assert!(!edited(|_| {}).has_changes());
+        assert!(typed_default.has_changes());
+        assert_eq!(typed_default.change_count(), 1);
     }
 
     #[test]
