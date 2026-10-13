@@ -12,6 +12,10 @@ pub struct DdlCapabilities {
     pub alter_column_default: bool,
     pub alter_primary_key: bool,
     pub alter_auto_increment: bool,
+    /// Whether a column numbers itself outside the primary key, as a
+    /// PostgreSQL identity or a SQL Server IDENTITY does. Where it cannot,
+    /// numbering goes off as the column leaves the key.
+    pub auto_increment_outside_primary_key: bool,
     pub create_index: bool,
     pub drop_index: bool,
     pub expression_index_keys: bool,

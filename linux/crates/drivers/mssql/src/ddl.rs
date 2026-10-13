@@ -23,6 +23,7 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     alter_primary_key: true,
     // IDENTITY cannot be added to or taken from an existing column.
     alter_auto_increment: false,
+    auto_increment_outside_primary_key: true,
     create_index: true,
     drop_index: true,
     // An index key is a column; an expression needs a computed one.
@@ -65,8 +66,8 @@ const TYPE_SUGGESTIONS: &[&str] = &[
 
 /// SQL Server changes a table one statement at a time, inside the
 /// write's transaction. A default is a constraint with a name of its
-/// own, so a column whose default changes or goes away has that
-/// constraint dropped by name first.
+/// own, so a column whose type or default changes has that constraint
+/// dropped by name first and added back after.
 impl DdlDialect for MssqlDialect {
     fn capabilities(&self) -> &DdlCapabilities {
         &CAPABILITIES
@@ -167,15 +168,40 @@ impl DdlDialect for MssqlDialect {
                 self.quote_identifier(&index.name)
             ));
         }
-        let old_key = changes.primary_key.as_ref().and_then(|change| change.from.as_ref());
-        if let Some(name) = old_key.and_then(|key| key.name.as_ref()) {
+        let old_key = changes.dropped_primary_key_name()?;
+        if let Some(name) = old_key {
             statements.push(alter(format!("DROP CONSTRAINT {}", self.quote_identifier(name))));
         }
         for column in &changes.dropped_columns {
             statements.extend(self.drop_default(&table, column));
             statements.push(alter(format!("DROP COLUMN {}", self.quote_identifier(column.name()))));
         }
-        for rename in &changes.renamed_columns {
+        // A column bound to a default cannot change type, so its default
+        // goes first and comes back under the same name once the column
+        // and the columns added beside it are in place.
+        let mut defaults = Vec::new();
+        for alteration in &changes.altered_columns {
+            let changed = alteration.changed;
+            let bound = alteration.original.attributes.default_constraint_name.as_deref();
+            let dropped = bound.filter(|_| changed.column_type || changed.default);
+            statements.extend(dropped.and_then(|_| self.drop_default(&table, &alteration.original)));
+            if !(changed.default || dropped.is_some()) {
+                continue;
+            }
+            let draft = &alteration.draft;
+            let column_type = draft.column_type.column_type(self, &draft.name)?;
+            if let Some(default) = default_sql(self, &draft.name, &draft.default, &column_type)? {
+                let constraint = bound
+                    .map(|name| format!("CONSTRAINT {} ", self.quote_identifier(name)))
+                    .unwrap_or_default();
+                defaults.push(alter(format!(
+                    "ADD {constraint}DEFAULT {} FOR {}",
+                    default_clause(&draft.default, &default),
+                    self.quote_identifier(&draft.name)
+                )));
+            }
+        }
+        for rename in changes.ordered_renames(original) {
             let object = format!("{}.{}", qualified, self.quote_identifier(&rename.from));
             statements.push(format!(
                 "EXEC sp_rename {}, {}, N'COLUMN'",
@@ -187,11 +213,6 @@ impl DdlDialect for MssqlDialect {
             let draft = &alteration.draft;
             let name = self.quote_identifier(&draft.name);
             let changed = alteration.changed;
-            // A column bound to a default cannot change type, so the
-            // drop comes first.
-            if changed.default {
-                statements.extend(self.drop_default(&table, &alteration.original));
-            }
             // ALTER COLUMN carries nothing forward: an omitted collation is
             // the database's, an omitted SPARSE is gone, and an omitted
             // NULL or NOT NULL is NULL. So every one is restated.
@@ -221,15 +242,6 @@ impl DdlDialect for MssqlDialect {
                     statements.push(alter(format!("ALTER COLUMN {name} ADD {}", masked_with(function))));
                 }
             }
-            if changed.default {
-                let column_type = draft.column_type.column_type(self, &draft.name)?;
-                if let Some(default) = default_sql(self, &draft.name, &draft.default, &column_type)? {
-                    statements.push(alter(format!(
-                        "ADD DEFAULT {} FOR {name}",
-                        default_clause(&draft.default, &default)
-                    )));
-                }
-            }
             if changed.comment {
                 let had_comment = alteration
                     .original
@@ -246,9 +258,9 @@ impl DdlDialect for MssqlDialect {
                 statements.push(column_comment(&table, &column.name, false, Some(comment)));
             }
         }
+        statements.extend(defaults);
         if let Some(change) = changes.primary_key.as_ref().filter(|change| !change.to.is_empty()) {
             let constraint = old_key
-                .and_then(|key| key.name.as_ref())
                 .map(|name| format!("CONSTRAINT {} ", self.quote_identifier(name)))
                 .unwrap_or_default();
             statements.push(alter(format!(
@@ -265,7 +277,7 @@ impl DdlDialect for MssqlDialect {
         for key in &changes.added_foreign_keys {
             statements.push(alter(format!("ADD {}", foreign_key_sql(self, &table, key))));
         }
-        Ok(DdlPlan::from_sql(statements))
+        DdlPlan::for_changes(changes, statements)
     }
 }
 
@@ -612,7 +624,7 @@ mod tests {
             [
                 "ALTER TABLE [dbo].[orders] DROP CONSTRAINT [DF]]x]",
                 "ALTER TABLE [dbo].[orders] ALTER COLUMN [status] bigint NOT NULL",
-                "ALTER TABLE [dbo].[orders] ADD DEFAULT (1) FOR [status]",
+                "ALTER TABLE [dbo].[orders] ADD CONSTRAINT [DF]]x] DEFAULT (1) FOR [status]",
             ]
         );
     }
@@ -761,6 +773,125 @@ mod tests {
     }
 
     #[test]
+    fn type_change_with_default_orders_drop_alter_readd() {
+        let plan = alter(&orders(), |draft| {
+            draft.columns[1].column_type = DraftType::Typed("bigint".to_owned());
+            draft.columns[1].primary_key = true;
+            draft.columns[1].nullable = false;
+            draft.columns.push(typed("added", "int"));
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE [dbo].[orders] DROP CONSTRAINT [PK_orders]",
+                "ALTER TABLE [dbo].[orders] DROP CONSTRAINT [DF]]x]",
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [status] bigint NOT NULL",
+                "ALTER TABLE [dbo].[orders] ADD [added] int NULL",
+                "ALTER TABLE [dbo].[orders] ADD CONSTRAINT [DF]]x] DEFAULT ((0)) FOR [status]",
+                "ALTER TABLE [dbo].[orders] ADD CONSTRAINT [PK_orders] PRIMARY KEY ([id], [status])",
+            ]
+        );
+    }
+
+    #[test]
+    fn default_only_change_drops_then_adds() {
+        let plan = alter(&orders(), |draft| {
+            draft.columns[1].default = ColumnDefault::Literal(Value::Int(5));
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE [dbo].[orders] DROP CONSTRAINT [DF]]x]",
+                "ALTER TABLE [dbo].[orders] ADD CONSTRAINT [DF]]x] DEFAULT (5) FOR [status]",
+            ]
+        );
+    }
+
+    #[test]
+    fn clearing_default_only_drops() {
+        let plan = alter(&orders(), |draft| draft.columns[1].default = ColumnDefault::None);
+
+        assert_eq!(sql(plan), ["ALTER TABLE [dbo].[orders] DROP CONSTRAINT [DF]]x]"]);
+    }
+
+    #[test]
+    fn new_default_without_existing_constraint_adds_unnamed() {
+        let typed_only = alter(&orders(), |draft| {
+            draft.columns[2].column_type = DraftType::Typed("nvarchar(40)".to_owned());
+        });
+        let defaulted = alter(&orders(), |draft| {
+            draft.columns[2].default = ColumnDefault::Expression(SqlExpression::from_catalog_text("N'x'"));
+        });
+
+        assert_eq!(
+            sql(typed_only),
+            ["ALTER TABLE [dbo].[orders] ALTER COLUMN [note] nvarchar(40) NULL"]
+        );
+        assert_eq!(
+            sql(defaulted),
+            ["ALTER TABLE [dbo].[orders] ADD DEFAULT (N'x') FOR [note]"]
+        );
+    }
+
+    #[test]
+    fn constraint_name_with_bracket_is_escaped() {
+        let mut table = orders();
+        table.columns[1].attributes.default_constraint_name = Some("DF [a]] b".to_owned());
+
+        let plan = alter(&table, |draft| {
+            draft.columns[1].column_type = DraftType::Typed("smallint".to_owned());
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE [dbo].[orders] DROP CONSTRAINT [DF [a]]]] b]",
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [status] smallint NULL",
+                "ALTER TABLE [dbo].[orders] ADD CONSTRAINT [DF [a]]]] b] DEFAULT ((0)) FOR [status]",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_renamed_column_takes_its_default_back_under_the_new_name() {
+        let plan = alter(&orders(), |draft| {
+            draft.columns[1].name = "state".to_owned();
+            draft.columns[1].column_type = DraftType::Typed("bigint".to_owned());
+            draft.columns[2].name = "status".to_owned();
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE [dbo].[orders] DROP CONSTRAINT [DF]]x]",
+                "EXEC sp_rename N'[dbo].[orders].[status]', N'state', N'COLUMN'",
+                "EXEC sp_rename N'[dbo].[orders].[note]', N'status', N'COLUMN'",
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [state] bigint NULL",
+                "ALTER TABLE [dbo].[orders] ADD CONSTRAINT [DF]]x] DEFAULT ((0)) FOR [state]",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_swap_steps_aside_through_a_temporary_name() {
+        let plan = alter(&orders(), |draft| {
+            draft.columns[1].name = "note".to_owned();
+            draft.columns[2].name = "status".to_owned();
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "EXEC sp_rename N'[dbo].[orders].[status]', N'__tablepro_rename_1', N'COLUMN'",
+                "EXEC sp_rename N'[dbo].[orders].[note]', N'status', N'COLUMN'",
+                "EXEC sp_rename N'[dbo].[orders].[__tablepro_rename_1]', N'note', N'COLUMN'",
+            ]
+        );
+    }
+
+    #[test]
     fn a_dropped_column_loses_its_default_constraint_first() {
         let plan = alter(&orders(), |draft| {
             draft.columns.retain(|column| column.name != "status")
@@ -776,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn sp_rename_quotes_parts_with_national_literals() {
+    fn sp_rename_quotes_parts() {
         let plan = alter(&orders(), |draft| {
             draft.table.name = "đơn hàng".to_owned();
             draft.columns[2].name = "o'brien".to_owned();
@@ -816,7 +947,7 @@ mod tests {
     }
 
     #[test]
-    fn a_primary_key_change_drops_and_adds_the_named_constraint() {
+    fn pk_change_order_and_name_reuse() {
         let plan = alter(&orders(), |draft| {
             draft.columns[2].primary_key = true;
             draft.columns[2].nullable = false;

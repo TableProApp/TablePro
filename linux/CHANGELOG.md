@@ -18,12 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stop Saving in table and structure tabs, and in the dialog that waits for a save before closing.
 - Save Changes dialog on close that lists every tab with unsaved changes and saves only the ones left checked.
 - Logout waits while there are unsaved changes, and logout and suspend wait while a save is running.
+- Auto-increment on and off for PostgreSQL columns in the Structure tab, numbering on from the largest existing value.
 
 ### Changed
 
 - Structure tab offers only the changes the database can make, and says why a control is off.
 - New rows in the table grid take a value for a primary key that is not auto-increment.
 - Show CREATE TABLE gives the server's own statement on MySQL, ClickHouse and SQLite.
+- Structure tab sets a column NOT NULL when it joins the primary key, and gives its nullability back when it leaves.
+- Auto increment in the Structure tab no longer needs the primary key on PostgreSQL and SQL Server.
 
 ### Fixed
 
@@ -86,6 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edits made in a table tab while its save ran were dropped when the save finished.
 - Structure tab edits made while its save ran were lost when the table was read again.
 - Ctrl+S did nothing in a Structure tab.
+- Structure tab could not save two columns swapping names, or a column taking the name of one being removed.
+- Changing the type of a SQL Server column with a default failed.
 
 ### Security
 

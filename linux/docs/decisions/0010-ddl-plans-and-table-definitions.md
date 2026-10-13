@@ -13,7 +13,7 @@ Each engine plans structure changes through its own `DdlDialect`, reached from `
 
 ## Rationale
 
-**One change, the engine's order.** The tab edits a `TableDraft`. `diff_table` turns it into `TableChanges`: the table rename, the columns dropped, renamed, altered and added, the primary-key move, and the indexes and foreign keys dropped and added. `plan_alter_table` writes them in the order the engine needs: one combined ALTER TABLE on PostgreSQL, the foreign keys around one ALTER on MySQL, separate statements with the named default dropped first on SQL Server, native ALTER TABLE only on SQLite, one ALTER per change on ClickHouse. A `DdlPlan` carries the statements and the `ForeignKeyMode`, and becomes the `WriteBatch`.
+**One change, the engine's order.** The tab edits a `TableDraft`. `diff_table` turns it into `TableChanges`: the table rename, the columns dropped, renamed, altered and added, the primary-key move, and the indexes and foreign keys dropped and added. `plan_alter_table` writes them in the order the engine needs: one combined ALTER TABLE on PostgreSQL, the foreign keys around one ALTER on MySQL, separate statements on SQL Server, with a named default dropped before its column changes and added back after, native ALTER TABLE only on SQLite, one ALTER per change on ClickHouse. A `DdlPlan` carries the statements and the `ForeignKeyMode`, and becomes the `WriteBatch`.
 
 **Refused before Save.** `DdlCapabilities` and `ColumnCapabilities` answer which changes the engine takes, each refusal with a `RefusalReason` the tab shows beside the control it turns off. A primary key another table's foreign key points at cannot move on any engine, and a column such a key references cannot be dropped. Every plan runs the same checks first, so a caller that skips the UI gets `BuildDdlError::Refused` or `Unsupported` rather than SQL the server rejects.
 
@@ -33,7 +33,11 @@ Each engine plans structure changes through its own `DdlDialect`, reached from `
 - MariaDB names a column's CHECK constraint after the column it was written on and keeps that name through a rename, so the check is placed by the column line of SHOW CREATE TABLE it ends. A check no line ends with refuses the restatement of every column without one.
 - The server reads a restated expression against the names the same ALTER gives, so a MySQL restatement whose CHECK, generated expression or default names a column renamed in the same change is refused, and the rename is saved on its own first.
 - On SQL Server, a type change whose new type cannot take the column's SPARSE or data mask is refused, as is any nullability or default change on a SPARSE column.
-- Primary-key identity on PostgreSQL and SQLite table rebuilds are plans of their own, added to the same dialects later, and their capabilities are off until then.
+- SQL Server refuses to change the type of a column a default is bound to, so a type or default change drops the default constraint by the name the definition read and adds it back under that name once the column and any added columns are in place. A constraint renamed since the read fails the drop, and the transaction takes the whole save back.
+- Engines that rename one column per statement (PostgreSQL, SQL Server, SQLite, ClickHouse) run the renames in an order where each new name is free, and a swap or longer cycle steps one column aside to `__tablepro_rename_<n>` first. MySQL reads every clause of its one ALTER against the table as it was, so its renames need no order. PostgreSQL runs the drops before the renames when a save has both, so a column can take the name of one the same save drops.
+- Turning numbering on for a PostgreSQL integer column adds a `BY DEFAULT` identity and moves its sequence past the largest key in the same transaction. Turning it off drops the identity, or the default of a serial column, whose sequence stays owned by the column. The identity's sequence is therefore found by its internal dependency on the column, not by `pg_get_serial_sequence`, which can return that serial sequence instead.
+- A plan for a non-empty change writes at least one statement or refuses it, so a save never reports success for a table it left as it was.
+- SQLite table rebuilds are a plan of their own, added to the same dialect later, and their capabilities are off until then.
 
 ## Alternatives considered
 

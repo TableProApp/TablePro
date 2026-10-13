@@ -2,13 +2,13 @@
 
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::{
-    BuildDdlError, CollationName, ColumnVisibility, DraftColumn, GeneratedStorage, Permission, RefusalReason,
-    TableDefinition, TableDraft, diff_table,
+    BuildDdlError, CollationName, ColumnVisibility, DraftColumn, DraftType, GeneratedStorage, Permission,
+    RefusalReason, TableDefinition, TableDraft, diff_table,
 };
 use tablepro_core::{Connection, WriteKind};
 use tablepro_test_fixtures::{MysqlFlavour, MysqlOptions};
 
-use crate::support::{CALL, apply, connect, scalar, setup, start, start_with, table, text, within};
+use crate::support::{CALL, FLAVOURS, apply, connect, scalar, setup, start, start_with, table, text, within};
 
 async fn read(connection: &dyn Connection) -> TableDefinition {
     connection
@@ -328,5 +328,152 @@ async fn mariadb_check_follows_its_column_through_a_rename() {
         ddl.column_capabilities(&added, web).alter_nullability,
         Permission::Refused(RefusalReason::UnmodeledAttribute("REF_SYSTEM_ID".to_owned()))
     );
+    connection.close().await.expect("a close");
+}
+
+fn type_of(definition: &TableDefinition, column: &str) -> String {
+    definition
+        .column(column)
+        .map(|column| column.info.column_type.name.clone())
+        .unwrap_or_default()
+}
+
+fn names(definition: &TableDefinition) -> Vec<&str> {
+    definition.columns.iter().map(|column| column.name()).collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn rename_and_retype_column_applies() {
+    let fixture = start(MysqlFlavour::Mysql).await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id int PRIMARY KEY, code varchar(10) NULL COMMENT 'sku', qty smallint NULL)",
+            "INSERT INTO kept VALUES (1, 'a', 5)",
+        ],
+    )
+    .await;
+
+    let (_, after) = change(connection.as_ref(), |column| match column.name.as_str() {
+        "code" => {
+            column.name = "label".to_owned();
+            column.column_type = DraftType::Typed("varchar(40)".to_owned());
+        }
+        "qty" => column.name = "amount".to_owned(),
+        _ => {}
+    })
+    .await;
+
+    assert_eq!(names(&after), ["id", "label", "amount"]);
+    assert_eq!(type_of(&after, "label"), "varchar(40)");
+    assert_eq!(type_of(&after, "amount"), "smallint");
+    assert_eq!(
+        after
+            .column("label")
+            .and_then(|column| column.info.comment.clone())
+            .as_deref(),
+        Some("sku")
+    );
+    assert_eq!(
+        text(&scalar(connection.as_ref(), "SELECT concat(label, '|', amount) FROM kept").await),
+        "a|5"
+    );
+    connection.close().await.expect("a close");
+}
+
+/// Every clause of one ALTER names columns as the table had them, so a
+/// swap and a cycle of renames need no temporary name, on either server.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn swap_column_names_applies() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE kept (id int PRIMARY KEY, a varchar(10) NULL, b int NULL, c date NULL, KEY by_a (a))",
+                "INSERT INTO kept VALUES (1, 'x', 2, '2026-10-14')",
+            ],
+        )
+        .await;
+
+        let (_, after) = change(connection.as_ref(), |column| {
+            let renamed = match column.name.as_str() {
+                "a" => "b",
+                "b" => "c",
+                "c" => "a",
+                _ => return,
+            };
+            column.name = renamed.to_owned();
+            if renamed == "c" {
+                column.nullable = false;
+            }
+        })
+        .await;
+
+        assert_eq!(names(&after), ["id", "b", "c", "a"], "{flavour:?}");
+        assert!(type_of(&after, "b").starts_with("varchar"), "{flavour:?}");
+        assert!(type_of(&after, "c").starts_with("int"), "{flavour:?}");
+        assert_eq!(type_of(&after, "a"), "date", "{flavour:?}");
+        assert!(!after.column("c").expect("c").info.nullable, "{flavour:?}");
+        assert_eq!(
+            text(&scalar(connection.as_ref(), "SELECT concat(b, '|', c, '|', a) FROM kept").await),
+            "x|2|2026-10-14",
+            "{flavour:?}"
+        );
+        let indexed = scalar(
+            connection.as_ref(),
+            "SELECT column_name FROM information_schema.statistics WHERE table_schema = DATABASE() AND \
+             table_name = 'kept' AND index_name = 'by_a'",
+        )
+        .await;
+        assert_eq!(text(&indexed), "b", "{flavour:?}");
+        connection.close().await.expect("a close");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn change_primary_key_to_composite_applies() {
+    let fixture = start(MysqlFlavour::Mysql).await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (order_id int PRIMARY KEY, line int NULL, sku varchar(10) NULL)",
+            "INSERT INTO kept VALUES (1, 1, 'a'), (2, 1, 'b')",
+        ],
+    )
+    .await;
+
+    let (_, after) = change(connection.as_ref(), |column| {
+        if column.name == "line" {
+            column.primary_key = true;
+            column.nullable = false;
+        }
+    })
+    .await;
+
+    assert_eq!(
+        after.primary_key.as_ref().map(|key| key.columns.clone()),
+        Some(vec!["order_id".to_owned(), "line".to_owned()])
+    );
+    apply(
+        connection.as_ref(),
+        WriteKind::RowChanges,
+        &["INSERT INTO kept VALUES (1, 2, 'c')"],
+    )
+    .await
+    .expect("a second line of order 1");
+    let repeated = apply(
+        connection.as_ref(),
+        WriteKind::RowChanges,
+        &["INSERT INTO kept VALUES (1, 1, 'd')"],
+    )
+    .await;
+    assert!(repeated.is_err(), "the key does not hold the line");
     connection.close().await.expect("a close");
 }

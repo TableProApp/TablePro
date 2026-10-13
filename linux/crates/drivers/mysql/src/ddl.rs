@@ -26,6 +26,8 @@ const fn capabilities(expression_index_keys: bool) -> DdlCapabilities {
         alter_column_default: true,
         alter_primary_key: true,
         alter_auto_increment: true,
+        // An AUTO_INCREMENT column has to be a key.
+        auto_increment_outside_primary_key: false,
         create_index: true,
         drop_index: true,
         expression_index_keys,
@@ -71,10 +73,13 @@ const TYPE_SUGGESTIONS: &[&str] = &[
 
 /// MySQL restates a column whole, so every changed column is one
 /// MODIFY or CHANGE carrying its full definition, and the column changes
-/// share one ALTER TABLE. A foreign key is dropped in a statement before
-/// it and added in one after it: MySQL refuses to drop and add a key of
-/// the same name in one statement. MySQL commits each DDL statement on
-/// its own, so a failure leaves the statements before it applied.
+/// share one ALTER TABLE. Each clause of it names columns as the table
+/// had them, so renames that swap names, or take the name of a column
+/// the same statement drops, need no order. A foreign key is dropped in
+/// a statement before it and added in one after it: MySQL refuses to
+/// drop and add a key of the same name in one statement. MySQL commits
+/// each DDL statement on its own, so a failure leaves the statements
+/// before it applied.
 impl DdlDialect for MySqlDialect {
     fn capabilities(&self) -> &DdlCapabilities {
         match self.has_functional_key_parts() {
@@ -248,7 +253,7 @@ impl DdlDialect for MySqlDialect {
                 .collect();
             statements.push(format!("ALTER TABLE {qualified} {}", adds.join(", ")));
         }
-        Ok(DdlPlan::from_sql(statements))
+        DdlPlan::for_changes(changes, statements)
     }
 
     /// The server's own SHOW CREATE TABLE, which carries the engine,
@@ -530,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn a_primary_key_change_is_one_statement() {
+    fn pk_change_single_statement() {
         let plan = alter(&users(), |draft| {
             draft.columns[1].primary_key = true;
             draft.columns[1].nullable = false;
@@ -542,6 +547,38 @@ mod tests {
                 "ALTER TABLE `app`.`users` DROP PRIMARY KEY, MODIFY COLUMN `email` varchar(255) NOT NULL, ADD PRIMARY \
               KEY (`id`, `email`)"
             ]
+        );
+    }
+
+    #[test]
+    fn a_swap_is_one_statement_against_the_original_names() {
+        let plan = alter(&users(), |draft| {
+            draft.columns[1].name = "account_id".to_owned();
+            draft.columns[2].name = "email".to_owned();
+            draft.columns[2].nullable = false;
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE `app`.`users` RENAME COLUMN `email` TO `account_id`, CHANGE COLUMN `account_id` `email` \
+                 int NOT NULL"
+            ]
+        );
+    }
+
+    #[test]
+    fn auto_increment_goes_through_the_definition() {
+        let mut table = users();
+        table.columns[0].info.is_auto_increment = true;
+
+        let off = alter(&table, |draft| draft.columns[0].auto_increment = false);
+        let on = alter(&users(), |draft| draft.columns[0].auto_increment = true);
+
+        assert_eq!(sql(off), ["ALTER TABLE `app`.`users` MODIFY COLUMN `id` int NOT NULL"]);
+        assert_eq!(
+            sql(on),
+            ["ALTER TABLE `app`.`users` MODIFY COLUMN `id` int NOT NULL AUTO_INCREMENT"]
         );
     }
 

@@ -5,7 +5,8 @@ use std::sync::Arc;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::{
-    ColumnAttributes, ColumnDefinition, ColumnKeyRoles, InboundForeignKey, PrimaryKeyConstraint, TableDefinition,
+    ColumnAttributes, ColumnDefinition, ColumnKeyRoles, DraftColumn, IdentityStyle, InboundForeignKey,
+    PrimaryKeyConstraint, TableDefinition, UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -647,4 +648,179 @@ fn an_edit_waits_for_the_read_after_a_committed_save() {
     .expect("the read after the save");
     harness.tab().send(StructureTabInput::AddColumn);
     assert_eq!(harness.column_names(), ["id", "column_1"]);
+}
+
+/// `id` keyed by `users_pkey`, and a nullable `score`.
+fn keyed_users() -> TableDefinition {
+    TableDefinition {
+        columns: vec![integer_column("id", true), integer_column("score", false)],
+        primary_key: Some(PrimaryKeyConstraint {
+            name: Some("users_pkey".to_owned()),
+            columns: vec!["id".to_owned()],
+        }),
+        ..definition("id")
+    }
+}
+
+fn preview(tab: &StructureTab) -> String {
+    let buffer = sql_buffer(tab);
+    buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
+}
+
+#[gtk4::test]
+fn renaming_existing_column_enables_save_and_previews_rename() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(keyed_users()));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    drain_main_context();
+    let imp = harness.tab().imp();
+    assert!(!imp.save_button.is_sensitive());
+
+    let name = named_widget(harness.tab(), "col-name-1")
+        .downcast::<adw::EntryRow>()
+        .expect("the Name entry");
+    assert!(name.is_sensitive(), "an existing column's name could not be edited");
+    name.set_text("points");
+    drain_main_context();
+
+    assert_eq!(harness.column_names(), ["id", "points"]);
+    assert!(imp.save_button.is_sensitive(), "a rename left Save off");
+    assert_eq!(imp.pending_label.label(), "1 pending change");
+    assert_eq!(
+        preview(harness.tab()),
+        "ALTER TABLE \"users\" RENAME COLUMN \"score\" TO \"points\";"
+    );
+}
+
+fn switch_row(tab: &StructureTab, name: &str) -> adw::SwitchRow {
+    named_widget(tab, name)
+        .downcast::<adw::SwitchRow>()
+        .expect("a switch row")
+}
+
+impl Harness {
+    fn draft_column(&self, index: usize) -> DraftColumn {
+        self.tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .map(|model| model.draft.borrow().columns[index].clone())
+            .expect("the tab has a model")
+    }
+}
+
+fn open_edit(dialect: Arc<dyn SqlDialect>, table: TableDefinition) -> Harness {
+    let mut script = ConnectionScript {
+        dialect,
+        ..ConnectionScript::default()
+    };
+    script.fetch_table_definition.always(FakeReply::ok(table));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    drain_main_context();
+    harness
+}
+
+#[gtk4::test]
+fn the_primary_key_holds_a_column_not_null_until_it_leaves() {
+    let harness = open_edit(postgres(), keyed_users());
+    let tab = harness.tab();
+    let (key, nullable) = (switch_row(tab, "col-pk-1"), switch_row(tab, "col-nullable-1"));
+    assert!(
+        !switch_row(tab, "col-nullable-0").is_sensitive(),
+        "a key column could take NULL"
+    );
+    assert!(nullable.is_sensitive() && nullable.is_active());
+
+    key.set_active(true);
+    drain_main_context();
+
+    assert!(!nullable.is_active() && !nullable.is_sensitive());
+    assert!(nullable.tooltip_text().is_some_and(|tip| tip.contains("NULL")));
+    assert!(harness.draft_column(1).primary_key && !harness.draft_column(1).nullable);
+    assert_eq!(
+        preview(tab),
+        "ALTER TABLE \"users\" DROP CONSTRAINT \"users_pkey\", ALTER COLUMN \"score\" SET NOT NULL, ADD PRIMARY KEY \
+         (\"id\", \"score\");"
+    );
+
+    key.set_active(false);
+    drain_main_context();
+
+    assert!(nullable.is_sensitive() && nullable.is_active());
+    assert!(nullable.tooltip_text().is_none());
+    assert!(!harness.draft_column(1).primary_key && harness.draft_column(1).nullable);
+    assert_eq!(preview(tab), "-- No pending changes.");
+}
+
+/// The Nullable switch shows what the draft holds, so a column whose
+/// nullability cannot be restated stays nullable in the key, and the
+/// preview says what holds the save.
+#[gtk4::test]
+fn a_held_nullable_column_joins_the_key_as_it_is() {
+    let mut table = keyed_users();
+    table.columns[1].attributes.unmodeled = vec![UnmodeledAttribute::new("STORAGE EXTERNAL")];
+    let harness = open_edit(postgres(), table);
+    let tab = harness.tab();
+    let nullable = switch_row(tab, "col-nullable-1");
+    assert!(!nullable.is_sensitive());
+
+    switch_row(tab, "col-pk-1").set_active(true);
+    drain_main_context();
+
+    assert!(nullable.is_active());
+    assert!(
+        nullable
+            .tooltip_text()
+            .is_some_and(|tip| tip.contains("STORAGE EXTERNAL"))
+    );
+    assert!(harness.draft_column(1).primary_key && harness.draft_column(1).nullable);
+    assert_eq!(preview(tab), "-- Primary key columns must be NOT NULL: score");
+}
+
+#[gtk4::test]
+fn a_postgres_identity_keeps_numbering_outside_the_key() {
+    let mut table = keyed_users();
+    table.columns[0].info.is_auto_increment = true;
+    table.columns[0].attributes.identity = IdentityStyle::GeneratedAlways;
+    let harness = open_edit(postgres(), table);
+    let tab = harness.tab();
+    let auto = switch_row(tab, "col-auto-0");
+    assert!(
+        switch_row(tab, "col-auto-1").is_sensitive(),
+        "a column outside the key could not number itself"
+    );
+
+    switch_row(tab, "col-pk-0").set_active(false);
+    drain_main_context();
+
+    assert!(auto.is_active() && auto.is_sensitive());
+    assert!(harness.draft_column(0).auto_increment && !harness.draft_column(0).primary_key);
+    assert_eq!(preview(tab), "ALTER TABLE \"users\" DROP CONSTRAINT \"users_pkey\";");
+}
+
+#[gtk4::test]
+fn a_mysql_column_stops_numbering_as_it_leaves_the_key() {
+    let mysql: Arc<dyn SqlDialect> = Arc::new(drivers_mysql::MySqlDialect::new(
+        drivers_mysql::MySqlFlavour::MySql,
+        &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+    ));
+    let mut table = keyed_users();
+    for column in &mut table.columns {
+        column.info.column_type = mysql.parse_type("int").expect("a MySQL type");
+    }
+    table.columns[0].info.is_auto_increment = true;
+    let harness = open_edit(mysql, table);
+    let tab = harness.tab();
+    let auto = switch_row(tab, "col-auto-0");
+    assert!(auto.is_active());
+    assert!(!switch_row(tab, "col-auto-1").is_sensitive());
+
+    switch_row(tab, "col-pk-0").set_active(false);
+    drain_main_context();
+
+    assert!(!auto.is_active() && !auto.is_sensitive());
+    assert!(!harness.draft_column(0).auto_increment);
 }

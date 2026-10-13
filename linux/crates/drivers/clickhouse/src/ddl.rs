@@ -24,6 +24,7 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     alter_column_default: true,
     alter_primary_key: false,
     alter_auto_increment: false,
+    auto_increment_outside_primary_key: false,
     // A data-skipping index needs a TYPE and a GRANULARITY the index
     // dialog does not ask for.
     create_index: false,
@@ -120,7 +121,7 @@ impl DdlDialect for ClickHouseDialect {
         for column in &changes.dropped_columns {
             statements.push(alter(format!("DROP COLUMN {}", self.quote_identifier(column.name()))));
         }
-        for rename in &changes.renamed_columns {
+        for rename in changes.ordered_renames(original) {
             statements.push(alter(format!(
                 "RENAME COLUMN {} TO {}",
                 self.quote_identifier(&rename.from),
@@ -157,7 +158,7 @@ impl DdlDialect for ClickHouseDialect {
         for column in &changes.added_columns {
             statements.push(alter(format!("ADD COLUMN {}", self.column_definition(column)?)));
         }
-        Ok(DdlPlan::from_sql(statements))
+        DdlPlan::for_changes(changes, statements)
     }
 
     /// SHOW CREATE TABLE, which carries the engine, the keys and the
@@ -418,6 +419,23 @@ mod tests {
                 "ALTER TABLE `analytics`.`events` MODIFY COLUMN `label` REMOVE DEFAULT",
                 "ALTER TABLE `analytics`.`events` MODIFY COLUMN `remark` String",
                 "ALTER TABLE `analytics`.`events` ADD COLUMN `tag` Nullable(String)",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_swap_steps_aside_through_a_temporary_name() {
+        let plan = alter(&events(), |draft| {
+            draft.columns[1].name = "note".to_owned();
+            draft.columns[2].name = "label".to_owned();
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE `analytics`.`events` RENAME COLUMN `label` TO `__tablepro_rename_1`",
+                "ALTER TABLE `analytics`.`events` RENAME COLUMN `note` TO `label`",
+                "ALTER TABLE `analytics`.`events` RENAME COLUMN `__tablepro_rename_1` TO `note`",
             ]
         );
     }

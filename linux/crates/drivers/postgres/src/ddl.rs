@@ -1,8 +1,9 @@
 use tablepro_core::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, CollationName, DdlCapabilities, DdlDialect, DdlPlan, DraftColumn, GeneratedStorage, IdentityStyle,
-    TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, CollationName, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation,
+    DdlPlan, DraftColumn, GeneratedStorage, IdentityStyle, Permission, RefusalReason, TableChanges, TableDefinition,
+    TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -20,9 +21,8 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     alter_column_nullability: true,
     alter_column_default: true,
     alter_primary_key: true,
-    // An identity added to a column with rows has to start past them,
-    // which needs a setval this plan does not write yet.
-    alter_auto_increment: false,
+    alter_auto_increment: true,
+    auto_increment_outside_primary_key: true,
     create_index: true,
     drop_index: true,
     expression_index_keys: true,
@@ -55,9 +55,10 @@ const TYPE_SUGGESTIONS: &[&str] = &[
 
 /// PostgreSQL changes a table in one ALTER TABLE: it orders the
 /// subcommands itself, drops before adds, so one statement carries
-/// every column change and the whole change commits or none of it does.
-/// Renames cannot share it, and indexes and comments are statements of
-/// their own.
+/// every column change. Renames cannot share it, and indexes, comments
+/// and an identity's next value are statements of their own. The write
+/// runs them in one transaction, so the whole change commits or none of
+/// it does.
 impl DdlDialect for PgDialect {
     fn capabilities(&self) -> &DdlCapabilities {
         &CAPABILITIES
@@ -65,6 +66,14 @@ impl DdlDialect for PgDialect {
 
     fn sql_dialect(&self) -> &dyn SqlDialect {
         self
+    }
+
+    /// Identity is added and dropped in place, so turning it on or off
+    /// restates nothing else about the column.
+    fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
+        let mut permissions = ColumnCapabilities::standard(&CAPABILITIES, table, column);
+        permissions.alter_auto_increment = identity_permission(column);
+        permissions
     }
 
     fn type_suggestions(&self) -> &'static [&'static str] {
@@ -120,13 +129,6 @@ impl DdlDialect for PgDialect {
         }
         let table = changes.target(&original.table);
         let qualified = self.qualify(&table);
-        for rename in &changes.renamed_columns {
-            statements.push(format!(
-                "ALTER TABLE {qualified} RENAME COLUMN {} TO {}",
-                self.quote_identifier(&rename.from),
-                self.quote_identifier(&rename.to)
-            ));
-        }
         // A column drop takes its indexes with it, so the explicit drops
         // go first.
         for index in &changes.dropped_indexes {
@@ -134,25 +136,41 @@ impl DdlDialect for PgDialect {
             statements.push(format!("DROP INDEX {}", self.qualify(&index)));
         }
 
-        let mut actions = Vec::new();
+        let mut drops = Vec::new();
         for key in &changes.dropped_foreign_keys {
-            actions.push(format!("DROP CONSTRAINT {}", self.quote_identifier(&key.name)));
+            drops.push(format!("DROP CONSTRAINT {}", self.quote_identifier(&key.name)));
         }
-        let old_key = changes
-            .primary_key
-            .as_ref()
-            .and_then(|change| change.from.as_ref())
-            .and_then(|key| key.name.as_ref());
-        if let Some(name) = old_key {
-            actions.push(format!("DROP CONSTRAINT {}", self.quote_identifier(name)));
+        if let Some(name) = changes.dropped_primary_key_name()? {
+            drops.push(format!("DROP CONSTRAINT {}", self.quote_identifier(name)));
         }
         for column in &changes.dropped_columns {
-            actions.push(format!("DROP COLUMN {}", self.quote_identifier(column.name())));
+            drops.push(format!("DROP COLUMN {}", self.quote_identifier(column.name())));
         }
+        // RENAME COLUMN takes a statement of its own. The drops run before
+        // it, so a column can take the name of one the change drops.
+        let renames = changes.ordered_renames(original);
+        let mut actions = match renames.is_empty() {
+            true => drops,
+            false => {
+                if !drops.is_empty() {
+                    statements.push(format!("ALTER TABLE {qualified} {}", drops.join(", ")));
+                }
+                for rename in &renames {
+                    statements.push(format!(
+                        "ALTER TABLE {qualified} RENAME COLUMN {} TO {}",
+                        self.quote_identifier(&rename.from),
+                        self.quote_identifier(&rename.to)
+                    ));
+                }
+                Vec::new()
+            }
+        };
+        let mut sequences = Vec::new();
         for alteration in &changes.altered_columns {
             let draft = &alteration.draft;
             let name = self.quote_identifier(&draft.name);
             let changed = alteration.changed;
+            let numbering = changed.auto_increment && draft.auto_increment;
             if changed.column_type {
                 let resolved = draft.column_type.resolve(self, &draft.name)?;
                 // A new type takes its own default collation unless the
@@ -170,7 +188,9 @@ impl DdlDialect for PgDialect {
                     resolved.sql, resolved.sql
                 ));
             }
-            if changed.nullability {
+            // An identity column is NOT NULL whatever the switch said, and
+            // turning one on sets that below.
+            if changed.nullability && !numbering {
                 let action = if draft.nullable {
                     "DROP NOT NULL"
                 } else {
@@ -183,6 +203,28 @@ impl DdlDialect for PgDialect {
                 actions.push(match default_sql(self, &draft.name, &draft.default, &column_type)? {
                     Some(default) => format!("ALTER COLUMN {name} SET DEFAULT {default}"),
                     None => format!("ALTER COLUMN {name} DROP DEFAULT"),
+                });
+            }
+            if numbering {
+                self.check_identity(draft)?;
+                actions.push(format!("ALTER COLUMN {name} SET NOT NULL"));
+                actions.push(format!("ALTER COLUMN {name} ADD GENERATED BY DEFAULT AS IDENTITY"));
+                sequences.push(self.identity_restart(&table, &draft.name)?);
+            } else if changed.auto_increment {
+                actions.push(match alteration.original.attributes.identity {
+                    IdentityStyle::GeneratedAlways | IdentityStyle::GeneratedByDefault => {
+                        format!("ALTER COLUMN {name} DROP IDENTITY")
+                    }
+                    // A serial column numbers itself through its default;
+                    // the sequence stays, owned by the column.
+                    IdentityStyle::SequenceDefault => format!("ALTER COLUMN {name} DROP DEFAULT"),
+                    _ => {
+                        return Err(BuildDdlError::Refused {
+                            column: alteration.original.name().to_owned(),
+                            operation: DdlOperation::AlterAutoIncrement,
+                            reason: RefusalReason::UnreadableDefinition,
+                        });
+                    }
                 });
             }
         }
@@ -198,6 +240,7 @@ impl DdlDialect for PgDialect {
         if !actions.is_empty() {
             statements.push(format!("ALTER TABLE {qualified} {}", actions.join(", ")));
         }
+        statements.extend(sequences);
 
         let altered_comments = changes
             .altered_columns
@@ -217,11 +260,58 @@ impl DdlDialect for PgDialect {
                 .iter()
                 .map(|index| create_index_sql(self, &table, index)),
         );
-        Ok(DdlPlan::from_sql(statements))
+        DdlPlan::for_changes(changes, statements)
     }
 }
 
 impl PgDialect {
+    /// The column as the save leaves it has to take an identity: an
+    /// integer, with no default of its own.
+    fn check_identity(&self, draft: &DraftColumn) -> Result<(), BuildDdlError> {
+        let refused = |reason| BuildDdlError::Refused {
+            column: draft.name.clone(),
+            operation: DdlOperation::AlterAutoIncrement,
+            reason,
+        };
+        let column_type = draft.column_type.column_type(self, &draft.name)?;
+        if !matches!(column_type.kind, ColumnKind::Integer(_)) {
+            return Err(refused(RefusalReason::NotAnInteger));
+        }
+        if !draft.default.is_none() {
+            return Err(refused(RefusalReason::ConflictingAttribute("DEFAULT".to_owned())));
+        }
+        Ok(())
+    }
+
+    /// A new identity starts at 1, so it is moved past the largest key
+    /// already there. A column can still own the sequence of a serial
+    /// default dropped earlier, which `pg_get_serial_sequence` may return
+    /// instead, so the identity's sequence is found by its internal
+    /// dependency on the column. The table goes in quoted, since
+    /// `regclass` parses it as SQL, and the column name as it is.
+    fn identity_restart(&self, table: &TableRef, column: &str) -> Result<String, BuildDdlError> {
+        let text = |text: String| {
+            SqlDialect::literal(self, &Value::Text(text), &ColumnType::untyped_text("text")).map_err(|error| {
+                BuildDdlError::Literal {
+                    column: column.to_owned(),
+                    error,
+                }
+            })
+        };
+        let qualified = self.qualify(table);
+        Ok(format!(
+            "SELECT setval((SELECT d.objid::regclass FROM pg_catalog.pg_depend d \
+             JOIN pg_catalog.pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid \
+             JOIN pg_catalog.pg_class s ON s.oid = d.objid \
+             WHERE d.classid = 'pg_catalog.pg_class'::regclass AND d.refclassid = 'pg_catalog.pg_class'::regclass \
+             AND d.deptype = 'i' AND s.relkind = 'S' AND d.refobjid = {}::regclass AND a.attname = {}), \
+             GREATEST(COALESCE(MAX({})::bigint, 0), 0) + 1, false) FROM {qualified}",
+            text(qualified.clone())?,
+            text(column.to_owned())?,
+            self.quote_identifier(column)
+        ))
+    }
+
     /// A column as CREATE TABLE and ADD COLUMN declare it. A column read
     /// from the catalogue keeps its collation, its identity style and its
     /// generation expression.
@@ -283,6 +373,28 @@ impl PgDialect {
     }
 }
 
+/// Turning numbering off drops the identity or the serial default.
+/// Turning it on takes an integer column the server does not compute
+/// and that has no default the identity would fight.
+fn identity_permission(column: &ColumnDefinition) -> Permission {
+    match column.attributes.identity {
+        IdentityStyle::GeneratedAlways | IdentityStyle::GeneratedByDefault | IdentityStyle::SequenceDefault => {
+            Permission::Allowed
+        }
+        _ if column.info.is_auto_increment => Permission::Refused(RefusalReason::UnreadableDefinition),
+        _ if column.info.is_generated || column.attributes.generated.is_some() => {
+            Permission::Refused(RefusalReason::GeneratedColumn)
+        }
+        _ if !matches!(column.info.column_type.kind, ColumnKind::Integer(_)) => {
+            Permission::Refused(RefusalReason::NotAnInteger)
+        }
+        _ if !column.info.default.is_none() => {
+            Permission::Refused(RefusalReason::ConflictingAttribute("DEFAULT".to_owned()))
+        }
+        _ => Permission::Allowed,
+    }
+}
+
 /// Whether a type takes a COLLATE clause: text, and arrays of it.
 fn collatable(kind: &ColumnKind) -> bool {
     match kind {
@@ -316,8 +428,8 @@ mod tests {
     use tablepro_core::ServerInfo;
     use tablepro_core::column::{ColumnDefault, ColumnInfo, SqlExpression};
     use tablepro_core::ddl::{
-        ColumnAttributes, ColumnDefinition, DdlOperation, DraftType, DropTableOptions, InboundForeignKey, Permission,
-        PrimaryKeyConstraint, ReferentialAction, RefusalReason, diff_table,
+        ColumnAttributes, DraftType, DropTableOptions, InboundForeignKey, PrimaryKeyConstraint, ReferentialAction,
+        diff_table,
     };
     use tablepro_core::meta::{IndexInfo, IndexKey};
 
@@ -517,7 +629,7 @@ mod tests {
     }
 
     #[test]
-    fn renames_run_first_and_the_rest_names_the_new_table() {
+    fn rename_then_alter_uses_new_name() {
         let plan = alter(&users(), |draft| {
             draft.table.name = "members".to_owned();
             draft.columns[1].name = "mail".to_owned();
@@ -530,6 +642,36 @@ mod tests {
                 "ALTER TABLE \"app\".\"users\" RENAME TO \"members\"",
                 "ALTER TABLE \"app\".\"members\" RENAME COLUMN \"email\" TO \"mail\"",
                 "ALTER TABLE \"app\".\"members\" ALTER COLUMN \"mail\" SET NOT NULL",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_swap_steps_aside_and_a_dropped_name_is_free_for_a_rename() {
+        let swapped = alter(&users(), |draft| {
+            draft.columns[1].name = "status".to_owned();
+            draft.columns[2].name = "email".to_owned();
+        });
+        let replaced = alter(&users(), |draft| {
+            draft.columns.remove(2);
+            draft.columns[1].name = "status".to_owned();
+            draft.columns.push(typed("email", "text"));
+        });
+
+        assert_eq!(
+            sql(swapped),
+            [
+                "ALTER TABLE \"app\".\"users\" RENAME COLUMN \"email\" TO \"__tablepro_rename_1\"",
+                "ALTER TABLE \"app\".\"users\" RENAME COLUMN \"status\" TO \"email\"",
+                "ALTER TABLE \"app\".\"users\" RENAME COLUMN \"__tablepro_rename_1\" TO \"status\"",
+            ]
+        );
+        assert_eq!(
+            sql(replaced),
+            [
+                "ALTER TABLE \"app\".\"users\" DROP COLUMN \"status\"",
+                "ALTER TABLE \"app\".\"users\" RENAME COLUMN \"email\" TO \"status\"",
+                "ALTER TABLE \"app\".\"users\" ADD COLUMN \"email\" text",
             ]
         );
     }
@@ -671,15 +813,115 @@ mod tests {
     }
 
     #[test]
-    fn an_identity_change_waits_for_its_plan() {
-        let plan = alter(&users(), |draft| draft.columns[2].auto_increment = true);
+    fn identity_on_emits_setval_after_add() {
+        let mut table = users();
+        table.table = TableRef::new(Some("App".to_owned()), "Users");
+        table.columns[2].info.name = "Status".to_owned();
+
+        let plan = alter(&table, |draft| {
+            draft.columns[2].primary_key = true;
+            draft.columns[2].nullable = false;
+            draft.columns[2].auto_increment = true;
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE \"App\".\"Users\" DROP CONSTRAINT \"users_pkey\", ALTER COLUMN \"Status\" SET NOT \
+                 NULL, ALTER COLUMN \"Status\" ADD GENERATED BY DEFAULT AS IDENTITY, ADD PRIMARY KEY (\"id\", \
+                 \"Status\")",
+                "SELECT setval((SELECT d.objid::regclass FROM pg_catalog.pg_depend d JOIN \
+                 pg_catalog.pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid JOIN \
+                 pg_catalog.pg_class s ON s.oid = d.objid WHERE d.classid = 'pg_catalog.pg_class'::regclass AND \
+                 d.refclassid = 'pg_catalog.pg_class'::regclass AND d.deptype = 'i' AND s.relkind = 'S' AND \
+                 d.refobjid = '\"App\".\"Users\"'::regclass AND a.attname = 'Status'), \
+                 GREATEST(COALESCE(MAX(\"Status\")::bigint, 0), 0) + 1, false) FROM \"App\".\"Users\"",
+            ]
+        );
+    }
+
+    #[test]
+    fn identity_off_drops_the_identity_or_the_serial_default() {
+        let mut table = users();
+        table.columns[0].info.is_auto_increment = true;
+        table.columns[0].attributes.identity = IdentityStyle::GeneratedAlways;
+        table.columns[2].info.is_auto_increment = true;
+        table.columns[2].attributes.identity = IdentityStyle::SequenceDefault;
+
+        let plan = alter(&table, |draft| {
+            draft.columns[0].auto_increment = false;
+            draft.columns[2].auto_increment = false;
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"id\" DROP IDENTITY, ALTER COLUMN \"status\" DROP \
+                 DEFAULT"
+            ]
+        );
+    }
+
+    #[test]
+    fn identity_takes_only_an_integer_without_a_default() {
+        let mut table = users();
+        table.columns[2].info.default = ColumnDefault::Literal(Value::Int(1));
+        let text = dialect().column_capabilities(&table, &table.columns[1]);
+        let defaulted = dialect().column_capabilities(&table, &table.columns[2]);
+        let plain = dialect().column_capabilities(&users(), &users().columns[2]);
+
+        let retyped = alter(&users(), |draft| {
+            draft.columns[2].column_type = DraftType::Typed("text".to_owned());
+            draft.columns[2].auto_increment = true;
+        });
+        let given_a_default = alter(&users(), |draft| {
+            draft.columns[2].default = ColumnDefault::Literal(Value::Int(1));
+            draft.columns[2].auto_increment = true;
+        });
+
+        assert_eq!(
+            text.alter_auto_increment,
+            Permission::Refused(RefusalReason::NotAnInteger)
+        );
+        assert_eq!(
+            defaulted.alter_auto_increment,
+            Permission::Refused(RefusalReason::ConflictingAttribute("DEFAULT".to_owned()))
+        );
+        assert_eq!(plain.alter_auto_increment, Permission::Allowed);
+        for (plan, reason) in [
+            (retyped, RefusalReason::NotAnInteger),
+            (
+                given_a_default,
+                RefusalReason::ConflictingAttribute("DEFAULT".to_owned()),
+            ),
+        ] {
+            assert_eq!(
+                plan,
+                Err(BuildDdlError::Refused {
+                    column: "status".to_owned(),
+                    operation: DdlOperation::AlterAutoIncrement,
+                    reason,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn a_key_the_catalogue_did_not_name_is_not_moved() {
+        let mut table = users();
+        table.primary_key = None;
+
+        let plan = alter(&table, |draft| {
+            draft.columns[2].primary_key = true;
+            draft.columns[2].nullable = false;
+        });
 
         assert!(
             matches!(
                 plan,
                 Err(BuildDdlError::Refused {
-                    operation: DdlOperation::AlterAutoIncrement,
-                    reason: RefusalReason::EngineUnsupported,
+                    operation: DdlOperation::AlterPrimaryKey,
+                    reason: RefusalReason::UnreadableDefinition,
                     ..
                 })
             ),

@@ -16,6 +16,8 @@ pub enum RefusalReason {
     GeneratedColumn,
     /// The server numbers the column, which rules out a default.
     IdentityColumn,
+    /// Only an integer column can number itself.
+    NotAnInteger,
     /// The column carries an attribute this build does not model, which a
     /// restated definition would drop.
     UnmodeledAttribute(String),
@@ -42,6 +44,7 @@ impl fmt::Display for RefusalReason {
             Self::KeyColumn => f.write_str("the column is part of the table's sorting or partition key"),
             Self::GeneratedColumn => f.write_str("the server computes the column"),
             Self::IdentityColumn => f.write_str("the server numbers the column"),
+            Self::NotAnInteger => f.write_str("only an integer column can number itself"),
             Self::UnmodeledAttribute(name) => write!(f, "the column has an attribute this app cannot restate: {name}"),
             Self::ColumnInUse(users) => write!(f, "still used by {}", users.join(", ")),
             Self::ReferencedByForeignKeys(keys) => write!(f, "referenced by foreign keys {}", keys.join(", ")),

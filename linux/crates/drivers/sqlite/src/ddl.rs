@@ -23,6 +23,8 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     alter_column_default: false,
     alter_primary_key: false,
     alter_auto_increment: false,
+    // AUTOINCREMENT belongs to the INTEGER PRIMARY KEY.
+    auto_increment_outside_primary_key: false,
     create_index: true,
     drop_index: true,
     expression_index_keys: true,
@@ -131,7 +133,9 @@ impl DdlDialect for SqliteDialect {
                 self.quote_identifier(column.name())
             ));
         }
-        for rename in &changes.renamed_columns {
+        // SQLite rewrites the table's indexes, triggers and views to the
+        // new name as each rename runs.
+        for rename in changes.ordered_renames(original) {
             statements.push(format!(
                 "ALTER TABLE {qualified} RENAME COLUMN {} TO {}",
                 self.quote_identifier(&rename.from),
@@ -156,7 +160,7 @@ impl DdlDialect for SqliteDialect {
                 .iter()
                 .map(|index| self.create_index(&table, index)),
         );
-        Ok(DdlPlan::from_sql(statements))
+        DdlPlan::for_changes(changes, statements)
     }
 
     /// The CREATE statement SQLite stored, then the stored statements of
@@ -407,6 +411,26 @@ mod tests {
                 "{refused:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_swap_steps_aside_through_a_temporary_name() {
+        let mut table = users();
+        table.columns.push(column("name", "TEXT", false));
+
+        let plan = alter(&table, |draft| {
+            draft.columns[1].name = "Name".to_owned();
+            draft.columns[2].name = "email".to_owned();
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE \"users\" RENAME COLUMN \"email\" TO \"__tablepro_rename_1\"",
+                "ALTER TABLE \"users\" RENAME COLUMN \"name\" TO \"email\"",
+                "ALTER TABLE \"users\" RENAME COLUMN \"__tablepro_rename_1\" TO \"Name\"",
+            ]
+        );
     }
 
     #[test]

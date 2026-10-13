@@ -9,6 +9,8 @@ mod catalog;
 #[cfg(test)]
 mod conformance_engine;
 #[cfg(test)]
+mod ddl;
+#[cfg(test)]
 mod decode;
 #[cfg(test)]
 mod dialect;
