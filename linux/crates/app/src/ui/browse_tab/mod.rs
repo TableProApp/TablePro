@@ -36,7 +36,7 @@ pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
 pub(crate) use self::page_reply::PageReply;
 use super::grid::{
-    CellPreset, ColumnWidthBinding, GridCell, GridMsg, GridRowId, GridSink, RowObject, TabGridContext,
+    CellPreset, ColumnWidthBinding, GridCell, GridMsg, GridRowId, GridRowIndex, GridSink, RowObject, TabGridContext,
     build_column_view, cell_editability,
 };
 use crate::runtime::{FailedRequests, RequestSequencer};
@@ -139,18 +139,15 @@ impl BrowseTab {
         tab.collapse_top_bars_with(&filter_strip.widget);
         tab.connect_widgets();
 
-        // Delivered once the signal that sent it returns: a commit
-        // refreshes its own row, which replaces the row's widgets, and
-        // the Tab that ended the edit still has to move focus from them.
+        // Handled at once: a tracked change redraws the cells bound to its
+        // row in place, so the cell that sent it is still there for the
+        // Tab that ended the edit to move focus from.
         let grid_sink: GridSink = {
             let tab = tab.downgrade();
             Rc::new(move |msg| {
-                let tab = tab.clone();
-                glib::spawn_future_local(async move {
-                    if let Some(tab) = tab.upgrade() {
-                        tab.send(BrowseTabInput::from(msg));
-                    }
-                });
+                if let Some(tab) = tab.upgrade() {
+                    tab.send(BrowseTabInput::from(msg));
+                }
             })
         };
         let link_generation = init.session.link_generation();
@@ -188,6 +185,7 @@ impl BrowseTab {
             loading_page: imp.loading_page.get(),
             error_page: imp.error_page.get(),
             current_column_view: None,
+            row_index: GridRowIndex::default(),
             rendered_columns: Vec::new(),
             read_only_banner: imp.read_only_banner.get(),
             no_pk_banner: imp.no_pk_banner.get(),
@@ -563,6 +561,9 @@ pub(crate) struct BrowseModel {
     loading_page: adw::StatusPage,
     error_page: adw::StatusPage,
     current_column_view: Option<gtk::ColumnView>,
+    /// The store's rows by tracker key, so a tracked change finds the
+    /// row to redraw without a scan of the page.
+    row_index: GridRowIndex,
     /// The columns the current view was built for. A page under the
     /// same columns reuses the view and only swaps its rows; a schema
     /// change that renames or retypes one builds the view again.
@@ -682,6 +683,8 @@ pub(crate) enum BrowseTabInput {
     /// refuses to save them again until the table is read again.
     SaveOutcomeUnknown(String),
     FlashErrorRow(StatementSource),
+    /// The flash on a failed statement's row ran its course.
+    ErrorFlashEnded(RowKey),
     CopySelectedRowsAsTsv,
     PasteNotSupported,
     SelectAllRows,
@@ -845,16 +848,17 @@ impl BrowseModel {
     }
 
     /// Apply what a tracker call changed: the draft rows the store gains
-    /// or loses, then a rebind of each touched row, then the footer.
-    fn apply_tracker_delta(&self, delta: TrackerDelta, fx: &mut Effects) {
+    /// or loses, then a redraw of each touched row, then the footer. A
+    /// row keeps its object, so the selection and the focus stay on it.
+    fn apply_tracker_delta(&mut self, delta: &TrackerDelta, fx: &mut Effects) {
         if let Some(store) = self.list_store() {
             for change in &delta.visual {
-                apply_visual_change(&store, change);
+                apply_visual_change(&store, &mut self.row_index, change);
             }
         }
         for key in &delta.rows {
-            if let Some((_, row)) = self.row_for_key(key) {
-                self.refresh_row(&row);
+            if let Some(row) = self.row_index.get(key) {
+                row.bump_revision();
             }
         }
         self.sync_pending_chrome(delta.pending_count, fx);
@@ -870,19 +874,19 @@ impl BrowseModel {
         }
     }
 
-    fn apply_edit(&self, edit: TrackerEdit, fx: &mut Effects) {
+    fn apply_edit(&mut self, edit: TrackerEdit, fx: &mut Effects) {
         if self.tracker.refuses(&edit) && !std::mem::replace(&mut fx.told_edit_held, true) {
             fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
                 "This row is being saved. Change it again once the save finishes.",
             )));
         }
         let delta = self.tracker.apply(edit);
-        self.apply_tracker_delta(delta, fx);
+        self.apply_tracker_delta(&delta, fx);
     }
 
     /// A typed or preset value for one cell, against the row the edit
     /// was made on, wherever it sits now.
-    fn edit_cell(&self, row: &RowObject, col: usize, value: Value, fx: &mut Effects) {
+    fn edit_cell(&mut self, row: &RowObject, col: usize, value: Value, fx: &mut Effects) {
         match row.id() {
             GridRowId::Draft(draft_id) => {
                 self.apply_edit(
@@ -934,49 +938,21 @@ impl BrowseModel {
         selection.model()?.downcast::<gtk::gio::ListStore>().ok()
     }
 
-    /// Make the view rebind `row`, which keeps its identity but whose
-    /// pending state changed.
-    ///
-    /// The ColumnView's list-item manager compares item pointers and
-    /// skips the rebind when the item at a position is the same object.
-    /// So a fresh object for the row is spliced in: one items-changed,
-    /// no flicker, no scroll jump. An event can carry an object an
-    /// earlier rebind replaced, so a keyed row is found by its key.
-    fn refresh_row(&self, row: &RowObject) {
-        let Some(store) = self.list_store() else {
-            return;
-        };
-        let position = store.find(row).or_else(|| {
-            let key = row.id().tracker_key()?;
-            self.row_for_key(&key).map(|(position, _)| position)
-        });
-        let Some(position) = position else {
-            return;
-        };
-        if let Some(current) = store.item(position).and_downcast::<RowObject>() {
-            store.splice(position, 1, &[current.replacement()]);
-        }
-    }
-
-    /// The row the tracker names `key`, and where it is. `None` when it
-    /// is not on this page.
-    fn row_for_key(&self, key: &RowKey) -> Option<(u32, RowObject)> {
-        let store = self.list_store()?;
-        (0..store.n_items()).find_map(|position| {
-            let row = store.item(position).and_downcast::<RowObject>()?;
-            row.id().is_tracked_as(key).then_some((position, row))
-        })
-    }
-
     /// Scroll to the row behind a failed statement and flash it. A row
     /// paged, sorted or filtered away is not found, and the alert alone
     /// tells the user which statement failed.
-    fn flash_error_row(&self, source: &StatementSource) {
+    fn flash_error_row(&mut self, source: &StatementSource) {
         let key = match source {
             StatementSource::Insert { draft_id } => RowKey::Draft(*draft_id),
             StatementSource::Update { row_key } | StatementSource::Delete { row_key } => row_key.clone(),
         };
-        let Some((position, row)) = self.row_for_key(&key) else {
+        let Some(store) = self.list_store() else {
+            return;
+        };
+        let Some(row) = self.row_index.get(&key) else {
+            return;
+        };
+        let Some(position) = store.find(&row) else {
             return;
         };
         if let Some(selection) = self.current_selection.as_ref() {
@@ -990,22 +966,17 @@ impl BrowseModel {
                 None,
             );
         }
-        let generation = self.tracker.flash_error_row(key);
-        self.refresh_row(&row);
+        let generation = self.tracker.flash_error_row(key.clone());
+        row.bump_revision();
         let tracker = self.tracker.clone();
-        let selection_for_clear = self.current_selection.clone();
-        // Matches the length of the flash animation in the stylesheet.
+        let tab = self.this.clone();
+        // Matches the length of the flash animation in the stylesheet. The
+        // row is looked up again then, since a reload may have replaced it.
         glib::timeout_add_local_once(std::time::Duration::from_millis(1800), move || {
-            if !tracker.clear_error_row_if(generation) {
-                return;
-            }
-            if let Some(selection) = selection_for_clear
-                && let Some(model) = selection.model()
-                && let Some(row_obj) = model.item(position).and_then(|o| o.downcast::<RowObject>().ok())
-                && let Some(store) = model.downcast::<gtk::gio::ListStore>().ok()
-                && let Some(store_pos) = store.find(&row_obj)
+            if tracker.clear_error_row_if(generation)
+                && let Some(tab) = tab.upgrade()
             {
-                store.items_changed(store_pos, 1, 1);
+                tab.send(BrowseTabInput::ErrorFlashEnded(key));
             }
         });
     }
@@ -1076,11 +1047,14 @@ impl BrowseModel {
     /// Select the row captured before the reload again, if it is still on
     /// the page. The capture is used up either way, so it cannot steer a
     /// later reload.
-    fn restore_focused_row(&self) {
+    fn restore_focused_row(&mut self) {
         let Some(key) = self.pending_focus_restore.borrow_mut().take() else {
             return;
         };
-        let Some((position, _)) = self.row_for_key(&key) else {
+        let Some(store) = self.list_store() else {
+            return;
+        };
+        let Some(position) = self.row_index.position_in(&store, &key) else {
             return;
         };
         if let Some(selection) = self.current_selection.as_ref() {
@@ -1144,6 +1118,7 @@ impl BrowseModel {
         // Pending draft rows survive page changes, sort flips and F5:
         // the tracker holds them, and the rebuilt store would not.
         self.reprepend_drafts();
+        self.reindex_rows();
 
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&column_view)
@@ -1162,12 +1137,20 @@ impl BrowseModel {
 
     /// New rows under the same columns. The drafts go back on top so
     /// they survive the swap.
-    fn refresh_grid_data(&self, result: &QueryResult, store: &gtk::gio::ListStore) {
+    fn refresh_grid_data(&mut self, result: &QueryResult, store: &gtk::gio::ListStore) {
         store.remove_all();
         for row in self.page_rows(result) {
             store.append(&row);
         }
         self.reprepend_drafts();
+        self.reindex_rows();
+    }
+
+    fn reindex_rows(&mut self) {
+        match self.list_store() {
+            Some(store) => self.row_index.rebuild(&store),
+            None => self.row_index = GridRowIndex::default(),
+        }
     }
 
     /// Paginator label, button sensitivity and stack child: chrome that
@@ -1412,7 +1395,7 @@ impl BrowseModel {
             BrowseTabInput::Refresh => self.reload(),
             BrowseTabInput::DiscardAndRefresh => {
                 let delta = self.tracker.discard();
-                self.apply_tracker_delta(delta, fx);
+                self.apply_tracker_delta(&delta, fx);
                 self.reload();
             }
             BrowseTabInput::ClearSelection => {
@@ -1543,8 +1526,9 @@ impl BrowseModel {
             }
             BrowseTabInput::DeleteSelectedRow => self.delete_selected_rows(fx),
             BrowseTabInput::GridCellEdited { row, column, input } => {
+                // The cell shows what was typed until its row is drawn again.
                 if self.refuses_edit(&row, column) {
-                    self.refresh_row(&row);
+                    row.bump_revision();
                     return;
                 }
                 // A column that holds line breaks keeps them; everywhere
@@ -1561,10 +1545,8 @@ impl BrowseModel {
                 let new = match parse_input_for_column(&normalized, col, Self::edit_context_for(&row)) {
                     Ok(v) => v,
                     Err(message) => {
-                        // The cell still shows what was typed; a rebind
-                        // puts the value back.
                         fx.output(BrowseTabOutput::ShowToast(message));
-                        self.refresh_row(&row);
+                        row.bump_revision();
                         return;
                     }
                 };
@@ -1643,7 +1625,7 @@ impl BrowseModel {
             BrowseTabInput::StopSaving => fx.output(BrowseTabOutput::StopSaveRequested),
             BrowseTabInput::DiscardAll => {
                 let delta = self.tracker.discard();
-                self.apply_tracker_delta(delta, fx);
+                self.apply_tracker_delta(&delta, fx);
                 self.fetch(BrowseRequestKind::Page, fx);
             }
             BrowseTabInput::MarkRowsDeleted { rows, drafts } => {
@@ -1689,15 +1671,20 @@ impl BrowseModel {
                 });
             }
             BrowseTabInput::FlashErrorRow(source) => self.flash_error_row(&source),
+            BrowseTabInput::ErrorFlashEnded(key) => {
+                if let Some(row) = self.row_index.get(&key) {
+                    row.bump_revision();
+                }
+            }
             BrowseTabInput::FocusInsertedDraft => self.focus_inserted_draft(),
             BrowseTabInput::Undo => {
                 if let Some(delta) = self.tracker.undo() {
-                    self.apply_tracker_delta(delta, fx);
+                    self.apply_tracker_delta(&delta, fx);
                 }
             }
             BrowseTabInput::Redo => {
                 if let Some(delta) = self.tracker.redo() {
-                    self.apply_tracker_delta(delta, fx);
+                    self.apply_tracker_delta(&delta, fx);
                 }
             }
         }
@@ -1864,21 +1851,19 @@ fn qualified(schema: Option<&str>, table: &str) -> String {
     }
 }
 
-fn apply_visual_change(store: &gtk::gio::ListStore, change: &VisualChange) {
+fn apply_visual_change(store: &gtk::gio::ListStore, index: &mut GridRowIndex, change: &VisualChange) {
     match change {
         VisualChange::InsertDraft { draft_id } => {
-            store.insert(0, &RowObject::draft(*draft_id));
+            let row = RowObject::draft(*draft_id);
+            store.insert(0, &row);
+            index.insert(&row);
         }
         VisualChange::RemoveDraft { draft_id } => {
-            let position = (0..store.n_items()).find(|position| {
-                store
-                    .item(*position)
-                    .and_downcast::<RowObject>()
-                    .is_some_and(|row| row.draft_id() == Some(*draft_id))
-            });
-            if let Some(position) = position {
+            let key = RowKey::Draft(*draft_id);
+            if let Some(position) = index.position_in(store, &key) {
                 store.remove(position);
             }
+            index.remove(&key);
         }
     }
 }

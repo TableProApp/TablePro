@@ -12,14 +12,15 @@ use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
 use super::{
-    BrowseTab, BrowseTabInit, BrowseTabInput, apply_visual_change, format_thousands, parse_input_for_column,
+    BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_visual_change, format_thousands, parse_input_for_column,
     persisted_key,
 };
-use crate::services::change_tracker::RowKey;
+use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
-use crate::services::tracker_delta::VisualChange;
+use crate::services::tracker_delta::{TrackerDelta, VisualChange};
+use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{FakeSession, drain_main_context, wait_until};
-use crate::ui::grid::RowObject;
+use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -264,13 +265,16 @@ fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
 fn visual_changes_add_and_remove_draft_rows() {
     let store = gtk4::gio::ListStore::new::<RowObject>();
     store.append(&RowObject::persisted(None, vec![Value::Int(1)].into()));
+    let mut index = GridRowIndex::default();
 
-    apply_visual_change(&store, &VisualChange::InsertDraft { draft_id: 4 });
+    apply_visual_change(&store, &mut index, &VisualChange::InsertDraft { draft_id: 4 });
     assert_eq!(row_at(&store, 0).draft_id(), Some(4));
+    assert_eq!(index.get(&RowKey::Draft(4)), Some(row_at(&store, 0)));
 
-    apply_visual_change(&store, &VisualChange::RemoveDraft { draft_id: 4 });
+    apply_visual_change(&store, &mut index, &VisualChange::RemoveDraft { draft_id: 4 });
     assert_eq!(store.n_items(), 1);
     assert_eq!(row_at(&store, 0).draft_id(), None);
+    assert_eq!(index.get(&RowKey::Draft(4)), None);
 }
 
 fn column(name: &str, primary_key: bool) -> ColumnInfo {
@@ -379,13 +383,57 @@ impl Harness {
 
     /// The row the grid shows at `position`, drafts included.
     fn grid_row(&self, position: u32) -> RowObject {
+        self.selection()
+            .item(position)
+            .and_downcast::<RowObject>()
+            .expect("a row")
+    }
+
+    fn selection(&self) -> gtk4::MultiSelection {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
-        let model = self.tab().imp().model.borrow();
-        let selection = model
+        self.tab()
+            .imp()
+            .model
+            .borrow()
             .as_ref()
             .and_then(|model| model.current_selection.clone())
-            .expect("the grid is built");
-        selection.item(position).and_downcast::<RowObject>().expect("a row")
+            .expect("the grid is built")
+    }
+
+    fn store(&self) -> gtk4::gio::ListStore {
+        self.selection()
+            .model()
+            .and_downcast::<gtk4::gio::ListStore>()
+            .expect("a list store")
+    }
+
+    /// What the tab does with the delta of an edit it made itself.
+    fn apply_delta(&self, delta: &TrackerDelta) {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        let mut effects = Effects::default();
+        if let Some(model) = self.tab().imp().model.borrow_mut().as_mut() {
+            model.apply_tracker_delta(delta, &mut effects);
+        }
+    }
+}
+
+/// The tab in a window, so its grid draws cells.
+struct Shown(gtk4::Window);
+
+impl Shown {
+    fn new(tab: &BrowseTab) -> Self {
+        let window = gtk4::Window::new();
+        window.set_default_size(600, 400);
+        window.set_child(Some(tab));
+        window.present();
+        Self(window)
+    }
+}
+
+impl Drop for Shown {
+    fn drop(&mut self) {
+        self.0.set_child(None::<&gtk4::Widget>);
+        self.0.destroy();
     }
 }
 
@@ -902,32 +950,52 @@ fn copy_row_as_insert_uses_row_below_draft() {
     );
 }
 
-/// The cell showing `column` of the saved row keyed `id`.
-fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> Option<crate::ui::grid::GridCell> {
-    let key = RowKey::from_pk_values(&[Value::Int(id)])?;
-    crate::test_support::descendants(tab)
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<crate::ui::grid::GridCell>().ok())
-        .find(|cell| cell.column() == column && cell.row().is_some_and(|row| row.key() == Some(&key)))
+fn key(id: i64) -> RowKey {
+    RowKey::from_pk_values(&[Value::Int(id)]).expect("a key")
+}
+
+/// The cell showing `column` of the saved row keyed `id`, once drawn.
+fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> GridCell {
+    let key = key(id);
+    let mut found = None;
+    wait_until(WAIT, || {
+        found = crate::test_support::descendants(tab)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<GridCell>().ok())
+            .find(|cell| cell.column() == column && cell.row().is_some_and(|row| row.key() == Some(&key)));
+        found.is_some()
+    })
+    .expect("the row's cell is drawn");
+    found.expect("a cell")
+}
+
+fn cell_text(cell: &GridCell) -> String {
+    cell.editor()
+        .map(|editor| editor.text().to_string())
+        .unwrap_or_default()
+}
+
+fn has_class(cell: &GridCell, class: &str) -> bool {
+    cell.content().is_some_and(|content| content.has_css_class(class))
+}
+
+fn rename(id: i64, from: &str, to: &str) -> TrackerEdit {
+    TrackerEdit::Cell {
+        row_key: key(id),
+        col: 1,
+        original: Value::Text(from.to_owned()),
+        value: Value::Text(to.to_owned()),
+    }
 }
 
 #[gtk4::test]
-fn a_commit_leaves_its_cell_in_the_window_for_the_tab_that_follows() {
+fn a_commit_is_tracked_at_once_and_leaves_its_cell_in_the_window() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
-    let window = gtk4::Window::new();
-    window.set_default_size(600, 400);
-    window.set_child(Some(harness.tab()));
-    window.present();
-    let mut found = None;
-    wait_until(WAIT, || {
-        found = grid_cell_of(harness.tab(), 0, 1);
-        found.is_some()
-    })
-    .expect("Ada's name cell is drawn");
-    let cell = found.expect("a cell");
+    let _shown = Shown::new(harness.tab());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
     crate::ui::grid::enter_edit_mode(&cell);
     let editor = cell.editor().expect("a text cell");
     editor.entry().set_text("Ada Lovelace");
@@ -938,9 +1006,160 @@ fn a_commit_leaves_its_cell_in_the_window_for_the_tab_that_follows() {
         cell.root().is_some(),
         "the commit took its own cell out of the window before Tab could move on"
     );
-    wait_until(WAIT, || harness.tracker.pending_count() == 1).expect("the edit reaches the tracker");
-    window.set_child(None::<&gtk4::Widget>);
-    window.destroy();
+    assert_eq!(harness.tracker.pending_count(), 1, "the edit waited for the main loop");
+    assert_eq!(cell_text(&cell), "Ada Lovelace");
+    assert!(
+        has_class(&cell, "tp-cell-modified"),
+        "the cell does not show the edit as pending"
+    );
+}
+
+#[gtk4::test]
+fn tracked_edit_keeps_multi_row_selection() {
+    let mut script = serving_table();
+    script
+        .query_bound
+        .always(FakeReply::ok(rows(&["Ada", "Grace", "Linus", "Ken"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 4).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let cell = grid_cell_of(harness.tab(), 2, 1);
+    let selection = harness.selection();
+    selection.select_range(1, 3, true);
+
+    let delta = harness.tracker.apply(rename(2, "Linus", "Linus Torvalds"));
+    harness.apply_delta(&delta);
+
+    assert_eq!(
+        crate::ui::grid::selected_positions(&selection),
+        vec![1, 2, 3],
+        "the edited row left the selection"
+    );
+    assert_eq!(cell_text(&cell), "Linus Torvalds");
+    assert!(has_class(&cell, "tp-cell-modified"));
+}
+
+#[gtk4::test]
+fn tracked_edit_keeps_row_object_identity() {
+    let mut script = serving_table();
+    script
+        .query_bound
+        .always(FakeReply::ok(rows(&["Ada", "Grace", "Linus"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 3).expect("the first page");
+    let store = harness.store();
+    let before = store.item(2);
+    let changes = std::rc::Rc::new(std::cell::Cell::new(0));
+    let counter = changes.clone();
+    store.connect_items_changed(move |_, _, _, _| counter.set(counter.get() + 1));
+
+    let delta = harness.tracker.apply(rename(2, "Linus", "Linus Torvalds"));
+    harness.apply_delta(&delta);
+
+    assert!(before.is_some());
+    assert_eq!(store.item(2), before, "the edited row was swapped for another object");
+    assert_eq!(changes.get(), 0, "the store announced a change to its rows");
+}
+
+#[gtk4::test]
+fn rejected_edit_restores_cell_display() {
+    let mut age = col("integer", true);
+    age.name = "age".to_owned();
+    let columns = vec![column("id", true), age];
+    let mut script = serving_table();
+    script.fetch_columns.always(FakeReply::ok(columns.clone()));
+    script.query_bound.always(FakeReply::ok(QueryResult::new(
+        columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+        vec![vec![Value::Int(0), Value::Int(36)]],
+    )));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || {
+        harness.tab().snapshot().is_some_and(|page| page.rows.len() == 1)
+    })
+    .expect("the first page");
+    let toasts = toasts(harness.tab());
+    let _shown = Shown::new(harness.tab());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+    crate::ui::grid::enter_edit_mode(&cell);
+    let editor = cell.editor().expect("a text cell");
+    editor.entry().set_text("thirty-six");
+
+    editor.stop_editing(true);
+
+    wait_until(WAIT, || cell_text(&cell) == "36").expect("the cell kept the text that was refused");
+    assert_eq!(toasts.borrow().len(), 1, "{:?}", toasts.borrow());
+    assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+#[gtk4::test]
+fn refused_edit_restores_cell_display() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    // A saved row's key, which the tab refuses to change in place.
+    let cell = grid_cell_of(harness.tab(), 0, 0);
+    let row = cell.row().expect("a bound row");
+    cell.editor().expect("a text cell").set_text("7");
+
+    harness.tab().send(BrowseTabInput::GridCellEdited {
+        row,
+        column: 0,
+        input: "7".to_owned(),
+    });
+
+    assert_eq!(cell_text(&cell), "0", "the cell kept the edit the tab refused");
+    assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+#[gtk4::test]
+fn undo_under_an_open_editor_leaves_nothing_pending() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+    harness.apply_delta(&harness.tracker.apply(rename(0, "Ada", "Ada Lovelace")));
+    crate::ui::grid::enter_edit_mode(&cell);
+    let editor = cell.editor().expect("a text cell");
+
+    harness.tab().send(BrowseTabInput::Undo);
+    editor.stop_editing(false);
+
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "closing the editor sent the undone value back"
+    );
+    assert_eq!(cell_text(&cell), "Ada");
+}
+
+#[gtk4::test]
+fn error_flash_sets_and_clears_on_the_failed_row() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let cell = grid_cell_of(harness.tab(), 1, 0);
+
+    harness
+        .tab()
+        .send(BrowseTabInput::FlashErrorRow(StatementSource::Update {
+            row_key: key(1),
+        }));
+
+    assert!(
+        has_class(&cell, "tp-row-leftmost-error-flash"),
+        "the failed row did not flash"
+    );
+    assert!(!has_class(
+        &grid_cell_of(harness.tab(), 0, 0),
+        "tp-row-leftmost-error-flash"
+    ));
+    wait_until(WAIT, || !has_class(&cell, "tp-row-leftmost-error-flash")).expect("the flash never ended");
 }
 
 #[gtk4::test]
