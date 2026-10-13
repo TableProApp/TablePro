@@ -57,6 +57,39 @@ async fn select_star_after_add_column_reads_the_new_column() {
     connection.close().await.unwrap();
 }
 
+/// A comment left open at the end makes the script unfinished, which
+/// must not merge its statements into one run under the first header.
+#[tokio::test]
+async fn an_unterminated_comment_keeps_each_statement_its_own_columns() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    let session = connection
+        .open_editor_session(EditorSessionOptions::default(), CancellationToken::new())
+        .await
+        .unwrap();
+
+    let (summary, collected) = run(session.as_ref(), "SELECT 1 AS a; SELECT 2 AS b, 3 AS c /* open").await;
+
+    assert_eq!(summary.end, RunEnd::Completed);
+    let headers: Vec<Vec<String>> = collected
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            ResultEvent::ResultSetStarted { columns } => {
+                Some(columns.iter().map(|column| column.name.clone()).collect())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(headers, [vec!["a".to_owned()], vec!["b".to_owned(), "c".to_owned()]]);
+    assert_eq!(
+        collected.rows(),
+        vec![vec![Value::Int(1)], vec![Value::Int(2), Value::Int(3)]]
+    );
+    session.close().await;
+    connection.close().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn recursive_cte_cancelled() {
     let file = TestFile::new().await;

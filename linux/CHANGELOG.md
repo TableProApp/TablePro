@@ -22,3 +22,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
 - Stop could not end a SQLite statement waiting for another connection's lock.
 - A SQLite save that failed in a way SQLite rolls back itself closed the connection and its temporary tables.
+- A SQLite script ending in an unclosed comment showed later results under the first statement's columns.
