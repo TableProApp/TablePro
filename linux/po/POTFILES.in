@@ -86,6 +86,7 @@ crates/app/src/ui/editor_font_provider.rs
 crates/app/src/ui/error_text/driver.rs
 crates/app/src/ui/error_text/mod.rs
 crates/app/src/ui/error_text/operation.rs
+crates/app/src/ui/error_text/script.rs
 crates/app/src/ui/error_text/secret.rs
 crates/app/src/ui/error_text/ssh.rs
 crates/app/src/ui/error_text/tests.rs

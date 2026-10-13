@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use tablepro_core::credentials::{SecretError, SecretKind};
+use tablepro_core::sql_syntax::script::{OpenConstruct, ScriptDiagnostic};
 use tablepro_core::{
     ConfigError, DriverError, ErrorCategory, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode,
     ServerDiagnostics, SshFailure, StatementOutcome, TimeoutPhase, TlsFailure, TransportError,
@@ -348,4 +349,17 @@ fn a_backend_error_keeps_its_detail() {
 #[test]
 fn a_retryable_error_says_to_try_again() {
     assert!(secret_message(&SecretError::Locked).contains("try again"));
+}
+
+#[test]
+fn unterminated_dollar_quote_diagnostic_names_line() {
+    let diagnostic = ScriptDiagnostic::Unterminated {
+        construct: OpenConstruct::DollarQuoted,
+        start: 10,
+    };
+
+    let message = script_diagnostic_message(&diagnostic, 7);
+
+    assert!(message.contains("dollar-quoted"), "{message}");
+    assert!(message.contains("line 7"), "{message}");
 }

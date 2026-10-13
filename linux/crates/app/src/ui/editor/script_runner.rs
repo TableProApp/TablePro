@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{
-    BatchErrorPolicy, LexicalSettings, OpenConstruct, ScriptDiagnostic, ScriptPlan, text_offsets,
+    BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan, text_offsets,
 };
 use tablepro_core::{
     EditorSession, EditorSessionState, ResultEvent, ResultSink, RowLimit, RunOptions, SinkFlow, UserSql,
@@ -67,36 +67,13 @@ pub fn plan_batches(
         .diagnostics()
         .iter()
         .map(|diagnostic| match diagnostic {
-            ScriptDiagnostic::Unterminated { construct, start } => {
+            ScriptDiagnostic::Unterminated { start, .. } => {
                 let line = base_line + scoped.text.get(..*start).unwrap_or_default().matches('\n').count() + 1;
-                unterminated_message(*construct, line)
+                crate::ui::error_text::script_diagnostic_message(diagnostic, line)
             }
         })
         .collect();
     (batches, plan.batch_error_policy(), warnings)
-}
-
-fn unterminated_message(construct: OpenConstruct, line: usize) -> String {
-    let line = line.to_string();
-    let args = [("line", line.as_str())];
-    match construct {
-        OpenConstruct::StringLiteral => crate::i18n::gettext_f(
-            "The string starting on line {line} is never closed. It is sent as written.",
-            &args,
-        ),
-        OpenConstruct::QuotedIdentifier => crate::i18n::gettext_f(
-            "The quoted name starting on line {line} is never closed. It is sent as written.",
-            &args,
-        ),
-        OpenConstruct::BlockComment => crate::i18n::gettext_f(
-            "The comment starting on line {line} is never closed. It is sent as written.",
-            &args,
-        ),
-        OpenConstruct::DollarQuoted => crate::i18n::gettext_f(
-            "The dollar-quoted string starting on line {line} is never closed. It is sent as written.",
-            &args,
-        ),
-    }
 }
 
 /// The first ~60 characters of a statement on one line, to tell the

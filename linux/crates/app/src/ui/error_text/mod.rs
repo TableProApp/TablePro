@@ -7,6 +7,7 @@
 
 mod driver;
 mod operation;
+mod script;
 mod secret;
 mod ssh;
 #[cfg(test)]
@@ -16,4 +17,5 @@ mod tls_remedy;
 
 pub use driver::{config_message, driver_message};
 pub use operation::{connect_error_message, operation_error_message, task_failure_message};
+pub use script::script_diagnostic_message;
 pub use tls_remedy::{TlsRemedy, connect_remedy};
