@@ -66,7 +66,9 @@ fn strict(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Value, E
         ColumnKind::Float(width) => parse_float(trimmed, *width),
         // Text keeps what the user typed, spaces included: a trailing
         // space is a value, not a typo the app gets to remove.
-        ColumnKind::Text { .. } | ColumnKind::Enum { .. } => Ok(Value::Text(input.to_owned())),
+        // XML too: every driver reads it back as text, so an edit has to
+        // be text to bind as one and to compare equal when unchanged.
+        ColumnKind::Text { .. } | ColumnKind::Enum { .. } | ColumnKind::Xml => Ok(Value::Text(input.to_owned())),
         ColumnKind::Json { .. } => JsonText::parse(input.to_owned())
             .map(Value::Json)
             .map_err(|error| EditParseError::InvalidJson(error.to_string())),
@@ -91,7 +93,7 @@ fn strict(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Value, E
             .map(Value::Interval)
             .map_err(|_| EditParseError::InvalidInterval),
         ColumnKind::BitString { .. } => parse_bits(trimmed),
-        ColumnKind::Network(_) | ColumnKind::Xml | ColumnKind::Other => Ok(Value::Other(Box::new(OtherValue {
+        ColumnKind::Network(_) | ColumnKind::Other => Ok(Value::Other(Box::new(OtherValue {
             type_name: column.name.clone(),
             text: input.to_owned(),
         }))),
@@ -546,6 +548,14 @@ mod tests {
             ),
             Ok(Value::Text("  padded  ".to_owned())),
             "the parser trimmed a value the column can hold"
+        );
+    }
+
+    #[test]
+    fn xml_is_edited_as_text() {
+        assert_eq!(
+            parse(ColumnKind::Xml, "<a> b </a>"),
+            Ok(Value::Text("<a> b </a>".to_owned()))
         );
     }
 

@@ -3,6 +3,7 @@
 
 use std::time::Duration;
 
+use tablepro_core::edit::parse_literal_text;
 use tablepro_core::meta::TableRef;
 use tablepro_core::save::{ChangeSet, RowUpdate, plan_save};
 use tablepro_core::{CallOptions, DriverError, ErrorCategory, Value, WriteBatch};
@@ -28,6 +29,45 @@ async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableR
     plan_save(connection.dialect().as_ref(), table, &columns, &identity, &changes)
         .expect("a save plan")
         .batch
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn edited_xml_cell_saves() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.docs (id int PRIMARY KEY, body xml NOT NULL)",
+            "INSERT INTO dbo.docs VALUES (1, N'<a/>')",
+        ],
+    )
+    .await;
+    let table = dbo("docs");
+    let columns = columns(connection.as_ref(), &table).await;
+    let identity = connection
+        .row_identity(&table, within(CALL))
+        .await
+        .expect("an identity");
+    let edited = parse_literal_text("<b>edited</b>", &columns[1].column_type).expect("an XML edit");
+    let changes = ChangeSet {
+        updates: vec![RowUpdate {
+            key: vec![Value::Int(1)],
+            assignments: vec![(1, edited)],
+        }],
+        ..ChangeSet::default()
+    };
+    let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
+        .expect("a save plan")
+        .batch;
+
+    connection.write_batch(&save, within(CALL)).await.expect("the save");
+
+    assert_eq!(
+        scalar(connection.as_ref(), "SELECT CAST(body AS nvarchar(max)) FROM dbo.docs").await,
+        Value::Text("<b>edited</b>".to_owned())
+    );
 }
 
 /// A datetime keeps 1/300 s and the grid shows it to the millisecond, as
