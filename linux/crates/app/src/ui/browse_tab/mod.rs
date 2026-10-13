@@ -26,6 +26,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::{CellInput, EditContext, EditParseError};
+use tablepro_core::export::RenderInsertError;
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use tablepro_session::runtime::{Tasks, WatchForwarder};
@@ -1774,7 +1775,8 @@ impl BrowseModel {
     }
 
     /// One row as an INSERT for the server the tab is connected to,
-    /// pending edits included.
+    /// pending edits included. A draft's is the INSERT its save would
+    /// run, so the columns the server fills stay out of it.
     fn copy_row_as_insert(&self, row: &RowObject, fx: &mut Effects) {
         let Some(dialect) = self.session.current_dialect() else {
             fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
@@ -1782,14 +1784,29 @@ impl BrowseModel {
             )));
             return;
         };
-        let cells = self.grid_context().effective_cells(row);
+        let cells = match row.id() {
+            GridRowId::Draft(draft_id) => self
+                .tracker
+                .draft_cells(*draft_id, &self.current_columns)
+                .unwrap_or_default(),
+            _ => self
+                .grid_context()
+                .effective_cells(row)
+                .into_iter()
+                .map(CellInput::Value)
+                .collect(),
+        };
         match tablepro_core::export::render_insert(&*dialect, &self.table_ref(), &self.current_columns, &cells) {
             Ok(sql) => fx.output(BrowseTabOutput::CopyToClipboard(sql)),
             Err(error) => {
                 tracing::debug!(%error, "a row could not be written as an INSERT");
-                fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
-                    "This row has a value that can't be written as SQL",
-                )));
+                let message = match error {
+                    RenderInsertError::Literal(_) => {
+                        crate::i18n::gettext("This row has a value that can't be written as SQL")
+                    }
+                    RenderInsertError::NoValues => crate::i18n::gettext("This row has no value to put in an INSERT"),
+                };
+                fx.output(BrowseTabOutput::ShowToast(message));
             }
         }
     }

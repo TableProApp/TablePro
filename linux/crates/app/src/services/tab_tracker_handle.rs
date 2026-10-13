@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use tablepro_core::dml::BuildSqlError;
+use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
@@ -49,6 +50,10 @@ impl TabTrackerHandle {
 
     pub fn draft_values(&self, draft_id: u64) -> Option<Vec<Value>> {
         self.0.borrow().draft_values(draft_id).map(<[Value]>::to_vec)
+    }
+
+    pub fn draft_cells(&self, draft_id: u64, columns: &[ColumnInfo]) -> Option<Vec<CellInput>> {
+        self.0.borrow().draft_cells(draft_id, columns)
     }
 
     pub fn change_set(&self, columns: &[ColumnInfo]) -> Result<TrackedChanges, BuildSqlError> {

@@ -4,8 +4,10 @@ use tablepro_core::meta::RowIdentity;
 
 use super::{CellLock, GridRowId};
 
-/// Whether one cell of one row takes an edit. A draft is a new row, so
-/// it may set the key and auto-increment columns a saved row may not.
+/// A draft is a new row, so it may set the key a saved row may not.
+/// An auto-increment column stays locked on a draft too: an insert
+/// leaves it to the server, and SQL Server IDENTITY and PostgreSQL
+/// GENERATED ALWAYS refuse a value without a statement-level override.
 pub fn cell_editability(
     column: &ColumnInfo,
     row: &GridRowId,
@@ -26,13 +28,11 @@ pub fn cell_editability(
     if let Some(reason) = read_only_reason(&column.column_type.kind) {
         return Err(CellLock::Value(reason));
     }
-    if matches!(row, GridRowId::Persisted(_)) {
-        if names_rows(column, identity) {
-            return Err(CellLock::KeyColumn);
-        }
-        if column.is_auto_increment {
-            return Err(CellLock::AutoIncrement);
-        }
+    if column.is_auto_increment {
+        return Err(CellLock::AutoIncrement);
+    }
+    if matches!(row, GridRowId::Persisted(_)) && names_rows(column, identity) {
+        return Err(CellLock::KeyColumn);
     }
     Ok(())
 }
@@ -110,7 +110,11 @@ mod tests {
         assert_eq!(check(&total, &draft, false), Err(CellLock::Generated));
         assert_eq!(check(&total, &persisted(), false), Err(CellLock::Generated));
         assert_eq!(check(&serial, &persisted(), false), Err(CellLock::AutoIncrement));
-        assert_eq!(check(&serial, &draft, false), Ok(()));
+        assert_eq!(
+            check(&serial, &draft, false),
+            Err(CellLock::AutoIncrement),
+            "an insert leaves an auto-increment column to the server"
+        );
         assert_eq!(check(&name, &GridRowId::Unkeyed, false), Err(CellLock::UnkeyedRow));
         assert_eq!(check(&name, &GridRowId::Result, false), Err(CellLock::ResultRow));
         assert_eq!(check(&name, &persisted(), true), Err(CellLock::ReadOnlySession));
@@ -140,8 +144,12 @@ mod tests {
         let mut total = column("total", "integer");
         total.is_generated = true;
 
+        let mut serial = column("seq", "integer");
+        serial.is_auto_increment = true;
+
         assert!(column_takes_edits(&column("id", "integer"), &identity, false));
         assert!(!column_takes_edits(&total, &identity, false));
+        assert!(!column_takes_edits(&serial, &identity, false));
         assert!(!column_takes_edits(&column("data", "blob"), &identity, false));
         assert!(!column_takes_edits(&column("name", "text"), &identity, true));
     }

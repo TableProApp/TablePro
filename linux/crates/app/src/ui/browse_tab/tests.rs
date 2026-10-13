@@ -842,3 +842,52 @@ fn copy_row_as_insert_uses_row_below_draft() {
         ["INSERT INTO \"users\" (\"id\", \"name\") VALUES (0, 'Ada');".to_owned()]
     );
 }
+
+#[gtk4::test]
+fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
+    let mut id = col("integer", false);
+    id.name = "id".to_owned();
+    id.primary_key = true;
+    id.is_auto_increment = true;
+    let mut name = col("text", true);
+    name.name = "name".to_owned();
+    let mut created_at = col_with_default("timestamptz", "now()");
+    created_at.name = "created_at".to_owned();
+    let columns = vec![id, name, created_at];
+    let mut script = ConnectionScript::default();
+    script.fetch_columns.always(FakeReply::ok(columns.clone()));
+    script.row_identity.always(FakeReply::ok(RowIdentity::UniqueKey {
+        columns: vec!["id".to_owned()],
+    }));
+    script.count_rows.always(FakeReply::ok(1));
+    script.probe.always(FakeReply::ok(()));
+    script.query_bound.always(FakeReply::ok(QueryResult::new(
+        columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+        vec![vec![Value::Int(1), Value::Text("Ada".into()), Value::Null]],
+    )));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = copied.clone();
+    harness
+        .tab()
+        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+    let toasts = toasts(harness.tab());
+
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let draft = harness.grid_row(0);
+    assert!(draft.draft_id().is_some(), "the new row goes on top");
+    harness.tab().send(BrowseTabInput::GridCellEdited {
+        row: draft.clone(),
+        column: 1,
+        input: "x".to_owned(),
+    });
+    harness.tab().send(BrowseTabInput::GridCopyRowAsInsert { row: draft });
+
+    assert_eq!(
+        *copied.borrow(),
+        ["INSERT INTO \"users\" (\"name\") VALUES ('x');".to_owned()],
+        "toasts: {:?}",
+        toasts.borrow()
+    );
+}

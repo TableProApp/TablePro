@@ -448,6 +448,14 @@ impl TabChangeTracker {
             .map(|draft| draft.values.as_slice())
     }
 
+    /// A draft's cells as its INSERT carries them.
+    pub fn draft_cells(&self, draft_id: u64, columns: &[ColumnInfo]) -> Option<Vec<CellInput>> {
+        self.drafts
+            .iter()
+            .find(|draft| draft.draft_id == draft_id)
+            .map(|draft| insert_cells(columns, draft))
+    }
+
     /// What the user changed, as the change set a save is planned from.
     ///
     /// One change per row, ordered by when the row was last touched, so
@@ -461,14 +469,11 @@ impl TabChangeTracker {
     pub fn change_set(&self, columns: &[ColumnInfo]) -> Result<TrackedChanges, BuildSqlError> {
         let mut rows: Vec<(Touch, RowChange, StatementSource)> = Vec::new();
         for draft in &self.drafts {
-            let cells = columns
-                .iter()
-                .zip(&draft.values)
-                .map(|(column, value)| draft_cell(column, value))
-                .collect();
             rows.push((
                 draft.touched,
-                RowChange::Insert { cells },
+                RowChange::Insert {
+                    cells: insert_cells(columns, draft),
+                },
                 StatementSource::Insert {
                     draft_id: draft.draft_id,
                 },
@@ -569,15 +574,22 @@ fn key_values(key: &[KeyValue]) -> Vec<Value> {
     key.iter().map(|part| part.value().clone()).collect()
 }
 
+fn insert_cells(columns: &[ColumnInfo], draft: &DraftRow) -> Vec<CellInput> {
+    columns
+        .iter()
+        .zip(&draft.values)
+        .map(|(column, value)| draft_cell(column, value))
+        .collect()
+}
+
 /// A NULL the user left in a column with a default means "use the
-/// default" (CURRENT_TIMESTAMP, gen_random_uuid(), the next serial),
-/// not an explicit NULL over it. A value typed into an auto-increment
-/// column is the user's to keep.
+/// default" (CURRENT_TIMESTAMP, gen_random_uuid()), not an explicit
+/// NULL over it.
 fn draft_cell(column: &ColumnInfo, value: &Value) -> CellInput {
-    if column.is_generated {
+    if column.is_auto_increment || column.is_generated {
         return CellInput::Default;
     }
-    if matches!(value, Value::Null) && (column.is_auto_increment || !column.default.is_none()) {
+    if matches!(value, Value::Null) && !column.default.is_none() {
         return CellInput::Default;
     }
     CellInput::Value(value.clone())
@@ -1106,22 +1118,21 @@ mod tests {
     }
 
     #[test]
-    fn a_draft_keeps_a_value_typed_into_an_auto_increment_column() {
+    fn a_draft_leaves_an_auto_increment_column_to_the_server() {
         let mut t = TabChangeTracker::default();
         let columns = vec![pk_col("id"), data_col("name")];
-        t.track_insert(vec![Value::Int(42), Value::Text("draft".into())]);
+        let draft_id = insert(&mut t, vec![Value::Int(42), Value::Text("draft".into())]);
 
         let tracked = t.change_set(&columns).unwrap();
 
+        let expected = vec![CellInput::Default, CellInput::Value(Value::Text("draft".into()))];
         assert_eq!(
             tracked.changes.changes,
             vec![RowChange::Insert {
-                cells: vec![
-                    CellInput::Value(Value::Int(42)),
-                    CellInput::Value(Value::Text("draft".into()))
-                ]
+                cells: expected.clone()
             }]
         );
+        assert_eq!(t.draft_cells(draft_id, &columns), Some(expected));
     }
 
     #[test]
