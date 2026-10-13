@@ -136,7 +136,8 @@ crates/drivers/postgres/src/lib.rs 52
 crates/drivers/postgres/src/query.rs 5
 crates/drivers/postgres/src/session.rs 3
 crates/drivers/postgres/src/temporal.rs 1
-crates/drivers/redis/src/lib.rs 12
+crates/drivers/redis/src/lib.rs 10
+crates/drivers/redis/src/tests.rs 2
 crates/drivers/sqlite/src/interrupt.rs 13
 crates/drivers/sqlite/src/lib.rs 73
 crates/mcp/src/bridge.rs 15
