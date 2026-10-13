@@ -180,6 +180,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::browse_tab::save_in_flight_tests::edits_and_a_second_save_are_ignored_until_the_save_in_flight_finishes"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::tests::browse_page_fetch_waits_until_the_new_columns_are_applied"
     ],
     [

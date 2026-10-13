@@ -428,6 +428,8 @@ mod paste;
 pub(crate) mod reference;
 mod requests;
 mod row_ops;
+#[cfg(test)]
+mod save_in_flight_tests;
 mod selection;
 #[cfg(test)]
 mod tests;
