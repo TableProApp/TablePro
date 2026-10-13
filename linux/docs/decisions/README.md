@@ -1,13 +1,13 @@
 # Architecture Decision Records
 
-These are short documents recording the **reasoning** behind major technical choices. They are not living documentation — once an ADR is accepted, it stays. If a later ADR supersedes it, link forward; do not edit history.
+These are short documents recording the **reasoning** behind major technical choices. They are not living documentation: once an ADR is accepted, it stays. If a later ADR supersedes it, link forward; do not edit history.
 
 Every load-bearing decision in the Linux subproject has an ADR. If a contributor asks "why did we pick X", the answer should already be in this folder. If it is not, we missed an ADR.
 
 ## Format
 
 ```markdown
-# 000N — Title
+# 000N: Title
 
 - **Status**: Accepted | Superseded by 000M | Deprecated
 - **Date**: YYYY-MM-DD
@@ -49,6 +49,7 @@ ADRs are short on purpose. If yours is more than a page, you are probably arguin
 | [0009](0009-crypto-provider-and-sources.md) | One crypto provider, upstream sources and dependency bans | Accepted | aws-lc-rs only; deny.toml enforces sources, licenses, bans and advisory ignores. |
 | [0013](0013-openssh-client-transport.md) | SSH through the system OpenSSH client | Accepted | ControlMaster per connection, Unix-socket forwards, prompts through an askpass helper. |
 | [0015](0015-gnome-50-platform-floor.md) | GNOME 50 platform floor | Accepted | GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88; AdwShortcutsDialog replaces the shortcuts window. |
+| [0016](0016-driver-contract-v2.md) | Driver contract v2 | Accepted | Owned calls with engine stops, phase-aware write outcomes, server-side row limits; PostgreSQL on tokio-postgres; no forks. |
 
 ## Adding an ADR
 
