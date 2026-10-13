@@ -414,22 +414,25 @@ impl SqlEditor {
     /// Add the log's lines from `from` on to the results list.
     fn show_new_entries(&self, from: usize) {
         let imp = self.imp();
-        let Some(grid_sender) = imp.grid_sender.get() else {
-            return;
-        };
         let log = imp.log.borrow();
         let Some(log) = log.as_ref() else {
             return;
         };
-        for entry in log.entries().get(from..).unwrap_or_default() {
-            let weak = self.downgrade();
-            let widget = result_widgets::entry_widget(entry, grid_sender, move |position| {
-                if let Some(editor) = weak.upgrade() {
-                    editor.go_to_char(position);
-                }
-            });
-            imp.results.append(entry, &widget);
-        }
+        imp.results.append(log.entries().get(from..).unwrap_or_default());
+    }
+
+    /// The page the results list shows for the log's line `index`.
+    fn result_page(&self, index: u32) -> Option<gtk4::Widget> {
+        let imp = self.imp();
+        let grid_sender = imp.grid_sender.get()?;
+        let log = imp.log.borrow();
+        let entry = log.as_ref()?.entries().get(usize::try_from(index).ok()?)?;
+        let weak = self.downgrade();
+        Some(result_widgets::entry_widget(entry, grid_sender, move |position| {
+            if let Some(editor) = weak.upgrade() {
+                editor.go_to_char(position);
+            }
+        }))
     }
 
     fn finish_run(&self, query: String, metadata: &tablepro_session::ConnectionMetadata, started_at: SystemTime) {
@@ -579,8 +582,12 @@ impl SqlEditor {
         imp.menu_button.set_icon_name(crate::ui::icons::VIEW_MORE);
     }
 
-    /// Context-menu actions from a result grid.
+    /// Result pages, and the context-menu actions from their grids.
     fn connect_grid(&self) {
+        let weak = self.downgrade();
+        self.imp()
+            .results
+            .set_page_builder(move |index| weak.upgrade().and_then(|editor| editor.result_page(index)));
         let (sender, receiver) = relm4::channel::<GridMsg>();
         let _ = self.imp().grid_sender.set(sender);
         let weak = self.downgrade();

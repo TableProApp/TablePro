@@ -7,8 +7,15 @@ use super::result_item::ResultItem;
 use super::run_log::{EntryKind, RunLogEntry};
 use super::sidebar_policy::{self, SidebarState};
 
+/// How many results keep their page once shown, so going back to one
+/// keeps its scroll position without every line holding a page.
+const PAGES_KEPT: usize = 8;
+
+type PageBuilder = Box<dyn Fn(u32) -> Option<gtk4::Widget>>;
+
 mod imp {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
 
     use libadwaita::subclass::prelude::*;
 
@@ -34,6 +41,9 @@ mod imp {
         pub items: std::cell::OnceCell<gio::ListStore>,
         pub selection: std::cell::OnceCell<gtk4::SingleSelection>,
         pub sidebar: Cell<SidebarState>,
+        pub page_builder: RefCell<Option<PageBuilder>>,
+        /// The lines whose page is built, most recently shown first.
+        pub built: RefCell<VecDeque<u32>>,
     }
 
     #[glib::object_subclass]
@@ -118,22 +128,23 @@ impl ResultsPane {
         if let Some(items) = imp.items.get() {
             items.remove_all();
         }
-        let pages: Vec<gtk4::Widget> = imp
-            .stack
-            .pages()
-            .iter::<gtk4::StackPage>()
-            .filter_map(Result::ok)
-            .filter(|page| page.name().is_none_or(|name| name != "empty"))
-            .map(|page| page.child())
-            .collect();
-        for child in pages {
-            imp.stack.remove(&child);
+        for index in imp.built.take() {
+            if let Some(page) = imp.stack.child_by_name(&page_name(index)) {
+                imp.stack.remove(&page);
+            }
         }
         imp.stack.set_visible_child_name("empty");
         imp.sidebar.set(SidebarState::default());
         imp.sidebar_toggle.set_visible(false);
         imp.split_view.set_show_sidebar(false);
         imp.transaction_label.set_visible(false);
+    }
+
+    /// What builds a line's page. A page is built when its line is
+    /// first shown, so a script with thousands of statements builds
+    /// one, not thousands.
+    pub fn set_page_builder(&self, builder: impl Fn(u32) -> Option<gtk4::Widget> + 'static) {
+        self.imp().page_builder.replace(Some(Box::new(builder)));
     }
 
     pub fn set_running(&self, running: bool) {
@@ -150,16 +161,25 @@ impl ResultsPane {
         imp.transaction_label.set_visible(label.is_some());
     }
 
-    /// Add a line and the widget it shows.
-    pub fn append(&self, entry: &RunLogEntry, widget: &gtk4::Widget) {
+    /// Add the lines for `entries`, which follow the ones listed.
+    pub fn append(&self, entries: &[RunLogEntry]) {
         let imp = self.imp();
         let Some(items) = imp.items.get() else {
             return;
         };
-        let index = items.n_items();
-        let (title, icon) = entry_title(index as usize, entry);
-        items.append(&ResultItem::new(&title, &entry.preview, icon));
-        imp.stack.add_named(widget, Some(&page_name(index)));
+        if entries.is_empty() {
+            return;
+        }
+        let first = items.n_items();
+        let added: Vec<ResultItem> = entries
+            .iter()
+            .enumerate()
+            .map(|(offset, entry)| {
+                let (title, icon) = entry_title(first as usize + offset, entry);
+                ResultItem::new(&title, &entry.preview, icon)
+            })
+            .collect();
+        items.splice(first, 0, &added);
 
         let previous = SidebarState {
             show_sidebar: imp.split_view.shows_sidebar(),
@@ -169,7 +189,7 @@ impl ResultsPane {
         imp.sidebar.set(state);
         imp.sidebar_toggle.set_visible(state.toggle_visible);
         imp.split_view.set_show_sidebar(state.show_sidebar);
-        if index == 0 {
+        if first == 0 {
             self.select(0);
         }
     }
@@ -196,7 +216,7 @@ impl ResultsPane {
 
     fn show_page(&self, index: u32) {
         let imp = self.imp();
-        if index == gtk4::INVALID_LIST_POSITION {
+        if index == gtk4::INVALID_LIST_POSITION || !self.keep_page(index) {
             return;
         }
         imp.stack.set_visible_child_name(&page_name(index));
@@ -204,6 +224,37 @@ impl ResultsPane {
         if imp.split_view.is_collapsed() {
             imp.split_view.set_show_sidebar(false);
         }
+    }
+
+    /// Build the line's page unless it is kept already, letting go of
+    /// the page shown longest ago once more than `PAGES_KEPT` are kept.
+    fn keep_page(&self, index: u32) -> bool {
+        let imp = self.imp();
+        {
+            let mut built = imp.built.borrow_mut();
+            if let Some(position) = built.iter().position(|kept| *kept == index) {
+                built.remove(position);
+                built.push_front(index);
+                return true;
+            }
+        }
+        let page = imp.page_builder.borrow().as_ref().and_then(|build| build(index));
+        let Some(page) = page else {
+            return false;
+        };
+        imp.stack.add_named(&page, Some(&page_name(index)));
+        let evicted: Vec<u32> = {
+            let mut built = imp.built.borrow_mut();
+            built.push_front(index);
+            let keep = built.len().min(PAGES_KEPT);
+            built.drain(keep..).collect()
+        };
+        for oldest in evicted {
+            if let Some(page) = imp.stack.child_by_name(&page_name(oldest)) {
+                imp.stack.remove(&page);
+            }
+        }
+        true
     }
 }
 
@@ -304,7 +355,14 @@ mod tests {
 
     fn pane() -> ResultsPane {
         crate::register_test_resources();
-        ResultsPane::default()
+        let pane = ResultsPane::default();
+        pane.set_page_builder(|index| Some(gtk4::Label::new(Some(&index.to_string())).upcast()));
+        pane
+    }
+
+    fn built_pages(pane: &ResultsPane) -> u32 {
+        // The stack always holds the empty state as well.
+        pane.imp().stack.pages().n_items() - 1
     }
 
     fn entry(kind: EntryKind) -> RunLogEntry {
@@ -319,16 +377,12 @@ mod tests {
         entry(EntryKind::Command { rows_affected: Some(1) })
     }
 
-    fn page() -> gtk4::Widget {
-        gtk4::Label::new(Some("page")).upcast()
-    }
-
     #[gtk4::test]
     fn twenty_results_use_list_not_switcher() {
         let pane = pane();
 
         for _ in 0..20 {
-            pane.append(&command(), &page());
+            pane.append(&[command()]);
         }
 
         let imp = pane.imp();
@@ -342,7 +396,7 @@ mod tests {
     fn a_single_result_has_no_list() {
         let pane = pane();
 
-        pane.append(&command(), &page());
+        pane.append(&[command()]);
 
         assert!(!pane.imp().sidebar_toggle.is_visible());
         assert!(!pane.imp().split_view.shows_sidebar());
@@ -351,15 +405,14 @@ mod tests {
     #[gtk4::test]
     fn first_failure_is_selected() {
         let pane = pane();
-        pane.append(&command(), &page());
-        pane.append(
-            &entry(EntryKind::Failed {
+        pane.append(&[command()]);
+        pane.append(&[
+            entry(EntryKind::Failed {
                 message: "boom".to_owned(),
                 error_char: None,
             }),
-            &page(),
-        );
-        pane.append(&entry(EntryKind::NotRun), &page());
+            entry(EntryKind::NotRun),
+        ]);
 
         pane.select(1);
 
@@ -373,7 +426,7 @@ mod tests {
         let imp = pane.imp();
         imp.split_view.set_collapsed(true);
         for _ in 0..3 {
-            pane.append(&command(), &page());
+            pane.append(&[command()]);
         }
         imp.split_view.set_show_sidebar(true);
 
@@ -391,15 +444,16 @@ mod tests {
     #[gtk4::test]
     fn clearing_forgets_the_last_run() {
         let pane = pane();
-        pane.append(&command(), &page());
-        pane.append(&command(), &page());
+        pane.append(&[command(), command()]);
+        pane.select(1);
 
         pane.clear();
 
         assert_eq!(pane.n_entries(), 0);
         assert!(!pane.imp().sidebar_toggle.is_visible());
         assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("empty"));
-        pane.append(&command(), &page());
+        assert_eq!(built_pages(&pane), 0, "a page outlived its run");
+        pane.append(&[command()]);
         assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("entry-0"));
     }
 
@@ -411,5 +465,48 @@ mod tests {
             &pane.imp().sidebar_toggle.get(),
             gtk4::AccessibleProperty::Label
         ));
+    }
+
+    #[gtk4::test]
+    fn a_long_list_builds_only_the_page_it_shows() {
+        let pane = pane();
+        let not_run = entry(EntryKind::NotRun);
+        let entries = vec![not_run; 100_000];
+
+        pane.append(&entries);
+
+        assert_eq!(pane.n_entries(), 100_000);
+        assert_eq!(built_pages(&pane), 1);
+        assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("entry-0"));
+    }
+
+    #[gtk4::test]
+    fn paging_through_the_list_keeps_a_bounded_number_of_pages() {
+        let pane = pane();
+        pane.append(&vec![command(); 50]);
+
+        for index in 0..50 {
+            pane.select(index);
+        }
+
+        assert_eq!(built_pages(&pane), PAGES_KEPT as u32);
+        assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("entry-49"));
+        assert!(
+            pane.imp().stack.child_by_name("entry-0").is_none(),
+            "the oldest page was kept"
+        );
+    }
+
+    #[gtk4::test]
+    fn going_back_to_a_recent_result_keeps_its_page() {
+        let pane = pane();
+        pane.append(&[command(), command()]);
+        pane.select(0);
+        let first = pane.imp().stack.visible_child().expect("the first page");
+
+        pane.select(1);
+        pane.select(0);
+
+        assert_eq!(pane.imp().stack.visible_child().as_ref(), Some(&first));
     }
 }

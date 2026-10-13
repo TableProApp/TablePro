@@ -134,6 +134,30 @@ fn a_script_fills_the_results_list_one_line_per_statement() {
 }
 
 #[gtk4::test]
+fn a_long_script_that_fails_early_builds_one_result_page() {
+    let mut runs = Replies::default();
+    runs.when_sql_contains(
+        "boom",
+        FakeRun::failed(DriverError::server("relation \"boom\" does not exist")),
+    );
+    runs.always(FakeRun::completed(Vec::new()));
+    let script: Vec<String> = std::iter::once("SELECT * FROM boom;".to_owned())
+        .chain((1..2_000).map(|n| format!("SELECT {n};")))
+        .collect();
+    let harness = editor_with(runs, &script.join("\n"));
+
+    run_and_wait(&harness);
+
+    let results = &harness.editor.imp().results;
+    assert_eq!(results.n_entries(), 2_000);
+    assert_eq!(
+        results.imp().stack.pages().n_items(),
+        2,
+        "pages were built for lines nobody opened"
+    );
+}
+
+#[gtk4::test]
 fn an_open_transaction_marks_the_tab() {
     let mut runs = Replies::default();
     runs.always(FakeRun::completed(Vec::new()).leaving(TransactionState::InTransaction));
