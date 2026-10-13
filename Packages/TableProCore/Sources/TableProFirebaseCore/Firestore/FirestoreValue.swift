@@ -1,6 +1,5 @@
 import Foundation
 
-/// One Firestore value, decoded from and encoded to the REST `Value` message.
 public indirect enum FirestoreValue: Sendable, Hashable {
     case null
     case boolean(Bool)

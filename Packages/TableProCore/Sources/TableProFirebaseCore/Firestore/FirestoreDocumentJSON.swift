@@ -1,13 +1,7 @@
 import Foundation
 
-/// The JSON a user reads and edits for a Firestore document. Plain JSON covers strings, booleans,
-/// integers, maps and arrays; the types JSON has no word for are single-key objects:
-///
-///     {"$timestamp": "2026-10-12T08:00:00Z"}   {"$ref": "users/alice"}
-///     {"$geo": {"latitude": 45.4, "longitude": 9.2}}   {"$bytes": "aGk="}   {"$double": 3}
-///
-/// `$double` is needed only for a double with no fraction, which plain JSON would read back as an
-/// integer. A real map whose only key is one of these tags is written inside `{"$map": {...}}`.
+/// Types JSON has no word for are single-key objects such as `{"$timestamp": "..."}`. `$double`
+/// marks a double with no fraction, and `$map` wraps a real map whose only key is one of the tags.
 public enum FirestoreDocumentJSON {
     static let timestampTag = "$timestamp"
     static let referenceTag = "$ref"
@@ -77,7 +71,6 @@ public enum FirestoreDocumentJSON {
         }
     }
 
-    /// Reads the top level of an edited document, which has to be an object of fields.
     public static func fields(from text: String) throws -> [String: FirestoreValue] {
         let json = try FirebaseJSON.parse(text)
         guard case .object(let members) = json else {

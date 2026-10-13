@@ -705,6 +705,20 @@ struct QueryClassifierNonSqlTests {
         }
     }
 
+    @Test("A Firebase write that replaces the root or leaves a node empty ranks with DELETE")
+    func firebaseWritesThatDelete() {
+        for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
+            #expect(QueryClassifier.classifyTier("PUT / {\"a\": 1}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT %2F 1", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users null", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users\n{\"a\": {}, \"b\": [null]}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\"a\": 1}", databaseType: type) == .write)
+        }
+        #expect(QueryClassifier.classifyTier("PATCH / {\"users\": null}", databaseType: .firebaseRealtimeDatabase) == .destructive)
+        #expect(QueryClassifier.classifyTier("PATCH users/a {\"n\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
+        #expect(QueryClassifier.classifyTier("PATCH users/a {\"n\": null}", databaseType: .firestore) == .write)
+    }
+
     @Test("A console body declaring a mutation is classified the same as a bare one")
     func weaviateConsoleBodyIsRead() {
         #expect(QueryClassifier.isWriteQuery(

@@ -75,6 +75,10 @@
         }
       }
     },
+    "__name__ is the document's ID in this collection, such as alice." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "__name__ is the document's ID or path, as text." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -144688,6 +144692,10 @@
         }
       }
     },
+    "Replacing the whole database is not offered. Write its children one at a time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Replacing…" : {
       "localizations" : {
         "fr" : {
@@ -165678,6 +165686,10 @@
         }
       }
     },
+    "Sorted by %@. Documents without that field are not shown." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Sorted descending" : {
       "localizations" : {
         "fr" : {
@@ -183670,6 +183682,10 @@
       }
     },
     "The node changed after it was opened. Reopen it and edit again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The node changed after it was read." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

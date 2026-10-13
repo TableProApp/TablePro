@@ -12,6 +12,23 @@ public struct FirebaseFilterSpec: Codable, Sendable, Equatable {
         self.value = value
         self.secondValue = secondValue
     }
+
+    /// The host sends BETWEEN as `value: "lower,upper"` with the upper bound again in `secondValue`,
+    /// so the lower bound is `value` without that suffix, whatever commas the bounds hold.
+    public var betweenBounds: (lower: String, upper: String)? {
+        guard let upper = secondValue else {
+            let parts = value.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            return parts.count == 2 ? (parts[0], parts[1]) : nil
+        }
+        let suffix = Array(("," + upper).unicodeScalars)
+        let scalars = Array(value.unicodeScalars)
+        guard scalars.count >= suffix.count, Array(scalars.suffix(suffix.count)) == suffix else {
+            return (value, upper)
+        }
+        var lower = String.UnicodeScalarView()
+        lower.append(contentsOf: scalars.dropLast(suffix.count))
+        return (String(lower), upper)
+    }
 }
 
 public struct FirebaseSortSpec: Codable, Sendable, Equatable {
@@ -24,9 +41,8 @@ public struct FirebaseSortSpec: Codable, Sendable, Equatable {
     }
 }
 
-/// What the grid asked for: a page of one collection, filtered and sorted. It travels inside the
-/// statement text and is turned into a structured query only when it runs, because the filter
-/// values are typed by the fields the collection was last seen holding.
+/// Turned into a query only when it runs, because filter values are typed by the fields the
+/// collection was last seen holding.
 public struct FirebaseBrowseSpec: Codable, Sendable, Equatable {
     public let table: String
     public let filters: [FirebaseFilterSpec]
@@ -82,6 +98,10 @@ public struct FirestoreCollectionTarget: Sendable, Equatable {
         self.isGroup = false
     }
 
+    public var collectionPath: String {
+        parentPath.isEmpty ? collectionId : parentPath + "/" + collectionId
+    }
+
     public static func groupName(_ collectionId: String) -> String {
         groupPrefix + collectionId
     }
@@ -96,8 +116,7 @@ public struct FirestoreCollectionTarget: Sendable, Equatable {
         if isGroup || name.contains("/") {
             return name.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         }
-        let collection = parentPath.isEmpty ? collectionId : parentPath + "/" + collectionId
-        return collection + "/" + name
+        return collectionPath + "/" + name
     }
 
     private static func invalid(_ table: String) -> FirebaseError {
@@ -112,8 +131,8 @@ public enum FirestoreQueryBuilder {
     )
     public static let rawFilterColumn = "__RAW__"
 
-    /// `typeOf` answers the type a field was last seen holding, so `age = 30` compares against
-    /// the integer 30 and `zip = 30` against the string when zip is a string field.
+    /// `typeOf` answers the type a field was last seen holding, so `zip = 30` compares against the
+    /// string "30" when zip is a string field.
     public static func structuredQuery(
         spec: FirebaseBrowseSpec,
         target: FirestoreCollectionTarget,
@@ -121,20 +140,13 @@ public enum FirestoreQueryBuilder {
         typeOf: (String) -> String?
     ) throws -> FirebaseJSON {
         var query = try baseQuery(spec: spec, target: target, documentRoot: documentRoot, typeOf: typeOf)
-        if !spec.sorts.isEmpty {
-            query["orderBy"] = .array(spec.sorts.map { sort in
-                .object([
-                    "field": .object(["fieldPath": .string(fieldPath(sort.column))]),
-                    "direction": .string(sort.ascending ? "ASCENDING" : "DESCENDING")
-                ])
-            })
-        }
         if spec.offset > 0 { query["offset"] = .int(Int64(spec.offset)) }
         if spec.limit > 0 { query["limit"] = .int(Int64(spec.limit)) }
         return .object(["structuredQuery": .object(query)])
     }
 
-    /// The same filters with no order or page, for `runAggregationQuery` to count.
+    /// Keeps the order because ordering by a field drops the documents without it, and the count
+    /// has to match the rows the grid shows.
     public static func countQuery(
         spec: FirebaseBrowseSpec,
         target: FirestoreCollectionTarget,
@@ -166,7 +178,19 @@ public enum FirestoreQueryBuilder {
         if let combined = combine(filters, op: spec.usesOr ? "OR" : "AND") {
             query["where"] = combined
         }
+        if !spec.sorts.isEmpty {
+            query["orderBy"] = .array(spec.sorts.map { sort in
+                .object([
+                    "field": .object(["fieldPath": .string(fieldPath(sort.column))]),
+                    "direction": .string(sort.ascending ? "ASCENDING" : "DESCENDING")
+                ])
+            })
+        }
         return query
+    }
+
+    public static func sortedFields(_ spec: FirebaseBrowseSpec) -> [String] {
+        spec.sorts.map(\.column).filter { $0 != nameField }
     }
 
     static func combine(_ filters: [FirebaseJSON], op: String) -> FirebaseJSON? {
@@ -213,12 +237,12 @@ public enum FirestoreQueryBuilder {
             let op = filter.op.uppercased() == "IN" ? "IN" : "NOT_IN"
             return field(path, op, .object(["arrayValue": .object(["values": .array(items)])]))
         case "BETWEEN":
-            guard let upper = filter.secondValue else {
+            guard let bounds = filter.betweenBounds else {
                 throw FirebaseError.configuration(String(localized: "BETWEEN needs two values."))
             }
             return .object(["compositeFilter": .object(["op": .string("AND"), "filters": .array([
-                field(path, "GREATER_THAN_OR_EQUAL", try typed(filter.value)),
-                field(path, "LESS_THAN_OR_EQUAL", try typed(upper))
+                field(path, "GREATER_THAN_OR_EQUAL", try typed(bounds.lower)),
+                field(path, "LESS_THAN_OR_EQUAL", try typed(bounds.upper))
             ])])])
         case "STARTS WITH":
             return .object(["compositeFilter": .object(["op": .string("AND"), "filters": .array([
@@ -244,6 +268,51 @@ public enum FirestoreQueryBuilder {
         if simple { return column }
         let escaped = column.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "`", with: "\\`")
         return "`" + escaped + "`"
+    }
+
+    /// An update mask as a request line carries it: top-level field names, comma separated, each
+    /// in backticks when it holds anything but letters, digits and `_`.
+    public static func maskText(_ fields: [String]) -> String {
+        fields.map(fieldPath).joined(separator: ",")
+    }
+
+    public static func maskFields(_ text: String) -> [String] {
+        var fields: [String] = []
+        var current = ""
+        var quoted = false
+        var escaping = false
+        var wasQuoted = false
+        func finish() {
+            let name = wasQuoted ? current : current.trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { fields.append(name) }
+            current = ""
+            wasQuoted = false
+        }
+        for character in text {
+            if escaping {
+                current.append(character)
+                escaping = false
+            } else if quoted {
+                switch character {
+                case "\\": escaping = true
+                case "`": quoted = false
+                default: current.append(character)
+                }
+            } else {
+                switch character {
+                case "`":
+                    quoted = true
+                    wasQuoted = true
+                    current = ""
+                case ",":
+                    finish()
+                default:
+                    current.append(character)
+                }
+            }
+        }
+        finish()
+        return fields
     }
 
     private static func operand(

@@ -1,7 +1,5 @@
 import Foundation
 
-/// The children of a node as grid rows: `$key`, then the fields of every child that is an object,
-/// then `$value` for children that are plain values. Nested objects show as JSON text.
 public struct RealtimeDatabaseRowSet: Sendable, Equatable {
     public let columns: [String]
     public let columnTypes: [String]
@@ -23,7 +21,7 @@ public struct RealtimeDatabaseRowSet: Sendable, Equatable {
         var typeVotes: [[String: Int]] = Array(repeating: [:], count: columns.count)
         for (rowIndex, child) in children.enumerated() {
             let locator = RealtimeDatabasePath.join(nodePath, child.key)
-            var row: [String?] = [child.key.isEmpty ? RealtimeDatabasePath.lastSegment(nodePath) : child.key]
+            var row: [String?] = [child.key.isEmpty ? RealtimeDatabasePath.nodeKey(nodePath) : child.key]
             var types: [String: String] = [:]
             let members = child.value.objectValue
             for (offset, column) in columns.enumerated().dropFirst() {
@@ -71,8 +69,7 @@ public struct RealtimeDatabaseRowSet: Sendable, Equatable {
 }
 
 public enum RealtimeDatabaseCell {
-    /// `typeName` is what the cell held before the edit. A string cell stays a string; anything
-    /// else is read as a JSON literal, so `{"a": 1}` writes an object and `42` a number.
+    /// A string cell stays a string; anything else is read as a JSON literal.
     public static func value(text: String, typeName: String?) throws -> FirebaseJSON {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch typeName {
@@ -119,8 +116,10 @@ public enum RealtimeDatabasePath {
         return base.isEmpty ? key : base + "/" + key
     }
 
-    public static func lastSegment(_ path: String) -> String {
-        normalized(path).split(separator: "/").last.map(String.init) ?? ""
+    /// The `$key` of the row a node holding a plain value shows as. A key cannot hold `/`, so this
+    /// can never name a child.
+    public static func nodeKey(_ path: String) -> String {
+        "/" + normalized(path)
     }
 
     public static func validateKey(_ key: String) throws {

@@ -5,8 +5,8 @@ import TableProPluginKit
 extension FirebasePluginDriver {
     static let consolePageSize = 100
     static let exportPageSize = 500
-    /// Export fixes its columns from the first page; a field that only later documents have goes
-    /// here as JSON rather than being dropped.
+    /// Export fixes its columns from the first page, so a field only later documents have goes here
+    /// as JSON rather than being dropped.
     static let extraColumn = "__extra__"
 
     func execute(query: String) async throws -> PluginQueryResult {
@@ -52,10 +52,15 @@ extension FirebasePluginDriver {
                                                              typeOf: { types[$0] })
         let documents = try await client.runQuery(parent: target.parentPath, body: body,
                                                   operation: String(format: String(localized: "read %@"), spec.table))
-        return firestoreResult(FirestoreRowSet(documents: documents, target: target), table: spec.table, started: started)
+        let sorted = FirestoreQueryBuilder.sortedFields(spec)
+        let notice = sorted.isEmpty ? nil : String(
+            format: String(localized: "Sorted by %@. Documents without that field are not shown."),
+            sorted.joined(separator: ", ")
+        )
+        return firestoreResult(FirestoreRowSet(documents: documents, target: target), table: spec.table, started: started, notice: notice)
     }
 
-    func firestoreResult(_ rows: FirestoreRowSet, table: String?, started: Date) -> PluginQueryResult {
+    func firestoreResult(_ rows: FirestoreRowSet, table: String?, started: Date, notice: String? = nil) -> PluginQueryResult {
         if let table {
             rememberColumnTypes(table, columns: rows.columns, types: rows.columnTypes)
         }
@@ -65,7 +70,8 @@ extension FirebasePluginDriver {
             columnTypeNames: rows.columnTypes,
             rows: rows.rows.map { $0.map(Self.cell) },
             rowsAffected: 0,
-            executionTime: elapsed(since: started)
+            executionTime: elapsed(since: started),
+            statusMessage: notice
         )
         result.rowLocators = rows.locators
         result.absentCells = rows.absentCells
@@ -132,9 +138,7 @@ extension FirebasePluginDriver {
                 throw FirebaseError.configuration(String(localized: "PATCH needs a document path, such as users/alice."))
             }
             let fields = try FirestoreDocumentJSON.fields(from: request.body ?? "")
-            let mask = request.queryValue("updateMask").map { text in
-                text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            }
+            let mask = request.queryValue("updateMask").map(FirestoreQueryBuilder.maskFields)
             try await client.patchDocument(request.path, fields: fields, mask: mask)
             return writeResult(request.path, started: started)
         case .delete:
@@ -177,6 +181,7 @@ extension FirebasePluginDriver {
     // MARK: - Console: Realtime Database
 
     private func executeRealtimeDatabase(_ request: FirebaseRequest, started: Date) async throws -> PluginQueryResult {
+        try Self.refuseWholeDatabaseWrite(request)
         let client = try requireRealtimeDatabase()
         switch request.method {
         case .get:
@@ -201,13 +206,23 @@ extension FirebasePluginDriver {
             let key = try await client.push(request.path, value: try FirebaseJSON.parse(request.body ?? ""))
             return writeResult(RealtimeDatabasePath.join("/" + request.path, key ?? ""), started: started)
         case .delete:
-            guard !request.path.isEmpty else {
-                throw FirebaseError.unsupported(String(localized: "Deleting the whole database is not offered. Delete its children one at a time."))
-            }
             try await client.delete(request.path)
             return writeResult("/" + request.path, started: started)
         case .query:
             throw FirebaseError.unsupported(String(localized: "QUERY is for Firestore. Use GET with orderBy, equalTo, startAt or limitToFirst."))
+        }
+    }
+
+    /// `PUT /` replaces every node, so it is refused like `DELETE /`.
+    static func refuseWholeDatabaseWrite(_ request: FirebaseRequest) throws {
+        guard request.path.isEmpty else { return }
+        switch request.method {
+        case .delete:
+            throw FirebaseError.unsupported(String(localized: "Deleting the whole database is not offered. Delete its children one at a time."))
+        case .put:
+            throw FirebaseError.unsupported(String(localized: "Replacing the whole database is not offered. Write its children one at a time."))
+        case .get, .query, .patch, .post:
+            return
         }
     }
 
@@ -256,7 +271,6 @@ extension FirebasePluginDriver {
         }
     }
 
-    /// Places a page's cells under the export's columns and gathers the rest into `__extra__`.
     static func align(_ row: [PluginCellValue], columns: [String], to header: [String]) -> [PluginCellValue] {
         var byName: [String: PluginCellValue] = [:]
         for (column, value) in zip(columns, row) { byName[column] = value }
@@ -312,7 +326,7 @@ extension FirebasePluginDriver {
                 var bounds: [String: String] = [:]
                 if let lastKey { bounds["startAfter"] = FirebaseJSON.string(lastKey).text() }
                 let plan = RealtimeDatabaseReadPlan(order: .key, ascending: true, bounds: bounds,
-                                                    fetchCount: Self.exportPageSize, dropCount: 0, rawQuery: nil)
+                                                    fetchCount: Self.exportPageSize, dropCount: 0)
                 let children = try await client.children(node, plan: plan)
                 guard !children.isEmpty else { return }
                 let rows = RealtimeDatabaseRowSet(children: children, nodePath: node)

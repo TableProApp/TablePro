@@ -3,10 +3,8 @@ import TableProFirebaseCore
 import TableProGoogleCloud
 import TableProPluginKit
 
-/// Turns the connection's auth fields into the bearer token every Firebase request carries.
 internal enum FirebaseCredentialFactory {
-    /// `cloud-platform` reaches Firestore and the management APIs; the Realtime Database REST API
-    /// also wants the two Firebase scopes, which a user login from `gcloud` already includes.
+    /// The Realtime Database REST API wants the two Firebase scopes beside `cloud-platform`.
     static let scopes = [
         GoogleOAuthClient.cloudPlatformScope,
         "https://www.googleapis.com/auth/firebase.database",
@@ -22,7 +20,7 @@ internal enum FirebaseCredentialFactory {
         let fields = config.additionalFields
         let method = trimmed(fields[FirebaseFieldID.authMethod]).flatMap(FirebaseAuthMethod.init(rawValue:))
             ?? .serviceAccount
-        let http = URLSessionGoogleHTTPClient()
+        let source: GoogleCredentialSource
         switch method {
         case .emulator:
             return Resolved(credential: .emulator, projectHint: nil)
@@ -30,36 +28,27 @@ internal enum FirebaseCredentialFactory {
             guard let value = trimmed(fields[FirebaseFieldID.serviceAccountJson]) ?? trimmed(config.password) else {
                 throw FirebaseError.configuration(String(localized: "Choose a service account key file, or paste its JSON."))
             }
-            let key = try GoogleServiceAccountKey.parse(
-                fieldValue: value,
-                readFile: { FileManager.default.contents(atPath: $0) }
-            )
-            let provider = GoogleTokenProviders.serviceAccount(key, scopes: scopes, http: http)
-            return Resolved(credential: credential(from: provider, quotaProject: nil), projectHint: key.projectId)
+            source = .serviceAccountKey(value)
         case .applicationDefault:
-            let credentials = try GoogleApplicationDefaultCredentials.load(
-                path: nil,
-                readFile: { FileManager.default.contents(atPath: $0) },
-                environment: ProcessInfo.processInfo.environment
-            )
-            let provider = GoogleTokenProviders.applicationDefault(credentials, scopes: scopes, http: http)
-            var quotaProject: String?
-            if case .authorizedUser(_, _, _, let project) = credentials {
-                quotaProject = project
-            }
-            let environmentProject = ProcessInfo.processInfo.environment["GOOGLE_CLOUD_PROJECT"]
-            return Resolved(
-                credential: credential(from: provider, quotaProject: quotaProject),
-                projectHint: credentials.projectHint ?? trimmed(environmentProject)
-            )
+            source = .applicationDefault
         }
-    }
-
-    private static func credential(from provider: any GoogleAccessTokenProviding, quotaProject: String?) -> FirebaseCredential {
-        FirebaseCredential(
-            token: { try await provider.accessToken() },
-            invalidate: { await provider.invalidateCachedToken() },
-            quotaProject: quotaProject
+        let environment = ProcessInfo.processInfo.environment
+        let credentials = try GoogleTokenProviders.credentials(
+            from: source,
+            scopes: scopes,
+            readFile: { FileManager.default.contents(atPath: $0) },
+            environment: environment,
+            http: URLSessionGoogleHTTPClient()
+        )
+        let provider = credentials.tokenProvider
+        let environmentProject = source == .applicationDefault ? trimmed(environment["GOOGLE_CLOUD_PROJECT"]) : nil
+        return Resolved(
+            credential: FirebaseCredential(
+                token: { try await provider.accessToken() },
+                invalidate: { await provider.invalidateCachedToken() },
+                quotaProject: credentials.quotaProject
+            ),
+            projectHint: credentials.projectHint ?? environmentProject
         )
     }
 

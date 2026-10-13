@@ -5,8 +5,6 @@ import TableProPluginKit
 extension FirebasePluginDriver {
     // MARK: - Grid edits
 
-    /// Each change becomes one request line, the same text the console takes, so the history shows
-    /// exactly what was sent. An edit is typed by the value it replaces.
     func generateRowWrites(
         table: String,
         schema: String?,
@@ -17,16 +15,32 @@ extension FirebasePluginDriver {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
-        try changes.compactMap { change in
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns,
+            changes: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices,
+            context: PluginRowWriteContext()
+        )
+    }
+
+    /// Each change becomes the request line the console takes, so the history shows what was sent.
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        let types = writeColumnTypes(table, host: context.columnTypeNames)
+        return try changes.compactMap { change in
             do {
-                let request: FirebaseRequest?
-                switch variant {
-                case .firestore:
-                    request = try firestoreRequest(for: change, table: table, columns: columns, insertedRowData: insertedRowData)
-                case .realtimeDatabase:
-                    request = try databaseRequest(for: change, table: table, columns: columns, insertedRowData: insertedRowData)
-                }
-                return request.map { PluginRowWrite(statement: $0.text, rowIndices: [change.rowIndex]) }
+                let row = insertedRowData[change.rowIndex] ?? []
+                return try rowRequest(change, row: row, table: table, columns: columns, types: types, restoring: false)
+                    .map { PluginRowWrite(statement: $0.text, rowIndices: [change.rowIndex]) }
             } catch let refusal as PluginRowWriteRefusal {
                 throw refusal
             } catch {
@@ -42,79 +56,114 @@ extension FirebasePluginDriver {
         primaryKeyColumns: [String],
         rows: [[PluginCellValue]]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let statements = rows.enumerated().compactMap { index, row -> String? in
-            let change = PluginRowChange(rowIndex: index, type: .insert, cellChanges: [], originalRow: nil)
-            switch variant {
-            case .firestore:
-                return (try? firestoreRequest(for: change, table: table, columns: columns, insertedRowData: [index: row]))??.text
-            case .realtimeDatabase:
-                return (try? databaseRequest(for: change, table: table, columns: columns, insertedRowData: [index: row]))??.text
+        generateIdentityPreservingInsert(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns,
+            rows: rows, absentCells: [:]
+        )
+    }
+
+    /// A restored row keeps its ID, leaves out the fields it never had, and types each value by
+    /// the field it was read from.
+    func generateIdentityPreservingInsert(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        let types = writeColumnTypes(table, host: [:])
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+        for (index, row) in rows.enumerated() {
+            var change = PluginRowChange(rowIndex: index, type: .insert, cellChanges: [], originalRow: nil)
+            change.absentColumns = absentCells[index] ?? []
+            guard let request = try? rowRequest(change, row: row, table: table, columns: columns, types: types, restoring: true) else {
+                return nil
             }
+            statements.append((request.text, []))
         }
-        return statements.count == rows.count ? statements.map { ($0, []) } : nil
+        return statements
+    }
+
+    private func rowRequest(
+        _ change: PluginRowChange,
+        row: [PluginCellValue],
+        table: String,
+        columns: [String],
+        types: [String: String],
+        restoring: Bool
+    ) throws -> FirebaseRequest? {
+        switch variant {
+        case .firestore:
+            return try firestoreRequest(change, row: row, table: table, columns: columns, types: types, restoring: restoring)
+        case .realtimeDatabase:
+            return try databaseRequest(change, row: row, table: table, columns: columns, types: types, restoring: restoring)
+        }
     }
 
     private func firestoreRequest(
-        for change: PluginRowChange,
+        _ change: PluginRowChange,
+        row: [PluginCellValue],
         table: String,
         columns: [String],
-        insertedRowData: [Int: [PluginCellValue]]
+        types: [String: String],
+        restoring: Bool
     ) throws -> FirebaseRequest? {
         let target = try FirestoreCollectionTarget(table: table)
         let nameColumn = FirestoreQueryBuilder.nameField
+        let absent = change.absentColumns ?? []
         switch change.type {
         case .insert:
-            let row = insertedRowData[change.rowIndex] ?? []
-            let absent = change.absentColumns ?? []
+            let name = columns.firstIndex(of: nameColumn).flatMap { $0 < row.count ? row[$0].asText : nil }.flatMap { $0.isEmpty ? nil : $0 }
+            let path = name.map(target.documentPath(forRowName:))
             var fields: [String: FirestoreValue] = [:]
-            var name: String?
-            for (index, column) in columns.enumerated() where index < row.count && !absent.contains(index) {
-                if column == nameColumn {
-                    name = row[index].asText.flatMap { $0.isEmpty ? nil : $0 }
-                    continue
-                }
-                guard let value = try firestoreValue(row[index], type: columnType(table, column)) else { continue }
-                fields[column] = value
+            for (index, column) in columns.enumerated() where index < row.count && column != nameColumn && !absent.contains(index) {
+                fields[column] = try firestoreValue(row[index], type: writeType(column, locator: path, columnTypes: types))
             }
-            if target.isGroup {
-                guard let name, FirestorePath.isDocument(name) else {
+            let body = FirebaseJSON.object(fields.mapValues(FirestoreDocumentJSON.json)).text()
+            guard let path else {
+                guard !target.isGroup, !restoring else {
                     throw FirebaseError.configuration(String(
                         localized: "A new row in a collection group needs __name__ set to the full document path, such as users/alice/orders/1."
                     ))
                 }
-                let split = FirestorePath.split(collectionPath: name)
-                return FirebaseRequest(method: .post, path: split.parent,
-                                       query: [URLQueryItem(name: "documentId", value: FirestorePath.lastSegment(name))],
-                                       body: FirebaseJSON.object(fields.mapValues(FirestoreDocumentJSON.json)).text())
+                return FirebaseRequest(method: .post, path: target.collectionPath, body: body)
             }
-            let collection = target.parentPath.isEmpty ? target.collectionId : target.parentPath + "/" + target.collectionId
-            return FirebaseRequest(method: .post, path: collection,
-                                   query: name.map { [URLQueryItem(name: "documentId", value: $0)] } ?? [],
-                                   body: FirebaseJSON.object(fields.mapValues(FirestoreDocumentJSON.json)).text())
+            if !target.isGroup, let name, name.contains("/") {
+                throw FirebaseError.configuration(String(localized: "__name__ is the document's ID in this collection, such as alice."))
+            }
+            guard FirestorePath.isDocument(path) else {
+                throw FirebaseError.configuration(String(
+                    localized: "A new row in a collection group needs __name__ set to the full document path, such as users/alice/orders/1."
+                ))
+            }
+            let split = FirestorePath.split(collectionPath: path)
+            return FirebaseRequest(method: .post, path: split.parent,
+                                   query: [URLQueryItem(name: "documentId", value: split.collectionId)], body: body)
         case .update:
             let path = try documentPath(change, columns: columns, target: target)
             var fields: [String: FirestoreValue] = [:]
             var mask: [String] = []
-            let absent = change.absentColumns ?? []
             for cell in change.cellChanges where cell.columnName != nameColumn {
                 mask.append(cell.columnName)
-                if absent.contains(cell.columnIndex) { continue }
-                let type = cellType(locator: path, table: table, column: cell.columnName)
-                fields[cell.columnName] = try firestoreValue(cell.newValue, type: type) ?? .null
+                guard !absent.contains(cell.columnIndex) else { continue }
+                fields[cell.columnName] = try firestoreValue(
+                    cell.newValue, type: writeType(cell.columnName, locator: path, columnTypes: types)
+                )
             }
-            for index in absent where index < columns.count && !mask.contains(columns[index]) && columns[index] != nameColumn {
+            for index in absent.sorted() where index < columns.count && columns[index] != nameColumn && !mask.contains(columns[index]) {
                 mask.append(columns[index])
             }
             guard !mask.isEmpty else { return nil }
             return FirebaseRequest(method: .patch, path: path,
-                                   query: [URLQueryItem(name: "updateMask", value: mask.joined(separator: ","))],
+                                   query: [URLQueryItem(name: "updateMask", value: FirestoreQueryBuilder.maskText(mask))],
                                    body: FirebaseJSON.object(fields.mapValues(FirestoreDocumentJSON.json)).text())
         case .delete:
             return FirebaseRequest(method: .delete, path: try documentPath(change, columns: columns, target: target))
         }
     }
 
-    private func firestoreValue(_ cell: PluginCellValue, type: String?) throws -> FirestoreValue? {
+    private func firestoreValue(_ cell: PluginCellValue, type: String?) throws -> FirestoreValue {
         switch cell {
         case .null:
             return .null
@@ -134,60 +183,58 @@ extension FirebasePluginDriver {
     }
 
     private func databaseRequest(
-        for change: PluginRowChange,
+        _ change: PluginRowChange,
+        row: [PluginCellValue],
         table: String,
         columns: [String],
-        insertedRowData: [Int: [PluginCellValue]]
+        types: [String: String],
+        restoring: Bool
     ) throws -> FirebaseRequest? {
         let node = Self.nodePath(table)
         let keyColumn = FirebaseColumns.key
         let valueColumn = FirebaseColumns.value
+        let absent = change.absentColumns ?? []
         switch change.type {
         case .insert:
-            let row = insertedRowData[change.rowIndex] ?? []
-            let absent = change.absentColumns ?? []
+            let key = columns.firstIndex(of: keyColumn).flatMap { $0 < row.count ? row[$0].asText : nil }.flatMap { $0.isEmpty ? nil : $0 }
+            let locator = try key.map { try databaseInsertLocator($0, node: node, restoring: restoring) }
             var members: [String: FirebaseJSON] = [:]
             var plain: FirebaseJSON?
-            var key: String?
-            for (index, column) in columns.enumerated() where index < row.count && !absent.contains(index) {
+            for (index, column) in columns.enumerated() where index < row.count && column != keyColumn && !absent.contains(index) {
                 guard let text = row[index].asText else { continue }
-                switch column {
-                case keyColumn:
-                    key = text.isEmpty ? nil : text
-                case valueColumn:
-                    plain = try RealtimeDatabaseCell.value(text: text, typeName: columnType(table, column))
-                default:
-                    members[column] = try RealtimeDatabaseCell.value(text: text, typeName: columnType(table, column))
+                let value = try RealtimeDatabaseCell.value(text: text, typeName: writeType(column, locator: locator, columnTypes: types))
+                if column == valueColumn {
+                    plain = value
+                } else {
+                    members[column] = value
                 }
             }
             let value = members.isEmpty ? (plain ?? .null) : .object(members)
             guard value != .null else {
                 throw FirebaseError.configuration(String(localized: "A new child needs at least one value. The Realtime Database does not store empty nodes."))
             }
-            if let key {
-                try RealtimeDatabasePath.validateKey(key)
-                return FirebaseRequest(method: .put, path: RealtimeDatabasePath.join(node, key), body: value.text())
+            guard let locator else {
+                guard !restoring else {
+                    throw FirebaseError.configuration(String(localized: "The row has no $key, so the node it came from is unknown. Reload the table."))
+                }
+                return FirebaseRequest(method: .post, path: node, body: value.text())
             }
-            return FirebaseRequest(method: .post, path: node, body: value.text())
+            return FirebaseRequest(method: .put, path: locator, body: value.text())
         case .update:
             let locator = try databaseLocator(change, columns: columns, node: node)
-            let absent = change.absentColumns ?? []
             var members: [String: FirebaseJSON] = [:]
             for cell in change.cellChanges where cell.columnName != keyColumn {
+                let type = writeType(cell.columnName, locator: locator, columnTypes: types)
+                let value = absent.contains(cell.columnIndex)
+                    ? .null
+                    : try cell.newValue.asText.map { try RealtimeDatabaseCell.value(text: $0, typeName: type) } ?? .null
                 if cell.columnName == valueColumn {
-                    let type = cellType(locator: locator, table: table, column: valueColumn)
-                    let value = try cell.newValue.asText.map { try RealtimeDatabaseCell.value(text: $0, typeName: type) } ?? .null
                     return FirebaseRequest(method: .put, path: locator, body: value.text())
                 }
-                if absent.contains(cell.columnIndex) {
-                    members[cell.columnName] = .null
-                    continue
-                }
-                let type = cellType(locator: locator, table: table, column: cell.columnName)
-                members[cell.columnName] = try cell.newValue.asText.map { try RealtimeDatabaseCell.value(text: $0, typeName: type) } ?? .null
+                members[cell.columnName] = value
             }
-            for index in absent where index < columns.count && columns[index] != keyColumn && members[columns[index]] == nil {
-                members[columns[index]] = .null
+            for index in absent.sorted() where index < columns.count && ![keyColumn, valueColumn].contains(columns[index]) {
+                members[columns[index]] = members[columns[index]] ?? .null
             }
             guard !members.isEmpty else { return nil }
             for key in members.keys { try RealtimeDatabasePath.validateKey(key) }
@@ -197,18 +244,25 @@ extension FirebasePluginDriver {
         }
     }
 
-    /// A node holding a plain value is shown as one row named after the node, and that row is the
-    /// node itself rather than a child of it.
+    /// Only a restore may name the node itself, since writing there replaces everything under it.
+    private func databaseInsertLocator(_ key: String, node: String, restoring: Bool) throws -> String {
+        if restoring, key == RealtimeDatabasePath.nodeKey(node) {
+            return node
+        }
+        try RealtimeDatabasePath.validateKey(key)
+        return RealtimeDatabasePath.join(node, key)
+    }
+
     private func databaseLocator(_ change: PluginRowChange, columns: [String], node: String) throws -> String {
         guard let index = columns.firstIndex(of: FirebaseColumns.key),
               let row = change.originalRow, index < row.count, let key = row[index].asText, !key.isEmpty else {
             throw FirebaseError.configuration(String(localized: "The row has no $key, so the node it came from is unknown. Reload the table."))
         }
-        let child = RealtimeDatabasePath.join(node, key)
-        if !knowsLocator(child), knowsLocator(node), RealtimeDatabasePath.lastSegment(node) == key {
+        if key == RealtimeDatabasePath.nodeKey(node) {
             return node
         }
-        return child
+        try RealtimeDatabasePath.validateKey(key)
+        return RealtimeDatabasePath.join(node, key)
     }
 
     // MARK: - Whole documents
@@ -239,8 +293,7 @@ extension FirebasePluginDriver {
         }
     }
 
-    /// The text an edit starts from carries the document's path under `__name__`, so the edit names
-    /// the document it changes and a rename can be refused instead of written somewhere else.
+    /// Carries the path under `__name__`, so a rename can be refused instead of written elsewhere.
     static func documentText(path: String, fields: [String: FirestoreValue]) -> String {
         var members = fields.mapValues(FirestoreDocumentJSON.json)
         members[FirestoreQueryBuilder.nameField] = .string(path)
@@ -266,8 +319,7 @@ extension FirebasePluginDriver {
                 guard !target.isGroup else {
                     throw FirebaseError.configuration(String(localized: "A document added to a collection group needs __name__ set to its full path."))
                 }
-                let collection = target.parentPath.isEmpty ? target.collectionId : target.parentPath + "/" + target.collectionId
-                return FirebaseRequest(method: .post, path: collection,
+                return FirebaseRequest(method: .post, path: target.collectionPath,
                                        query: parsed.path.map { [URLQueryItem(name: "documentId", value: $0)] } ?? [], body: parsed.body)
             case .replace(let original, let edited):
                 let before = try Self.splitDocument(original)
@@ -350,7 +402,11 @@ extension FirebasePluginDriver {
             guard current.value == expected else {
                 throw FirebaseError.precondition(String(localized: "The node changed after it was opened. Reopen it and edit again."))
             }
-            try await client.put(request.path, value: value, ifMatch: current.etag)
+            do {
+                try await client.put(request.path, value: value, ifMatch: current.etag)
+            } catch FirebaseError.precondition {
+                throw FirebaseError.precondition(String(localized: "The node changed after it was opened. Reopen it and edit again."))
+            }
         @unknown default:
             throw FirebaseError.unsupported(Self.unknownWriteMessage)
         }
@@ -374,8 +430,7 @@ extension FirebasePluginDriver {
         return (path, FirebaseJSON.object(members).text())
     }
 
-    /// A node is edited as `{"$key": "<path>", "$value": <JSON>}`; a new child may also be written
-    /// as bare JSON, which is pushed under a generated key.
+    /// Bare JSON that is not `{"$key": ..., "$value": ...}` is a new child under a generated key.
     static func splitNode(_ text: String) throws -> (key: String?, value: FirebaseJSON) {
         let json = try FirebaseJSON.parse(text)
         guard case .object(let members) = json, let value = members[FirebaseColumns.value],

@@ -2,8 +2,8 @@ import Foundation
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
-    /// One plugin serves both types. The Realtime Database is its variant, so its entry here is the
-    /// one the app uses even once the plugin loads, which is how it gets its own fields and names.
+    /// The Realtime Database is the plugin's variant, so its entry here is the one the app uses even
+    /// once the plugin loads.
     func firebasePluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         [
             ("Firestore", PluginMetadataSnapshot(
@@ -15,7 +15,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#FFA000",
                 queryLanguageName: "REST", editorLanguage: .javascript,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
-                capabilities: firebaseCapabilities,
+                capabilities: firebaseCapabilities(realtimeDatabase: false),
                 schema: firebaseSchema(tableEntityName: "Collections", primaryKey: "__name__", defaultGroupName: "(default)"),
                 editor: firebaseEditor,
                 connection: PluginMetadataSnapshot.ConnectionConfig(
@@ -35,7 +35,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#FFA000",
                 queryLanguageName: "REST", editorLanguage: .javascript,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
-                capabilities: firebaseCapabilities,
+                capabilities: firebaseCapabilities(realtimeDatabase: true),
                 schema: firebaseSchema(tableEntityName: "Nodes", primaryKey: "$key", defaultGroupName: "default"),
                 editor: firebaseEditor,
                 connection: PluginMetadataSnapshot.ConnectionConfig(
@@ -49,7 +49,8 @@ extension PluginMetadataRegistry {
         ]
     }
 
-    private var firebaseCapabilities: PluginMetadataSnapshot.CapabilityFlags {
+    /// The Realtime Database filters on one field at a time and counts only by listing every key.
+    private func firebaseCapabilities(realtimeDatabase: Bool) -> PluginMetadataSnapshot.CapabilityFlags {
         PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: false,
             supportsImport: false,
@@ -62,6 +63,8 @@ extension PluginMetadataRegistry {
             supportsQueryProgress: false,
             requiresReconnectForDatabaseSwitch: false,
             supportsDropDatabase: false,
+            supportsDocumentEditing: true,
+            supportsFieldRemoval: true,
             supportsAddColumn: false,
             supportsModifyColumn: false,
             supportsDropColumn: false,
@@ -69,6 +72,9 @@ extension PluginMetadataRegistry {
             supportsDropIndex: false,
             supportsModifyPrimaryKey: false,
             supportsOpportunisticTLS: false,
+            exactRowCountIsFullScan: realtimeDatabase,
+            supportsMatchAnyFilters: !realtimeDatabase,
+            columnsAreSampled: true,
             supportsPrincipalConnectionLimit: false
         )
     }

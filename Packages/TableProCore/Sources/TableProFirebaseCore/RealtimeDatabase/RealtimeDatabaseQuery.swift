@@ -1,8 +1,7 @@
 import Foundation
 
-/// How one page of a Realtime Database node is read. The REST API has no offset and filters on one
-/// ordered field at a time, so a page is a server query for the first `offset + limit` children in
-/// the requested order, with the leading `offset` dropped here.
+/// The REST API has no offset, so a page asks the server for the first `offset + limit` children in
+/// its order and drops the leading `offset` here.
 public struct RealtimeDatabaseReadPlan: Sendable, Equatable {
     public enum Order: Sendable, Equatable {
         case key
@@ -12,30 +11,34 @@ public struct RealtimeDatabaseReadPlan: Sendable, Equatable {
 
     public let order: Order
     public let ascending: Bool
-    /// Query parameters other than ordering and limits, already JSON-encoded as the API wants.
+    /// Already JSON-encoded, as the API takes them.
     public let bounds: [String: String]
     public let fetchCount: Int
     public let dropCount: Int
-    /// The raw filter row, passed through as written.
-    public let rawQuery: String?
+    /// The most children kept after the drop; 0 keeps them all.
+    public let keepCount: Int
+    public let rawQuery: [URLQueryItem]?
 
-    public init(order: Order, ascending: Bool, bounds: [String: String], fetchCount: Int, dropCount: Int, rawQuery: String?) {
+    public init(
+        order: Order,
+        ascending: Bool,
+        bounds: [String: String],
+        fetchCount: Int,
+        dropCount: Int,
+        keepCount: Int = 0,
+        rawQuery: [URLQueryItem]? = nil
+    ) {
         self.order = order
         self.ascending = ascending
         self.bounds = bounds
         self.fetchCount = fetchCount
         self.dropCount = dropCount
+        self.keepCount = keepCount
         self.rawQuery = rawQuery
     }
 
     public var queryItems: [URLQueryItem] {
-        if let rawQuery {
-            var items = RealtimeDatabaseReadPlan.parseRawQuery(rawQuery)
-            if !items.contains(where: { $0.name.hasPrefix("limitTo") }), fetchCount > 0 {
-                items.append(URLQueryItem(name: "limitToFirst", value: String(fetchCount)))
-            }
-            return items
-        }
+        if let rawQuery { return rawQuery }
         var items = [URLQueryItem(name: "orderBy", value: Self.orderParameter(order))]
         for key in bounds.keys.sorted() {
             items.append(URLQueryItem(name: key, value: bounds[key]))
@@ -46,6 +49,11 @@ public struct RealtimeDatabaseReadPlan: Sendable, Equatable {
         return items
     }
 
+    public func window(_ sorted: [(key: String, value: FirebaseJSON)]) -> [(key: String, value: FirebaseJSON)] {
+        let kept = sorted.dropFirst(dropCount)
+        return Array(keepCount > 0 ? kept.prefix(keepCount) : kept)
+    }
+
     static func orderParameter(_ order: Order) -> String {
         switch order {
         case .key: return "\"$key\""
@@ -54,13 +62,13 @@ public struct RealtimeDatabaseReadPlan: Sendable, Equatable {
         }
     }
 
-    static func parseRawQuery(_ text: String) -> [URLQueryItem] {
-        let trimmed = text.trimmingCharacters(in: CharacterSet(charactersIn: "?& \n"))
-        return trimmed.split(separator: "&").compactMap { pair in
-            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
-            guard let name = parts.first, !name.isEmpty else { return nil }
-            let value = parts.count > 1 ? (parts[1].removingPercentEncoding ?? parts[1]) : ""
-            return URLQueryItem(name: name, value: value)
+    static func order(fromParameter text: String) -> Order? {
+        guard case .string(let name)? = try? FirebaseJSON.parse(text) else { return nil }
+        switch name {
+        case "$key": return .key
+        case "$value": return .value
+        case "$priority": return nil
+        default: return .child(name)
         }
     }
 }
@@ -83,14 +91,11 @@ public enum RealtimeDatabaseQueryPlanner {
             let order = sort.map { self.order(for: $0.column) } ?? .key
             return RealtimeDatabaseReadPlan(
                 order: order, ascending: sort?.ascending ?? true, bounds: [:],
-                fetchCount: fetchCount, dropCount: spec.offset, rawQuery: nil
+                fetchCount: fetchCount, dropCount: spec.offset
             )
         }
         if filter.column == rawFilterColumn {
-            return RealtimeDatabaseReadPlan(
-                order: .key, ascending: true, bounds: [:],
-                fetchCount: fetchCount, dropCount: spec.offset, rawQuery: filter.value
-            )
+            return rawPlan(filter.value, spec: spec)
         }
         let order = self.order(for: filter.column)
         if let sort, self.order(for: sort.column) != order {
@@ -113,10 +118,10 @@ public enum RealtimeDatabaseQueryPlanner {
         case "<":
             bounds = ["endBefore": operand(filter.value)]
         case "BETWEEN":
-            guard let upper = filter.secondValue else {
+            guard let between = filter.betweenBounds else {
                 throw FirebaseError.configuration(String(localized: "BETWEEN needs two values."))
             }
-            bounds = ["startAt": operand(filter.value), "endAt": operand(upper)]
+            bounds = ["startAt": operand(between.lower), "endAt": operand(between.upper)]
         case "STARTS WITH":
             bounds = [
                 "startAt": FirebaseJSON.string(filter.value).text(),
@@ -132,9 +137,33 @@ public enum RealtimeDatabaseQueryPlanner {
         }
         return RealtimeDatabaseReadPlan(
             order: order, ascending: sort?.ascending ?? true, bounds: bounds,
-            fetchCount: fetchCount, dropCount: spec.offset, rawQuery: nil
+            fetchCount: fetchCount, dropCount: spec.offset
         )
     }
+
+    /// Rows come back in the order the raw text names before the page is cut. The API refuses a
+    /// limit without `orderBy`, so a key order is added only to text that names no range or limit.
+    static func rawPlan(_ text: String, spec: FirebaseBrowseSpec) -> RealtimeDatabaseReadPlan {
+        var items = FirebaseRequest.parseQuery(text)
+        let names = Set(items.map(\.name))
+        let named = items.first { $0.name == "orderBy" }?.value
+        let order = named.flatMap(RealtimeDatabaseReadPlan.order(fromParameter:)) ?? .key
+        if spec.limit > 0, names.isDisjoint(with: rangeParameters), !names.contains("shallow") {
+            if named == nil {
+                items.append(URLQueryItem(name: "orderBy", value: RealtimeDatabaseReadPlan.orderParameter(.key)))
+            }
+            items.append(URLQueryItem(name: "limitToFirst", value: String(spec.offset + spec.limit)))
+        } else if spec.limit > 0, named != nil, names.isDisjoint(with: limitParameters) {
+            items.append(URLQueryItem(name: "limitToFirst", value: String(spec.offset + spec.limit)))
+        }
+        return RealtimeDatabaseReadPlan(
+            order: order, ascending: true, bounds: [:],
+            fetchCount: 0, dropCount: spec.offset, keepCount: spec.limit, rawQuery: items
+        )
+    }
+
+    static let limitParameters: Set<String> = ["limitToFirst", "limitToLast"]
+    static let rangeParameters: Set<String> = limitParameters.union(["startAt", "startAfter", "endAt", "endBefore", "equalTo"])
 
     static func order(for column: String) -> RealtimeDatabaseReadPlan.Order {
         switch column {
@@ -144,8 +173,8 @@ public enum RealtimeDatabaseQueryPlanner {
         }
     }
 
-    /// A key is always a string. A child value is read by the type the column holds, so `zip =
-    /// 02134` stays a string in a string column and `age = 30` is the number 30.
+    /// A child value is read by the type the column holds, so `zip = 02134` stays a string in a
+    /// string column.
     static func literal(_ text: String, isKey: Bool, typeName: String?) -> String {
         if isKey || typeName == RealtimeDatabaseTypeName.string {
             return FirebaseJSON.string(text).text()
@@ -182,8 +211,7 @@ public enum RealtimeDatabaseTypeName {
     }
 }
 
-/// The order the Realtime Database itself sorts in, which the REST API does not keep: it answers
-/// a query with a JSON object, so the order has to be restored here.
+/// The REST API answers a query with a JSON object, so the server's order is restored here.
 public enum RealtimeDatabaseOrdering {
     /// Keys that read as 32-bit integers come first in numeric order, then the rest as strings.
     public static func keyPrecedes(_ lhs: String, _ rhs: String) -> Bool {

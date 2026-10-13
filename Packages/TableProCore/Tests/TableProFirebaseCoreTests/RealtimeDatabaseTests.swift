@@ -51,6 +51,34 @@ struct RealtimeDatabasePlannerTests {
         let spec = FirebaseBrowseSpec(table: "x", filters: [FirebaseFilterSpec(column: "__RAW__", op: "", value: #"orderBy="age"&startAt=18"#)], limit: 20, offset: 0)
         #expect(try items(spec) == [#"orderBy="age""#, "startAt=18", "limitToFirst=20"])
     }
+
+    @Test("A raw filter's page is cut in the order it names, not by key")
+    func rawOrder() throws {
+        let spec = FirebaseBrowseSpec(table: "x", filters: [FirebaseFilterSpec(column: "__RAW__", op: "", value: #"orderBy="age"&startAt=30"#)], limit: 2, offset: 1)
+        let plan = try RealtimeDatabaseQueryPlanner.plan(spec: spec, typeOf: noTypes)
+        #expect(plan.order == .child("age"))
+        let children: [(key: String, value: FirebaseJSON)] = [("a", json(#"{"age": 50}"#)), ("b", json(#"{"age": 30}"#)), ("c", json(#"{"age": 40}"#))]
+        let page = plan.window(RealtimeDatabaseOrdering.sort(children, order: plan.order, ascending: plan.ascending))
+        #expect(page.map(\.key) == ["c", "a"])
+    }
+
+    @Test("A raw filter with no order gets a key order for its limit, and a shallow read gets neither")
+    func rawWithoutOrder() throws {
+        func raw(_ text: String) -> FirebaseBrowseSpec {
+            FirebaseBrowseSpec(table: "x", filters: [FirebaseFilterSpec(column: "__RAW__", op: "", value: text)], limit: 10, offset: 5)
+        }
+        #expect(try items(raw("print=pretty")) == ["print=pretty", #"orderBy="$key""#, "limitToFirst=15"])
+        #expect(try items(raw("shallow=true")) == ["shallow=true"])
+        let shallow = try RealtimeDatabaseQueryPlanner.plan(spec: raw("shallow=true"), typeOf: noTypes)
+        #expect(shallow.dropCount == 5 && shallow.keepCount == 10)
+        #expect(try items(raw(#"orderBy="n"&limitToLast=3"#)) == [#"orderBy="n""#, "limitToLast=3"])
+    }
+
+    @Test("BETWEEN reads the bounds the way the host sends them")
+    func betweenFromHost() throws {
+        let spec = FirebaseBrowseSpec(table: "x", filters: [FirebaseFilterSpec(column: "age", op: "BETWEEN", value: "10,20", secondValue: "20")], limit: 0, offset: 0)
+        #expect(try items(spec, types: ["age": "number"]) == [#"orderBy="age""#, "endAt=20", "startAt=10"])
+    }
 }
 
 @Suite("Realtime Database ordering and rows")
@@ -91,7 +119,7 @@ struct RealtimeDatabaseRowTests {
     @Test("A node holding a plain value is one row located at the node")
     func plainNode() {
         let rows = RealtimeDatabaseRowSet(children: [("", .bool(false))], nodePath: "config/maintenance")
-        #expect(rows.rows == [["maintenance", "false"]])
+        #expect(rows.rows == [["/config/maintenance", "false"]])
         #expect(rows.locators == ["config/maintenance"])
     }
 

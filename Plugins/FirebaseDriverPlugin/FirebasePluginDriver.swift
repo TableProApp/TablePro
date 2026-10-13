@@ -7,8 +7,8 @@ import TableProPluginKit
 internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro", category: "FirebasePluginDriver")
 
-    /// How many documents' field types are kept for typing edits; a page is at most a few
-    /// thousand rows, so this covers the pages a user is editing without growing without bound.
+    /// Field types of this many documents are kept for typing edits: the pages a user is editing,
+    /// without growing without bound.
     static let cellTypeCacheLimit = 20_000
 
     let config: DriverConnectionConfig
@@ -18,6 +18,7 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
     private var columnTypeCache: [String: [String: String]] = [:]
     private var cellTypeCache: [String: [String: String]] = [:]
     private var cellTypeOrder: [String] = []
+    private var collectionGroups: [String: (names: [String], found: Date)] = [:]
 
     init(config: DriverConnectionConfig) {
         self.config = config
@@ -66,14 +67,11 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
         }
         lock.withLock {
             self.session = session
-            columnTypeCache.removeAll()
-            cellTypeCache.removeAll()
-            cellTypeOrder.removeAll()
+            resetCachesLocked()
         }
     }
 
-    /// The first call runs under the connect deadline; once it answers, the client switches to the
-    /// query timeout the user set.
+    /// The probe runs under the connect deadline and the client after it under the query timeout.
     private func connectFirestore(
         settings: FirebaseConnectionSettings,
         transport: URLSessionFirebaseTransport,
@@ -119,7 +117,7 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
             throw FirebaseError.configuration(String(localized: "Enter a Database URL."))
         }
         let probe = RealtimeDatabaseClient(instanceURL: url, transport: transport, credential: credential, timeout: connectTimeout)
-        try await probe.ping()
+        try await probe.locate()
         let resolved = probe.currentURL
         instances[RealtimeDatabaseClient.instanceName(of: resolved)] = resolved
         let client = RealtimeDatabaseClient(instanceURL: resolved, transport: transport, credential: credential, timeout: timeout)
@@ -186,11 +184,14 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
             }
             client.switchInstance(to: url)
         }
-        lock.withLock {
-            columnTypeCache.removeAll()
-            cellTypeCache.removeAll()
-            cellTypeOrder.removeAll()
-        }
+        lock.withLock { resetCachesLocked() }
+    }
+
+    private func resetCachesLocked() {
+        columnTypeCache.removeAll()
+        cellTypeCache.removeAll()
+        cellTypeOrder.removeAll()
+        collectionGroups.removeAll()
     }
 
     // MARK: - Shared state
@@ -218,10 +219,6 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
         }
     }
 
-    func columnType(_ table: String, _ column: String) -> String? {
-        lock.withLock { columnTypeCache[table]?[column] }
-    }
-
     func columnTypes(_ table: String) -> [String: String] {
         lock.withLock { columnTypeCache[table] ?? [:] }
     }
@@ -241,13 +238,31 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
         }
     }
 
-    /// The type the cell held when it was read, then the column's usual type.
-    func cellType(locator: String, table: String, column: String) -> String? {
-        lock.withLock { cellTypeCache[locator]?[column] ?? columnTypeCache[table]?[column] }
+    /// The host's copy stands in for a column this connection has not read, as after a reconnect.
+    func writeColumnTypes(_ table: String, host: [String: String]) -> [String: String] {
+        host.mapValues { $0.lowercased() }.merging(columnTypes(table)) { _, read in read }
     }
 
-    func knowsLocator(_ locator: String) -> Bool {
-        lock.withLock { cellTypeCache[locator] != nil }
+    /// The type the cell held when it was read, unless it held null, then the column's type.
+    func writeType(_ column: String, locator: String?, columnTypes: [String: String]) -> String? {
+        let held = locator.flatMap { locator in lock.withLock { cellTypeCache[locator]?[column] } }
+        if let held, held != FirestoreTypeName.null {
+            return held
+        }
+        return columnTypes[column]
+    }
+
+    func cachedCollectionGroups(maxAge: TimeInterval) -> [String]? {
+        let database = currentDatabase ?? ""
+        return lock.withLock {
+            guard let entry = collectionGroups[database], Date().timeIntervalSince(entry.found) < maxAge else { return nil }
+            return entry.names
+        }
+    }
+
+    func rememberCollectionGroups(_ names: [String]) {
+        let database = currentDatabase ?? ""
+        lock.withLock { collectionGroups[database] = (names, Date()) }
     }
 
     // MARK: - Table operations

@@ -1,8 +1,7 @@
 import Foundation
 
-/// A Firestore value as a grid cell, and a cell edit back as a value. The grid only holds text, so
-/// an edit is read by the type the field already had; a string field stays a string even when the
-/// new text looks like a number.
+/// The grid only holds text, so an edit is read by the type the field already had: a string field
+/// stays a string even when the new text looks like a number.
 public enum FirestoreCell {
     public enum Display: Sendable, Equatable {
         case null
@@ -31,8 +30,7 @@ public enum FirestoreCell {
         }
     }
 
-    /// `typeName` is the type the field held before the edit, or nil for a field the row did not
-    /// have, in which case the text is read as a JSON literal and falls back to a string.
+    /// A nil `typeName` reads the text as a JSON literal and falls back to a string.
     public static func value(text: String, typeName: String?) throws -> FirestoreValue {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch typeName {
@@ -68,10 +66,6 @@ public enum FirestoreCell {
         }
     }
 
-    public static func value(bytes: Data) -> FirestoreValue {
-        .bytes(bytes)
-    }
-
     public static func inferred(_ text: String) -> FirestoreValue {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = trimmed.first, "{[-0123456789tfn".contains(first),
@@ -83,8 +77,8 @@ public enum FirestoreCell {
         return value
     }
 
-    /// The type most cells in a column hold, ignoring missing fields and nulls, so a column of
-    /// strings with one stray null still edits as strings.
+    /// Ignores missing fields and nulls, so a column of strings with one stray null still edits as
+    /// strings.
     public static func dominantType(_ values: [FirestoreValue?]) -> String {
         var counts: [String: Int] = [:]
         for case let value? in values where value != .null {

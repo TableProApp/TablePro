@@ -110,8 +110,9 @@ struct FirestoreQueryBuilderTests {
 
     @Test("Range, list and null operators map to Firestore operators")
     func operators() throws {
-        let between = try filterJSON(FirebaseFilterSpec(column: "age", op: "BETWEEN", value: "1", secondValue: "9"), types: ["age": "integer"])
-        #expect(between.contains("GREATER_THAN_OR_EQUAL") && between.contains("LESS_THAN_OR_EQUAL"))
+        let between = try filterJSON(FirebaseFilterSpec(column: "age", op: "BETWEEN", value: "10,20", secondValue: "20"), types: ["age": "integer"])
+        #expect(between.contains(#""op":"GREATER_THAN_OR_EQUAL","value":{"integerValue":"10"}"#))
+        #expect(between.contains(#""op":"LESS_THAN_OR_EQUAL","value":{"integerValue":"20"}"#))
         let prefix = try filterJSON(FirebaseFilterSpec(column: "name", op: "STARTS WITH", value: "Al"))
         #expect(prefix.contains("\"Al\u{F8FF}\""))
         let list = try filterJSON(FirebaseFilterSpec(column: "tier", op: "NOT IN", value: "gold, silver"), types: ["tier": "string"])
@@ -147,15 +148,26 @@ struct FirestoreQueryBuilderTests {
         }
     }
 
-    @Test("Counting drops order and page")
+    @Test("Counting drops the page but keeps the order, which leaves out documents without the field")
     func count() throws {
         let spec = FirebaseBrowseSpec(table: "*/orders", sorts: [FirebaseSortSpec(column: "a", ascending: true)], limit: 10, offset: 5)
         let query = try FirestoreQueryBuilder.countQuery(
             spec: spec, target: try FirestoreCollectionTarget(table: spec.table), documentRoot: testDocumentRoot, typeOf: noTypes
         )
         let expected = #"{"structuredAggregationQuery":{"aggregations":[{"alias":"total","count":{}}],"#
-            + #""structuredQuery":{"from":[{"allDescendants":true,"collectionId":"orders"}]}}}"#
+            + #""structuredQuery":{"from":[{"allDescendants":true,"collectionId":"orders"}],"#
+            + #""orderBy":[{"direction":"ASCENDING","field":{"fieldPath":"a"}}]}}}"#
         #expect(query.text() == expected)
+        #expect(FirestoreQueryBuilder.sortedFields(spec) == ["a"])
+    }
+
+    @Test("BETWEEN splits the host's joined value by the upper bound, whatever commas the bounds hold")
+    func betweenBounds() {
+        let joined = FirebaseFilterSpec(column: "s", op: "BETWEEN", value: "a,b,c,d", secondValue: "c,d")
+        #expect(joined.betweenBounds?.lower == "a,b" && joined.betweenBounds?.upper == "c,d")
+        let bare = FirebaseFilterSpec(column: "s", op: "BETWEEN", value: "1,9")
+        #expect(bare.betweenBounds?.lower == "1" && bare.betweenBounds?.upper == "9")
+        #expect(FirebaseFilterSpec(column: "s", op: "BETWEEN", value: "1").betweenBounds == nil)
     }
 
     @Test("Field paths are quoted when they need it")

@@ -3,12 +3,12 @@ import TableProFirebaseCore
 import TableProPluginKit
 
 extension FirebasePluginDriver {
-    /// Subcollections exist per document and Firestore cannot list them all, so they are found by
-    /// looking under the first documents of each root collection and offered as collection groups.
+    /// Firestore cannot list every subcollection, so they are found under the first documents of
+    /// each root collection. That costs up to 90 requests, so a sidebar refresh reuses the result.
     static let groupDiscoveryCollections = 30
     static let groupDiscoveryDocuments = 2
-    /// A root with more children than this is a list of records, not of tables, and is browsed
-    /// only through `/`.
+    static let groupDiscoveryLifetime: TimeInterval = 600
+    /// A root with more children than this holds records, not tables, and is browsed through `/`.
     static let rootKeyTableLimit = 500
     static let rootTableName = "/"
     static let sampleSize = 50
@@ -30,7 +30,13 @@ extension FirebasePluginDriver {
     private func firestoreTables() async throws -> [PluginTableInfo] {
         let client = try requireFirestore()
         let roots = try await client.listCollectionIds(parent: "")
-        let groups = await discoverCollectionGroups(roots: roots, client: client)
+        let groups: [String]
+        if let cached = cachedCollectionGroups(maxAge: Self.groupDiscoveryLifetime) {
+            groups = cached.filter { !roots.contains($0) }
+        } else {
+            groups = await discoverCollectionGroups(roots: roots, client: client)
+            rememberCollectionGroups(groups)
+        }
         let groupComment = String(localized: "Every collection with this ID, at any depth")
         return roots.map { PluginTableInfo(name: $0, type: "TABLE") }
             + groups.map { PluginTableInfo(name: FirestoreCollectionTarget.groupName($0), type: "TABLE", comment: groupComment) }
@@ -143,8 +149,8 @@ extension FirebasePluginDriver {
         try await fetchExactRowCount(table: table, schema: nil, queryFilters: filters, logicMode: logicMode)
     }
 
-    /// Firestore counts on the server for one read per thousand documents. The Realtime Database
-    /// can only count a node's children without a filter, from its shallow key list.
+    /// The Realtime Database counts only unfiltered, from the shallow key list, so the app asks for
+    /// it only on request.
     func count(_ spec: FirebaseBrowseSpec) async throws -> Int? {
         switch variant {
         case .firestore:

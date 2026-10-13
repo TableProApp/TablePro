@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProConnectionLibrary
 import TableProFirebaseCore
 import TableProPluginKit
 import Testing
@@ -26,6 +27,26 @@ struct FirebaseRegistrySnapshotTests {
         }
         #expect(try snapshot("Firestore").schema.defaultPrimaryKeyColumn == FirestoreQueryBuilder.nameField)
         #expect(try snapshot("Firebase Realtime Database").schema.defaultPrimaryKeyColumn == RealtimeDatabaseQueryPlanner.keyColumn)
+    }
+
+    @Test("Both types edit whole documents and remove fields, and the Realtime Database filters on one field")
+    func capabilities() throws {
+        for typeId in ["Firestore", "Firebase Realtime Database"] {
+            let capabilities = try snapshot(typeId).capabilities
+            #expect(capabilities.supportsDocumentEditing)
+            #expect(capabilities.supportsFieldRemoval)
+            #expect(capabilities.columnsAreSampled)
+        }
+        let firestore = try snapshot("Firestore").capabilities
+        #expect(firestore.supportsMatchAnyFilters && !firestore.exactRowCountIsFullScan)
+        let database = try snapshot("Firebase Realtime Database").capabilities
+        #expect(!database.supportsMatchAnyFilters && database.exactRowCountIsFullScan)
+    }
+
+    @Test("Neither type is ever handed SQL DROP or TRUNCATE")
+    func noSQLDDL() {
+        #expect(!SQLDDLFallbackPolicy.allowsGeneratedDDL(for: .firestore))
+        #expect(!SQLDDLFallbackPolicy.allowsGeneratedDDL(for: .firebaseRealtimeDatabase))
     }
 
     @Test("The Realtime Database routes to the plugin that serves Firestore")

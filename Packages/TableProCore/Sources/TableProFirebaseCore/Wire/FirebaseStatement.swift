@@ -1,13 +1,7 @@
 import Foundation
 
-/// The text the driver runs. A page the grid asks for travels as a tagged spec; everything else is
-/// a request line the user can read in the history and type in the editor:
-///
-///     GET users/alice                 PATCH users/alice?updateMask=age {"age": 31}
-///     QUERY {"structuredQuery": ...}  POST users {"name": "Bob"}        DELETE users/alice
-///
-/// The Realtime Database takes the same verbs against a node: `GET /chats?shallow=true`,
-/// `PUT /config/maintenance false`, `PATCH`, `POST` and `DELETE`.
+/// A grid page travels as a tagged spec; everything else is a request line the user can read in
+/// the history and type in the editor, such as `PATCH users/alice?updateMask=age {"age": 31}`.
 public enum FirebaseStatement: Sendable, Equatable {
     case browse(FirebaseBrowseSpec)
     case request(FirebaseRequest)
@@ -43,10 +37,6 @@ public struct FirebaseRequest: Sendable, Equatable {
         case patch = "PATCH"
         case post = "POST"
         case delete = "DELETE"
-
-        public var isRead: Bool {
-            self == .get || self == .query
-        }
     }
 
     public let method: Method
@@ -56,7 +46,7 @@ public struct FirebaseRequest: Sendable, Equatable {
 
     public init(method: Method, path: String, query: [URLQueryItem] = [], body: String? = nil) {
         self.method = method
-        self.path = path
+        self.path = RealtimeDatabasePath.normalized(path)
         self.query = query
         self.body = body
     }
@@ -82,9 +72,8 @@ public struct FirebaseRequest: Sendable, Equatable {
         var query: [URLQueryItem] = []
         if let mark = target.firstIndex(of: "?") {
             path = String(target[..<mark])
-            query = RealtimeDatabaseReadPlan.parseRawQuery(String(target[target.index(after: mark)...]))
+            query = parseQuery(String(target[target.index(after: mark)...]))
         }
-        path = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
         if body.isEmpty {
             switch method {
@@ -96,18 +85,28 @@ public struct FirebaseRequest: Sendable, Equatable {
                 break
             }
         }
-        return FirebaseRequest(method: method, path: path, query: query, body: body.isEmpty ? nil : body)
+        return FirebaseRequest(method: method, path: decodedPath(path), query: query, body: body.isEmpty ? nil : body)
+    }
+
+    public static func parseQuery(_ text: String) -> [URLQueryItem] {
+        let trimmed = text.trimmingCharacters(in: CharacterSet(charactersIn: "?& \n"))
+        return trimmed.split(separator: "&").compactMap { pair in
+            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            guard let name = parts.first.map(decoded), !name.isEmpty else { return nil }
+            return URLQueryItem(name: name, value: parts.count > 1 ? decoded(parts[1]) : "")
+        }
     }
 
     public func queryValue(_ name: String) -> String? {
         query.first { $0.name == name }?.value
     }
 
-    /// The request line as the history shows it and as `parse` reads it back.
+    /// Escapes only what `parse` splits on, so an ID with a space, `&` or `=` reads back whole and
+    /// the rest of the line stays readable.
     public var text: String {
-        var line = method.rawValue + " " + (path.isEmpty ? "/" : path)
+        var line = method.rawValue + " " + (path.isEmpty ? "/" : Self.encodedPath(path))
         if !query.isEmpty {
-            line += "?" + query.map { "\($0.name)=\($0.value ?? "")" }.joined(separator: "&")
+            line += "?" + query.map { Self.escaped($0.name) + "=" + Self.escaped($0.value ?? "") }.joined(separator: "&")
         }
         if let body { line += " " + body }
         return line
@@ -116,28 +115,34 @@ public struct FirebaseRequest: Sendable, Equatable {
     static let usage = String(
         localized: "Enter a request such as GET users/alice, QUERY {\"structuredQuery\": {...}}, PATCH users/alice {\"age\": 31} or DELETE users/alice."
     )
-}
 
-public enum FirebaseStatementClassifier {
-    public enum Tier: Sendable, Equatable {
-        case read
-        case write
-        case destructive
-    }
+    private static let escapedScalars = CharacterSet.whitespacesAndNewlines
+        .union(.controlCharacters)
+        .union(CharacterSet(charactersIn: "%?#&=/"))
 
-    /// Text that is neither a browse nor a request line counts as a write, so the read-only gate
-    /// refuses what it cannot read rather than letting it through.
-    public static func classify(_ text: String) -> Tier {
-        guard let statement = try? FirebaseStatement.parse(text) else { return .write }
-        switch statement {
-        case .browse:
-            return .read
-        case .request(let request):
-            switch request.method {
-            case .get, .query: return .read
-            case .delete: return .destructive
-            case .put, .patch, .post: return .write
+    static func escaped(_ text: String) -> String {
+        var result = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            guard escapedScalars.contains(scalar) else {
+                result.append(scalar)
+                continue
+            }
+            for byte in String(scalar).utf8 {
+                result.append(contentsOf: String(format: "%%%02X", byte).unicodeScalars)
             }
         }
+        return String(result)
+    }
+
+    private static func decoded(_ text: String) -> String {
+        text.removingPercentEncoding ?? text
+    }
+
+    private static func encodedPath(_ path: String) -> String {
+        path.split(separator: "/").map { escaped(String($0)) }.joined(separator: "/")
+    }
+
+    private static func decodedPath(_ path: String) -> String {
+        path.split(separator: "/").map { decoded(String($0)) }.joined(separator: "/")
     }
 }

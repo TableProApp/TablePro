@@ -73,6 +73,20 @@ struct FirestoreClientTests {
         #expect(String(data: request.body ?? Data(), encoding: .utf8) == #"{"fields":{"first-name":{"stringValue":"A"}}}"#)
     }
 
+    @Test("A colon in a document ID is encoded, so it never reads as a custom method")
+    func colonInDocumentID() async throws {
+        let transport = FakeFirebaseTransport()
+        transport.enqueue(status: 404, json: "{}")
+        transport.enqueue(json: "[]")
+        let client = makeFirestoreClient(transport)
+        _ = try await client.getDocument("users/uid:123")
+        _ = try await client.runQuery(parent: "users/uid:123", body: .object([:]), operation: "read")
+        #expect(transport.requests.map(\.url.absoluteString) == [
+            "https://firestore.googleapis.com/v1/projects/demo/databases/(default)/documents/users/uid%3A123",
+            "https://firestore.googleapis.com/v1/projects/demo/databases/(default)/documents/users/uid%3A123:runQuery"
+        ])
+    }
+
     @Test("Firestore's FAILED_PRECONDITION is a precondition, other 400s are not")
     func failedPrecondition() {
         let stale = Data(#"{"error": {"code": 400, "message": "stored version mismatch", "status": "FAILED_PRECONDITION"}}"#.utf8)
@@ -140,16 +154,24 @@ struct RealtimeDatabaseClientTests {
         transport.enqueue(status: 404, json: #"{"correctUrl": "https://demo-default-rtdb.europe-west1.firebasedatabase.app", "error": "Database lives in a different region."}"#)
         transport.enqueue(json: "null")
         let client = makeDatabaseClient(transport, url: "https://demo-default-rtdb.firebaseio.com/")
-        try await client.ping()
+        try await client.locate()
         #expect(client.currentURL.absoluteString == "https://demo-default-rtdb.europe-west1.firebasedatabase.app/")
         #expect(transport.requests[1].url.host == "demo-default-rtdb.europe-west1.firebasedatabase.app")
 
         let hostile = FakeFirebaseTransport()
         hostile.enqueue(status: 404, json: #"{"correctUrl": "https://evil.example.com", "error": "moved"}"#)
         let stays = makeDatabaseClient(hostile, url: "https://demo-default-rtdb.firebaseio.com/")
-        await #expect(throws: FirebaseError.self) { try await stays.ping() }
+        await #expect(throws: FirebaseError.self) { try await stays.locate() }
         #expect(stays.currentURL.host == "demo-default-rtdb.firebaseio.com")
         #expect(hostile.requests.count == 1)
+    }
+
+    @Test("The health check reads at most one child and asks for no body")
+    func ping() async throws {
+        let transport = FakeFirebaseTransport()
+        transport.enqueue(status: 204, json: "")
+        try await makeDatabaseClient(transport).ping()
+        #expect(transport.requests.first?.url.query == "orderBy=%22$key%22&limitToFirst=1&print=silent")
     }
 
     @Test("The instance list names a quota project only when the API asks for one")
@@ -182,15 +204,15 @@ struct RealtimeDatabaseClientTests {
         }
     }
 
-    @Test("A guarded write sends if-match and reports a moved ETag as a precondition")
+    @Test("A guarded write sends if-match, and a moved ETag never shows the node's data as the error")
     func guardedWrite() async throws {
         let transport = FakeFirebaseTransport()
         transport.enqueue(json: #"{"a": 1}"#, headers: ["ETag": "abc"])
-        transport.enqueue(status: 412, json: #"{"error": "ETag mismatch"}"#)
+        transport.enqueue(status: 412, json: #"{"message": "hi", "error": "private"}"#)
         let client = makeDatabaseClient(transport)
         let read = try await client.getWithETag("node")
         #expect(read.etag == "abc")
-        await #expect(throws: FirebaseError.precondition("ETag mismatch")) {
+        await #expect(throws: FirebaseError.precondition("The node changed after it was read.")) {
             try await client.put("node", value: .object(["a": .int(2)]), ifMatch: "abc")
         }
         #expect(transport.requests[0].headers["X-Firebase-ETag"] == "true")

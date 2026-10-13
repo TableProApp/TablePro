@@ -50,7 +50,7 @@ struct FirebaseSettingsTests {
         let database = try FirebaseConnectionSettings.parse(fields: [
             "driverVariant": "realtimeDatabase", "fbAuthMethod": "emulator", "fbProjectId": "demo-app", "fbEmulatorHost": "localhost:9000"
         ])
-        #expect(database.defaultDatabaseURL?.absoluteString == "http://localhost:9000/?ns=demo-app")
+        #expect(database.defaultDatabaseURL?.absoluteString == "http://localhost:9000/?ns=demo-app-default-rtdb")
         #expect(throws: FirebaseError.self) {
             try FirebaseConnectionSettings.parse(fields: ["fbAuthMethod": "emulator", "fbProjectId": "demo-app", "fbEmulatorHost": "localhost"])
         }
@@ -96,14 +96,27 @@ struct FirebaseStatementTests {
         #expect(try FirebaseRequest.parse(request.text) == request)
     }
 
-    @Test("The read-only gate sees reads, writes and deletes, and treats the unreadable as a write")
-    func classify() {
-        #expect(FirebaseStatementClassifier.classify(FirebaseStatement.encode(FirebaseBrowseSpec(table: "a", limit: 1, offset: 0))) == .read)
-        #expect(FirebaseStatementClassifier.classify("GET users") == .read)
-        #expect(FirebaseStatementClassifier.classify(#"QUERY {"structuredQuery": {}}"#) == .read)
-        #expect(FirebaseStatementClassifier.classify(#"POST users {"a": 1}"#) == .write)
-        #expect(FirebaseStatementClassifier.classify("PUT /x 1") == .write)
-        #expect(FirebaseStatementClassifier.classify("DELETE users/alice") == .destructive)
-        #expect(FirebaseStatementClassifier.classify("DROP TABLE users") == .write)
+    @Test("An ID with a space, & or = reads back whole, and the rest of the line stays readable")
+    func escapedText() throws {
+        let delete = FirebaseRequest(method: .delete, path: "chats/John Smith")
+        #expect(delete.text == "DELETE chats/John%20Smith")
+        #expect(try FirebaseRequest.parse(delete.text) == delete)
+
+        let post = FirebaseRequest(method: .post, path: "users",
+                                   query: [URLQueryItem(name: "documentId", value: "a&b=c #1 50%")], body: #"{"n":1}"#)
+        #expect(post.text == #"POST users?documentId=a%26b%3Dc%20%231%2050%25 {"n":1}"#)
+        #expect(try FirebaseRequest.parse(post.text) == post)
+
+        let unicode = FirebaseRequest(method: .get, path: "người/uid:1")
+        #expect(unicode.text == "GET người/uid:1")
+        #expect(try FirebaseRequest.parse(unicode.text) == unicode)
+    }
+
+    @Test("An update mask quotes a field name that holds a comma or a backtick")
+    func mask() {
+        let text = FirestoreQueryBuilder.maskText(["age", "a,b", "x`y", "first name"])
+        #expect(text == #"age,`a,b`,`x\`y`,`first name`"#)
+        #expect(FirestoreQueryBuilder.maskFields(text) == ["age", "a,b", "x`y", "first name"])
+        #expect(FirestoreQueryBuilder.maskFields(" age , name ") == ["age", "name"])
     }
 }

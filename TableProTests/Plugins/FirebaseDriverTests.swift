@@ -33,14 +33,30 @@ private func statements(
     table: String,
     columns: [String],
     changes: [PluginRowChange],
-    inserted: [Int: [PluginCellValue]] = [:]
+    inserted: [Int: [PluginCellValue]] = [:],
+    hostTypes: [String: String] = [:]
 ) throws -> [String] {
-    try driver.generateRowWrites(
+    var context = PluginRowWriteContext()
+    context.columnTypeNames = hostTypes
+    return try driver.generateRowWrites(
         table: table, schema: nil, columns: columns, primaryKeyColumns: [],
         changes: changes, insertedRowData: inserted,
         deletedRowIndices: Set(changes.filter { $0.type == .delete }.map(\.rowIndex)),
-        insertedRowIndices: Set(changes.filter { $0.type == .insert }.map(\.rowIndex))
+        insertedRowIndices: Set(changes.filter { $0.type == .insert }.map(\.rowIndex)),
+        context: context
     )?.map(\.statement) ?? []
+}
+
+private func restore(
+    _ driver: FirebasePluginDriver,
+    table: String,
+    columns: [String],
+    rows: [[PluginCellValue]],
+    absent: [Int: Set<Int>] = [:]
+) -> [String]? {
+    driver.generateIdentityPreservingInsert(
+        table: table, schema: nil, columns: columns, primaryKeyColumns: [], rows: rows, absentCells: absent
+    )?.map(\.statement)
 }
 
 struct FirebaseFirestoreWriteTests {
@@ -102,6 +118,60 @@ struct FirebaseFirestoreWriteTests {
         }
     }
 
+    @Test("With nothing read on this connection, the host's column types type the edit")
+    func hostTypes() throws {
+        let edit = change(.update, cells: [(3, "zip", .text("123"))], original: [.text("alice"), .null, .null, .text("100")])
+        #expect(try statements(makeDriver(), table: "users", columns: columns, changes: [edit], hostTypes: ["zip": "STRING"])
+            == [#"PATCH users/alice?updateMask=zip {"zip":"123"}"#])
+        #expect(try statements(makeDriver(), table: "users", columns: columns, changes: [edit])
+            == [#"PATCH users/alice?updateMask=zip {"zip":123}"#])
+    }
+
+    @Test("A field that held null is typed by its column, not left to guessing")
+    func nullCell() throws {
+        let driver = makeDriver()
+        driver.rememberColumnTypes("users", columns: columns, types: ["string", "integer", "string", "string"])
+        driver.rememberCellTypes(["users/alice": ["zip": "null"]])
+        #expect(try statements(driver, table: "users", columns: columns, changes: [
+            change(.update, cells: [(3, "zip", .text("12345"))], original: [.text("alice"), .null, .null, .null])
+        ]) == [#"PATCH users/alice?updateMask=zip {"zip":"12345"}"#])
+    }
+
+    @Test("An ID or field name the request line would split is escaped or quoted")
+    func awkwardNames() throws {
+        let written = try statements(makeDriver(), table: "users", columns: ["__name__", "a,b"], changes: [
+            change(.update, cells: [(1, "a,b", .text("x"))], original: [.text("John Smith"), .null]),
+            change(.delete, row: 1, original: [.text("a&b=c"), .null])
+        ])
+        #expect(written == [#"PATCH users/John%20Smith?updateMask=`a,b` {"a,b":"x"}"#, "DELETE users/a%26b%3Dc"])
+        guard case .request(let patch) = try FirebaseStatement.parse(written[0]) else {
+            Issue.record("Expected a request line")
+            return
+        }
+        #expect(patch.path == "users/John Smith")
+        #expect(patch.queryValue("updateMask").map(FirestoreQueryBuilder.maskFields) == ["a,b"])
+    }
+
+    @Test("Undoing a delete restores the ID, leaves out missing fields, and types each value by its own field")
+    func restoreDeleted() throws {
+        let driver = makeDriver()
+        let columns = ["__name__", "age", "name", "zip", "tags"]
+        driver.rememberColumnTypes("users", columns: columns, types: ["string", "integer", "string", "integer", "array"])
+        driver.rememberCellTypes(["users/alice": ["age": "integer", "zip": "string"]])
+        let restored = restore(driver, table: "users", columns: columns,
+                               rows: [[.text("alice"), .text("30"), .null, .text("02134"), .null]], absent: [0: [2, 4]])
+        #expect(restored == [#"POST users?documentId=alice {"age":30,"zip":"02134"}"#])
+        #expect(restore(driver, table: "users", columns: columns, rows: [[.text(""), .text("1"), .null, .null, .null]]) == nil)
+    }
+
+    @Test("A new row's __name__ is an ID in this collection, never a path elsewhere")
+    func insertStaysInCollection() {
+        #expect(throws: PluginRowWriteRefusal.self) {
+            try statements(makeDriver(), table: "users", columns: ["__name__", "n"],
+                           changes: [change(.insert)], inserted: [0: [.text("admins/root"), .text("1")]])
+        }
+    }
+
     @Test("A whole document carries its path and refuses a rename")
     func documents() throws {
         let driver = makeDriver()
@@ -157,14 +227,47 @@ struct FirebaseRealtimeDatabaseWriteTests {
         #expect(written == [#"PATCH operators/op_1 {"calls":4,"name":null}"#])
     }
 
-    @Test("A plain value is replaced with PUT, and a plain node is addressed as itself")
+    @Test("A plain node's row is the node itself, and a child with the node's name is still a child")
     func plainValues() throws {
         let driver = makeDriver(realtimeDatabase: true)
-        driver.rememberCellTypes(["config/maintenance": ["$value": "boolean"]])
-        let written = try statements(driver, table: "config/maintenance", columns: ["$key", "$value"], changes: [
+        let hostTypes = ["$value": "boolean"]
+        let node = try statements(driver, table: "maintenance", columns: ["$key", "$value"], changes: [
+            change(.update, cells: [(1, "$value", .text("true"))], original: [.text("/maintenance"), .text("false")])
+        ], hostTypes: hostTypes)
+        #expect(node == ["PUT maintenance true"])
+        let child = try statements(driver, table: "maintenance", columns: ["$key", "$value"], changes: [
             change(.update, cells: [(1, "$value", .text("true"))], original: [.text("maintenance"), .text("false")])
-        ])
-        #expect(written == ["PUT config/maintenance true"])
+        ], hostTypes: hostTypes)
+        #expect(child == ["PUT maintenance/maintenance true"])
+    }
+
+    @Test("Undoing a delete puts a child back under its key, and a plain node back in place")
+    func restoreDeleted() {
+        let driver = makeDriver(realtimeDatabase: true)
+        driver.rememberCellTypes(["config/maintenance": ["$value": "boolean"], "operators/op_1": ["calls": "number"]])
+        #expect(restore(driver, table: "config/maintenance", columns: ["$key", "$value"], rows: [[.text("/config/maintenance"), .text("false")]])
+            == ["PUT config/maintenance false"])
+        #expect(restore(driver, table: "operators", columns: ["$key", "calls", "$value"],
+                        rows: [[.text("op_1"), .text("3"), .null]], absent: [0: [2]]) == [#"PUT operators/op_1 {"calls":3}"#])
+        #expect(restore(driver, table: "operators", columns: ["$key", "calls"], rows: [[.text(""), .text("3")]]) == nil)
+    }
+
+    @Test("Replacing or deleting the whole database is refused before anything is sent")
+    func wholeDatabase() async {
+        let driver = makeDriver(realtimeDatabase: true)
+        for statement in ["PUT / null", "PUT / {}", "DELETE /"] {
+            do {
+                _ = try await driver.execute(query: statement)
+                Issue.record("Expected \(statement) to be refused")
+            } catch let error as FirebaseError {
+                guard case .unsupported = error else {
+                    Issue.record("Expected a refusal for \(statement), got \(error)")
+                    continue
+                }
+            } catch {
+                Issue.record("Unexpected \(error)")
+            }
+        }
     }
 
     @Test("New children go under their key, or a generated one, and empty ones are refused")

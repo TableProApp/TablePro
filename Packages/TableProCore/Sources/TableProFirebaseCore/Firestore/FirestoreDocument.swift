@@ -21,22 +21,17 @@ public struct FirestoreDocument: Sendable, Equatable {
         self.fields = try fields.mapValues { try FirestoreValue(rest: $0, documentRoot: documentRoot) }
         self.updateTime = json["updateTime"]?.stringValue
     }
-
-    public func restFields(documentRoot: String) -> FirebaseJSON {
-        .object(fields.mapValues { $0.rest(documentRoot: documentRoot) })
-    }
 }
 
-/// A page of documents laid out as grid rows: `__name__` first, then every field any document on
-/// the page has, in name order. A field a document lacks is reported absent, not null.
+/// A field a document lacks is reported absent, not null.
 public struct FirestoreRowSet: Sendable, Equatable {
     public let columns: [String]
     public let columnTypes: [String]
     public let rows: [[FirestoreCell.Display]]
     public let locators: [String]
     public let absentCells: [Int: Set<Int>]
-    /// The type each document's fields hold, keyed by document path, so an edit is typed by the
-    /// value it replaces rather than by the column's majority.
+    /// Keyed by document path, so an edit is typed by the value it replaces rather than by the
+    /// column's majority.
     public let cellTypes: [String: [String: String]]
 
     public init(documents: [FirestoreDocument], target: FirestoreCollectionTarget) {

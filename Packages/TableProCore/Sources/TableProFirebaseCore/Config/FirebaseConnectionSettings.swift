@@ -48,8 +48,7 @@ public struct FirebaseConnectionSettings: Sendable, Equatable {
         self.emulatorHost = emulatorHost
     }
 
-    /// `credentialProject` is the project the service account key or ADC names, used when the
-    /// Project ID field is empty, which is how a key alone is enough to connect.
+    /// `credentialProject` stands in for an empty Project ID, so a key alone is enough to connect.
     public static func parse(fields: [String: String], credentialProject: String? = nil) throws -> FirebaseConnectionSettings {
         let variant: FirebaseVariant = fields[FirebaseFieldID.driverVariant] == FirebaseVariant.realtimeDatabase.rawValue
             ? .realtimeDatabase : .firestore
@@ -89,14 +88,13 @@ public struct FirebaseConnectionSettings: Sendable, Equatable {
         return Self.firestoreEndpoint
     }
 
-    /// The URL a Realtime Database without a Database URL is tried at. Instances created since
-    /// 2021 outside us-central1 live on `firebasedatabase.app`, so the driver asks the management
-    /// API for the real URL first and falls back to this.
+    /// The fallback when the management API names no instance. The emulator, like the SDKs, calls
+    /// a project's default database `<project>-default-rtdb`.
     public var defaultDatabaseURL: URL? {
         if let databaseURL { return databaseURL }
         guard let projectId else { return nil }
         if let emulatorHost {
-            return URL(string: "http://\(emulatorHost)/?ns=\(projectId)")
+            return URL(string: "http://\(emulatorHost)/?ns=\(projectId)-default-rtdb")
         }
         return URL(string: "https://\(projectId)-default-rtdb.firebaseio.com/")
     }

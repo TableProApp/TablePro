@@ -1,6 +1,5 @@
 import Foundation
 
-/// The Firestore REST API (v1) for one project, over any database in it.
 public final class FirestoreClient: @unchecked Sendable {
     public let projectId: String
     private let baseURL: URL
@@ -37,10 +36,10 @@ public final class FirestoreClient: @unchecked Sendable {
     // MARK: - Catalog
 
     /// Native-mode databases only: a Datastore-mode database answers every Firestore call with an
-    /// error, so offering it would only lead to one.
+    /// error.
     public func listDatabases() async throws -> [String] {
         let response = try await requester.send(method: "GET", url: try url("projects/\(projectId)/databases"))
-        try check(response, operation: String(localized: "list databases"))
+        try response.requireSuccess(String(localized: "list databases"))
         let databases = try response.json()["databases"]?.arrayValue ?? []
         return databases.compactMap { database -> String? in
             guard let name = database["name"]?.stringValue else { return nil }
@@ -49,7 +48,6 @@ public final class FirestoreClient: @unchecked Sendable {
         }.sorted()
     }
 
-    /// `parent` is a document path, or empty for the root collections.
     public func listCollectionIds(parent: String, limit: Int = 1_000) async throws -> [String] {
         var ids: [String] = []
         var pageToken: String?
@@ -61,7 +59,7 @@ public final class FirestoreClient: @unchecked Sendable {
                 url: try url(documentName(parent) + ":listCollectionIds"),
                 body: FirebaseJSON.object(body).data()
             )
-            try check(response, operation: String(format: String(localized: "list the collections of %@"), parent.isEmpty ? "/" : parent))
+            try response.requireSuccess(String(format: String(localized: "list the collections of %@"), parent.isEmpty ? "/" : parent))
             let json = try response.json()
             ids += (json["collectionIds"]?.arrayValue ?? []).compactMap(\.stringValue)
             pageToken = json["nextPageToken"]?.stringValue
@@ -77,7 +75,7 @@ public final class FirestoreClient: @unchecked Sendable {
             url: try url(documentName(parent) + ":runQuery"),
             body: body.data()
         )
-        try check(response, operation: operation)
+        try response.requireSuccess(operation)
         let root = documentRoot
         return try (response.json().arrayValue ?? []).compactMap { item in
             guard let document = item["document"] else { return nil }
@@ -91,7 +89,7 @@ public final class FirestoreClient: @unchecked Sendable {
             url: try url(documentName(parent) + ":runAggregationQuery"),
             body: body.data()
         )
-        try check(response, operation: operation)
+        try response.requireSuccess(operation)
         for item in try response.json().arrayValue ?? [] {
             if let total = item["result"]?["aggregateFields"]?["total"]?["integerValue"] {
                 switch total {
@@ -107,13 +105,12 @@ public final class FirestoreClient: @unchecked Sendable {
     public func getDocument(_ path: String) async throws -> FirestoreDocument? {
         let response = try await requester.send(method: "GET", url: try url(documentName(path)))
         if response.statusCode == 404 { return nil }
-        try check(response, operation: String(format: String(localized: "read %@"), path))
+        try response.requireSuccess(String(format: String(localized: "read %@"), path))
         return try FirestoreDocument(rest: response.json(), documentRoot: documentRoot)
     }
 
     // MARK: - Writes
 
-    /// A nil `documentId` lets Firestore pick one.
     public func createDocument(
         collectionPath: String,
         documentId: String?,
@@ -127,16 +124,15 @@ public final class FirestoreClient: @unchecked Sendable {
         let root = documentRoot
         let response = try await requester.send(
             method: "POST",
-            url: try url(documentName(split.parent) + "/" + Self.encodedSegment(split.collectionId), query: query),
+            url: try url(documentName(split.parent) + "/" + Self.encodedPathSegment(split.collectionId), query: query),
             body: FirebaseJSON.object(["fields": .object(fields.mapValues { $0.rest(documentRoot: root) })]).data()
         )
-        try check(response, operation: String(format: String(localized: "create a document in %@"), collectionPath))
+        try response.requireSuccess(String(format: String(localized: "create a document in %@"), collectionPath))
         return try FirestoreDocument(rest: response.json(), documentRoot: root)
     }
 
-    /// With a `mask`, only the named fields change and a masked field missing from `fields` is
-    /// removed. Without one the whole document is replaced. `updateTime` refuses the write when the
-    /// document changed after that time was read.
+    /// A masked field missing from `fields` is removed; without a mask the whole document is
+    /// replaced.
     public func patchDocument(
         _ path: String,
         fields: [String: FirestoreValue],
@@ -156,25 +152,12 @@ public final class FirestoreClient: @unchecked Sendable {
             url: try url(documentName(path), query: query),
             body: FirebaseJSON.object(["fields": .object(fields.mapValues { $0.rest(documentRoot: root) })]).data()
         )
-        try check(response, operation: String(format: String(localized: "write %@"), path))
+        try response.requireSuccess(String(format: String(localized: "write %@"), path))
     }
 
     public func deleteDocument(_ path: String) async throws {
         let response = try await requester.send(method: "DELETE", url: try url(documentName(path)))
-        try check(response, operation: String(format: String(localized: "delete %@"), path))
-    }
-
-    // MARK: - Console
-
-    /// A request typed in the editor, against a path under the current database's documents.
-    public func console(method: String, path: String, query: [URLQueryItem], body: FirebaseJSON?) async throws -> FirebaseJSON {
-        let response = try await requester.send(
-            method: method,
-            url: try url(documentName(path), query: query),
-            body: body?.data()
-        )
-        try check(response, operation: "\(method) \(path)")
-        return try response.json()
+        try response.requireSuccess(String(format: String(localized: "delete %@"), path))
     }
 
     public func ping() async throws {
@@ -184,7 +167,7 @@ public final class FirestoreClient: @unchecked Sendable {
     // MARK: - URLs
 
     func documentName(_ path: String) -> String {
-        let segments = path.split(separator: "/", omittingEmptySubsequences: true).map { Self.encodedSegment(String($0)) }
+        let segments = path.split(separator: "/", omittingEmptySubsequences: true).map { Self.encodedPathSegment(String($0)) }
         let root = "projects/\(Self.encodedSegment(projectId))/databases/\(Self.encodedSegment(currentDatabase))/documents"
         return segments.isEmpty ? root : root + "/" + segments.joined(separator: "/")
     }
@@ -193,31 +176,23 @@ public final class FirestoreClient: @unchecked Sendable {
         guard var components = URLComponents(string: baseURL.absoluteString + path) else {
             throw FirebaseError.configuration(String(format: String(localized: "\"%@\" is not a valid path."), path))
         }
-        if !query.isEmpty {
-            components.percentEncodedQuery = query.map { item in
-                "\(Self.encodedQuery(item.name))=\(Self.encodedQuery(item.value ?? ""))"
-            }.joined(separator: "&")
-        }
+        components.percentEncodedQuery = FirebaseRequester.queryString(query)
         guard let url = components.url else {
             throw FirebaseError.configuration(String(format: String(localized: "\"%@\" is not a valid path."), path))
         }
         return url
     }
 
+    /// A domain-scoped project ID such as `example.com:shop` keeps its `:`.
     static func encodedSegment(_ segment: String) -> String {
         var allowed = CharacterSet.urlPathAllowed
         allowed.remove(charactersIn: "/?#")
         return segment.addingPercentEncoding(withAllowedCharacters: allowed) ?? segment
     }
 
-    static func encodedQuery(_ text: String) -> String {
-        var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "&=+?#")
-        return text.addingPercentEncoding(withAllowedCharacters: allowed) ?? text
-    }
-
-    private func check(_ response: FirebaseHTTPResponse, operation: String) throws {
-        guard !response.isSuccess else { return }
-        throw FirebaseError.from(status: response.statusCode, body: response.body, operation: operation)
+    /// A `:` left raw in the last segment reads as a custom method, so `users/uid:1` would call
+    /// method `1` on `users/uid`.
+    static func encodedPathSegment(_ segment: String) -> String {
+        encodedSegment(segment).replacingOccurrences(of: ":", with: "%3A")
     }
 }

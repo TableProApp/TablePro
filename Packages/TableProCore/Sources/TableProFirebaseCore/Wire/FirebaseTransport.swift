@@ -39,6 +39,11 @@ public struct FirebaseHTTPResponse: Sendable, Equatable {
         guard !body.isEmpty else { return .null }
         return try FirebaseJSON.parse(body)
     }
+
+    func requireSuccess(_ operation: String) throws {
+        guard !isSuccess else { return }
+        throw FirebaseError.from(status: statusCode, body: body, operation: operation)
+    }
 }
 
 public protocol FirebaseTransport: Sendable {
@@ -46,8 +51,7 @@ public protocol FirebaseTransport: Sendable {
     func cancelAll()
 }
 
-/// Supplies the bearer token for each request; nil sends none. The emulators take the fixed token
-/// `owner`, which grants admin access and bypasses the security rules there.
+/// The emulators take the fixed token `owner`, which bypasses the security rules there.
 public struct FirebaseCredential: Sendable {
     public let token: @Sendable () async throws -> String?
     public let invalidate: @Sendable () async -> Void
@@ -156,8 +160,8 @@ private final class FirebaseTaskTracker: NSObject, URLSessionTaskDelegate, @unch
     }
 }
 
-/// Sends one request with the credential attached, and on a 401 drops the cached token and tries
-/// once more, since a token can expire between being cached and being used.
+/// A 401 drops the cached token and retries once, since a token can expire between being cached
+/// and being used.
 struct FirebaseRequester: Sendable {
     let transport: any FirebaseTransport
     let credential: FirebaseCredential
@@ -203,5 +207,15 @@ struct FirebaseRequester: Sendable {
             body: body,
             timeoutInterval: timeoutOverride ?? timeout()
         ))
+    }
+
+    static func queryString(_ items: [URLQueryItem]) -> String? {
+        guard !items.isEmpty else { return nil }
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&=+?#")
+        func encoded(_ text: String) -> String {
+            text.addingPercentEncoding(withAllowedCharacters: allowed) ?? text
+        }
+        return items.map { encoded($0.name) + "=" + encoded($0.value ?? "") }.joined(separator: "&")
     }
 }
