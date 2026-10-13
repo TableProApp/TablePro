@@ -386,3 +386,26 @@ fn redoing_after_undoing_everything_restores_the_first_edit() {
 
     assert_eq!(only_update(&tracker), vec![text("b"), Value::Int(1), text("a")]);
 }
+
+#[test]
+fn undoing_an_edit_back_to_the_original_restores_the_previous_edit_and_redo_clears_it_again() {
+    let mut tracker = TabChangeTracker::new();
+    let row = key(1);
+    let text = |value: &str| Value::Text(value.into());
+    tracker.track_cell_edit(row.clone(), 1, text("a"), text("b"));
+    tracker.track_cell_edit(row.clone(), 1, text("a"), text("a"));
+    assert_eq!(tracker.pending_count(), 0);
+
+    tracker.undo().unwrap();
+    assert_eq!(tracker.pending_count(), 1);
+    assert_eq!(tracker.cell_state(&row, 1), CellState::Modified);
+
+    tracker.redo().unwrap();
+    assert_eq!(tracker.pending_count(), 0);
+
+    tracker.undo().unwrap();
+    tracker.undo().unwrap();
+    assert_eq!(tracker.pending_count(), 0);
+    tracker.redo().unwrap();
+    assert_eq!(tracker.pending_count(), 1);
+}

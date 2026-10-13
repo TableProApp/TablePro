@@ -100,6 +100,7 @@ pub enum UndoOp {
         col: usize,
         prev_value: Value,
         new_value: Value,
+        base: Value,
     },
     /// Draft row was added. Undoing removes it.
     Insert { draft_id: u64, values: Vec<Value> },
@@ -187,19 +188,18 @@ impl TabChangeTracker {
     /// intermediate state).
     pub fn track_cell_edit(&mut self, row_key: RowKey, col: usize, original: Value, new: Value) {
         let key = (row_key.clone(), col);
-        let prev_value = self
-            .updates
-            .get(&key)
-            .map(|e| e.prev_value.clone())
-            .unwrap_or(original.clone());
-        if KeyValue::from(&prev_value) == KeyValue::from(&new) {
+        let (base, shown_before) = self.updates.get(&key).map_or_else(
+            || (original.clone(), original.clone()),
+            |e| (e.prev_value.clone(), e.new_value.clone()),
+        );
+        if KeyValue::from(&base) == KeyValue::from(&new) {
             // User reverted to the original value — drop the edit.
             self.updates.remove(&key);
         } else {
             self.updates.insert(
                 key,
                 CellEdit {
-                    prev_value: prev_value.clone(),
+                    prev_value: base.clone(),
                     new_value: new.clone(),
                 },
             );
@@ -207,8 +207,9 @@ impl TabChangeTracker {
         self.push_undo(UndoOp::CellEdit {
             row_key: row_key.clone(),
             col,
-            prev_value: original,
+            prev_value: shown_before,
             new_value: new,
+            base,
         });
         self.emit_changed(vec![row_key]);
     }
@@ -281,6 +282,7 @@ impl TabChangeTracker {
             self.push_undo(UndoOp::CellEdit {
                 row_key: RowKey::Draft(draft_id),
                 col,
+                base: prev.clone(),
                 prev_value: prev,
                 new_value: new,
             });
@@ -308,6 +310,7 @@ impl TabChangeTracker {
                 row_key,
                 col,
                 prev_value,
+                base,
                 ..
             } => {
                 if let RowKey::Draft(draft_id) = row_key {
@@ -317,7 +320,7 @@ impl TabChangeTracker {
                         draft.values[*col] = prev_value.clone();
                     }
                 } else {
-                    self.set_pending_edit(row_key, *col, None, prev_value);
+                    self.set_pending_edit(row_key, *col, Some(base), prev_value);
                 }
                 row_key.clone()
             }
@@ -369,8 +372,9 @@ impl TabChangeTracker {
             UndoOp::CellEdit {
                 row_key,
                 col,
-                prev_value,
                 new_value,
+                base,
+                ..
             } => {
                 if let RowKey::Draft(draft_id) = row_key {
                     if let Some(draft) = self.inserts.iter_mut().find(|d| d.draft_id == *draft_id)
@@ -379,7 +383,7 @@ impl TabChangeTracker {
                         draft.values[*col] = new_value.clone();
                     }
                 } else {
-                    self.set_pending_edit(row_key, *col, Some(prev_value), new_value);
+                    self.set_pending_edit(row_key, *col, Some(base), new_value);
                 }
                 row_key.clone()
             }
