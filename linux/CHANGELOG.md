@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite text containing a NUL character exported as SQL that SQLite cannot read.
 - ClickHouse query or export with a FORMAT clause filled memory instead of failing.
 - ClickHouse editor tab silently lost its temporary tables and settings when the server expired its session.
+- Running a ClickHouse statement right after stopping one failed because the server still held the session.
 - ClickHouse DateTime values showed as UTC text when the server profile or session set ISO output.
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
 - A new row removed with Delete stayed in the grid while the save left it out.

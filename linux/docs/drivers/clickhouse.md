@@ -59,6 +59,7 @@ A stop is `KILL QUERY WHERE query_id = ? ASYNC` on the control client. Each quer
 | 164, 392 | `ReadOnly(ServerRejected)` |
 | 192, 193, 194, 516; 497 on the first request | `Auth` |
 | 202, 203 | `Busy` |
+| 373 on an editor run | `EditorSessionBusy` |
 
 ## Writes
 
@@ -99,4 +100,5 @@ The query log and the process list are each node's own, and the driver asks the 
 - One statement per run (`ScriptExecution::SingleStatement`), each with a new query id.
 - The run's deadline, or the session's statement timeout, goes to the server as `max_execution_time` with `timeout_overflow_mode=throw`. A stop sends `KILL QUERY` and keeps reading, because the server answers the `KILL` by ending the response; a server that has not answered within the cancel grace is cut off.
 - Past the row limit the driver sends `KILL QUERY` for the rest of the result rather than reading it.
+- The server keeps a session locked until a query it was told to stop has ended, which can be after the run gave up its response, and refuses the session's next query with 373 until then. So the run after a stop first sends `KILL QUERY ... SYNC` for the stopped query, which answers once it is gone, and waits under its own cancel and deadline. A 373 that still comes is `EditorSessionBusy`, and the session stays ready.
 - ClickHouse has no transaction an editor statement can leave open, so the transaction state is always `Idle`.

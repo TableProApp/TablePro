@@ -132,6 +132,17 @@ pub(crate) async fn kill_query(control: &clickhouse::Client, query_id: Uuid) -> 
         .map_err(|error| map_error(&error))
 }
 
+/// Wait for a query told to stop to be gone from the server: `SYNC`
+/// answers only once it has ended.
+pub(crate) async fn wait_until_ended(control: &clickhouse::Client, query_id: Uuid) -> Result<(), DriverError> {
+    control
+        .query("KILL QUERY WHERE query_id = ? SYNC")
+        .bind(query_id.to_string())
+        .execute()
+        .await
+        .map_err(|error| map_error(&error))
+}
+
 fn unreachable(error: &DriverError) -> bool {
     matches!(
         error.category(),
