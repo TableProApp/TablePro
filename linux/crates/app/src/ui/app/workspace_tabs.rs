@@ -1249,10 +1249,9 @@ fn build_workspace_chrome(
         .enable_search(true)
         .child(&inner)
         .build();
-    // The signal returns its page (transfer none), and this binding hands
-    // it over without a reference of its own. A generic closure adds one,
-    // so every page the overview made would outlive its close. The
-    // overview already holds its view, so this capture adds no cycle.
+    // `create-tab` returns its page (transfer none): a generic closure adds a
+    // reference that outlives the page's close. The overview holds the view
+    // already, so this capture adds no cycle.
     let create_view = tab_view.clone();
     overview.connect_create_tab(move |_| create_tab(&create_view));
 
@@ -1262,8 +1261,8 @@ fn build_workspace_chrome(
     }
 }
 
-/// The page the overview's own new-tab button asks for: an empty editor
-/// tab, numbered like the ones `append_editor_tab` makes.
+// Numbered like the tabs `append_editor_tab` makes, so the two ways of
+// opening one look the same.
 fn overview_editor_tab(
     workspace_tabs: Rc<RefCell<HashMap<Uuid, WorkspaceTab>>>,
     editor_init: impl Fn() -> SqlEditorInit + 'static,
@@ -1486,7 +1485,6 @@ mod tests {
             .expect("the overview's new-tab button")
     }
 
-    /// The chrome with the editor tabs the window's overview makes.
     fn editor_chrome(
         runtime: &crate::runtime::AppRuntime,
         settings: &crate::test_support::MemorySettings,
