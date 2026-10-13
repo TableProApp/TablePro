@@ -17,3 +17,9 @@ Exit code 0. The `mysql_unparseable_routine_dialog_denial_preserves_database` sc
 After the pass line, shutdown printed `A connection to the bus can't be made`. The script still exited with status 0.
 
 This is source-build Xvfb evidence on the current Linux tip. It does not establish frozen-candidate, installed Arch/Hyprland, native Wayland, Forgejo or nightly acceptance. The installed AUD-2 timeout path and its audit result remain unverified here.
+
+## Approval helper unit checks
+
+Command: `CARGO_TARGET_DIR=/home/trung/Projects/bookie-b4-postgres-snapshot-pages/target cargo test --locked -p tablepro-app --lib services::gtk_approval::tests -- --test-threads=1`
+
+Result: 11 passed; 0 failed; 785 filtered out; exit code 0. This covers preview truncation, denial defaults, window selection, cancellation while queued, and the 120-second queued-dialog deadline. It does not exercise timeout while a visible dialog is open or verify the resulting audit event on an installed build.
