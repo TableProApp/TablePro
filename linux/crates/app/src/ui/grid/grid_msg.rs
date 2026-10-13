@@ -1,6 +1,12 @@
+use std::rc::Rc;
+
 use tablepro_core::QueryResult;
 
-use super::CellPreset;
+use super::{CellPreset, RowObject};
+
+/// Where a grid sends its events. The owner holds the grid, so the
+/// closure holds the owner weakly.
+pub type GridSink = Rc<dyn Fn(GridMsg)>;
 
 #[derive(Debug)]
 pub enum GridMsg {
@@ -8,29 +14,29 @@ pub enum GridMsg {
     /// another column fires both sort notifies, and a hint would flip twice.
     SortChanged(usize, bool),
     CellEdited {
-        row_position: u32,
-        col_index: usize,
-        new_value: String,
+        row: RowObject,
+        column: usize,
+        input: String,
     },
     CopyToClipboard(String),
     ShowToast(String),
     CopyRowAsInsert {
-        row_position: u32,
+        row: RowObject,
     },
     /// An intent, not a `Value`: the grid does not know the column's
     /// declared type, and `Text("")` in an `int` or a `date` column is an
     /// UPDATE the server rejects.
     SetCellValue {
-        row_position: u32,
-        col_index: usize,
+        row: RowObject,
+        column: usize,
         preset: CellPreset,
     },
     ExportResults(QueryResult),
     DeleteRowAt {
-        row_position: u32,
+        row: RowObject,
     },
     InsertRow,
     DuplicateRow {
-        row_position: u32,
+        row: RowObject,
     },
 }

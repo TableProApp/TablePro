@@ -13,7 +13,7 @@ mod parse_literal_text;
 pub use cell_input::CellInput;
 pub use edit_context::EditContext;
 pub use edit_parse_error::{EditParseError, ReadOnlyReason};
-pub use edit_text::{EditText, edit_text};
+pub use edit_text::{EditText, edit_text, read_only_reason};
 pub use empty_input_meaning::{EmptyInputMeaning, empty_input_meaning};
 pub use is_unchanged::is_unchanged;
 pub use parse_edit_text::parse_edit_text;

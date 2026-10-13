@@ -2,25 +2,22 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 
 use super::run_log::{EntryKind, RunLogEntry};
-use crate::ui::grid::{GridMsg, TabGridContext, build_column_view};
+use crate::ui::grid::{GridSink, RowObject, TabGridContext, build_column_view};
 use crate::ui::icons;
 
 /// The widget a results list line shows. `go_to_error` puts the editor
 /// cursor where the server says a statement went wrong.
-pub fn entry_widget(
-    entry: &RunLogEntry,
-    grid_sender: &relm4::Sender<GridMsg>,
-    go_to_error: impl Fn(usize) + 'static,
-) -> gtk4::Widget {
+pub fn entry_widget(entry: &RunLogEntry, grid_sink: &GridSink, go_to_error: impl Fn(usize) + 'static) -> gtk4::Widget {
     match &entry.kind {
         EntryKind::ResultSet { result, total_rows } => {
+            let rows = result.rows.iter().map(|cells| RowObject::result(cells.clone().into()));
             let (column_view, _selection) = build_column_view(
                 result,
+                rows,
                 &[],
-                grid_sender.clone(),
+                grid_sink.clone(),
+                None,
                 false,
-                None,
-                None,
                 TabGridContext::default(),
             );
             let scrolled = gtk4::ScrolledWindow::builder()
@@ -145,8 +142,8 @@ fn row_count_text(rows: usize, truncated: bool, total: Option<u64>) -> String {
 mod tests {
     use super::*;
 
-    fn sender() -> relm4::Sender<GridMsg> {
-        relm4::channel::<GridMsg>().0
+    fn sink() -> GridSink {
+        std::rc::Rc::new(|_| {})
     }
 
     #[gtk4::test]
@@ -160,7 +157,7 @@ mod tests {
             preview: String::new(),
         };
 
-        let widget = entry_widget(&entry, &sender(), |_| {});
+        let widget = entry_widget(&entry, &sink(), |_| {});
 
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         assert_eq!(
@@ -182,7 +179,7 @@ mod tests {
         let reached = std::rc::Rc::new(std::cell::Cell::new(None));
         let seen = reached.clone();
 
-        let widget = entry_widget(&entry, &sender(), move |position| seen.set(Some(position)));
+        let widget = entry_widget(&entry, &sink(), move |position| seen.set(Some(position)));
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         let button = page.child().and_downcast::<gtk4::Button>().expect("Go to Error");
         button.emit_clicked();

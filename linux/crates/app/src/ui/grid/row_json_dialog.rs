@@ -1,7 +1,7 @@
 use gtk4 as gtk;
 use gtk4::prelude::*;
-use relm4::adw;
-use relm4::adw::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use sourceview5::prelude::*;
 
 pub(super) fn show_row_json_dialog(parent: &impl IsA<gtk::Widget>, json: String) {

@@ -1380,10 +1380,6 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &relm4::Send
 fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
     let state = input.clone();
     browse.connect_state_changed(move |_| state.emit(AppMsg::WorkspaceTabsChanged));
-    let copy_row = input.clone();
-    browse.connect_copy_row_as_insert(move |_, row_position| {
-        copy_row.emit(AppMsg::CopyRowAsInsert { tab_id, row_position });
-    });
     let clipboard = input.clone();
     browse.connect_copy_to_clipboard(move |_, text| clipboard.emit(AppMsg::CopyToClipboard(text)));
     let export = input.clone();

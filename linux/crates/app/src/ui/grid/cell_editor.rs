@@ -1,6 +1,6 @@
-//! The display page is a plain label with no pointer controllers, so a
-//! single click reaches the column view's row selection. The edit page
-//! shows only after `start_editing`.
+//! The display page is a plain label with no pointer controllers while
+//! the cell takes edits, so a single click reaches the column view's row
+//! selection. The edit page shows only after `start_editing`.
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -131,6 +131,13 @@ impl CellEditor {
     pub fn set_text(&self, s: &str) {
         self.label_widget().set_text(s);
         self.entry_widget().set_text(s);
+    }
+
+    pub fn set_selectable(&self, selectable: bool) {
+        let label = self.label_widget();
+        if label.is_selectable() != selectable {
+            label.set_selectable(selectable);
+        }
     }
 
     /// The entry is left alone: a row marked for deletion is not edited.

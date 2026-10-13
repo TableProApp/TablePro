@@ -264,12 +264,11 @@ impl TabChangeTracker {
 
     fn put_draft(&mut self, draft: DraftRow) -> TrackerDelta {
         let draft_id = draft.draft_id;
-        let visual = VisualChange::InsertDraft {
-            draft_id,
-            values: draft.values.clone(),
-        };
         self.drafts.push(draft);
-        self.delta(vec![RowKey::Draft(draft_id)], vec![visual])
+        self.delta(
+            vec![RowKey::Draft(draft_id)],
+            vec![VisualChange::InsertDraft { draft_id }],
+        )
     }
 
     fn remove_draft(&mut self, draft_id: u64) -> TrackerDelta {
@@ -287,12 +286,9 @@ impl TabChangeTracker {
         let Some(cell) = draft.values.get_mut(col) else {
             return self.delta(Vec::new(), Vec::new());
         };
-        *cell = value.clone();
+        *cell = value;
         draft.touched = touched;
-        self.delta(
-            vec![RowKey::Draft(draft_id)],
-            vec![VisualChange::SetDraftCell { draft_id, col, value }],
-        )
+        self.delta(vec![RowKey::Draft(draft_id)], Vec::new())
     }
 
     pub fn undo(&mut self) -> Option<TrackerDelta> {
@@ -428,11 +424,36 @@ impl TabChangeTracker {
         true
     }
 
+    /// A draft's cells live only here, so for a draft `original` is
+    /// what an out-of-range column reads as.
     fn current_cell_value<'a>(&'a self, row_key: &RowKey, col: usize, original: &'a Value) -> &'a Value {
+        if let RowKey::Draft(draft_id) = row_key {
+            return self
+                .drafts
+                .iter()
+                .find(|draft| draft.draft_id == *draft_id)
+                .and_then(|draft| draft.values.get(col))
+                .unwrap_or(original);
+        }
         match self.updates.get(&(row_key.clone(), col)) {
             Some(edit) => &edit.pending,
             None => original,
         }
+    }
+
+    pub fn draft_values(&self, draft_id: u64) -> Option<&[Value]> {
+        self.drafts
+            .iter()
+            .find(|draft| draft.draft_id == draft_id)
+            .map(|draft| draft.values.as_slice())
+    }
+
+    /// A draft's cells as its INSERT carries them.
+    pub fn draft_cells(&self, draft_id: u64, columns: &[ColumnInfo]) -> Option<Vec<CellInput>> {
+        self.drafts
+            .iter()
+            .find(|draft| draft.draft_id == draft_id)
+            .map(|draft| insert_cells(columns, draft))
     }
 
     /// What the user changed, as the change set a save is planned from.
@@ -448,14 +469,11 @@ impl TabChangeTracker {
     pub fn change_set(&self, columns: &[ColumnInfo]) -> Result<TrackedChanges, BuildSqlError> {
         let mut rows: Vec<(Touch, RowChange, StatementSource)> = Vec::new();
         for draft in &self.drafts {
-            let cells = columns
-                .iter()
-                .zip(&draft.values)
-                .map(|(column, value)| draft_cell(column, value))
-                .collect();
             rows.push((
                 draft.touched,
-                RowChange::Insert { cells },
+                RowChange::Insert {
+                    cells: insert_cells(columns, draft),
+                },
                 StatementSource::Insert {
                     draft_id: draft.draft_id,
                 },
@@ -554,6 +572,14 @@ fn require_key(columns: &[ColumnInfo]) -> Result<(), BuildSqlError> {
 
 fn key_values(key: &[KeyValue]) -> Vec<Value> {
     key.iter().map(|part| part.value().clone()).collect()
+}
+
+fn insert_cells(columns: &[ColumnInfo], draft: &DraftRow) -> Vec<CellInput> {
+    columns
+        .iter()
+        .zip(&draft.values)
+        .map(|(column, value)| draft_cell(column, value))
+        .collect()
 }
 
 /// A NULL the user left in a column with a default means "use the
@@ -864,24 +890,11 @@ mod tests {
 
         let undone = t.undo();
 
-        assert_eq!(
-            undone.map(|delta| delta.visual),
-            Some(vec![VisualChange::SetDraftCell {
-                draft_id,
-                col: 1,
-                value: text("b")
-            }])
-        );
+        assert_eq!(undone.map(|delta| delta.rows), Some(vec![RowKey::Draft(draft_id)]));
         assert_eq!(t.drafts()[0].values[1], text("b"));
-        let redone = t.redo().map(|delta| delta.visual);
-        assert_eq!(
-            redone,
-            Some(vec![VisualChange::SetDraftCell {
-                draft_id,
-                col: 1,
-                value: text("c")
-            }])
-        );
+        let redone = t.redo().map(|delta| delta.rows);
+        assert_eq!(redone, Some(vec![RowKey::Draft(draft_id)]));
+        assert_eq!(t.drafts()[0].values[1], text("c"));
     }
 
     #[test]
@@ -1105,6 +1118,24 @@ mod tests {
     }
 
     #[test]
+    fn a_draft_leaves_an_auto_increment_column_to_the_server() {
+        let mut t = TabChangeTracker::default();
+        let columns = vec![pk_col("id"), data_col("name")];
+        let draft_id = insert(&mut t, vec![Value::Int(42), Value::Text("draft".into())]);
+
+        let tracked = t.change_set(&columns).unwrap();
+
+        let expected = vec![CellInput::Default, CellInput::Value(Value::Text("draft".into()))];
+        assert_eq!(
+            tracked.changes.changes,
+            vec![RowChange::Insert {
+                cells: expected.clone()
+            }]
+        );
+        assert_eq!(t.draft_cells(draft_id, &columns), Some(expected));
+    }
+
+    #[test]
     fn a_table_without_a_primary_key_cannot_save_an_update() {
         let mut t = TabChangeTracker::default();
         let columns = vec![data_col("name")];
@@ -1214,22 +1245,31 @@ mod tests {
         let undone = t.undo();
 
         assert_eq!(
-            edited.visual,
-            vec![VisualChange::SetDraftCell {
-                draft_id,
-                col: 1,
-                value: Value::Text("b".into())
-            }]
+            (edited.rows, edited.visual),
+            (vec![RowKey::Draft(draft_id)], Vec::new())
         );
-        assert_eq!(
-            undone.map(|delta| delta.visual),
-            Some(vec![VisualChange::SetDraftCell {
-                draft_id,
-                col: 1,
-                value: Value::Text("a".into())
-            }])
-        );
+        assert_eq!(undone.map(|delta| delta.rows), Some(vec![RowKey::Draft(draft_id)]));
         assert_eq!(t.drafts()[0].values[1], Value::Text("a".into()));
+    }
+
+    #[test]
+    fn a_draft_cell_reads_from_the_tracker() {
+        let mut t = TabChangeTracker::default();
+        let draft_id = insert(&mut t, vec![Value::Null, Value::Text("a".into())]);
+        let _ = t.apply(TrackerEdit::DraftCell {
+            draft_id,
+            col: 1,
+            value: Value::Text("b".into()),
+        });
+
+        let overlay = t.cell_overlay(&RowKey::Draft(draft_id), 1, &Value::Null);
+
+        assert_eq!(overlay.value, Value::Text("b".into()));
+        assert_eq!(overlay.state, CellState::InsertDraft);
+        assert_eq!(
+            t.cell_overlay(&RowKey::Draft(draft_id), 9, &Value::Null).value,
+            Value::Null
+        );
     }
 
     #[test]
@@ -1256,13 +1296,7 @@ mod tests {
         let redone = t.redo().map(|delta| delta.visual);
 
         assert_eq!(undone, Some(vec![VisualChange::RemoveDraft { draft_id }]));
-        assert_eq!(
-            redone,
-            Some(vec![VisualChange::InsertDraft {
-                draft_id,
-                values: vec![Value::Int(7)]
-            }])
-        );
+        assert_eq!(redone, Some(vec![VisualChange::InsertDraft { draft_id }]));
     }
 
     #[test]

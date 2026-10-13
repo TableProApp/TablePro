@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Structure tab offers only the changes the database can make, and says why a control is off.
+- New rows in the table grid take a value for a primary key that is not auto-increment.
 - Show CREATE TABLE gives the server's own statement on MySQL, ClickHouse and SQLite.
 
 ### Fixed
@@ -38,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse DateTime values showed as UTC text when the server profile or session set ISO output.
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
 - A new row removed with Delete stayed in the grid while the save left it out.
+- An edit, Set Value or row action in the table grid could land on another row once a row above it came or went.
+- Copy as INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.
+- Duplicate left out the row's unsaved edits.
+- Cells of a table without a primary key opened for editing, then dropped what was typed.
 - A save that failed on a new row did not flash that row.
 - Undo after editing a cell twice restored the fetched value instead of the first edit.
 - A save that deleted a row and added a new one with the same unique value failed.

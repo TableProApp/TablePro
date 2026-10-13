@@ -26,6 +26,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::{CellInput, EditContext, EditParseError};
+use tablepro_core::export::RenderInsertError;
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use tablepro_session::runtime::{Tasks, WatchForwarder};
@@ -34,9 +35,12 @@ use tablepro_session::{LinkGeneration, Session};
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
 pub(crate) use self::page_reply::PageReply;
-use super::grid::{CellEditor, CellPreset, ColumnWidthBinding, GridMsg, RowObject, TabGridContext, build_column_view};
+use super::grid::{
+    CellPreset, ColumnWidthBinding, GridCell, GridMsg, GridRowId, GridSink, RowObject, TabGridContext,
+    build_column_view, cell_editability,
+};
 use crate::runtime::{FailedRequests, RequestSequencer};
-use crate::services::change_tracker::{RowKey, StatementSource, TrackedChanges};
+use crate::services::change_tracker::{RowKey, StatementSource, TrackedChanges, pk_identity};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::{TrackerDelta, VisualChange};
 use crate::services::tracker_edit::TrackerEdit;
@@ -144,7 +148,20 @@ impl BrowseTab {
         tab.collapse_top_bars_with(&filter_strip.widget);
         tab.connect_widgets();
 
-        let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
+        // Delivered once the signal that sent it returns: a commit
+        // refreshes its own row, which replaces the row's widgets, and
+        // the Tab that ended the edit still has to move focus from them.
+        let grid_sink: GridSink = {
+            let tab = tab.downgrade();
+            Rc::new(move |msg| {
+                let tab = tab.clone();
+                glib::spawn_future_local(async move {
+                    if let Some(tab) = tab.upgrade() {
+                        tab.send(BrowseTabInput::from(msg));
+                    }
+                });
+            })
+        };
         let link_generation = init.session.link_generation();
         let dialect = init.session.current_dialect();
         let link_changes = init.session.link_changes();
@@ -199,11 +216,10 @@ impl BrowseTab {
             save_button: imp.save_button.get(),
             discard_button: imp.discard_button.get(),
             pending_label: imp.pending_label.get(),
-            grid_sender,
+            grid_sink,
             suppress_combo_emit: Cell::new(true),
         };
         imp.model.replace(Some(model));
-        tab.forward_grid(grid_receiver);
         imp.link_watch.replace(Some(WatchForwarder::new(
             link_changes,
             {
@@ -304,14 +320,6 @@ impl BrowseTab {
         self.connect_closure("state-changed", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
 
-    pub fn connect_copy_row_as_insert<F: Fn(&Self, u32) + 'static>(&self, f: F) -> glib::SignalHandlerId {
-        self.connect_closure(
-            "copy-row-as-insert",
-            false,
-            glib::closure_local!(move |tab: &Self, row: u32| f(tab, row)),
-        )
-    }
-
     pub fn connect_copy_to_clipboard<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "copy-to-clipboard",
@@ -368,9 +376,6 @@ impl BrowseTab {
     fn emit_output(&self, output: BrowseTabOutput) {
         match output {
             BrowseTabOutput::StateChanged => self.emit_by_name::<()>("state-changed", &[]),
-            BrowseTabOutput::CopyRowAsInsert { row_position } => {
-                self.emit_by_name::<()>("copy-row-as-insert", &[&row_position]);
-            }
             BrowseTabOutput::CopyToClipboard(text) => self.emit_by_name::<()>("copy-to-clipboard", &[&text]),
             BrowseTabOutput::ExportResults(request) => {
                 self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(request)]);
@@ -444,34 +449,25 @@ impl BrowseTab {
         });
     }
 
-    /// Each grid event becomes an input of this tab, until the tab goes.
-    fn forward_grid(&self, receiver: relm4::Receiver<GridMsg>) {
-        let tab = self.downgrade();
-        let forwarding = glib::spawn_future_local(async move {
-            while let Some(msg) = receiver.recv().await {
-                let Some(tab) = tab.upgrade() else {
-                    break;
-                };
-                tab.send(BrowseTabInput::from(msg));
-            }
-        });
-        self.imp().grid_forward.replace(Some(forwarding));
-    }
-
-    /// Set the focused cell to NULL, for Ctrl+Shift+N.
+    /// Set the focused cell to NULL, for Ctrl+Shift+N. A locked cell
+    /// lets the key go on.
     fn set_focused_cell_null(&self) -> glib::Propagation {
-        let Some((row_position, col_index)) = super::grid::focused_cell_coords(self) else {
+        // `RootExt::focus` would return the window itself.
+        let focus = self
+            .root()
+            .and_downcast::<gtk::Window>()
+            .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window));
+        let Some(cell) = focus.as_ref().and_then(GridCell::from_focus) else {
             return glib::Propagation::Proceed;
         };
-        if let Some(sender) = self.read(|model| model.grid_sender.clone()) {
-            sender
-                .send(GridMsg::SetCellValue {
-                    row_position,
-                    col_index,
-                    preset: CellPreset::Null,
-                })
-                .ok();
-        }
+        let (None, Some(row)) = (cell.lock(), cell.row()) else {
+            return glib::Propagation::Proceed;
+        };
+        self.send(BrowseTabInput::GridSetCellValue {
+            row,
+            column: cell.column(),
+            preset: CellPreset::Null,
+        });
         glib::Propagation::Stop
     }
 }
@@ -480,31 +476,15 @@ impl From<GridMsg> for BrowseTabInput {
     fn from(msg: GridMsg) -> Self {
         match msg {
             GridMsg::SortChanged(col_idx, ascending) => Self::SortChanged { col_idx, ascending },
-            GridMsg::CellEdited {
-                row_position,
-                col_index,
-                new_value,
-            } => Self::GridCellEdited {
-                row_position,
-                col_index,
-                new_value,
-            },
+            GridMsg::CellEdited { row, column, input } => Self::GridCellEdited { row, column, input },
             GridMsg::CopyToClipboard(text) => Self::GridCopyToClipboard(text),
             GridMsg::ShowToast(text) => Self::GridShowToast(text),
-            GridMsg::CopyRowAsInsert { row_position } => Self::GridCopyRowAsInsert { row_position },
-            GridMsg::SetCellValue {
-                row_position,
-                col_index,
-                preset,
-            } => Self::GridSetCellValue {
-                row_position,
-                col_index,
-                preset,
-            },
+            GridMsg::CopyRowAsInsert { row } => Self::GridCopyRowAsInsert { row },
+            GridMsg::SetCellValue { row, column, preset } => Self::GridSetCellValue { row, column, preset },
             GridMsg::ExportResults(result) => Self::GridExportResults(result),
-            GridMsg::DeleteRowAt { row_position } => Self::GridDeleteRowAt { row_position },
+            GridMsg::DeleteRowAt { row } => Self::GridDeleteRowAt { row },
             GridMsg::InsertRow => Self::InsertRow,
-            GridMsg::DuplicateRow { row_position } => Self::DuplicateRow { row_position },
+            GridMsg::DuplicateRow { row } => Self::DuplicateRow { row },
         }
     }
 }
@@ -612,7 +592,7 @@ pub(crate) struct BrowseModel {
     save_button: gtk::Button,
     discard_button: gtk::Button,
     pending_label: gtk::Label,
-    grid_sender: relm4::Sender<GridMsg>,
+    grid_sink: GridSink,
     /// Set until the first page lands, so the page-size dropdown being
     /// set from a restored state does not count as the user choosing.
     suppress_combo_emit: Cell<bool>,
@@ -652,30 +632,30 @@ pub(crate) enum BrowseTabInput {
     FocusInsertedDraft,
     DeleteSelectedRow,
     GridCellEdited {
-        row_position: u32,
-        col_index: usize,
-        new_value: String,
+        row: RowObject,
+        column: usize,
+        input: String,
     },
     /// Cell context-menu "Set Value". The grid names the preset; the
     /// tab resolves it against the column's declared type, because
     /// only the tab holds the column metadata that says whether an
     /// empty string is a value the column can hold.
     GridSetCellValue {
-        row_position: u32,
-        col_index: usize,
+        row: RowObject,
+        column: usize,
         preset: CellPreset,
     },
     GridShowToast(String),
     GridExportResults(QueryResult),
     ExportCurrentPage,
     GridDeleteRowAt {
-        row_position: u32,
+        row: RowObject,
     },
     GridCopyRowAsInsert {
-        row_position: u32,
+        row: RowObject,
     },
     DuplicateRow {
-        row_position: u32,
+        row: RowObject,
     },
     GridCopyToClipboard(String),
     Undo,
@@ -706,9 +686,6 @@ pub(crate) enum BrowseTabOutput {
     /// Something the window keeps for the tab changed: the page, the
     /// sort, the page size.
     StateChanged,
-    CopyRowAsInsert {
-        row_position: u32,
-    },
     CopyToClipboard(String),
     ExportResults(ExportRequest),
     ShowSelectionAlert {
@@ -743,14 +720,40 @@ impl BrowseModel {
     fn grid_context(&self) -> TabGridContext {
         TabGridContext {
             tracker: Some(self.tracker.clone()),
+            editable: !self.read_only,
+            identity: pk_identity(&self.current_columns),
             column_widths: self.connection_id.map(|connection_id| ColumnWidthBinding {
                 store: self.column_widths.clone(),
                 connection_id,
                 schema: self.schema.clone(),
                 table: self.table.clone(),
             }),
-            pk_col_indices: self.pk_indices(),
         }
+    }
+
+    /// A page's rows, each named by its primary key, which is the key
+    /// the tracker files its edits under.
+    fn page_rows(&self, result: &QueryResult) -> Vec<RowObject> {
+        let pk_indices = self.pk_indices();
+        result
+            .rows
+            .iter()
+            .map(|cells| RowObject::persisted(persisted_key(cells, &pk_indices), cells.clone().into()))
+            .collect()
+    }
+
+    /// Checked again here because a keyboard shortcut or a late event
+    /// can reach a locked cell.
+    fn refuses_edit(&self, row: &RowObject, column: usize) -> bool {
+        let Some(info) = self.current_columns.get(column) else {
+            return true;
+        };
+        let locked = cell_editability(info, row.id(), &pk_identity(&self.current_columns), self.read_only);
+        if let Err(lock) = locked {
+            tracing::debug!(?lock, column, "refused an edit to a locked cell");
+            return true;
+        }
+        false
     }
 
     fn pk_indices(&self) -> Vec<usize> {
@@ -791,15 +794,12 @@ impl BrowseModel {
         }
     }
 
-    /// Whether an edit at this position lands in a draft row, which is
-    /// the one place an empty cell can mean the server's default.
-    fn edit_context_at(&self, row_position: u32) -> EditContext {
-        match self
-            .row_object_at(row_position)
-            .is_some_and(|row| row.draft_id().is_some())
-        {
-            true => EditContext::InsertDraft,
-            false => EditContext::UpdateRow,
+    /// Whether an edit lands in a draft row, which is the one place an
+    /// empty cell can mean the server's default.
+    fn edit_context_for(row: &RowObject) -> EditContext {
+        match row.id() {
+            GridRowId::Draft(_) => EditContext::InsertDraft,
+            GridRowId::Result | GridRowId::Unkeyed | GridRowId::Persisted(_) => EditContext::UpdateRow,
         }
     }
 
@@ -835,8 +835,8 @@ impl BrowseModel {
             }
         }
         for key in &delta.rows {
-            if let Some(position) = self.find_row_position_by_key(key) {
-                self.refresh_row_at(position);
+            if let Some((_, row)) = self.row_for_key(key) {
+                self.refresh_row(&row);
             }
         }
         self.sync_pending_chrome(delta.pending_count, fx);
@@ -857,28 +857,36 @@ impl BrowseModel {
         self.apply_tracker_delta(delta, fx);
     }
 
-    /// A typed or preset value for one cell. A draft keeps the value on
-    /// its own row; a persisted row keeps it in the tracker.
-    fn edit_cell(&self, row_position: u32, col: usize, value: Value, fx: &mut Effects) {
-        if let Some(draft_id) = self.row_object_at(row_position).and_then(|row| row.draft_id()) {
-            self.apply_edit(TrackerEdit::DraftCell { draft_id, col, value }, fx);
-            return;
+    /// A typed or preset value for one cell, against the row the edit
+    /// was made on, wherever it sits now.
+    fn edit_cell(&self, row: &RowObject, col: usize, value: Value, fx: &mut Effects) {
+        match row.id() {
+            GridRowId::Draft(draft_id) => {
+                self.apply_edit(
+                    TrackerEdit::DraftCell {
+                        draft_id: *draft_id,
+                        col,
+                        value,
+                    },
+                    fx,
+                );
+            }
+            GridRowId::Persisted(row_key) => {
+                let Some(original) = row.cell(col).cloned() else {
+                    return;
+                };
+                self.apply_edit(
+                    TrackerEdit::Cell {
+                        row_key: row_key.clone(),
+                        col,
+                        original,
+                        value,
+                    },
+                    fx,
+                );
+            }
+            GridRowId::Result | GridRowId::Unkeyed => {}
         }
-        let Some((row_key, row)) = self.row_key_at(row_position) else {
-            return;
-        };
-        let Some(original) = row.get(col).cloned() else {
-            return;
-        };
-        self.apply_edit(
-            TrackerEdit::Cell {
-                row_key,
-                col,
-                original,
-                value,
-            },
-            fx,
-        );
     }
 
     /// F5: read the columns again, in case the table changed under the
@@ -903,68 +911,38 @@ impl BrowseModel {
         selection.model()?.downcast::<gtk::gio::ListStore>().ok()
     }
 
-    /// Make the view rebind the row at `pos`.
+    /// Make the view rebind `row`, which keeps its identity but whose
+    /// pending state changed.
     ///
     /// The ColumnView's list-item manager compares item pointers and
-    /// skips the rebind when the item at a position is the same object,
-    /// and an edit changes cells inside the existing `RowObject`. So a
-    /// fresh `RowObject` with the post-edit cells is spliced in: one
-    /// items-changed, no flicker, no scroll jump.
-    fn refresh_row_at(&self, pos: u32) {
-        let row_obj = self.row_object_at(pos);
-        let store = self.list_store();
-        let store_pos = match (row_obj.as_ref(), store.as_ref()) {
-            (Some(r), Some(s)) => s.find(r),
-            _ => None,
+    /// skips the rebind when the item at a position is the same object.
+    /// So a fresh object for the row is spliced in: one items-changed,
+    /// no flicker, no scroll jump. An event can carry an object an
+    /// earlier rebind replaced, so a keyed row is found by its key.
+    fn refresh_row(&self, row: &RowObject) {
+        let Some(store) = self.list_store() else {
+            return;
         };
-        if let (Some(store), Some(store_pos), Some(old)) = (store, store_pos, row_obj) {
-            let cells = old.cells_clone();
-            let replacement = match old.draft_id() {
-                Some(id) => RowObject::new_draft(id, cells),
-                None => RowObject::new(cells),
-            };
-            store.splice(store_pos, 1, &[replacement]);
+        let position = store.find(row).or_else(|| {
+            let key = row.id().tracker_key()?;
+            self.row_for_key(&key).map(|(position, _)| position)
+        });
+        let Some(position) = position else {
+            return;
+        };
+        if let Some(current) = store.item(position).and_downcast::<RowObject>() {
+            store.splice(position, 1, &[current.replacement()]);
         }
     }
 
-    fn row_object_at(&self, position: u32) -> Option<RowObject> {
-        let model = self.current_selection.as_ref()?.model()?;
-        model.item(position)?.downcast::<RowObject>().ok()
-    }
-
-    /// Where a row is in the selection model: a draft by its id, a
-    /// persisted row by its key values. `None` when it is not on this
-    /// page.
-    fn find_row_position_by_key(&self, key: &RowKey) -> Option<u32> {
-        use crate::services::change_tracker::KeyValue;
-        let selection = self.current_selection.as_ref()?;
-        let model = selection.model()?;
-        let pk_indices = self.pk_indices();
-        let n_items = model.n_items();
-        for i in 0..n_items {
-            let Some(item) = model.item(i) else { continue };
-            let Ok(row) = item.downcast::<RowObject>() else {
-                continue;
-            };
-            let matched = match key {
-                RowKey::Draft(id) => row.draft_id() == Some(*id),
-                RowKey::Persisted(target_keys) => {
-                    if row.draft_id().is_some() || pk_indices.is_empty() {
-                        false
-                    } else {
-                        let row_keys: Vec<KeyValue> = pk_indices
-                            .iter()
-                            .map(|&col_idx| tablepro_core::value::ValueIdentity::new(row.cell_value(col_idx)))
-                            .collect();
-                        row_keys == *target_keys
-                    }
-                }
-            };
-            if matched {
-                return Some(i);
-            }
-        }
-        None
+    /// The row the tracker names `key`, and where it is. `None` when it
+    /// is not on this page.
+    fn row_for_key(&self, key: &RowKey) -> Option<(u32, RowObject)> {
+        let store = self.list_store()?;
+        (0..store.n_items()).find_map(|position| {
+            let row = store.item(position).and_downcast::<RowObject>()?;
+            row.id().is_tracked_as(key).then_some((position, row))
+        })
     }
 
     /// Scroll to the row behind a failed statement and flash it. A row
@@ -975,7 +953,7 @@ impl BrowseModel {
             StatementSource::Insert { draft_id } => RowKey::Draft(*draft_id),
             StatementSource::Update { row_key } | StatementSource::Delete { row_key } => row_key.clone(),
         };
-        let Some(position) = self.find_row_position_by_key(&key) else {
+        let Some((position, row)) = self.row_for_key(&key) else {
             return;
         };
         if let Some(selection) = self.current_selection.as_ref() {
@@ -990,7 +968,7 @@ impl BrowseModel {
             );
         }
         let generation = self.tracker.flash_error_row(key);
-        self.refresh_row_at(position);
+        self.refresh_row(&row);
         let tracker = self.tracker.clone();
         let selection_for_clear = self.current_selection.clone();
         // Matches the length of the flash animation in the stylesheet.
@@ -1026,24 +1004,10 @@ impl BrowseModel {
         if bitset.size() == 0 {
             return;
         }
-        let pos = bitset.nth(0);
-        let Some(model) = selection.model() else { return };
-        let Some(item) = model.item(pos) else { return };
-        let Ok(row) = item.downcast::<RowObject>() else {
+        let Some(row) = selection.item(bitset.nth(0)).and_downcast::<RowObject>() else {
             return;
         };
-        let key = if let Some(draft_id) = row.draft_id() {
-            Some(RowKey::Draft(draft_id))
-        } else {
-            let pk_indices = self.pk_indices();
-            if pk_indices.is_empty() {
-                None
-            } else {
-                let pk_values: Vec<Value> = pk_indices.iter().map(|&i| row.cell_value(i)).collect();
-                RowKey::from_pk_values(&pk_values)
-            }
-        };
-        *self.pending_focus_restore.borrow_mut() = key;
+        *self.pending_focus_restore.borrow_mut() = row.id().tracker_key();
     }
 
     /// Scroll + focus + select the freshly-prepended draft row, then
@@ -1080,11 +1044,8 @@ impl BrowseModel {
             let Some(focused) = gtk::prelude::GtkWindowExt::focus(&window) else {
                 return;
             };
-            if let Ok(label) = focused.dynamic_cast::<CellEditor>() {
-                if label.text().as_str() == super::grid::editable_null_sentinel() {
-                    label.set_text("");
-                }
-                label.start_editing();
+            if let Some(cell) = GridCell::from_focus(&focused) {
+                super::grid::enter_edit_mode(&cell);
             }
         });
     }
@@ -1096,7 +1057,7 @@ impl BrowseModel {
         let Some(key) = self.pending_focus_restore.borrow_mut().take() else {
             return;
         };
-        let Some(position) = self.find_row_position_by_key(&key) else {
+        let Some((position, _)) = self.row_for_key(&key) else {
             return;
         };
         if let Some(selection) = self.current_selection.as_ref() {
@@ -1135,11 +1096,11 @@ impl BrowseModel {
         let tab_ctx = self.grid_context();
         let (column_view, selection) = build_column_view(
             &result,
+            self.page_rows(&result),
             &self.current_columns,
-            self.grid_sender.clone(),
-            !self.read_only,
+            self.grid_sink.clone(),
             self.current_sort,
-            Some(self.grid_sender.clone()),
+            true,
             tab_ctx,
         );
         self.current_selection = Some(selection);
@@ -1180,8 +1141,8 @@ impl BrowseModel {
     /// they survive the swap.
     fn refresh_grid_data(&self, result: &QueryResult, store: &gtk::gio::ListStore) {
         store.remove_all();
-        for row in &result.rows {
-            store.append(&RowObject::new(row.clone()));
+        for row in self.page_rows(result) {
+            store.append(&row);
         }
         self.reprepend_drafts();
     }
@@ -1224,19 +1185,8 @@ impl BrowseModel {
             return;
         };
         for draft in self.tracker.drafts() {
-            store.insert(0, &RowObject::new_draft(draft.draft_id, draft.values));
+            store.insert(0, &RowObject::draft(draft.draft_id));
         }
-    }
-
-    /// The (RowKey, current_values) pair for a row at a selection-model
-    /// position, which counts prepended drafts. `None` for drafts, for
-    /// tables with no PK, and out of range.
-    fn row_key_at(&self, row_position: u32) -> Option<(RowKey, Vec<Value>)> {
-        let row_obj = self.row_object_at(row_position)?;
-        if row_obj.draft_id().is_some() {
-            return None;
-        }
-        build_persisted_row_key(row_obj.cells_clone(), &self.pk_indices())
     }
 
     fn has_primary_key(&self) -> bool {
@@ -1530,17 +1480,13 @@ impl BrowseModel {
                 self.fetch(BrowseRequestKind::Page, fx);
                 fx.output(BrowseTabOutput::StateChanged);
             }
-            BrowseTabInput::DuplicateRow { row_position } => {
+            BrowseTabInput::DuplicateRow { row } => {
                 if self.current_columns.is_empty() {
                     return;
                 }
-                // Through the live RowObject: the position counts the
-                // user's sort and any prepended drafts, which the fetched
-                // rows do not.
-                let Some(source) = self.row_object_at(row_position) else {
-                    return;
-                };
-                let source_cells = source.cells_clone();
+                // With its pending edits, since the copy is of the row the
+                // user is looking at.
+                let source_cells = self.grid_context().effective_cells(&row);
                 // The duplicate is a new row, so values the database owns
                 // (key, identity, generated) are left to it.
                 let values: Vec<Value> = self
@@ -1569,47 +1515,46 @@ impl BrowseModel {
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::DeleteSelectedRow => self.delete_selected_rows(fx),
-            BrowseTabInput::GridCellEdited {
-                row_position,
-                col_index,
-                new_value,
-            } => {
+            BrowseTabInput::GridCellEdited { row, column, input } => {
+                if self.refuses_edit(&row, column) {
+                    self.refresh_row(&row);
+                    return;
+                }
                 // A column that holds line breaks keeps them; everywhere
                 // else a pasted newline would reach the SQL layer.
                 let keeps_line_breaks = self
                     .current_columns
-                    .get(col_index)
+                    .get(column)
                     .is_some_and(|c| c.column_type.kind.accepts_line_breaks());
                 let normalized = match keeps_line_breaks {
-                    true => new_value,
-                    false => normalize_single_line_input(&new_value),
+                    true => input,
+                    false => normalize_single_line_input(&input),
                 };
-                let col = self.current_columns.get(col_index);
-                let new = match parse_input_for_column(&normalized, col, self.edit_context_at(row_position)) {
+                let col = self.current_columns.get(column);
+                let new = match parse_input_for_column(&normalized, col, Self::edit_context_for(&row)) {
                     Ok(v) => v,
                     Err(message) => {
                         // The cell still shows what was typed; a rebind
                         // puts the value back.
                         fx.output(BrowseTabOutput::ShowToast(message));
-                        self.refresh_row_at(row_position);
+                        self.refresh_row(&row);
                         return;
                     }
                 };
-                self.edit_cell(row_position, col_index, new, fx);
+                self.edit_cell(&row, column, new, fx);
             }
-            BrowseTabInput::GridSetCellValue {
-                row_position,
-                col_index,
-                preset,
-            } => {
-                let value = match self.resolve_cell_preset(preset, col_index, self.edit_context_at(row_position)) {
+            BrowseTabInput::GridSetCellValue { row, column, preset } => {
+                if self.refuses_edit(&row, column) {
+                    return;
+                }
+                let value = match self.resolve_cell_preset(preset, column, Self::edit_context_for(&row)) {
                     Ok(value) => value,
                     Err(message) => {
                         fx.output(BrowseTabOutput::ShowToast(message));
                         return;
                     }
                 };
-                self.edit_cell(row_position, col_index, value, fx);
+                self.edit_cell(&row, column, value, fx);
             }
             BrowseTabInput::GridShowToast(message) => {
                 fx.output(BrowseTabOutput::ShowToast(message));
@@ -1635,21 +1580,19 @@ impl BrowseModel {
                     target: Some(self.sql_target()),
                 }));
             }
-            BrowseTabInput::GridDeleteRowAt { row_position } => {
-                let Some((row_key, original_values)) = self.row_key_at(row_position) else {
+            BrowseTabInput::GridDeleteRowAt { row } => {
+                let (Some(row_key), Some(cells)) = (row.key(), row.cells()) else {
                     return;
                 };
                 self.apply_edit(
                     TrackerEdit::Delete {
-                        row_key,
-                        original_values,
+                        row_key: row_key.clone(),
+                        original_values: cells.to_vec(),
                     },
                     fx,
                 );
             }
-            BrowseTabInput::GridCopyRowAsInsert { row_position } => {
-                fx.output(BrowseTabOutput::CopyRowAsInsert { row_position });
-            }
+            BrowseTabInput::GridCopyRowAsInsert { row } => self.copy_row_as_insert(&row, fx),
             BrowseTabInput::GridCopyToClipboard(text) => {
                 fx.output(BrowseTabOutput::CopyToClipboard(text));
             }
@@ -1775,31 +1718,23 @@ impl BrowseModel {
         if positions.is_empty() {
             return;
         }
-        let pk_indices = self.pk_indices();
-        // Resolved through the selection model: its positions count the
-        // prepended drafts, which the fetched rows do not.
-        let Some(model) = selection.model() else {
-            return;
-        };
         let mut snapshot: Vec<(RowKey, Vec<Value>)> = Vec::new();
         let mut draft_ids: Vec<u64> = Vec::new();
-        let mut had_persisted_row = false;
-        for pos in &positions {
-            let Some(item) = model.item(*pos) else { continue };
-            let Ok(row_obj) = item.downcast::<RowObject>() else {
-                continue;
-            };
-            if let Some(draft_id) = row_obj.draft_id() {
-                draft_ids.push(draft_id);
-                continue;
-            }
-            had_persisted_row = true;
-            if let Some(pair) = build_persisted_row_key(row_obj.cells_clone(), &pk_indices) {
-                snapshot.push(pair);
+        let mut had_unkeyed_row = false;
+        for row in positions
+            .iter()
+            .filter_map(|position| selection.item(*position).and_downcast::<RowObject>())
+        {
+            match row.id() {
+                GridRowId::Draft(draft_id) => draft_ids.push(*draft_id),
+                GridRowId::Persisted(key) => {
+                    snapshot.push((key.clone(), row.cells().map(|cells| cells.to_vec()).unwrap_or_default()));
+                }
+                GridRowId::Unkeyed | GridRowId::Result => had_unkeyed_row = true,
             }
         }
         // A selection of drafts only needs no key.
-        if had_persisted_row && pk_indices.is_empty() {
+        if had_unkeyed_row {
             fx.output(BrowseTabOutput::ShowSelectionAlert {
                 title: crate::i18n::gettext("Cannot delete"),
                 body: crate::i18n::gettext("This table has no primary key, so editing is disabled."),
@@ -1845,6 +1780,43 @@ impl BrowseModel {
         dialog.present(Some(&self.inner_stack));
     }
 
+    /// One row as an INSERT for the server the tab is connected to,
+    /// pending edits included. A draft's is the INSERT its save would
+    /// run, so the columns the server fills stay out of it.
+    fn copy_row_as_insert(&self, row: &RowObject, fx: &mut Effects) {
+        let Some(dialect) = self.session.current_dialect() else {
+            fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
+                "Connect to a database first.",
+            )));
+            return;
+        };
+        let cells = match row.id() {
+            GridRowId::Draft(draft_id) => self
+                .tracker
+                .draft_cells(*draft_id, &self.current_columns)
+                .unwrap_or_default(),
+            _ => self
+                .grid_context()
+                .effective_cells(row)
+                .into_iter()
+                .map(CellInput::Value)
+                .collect(),
+        };
+        match tablepro_core::export::render_insert(&*dialect, &self.table_ref(), &self.current_columns, &cells) {
+            Ok(sql) => fx.output(BrowseTabOutput::CopyToClipboard(sql)),
+            Err(error) => {
+                tracing::debug!(%error, "a row could not be written as an INSERT");
+                let message = match error {
+                    RenderInsertError::Literal(_) => {
+                        crate::i18n::gettext("This row has a value that can't be written as SQL")
+                    }
+                    RenderInsertError::NoValues => crate::i18n::gettext("This row has no value to put in an INSERT"),
+                };
+                fx.output(BrowseTabOutput::ShowToast(message));
+            }
+        }
+    }
+
     /// Same renderer as the context menu's Copy as > Rows: one
     /// selection cannot produce two different clipboard payloads.
     fn copy_selected_rows(&self, fx: &mut Effects) {
@@ -1855,14 +1827,10 @@ impl BrowseModel {
         if positions.is_empty() {
             return;
         }
-        let Some(model) = selection.model() else {
-            return;
-        };
         let ctx = self.grid_context();
         let rows: Vec<Vec<Value>> = positions
             .iter()
-            .filter_map(|pos| model.item(*pos))
-            .filter_map(|item| item.downcast::<RowObject>().ok())
+            .filter_map(|position| selection.item(*position).and_downcast::<RowObject>())
             .map(|row| ctx.effective_cells(&row))
             .collect();
         if rows.is_empty() {
@@ -1886,24 +1854,19 @@ fn qualified(schema: Option<&str>, table: &str) -> String {
 }
 
 fn apply_visual_change(store: &gtk::gio::ListStore, change: &VisualChange) {
-    let draft_at = |draft_id: u64| {
-        (0..store.n_items()).find_map(|position| {
-            let row = store.item(position).and_downcast::<RowObject>()?;
-            (row.draft_id() == Some(draft_id)).then_some((position, row))
-        })
-    };
     match change {
-        VisualChange::InsertDraft { draft_id, values } => {
-            store.insert(0, &RowObject::new_draft(*draft_id, values.clone()));
+        VisualChange::InsertDraft { draft_id } => {
+            store.insert(0, &RowObject::draft(*draft_id));
         }
         VisualChange::RemoveDraft { draft_id } => {
-            if let Some((position, _)) = draft_at(*draft_id) {
+            let position = (0..store.n_items()).find(|position| {
+                store
+                    .item(*position)
+                    .and_downcast::<RowObject>()
+                    .is_some_and(|row| row.draft_id() == Some(*draft_id))
+            });
+            if let Some(position) = position {
                 store.remove(position);
-            }
-        }
-        VisualChange::SetDraftCell { draft_id, col, value } => {
-            if let Some((_, row)) = draft_at(*draft_id) {
-                row.set_cell(*col, value.clone());
             }
         }
     }
@@ -1928,17 +1891,15 @@ fn normalize_single_line_input(text: &str) -> String {
     replaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Build a `(RowKey, cells)` pair for a persisted row given its full
-/// cell slice and the table's PK column indices. Returns `None` when
-/// pk_indices is empty (no PK), any index is out of range, or
-/// `RowKey::from_pk_values` rejects the values.
-fn build_persisted_row_key(cells: Vec<Value>, pk_indices: &[usize]) -> Option<(RowKey, Vec<Value>)> {
+/// A fetched row's key from its primary key cells, in the table's
+/// column order. `None` when the table has no primary key or the row is
+/// too short to hold it.
+fn persisted_key(cells: &[Value], pk_indices: &[usize]) -> Option<RowKey> {
     let pk_values: Vec<Value> = pk_indices
         .iter()
         .map(|&i| cells.get(i).cloned())
         .collect::<Option<_>>()?;
-    let key = RowKey::from_pk_values(&pk_values)?;
-    Some((key, cells))
+    RowKey::from_pk_values(&pk_values)
 }
 
 /// Update the selection-count badge in response to a `MultiSelection`

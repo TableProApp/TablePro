@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use tablepro_core::dml::BuildSqlError;
+use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
@@ -45,6 +46,14 @@ impl TabTrackerHandle {
 
     pub fn drafts(&self) -> Vec<DraftRow> {
         self.0.borrow().drafts().to_vec()
+    }
+
+    pub fn draft_values(&self, draft_id: u64) -> Option<Vec<Value>> {
+        self.0.borrow().draft_values(draft_id).map(<[Value]>::to_vec)
+    }
+
+    pub fn draft_cells(&self, draft_id: u64, columns: &[ColumnInfo]) -> Option<Vec<CellInput>> {
+        self.0.borrow().draft_cells(draft_id, columns)
     }
 
     pub fn change_set(&self, columns: &[ColumnInfo]) -> Result<TrackedChanges, BuildSqlError> {
@@ -91,10 +100,13 @@ mod tests {
         assert_eq!(edited.rows, vec![row(1)]);
         assert_eq!(edited.pending_count, 1);
         assert_eq!(inserted.pending_count, 2);
-        assert!(matches!(
-            inserted.visual.as_slice(),
-            [VisualChange::InsertDraft { values, .. }] if values[1] == Value::Text("c".into())
-        ));
+        let [VisualChange::InsertDraft { draft_id }] = inserted.visual.as_slice() else {
+            panic!("an insert adds one draft row: {:?}", inserted.visual);
+        };
+        assert_eq!(
+            tracker.draft_values(*draft_id),
+            Some(vec![Value::Null, Value::Text("c".into())])
+        );
         assert_eq!(tracker.pending_count(), 2);
     }
 

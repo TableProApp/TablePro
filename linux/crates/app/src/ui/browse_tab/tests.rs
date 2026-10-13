@@ -12,10 +12,11 @@ use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
 use super::{
-    BrowseTab, BrowseTabInit, BrowseTabInput, apply_visual_change, build_persisted_row_key, format_thousands,
-    parse_input_for_column,
+    BrowseTab, BrowseTabInit, BrowseTabInput, apply_visual_change, format_thousands, parse_input_for_column,
+    persisted_key,
 };
 use crate::services::change_tracker::RowKey;
+use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::VisualChange;
 use crate::test_support::{FakeSession, drain_main_context, wait_until};
 use crate::ui::grid::RowObject;
@@ -215,15 +216,14 @@ fn null_sentinel_typed_literally_is_text() {
 }
 
 #[test]
-fn build_pk_single_column() {
+fn a_fetched_row_is_keyed_by_its_primary_key_cells() {
     let cells = vec![Value::Int(42), Value::Text("alice".into())];
-    let (key, returned) = build_persisted_row_key(cells.clone(), &[0]).expect("valid PK");
-    assert!(matches!(key, RowKey::Persisted(_)));
-    assert_eq!(returned, cells);
+
+    assert_eq!(persisted_key(&cells, &[0]), RowKey::from_pk_values(&[Value::Int(42)]));
 }
 
 #[test]
-fn build_pk_multi_column_preserves_index_order() {
+fn a_composite_key_keeps_the_key_order() {
     // Two tables with the same columns in a different key order must not
     // produce colliding keys.
     let cells = vec![
@@ -231,36 +231,29 @@ fn build_pk_multi_column_preserves_index_order() {
         Value::Text("ignored".into()),
         Value::Int(7),
     ];
-    let (key, _) = build_persisted_row_key(cells, &[2, 0]).expect("composite PK");
-    let RowKey::Persisted(kv) = key else {
-        panic!("expected Persisted")
-    };
-    assert_eq!(kv.len(), 2);
+
+    assert_eq!(
+        persisted_key(&cells, &[2, 0]),
+        RowKey::from_pk_values(&[Value::Int(7), Value::Text("eu-west".into())])
+    );
 }
 
 #[test]
-fn build_pk_empty_indices_returns_none() {
-    let cells = vec![Value::Int(1)];
-    assert!(build_persisted_row_key(cells, &[]).is_none());
+fn a_row_without_its_key_cells_is_unkeyed() {
+    assert!(
+        persisted_key(&[Value::Int(1)], &[]).is_none(),
+        "a table with no primary key"
+    );
+    assert!(persisted_key(&[Value::Int(1)], &[5]).is_none());
+    assert!(persisted_key(&[Value::Int(1)], &[0, 1]).is_none());
 }
 
 #[test]
-fn build_pk_index_out_of_range_returns_none() {
-    let cells = vec![Value::Int(1), Value::Text("x".into())];
-    assert!(build_persisted_row_key(cells, &[5]).is_none());
-}
-
-#[test]
-fn build_pk_partial_out_of_range_returns_none() {
-    let cells = vec![Value::Int(1)];
-    assert!(build_persisted_row_key(cells, &[0, 1]).is_none());
-}
-
-#[test]
-fn build_pk_with_null_components_is_allowed() {
-    let cells = vec![Value::Null, Value::Text("x".into())];
-    let (key, _) = build_persisted_row_key(cells, &[0]).expect("Null PK is valid");
-    assert!(matches!(key, RowKey::Persisted(_)));
+fn a_null_key_cell_still_names_the_row() {
+    assert!(matches!(
+        persisted_key(&[Value::Null, Value::Text("x".into())], &[0]),
+        Some(RowKey::Persisted(_))
+    ));
 }
 
 fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
@@ -268,27 +261,12 @@ fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
 }
 
 #[test]
-fn visual_changes_add_update_and_remove_draft_rows() {
+fn visual_changes_add_and_remove_draft_rows() {
     let store = gtk4::gio::ListStore::new::<RowObject>();
-    store.append(&RowObject::new(vec![Value::Int(1)]));
+    store.append(&RowObject::persisted(None, vec![Value::Int(1)].into()));
 
-    apply_visual_change(
-        &store,
-        &VisualChange::InsertDraft {
-            draft_id: 4,
-            values: vec![Value::Null],
-        },
-    );
-    apply_visual_change(
-        &store,
-        &VisualChange::SetDraftCell {
-            draft_id: 4,
-            col: 0,
-            value: Value::Int(9),
-        },
-    );
+    apply_visual_change(&store, &VisualChange::InsertDraft { draft_id: 4 });
     assert_eq!(row_at(&store, 0).draft_id(), Some(4));
-    assert_eq!(row_at(&store, 0).cell_value(0), Value::Int(9));
 
     apply_visual_change(&store, &VisualChange::RemoveDraft { draft_id: 4 });
     assert_eq!(store.n_items(), 1);
@@ -337,6 +315,7 @@ fn serving_table() -> ConnectionScript {
 
 struct Harness {
     tab: Option<BrowseTab>,
+    tracker: TabTrackerHandle,
     others: Vec<BrowseTab>,
     session: Arc<Session>,
     connection: Arc<FakeConnection>,
@@ -361,9 +340,11 @@ impl Harness {
         let runtime = crate::test_support::test_runtime();
         let fake = FakeSession::start(script, reconnects, runtime.tasks());
         let root = tempfile::tempdir().expect("tempdir");
-        let tab = filtered_users_tab(&fake.session, &runtime, &root, saved);
+        let tracker = TabTrackerHandle::default();
+        let tab = filtered_users_tab(&fake.session, &runtime, &root, saved, tracker.clone());
         Self {
             tab: Some(tab),
+            tracker,
             others: Vec::new(),
             session: fake.session.clone(),
             connection: fake.connection.clone(),
@@ -395,10 +376,27 @@ impl Harness {
     fn visible_page(&self) -> Option<String> {
         self.tab().imp_stack().visible_child_name().map(|name| name.to_string())
     }
+
+    /// The row the grid shows at `position`, drafts included.
+    fn grid_row(&self, position: u32) -> RowObject {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        let model = self.tab().imp().model.borrow();
+        let selection = model
+            .as_ref()
+            .and_then(|model| model.current_selection.clone())
+            .expect("the grid is built");
+        selection.item(position).and_downcast::<RowObject>().expect("a row")
+    }
 }
 
 fn users_tab(session: &Arc<Session>, runtime: &crate::runtime::AppRuntime, root: &tempfile::TempDir) -> BrowseTab {
-    filtered_users_tab(session, runtime, root, FilterSet::default())
+    filtered_users_tab(
+        session,
+        runtime,
+        root,
+        FilterSet::default(),
+        TabTrackerHandle::default(),
+    )
 }
 
 fn filtered_users_tab(
@@ -406,13 +404,14 @@ fn filtered_users_tab(
     runtime: &crate::runtime::AppRuntime,
     root: &tempfile::TempDir,
     saved: FilterSet,
+    tracker: TabTrackerHandle,
 ) -> BrowseTab {
     let tasks = runtime.tasks();
     let connection_id = uuid::Uuid::new_v4();
     let filter_settings = crate::persistence::FilterSettingsStore::load(root.path().join("filters.json"), &tasks);
     filter_settings.set_filters(connection_id, None, "users", saved);
     BrowseTab::new(BrowseTabInit {
-        tracker: crate::services::tab_tracker_handle::TabTrackerHandle::default(),
+        tracker,
         schema: None,
         table: "users".to_owned(),
         connection_id: Some(connection_id),
@@ -789,4 +788,147 @@ fn browse_tab_and_filter_strip_freed_after_drop() {
 
     assert!(strip.upgrade().is_none(), "the filter strip outlived its tab");
     assert!(tab.upgrade().is_none(), "the browse tab outlived its last reference");
+}
+
+#[gtk4::test]
+fn duplicate_row_copies_pending_edits_of_persisted_row() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let ada = harness.grid_row(0);
+
+    harness.tab().send(BrowseTabInput::GridCellEdited {
+        row: ada.clone(),
+        column: 1,
+        input: "Ada Lovelace".to_owned(),
+    });
+    harness.tab().send(BrowseTabInput::DuplicateRow { row: ada });
+
+    let drafts = harness.tracker.drafts();
+    assert_eq!(drafts.len(), 1, "{drafts:?}");
+    let texts: Vec<Option<String>> = drafts[0]
+        .values
+        .iter()
+        .map(tablepro_core::export::value_to_text)
+        .collect();
+    assert_eq!(
+        texts,
+        vec![None, Some("Ada Lovelace".to_owned())],
+        "the duplicate left out the row's pending edit"
+    );
+}
+
+#[gtk4::test]
+fn copy_row_as_insert_uses_row_below_draft() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = copied.clone();
+    harness
+        .tab()
+        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let below_draft = harness.grid_row(1);
+    harness
+        .tab()
+        .send(BrowseTabInput::GridCopyRowAsInsert { row: below_draft });
+
+    assert_eq!(
+        *copied.borrow(),
+        ["INSERT INTO \"users\" (\"id\", \"name\") VALUES (0, 'Ada');".to_owned()]
+    );
+}
+
+/// The cell showing `column` of the saved row keyed `id`.
+fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> Option<crate::ui::grid::GridCell> {
+    let key = RowKey::from_pk_values(&[Value::Int(id)])?;
+    crate::test_support::descendants(tab)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<crate::ui::grid::GridCell>().ok())
+        .find(|cell| cell.column() == column && cell.row().is_some_and(|row| row.key() == Some(&key)))
+}
+
+#[gtk4::test]
+fn a_commit_leaves_its_cell_in_the_window_for_the_tab_that_follows() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let window = gtk4::Window::new();
+    window.set_default_size(600, 400);
+    window.set_child(Some(harness.tab()));
+    window.present();
+    let mut found = None;
+    wait_until(WAIT, || {
+        found = grid_cell_of(harness.tab(), 0, 1);
+        found.is_some()
+    })
+    .expect("Ada's name cell is drawn");
+    let cell = found.expect("a cell");
+    crate::ui::grid::enter_edit_mode(&cell);
+    let editor = cell.editor().expect("a text cell");
+    editor.entry().set_text("Ada Lovelace");
+
+    editor.stop_editing(true);
+
+    assert!(
+        cell.root().is_some(),
+        "the commit took its own cell out of the window before Tab could move on"
+    );
+    wait_until(WAIT, || harness.tracker.pending_count() == 1).expect("the edit reaches the tracker");
+    window.set_child(None::<&gtk4::Widget>);
+    window.destroy();
+}
+
+#[gtk4::test]
+fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
+    let mut id = col("integer", false);
+    id.name = "id".to_owned();
+    id.primary_key = true;
+    id.is_auto_increment = true;
+    let mut name = col("text", true);
+    name.name = "name".to_owned();
+    let mut created_at = col_with_default("timestamptz", "now()");
+    created_at.name = "created_at".to_owned();
+    let columns = vec![id, name, created_at];
+    let mut script = ConnectionScript::default();
+    script.fetch_columns.always(FakeReply::ok(columns.clone()));
+    script.row_identity.always(FakeReply::ok(RowIdentity::UniqueKey {
+        columns: vec!["id".to_owned()],
+    }));
+    script.count_rows.always(FakeReply::ok(1));
+    script.probe.always(FakeReply::ok(()));
+    script.query_bound.always(FakeReply::ok(QueryResult::new(
+        columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+        vec![vec![Value::Int(1), Value::Text("Ada".into()), Value::Null]],
+    )));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = copied.clone();
+    harness
+        .tab()
+        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+    let toasts = toasts(harness.tab());
+
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let draft = harness.grid_row(0);
+    assert!(draft.draft_id().is_some(), "the new row goes on top");
+    harness.tab().send(BrowseTabInput::GridCellEdited {
+        row: draft.clone(),
+        column: 1,
+        input: "x".to_owned(),
+    });
+    harness.tab().send(BrowseTabInput::GridCopyRowAsInsert { row: draft });
+
+    assert_eq!(
+        *copied.borrow(),
+        ["INSERT INTO \"users\" (\"name\") VALUES ('x');".to_owned()],
+        "toasts: {:?}",
+        toasts.borrow()
+    );
 }

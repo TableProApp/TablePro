@@ -4,7 +4,6 @@ use gtk4::prelude::*;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::{QueryResult, Value};
 
-use super::widget_slot::{COLUMN_SLOT, POSITION_SLOT};
 use super::{RowObject, TabGridContext};
 
 pub(crate) fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
@@ -38,20 +37,23 @@ pub(super) fn select_row_for_menu(column_view: &gtk::ColumnView, position: u32) 
     selection.select_item(position, true);
 }
 
-/// `clicked` is the fallback for the keyboard path on a grid whose
-/// selection is empty.
-pub(super) fn rows_for_menu(column_view: &gtk::ColumnView, ctx: &TabGridContext, clicked: u32) -> Vec<Vec<Value>> {
-    let mut positions = selection_of(column_view)
-        .map(|s| selected_positions(&s))
-        .unwrap_or_default();
-    if positions.is_empty() {
-        positions.push(clicked);
+/// The selection when it holds the clicked row, else the clicked row
+/// alone, so rows that moved since the click never stand in for it.
+pub(super) fn rows_for_menu(
+    column_view: &gtk::ColumnView,
+    ctx: &TabGridContext,
+    clicked: &RowObject,
+) -> Vec<Vec<Value>> {
+    let selected: Vec<RowObject> = selection_of(column_view)
+        .map(|selection| selected_positions(&selection))
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|position| row_at(column_view, position))
+        .collect();
+    if !selected.contains(clicked) {
+        return vec![ctx.effective_cells(clicked)];
     }
-    positions
-        .iter()
-        .filter_map(|p| row_at(column_view, *p))
-        .map(|r| ctx.effective_cells(&r))
-        .collect()
+    selected.iter().map(|row| ctx.effective_cells(row)).collect()
 }
 
 /// The paginator's Export button and the menu's Export Results both
@@ -70,14 +72,4 @@ pub(crate) fn export_snapshot(
         None => Vec::new(),
     };
     QueryResult::new(columns.to_vec(), rows).truncated(truncated)
-}
-
-pub(crate) fn focused_cell_coords(widget: &impl IsA<gtk::Widget>) -> Option<(u32, usize)> {
-    let root = widget.root()?;
-    let window = root.dynamic_cast::<gtk::Window>().ok()?;
-    // `RootExt::focus` would return the window itself.
-    let focused = gtk4::prelude::GtkWindowExt::focus(&window)?;
-    let position = POSITION_SLOT.get(&focused)?;
-    let column = COLUMN_SLOT.get(&focused)?;
-    Some((position, column))
 }
