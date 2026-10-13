@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk4::prelude::*;
@@ -6,13 +5,11 @@ use gtk4::{self as gtk, gio};
 
 use tablepro_core::column::ResultColumn;
 
-use super::cell_editor::CellEditor;
-use super::context_menu::{CellContext, CellMenuTarget, ClickedCell};
+use super::context_menu::{CellContext, CellMenuTarget};
 use super::inline_edit::enter_edit_mode;
 use super::row_json_dialog::show_row_json_dialog;
-use super::selection::{export_snapshot, row_at, rows_for_menu};
-use super::widget_slot::POSITION_SLOT;
-use super::{CellPreset, GridMsg, TabGridContext};
+use super::selection::{export_snapshot, rows_for_menu};
+use super::{CellPreset, GridMsg, GridSink, TabGridContext};
 
 /// Enabled per right-clicked cell. Their items are hidden while
 /// disabled, so a cell they do not apply to shows no dead entry. `None`
@@ -36,7 +33,7 @@ impl CellActions {
 
 #[derive(Clone)]
 pub(super) struct GridMenus {
-    pub(super) context: Rc<RefCell<Option<ClickedCell>>>,
+    pub(super) context: Rc<CellContext>,
     pub(super) editable_popover: gtk::PopoverMenu,
     pub(super) readonly_popover: gtk::PopoverMenu,
     pub(super) actions: CellActions,
@@ -139,25 +136,24 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
 
 pub(super) struct GridMenuInit<'a> {
     pub(super) column_view: &'a gtk::ColumnView,
-    pub(super) sender: relm4::Sender<GridMsg>,
+    pub(super) sink: GridSink,
     pub(super) columns: std::sync::Arc<[ResultColumn]>,
     /// From the fetch that filled the grid, so Export Results reports the
     /// same truncation the paginator does.
     pub(super) truncated: bool,
     pub(super) tab_ctx: TabGridContext,
-    pub(super) editable: bool,
 }
 
 pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     let GridMenuInit {
         column_view,
-        sender,
+        sink,
         columns,
         truncated,
         tab_ctx,
-        editable,
     } = init;
-    let context: Rc<RefCell<Option<ClickedCell>>> = Rc::new(RefCell::new(None));
+    let editable = tab_ctx.editable;
+    let context = Rc::new(CellContext::default());
     // Every action closure holds the view weakly. The action group
     // belongs to the ColumnView, so a strong clone in a closure is a
     // cycle: the grid, its selection model, its store and every row it
@@ -166,17 +162,18 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     let tab = Rc::new(tab_ctx);
 
     let group = gio::SimpleActionGroup::new();
-    let slot_position = |slot: &CellContext| POSITION_SLOT.get(&slot.widget).unwrap_or(0);
 
+    // The row is the one the cell shows when the item is chosen, which
+    // is still the clicked one after rows above it came or went.
     macro_rules! cell_action {
-        ($name:literal, |$slot:ident| $body:expr) => {{
+        ($name:literal, |$cell:ident, $row:ident| $body:expr) => {{
             let ctx = context.clone();
             gio::ActionEntry::builder($name)
                 .activate(move |_, _, _| {
-                    let clicked = ctx.borrow().as_ref().and_then(ClickedCell::get);
-                    if let Some($slot) = clicked.as_ref() {
-                        $body;
-                    }
+                    let Some($cell) = ctx.cell() else { return };
+                    let Some($row) = $cell.row() else { return };
+                    let $cell = &$cell;
+                    $body;
                 })
                 .build()
         }};
@@ -191,92 +188,87 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         }
     }
     macro_rules! copy_action {
-        ($name:literal, |$slot:ident, $rows:ident| $message:expr) => {{
-            let s = sender.clone();
+        ($name:literal, |$rows:ident| $message:expr) => {{
+            let s = sink.clone();
             let view = view.clone();
             let tab = tab.clone();
-            cell_action!($name, |$slot| {
+            cell_action!($name, |_cell, row| {
                 let Some(cv) = view.upgrade() else { return };
-                let $rows = rows_for_menu(&cv, &tab, slot_position($slot));
-                s.send($message).ok();
+                let $rows = rows_for_menu(&cv, &tab, &row);
+                s($message);
             })
         }};
     }
     macro_rules! send_action {
-        ($name:literal, |$slot:ident| $msg:expr) => {{
-            let s = sender.clone();
-            cell_action!($name, |$slot| s.send($msg).ok())
+        ($name:literal, |$cell:ident, $row:ident| $msg:expr) => {{
+            let s = sink.clone();
+            cell_action!($name, |$cell, $row| s($msg))
         }};
     }
 
-    let edit_action = cell_action!("edit", |slot| {
-        if let Ok(label) = slot.widget.clone().downcast::<CellEditor>() {
-            enter_edit_mode(&label);
-        }
-    });
+    let edit_action = cell_action!("edit", |cell, _row| enter_edit_mode(cell));
     // Plain Copy reads the cell's value, never the widget's text: the
     // widget carries the display form, which is the `<NULL>` sentinel,
     // the `(auto)` placeholder, `<N bytes>` for a blob and a value cut
     // at the 10k display cap.
     let copy_action = {
-        let s = sender.clone();
+        let s = sink.clone();
         let view = view.clone();
         let tab = tab.clone();
         let cols = columns.clone();
-        cell_action!("copy", |slot| {
+        cell_action!("copy", |cell, row| {
             let Some(cv) = view.upgrade() else { return };
-            let rows = rows_for_menu(&cv, &tab, slot_position(slot));
+            let rows = rows_for_menu(&cv, &tab, &row);
+            let column = cell.column();
             let message = match rows.as_slice() {
                 [row] => GridMsg::CopyToClipboard(
-                    row.get(slot.col_index)
-                        .and_then(|value| tablepro_core::export::cell_text(&cols, slot.col_index, value))
+                    row.get(column)
+                        .and_then(|value| tablepro_core::export::cell_text(&cols, column, value))
                         .unwrap_or_default(),
                 ),
                 many => clipboard_message(tablepro_core::export::render_tsv(&cols, many, false)),
             };
-            s.send(message).ok();
+            s(message);
         })
     };
     let copy_rows_action = {
         let cols = columns.clone();
-        copy_action!("copy-rows", |_slot, rows| clipboard_message(
+        copy_action!("copy-rows", |rows| clipboard_message(
             tablepro_core::export::render_tsv(&cols, &rows, false)
         ))
     };
     let copy_rows_headers_action = {
         let cols = columns.clone();
-        copy_action!("copy-rows-headers", |_slot, rows| clipboard_message(
+        copy_action!("copy-rows-headers", |rows| clipboard_message(
             tablepro_core::export::render_tsv(&cols, &rows, true)
         ))
     };
     let copy_json_action = {
         let cols = columns.clone();
-        copy_action!("copy-json", |_slot, rows| GridMsg::CopyToClipboard(
+        copy_action!("copy-json", |rows| GridMsg::CopyToClipboard(
             tablepro_core::export::render_json(&cols, &rows)
         ))
     };
     let copy_csv_action = {
         let cols = columns.clone();
-        copy_action!("copy-csv", |_slot, rows| clipboard_message(
-            tablepro_core::export::render_csv(
-                &cols,
-                &rows,
-                &tablepro_core::export::CsvOptions {
-                    header_row: false,
-                    ..Default::default()
-                }
-            )
-        ))
+        copy_action!("copy-csv", |rows| clipboard_message(tablepro_core::export::render_csv(
+            &cols,
+            &rows,
+            &tablepro_core::export::CsvOptions {
+                header_row: false,
+                ..Default::default()
+            }
+        )))
     };
     let copy_csv_headers_action = {
         let cols = columns.clone();
-        copy_action!("copy-csv-headers", |_slot, rows| clipboard_message(
+        copy_action!("copy-csv-headers", |rows| clipboard_message(
             tablepro_core::export::render_csv(&cols, &rows, &tablepro_core::export::CsvOptions::default())
         ))
     };
     let copy_markdown_action = {
         let cols = columns.clone();
-        copy_action!("copy-markdown", |_slot, rows| GridMsg::CopyToClipboard(
+        copy_action!("copy-markdown", |rows| GridMsg::CopyToClipboard(
             tablepro_core::export::render_markdown(&cols, &rows)
         ))
     };
@@ -284,86 +276,77 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     // clause says how many it left out instead of handing back a
     // shorter list that quietly selects different rows.
     let copy_in_clause_action = {
-        let s = sender.clone();
+        let s = sink.clone();
         let view = view.clone();
         let tab = tab.clone();
-        cell_action!("copy-in-clause", |slot| {
+        cell_action!("copy-in-clause", |cell, row| {
             let Some(cv) = view.upgrade() else { return };
-            let rows = rows_for_menu(&cv, &tab, slot_position(slot));
-            let clause = tablepro_core::export::render_in_clause(&rows, slot.col_index);
+            let rows = rows_for_menu(&cv, &tab, &row);
+            let clause = tablepro_core::export::render_in_clause(&rows, cell.column());
             if clause.sql.is_empty() {
-                s.send(GridMsg::ShowToast(crate::i18n::gettext(
+                s(GridMsg::ShowToast(crate::i18n::gettext(
                     "Nothing to copy: an IN clause can't carry NULL or binary values",
-                )))
-                .ok();
+                )));
                 return;
             }
-            s.send(GridMsg::CopyToClipboard(clause.sql)).ok();
+            s(GridMsg::CopyToClipboard(clause.sql));
             if clause.skipped > 0 {
-                s.send(GridMsg::ShowToast(crate::i18n::gettext_f(
+                s(GridMsg::ShowToast(crate::i18n::gettext_f(
                     "{n} NULL or binary values left out of the IN clause",
                     &[("n", &clause.skipped.to_string())],
-                )))
-                .ok();
+                )));
             }
         })
     };
-    let copy_column_name_action = send_action!("copy-column-name", |slot| GridMsg::CopyToClipboard(
-        slot.column_name.clone()
-    ));
-    let copy_row_insert_action = send_action!("copy-row-insert", |slot| GridMsg::CopyRowAsInsert {
-        row_position: slot_position(slot),
-    });
+    let copy_column_name_action = {
+        let cols = columns.clone();
+        send_action!("copy-column-name", |cell, _row| GridMsg::CopyToClipboard(
+            cols.get(cell.column())
+                .map(|column| column.name.clone())
+                .unwrap_or_default()
+        ))
+    };
+    let copy_row_insert_action = send_action!("copy-row-insert", |_cell, row| GridMsg::CopyRowAsInsert { row });
     let show_row_json_action = {
         let cols = columns.clone();
         let view = view.clone();
         let tab = tab.clone();
-        cell_action!("show-row-json", |slot| {
+        cell_action!("show-row-json", |_cell, row| {
             let Some(cv) = view.upgrade() else { return };
-            let Some(row) = row_at(&cv, slot_position(slot)) else {
-                return;
-            };
             let text = tablepro_core::export::row_to_json(&cols, &tab.effective_cells(&row));
             show_row_json_dialog(&cv, text);
         })
     };
-    let set_empty_action = send_action!("set-empty", |slot| GridMsg::SetCellValue {
-        row_position: slot_position(slot),
-        col_index: slot.col_index,
+    let set_empty_action = send_action!("set-empty", |cell, row| GridMsg::SetCellValue {
+        row,
+        column: cell.column(),
         preset: CellPreset::Empty,
     });
-    let set_null_action = send_action!("set-null", |slot| GridMsg::SetCellValue {
-        row_position: slot_position(slot),
-        col_index: slot.col_index,
+    let set_null_action = send_action!("set-null", |cell, row| GridMsg::SetCellValue {
+        row,
+        column: cell.column(),
         preset: CellPreset::Null,
     });
     let export_action = {
-        let s = sender.clone();
+        let s = sink.clone();
         let view = view.clone();
         let cols = columns.clone();
         let tab = tab.clone();
         gio::ActionEntry::builder("export")
             .activate(move |_, _, _| {
                 let Some(cv) = view.upgrade() else { return };
-                s.send(GridMsg::ExportResults(export_snapshot(&cv, &cols, truncated, &tab)))
-                    .ok();
+                s(GridMsg::ExportResults(export_snapshot(&cv, &cols, truncated, &tab)));
             })
             .build()
     };
     let insert_row_action = {
-        let s = sender.clone();
+        let s = sink.clone();
         gio::ActionEntry::builder("insert-row")
-            .activate(move |_, _, _| {
-                s.send(GridMsg::InsertRow).ok();
-            })
+            .activate(move |_, _, _| s(GridMsg::InsertRow))
             .build()
     };
-    let delete_row_action = send_action!("delete-row", |slot| GridMsg::DeleteRowAt {
-        row_position: slot_position(slot),
-    });
-    let duplicate_row_action = send_action!("duplicate-row", |slot| GridMsg::DuplicateRow {
-        row_position: slot_position(slot),
-    });
+    let delete_row_action = send_action!("delete-row", |_cell, row| GridMsg::DeleteRowAt { row });
+    let duplicate_row_action = send_action!("duplicate-row", |_cell, row| GridMsg::DuplicateRow { row });
 
     let mut entries = vec![
         copy_action,

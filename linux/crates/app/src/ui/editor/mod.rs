@@ -41,7 +41,7 @@ use self::imp::RunningScript;
 use self::run_log::{RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
-use super::grid::GridMsg;
+use super::grid::{GridMsg, GridSink};
 use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
 
@@ -424,11 +424,11 @@ impl SqlEditor {
 
     fn result_page(&self, index: u32) -> Option<gtk4::Widget> {
         let imp = self.imp();
-        let grid_sender = imp.grid_sender.get()?;
+        let grid_sink = imp.grid_sink.get()?;
         let log = imp.log.borrow();
         let entry = log.as_ref()?.entries().get(usize::try_from(index).ok()?)?;
         let weak = self.downgrade();
-        Some(result_widgets::entry_widget(entry, grid_sender, move |position| {
+        Some(result_widgets::entry_widget(entry, grid_sink, move |position| {
             if let Some(editor) = weak.upgrade() {
                 editor.go_to_char(position);
             }
@@ -592,26 +592,23 @@ impl SqlEditor {
         self.imp()
             .results
             .set_page_builder(move |index| weak.upgrade().and_then(|editor| editor.result_page(index)));
-        let (sender, receiver) = relm4::channel::<GridMsg>();
-        let _ = self.imp().grid_sender.set(sender);
         let weak = self.downgrade();
-        glib::spawn_future_local(async move {
-            while let Some(message) = receiver.recv().await {
-                let Some(editor) = weak.upgrade() else {
-                    return;
-                };
-                match message {
-                    GridMsg::CopyToClipboard(text) => editor.emit_by_name::<()>("copy-to-clipboard", &[&text]),
-                    GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
-                    GridMsg::ExportResults(result) => {
-                        let name = export_name_for_query(&editor.selected_preview());
-                        let payload = glib::BoxedAnyObject::new((result, name));
-                        editor.emit_by_name::<()>("export-results", &[&payload]);
-                    }
-                    _ => {}
+        let sink: GridSink = std::rc::Rc::new(move |message| {
+            let Some(editor) = weak.upgrade() else {
+                return;
+            };
+            match message {
+                GridMsg::CopyToClipboard(text) => editor.emit_by_name::<()>("copy-to-clipboard", &[&text]),
+                GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
+                GridMsg::ExportResults(result) => {
+                    let name = export_name_for_query(&editor.selected_preview());
+                    let payload = glib::BoxedAnyObject::new((result, name));
+                    editor.emit_by_name::<()>("export-results", &[&payload]);
                 }
+                _ => {}
             }
         });
+        let _ = self.imp().grid_sink.set(sink);
     }
 
     /// The statement behind the result on screen, to name its export.

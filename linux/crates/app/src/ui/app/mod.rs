@@ -404,10 +404,6 @@ pub enum AppMsg {
         target: Option<super::export_dialog::SqlTarget>,
     },
     CopyToClipboard(String),
-    CopyRowAsInsert {
-        tab_id: Uuid,
-        row_position: u32,
-    },
 
     // ── Workspace tab routing ────────────────────────────────────────
     /// User clicked the close-X on any workspace tab.
@@ -1427,7 +1423,6 @@ impl SimpleComponent for App {
                 )
             }
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
-            AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
             AppMsg::DuplicateConnection(saved) => self.on_duplicate_connection(saved, sender),
             AppMsg::OpenSaved(saved) => self.on_open_saved(saved, sender),

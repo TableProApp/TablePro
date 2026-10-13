@@ -67,7 +67,6 @@ pub struct BrowseTab {
     pub(super) dispatching: Cell<bool>,
     /// Delivers each reconnect, for as long as the tab is open.
     pub(super) link_watch: RefCell<Option<WatchForwarder>>,
-    pub(super) grid_forward: RefCell<Option<glib::JoinHandle<()>>>,
 }
 
 #[glib::object_subclass]
@@ -166,9 +165,6 @@ impl ObjectImpl for BrowseTab {
         SIGNALS.get_or_init(|| {
             vec![
                 Signal::builder("state-changed").build(),
-                Signal::builder("copy-row-as-insert")
-                    .param_types([u32::static_type()])
-                    .build(),
                 Signal::builder("copy-to-clipboard")
                     .param_types([String::static_type()])
                     .build(),
@@ -193,9 +189,6 @@ impl ObjectImpl for BrowseTab {
     /// finish it for nobody.
     fn dispose(&self) {
         self.link_watch.take();
-        if let Some(forwarding) = self.grid_forward.take() {
-            forwarding.abort();
-        }
         if let Ok(mut model) = self.model.try_borrow_mut()
             && let Some(mut model) = model.take()
         {
