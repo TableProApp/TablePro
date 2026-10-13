@@ -19,10 +19,16 @@ use super::{CloseDecision, CloseScope, CloseStep, DirtyTab, SaveRejection, SaveS
 pub(crate) struct CloseGuard;
 
 impl CloseGuard {
-    pub(crate) async fn run(parent: &gtk::Widget, handle: &WorkspaceHandle, scope: CloseScope) -> CloseDecision {
-        let mut acknowledged = HashSet::new();
+    /// `acknowledged` holds the tabs whose open transactions the user
+    /// already agreed to lose, and gains the ones agreed to here.
+    pub(crate) async fn run(
+        parent: &gtk::Widget,
+        handle: &WorkspaceHandle,
+        scope: CloseScope,
+        acknowledged: &mut HashSet<Uuid>,
+    ) -> CloseDecision {
         loop {
-            match handle.close_step(scope, &acknowledged) {
+            match handle.close_step(scope, acknowledged) {
                 CloseStep::Approve => return CloseDecision::Approved,
                 CloseStep::WaitForSaves => {
                     if !wait_for_saves(parent, handle, scope).await {
@@ -121,7 +127,7 @@ mod tests {
         let parent = window.clone().upcast::<gtk::Widget>();
         let handle = handle.clone();
         gtk::glib::spawn_future_local(async move {
-            let decided = CloseGuard::run(&parent, &handle, scope).await;
+            let decided = CloseGuard::run(&parent, &handle, scope, &mut HashSet::new()).await;
             sink.replace(Some(decided));
         });
         decision

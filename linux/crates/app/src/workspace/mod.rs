@@ -4,6 +4,7 @@
 
 mod close_decision;
 mod close_guard;
+mod close_guards;
 mod close_scope;
 mod close_step;
 mod dialog_response;
@@ -49,6 +50,7 @@ mod write_job;
 
 pub use close_decision::CloseDecision;
 pub(crate) use close_guard::CloseGuard;
+pub(crate) use close_guards::CloseGuards;
 pub use close_scope::CloseScope;
 pub use close_step::{CloseStep, next_close_step};
 pub use dirty_kind::DirtyKind;

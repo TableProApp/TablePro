@@ -113,7 +113,7 @@ pub struct App {
     window_tabs: std::rc::Rc<window_tabs::WindowTabs>,
     /// One close prompt at a time, for a tab, the window, a disconnect
     /// or a switch.
-    close_guards: std::rc::Rc<close_flow::CloseGuards>,
+    close_guards: std::rc::Rc<crate::workspace::CloseGuards>,
     /// What closing the window still owes its files and connections.
     window_shutdown: std::rc::Rc<close_flow::WindowShutdown>,
     /// Holds logout back while something here would be lost.
@@ -692,7 +692,7 @@ impl SimpleComponent for App {
         workspace_handle
             .ledger()
             .on_change(move |count| saves_sender.emit(AppMsg::SavesInFlightChanged(count)));
-        let close_guards = close_flow::CloseGuards::new();
+        let close_guards = crate::workspace::CloseGuards::new();
         let window_shutdown = close_flow::WindowShutdown::new(close_flow::WindowShutdownParts {
             settings: settings.clone(),
             storage: storage.clone(),
@@ -702,12 +702,10 @@ impl SimpleComponent for App {
             context: context.clone(),
             connect_attempts: connect_attempts.clone(),
         });
-        close_flow::connect_window_close(
-            &widgets.window,
-            close_guards.clone(),
-            workspace_handle.clone(),
-            window_shutdown.clone(),
-        );
+        let shutdown = window_shutdown.clone();
+        close_guards.connect_window(&widgets.window, workspace_handle.clone(), move |window| {
+            shutdown.run(Some(window));
+        });
         let inhibitor =
             crate::workspace::WindowInhibitor::new(crate::workspace::ApplicationInhibit::new(&widgets.window));
 

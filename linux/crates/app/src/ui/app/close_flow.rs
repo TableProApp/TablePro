@@ -1,10 +1,9 @@
 use std::cell::Cell;
-use std::collections::HashSet;
 use std::rc::Rc;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::glib;
-use relm4::{ComponentSender, adw, gtk};
+use relm4::{ComponentSender, adw};
 use uuid::Uuid;
 
 use super::workspace_persistence::{WorkspacePersistence, WorkspaceTabs};
@@ -13,39 +12,7 @@ use tablepro_session::runtime::ProcessHold;
 
 use crate::services::active_session::ActiveSession;
 use crate::services::session_context::SessionContext;
-use crate::workspace::{CloseDecision, CloseGuard, CloseScope, CloseStep, InhibitReason, WorkspaceHandle};
-
-/// Where the window's own close stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WindowClose {
-    Open,
-    /// The prompts are deciding.
-    Asking,
-    /// Nothing is left to lose, so the next close request goes through.
-    Approved,
-}
-
-/// One close prompt at a time per window, so a tab's close and the
-/// window's never ask about the same tab at once: a second waits for the
-/// first, then reads the workspace as the first left it.
-pub(super) struct CloseGuards {
-    turn: futures::lock::Mutex<()>,
-    window: Cell<WindowClose>,
-}
-
-impl CloseGuards {
-    pub(super) fn new() -> Rc<Self> {
-        Rc::new(Self {
-            turn: futures::lock::Mutex::new(()),
-            window: Cell::new(WindowClose::Open),
-        })
-    }
-
-    async fn run(&self, parent: &gtk::Widget, handle: &WorkspaceHandle, scope: CloseScope) -> CloseDecision {
-        let _turn = self.turn.lock().await;
-        CloseGuard::run(parent, handle, scope).await
-    }
-}
+use crate::workspace::{CloseDecision, InhibitReason};
 
 /// What a window that closes still owes: what it shows written to disk,
 /// and its connections closed rather than cut off, in order.
@@ -138,40 +105,6 @@ fn close_connections(
     connection::close_window_session(active, hold, attempts);
 }
 
-/// The window closes only once its prompts approve. A close request
-/// while they are deciding is dropped, since their dialog is already
-/// on screen.
-pub(super) fn connect_window_close(
-    window: &adw::ApplicationWindow,
-    guards: Rc<CloseGuards>,
-    handle: WorkspaceHandle,
-    shutdown: Rc<WindowShutdown>,
-) {
-    window.connect_close_request(move |window| {
-        match guards.window.get() {
-            WindowClose::Asking => return glib::Propagation::Stop,
-            WindowClose::Open if handle.close_step(CloseScope::Window, &HashSet::new()) != CloseStep::Approve => {
-                guards.window.set(WindowClose::Asking);
-                let (guards, handle, window) = (guards.clone(), handle.clone(), window.clone());
-                glib::spawn_future_local(async move {
-                    let decision = guards.run(window.upcast_ref(), &handle, CloseScope::Window).await;
-                    match decision {
-                        CloseDecision::Approved => {
-                            guards.window.set(WindowClose::Approved);
-                            window.close();
-                        }
-                        CloseDecision::Cancelled => guards.window.set(WindowClose::Open),
-                    }
-                });
-                return glib::Propagation::Stop;
-            }
-            WindowClose::Open | WindowClose::Approved => {}
-        }
-        shutdown.run(Some(window));
-        glib::Propagation::Proceed
-    });
-}
-
 impl App {
     /// A tab asked to close. One with nothing to lose closes now; any
     /// other waits for the prompts.
@@ -179,23 +112,17 @@ impl App {
         let Some(tab_view) = self.workspace_tab_view.clone() else {
             return;
         };
-        let scope = CloseScope::Tab(id);
-        if self.workspace_handle.close_step(scope, &HashSet::new()) == CloseStep::Approve {
+        if self.close_guards.may_close_tab(&self.workspace_handle, id) {
             self.finish_close_workspace_tab(id, &tab_view);
             return;
         }
-        let (guards, handle, window) = (
-            self.close_guards.clone(),
-            self.workspace_handle.clone(),
-            self.window.clone(),
-        );
-        glib::spawn_future_local(async move {
-            let decision = guards.run(window.upcast_ref(), &handle, scope).await;
-            sender.input(AppMsg::TabCloseDecided {
-                id,
-                approved: decision == CloseDecision::Approved,
+        self.close_guards
+            .ask_close_tab(self.window.upcast_ref(), &self.workspace_handle, id, move |decision| {
+                sender.input(AppMsg::TabCloseDecided {
+                    id,
+                    approved: decision == CloseDecision::Approved,
+                });
             });
-        });
     }
 
     pub(super) fn on_tab_close_decided(&mut self, id: Uuid, approved: bool) {
@@ -219,20 +146,17 @@ impl App {
     /// Send `proceed` once every tab may close, for a disconnect or a
     /// switch to another connection, which take the tabs with them.
     pub(super) fn close_workspace_then(&self, proceed: AppMsg, sender: ComponentSender<Self>) {
-        if self.workspace_handle.close_step(CloseScope::Window, &HashSet::new()) == CloseStep::Approve {
+        self.close_guards.begin_teardown();
+        if self.close_guards.may_tear_down(&self.workspace_handle) {
             sender.input(proceed);
             return;
         }
-        let (guards, handle, window) = (
-            self.close_guards.clone(),
-            self.workspace_handle.clone(),
-            self.window.clone(),
-        );
-        glib::spawn_future_local(async move {
-            if guards.run(window.upcast_ref(), &handle, CloseScope::Window).await == CloseDecision::Approved {
-                sender.input(proceed);
-            }
-        });
+        self.close_guards
+            .ask_tear_down(self.window.upcast_ref(), &self.workspace_handle, move |decision| {
+                if decision == CloseDecision::Approved {
+                    sender.input(proceed);
+                }
+            });
     }
 
     /// Logout, and suspend while a save runs, wait for the user while

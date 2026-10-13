@@ -176,6 +176,7 @@ crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/workspace/close_decision.rs
 crates/app/src/workspace/close_guard.rs
+crates/app/src/workspace/close_guards.rs
 crates/app/src/workspace/close_scope.rs
 crates/app/src/workspace/close_step.rs
 crates/app/src/workspace/dialog_response.rs
