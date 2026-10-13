@@ -256,6 +256,7 @@ impl App {
 
         self.workspace_root = Some(tab_overview);
         self.workspace_tab_view = Some(tab_view);
+        self.workspace_tab_bar = Some(tab_bar);
         self.apply_connection_strip();
     }
 
@@ -915,6 +916,7 @@ impl App {
         }
         self.workspace_outer_stack.set_visible_child_name("empty");
         self.workspace_tab_view = None;
+        self.workspace_tab_bar = None;
         let closed_tabs = std::mem::take(&mut *self.workspace_tabs.borrow_mut());
         drop(closed_tabs);
         *self.recent_pages.borrow_mut() = Default::default();

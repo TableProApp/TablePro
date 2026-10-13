@@ -14,6 +14,7 @@ candidate inventory as a release commitment.
 | SNAP-2 to SNAP-4 | Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies | ADR 0015 / SNAP-1 accepted the feature for 0.2.x (not a 0.2.0 blocker); limit 5 snapshots per database |
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
+| UI-45 | Connection colour strip above workspace tabs | Connection colour tags are saved, but the strip is not visible in the installed UI; fix and retest #650 |
 | UI-38 | Local filters and sorting for materialized SQL results | Exact-value filtering and local sort are implemented; settings are retained per statement/result set across reruns and pin/unpin. Selection follows the same materialized result, and app-restart persistence is not included |
 | UI-39 | Full-value text and JSON editor | B3 exact PostgreSQL JSON source carrier first; GTK editor remains UX follow-up under #610 |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |

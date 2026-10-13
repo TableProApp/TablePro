@@ -35,25 +35,11 @@ impl App {
     }
 
     pub(super) fn apply_connection_strip(&self) {
-        let Some(tab_bar) = self
-            .workspace_tab_view
-            .as_ref()
-            .and_then(|view| view.parent())
-            .and_then(|parent| parent.first_child())
-        else {
+        let Some(tab_bar) = self.workspace_tab_bar.as_ref() else {
             return;
         };
-        for class in tablepro_storage::CONNECTION_STRIP_CLASSES {
-            tab_bar.remove_css_class(class);
-        }
         let color = self.connection_id.map(|id| self.connection_organization.get(id).color);
-        if let Some(class) = color
-            .flatten()
-            .as_deref()
-            .and_then(tablepro_storage::connection_strip_class)
-        {
-            tab_bar.add_css_class(class);
-        }
+        apply_connection_strip_to_tab_bar(tab_bar, color.flatten().as_deref());
     }
 
     fn publish_connection_organization(&self) {
@@ -298,6 +284,15 @@ enum OrganizationMutation {
     RetainKnown,
 }
 
+fn apply_connection_strip_to_tab_bar(tab_bar: &adw::TabBar, color: Option<&str>) {
+    for class in tablepro_storage::CONNECTION_STRIP_CLASSES {
+        tab_bar.remove_css_class(class);
+    }
+    if let Some(class) = color.and_then(tablepro_storage::connection_strip_class) {
+        tab_bar.add_css_class(class);
+    }
+}
+
 fn persist_connection_organization(mutation: OrganizationMutation, sender: ComponentSender<App>) {
     let sender_clone = sender.clone();
     sender.command(move |_, shutdown| {
@@ -379,6 +374,30 @@ fn split_tags(raw: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn changing_a_connection_colour_updates_the_retained_tab_bar() {
+        gtk::init().unwrap();
+        let view = adw::TabView::new();
+        let tab_bar = adw::TabBar::builder().view(&view).build();
+        let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        inner.append(&gtk::Label::new(Some("Toolbar")));
+        inner.append(&tab_bar);
+        inner.append(&view);
+        let _overview = adw::TabOverview::builder().view(&view).child(&inner).build();
+
+        apply_connection_strip_to_tab_bar(&tab_bar, Some("red"));
+        assert!(tab_bar.has_css_class("tp-strip-red"));
+        assert!(!inner.first_child().unwrap().has_css_class("tp-strip-red"));
+
+        apply_connection_strip_to_tab_bar(&tab_bar, Some("teal"));
+        assert!(tab_bar.has_css_class("tp-strip-teal"));
+        assert!(!tab_bar.has_css_class("tp-strip-red"));
+
+        apply_connection_strip_to_tab_bar(&tab_bar, None);
+        assert!(!tab_bar.has_css_class("tp-strip-teal"));
+    }
 
     #[test]
     fn the_colour_picker_round_trips_every_palette_entry() {

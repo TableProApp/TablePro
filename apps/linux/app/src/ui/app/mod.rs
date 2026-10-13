@@ -144,6 +144,7 @@ pub struct App {
     /// Built lazily on connect; torn down on disconnect.
     workspace_root: Option<adw::TabOverview>,
     workspace_tab_view: Option<adw::TabView>,
+    workspace_tab_bar: Option<adw::TabBar>,
     read_scopes: std::cell::RefCell<crate::services::read_scopes::ReadScopes>,
     recent_pages: std::cell::RefCell<crate::services::recent_tabs::RecentList<adw::TabPage>>,
     recent_walk: std::cell::RefCell<Option<crate::services::recent_tabs::RecentWalk<adw::TabPage>>>,
@@ -565,6 +566,7 @@ impl SimpleComponent for App {
             workspace_outer_stack: workspace_chrome.outer_stack,
             workspace_root: None,
             workspace_tab_view: None,
+            workspace_tab_bar: None,
             read_scopes: std::cell::RefCell::default(),
             recent_pages: std::cell::RefCell::default(),
             recent_walk: std::cell::RefCell::default(),

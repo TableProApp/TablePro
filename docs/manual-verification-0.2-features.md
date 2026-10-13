@@ -236,7 +236,7 @@ A text or JSON cell over 8 KiB shows the start of the value and `… (N bytes to
 - [ ] Browse a table: each column header shows its name, a key marker for primary and foreign keys, and the lower-case type beneath it, in light and dark. **2026-10-12 Hyprland dark:** name and type passed; key markers missing, [#649](https://github.com/cozyGarage/BookiE/issues/649).
 - [ ] Select several rows of a numeric column: the selection badge popover lists the column's count, sum, average, min and max, and Copy summary copies them. A text column is not listed. **2026-10-12 Hyprland dark:** passed; also covered by the installed GTK scenario `selection_statistics_summarise_the_selected_rows`.
 - [ ] Run a failing statement in the editor: Copy error places the exact error text on the clipboard. **2026-10-12 Hyprland dark:** passed.
-- [ ] Tag a connection red and open it: the strip above the workspace tabs is red in light and dark. Change the tag: the strip follows without a restart. **2026-10-12 Hyprland dark:** failed. No strip appeared, live or after a restart, [#650](https://github.com/cozyGarage/BookiE/issues/650).
+- [ ] Tag a connection red and open it: the strip above the workspace tabs is red in light and dark. Change the tag: the strip follows without a restart. **2026-10-12 Hyprland dark:** failed before the direct tab-bar targeting fix; installed-package retest remains pending, [#650](https://github.com/cozyGarage/BookiE/issues/650).
 
 ## Sidebar tree
 

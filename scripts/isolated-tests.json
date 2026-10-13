@@ -361,6 +361,11 @@
       "tablepro-app",
       "--lib",
       "ui::export_dialog::tests::a_full_export_shows_a_refusal_without_opening_its_source"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::app::organization::tests::changing_a_connection_colour_updates_the_retained_tab_bar"
     ]
   ],
   "keyring": [
