@@ -4,12 +4,12 @@ use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
 use relm4::{ComponentController, ComponentSender, adw, gtk};
 
-use tablepro_core::meta::ObjectInfo;
+use tablepro_core::meta::{ObjectInfo, ObjectScope};
 use tablepro_session::connect::AttemptGeneration;
 use tablepro_session::runtime::{ProcessHold, WatchForwarder};
 use tablepro_session::{
-    ClaimError, ConnectAttempts, ConnectError, CredentialSource, MonitorSignal, PendingSession, Session, SessionClaim,
-    SessionHealth, SessionKey,
+    ClaimError, ConnectAttempts, ConnectError, CredentialSource, MonitorSignal, ObjectListSnapshot, PendingSession,
+    Session, SessionClaim, SessionHealth, SessionKey,
 };
 use tablepro_storage::SavedConnection;
 use uuid::Uuid;
@@ -77,11 +77,37 @@ pub(crate) struct SessionLinks {
     key: SessionKey,
     _claim: SessionClaim,
     _health: WatchForwarder,
-    _catalog: WatchForwarder,
+    /// Feeds the sidebar and the editor's completion words. Dropped
+    /// before the session shuts down, so a list read for a session the
+    /// window let go of never repaints it.
+    _catalog_watch: WatchForwarder,
 }
 
 fn spawn_local(future: futures::future::LocalBoxFuture<'static, ()>) {
     glib::spawn_future_local(future);
+}
+
+/// Deliver each new object list the session's catalog commits for the
+/// sidebar's scope. The list on screen when the watch starts is not
+/// delivered again, and a refresh that failed keeps the list it had.
+pub(super) fn catalog_watch(
+    session: &Session,
+    mut deliver: impl FnMut(ObjectListSnapshot) + 'static,
+) -> WatchForwarder {
+    let objects = session.subscribe_objects(ObjectScope::DefaultSchema);
+    let mut shown = objects.borrow().generation;
+    WatchForwarder::new(
+        objects,
+        move |snapshot: ObjectListSnapshot| {
+            if snapshot.generation != shown {
+                shown = snapshot.generation;
+                deliver(snapshot);
+            } else if let Some(error) = &snapshot.last_error {
+                tracing::warn!(%error, "the table list could not be read again");
+            }
+        },
+        spawn_local,
+    )
 }
 
 impl App {
@@ -268,11 +294,9 @@ impl App {
         claim.attach(&session);
         self.context.active.replace(session.clone());
 
-        let catalog = session.catalog();
-        let first = catalog.borrow().clone();
+        let first = session.subscribe_objects(ObjectScope::DefaultSchema).borrow().clone();
         let health_sender = sender.clone();
         let catalog_sender = sender.clone();
-        let mut shown = first.generation;
         self.session_links = Some(SessionLinks {
             key,
             _claim: claim,
@@ -281,18 +305,9 @@ impl App {
                 move |health| health_sender.input(AppMsg::HealthChanged(health)),
                 spawn_local,
             ),
-            // A reconnect reads the catalog again; the first one is
-            // already on screen.
-            _catalog: WatchForwarder::new(
-                catalog,
-                move |snapshot: tablepro_session::CatalogSnapshot| {
-                    if snapshot.generation != shown {
-                        shown = snapshot.generation;
-                        catalog_sender.input(AppMsg::CatalogChanged(snapshot.objects.to_vec()));
-                    }
-                },
-                spawn_local,
-            ),
+            _catalog_watch: catalog_watch(&session, move |snapshot| {
+                catalog_sender.input(AppMsg::CatalogChanged(snapshot));
+            }),
         });
         for warning in warnings {
             self.show_toast(&warning);
@@ -369,11 +384,8 @@ impl App {
         // a tab via sidebar click or Ctrl+T.
         self.ensure_workspace_root(sender.clone());
         self.content_holder.set_content(Some(&self.workspace_outer_stack));
-        let browsable = browsable(objects);
-        self.table_names = browsable.iter().map(|object| object.name.clone()).collect();
-        tracing::info!(driver = %driver_id, table_count = browsable.len(), "workspace ready");
-        self.repopulate_sidebar(&browsable);
-        self.rebuild_schema_buffer();
+        tracing::info!(driver = %driver_id, table_count = objects.len(), "workspace ready");
+        self.show_objects(&objects);
         self.refresh_window_title();
         // Restore tabs (browse + editor) persisted from the prior session
         // for this connection.
@@ -816,9 +828,17 @@ impl App {
         });
     }
 
-    /// Only what the grid can page through goes in the sidebar.
-    pub(super) fn repopulate_sidebar(&mut self, objects: &[ObjectInfo]) {
+    /// The session's objects in the sidebar and among the editor's
+    /// completion words.
+    pub(super) fn show_objects(&mut self, objects: &[ObjectInfo]) {
         let objects = browsable(objects.to_vec());
+        self.table_names = objects.iter().map(|object| object.name.clone()).collect();
+        self.repopulate_sidebar(objects);
+        self.rebuild_schema_buffer();
+    }
+
+    /// Only what the grid can page through goes in the sidebar.
+    fn repopulate_sidebar(&mut self, objects: Vec<ObjectInfo>) {
         {
             let mut schemas = self.sidebar_schemas.borrow_mut();
             schemas.clear();
@@ -1153,15 +1173,19 @@ fn failed_banner_text(cause: tablepro_session::FailureCause) -> String {
 mod tests {
     use std::time::Duration;
 
+    use std::cell::RefCell;
+    use std::rc::Rc;
     use tablepro_core::LivenessPolicy;
     use tablepro_core::meta::ObjectKind;
     use tablepro_session::fakes::{FakeConnector, FakeCredentialSource};
     use tablepro_session::operation::DefaultDeadlines;
     use tablepro_session::runtime::CountingHold;
+
     use tablepro_session::{FailureCause, SessionDeps};
-    use tablepro_test_support::ConnectionScript;
+    use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
     use super::*;
+    use crate::test_support::FakeSession;
 
     fn read(path: &std::path::Path) -> Result<Vec<u8>, String> {
         let file = gio::File::for_path(path);
@@ -1242,6 +1266,67 @@ mod tests {
         crate::test_support::wait_until(Duration::from_secs(5), || hold.live() == 0).expect("the close to end");
         assert!(session.is_shut_down());
         assert!(connection.is_closed(), "the connection was cut off rather than closed");
+    }
+
+    fn names(snapshot: &ObjectListSnapshot) -> Vec<String> {
+        snapshot.objects.iter().map(|object| object.name.clone()).collect()
+    }
+
+    #[gtk4::test]
+    fn late_catalog_commit_after_disconnect_leaves_sidebar_untouched() {
+        let runtime = crate::test_support::test_runtime();
+        let mut first = ConnectionScript::default();
+        first.list_objects.always(FakeReply::Late {
+            after: Duration::from_millis(300),
+            outcome: Ok(vec![object("from_a", ObjectKind::Table)]),
+        });
+        let a = FakeSession::start(first, [], runtime.tasks());
+        let mut second = ConnectionScript::default();
+        second
+            .list_objects
+            .always(FakeReply::ok(vec![object("from_b", ObjectKind::Table)]));
+        let b = FakeSession::start(second, [], runtime.tasks());
+        let sidebar: Rc<RefCell<Vec<String>>> = Rc::default();
+        let show = |sidebar: &Rc<RefCell<Vec<String>>>| {
+            let sidebar = sidebar.clone();
+            move |snapshot: ObjectListSnapshot| *sidebar.borrow_mut() = names(&snapshot)
+        };
+        let watching_a = catalog_watch(&a.session, show(&sidebar));
+        let late = {
+            let session = a.session.clone();
+            runtime
+                .tasks()
+                .spawn_task(async move { session.refresh_objects(ObjectScope::DefaultSchema).await })
+        };
+        let counters = a.connection.counters();
+        crate::test_support::wait_until(Duration::from_secs(5), || {
+            CallCounters::get(&counters.list_objects) == 1
+        })
+        .expect("A's list was asked for");
+
+        // Disconnect A and adopt B, in the order the window does.
+        drop(watching_a);
+        drop(a.session.begin_shutdown());
+        let _watching_b = catalog_watch(&b.session, show(&sidebar));
+        let refreshed_b = {
+            let session = b.session.clone();
+            runtime
+                .tasks()
+                .spawn_task(async move { session.refresh_objects(ObjectScope::DefaultSchema).await })
+        };
+        crate::test_support::finish_on_main(Duration::from_secs(5), async move {
+            let _ = refreshed_b.await;
+            let _ = late.await;
+        })
+        .expect("both lists to land");
+        crate::test_support::drain_main_context();
+
+        assert_eq!(
+            names(&a.session.subscribe_objects(ObjectScope::DefaultSchema).borrow()),
+            ["from_a"],
+            "A's late list never landed, so the test proved nothing"
+        );
+        assert_eq!(*sidebar.borrow(), ["from_b"]);
     }
 
     fn object(name: &str, kind: ObjectKind) -> ObjectInfo {

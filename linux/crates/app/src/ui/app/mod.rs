@@ -17,9 +17,8 @@ use relm4::gtk::{gio, glib};
 use relm4::prelude::*;
 use relm4::{Controller, adw, gtk};
 
-use tablepro_core::meta::ObjectInfo;
 use tablepro_core::{ColumnInfo, QueryResult};
-use tablepro_session::SessionHealth;
+use tablepro_session::{ObjectListSnapshot, SessionHealth};
 use tablepro_storage::SavedConnection;
 use uuid::Uuid;
 
@@ -352,8 +351,9 @@ pub enum AppMsg {
     RetryConnection,
     /// The adopted session's health moved.
     HealthChanged(SessionHealth),
-    /// A reconnect read the catalog again.
-    CatalogChanged(Vec<ObjectInfo>),
+    /// The session's object list for the sidebar changed: a reconnect
+    /// read it again, or a schema change refreshed it.
+    CatalogChanged(ObjectListSnapshot),
     DialogClosed,
     SelectTable {
         schema: Option<String>,
@@ -600,17 +600,13 @@ pub enum AppMsg {
     /// Mirrors `BrowseTabDirtyChanged` for the title prefix and the
     /// AdwTabPage::set_needs_attention background-tab indicator.
     StructureTabDirtyChanged(Uuid, bool),
-    /// Schema state changed (table created / dropped / altered) — App
-    /// refreshes the sidebar and any open Browse tabs for the affected
-    /// table.
+    /// Schema state changed (table created / dropped / altered): the
+    /// catalog reads the sidebar's list again and drops the table's
+    /// columns, and the tabs open on the table read it again.
     SchemaChanged {
         schema: Option<String>,
         table: Option<String>,
     },
-    /// Result of `list_tables` after a SchemaChanged event. Rebuilds
-    /// the sidebar factory without going through the full Connected
-    /// path.
-    TablesReloaded(Vec<ObjectInfo>),
     /// Ctrl+Shift+T → pop the most recent closed-tab descriptor and
     /// reopen it. No-op when the stack is empty (e.g. no tabs closed
     /// yet, or just reconnected). Editor tabs come back with their
@@ -1425,7 +1421,7 @@ impl SimpleComponent for App {
             AppMsg::EditConnection(retry) => self.on_edit_connection(*retry, sender),
             AppMsg::HealthChanged(health) => self.refresh_health_banner(&health),
             AppMsg::RetryConnection => self.on_retry_connection(),
-            AppMsg::CatalogChanged(objects) => self.on_tables_reloaded(objects),
+            AppMsg::CatalogChanged(snapshot) => self.on_catalog_changed(&snapshot),
             AppMsg::Disconnect => self.on_disconnect(sender),
             AppMsg::ForceDisconnect => self.do_disconnect(sender),
             AppMsg::DialogClosed => self.dialog = None,
@@ -1545,7 +1541,6 @@ impl SimpleComponent for App {
             AppMsg::StructureLoadFailed { tab_id, message } => self.on_structure_load_failed(tab_id, message),
             AppMsg::StructureTabDirtyChanged(tab_id, dirty) => self.refresh_structure_tab_dirty(tab_id, dirty),
             AppMsg::SchemaChanged { schema, table } => self.on_schema_changed(schema, table, sender),
-            AppMsg::TablesReloaded(tables) => self.on_tables_reloaded(tables),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionListUnavailable => self.show_connection_list_banner(),
             AppMsg::SecretDeleteFailed(id) => self.on_secret_delete_failed(id, sender),

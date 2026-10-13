@@ -1,0 +1,37 @@
+use std::sync::Arc;
+
+use tablepro_core::LivenessPolicy;
+use tablepro_session::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
+use tablepro_session::operation::DefaultDeadlines;
+use tablepro_session::runtime::Tasks;
+use tablepro_session::{Session, SessionDeps};
+use tablepro_test_support::{ConnectionScript, FakeConnection};
+
+/// A session over a fake connection, and what each reconnect gets.
+pub(crate) struct FakeSession {
+    pub session: Arc<Session>,
+    pub connection: Arc<FakeConnection>,
+}
+
+impl FakeSession {
+    pub(crate) fn start(
+        script: ConnectionScript,
+        reconnects: impl IntoIterator<Item = FakeEstablish>,
+        tasks: Tasks,
+    ) -> Self {
+        let request = FakeConnector::request().expect("a request");
+        let (pending, connection) = FakeConnector::pending_session(request, script);
+        let connector = FakeConnector::new(reconnects);
+        let session = Session::start(
+            pending,
+            SessionDeps {
+                connector: Arc::new(connector),
+                credentials: Arc::new(FakeCredentialSource::new()),
+                deadlines: Arc::new(DefaultDeadlines::new(LivenessPolicy::DESKTOP)),
+                tasks,
+                prompter: None,
+            },
+        );
+        Self { session, connection }
+    }
+}

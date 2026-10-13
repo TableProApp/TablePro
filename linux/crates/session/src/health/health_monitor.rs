@@ -15,7 +15,7 @@ use crate::connect::{ConnectError, PendingSession};
 use crate::link::{ConnectionLease, ConnectionLink};
 use crate::operation::{DeadlinePolicy, OperationKind};
 use crate::runtime::{Tasks, catch_panic};
-use crate::session::CatalogSnapshot;
+use crate::session::SchemaCatalog;
 
 /// Everything the monitor task owns. It holds no `Session`, so dropping
 /// the last session handle is what ends it.
@@ -27,7 +27,7 @@ pub(crate) struct MonitorContext {
     pub health: watch::Sender<SessionHealth>,
     pub mailbox: Arc<MonitorMailbox>,
     pub cancel: CancellationToken,
-    pub catalog: watch::Sender<CatalogSnapshot>,
+    pub catalog: Arc<SchemaCatalog>,
     pub reachability: Arc<Mutex<ReachabilityTarget>>,
     pub close_timeout: Duration,
 }
@@ -222,11 +222,7 @@ async fn reconnect(ctx: &MonitorContext, user_asked: bool) -> Option<ReconnectRe
         return None;
     }
     *ctx.reachability.lock().unwrap_or_else(PoisonError::into_inner) = reachability;
-    ctx.catalog.send_replace(CatalogSnapshot {
-        generation,
-        schemas: parts.schemas.into(),
-        objects: parts.objects.into(),
-    });
+    ctx.catalog.commit(parts.schemas, parts.objects);
     if !remember.is_empty() {
         let stored = ctx.plan.credentials.remember(remember);
         ctx.tasks.spawn_task(async move {
@@ -385,6 +381,43 @@ mod tests {
             started.session.link_changes().borrow().get(),
             1,
             "the reconnect did not replace the link"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reconnect_commits_the_new_catalog() {
+        let column = tablepro_core::ColumnInfo {
+            name: "id".to_owned(),
+            column_type: tablepro_core::column::ColumnType::untyped_text("text"),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            is_generated: false,
+            default: tablepro_core::column::ColumnDefault::None,
+            comment: None,
+        };
+        let mut first = healthy();
+        first.fetch_columns.always(FakeReply::ok(vec![column.clone()]));
+        let mut second = healthy();
+        second.fetch_columns.always(FakeReply::ok(vec![column]));
+        let started = start(first, FakeConnector::new([FakeEstablish::Connect(second)]));
+        let table = tablepro_core::TableRef::unqualified("users");
+        let objects = started
+            .session
+            .subscribe_objects(tablepro_core::meta::ObjectScope::DefaultSchema);
+        started.session.columns(table.clone()).await.unwrap();
+
+        started.session.signal(lost());
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        started.session.columns(table).await.unwrap();
+
+        assert_eq!(started.session.link_changes().borrow().get(), 1);
+        assert_eq!(objects.borrow().generation, 2, "the reconnect left the old object list");
+        let replacement = started.connector.connections().pop().unwrap();
+        assert_eq!(
+            CallCounters::get(&replacement.counters().fetch_columns),
+            1,
+            "columns read before the reconnect were trusted after it"
         );
     }
 

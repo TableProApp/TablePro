@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use tablepro_core::ddl::TableDefinition;
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::meta::{ObjectInfo, ObjectScope, TableRef};
+use tablepro_core::meta::{ObjectScope, TableRef};
 use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn, StructureOp, materialize_ops};
 use tablepro_core::statement::{GuardedStatement, StatementBuilder};
 use tablepro_core::{ForeignKeyMode, WriteBatch, WriteKind, WriteReport};
@@ -539,21 +539,22 @@ impl App {
         }
     }
 
-    /// Schema state changed somewhere — reload the table list, then
-    /// refetch any open Browse tab pointing at the affected table so
-    /// its grid reflects post-DDL schema (column adds / drops / type
-    /// changes / renames).
+    /// The schema changed under the window. The catalog forgets the
+    /// table's columns and reads the sidebar's list again, and every
+    /// Browse tab open on the table reads it again.
     pub(super) fn on_schema_changed(
         &self,
         schema: Option<String>,
         table: Option<String>,
         sender: ComponentSender<Self>,
     ) {
-        // Refetch the affected Browse tab(s) immediately. Tab-id
-        // collection happens under a short-lived borrow; the sender
-        // dispatches happen after drop so the input handlers can
-        // re-borrow workspace_tabs without panic.
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
         if let Some(table_name) = table.as_deref() {
+            session.invalidate_table(&TableRef::new(schema.clone(), table_name));
+            // The ids are collected under a short borrow, so the inputs
+            // that follow can borrow the tabs again.
             let mut affected: Vec<Uuid> = Vec::new();
             for (id, tab) in self.workspace_tabs.borrow().iter() {
                 if let WorkspaceTab::Table(slot) = tab
@@ -569,26 +570,18 @@ impl App {
                 sender.input(AppMsg::FetchBrowseRowCount(id));
             }
         }
-        // Sidebar refresh: re-list the objects and rebuild the factory.
-        let Some(session) = self.context.active.get() else {
-            return;
-        };
-        let work = async move {
-            session
-                .run(OperationKind::Metadata, |lease, options| async move {
-                    Ok(lease.list_objects(&ObjectScope::DefaultSchema, options).await?)
-                })
-                .await
-        };
-        crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| match settled(result) {
-            Ok(objects) => sender.input(AppMsg::TablesReloaded(objects)),
-            // The sidebar keeps the list it has rather than going empty.
-            Err(error) => tracing::warn!(%error, "could not reload the table list"),
+        // The new list reaches the sidebar through the catalog watch.
+        self.context.tasks.spawn_task(async move {
+            if let Err(error) = session.refresh_objects(ObjectScope::DefaultSchema).await {
+                tracing::warn!(%error, "could not reload the table list");
+            }
         });
     }
 
-    pub(super) fn on_tables_reloaded(&mut self, objects: Vec<ObjectInfo>) {
-        self.repopulate_sidebar(&objects);
+    /// The sidebar and the editor's completion words follow the
+    /// session's object list. A failed refresh keeps both as they were.
+    pub(super) fn on_catalog_changed(&mut self, snapshot: &tablepro_session::ObjectListSnapshot) {
+        self.show_objects(&snapshot.objects);
     }
 
     pub(super) fn refresh_structure_tab_dirty(&self, tab_id: Uuid, dirty: bool) {

@@ -42,6 +42,7 @@ crates/app/src/services/workspace_state.rs
 crates/app/src/storage.rs
 crates/app/src/test_support.rs
 crates/app/src/test_support/accessible_label.rs
+crates/app/src/test_support/fake_session.rs
 crates/app/src/test_support/main_loop.rs
 crates/app/src/test_support/memory_settings.rs
 crates/app/src/test_support/signal_log.rs
