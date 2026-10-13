@@ -7,6 +7,19 @@ ssh = { max-threads = 1 }
 fixtures = { max-threads = 1 }
 session = { max-threads = 1 }
 
+[profile.default]
+# tiberius 0.13 stops reading at the first end of message, so an attention
+# sent while SQL Server is still waiting is never acknowledged and the
+# connection is dropped: https://github.com/tiberius-rs/tiberius/issues/459.
+# Remove once a release has the fix.
+default-filter = """
+not (package(tablepro-driver-mssql) & (
+    test(=cancellation::editor_waitfor_cancel_then_select1_same_client)
+    | test(=cancellation::pooled_query_bound_waitfor_deadline_server_cancelled_client_reused)
+    | test(=conformance_engine::suite::editor_cancel_reports_cancelled_and_session_stays_ready)
+))
+"""
+
 [[profile.default.overrides]]
 filter = 'package(tablepro-driver-postgres)'
 test-group = 'postgres'
