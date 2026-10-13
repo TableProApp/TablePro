@@ -11,8 +11,10 @@ use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
+use super::touch::Touch;
 use super::tracker_delta::{TrackerDelta, VisualChange};
 use super::tracker_edit::TrackerEdit;
+use super::undo_op::UndoOp;
 
 const UNDO_LIMIT: usize = 50;
 
@@ -56,14 +58,24 @@ pub type KeyValue = tablepro_core::value::ValueIdentity;
 pub struct DraftRow {
     pub draft_id: u64,
     pub values: Vec<Value>,
+    /// The insert or the latest edit to one of its cells.
+    pub touched: Touch,
 }
 
-/// One pending cell modification. `prev_value` is what the cell held
-/// before the user touched it (used for undo + visual revert).
-#[derive(Debug, Clone)]
+/// A pending edit to a fetched cell.
+#[derive(Debug, Clone, PartialEq)]
 pub struct CellEdit {
-    pub prev_value: Value,
-    pub new_value: Value,
+    /// The fetched value. An edit back to it drops the entry.
+    pub original: Value,
+    pub pending: Value,
+    pub touched: Touch,
+}
+
+/// A fetched row marked for delete, with the row as it was read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeleteMark {
+    pub original_values: Vec<Value>,
+    pub touched: Touch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,33 +102,15 @@ pub enum StatementSource {
     Delete { row_key: RowKey },
 }
 
-/// Reversible action recorded for the per-tab undo stack.
-#[derive(Debug, Clone)]
-pub enum UndoOp {
-    /// Cell was edited. `prev_value` is what it held before this op.
-    CellEdit {
-        row_key: RowKey,
-        col: usize,
-        prev_value: Value,
-        new_value: Value,
-    },
-    /// Draft row was added. Undoing removes it.
-    Insert { draft_id: u64, values: Vec<Value> },
-    /// Row was marked for delete. Undoing unmarks.
-    Delete {
-        row_key: RowKey,
-        original_values: Vec<Value>,
-    },
-}
-
 #[derive(Debug, Default)]
 pub struct TabChangeTracker {
-    inserts: Vec<DraftRow>,
-    deletes: HashMap<RowKey, Vec<Value>>,
+    drafts: Vec<DraftRow>,
+    deletes: HashMap<RowKey, DeleteMark>,
     updates: HashMap<(RowKey, usize), CellEdit>,
     undo: VecDeque<UndoOp>,
     redo: VecDeque<UndoOp>,
     next_draft_id: u64,
+    next_touch: Touch,
     /// Row behind the statement the last save failed on.
     error_row: Option<RowKey>,
     // A flash that starts inside an older flash's timeout must not be
@@ -126,7 +120,7 @@ pub struct TabChangeTracker {
 
 impl TabChangeTracker {
     pub fn pending_count(&self) -> usize {
-        self.inserts.len() + self.deletes.len() + self.updates.len()
+        self.drafts.len() + self.deletes.len() + self.updates.len()
     }
 
     pub fn apply(&mut self, edit: TrackerEdit) -> TrackerDelta {
@@ -155,6 +149,12 @@ impl TabChangeTracker {
         }
     }
 
+    fn touch(&mut self) -> Touch {
+        let touch = self.next_touch;
+        self.next_touch = touch.next();
+        touch
+    }
+
     fn push_undo(&mut self, op: UndoOp) {
         if self.undo.len() == UNDO_LIMIT {
             self.undo.pop_front();
@@ -163,203 +163,176 @@ impl TabChangeTracker {
         self.redo.clear();
     }
 
-    /// Track a cell edit. If the cell was already modified, this
-    /// updates the new value but keeps the original `prev_value` (so
-    /// undoing restores the very-first untouched value, not the last
-    /// intermediate state).
-    fn track_cell_edit(&mut self, row_key: RowKey, col: usize, original: Value, new: Value) -> TrackerDelta {
-        let key = (row_key.clone(), col);
-        let prev_value = self
-            .updates
-            .get(&key)
-            .map(|e| e.prev_value.clone())
-            .unwrap_or(original.clone());
-        if prev_value == new {
-            self.updates.remove(&key);
-        } else {
-            self.updates.insert(
-                key,
-                CellEdit {
-                    prev_value: prev_value.clone(),
-                    new_value: new.clone(),
-                },
-            );
-        }
+    fn track_cell_edit(&mut self, row_key: RowKey, col: usize, original: Value, value: Value) -> TrackerDelta {
+        let before = self.updates.get(&(row_key.clone(), col)).cloned();
+        let original = before.as_ref().map_or(original, |edit| edit.original.clone());
+        let after = (value != original).then(|| CellEdit {
+            original,
+            pending: value,
+            touched: self.touch(),
+        });
         self.push_undo(UndoOp::CellEdit {
             row_key: row_key.clone(),
             col,
-            prev_value: original,
-            new_value: new,
+            before,
+            after: after.clone(),
         });
-        self.delta(vec![row_key], Vec::new())
+        self.put_cell_edit(&row_key, col, after)
     }
 
     fn track_insert(&mut self, values: Vec<Value>) -> TrackerDelta {
-        let draft_id = self.next_draft_id;
+        let draft = DraftRow {
+            draft_id: self.next_draft_id,
+            values,
+            touched: self.touch(),
+        };
         self.next_draft_id += 1;
-        self.inserts.push(DraftRow {
-            draft_id,
-            values: values.clone(),
-        });
-        self.push_undo(UndoOp::Insert {
-            draft_id,
-            values: values.clone(),
-        });
-        self.delta(
-            vec![RowKey::Draft(draft_id)],
-            vec![VisualChange::InsertDraft { draft_id, values }],
-        )
+        self.push_undo(UndoOp::Insert { draft: draft.clone() });
+        self.put_draft(draft)
     }
 
-    /// `original_values` is the full row at the time of the mark, for
-    /// the strikethrough render and for undo.
     fn track_delete(&mut self, row_key: RowKey, original_values: Vec<Value>) -> TrackerDelta {
-        self.deletes.insert(row_key.clone(), original_values.clone());
+        let after = DeleteMark {
+            original_values,
+            touched: self.touch(),
+        };
         self.push_undo(UndoOp::Delete {
             row_key: row_key.clone(),
-            original_values,
+            before: self.deletes.get(&row_key).cloned(),
+            after: after.clone(),
         });
-        self.delta(vec![row_key], Vec::new())
+        self.put_delete_mark(&row_key, Some(after))
     }
 
     // The draft's undo and redo entries go with it, so Ctrl+Z cannot
     // bring it back half-edited.
     fn discard_draft(&mut self, draft_id: u64) -> TrackerDelta {
-        let before = self.inserts.len();
-        self.inserts.retain(|d| d.draft_id != draft_id);
-        if self.inserts.len() == before {
+        let before = self.drafts.len();
+        self.drafts.retain(|d| d.draft_id != draft_id);
+        if self.drafts.len() == before {
             return self.delta(Vec::new(), Vec::new());
         }
         self.updates
             .retain(|(k, _), _| !matches!(k, RowKey::Draft(id) if *id == draft_id));
         self.deletes
             .retain(|k, _| !matches!(k, RowKey::Draft(id) if *id == draft_id));
-        self.undo.retain(|op| !undo_op_matches_draft(op, draft_id));
-        self.redo.retain(|op| !undo_op_matches_draft(op, draft_id));
+        self.undo.retain(|op| !op.is_about_draft(draft_id));
+        self.redo.retain(|op| !op.is_about_draft(draft_id));
         self.delta(
             vec![RowKey::Draft(draft_id)],
             vec![VisualChange::RemoveDraft { draft_id }],
         )
     }
 
-    fn track_draft_cell_edit(&mut self, draft_id: u64, col: usize, new: Value) -> TrackerDelta {
-        let Some(prev) = self.draft_cell(draft_id, col) else {
+    fn track_draft_cell_edit(&mut self, draft_id: u64, col: usize, value: Value) -> TrackerDelta {
+        let Some((before, before_touch)) = self.draft_cell(draft_id, col) else {
             return self.delta(Vec::new(), Vec::new());
         };
-        let visual = self.set_draft_cell(draft_id, col, new.clone());
-        self.push_undo(UndoOp::CellEdit {
-            row_key: RowKey::Draft(draft_id),
+        let after_touch = self.touch();
+        self.push_undo(UndoOp::DraftCell {
+            draft_id,
             col,
-            prev_value: prev,
-            new_value: new,
+            before,
+            after: value.clone(),
+            before_touch,
+            after_touch,
         });
-        self.delta(vec![RowKey::Draft(draft_id)], visual.into_iter().collect())
+        self.put_draft_cell(draft_id, col, value, after_touch)
     }
 
-    fn draft_cell(&self, draft_id: u64, col: usize) -> Option<Value> {
-        self.inserts
-            .iter()
-            .find(|d| d.draft_id == draft_id)
-            .and_then(|d| d.values.get(col))
-            .cloned()
+    fn draft_cell(&self, draft_id: u64, col: usize) -> Option<(Value, Touch)> {
+        let draft = self.drafts.iter().find(|d| d.draft_id == draft_id)?;
+        Some((draft.values.get(col)?.clone(), draft.touched))
     }
 
-    fn set_draft_cell(&mut self, draft_id: u64, col: usize, value: Value) -> Option<VisualChange> {
-        let cell = self
-            .inserts
-            .iter_mut()
-            .find(|d| d.draft_id == draft_id)
-            .and_then(|d| d.values.get_mut(col))?;
+    fn put_cell_edit(&mut self, row_key: &RowKey, col: usize, edit: Option<CellEdit>) -> TrackerDelta {
+        let key = (row_key.clone(), col);
+        match edit {
+            Some(edit) => self.updates.insert(key, edit),
+            None => self.updates.remove(&key),
+        };
+        self.delta(vec![row_key.clone()], Vec::new())
+    }
+
+    fn put_delete_mark(&mut self, row_key: &RowKey, mark: Option<DeleteMark>) -> TrackerDelta {
+        match mark {
+            Some(mark) => self.deletes.insert(row_key.clone(), mark),
+            None => self.deletes.remove(row_key),
+        };
+        self.delta(vec![row_key.clone()], Vec::new())
+    }
+
+    fn put_draft(&mut self, draft: DraftRow) -> TrackerDelta {
+        let draft_id = draft.draft_id;
+        let visual = VisualChange::InsertDraft {
+            draft_id,
+            values: draft.values.clone(),
+        };
+        self.drafts.push(draft);
+        self.delta(vec![RowKey::Draft(draft_id)], vec![visual])
+    }
+
+    fn remove_draft(&mut self, draft_id: u64) -> TrackerDelta {
+        self.drafts.retain(|d| d.draft_id != draft_id);
+        self.delta(
+            vec![RowKey::Draft(draft_id)],
+            vec![VisualChange::RemoveDraft { draft_id }],
+        )
+    }
+
+    fn put_draft_cell(&mut self, draft_id: u64, col: usize, value: Value, touched: Touch) -> TrackerDelta {
+        let Some(draft) = self.drafts.iter_mut().find(|d| d.draft_id == draft_id) else {
+            return self.delta(Vec::new(), Vec::new());
+        };
+        let Some(cell) = draft.values.get_mut(col) else {
+            return self.delta(Vec::new(), Vec::new());
+        };
         *cell = value.clone();
-        Some(VisualChange::SetDraftCell { draft_id, col, value })
+        draft.touched = touched;
+        self.delta(
+            vec![RowKey::Draft(draft_id)],
+            vec![VisualChange::SetDraftCell { draft_id, col, value }],
+        )
     }
 
     pub fn undo(&mut self) -> Option<TrackerDelta> {
         let op = self.undo.pop_back()?;
-        let (row_key, visual) = match &op {
+        let delta = match &op {
             UndoOp::CellEdit {
-                row_key: RowKey::Draft(draft_id),
+                row_key, col, before, ..
+            } => self.put_cell_edit(row_key, *col, before.clone()),
+            UndoOp::DraftCell {
+                draft_id,
                 col,
-                prev_value,
+                before,
+                before_touch,
                 ..
-            } => (
-                RowKey::Draft(*draft_id),
-                self.set_draft_cell(*draft_id, *col, prev_value.clone())
-                    .into_iter()
-                    .collect(),
-            ),
-            UndoOp::CellEdit { row_key, col, .. } => {
-                self.updates.remove(&(row_key.clone(), *col));
-                (row_key.clone(), Vec::new())
-            }
-            UndoOp::Insert { draft_id, .. } => {
-                self.inserts.retain(|d| d.draft_id != *draft_id);
-                (
-                    RowKey::Draft(*draft_id),
-                    vec![VisualChange::RemoveDraft { draft_id: *draft_id }],
-                )
-            }
-            UndoOp::Delete { row_key, .. } => {
-                self.deletes.remove(row_key);
-                (row_key.clone(), Vec::new())
-            }
+            } => self.put_draft_cell(*draft_id, *col, before.clone(), *before_touch),
+            UndoOp::Insert { draft } => self.remove_draft(draft.draft_id),
+            UndoOp::Delete { row_key, before, .. } => self.put_delete_mark(row_key, before.clone()),
         };
         self.redo.push_back(op);
-        Some(self.delta(vec![row_key], visual))
+        Some(delta)
     }
 
     pub fn redo(&mut self) -> Option<TrackerDelta> {
         let op = self.redo.pop_back()?;
-        let (row_key, visual) = match &op {
+        let delta = match &op {
             UndoOp::CellEdit {
-                row_key: RowKey::Draft(draft_id),
+                row_key, col, after, ..
+            } => self.put_cell_edit(row_key, *col, after.clone()),
+            UndoOp::DraftCell {
+                draft_id,
                 col,
-                new_value,
+                after,
+                after_touch,
                 ..
-            } => (
-                RowKey::Draft(*draft_id),
-                self.set_draft_cell(*draft_id, *col, new_value.clone())
-                    .into_iter()
-                    .collect(),
-            ),
-            UndoOp::CellEdit {
-                row_key,
-                col,
-                prev_value,
-                new_value,
-            } => {
-                self.updates.insert(
-                    (row_key.clone(), *col),
-                    CellEdit {
-                        prev_value: prev_value.clone(),
-                        new_value: new_value.clone(),
-                    },
-                );
-                (row_key.clone(), Vec::new())
-            }
-            UndoOp::Insert { draft_id, values } => {
-                self.inserts.push(DraftRow {
-                    draft_id: *draft_id,
-                    values: values.clone(),
-                });
-                (
-                    RowKey::Draft(*draft_id),
-                    vec![VisualChange::InsertDraft {
-                        draft_id: *draft_id,
-                        values: values.clone(),
-                    }],
-                )
-            }
-            UndoOp::Delete {
-                row_key,
-                original_values,
-            } => {
-                self.deletes.insert(row_key.clone(), original_values.clone());
-                (row_key.clone(), Vec::new())
-            }
+            } => self.put_draft_cell(*draft_id, *col, after.clone(), *after_touch),
+            UndoOp::Insert { draft } => self.put_draft(draft.clone()),
+            UndoOp::Delete { row_key, after, .. } => self.put_delete_mark(row_key, Some(after.clone())),
         };
         self.undo.push_back(op);
-        Some(self.delta(vec![row_key], visual))
+        Some(delta)
     }
 
     #[cfg(test)]
@@ -381,17 +354,17 @@ impl TabChangeTracker {
             .map(|(row_key, _)| row_key)
             .chain(self.deletes.keys())
             .cloned()
-            .chain(self.inserts.iter().map(|draft| RowKey::Draft(draft.draft_id)))
+            .chain(self.drafts.iter().map(|draft| RowKey::Draft(draft.draft_id)))
             .filter(|row_key| seen.insert(row_key.clone()))
             .collect();
         let visual = self
-            .inserts
+            .drafts
             .iter()
             .map(|draft| VisualChange::RemoveDraft {
                 draft_id: draft.draft_id,
             })
             .collect();
-        self.inserts.clear();
+        self.drafts.clear();
         self.deletes.clear();
         self.updates.clear();
         self.undo.clear();
@@ -434,7 +407,7 @@ impl TabChangeTracker {
     }
 
     pub fn drafts(&self) -> &[DraftRow] {
-        &self.inserts
+        &self.drafts
     }
 
     /// Mark the row a failed save points at. The returned generation
@@ -457,66 +430,91 @@ impl TabChangeTracker {
 
     fn current_cell_value<'a>(&'a self, row_key: &RowKey, col: usize, original: &'a Value) -> &'a Value {
         match self.updates.get(&(row_key.clone(), col)) {
-            Some(edit) => &edit.new_value,
+            Some(edit) => &edit.pending,
             None => original,
         }
     }
 
     /// What the user changed, as the change set a save is planned from.
     ///
-    /// Rows are named by their primary key in column order, which is the
-    /// identity `pk_identity` describes, so the keys bind straight back.
-    /// A draft cell the user left empty asks for the server's default
-    /// where the column has one, as does any column the server fills.
+    /// One change per row, ordered by when the row was last touched, so
+    /// the statements run in the order the user made the edits: a row
+    /// deleted and then replaced by a draft with the same unique value
+    /// saves, because its DELETE runs first. Rows are named by their
+    /// primary key in column order, which is the identity `pk_identity`
+    /// describes, so the keys bind straight back. A draft cell the user
+    /// left empty asks for the server's default where the column has
+    /// one, as does any column the server fills.
     pub fn change_set(&self, columns: &[ColumnInfo]) -> Result<TrackedChanges, BuildSqlError> {
-        let mut tracked = TrackedChanges::default();
-        for draft in &self.inserts {
+        let mut rows: Vec<(Touch, RowChange, StatementSource)> = Vec::new();
+        for draft in &self.drafts {
             let cells = columns
                 .iter()
                 .zip(&draft.values)
                 .map(|(column, value)| draft_cell(column, value))
                 .collect();
-            tracked.changes.changes.push(RowChange::Insert { cells });
-            tracked.sources.push(StatementSource::Insert {
-                draft_id: draft.draft_id,
-            });
+            rows.push((
+                draft.touched,
+                RowChange::Insert { cells },
+                StatementSource::Insert {
+                    draft_id: draft.draft_id,
+                },
+            ));
         }
 
         // One UPDATE per row, setting only the cells that moved, so a
         // concurrent edit to a column this user never touched survives.
-        let mut per_row: HashMap<RowKey, Vec<(usize, Value)>> = HashMap::new();
+        let mut per_row = HashMap::new();
         for ((row_key, col), edit) in &self.updates {
-            per_row
-                .entry(row_key.clone())
-                .or_default()
-                .push((*col, edit.new_value.clone()));
-        }
-        for (row_key, mut assignments) in per_row {
-            let RowKey::Persisted(key) = &row_key else {
+            if self.deletes.contains_key(row_key) {
                 continue;
-            };
-            require_key(columns)?;
-            assignments.sort_by_key(|(col, _)| *col);
-            tracked.changes.changes.push(RowChange::Update(RowUpdate {
-                key: key.iter().map(|part| part.value().clone()).collect(),
-                assignments,
-            }));
-            tracked.sources.push(StatementSource::Update { row_key });
+            }
+            per_row.entry(row_key).or_insert_with(Vec::new).push((*col, edit));
         }
-
-        for row_key in self.deletes.keys() {
+        for (row_key, mut cells) in per_row {
             let RowKey::Persisted(key) = row_key else {
                 continue;
             };
             require_key(columns)?;
-            tracked.changes.changes.push(RowChange::Delete {
-                key: key.iter().map(|part| part.value().clone()).collect(),
-            });
-            tracked.sources.push(StatementSource::Delete {
-                row_key: row_key.clone(),
-            });
+            cells.sort_by_key(|(col, _)| *col);
+            let touched = cells.iter().map(|(_, edit)| edit.touched).max().unwrap_or_default();
+            rows.push((
+                touched,
+                RowChange::Update(RowUpdate {
+                    key: key_values(key),
+                    assignments: cells
+                        .into_iter()
+                        .map(|(col, edit)| (col, edit.pending.clone()))
+                        .collect(),
+                }),
+                StatementSource::Update {
+                    row_key: row_key.clone(),
+                },
+            ));
         }
-        Ok(tracked)
+
+        for (row_key, mark) in &self.deletes {
+            let RowKey::Persisted(key) = row_key else {
+                continue;
+            };
+            require_key(columns)?;
+            rows.push((
+                mark.touched,
+                RowChange::Delete { key: key_values(key) },
+                StatementSource::Delete {
+                    row_key: row_key.clone(),
+                },
+            ));
+        }
+
+        // Every edit takes its own touch, so no two rows share one and
+        // the order does not depend on how the maps iterated.
+        rows.sort_by_key(|(touched, ..)| *touched);
+        let (changes, sources) = rows.into_iter().map(|(_, change, source)| (change, source)).unzip();
+        Ok(TrackedChanges {
+            changes: ChangeSet { changes },
+            sources,
+        })
     }
 }
 
@@ -554,6 +552,10 @@ fn require_key(columns: &[ColumnInfo]) -> Result<(), BuildSqlError> {
     }
 }
 
+fn key_values(key: &[KeyValue]) -> Vec<Value> {
+    key.iter().map(|part| part.value().clone()).collect()
+}
+
 /// A NULL the user left in a column with a default means "use the
 /// default" (CURRENT_TIMESTAMP, gen_random_uuid()), not an explicit
 /// NULL over it.
@@ -565,21 +567,6 @@ fn draft_cell(column: &ColumnInfo, value: &Value) -> CellInput {
         return CellInput::Default;
     }
     CellInput::Value(value.clone())
-}
-
-fn undo_op_matches_draft(op: &UndoOp, draft_id: u64) -> bool {
-    match op {
-        UndoOp::Insert { draft_id: id, .. } => *id == draft_id,
-        UndoOp::CellEdit {
-            row_key: RowKey::Draft(id),
-            ..
-        } => *id == draft_id,
-        UndoOp::Delete {
-            row_key: RowKey::Draft(id),
-            ..
-        } => *id == draft_id,
-        _ => false,
-    }
 }
 
 #[cfg(test)]
@@ -751,28 +738,258 @@ mod tests {
         (tracked, plan)
     }
 
+    fn text(value: &str) -> Value {
+        Value::Text(value.into())
+    }
+
+    fn edit(t: &mut TabChangeTracker, id: i64, from: &str, to: &str) {
+        t.track_cell_edit(rk(&[Value::Int(id)]), 1, text(from), text(to));
+    }
+
+    /// The cell as the grid draws it, over a fetched "a".
+    fn pending(t: &TabChangeTracker, id: i64) -> Value {
+        t.cell_overlay(&rk(&[Value::Int(id)]), 1, &text("a")).value
+    }
+
+    /// Each change as a verb and the key or draft it names, which is
+    /// what the save order is about.
+    fn script(t: &TabChangeTracker, columns: &[ColumnInfo]) -> Vec<String> {
+        let tracked = t.change_set(columns).unwrap();
+        tracked
+            .changes
+            .changes
+            .iter()
+            .enumerate()
+            .map(|(index, change)| match (change, tracked.source(index)) {
+                (RowChange::Insert { .. }, Some(StatementSource::Insert { draft_id })) => format!("insert {draft_id}"),
+                (RowChange::Update(update), _) => format!("update {:?}", update.key),
+                (RowChange::Delete { key }, _) => format!("delete {key:?}"),
+                (change, source) => panic!("{change:?} came from {source:?}"),
+            })
+            .collect()
+    }
+
     #[test]
-    fn change_set_orders_inserts_then_updates_then_deletes() {
+    fn undo_after_a_b_c_restores_b() {
+        let mut t = TabChangeTracker::default();
+        edit(&mut t, 1, "a", "b");
+        edit(&mut t, 1, "a", "c");
+
+        let undone = t.undo();
+
+        assert_eq!(undone.map(|delta| delta.rows), Some(vec![rk(&[Value::Int(1)])]));
+        assert_eq!(pending(&t, 1), text("b"));
+        assert_eq!(t.cell_state(&rk(&[Value::Int(1)]), 1), CellState::Modified);
+        assert_eq!(t.pending_count(), 1);
+    }
+
+    #[test]
+    fn undo_after_a_b_a_restores_b() {
+        let mut t = TabChangeTracker::default();
+        edit(&mut t, 1, "a", "b");
+        edit(&mut t, 1, "a", "a");
+        assert_eq!(t.pending_count(), 0);
+
+        let _ = t.undo();
+
+        assert_eq!(pending(&t, 1), text("b"));
+        assert_eq!(t.pending_count(), 1);
+    }
+
+    #[test]
+    fn redo_after_undo_reapplies_c() {
+        let mut t = TabChangeTracker::default();
+        edit(&mut t, 1, "a", "b");
+        edit(&mut t, 1, "a", "c");
+        let _ = t.undo();
+
+        let redone = t.redo();
+
+        assert_eq!(redone.map(|delta| delta.pending_count), Some(1));
+        assert_eq!(pending(&t, 1), text("c"));
+        let _ = t.undo();
+        let _ = t.undo();
+        assert_eq!(pending(&t, 1), text("a"));
+        assert_eq!(t.pending_count(), 0);
+    }
+
+    #[test]
+    fn new_edit_after_undo_clears_redo() {
+        let mut t = TabChangeTracker::default();
+        edit(&mut t, 1, "a", "b");
+        edit(&mut t, 1, "a", "c");
+        let _ = t.undo();
+
+        edit(&mut t, 1, "a", "d");
+
+        assert!(!t.can_redo());
+        assert!(t.redo().is_none());
+        assert_eq!(pending(&t, 1), text("d"));
+        let _ = t.undo();
+        assert_eq!(pending(&t, 1), text("b"));
+    }
+
+    #[test]
+    fn undo_delete_restores_prior_mark_absence() {
+        let mut t = TabChangeTracker::default();
+        let marked_twice = rk(&[Value::Int(1)]);
+        let marked_once = rk(&[Value::Int(2)]);
+        t.track_delete(marked_twice.clone(), vec![Value::Int(1)]);
+        t.track_delete(marked_twice.clone(), vec![Value::Int(1)]);
+        t.track_delete(marked_once.clone(), vec![Value::Int(2)]);
+
+        let _ = t.undo();
+        assert_eq!(t.row_state(&marked_once), RowState::Clean);
+        let _ = t.undo();
+        assert_eq!(t.row_state(&marked_twice), RowState::PendingDelete);
+        let _ = t.undo();
+        assert_eq!(t.row_state(&marked_twice), RowState::Clean);
+        assert_eq!(t.pending_count(), 0);
+    }
+
+    #[test]
+    fn draft_cell_undo_restores_previous_draft_value() {
+        let mut t = TabChangeTracker::default();
+        let draft_id = insert(&mut t, vec![Value::Null, text("a")]);
+        let _ = t.apply(TrackerEdit::DraftCell {
+            draft_id,
+            col: 1,
+            value: text("b"),
+        });
+        let _ = t.apply(TrackerEdit::DraftCell {
+            draft_id,
+            col: 1,
+            value: text("c"),
+        });
+
+        let undone = t.undo();
+
+        assert_eq!(
+            undone.map(|delta| delta.visual),
+            Some(vec![VisualChange::SetDraftCell {
+                draft_id,
+                col: 1,
+                value: text("b")
+            }])
+        );
+        assert_eq!(t.drafts()[0].values[1], text("b"));
+        let redone = t.redo().map(|delta| delta.visual);
+        assert_eq!(
+            redone,
+            Some(vec![VisualChange::SetDraftCell {
+                draft_id,
+                col: 1,
+                value: text("c")
+            }])
+        );
+    }
+
+    #[test]
+    fn change_set_orders_rows_by_last_touch() {
         let mut t = TabChangeTracker::default();
         let columns = vec![pk_col("id"), data_col("name")];
-        let updated = rk(&[Value::Int(5)]);
-        t.track_cell_edit(updated.clone(), 1, Value::Text("old".into()), Value::Text("new".into()));
-        t.track_insert(vec![Value::Null, Value::Text("draft".into())]);
-        t.track_delete(rk(&[Value::Int(9)]), vec![Value::Int(9), Value::Text("doomed".into())]);
+        edit(&mut t, 1, "a", "b");
+        let draft_id = insert(&mut t, vec![Value::Null, text("draft")]);
+        t.track_delete(rk(&[Value::Int(3)]), vec![Value::Int(3)]);
+        edit(&mut t, 2, "a", "b");
+        // Row 1 moves behind everything it was ahead of.
+        edit(&mut t, 1, "a", "c");
+
+        assert_eq!(
+            script(&t, &columns),
+            vec![
+                format!("insert {draft_id}"),
+                "delete [Int(3)]".to_owned(),
+                "update [Int(2)]".to_owned(),
+                "update [Int(1)]".to_owned(),
+            ]
+        );
+
+        // Undo puts the row's touch back with its value.
+        let _ = t.undo();
+        assert_eq!(script(&t, &columns)[0], "update [Int(1)]");
+    }
+
+    #[test]
+    fn change_set_places_delete_before_later_insert() {
+        let mut t = TabChangeTracker::default();
+        let columns = vec![pk_col("id"), data_col("email")];
+        t.track_delete(rk(&[Value::Int(1)]), vec![Value::Int(1), text("a")]);
+        let draft_id = insert(&mut t, vec![Value::Null, text("a")]);
 
         let (tracked, plan) = plan(&t, &columns);
 
         let sql: Vec<&str> = plan.batch.steps.iter().map(|step| step.statement.sql()).collect();
-        assert_eq!(sql.len(), 3);
-        assert!(sql[0].starts_with("INSERT"), "{sql:?}");
-        assert!(sql[1].starts_with("UPDATE"), "{sql:?}");
-        assert!(sql[2].starts_with("DELETE"), "{sql:?}");
-        let sources: Vec<_> = (0..3)
-            .map(|step| plan.origin(step).and_then(|o| tracked.source(o)))
+        assert!(sql[0].starts_with("DELETE"), "{sql:?}");
+        assert!(sql[1].starts_with("INSERT"), "{sql:?}");
+        assert!(matches!(
+            plan.origin(1).and_then(|change| tracked.source(change)),
+            Some(StatementSource::Insert { draft_id: id }) if id == draft_id
+        ));
+    }
+
+    #[test]
+    fn a_draft_edited_after_a_delete_saves_after_it() {
+        let mut t = TabChangeTracker::default();
+        let columns = vec![pk_col("id"), data_col("email")];
+        let draft_id = insert(&mut t, vec![Value::Null, Value::Null]);
+        t.track_delete(rk(&[Value::Int(1)]), vec![Value::Int(1), text("a")]);
+        let _ = t.apply(TrackerEdit::DraftCell {
+            draft_id,
+            col: 1,
+            value: text("a"),
+        });
+
+        assert_eq!(
+            script(&t, &columns),
+            vec!["delete [Int(1)]".to_owned(), format!("insert {draft_id}")]
+        );
+    }
+
+    #[test]
+    fn change_set_identical_across_trackers() {
+        let columns = vec![pk_col("id"), data_col("name")];
+        // Every tracker's maps get their own hash seed, so with this
+        // many rows two trackers iterate them in different orders.
+        let edit_script = |t: &mut TabChangeTracker| {
+            for id in (0..40).rev() {
+                match id % 3 {
+                    0 => t.track_delete(rk(&[Value::Int(id)]), vec![Value::Int(id)]),
+                    _ => t.track_cell_edit(rk(&[Value::Int(id)]), 1, text("a"), text("b")),
+                };
+            }
+            let _ = t.track_insert(vec![Value::Null, text("draft")]);
+        };
+        let mut first = TabChangeTracker::default();
+        let mut second = TabChangeTracker::default();
+        edit_script(&mut first);
+        edit_script(&mut second);
+
+        let mut edit_order: Vec<String> = (0..40)
+            .rev()
+            .map(|id| match id % 3 {
+                0 => format!("delete [Int({id})]"),
+                _ => format!("update [Int({id})]"),
+            })
             .collect();
-        assert!(matches!(sources[0], Some(StatementSource::Insert { .. })));
-        assert!(matches!(&sources[1], Some(StatementSource::Update { row_key }) if *row_key == updated));
-        assert!(matches!(sources[2], Some(StatementSource::Delete { .. })));
+        edit_order.push("insert 0".to_owned());
+
+        assert_eq!(script(&first, &columns), edit_order);
+        assert_eq!(script(&second, &columns), edit_order);
+    }
+
+    #[test]
+    fn deleted_row_emits_only_delete() {
+        let mut t = TabChangeTracker::default();
+        let columns = vec![pk_col("id"), data_col("name")];
+        edit(&mut t, 1, "a", "b");
+        t.track_delete(rk(&[Value::Int(1)]), vec![Value::Int(1), text("a")]);
+
+        assert_eq!(script(&t, &columns), vec!["delete [Int(1)]".to_owned()]);
+
+        // Undoing the delete brings the edit back into the save.
+        let _ = t.undo();
+        assert_eq!(script(&t, &columns), vec!["update [Int(1)]".to_owned()]);
     }
 
     #[test]

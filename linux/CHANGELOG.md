@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
 - A new row removed with Delete stayed in the grid while the save left it out.
 - A save that failed on a new row did not flash that row.
+- Undo after editing a cell twice restored the fetched value instead of the first edit.
+- A save that deleted a row and added a new one with the same unique value failed.
 - The window title showed no unsaved-changes bullet for pending structure changes.
 - `real` values showed extra digits in the grid, copies and exports, such as 0.10000000149011612 for 0.1.
 - Excel export rounded integers past 2^53 and wrote decimals as text when their column padded the scale.

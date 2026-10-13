@@ -4334,6 +4334,7 @@ dependencies = [
  "tablepro-session",
  "tablepro-ssh",
  "tablepro-storage",
+ "tablepro-test-fixtures",
  "tablepro-test-support",
  "tempfile",
  "thiserror",

@@ -99,6 +99,29 @@ mod tests {
     }
 
     #[test]
+    fn undo_rebinds_the_row_with_the_previous_pending_value() {
+        let tracker = TabTrackerHandle::default();
+        let fetched = Value::Text("a".into());
+        for value in ["b", "c"] {
+            let _ = tracker.apply(TrackerEdit::Cell {
+                row_key: row(1),
+                col: 1,
+                original: fetched.clone(),
+                value: Value::Text(value.into()),
+            });
+        }
+
+        let undone = tracker.undo().expect("an edit to undo");
+
+        assert_eq!(undone.rows, vec![row(1)]);
+        assert_eq!(undone.pending_count, 1);
+        assert_eq!(
+            tracker.cell_overlay(&row(1), 1, &fetched).value,
+            Value::Text("b".into())
+        );
+    }
+
+    #[test]
     fn clones_share_one_tracker() {
         let tracker = TabTrackerHandle::default();
         let grid_copy = tracker.clone();
