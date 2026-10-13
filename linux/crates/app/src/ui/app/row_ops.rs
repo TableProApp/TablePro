@@ -186,7 +186,9 @@ mod tests {
     use tablepro_core::column::{ColumnDefault, ColumnKind, ColumnType, IntegerKind, IntegerWidth};
 
     use super::*;
-    use crate::services::change_tracker::{RowKey, TabChangeTracker};
+    use crate::services::change_tracker::RowKey;
+    use crate::services::tab_tracker_handle::TabTrackerHandle;
+    use crate::services::tracker_edit::TrackerEdit;
 
     fn column(name: &str, primary_key: bool) -> ColumnInfo {
         let mut column_type = ColumnType::untyped_text("integer");
@@ -209,9 +211,16 @@ mod tests {
     fn planned() -> (SavePlan, TrackedChanges, RowKey) {
         let columns = vec![column("id", true), column("n", false)];
         let edited = RowKey::from_pk_values(&[Value::Int(3)]).unwrap();
-        let mut tracker = TabChangeTracker::new();
-        tracker.track_insert(vec![Value::Int(10), Value::Int(1)]);
-        tracker.track_cell_edit(edited.clone(), 1, Value::Int(1), Value::Int(2));
+        let tracker = TabTrackerHandle::default();
+        let _ = tracker.apply(TrackerEdit::Insert {
+            values: vec![Value::Int(10), Value::Int(1)],
+        });
+        let _ = tracker.apply(TrackerEdit::Cell {
+            row_key: edited.clone(),
+            col: 1,
+            original: Value::Int(1),
+            value: Value::Int(2),
+        });
         let changes = tracker.change_set(&columns).unwrap();
         let dialect = drivers_sqlite::SqliteDialect::new(drivers_sqlite::SqliteVersion::new(3, 45, 0));
         let plan = plan_save(

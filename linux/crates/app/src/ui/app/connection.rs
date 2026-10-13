@@ -911,7 +911,7 @@ impl App {
         // title with "• " when any open document has unsaved changes,
         // so the dirty state is visible from the Activities overview /
         // Alt-Tab without needing the tab to be focused.
-        if crate::services::change_tracker::any_pending_globally() {
+        if !self.dirty_tabs().is_empty() {
             os_title = format!("• {os_title}");
         }
         self.window.set_title(Some(&os_title));

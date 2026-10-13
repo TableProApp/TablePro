@@ -3,7 +3,9 @@ use std::sync::OnceLock;
 use tablepro_storage::StoragePaths;
 
 pub mod active_session;
+pub mod cell_overlay;
 pub mod change_tracker;
+pub mod change_tracker_registry;
 pub mod history_availability;
 pub mod history_service;
 pub mod secret_labels;
@@ -11,6 +13,12 @@ pub mod secret_save_report;
 pub mod session_context;
 pub mod single_instance;
 pub mod structure_tracker;
+pub mod structure_tracker_handle;
+pub mod structure_tracker_registry;
+pub mod tab_registry;
+pub mod tab_tracker_handle;
+pub mod tracker_delta;
+pub mod tracker_edit;
 pub mod workspace_state;
 
 static PATHS: OnceLock<StoragePaths> = OnceLock::new();

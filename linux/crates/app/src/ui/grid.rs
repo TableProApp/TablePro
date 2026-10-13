@@ -12,6 +12,9 @@ use tablepro_core::column::ResultColumn;
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
 use super::row_object::RowObject;
+use crate::services::cell_overlay::CellOverlay;
+use crate::services::change_tracker::{CellState, RowKey, RowState};
+use crate::services::tab_tracker_handle::TabTrackerHandle;
 
 #[derive(Debug)]
 pub enum GridMsg {
@@ -71,13 +74,11 @@ pub enum CellPreset {
     Null,
 }
 
-/// Per-tab context plumbed into the grid factory so cell bind-time
-/// callbacks can query the change tracker for pending-state CSS
-/// classes. `tab_id == None` means the grid is read-only / not
-/// associated with a tracked Browse tab (e.g., editor results).
+/// What a browse grid draws pending edits from. `tracker` is `None` for
+/// a grid nothing tracks, such as editor results.
 #[derive(Debug, Clone, Default)]
 pub struct TabGridContext {
-    pub tab_id: Option<uuid::Uuid>,
+    pub tracker: Option<TabTrackerHandle>,
     pub pk_col_indices: Vec<usize>,
     /// Where a dragged column edge is remembered. `None` for a grid
     /// with nothing to remember it against, such as editor results.
@@ -119,31 +120,18 @@ impl ColumnWidthBinding {
 }
 
 impl TabGridContext {
-    /// The tracker key for a persisted row. `None` when the grid isn't
-    /// backed by a tracked tab, when the row is a draft (its own cells
-    /// are the tracker's mirror and already authoritative), or when
-    /// the row carries no usable primary key.
-    fn tracked_key(&self, row: &RowObject) -> Option<(uuid::Uuid, crate::services::change_tracker::RowKey)> {
-        let tab_id = self.tab_id?;
-        if row.draft_id().is_some() {
-            return None;
-        }
-        let pk_values: Vec<Value> = self.pk_col_indices.iter().map(|&i| row.cell_value(i)).collect();
-        let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
-        Some((tab_id, key))
-    }
-
-    /// What the grid is showing for one cell: the tracker's pending
-    /// edit when there is one, else the row's stored value.
-    fn effective_cell(&self, row: &RowObject, idx: usize) -> Value {
-        let raw = row.cell_value(idx);
-        let Some((tab_id, key)) = self.tracked_key(row) else {
-            return raw;
+    /// The tracker and the row's key in it. `None` when nothing tracks
+    /// the grid or a persisted row has no usable primary key.
+    fn tracked_key(&self, row: &RowObject) -> Option<(&TabTrackerHandle, RowKey)> {
+        let tracker = self.tracker.as_ref()?;
+        let key = match row.draft_id() {
+            Some(draft_id) => RowKey::Draft(draft_id),
+            None => {
+                let pk_values: Vec<Value> = self.pk_col_indices.iter().map(|&i| row.cell_value(i)).collect();
+                RowKey::from_pk_values(&pk_values)?
+            }
         };
-        match crate::services::change_tracker::with_tab_ref(tab_id, |t| t.current_cell_value(&key, idx, &raw).clone()) {
-            Some(value) => value,
-            None => raw,
-        }
+        Some((tracker, key))
     }
 
     /// The whole row as the grid is showing it. Every copy and export
@@ -151,19 +139,41 @@ impl TabGridContext {
     /// a persisted row holds the untouched values the fetch returned.
     pub(super) fn effective_cells(&self, row: &RowObject) -> Vec<Value> {
         let raw = row.cells_clone();
-        let Some((tab_id, key)) = self.tracked_key(row) else {
+        let Some((tracker, key)) = self.tracked_key(row) else {
             return raw;
         };
-        match crate::services::change_tracker::with_tab_ref(tab_id, |t| {
-            raw.iter()
-                .enumerate()
-                .map(|(i, v)| t.current_cell_value(&key, i, v).clone())
-                .collect::<Vec<Value>>()
-        }) {
-            Some(cells) => cells,
-            None => raw,
-        }
+        raw.iter()
+            .enumerate()
+            .map(|(col, value)| tracker.cell_overlay(&key, col, value).value)
+            .collect()
     }
+
+    /// The value a bind draws and the pending-state classes it carries.
+    fn bind_state(&self, row: &RowObject, col: usize) -> (Value, Vec<&'static str>) {
+        let raw = row.cell_value(col);
+        let Some((tracker, key)) = self.tracked_key(row) else {
+            return (raw, Vec::new());
+        };
+        let overlay = tracker.cell_overlay(&key, col, &raw);
+        let classes = pending_classes(tracker.row_state(&key), &overlay, col);
+        (overlay.value, classes)
+    }
+}
+
+/// Pending state shows as the row's tint alone: insert green, modified
+/// orange, delete red with a strikethrough.
+fn pending_classes(row_state: RowState, overlay: &CellOverlay, col: usize) -> Vec<&'static str> {
+    let mut classes = Vec::new();
+    match (row_state, overlay.state) {
+        (RowState::PendingDelete, _) => classes.push("tp-row-pending-delete"),
+        (RowState::InsertDraft, _) => classes.push("tp-row-pending-insert"),
+        (_, CellState::Modified) => classes.push("tp-cell-modified"),
+        _ => {}
+    }
+    if col == 0 && overlay.error_flash {
+        classes.push("tp-row-leftmost-error-flash");
+    }
+    classes
 }
 
 pub fn build_column_view(
@@ -377,20 +387,7 @@ fn build_column(
         let Some(row) = item.item().and_downcast::<RowObject>() else {
             return;
         };
-        // For persisted rows, RowObject.cells holds the immutable
-        // original DB values — the tracker is the single source of
-        // truth for pending edits. Override with the tracker's
-        // pending value when one exists so the cell visibly
-        // reflects what the user typed (with `tp-cell-modified`
-        // applied below for the orange tint). Without this, edits
-        // appear to "disappear" the moment the cell rebinds, which
-        // is exactly the symptom the user hit on undo.
-        //
-        // Drafts skip this branch — their cells live inside the
-        // tracker's `inserts.values` AND mirror onto RowObject
-        // (set_cell at edit time), so `row.cell_value(idx)` is
-        // already authoritative for them.
-        let value = tab_ctx_for_bind.effective_cell(&row, idx);
+        let (value, pending_classes) = tab_ctx_for_bind.bind_state(&row, idx);
         let is_null = matches!(value, Value::Null);
         // Editable cells render NULL as the italic <NULL> sentinel —
         // distinguishes a true NULL from an empty string visually.
@@ -409,55 +406,6 @@ fn build_column(
             }
         } else {
             value_to_display_text(&value)
-        };
-
-        // Query the per-tab change tracker for pending state on this
-        // (row, col). Apply tp-cell-modified / tp-row-pending-delete /
-        // tp-row-pending-insert CSS classes accordingly. Done at bind
-        // time so scroll-recycled widgets always reflect current
-        // tracker state without needing per-cell signal subscriptions.
-        //
-        // Draft rows are detected via RowObject's draft_id field
-        // (set when the row was created via the inline-Insert flow).
-        // Persisted rows are keyed by PK column values via
-        // RowKey::from_pk_values.
-        //
-        // Pending state is communicated through the row's BACKGROUND
-        // TINT alone (insert = green, modified = orange via
-        // `.tp-cell-modified`, delete = red+strikethrough). No
-        // leftmost-cell ribbon — that custom GNOME-Builder-style
-        // gutter felt foreign next to the AdwListView idiom, and
-        // the tint+strikethrough already make the row state legible
-        // at a glance.
-        let pending_classes: Vec<&'static str> = if tab_ctx_for_bind.tab_id.is_none() {
-            Vec::new()
-        } else if row.draft_id().is_some() {
-            vec!["tp-row-pending-insert"]
-        } else {
-            match tab_ctx_for_bind.tracked_key(&row) {
-                None => Vec::new(),
-                Some((tab_id, key)) => crate::services::change_tracker::with_tab_ref(tab_id, |t| {
-                    let mut v: Vec<&'static str> = Vec::new();
-                    let row_state = t.row_state(&key);
-                    let cell_state = t.cell_state(&key, idx);
-                    use crate::services::change_tracker::{CellState, RowState};
-                    match (row_state, cell_state) {
-                        (RowState::PendingDelete, _) => v.push("tp-row-pending-delete"),
-                        (RowState::InsertDraft, _) => v.push("tp-row-pending-insert"),
-                        (_, CellState::Modified) => v.push("tp-cell-modified"),
-                        _ => {}
-                    }
-                    // Error-flash overlay on the leftmost cell — a
-                    // transient background-only animation pulls the
-                    // eye to the row that failed to commit. No
-                    // accompanying gutter ribbon (see comment above).
-                    if idx == 0 && t.is_error_row(&key) {
-                        v.push("tp-row-leftmost-error-flash");
-                    }
-                    v
-                })
-                .unwrap_or_default(),
-            }
         };
 
         let is_pending_delete = pending_classes.contains(&"tp-row-pending-delete");
@@ -2208,6 +2156,100 @@ mod tests {
             default: tablepro_core::column::ColumnDefault::None,
             comment: None,
         }
+    }
+
+    fn cell_texts(root: &impl IsA<gtk::Widget>) -> Vec<String> {
+        crate::test_support::descendants(root)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<crate::ui::cell_editor::CellEditor>().ok())
+            .map(|cell| cell.text().to_string())
+            .collect()
+    }
+
+    #[gtk4::test]
+    fn edit_during_rebind_shows_pending_value() {
+        use crate::services::tracker_edit::TrackerEdit;
+
+        let mut id = col("integer", true);
+        id.name = "id".into();
+        let mut name = col("text", false);
+        name.name = "name".into();
+        let columns = vec![id, name];
+        let result = QueryResult::new(
+            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+            vec![vec![Value::Int(1), Value::Text("old".into())]],
+        );
+        let tracker = TabTrackerHandle::default();
+        let (sender, _receiver) = relm4::channel::<GridMsg>();
+        let context = TabGridContext {
+            tracker: Some(tracker.clone()),
+            pk_col_indices: vec![0],
+            column_widths: None,
+        };
+        let (view, selection) = build_column_view(&result, &columns, sender, true, None, None, context);
+        let window = gtk::Window::new();
+        window.set_child(Some(&view));
+        window.present();
+        crate::test_support::wait_until(std::time::Duration::from_secs(5), || {
+            cell_texts(&view).iter().any(|text| text == "old")
+        })
+        .expect("the fetched value is drawn");
+
+        let delta = tracker.apply(TrackerEdit::Cell {
+            row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"),
+            col: 1,
+            original: Value::Text("old".into()),
+            value: Value::Text("new".into()),
+        });
+        // A fresh row object, because the list item manager skips the
+        // rebind for an items-changed that keeps the same item.
+        let store = selection
+            .model()
+            .and_downcast::<gio::ListStore>()
+            .expect("a list store");
+        let row = store.item(0).and_downcast::<RowObject>().expect("a row");
+        store.splice(0, 1, &[RowObject::new(row.cells_clone())]);
+
+        crate::test_support::wait_until(std::time::Duration::from_secs(5), || {
+            cell_texts(&view).iter().any(|text| text == "new")
+        })
+        .expect("the rebind draws the pending value");
+        assert_eq!(delta.pending_count, 1);
+        window.close();
+        crate::test_support::drain_main_context();
+    }
+
+    #[test]
+    fn a_tracked_draft_carries_its_insert_tint_and_error_flash() {
+        let tracker = TabTrackerHandle::default();
+        let delta = tracker.apply(crate::services::tracker_edit::TrackerEdit::Insert {
+            values: vec![Value::Null],
+        });
+        let Some(crate::services::tracker_delta::VisualChange::InsertDraft { draft_id, values }) =
+            delta.visual.into_iter().next()
+        else {
+            panic!("an insert adds a draft row");
+        };
+        let _ = tracker.flash_error_row(RowKey::Draft(draft_id));
+        let context = TabGridContext {
+            tracker: Some(tracker),
+            pk_col_indices: vec![0],
+            column_widths: None,
+        };
+
+        let (_, classes) = context.bind_state(&RowObject::new_draft(draft_id, values), 0);
+
+        assert_eq!(classes, vec!["tp-row-pending-insert", "tp-row-leftmost-error-flash"]);
+    }
+
+    #[test]
+    fn an_untracked_grid_draws_the_fetched_value_plainly() {
+        let row = RowObject::new(vec![Value::Int(1)]);
+
+        let (value, classes) = TabGridContext::default().bind_state(&row, 0);
+
+        assert_eq!(value, Value::Int(1));
+        assert!(classes.is_empty());
     }
 
     #[test]

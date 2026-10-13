@@ -3,8 +3,6 @@ use std::cell::Cell;
 use relm4::adw::prelude::*;
 use relm4::{ComponentSender, adw};
 
-use crate::services::{change_tracker, structure_tracker};
-
 use super::{App, AppMsg, WorkspaceTab};
 
 /// What closing the workspace would throw away.
@@ -41,7 +39,7 @@ pub(super) enum Teardown {
 
 impl App {
     pub(super) fn workspace_loss(&self) -> WorkspaceLoss {
-        let unsaved_edits = change_tracker::any_pending_globally() || structure_tracker::any_pending_globally();
+        let unsaved_edits = !self.dirty_tabs().is_empty();
         let open_transactions = self
             .workspace_tabs
             .borrow()

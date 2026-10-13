@@ -18,3 +18,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
+- A new row removed with Delete stayed in the grid while the save left it out.
+- A save that failed on a new row did not flash that row.
+- The window title showed no unsaved-changes bullet for pending structure changes.

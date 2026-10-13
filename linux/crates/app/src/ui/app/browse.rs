@@ -200,7 +200,10 @@ impl App {
         let Some(id) = self.selected_browse_tab_id() else {
             return;
         };
-        let dirty = crate::services::change_tracker::with_tab_ref(id, |tr| tr.has_pending()).unwrap_or(false);
+        let dirty = self
+            .change_trackers
+            .get(id)
+            .is_some_and(|tracker| tracker.pending_count() > 0);
         if !dirty {
             self.dispatch_to_tab(id, BrowseTabInput::Refresh);
             return;
@@ -223,11 +226,10 @@ impl App {
         let workspace_tabs = self.workspace_tabs.clone();
         dialog.connect_response(None, move |dlg: &adw::AlertDialog, response: &str| {
             dlg.close();
-            if response == "discard" {
-                crate::services::change_tracker::with_tab(id, |t| t.clear());
-                if let Some(controller) = workspace_tabs.borrow().get(&id).and_then(|t| t.browse_controller()) {
-                    let _ = controller.sender().send(BrowseTabInput::Refresh);
-                }
+            if response == "discard"
+                && let Some(controller) = workspace_tabs.borrow().get(&id).and_then(|t| t.browse_controller())
+            {
+                let _ = controller.sender().send(BrowseTabInput::DiscardAndRefresh);
             }
         });
         dialog.present(Some(&self.window));

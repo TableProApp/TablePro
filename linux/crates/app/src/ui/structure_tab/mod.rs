@@ -42,9 +42,8 @@ use tablepro_core::ddl::{ColumnDefinition, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn};
 use tablepro_core::{ForeignKeyInfo, IndexInfo};
-use uuid::Uuid;
 
-use crate::services::structure_tracker;
+use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::ui::structure_tab_dialogs::{present_fk_dialog, present_index_dialog};
 use tablepro_core::sql_ddl::{StructureOp, diff_to_ops, materialize_ops};
 
@@ -66,7 +65,7 @@ pub enum StructureMode {
 
 #[derive(Debug)]
 pub struct StructureTabInit {
-    pub tab_id: Uuid,
+    pub tracker: StructureTrackerHandle,
     pub schema: Option<String>,
     pub table: String,
     pub mode: StructureMode,
@@ -82,7 +81,7 @@ pub struct StructureTabInit {
 }
 
 pub struct StructureTab {
-    tab_id: Uuid,
+    tracker: StructureTrackerHandle,
     schema: Option<String>,
     table_name: Rc<RefCell<String>>,
     mode: Rc<RefCell<StructureMode>>,
@@ -278,9 +277,7 @@ impl StructureTab {
         let count = ops.len();
         self.refresh_buttons(count);
         self.regenerate_sql_preview_from(&ops);
-
-        let ops_for_cache = ops.clone();
-        structure_tracker::with_tab(self.tab_id, |t| t.set_ops(ops_for_cache));
+        self.tracker.set_ops(ops);
 
         let dirty = count > 0;
         let mut last = self.last_dirty.borrow_mut();
@@ -520,8 +517,6 @@ impl SimpleComponent for StructureTab {
     }
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        structure_tracker::open_tab(init.tab_id);
-
         let view_stack = adw::ViewStack::new();
 
         let columns_box = gtk::Box::builder()
@@ -814,7 +809,7 @@ impl SimpleComponent for StructureTab {
         }
 
         let model = StructureTab {
-            tab_id: init.tab_id,
+            tracker: init.tracker,
             schema: init.schema,
             original_table_name: Rc::new(RefCell::new(init.table.clone())),
             table_name: Rc::new(RefCell::new(init.table)),
@@ -1103,7 +1098,7 @@ impl SimpleComponent for StructureTab {
                     // a New→Edit promotion doesn't leave a stale CREATE
                     // TABLE statement visible in the preview pane until
                     // StructureLoaded arrives.
-                    structure_tracker::with_tab(self.tab_id, |t| t.clear());
+                    self.tracker.clear();
                     self.refresh_buttons(0);
                     self.regenerate_sql_preview_from(&[]);
                     let mut last = self.last_dirty.borrow_mut();
