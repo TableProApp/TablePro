@@ -9,7 +9,7 @@ use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 use uuid::Uuid;
 
 use crate::services::workspace_state::{self, ConnectionWorkspaceState, WorkspaceTabRecord};
-use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput};
+use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest, SaveRequest};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
 
 use super::{
@@ -260,7 +260,10 @@ impl App {
         let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
         let read_only = self.read_only;
 
-        let browse_init = BrowseTabInit {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let browse = BrowseTab::new(BrowseTabInit {
             tracker: self.change_trackers.register(tab_id),
             schema: schema.clone(),
             table: table.clone(),
@@ -271,36 +274,12 @@ impl App {
             initial_sort: sort,
             column_widths: self.storage.column_widths().clone(),
             filter_settings: self.storage.filter_settings().clone(),
-        };
-        let browse = BrowseTab::builder()
-            .launch(browse_init)
-            .forward(sender.input_sender(), move |out| match out {
-                BrowseTabOutput::FetchPage => AppMsg::FetchBrowsePage(tab_id),
-                BrowseTabOutput::FetchColumns => AppMsg::FetchBrowseColumns(tab_id),
-                BrowseTabOutput::FetchRowCount => AppMsg::FetchBrowseRowCount(tab_id),
-                BrowseTabOutput::StateChanged => AppMsg::WorkspaceTabsChanged,
-                BrowseTabOutput::CopyRowAsInsert { row_position } => AppMsg::CopyRowAsInsert { tab_id, row_position },
-                BrowseTabOutput::CopyToClipboard(text) => AppMsg::CopyToClipboard(text),
-                BrowseTabOutput::ExportResults { result, name, target } => {
-                    AppMsg::ExportResults { result, name, target }
-                }
-                BrowseTabOutput::SchemaWordsChanged(_words) => AppMsg::WorkspaceSchemaWordsChanged,
-                BrowseTabOutput::ShowSelectionAlert { title, body } => AppMsg::ShowAlert { title, body },
-                BrowseTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
-                BrowseTabOutput::DirtyChanged(dirty) => AppMsg::BrowseTabDirtyChanged(tab_id, dirty),
-                BrowseTabOutput::ExecuteTransaction {
-                    table,
-                    columns,
-                    changes,
-                } => AppMsg::ExecuteBrowseTransaction {
-                    tab_id,
-                    table,
-                    columns,
-                    changes,
-                },
-            });
+            session,
+            tasks: self.context.tasks.clone(),
+        });
+        connect_browse(&browse, tab_id, sender.input_sender());
 
-        let page = tab_view.append(browse.widget());
+        let page = tab_view.append(&browse);
         let label = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
         page.set_title(&label);
         if let Some(tip) = browse_tab_tooltip(schema.as_deref(), &table, &label) {
@@ -641,6 +620,7 @@ impl App {
                 self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
             WorkspaceTab::Table(slot) => {
+                slot.browse.shutdown();
                 self.change_trackers.unregister(slot.id);
                 self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
@@ -787,6 +767,59 @@ impl App {
         self.append_table_tab(schema, name, 0, page_size, None, sender);
     }
 
+    /// Ctrl+F / Filter button: toggle the inline filter strip on the
+    /// active Browse tab.
+    pub(super) fn on_show_filter_dialog(&self) {
+        let Some(id) = self.selected_browse_tab_id() else {
+            self.show_toast(&crate::i18n::gettext("Open a table to filter rows."));
+            return;
+        };
+        self.dispatch_to_tab(id, BrowseTabInput::ToggleFilterStrip);
+    }
+
+    pub(super) fn on_refresh_active_tab(&self) {
+        let Some(id) = self.selected_browse_tab_id() else {
+            return;
+        };
+        let dirty = self
+            .change_trackers
+            .get(id)
+            .is_some_and(|tracker| tracker.pending_count() > 0);
+        if !dirty {
+            self.dispatch_to_tab(id, BrowseTabInput::Refresh);
+            return;
+        }
+        // A refetch replaces the rows and with them every pending edit,
+        // so F5 mid-edit asks first, as closing a dirty tab does.
+        let dialog = adw::AlertDialog::new(
+            Some(&crate::i18n::gettext("Discard pending changes?")),
+            Some(&crate::i18n::gettext(
+                "Refreshing reloads the table from the database and drops every unsaved edit on this tab.",
+            )),
+        );
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("discard", &crate::i18n::gettext("Discard and refresh"));
+        dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let workspace_tabs = self.workspace_tabs.clone();
+        dialog.connect_response(None, move |dlg: &adw::AlertDialog, response: &str| {
+            dlg.close();
+            if response != "discard" {
+                return;
+            }
+            let browse = workspace_tabs
+                .borrow()
+                .get(&id)
+                .and_then(|tab| tab.browse_tab())
+                .cloned();
+            if let Some(browse) = browse {
+                browse.send(BrowseTabInput::DiscardAndRefresh);
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
+
     /// Persist workspace tabs for the active connection. Walks
     /// `tab_view.pages()` for canonical display order (HashMap is
     /// unordered; user can drag-reorder).
@@ -860,8 +893,7 @@ fn do_persist_workspace_state(
                 if s.table.is_empty() {
                     continue;
                 }
-                let model = s.browse.model();
-                let sort = model.current_sort();
+                let sort = s.browse.current_sort();
                 WorkspaceTabRecord::Table {
                     schema: s.schema.clone(),
                     table: s.table.clone(),
@@ -869,8 +901,8 @@ fn do_persist_workspace_state(
                     // describe a Data-side Browse tab now. Structure
                     // tabs persist as separate `Structure` records.
                     mode: crate::services::workspace_state::PersistedTableMode::Data,
-                    offset: model.current_offset(),
-                    page_size: model.page_size(),
+                    offset: s.browse.current_offset(),
+                    page_size: s.browse.page_size(),
                     sort_col: sort.map(|(c, _)| c),
                     sort_asc: sort.map(|(_, a)| a),
                 }
@@ -938,11 +970,7 @@ impl App {
         // active mode) as candidates — the Browse-side controller is
         // present in both. Save / Discard / Find paths route through
         // this helper.
-        if slot.browse_controller().is_some() {
-            Some(id)
-        } else {
-            None
-        }
+        if slot.browse_tab().is_some() { Some(id) } else { None }
     }
 
     pub(super) fn selected_browse_slot_table(&self) -> Option<(Option<String>, String)> {
@@ -956,10 +984,8 @@ impl App {
         let mut words: Vec<String> = self.table_names.clone();
         let tabs = self.workspace_tabs.borrow();
         for tab in tabs.values() {
-            if let Some(controller) = tab.browse_controller() {
-                for col in controller.model().columns() {
-                    words.push(col.name.clone());
-                }
+            if let Some(browse) = tab.browse_tab() {
+                words.extend(browse.columns().into_iter().map(|column| column.name));
             }
         }
         words.sort_unstable();
@@ -1021,7 +1047,10 @@ impl App {
         for tab in self.workspace_tabs.borrow().values() {
             match tab {
                 WorkspaceTab::Structure(slot) => self.structure_trackers.unregister(slot.id),
-                WorkspaceTab::Table(slot) => self.change_trackers.unregister(slot.id),
+                WorkspaceTab::Table(slot) => {
+                    slot.browse.shutdown();
+                    self.change_trackers.unregister(slot.id);
+                }
                 WorkspaceTab::Editor(_) => {}
             }
         }
@@ -1052,13 +1081,14 @@ impl App {
     /// Browse-side controller in both legacy `Browse` slots and the
     /// unified `Table` slot.
     pub(super) fn dispatch_to_tab(&self, tab_id: Uuid, msg: BrowseTabInput) {
-        if let Some(controller) = self
+        let browse = self
             .workspace_tabs
             .borrow()
             .get(&tab_id)
-            .and_then(|t| t.browse_controller())
-        {
-            let _ = controller.sender().send(msg);
+            .and_then(|t| t.browse_tab())
+            .cloned();
+        if let Some(browse) = browse {
+            browse.send(msg);
         }
     }
 
@@ -1320,17 +1350,13 @@ fn browse_tab_tooltip(schema: Option<&str>, table: &str, label: &str) -> Option<
 fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
     match slot {
         WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor { query: s.query.clone() }),
-        WorkspaceTab::Table(s) => {
-            let model = s.browse.model();
-            let sort = model.current_sort();
-            Some(ClosedTabDescriptor::Table {
-                schema: s.schema.clone(),
-                table: s.table.clone(),
-                offset: model.current_offset(),
-                page_size: model.page_size(),
-                sort,
-            })
-        }
+        WorkspaceTab::Table(s) => Some(ClosedTabDescriptor::Table {
+            schema: s.schema.clone(),
+            table: s.table.clone(),
+            offset: s.browse.current_offset(),
+            page_size: s.browse.page_size(),
+            sort: s.browse.current_sort(),
+        }),
         WorkspaceTab::Structure(s) => match s.mode {
             // New-Table drafts have no entity to point at and lose
             // their in-progress DDL on close — nothing to reopen.
@@ -1422,6 +1448,46 @@ fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
 
 /// Forward an editor tab's signals into the window. The toast overlay
 /// is the window's, so a replaced query's Undo button lives there.
+/// The browse tab's signals, as this window's inputs for the tab.
+fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
+    let state = input.clone();
+    browse.connect_state_changed(move |_| state.emit(AppMsg::WorkspaceTabsChanged));
+    let columns = input.clone();
+    browse.connect_columns_changed(move |_| columns.emit(AppMsg::WorkspaceSchemaWordsChanged));
+    let copy_row = input.clone();
+    browse.connect_copy_row_as_insert(move |_, row_position| {
+        copy_row.emit(AppMsg::CopyRowAsInsert { tab_id, row_position });
+    });
+    let clipboard = input.clone();
+    browse.connect_copy_to_clipboard(move |_, text| clipboard.emit(AppMsg::CopyToClipboard(text)));
+    let export = input.clone();
+    browse.connect_export_results(move |_, ExportRequest { result, name, target }| {
+        export.emit(AppMsg::ExportResults { result, name, target });
+    });
+    let alert = input.clone();
+    browse.connect_alert(move |_, title, body| alert.emit(AppMsg::ShowAlert { title, body }));
+    let toast = input.clone();
+    browse.connect_toast(move |_, text| toast.emit(AppMsg::ShowToast(text)));
+    let dirty = input.clone();
+    browse.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::BrowseTabDirtyChanged(tab_id, is_dirty)));
+    let save = input.clone();
+    browse.connect_save_requested(
+        move |_,
+              SaveRequest {
+                  table,
+                  columns,
+                  changes,
+              }| {
+            save.emit(AppMsg::ExecuteBrowseTransaction {
+                tab_id,
+                table,
+                columns,
+                changes,
+            });
+        },
+    );
+}
+
 fn connect_editor(
     editor: &SqlEditor,
     tab_id: Uuid,

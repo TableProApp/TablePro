@@ -49,14 +49,6 @@ impl App {
         }
     }
 
-    /// Convenience for `set_status_page(Error, ...)` and similar; in the
-    /// connected state, browse-tab errors flow through BrowseTabInput::ShowError.
-    /// Used here only for app-level (non-tab-scoped) failures — surfaces
-    /// as an alert dialog so the user actually notices.
-    pub(super) fn set_status_page(&self, _kind: super::StatusKind, title: &str, description: &str) {
-        self.show_error_alert(title, description);
-    }
-
     pub(super) fn show_toast(&self, msg: &str) {
         self.toast_overlay.add_toast(adw::Toast::new(msg));
     }

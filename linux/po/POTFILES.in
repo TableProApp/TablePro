@@ -50,7 +50,6 @@ crates/app/src/test_support/tests.rs
 crates/app/src/test_support/unlabelled_widget.rs
 crates/app/src/test_support/wait_timed_out.rs
 crates/app/src/test_support/widget_lookup.rs
-crates/app/src/ui/app/browse.rs
 crates/app/src/ui/app/connect_flow.rs
 crates/app/src/ui/app/connection.rs
 crates/app/src/ui/app/import.rs
@@ -61,7 +60,13 @@ crates/app/src/ui/app/status_pages.rs
 crates/app/src/ui/app/structure.rs
 crates/app/src/ui/app/teardown_guard.rs
 crates/app/src/ui/app/workspace_tabs.rs
-crates/app/src/ui/browse_tab.rs
+crates/app/src/ui/browse_tab/browse_command.rs
+crates/app/src/ui/browse_tab/browse_request_kind.rs
+crates/app/src/ui/browse_tab/fetch.rs
+crates/app/src/ui/browse_tab/imp.rs
+crates/app/src/ui/browse_tab/mod.rs
+crates/app/src/ui/browse_tab/page_reply.rs
+crates/app/src/ui/browse_tab/tests.rs
 crates/app/src/ui/cell_editor.rs
 crates/app/src/ui/connect_dialog/connect_form.rs
 crates/app/src/ui/connect_dialog/connect_submission.rs
@@ -143,6 +148,7 @@ data/app.tablepro.TablePro.desktop.in.in
 data/app.tablepro.TablePro.gschema.xml
 data/app.tablepro.TablePro.metainfo.xml.in.in
 data/resources/shortcuts-dialog.ui
+data/resources/ui/browse-tab.ui
 data/resources/ui/connect-dialog.ui
 data/resources/ui/preferences-dialog.ui
 data/resources/ui/results-pane.ui

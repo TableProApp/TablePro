@@ -541,33 +541,27 @@ impl App {
 
     /// The schema changed under the window. The catalog forgets the
     /// table's columns and reads the sidebar's list again, and every
-    /// Browse tab open on the table reads it again.
-    pub(super) fn on_schema_changed(
-        &self,
-        schema: Option<String>,
-        table: Option<String>,
-        sender: ComponentSender<Self>,
-    ) {
+    /// Browse tab open on the table reads it again through its own
+    /// requests, which share the catalog's one column fetch.
+    pub(super) fn on_schema_changed(&self, schema: Option<String>, table: Option<String>) {
         let Some(session) = self.context.active.get() else {
             return;
         };
-        if let Some(table_name) = table.as_deref() {
-            session.invalidate_table(&TableRef::new(schema.clone(), table_name));
-            // The ids are collected under a short borrow, so the inputs
-            // that follow can borrow the tabs again.
-            let mut affected: Vec<Uuid> = Vec::new();
-            for (id, tab) in self.workspace_tabs.borrow().iter() {
-                if let WorkspaceTab::Table(slot) = tab
-                    && slot.schema.as_deref() == schema.as_deref()
-                    && slot.table == table_name
-                {
-                    affected.push(*id);
-                }
-            }
-            for id in affected {
-                sender.input(AppMsg::FetchBrowseColumns(id));
-                sender.input(AppMsg::FetchBrowsePage(id));
-                sender.input(AppMsg::FetchBrowseRowCount(id));
+        if let Some(table) = table {
+            session.invalidate_table(&TableRef::new(schema.clone(), table.clone()));
+            let affected: Vec<crate::ui::browse_tab::BrowseTab> = self
+                .workspace_tabs
+                .borrow()
+                .values()
+                .filter_map(|tab| match tab {
+                    WorkspaceTab::Table(slot) if slot.schema == schema && slot.table == table => {
+                        Some(slot.browse.clone())
+                    }
+                    _ => None,
+                })
+                .collect();
+            for browse in affected {
+                browse.send(crate::ui::browse_tab::BrowseTabInput::SchemaChanged);
             }
         }
         // The new list reaches the sidebar through the catalog watch.

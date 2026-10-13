@@ -1,4 +1,3 @@
-mod browse;
 mod connect_flow;
 mod connection;
 mod import;
@@ -249,7 +248,7 @@ pub struct TableTabSlot {
     pub page: adw::TabPage,
     pub schema: Option<String>,
     pub table: String,
-    pub browse: Controller<BrowseTab>,
+    pub browse: BrowseTab,
 }
 
 /// A tab in the unified workspace.
@@ -269,8 +268,8 @@ pub enum WorkspaceTab {
 }
 
 impl WorkspaceTab {
-    /// The Browse-side controller. Only `Table` slots carry one.
-    pub fn browse_controller(&self) -> Option<&Controller<BrowseTab>> {
+    /// The Browse tab. Only `Table` slots carry one.
+    pub fn browse_tab(&self) -> Option<&BrowseTab> {
         match self {
             WorkspaceTab::Table(s) => Some(&s.browse),
             _ => None,
@@ -360,11 +359,6 @@ pub enum AppMsg {
         name: String,
         open_mode: OpenMode,
     },
-    ColumnsLoaded(Uuid, Vec<ColumnInfo>),
-    RowsLoaded(Uuid, u64, QueryResult),
-    /// `Some(tab_id)` for tab-scoped failures; `None` for app-level
-    /// failures (e.g. connect failure during open_saved).
-    LoadFailed(Option<Uuid>, String),
     ReloadConnections,
     ConnectionsLoaded(Vec<SavedConnection>),
     ConnectionListUnavailable,
@@ -433,8 +427,6 @@ pub enum AppMsg {
     RefreshPage,
     ShowAbout,
     ShowPreferences,
-    /// Sort flipped on tab_id's grid for column idx.
-    RowCountLoaded(Uuid, u64),
     ExportResults {
         result: QueryResult,
         name: String,
@@ -447,12 +439,6 @@ pub enum AppMsg {
     },
 
     // ── Workspace tab routing ────────────────────────────────────────
-    /// BrowseTab sub-component asked for its current page to be fetched.
-    FetchBrowsePage(Uuid),
-    /// BrowseTab needs schema columns.
-    FetchBrowseColumns(Uuid),
-    /// BrowseTab needs the row count.
-    FetchBrowseRowCount(Uuid),
     /// Any browse tab's columns changed; rebuild editor schema buffer.
     WorkspaceSchemaWordsChanged,
     /// User clicked the close-X on any workspace tab.
@@ -616,26 +602,6 @@ pub enum AppMsg {
     /// Ctrl+F → open the filter strip for the active Browse tab.
     /// No-op when the active tab isn't a Browse / Table tab.
     ShowFilterDialog,
-}
-
-/// Determines which icon and styling adw::StatusPage uses.
-///
-/// Replaces the previous title-string sniffing in `set_status_page`,
-/// which broke the moment a translation used different vocabulary
-/// for "Failed" / "Error" / "No connection".
-#[derive(Debug, Clone, Copy)]
-pub(super) enum StatusKind {
-    Info,
-    Error,
-}
-
-impl StatusKind {
-    fn icon(self) -> &'static str {
-        match self {
-            StatusKind::Info => crate::ui::icons::VIEW_GRID,
-            StatusKind::Error => crate::ui::icons::DIALOG_ERROR,
-        }
-    }
 }
 
 /// Tabs in either registry with unsaved changes.
@@ -1282,7 +1248,7 @@ impl SimpleComponent for App {
         workspace_empty_cta.add_css_class("suggested-action");
         workspace_empty_cta.add_css_class("pill");
         let workspace_empty_page = adw::StatusPage::builder()
-            .icon_name(StatusKind::Info.icon())
+            .icon_name(crate::ui::icons::VIEW_GRID)
             .title(crate::i18n::gettext("Select a table"))
             .description(crate::i18n::gettext(
                 "Pick a table from the sidebar, or use the button below (Ctrl+T).",
@@ -1429,14 +1395,7 @@ impl SimpleComponent for App {
                 schema,
                 name,
                 open_mode,
-            } => self.on_select_table(schema, name, open_mode, sender),
-            AppMsg::ColumnsLoaded(tab_id, columns) => self.on_browse_columns_loaded(tab_id, columns),
-            AppMsg::RowsLoaded(tab_id, offset, result) => self.on_browse_rows_loaded(tab_id, offset, result),
-            AppMsg::LoadFailed(tab_id, msg) => self.on_browse_load_failed(tab_id, msg),
-            AppMsg::RowCountLoaded(tab_id, count) => self.on_browse_row_count_loaded(tab_id, count),
-            AppMsg::FetchBrowsePage(tab_id) => self.fetch_browse_page(tab_id, sender),
-            AppMsg::FetchBrowseColumns(tab_id) => self.fetch_browse_columns(tab_id, sender),
-            AppMsg::FetchBrowseRowCount(tab_id) => self.fetch_browse_row_count(tab_id, sender),
+            } => self.dispatch_select_table(schema, name, open_mode, sender),
             AppMsg::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
             AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
             AppMsg::ExecuteBrowseTransaction {
@@ -1540,7 +1499,7 @@ impl SimpleComponent for App {
             } => self.on_structure_data_loaded(tab_id, *definition, dialect),
             AppMsg::StructureLoadFailed { tab_id, message } => self.on_structure_load_failed(tab_id, message),
             AppMsg::StructureTabDirtyChanged(tab_id, dirty) => self.refresh_structure_tab_dirty(tab_id, dirty),
-            AppMsg::SchemaChanged { schema, table } => self.on_schema_changed(schema, table, sender),
+            AppMsg::SchemaChanged { schema, table } => self.on_schema_changed(schema, table),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionListUnavailable => self.show_connection_list_banner(),
             AppMsg::SecretDeleteFailed(id) => self.on_secret_delete_failed(id, sender),

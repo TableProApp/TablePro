@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProBrowseTab" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToolbarView" id="toolbar">
+        <!-- The tab sits right under the tab bar, so a raised top bar
+             would draw a separator above the grid even with every
+             banner collapsed. -->
+        <property name="top-bar-style">flat</property>
+        <child type="top">
+          <object class="AdwBanner" id="read_only_banner">
+            <property name="title" translatable="yes">Read-only connection. Editing disabled.</property>
+          </object>
+        </child>
+        <child type="top">
+          <object class="AdwBanner" id="no_pk_banner">
+            <property name="title" translatable="yes">This table has no primary key. Use the SQL editor to modify rows.</property>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkStack" id="inner_stack">
+            <property name="transition-type">crossfade</property>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">loading</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="loading_page">
+                    <property name="title" translatable="yes">Loading…</property>
+                    <property name="child">
+                      <object class="AdwSpinner">
+                        <property name="width-request">32</property>
+                        <property name="height-request">32</property>
+                        <property name="halign">center</property>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">grid</property>
+                <property name="child">
+                  <object class="GtkBox" id="grid_holder">
+                    <property name="orientation">vertical</property>
+                    <property name="vexpand">true</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">error</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="error_page">
+                    <property name="icon-name">dialog-error-symbolic</property>
+                    <property name="title" translatable="yes">Couldn't load rows</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+        <child type="bottom">
+          <object class="GtkActionBar">
+            <child type="start">
+              <object class="GtkButton" id="insert_button">
+                <property name="icon-name">list-add-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Insert row (Ctrl+N)</property>
+                <property name="sensitive">false</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <!-- One linked group reads as one navigation control, as
+                   the back and forward buttons do in Files. -->
+              <object class="GtkBox">
+                <style>
+                  <class name="linked"/>
+                </style>
+                <child>
+                  <object class="GtkButton" id="first_button">
+                    <property name="icon-name">go-first-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">First page</property>
+                    <property name="sensitive">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="prev_button">
+                    <property name="icon-name">go-previous-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Previous page (Page Up)</property>
+                    <property name="sensitive">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="next_button">
+                    <property name="icon-name">go-next-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Next page (Page Down)</property>
+                    <property name="sensitive">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="last_button">
+                    <property name="icon-name">go-last-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Last page</property>
+                    <property name="sensitive">false</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkLabel" id="paginator_label">
+                <property name="accessible-role">status</property>
+                <style>
+                  <class name="dim-label"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkLabel" id="selection_label">
+                <property name="visible">false</property>
+                <property name="margin-start">12</property>
+                <property name="accessible-role">status</property>
+                <style>
+                  <class name="accent"/>
+                  <class name="caption-heading"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="export_button">
+                <property name="icon-name">document-save-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Export results</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <!-- Text, not an icon: the theme has no symbolic icon for
+                   filtering rows, and the search icons mean Ctrl+F's
+                   other use. -->
+              <object class="GtkButton" id="filter_button">
+                <property name="tooltip-text" translatable="yes">Filter rows (Ctrl+F)</property>
+                <property name="action-name">win.open-filter</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">Filter</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="filter_badge">
+                        <property name="visible">false</property>
+                        <style>
+                          <class name="numeric"/>
+                          <class name="caption-heading"/>
+                          <class name="dim-label"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkDropDown" id="page_size_dropdown"/>
+            </child>
+            <child type="end">
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Rows:</property>
+                <property name="mnemonic-widget">page_size_dropdown</property>
+                <style>
+                  <class name="dim-label"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="bottom">
+          <!-- The pending-changes footer slides in only while there are
+               unsaved edits. -->
+          <object class="GtkRevealer" id="pending_revealer">
+            <property name="transition-type">slide-up</property>
+            <property name="transition-duration">150</property>
+            <property name="child">
+              <object class="GtkActionBar">
+                <child type="start">
+                  <object class="GtkLabel" id="pending_label">
+                    <style>
+                      <class name="dim-label"/>
+                      <class name="caption"/>
+                    </style>
+                  </object>
+                </child>
+                <child type="end">
+                  <object class="GtkButton" id="save_button">
+                    <property name="label" translatable="yes">Save</property>
+                    <property name="tooltip-text" translatable="yes">Save pending edits (Ctrl+S)</property>
+                    <style>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+                <child type="end">
+                  <object class="GtkButton" id="discard_button">
+                    <property name="label" translatable="yes">Discard</property>
+                    <property name="tooltip-text" translatable="yes">Discard all pending edits</property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

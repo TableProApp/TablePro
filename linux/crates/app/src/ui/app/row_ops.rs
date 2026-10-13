@@ -1,5 +1,5 @@
+use relm4::ComponentSender;
 use relm4::adw::prelude::*;
-use relm4::{ComponentController, ComponentSender};
 
 use tablepro_core::meta::TableRef;
 use tablepro_core::save::{SavePlan, plan_save};
@@ -126,14 +126,16 @@ impl App {
     }
 
     pub(super) fn on_copy_row_as_insert(&self, tab_id: Uuid, row_position: u32) {
-        let (columns, snapshot, table) = {
-            let tabs = self.workspace_tabs.borrow();
-            let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
-                return;
-            };
-            let model = controller.model();
-            (model.columns().to_vec(), model.snapshot(), model.table().to_string())
+        let Some(browse) = self
+            .workspace_tabs
+            .borrow()
+            .get(&tab_id)
+            .and_then(|t| t.browse_tab())
+            .cloned()
+        else {
+            return;
         };
+        let (columns, snapshot, table) = (browse.columns(), browse.snapshot(), browse.table());
         let Some(snapshot) = snapshot else { return };
         let Some(row) = snapshot.rows.get(row_position as usize) else {
             return;

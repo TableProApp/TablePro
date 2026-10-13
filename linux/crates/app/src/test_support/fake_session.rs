@@ -11,6 +11,8 @@ use tablepro_test_support::{ConnectionScript, FakeConnection};
 pub(crate) struct FakeSession {
     pub session: Arc<Session>,
     pub connection: Arc<FakeConnection>,
+    /// Every connection a reconnect built, in order.
+    pub connector: FakeConnector,
 }
 
 impl FakeSession {
@@ -25,13 +27,22 @@ impl FakeSession {
         let session = Session::start(
             pending,
             SessionDeps {
-                connector: Arc::new(connector),
+                connector: Arc::new(connector.clone()),
                 credentials: Arc::new(FakeCredentialSource::new()),
                 deadlines: Arc::new(DefaultDeadlines::new(LivenessPolicy::DESKTOP)),
                 tasks,
                 prompter: None,
             },
         );
-        Self { session, connection }
+        Self {
+            session,
+            connection,
+            connector,
+        }
+    }
+
+    /// The connection the last reconnect put in place.
+    pub(crate) fn replacement(&self) -> Arc<FakeConnection> {
+        self.connector.connections().pop().expect("a reconnect's connection")
     }
 }
