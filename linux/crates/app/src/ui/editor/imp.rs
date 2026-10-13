@@ -14,6 +14,7 @@ use super::editor_session_slot::EditorSessionSlot;
 use super::results_pane::ResultsPane;
 use super::run_log::RunLog;
 use crate::ui::grid::GridMsg;
+use crate::ui::handler_guard::HandlerGuard;
 
 /// A run in flight: its cancel switch, and the loop that brings its
 /// results to the GTK thread.
@@ -48,6 +49,9 @@ pub struct SqlEditor {
     /// Whether the last run left a transaction open, as last reported.
     pub transaction_dirty: Cell<bool>,
     pub shut_down: Cell<bool>,
+    /// Theme and font handlers on the app-wide style manager and
+    /// settings, which would otherwise outlive the tab.
+    pub(super) app_handlers: RefCell<Vec<HandlerGuard>>,
 }
 
 #[glib::object_subclass]
@@ -97,6 +101,7 @@ impl ObjectImpl for SqlEditor {
 
     fn dispose(&self) {
         self.obj().shutdown();
+        self.app_handlers.take();
     }
 }
 

@@ -1477,15 +1477,23 @@ impl SimpleComponent for BrowseTab {
         root.add_top_bar(&filter_strip.widget);
         root.set_content(Some(&inner_stack));
 
+        // The banners and the strip hold this through their notify
+        // handlers, and the root holds them, so it holds all four weakly.
         let sync_top_bar_slot: std::rc::Rc<dyn Fn()> = {
-            let root_for_sync = root.clone();
-            let read_only_for_sync = read_only_banner.clone();
-            let no_pk_for_sync = no_pk_banner.clone();
-            let filter_for_sync = filter_strip.widget.clone();
+            let root_for_sync = root.downgrade();
+            let read_only_for_sync = read_only_banner.downgrade();
+            let no_pk_for_sync = no_pk_banner.downgrade();
+            let filter_for_sync = filter_strip.widget.downgrade();
             std::rc::Rc::new(move || {
-                let any_revealed =
-                    read_only_for_sync.is_revealed() || no_pk_for_sync.is_revealed() || filter_for_sync.reveals_child();
-                root_for_sync.set_reveal_top_bars(any_revealed);
+                let (Some(root), Some(read_only), Some(no_pk), Some(filter)) = (
+                    root_for_sync.upgrade(),
+                    read_only_for_sync.upgrade(),
+                    no_pk_for_sync.upgrade(),
+                    filter_for_sync.upgrade(),
+                ) else {
+                    return;
+                };
+                root.set_reveal_top_bars(read_only.is_revealed() || no_pk.is_revealed() || filter.reveals_child());
             })
         };
         sync_top_bar_slot();
@@ -2903,5 +2911,48 @@ mod tests {
         apply_visual_change(&store, &VisualChange::RemoveDraft { draft_id: 4 });
         assert_eq!(store.n_items(), 1);
         assert_eq!(row_at(&store, 0).draft_id(), None);
+    }
+
+    #[gtk4::test]
+    fn browse_tab_and_filter_strip_freed_after_drop() {
+        use relm4::{Component, ComponentController};
+
+        libadwaita::init().expect("libadwaita initialises under the test backend");
+        let runtime = crate::test_support::test_runtime();
+        let root = tempfile::tempdir().expect("tempdir");
+        let controller = super::BrowseTab::builder()
+            .launch(super::BrowseTabInit {
+                tracker: crate::services::tab_tracker_handle::TabTrackerHandle::default(),
+                schema: None,
+                table: "t".to_owned(),
+                connection_id: Some(uuid::Uuid::new_v4()),
+                read_only: false,
+                page_size: 100,
+                initial_offset: 0,
+                initial_sort: None,
+                column_widths: crate::persistence::ColumnWidthStore::load(
+                    root.path().join("column-widths.json"),
+                    &runtime.tasks(),
+                ),
+                filter_settings: crate::persistence::FilterSettingsStore::load(
+                    root.path().join("filters.json"),
+                    &runtime.tasks(),
+                ),
+            })
+            .detach();
+        crate::test_support::drain_main_context();
+        let strip = controller
+            .model()
+            .filter_strip
+            .as_ref()
+            .map(|strip| strip.widget.downgrade())
+            .expect("the filter strip");
+        let tab = controller.widget().downgrade();
+
+        drop(controller);
+        crate::test_support::drain_main_context();
+
+        assert!(strip.upgrade().is_none(), "the filter strip outlived its tab");
+        assert!(tab.upgrade().is_none(), "the browse tab outlived its controller");
     }
 }

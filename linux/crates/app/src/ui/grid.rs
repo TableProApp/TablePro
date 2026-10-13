@@ -530,10 +530,9 @@ fn build_column(
             // value the moment it changes.
             column.set_fixed_width(min);
         }
-        let column_for_save = column.clone();
         let column_name = info.name.clone();
-        column.connect_fixed_width_notify(move |_| {
-            widths.record(&column_name, column_for_save.fixed_width());
+        column.connect_fixed_width_notify(move |column| {
+            widths.record(&column_name, column.fixed_width());
         });
     } else if let Some(min) = default_min_width {
         // Editor result grids run without a connection_id (no
@@ -917,16 +916,21 @@ fn install_edit_triggers(
 
     // Double-click → trigger. Capture phase so we beat the ColumnView
     // row-selection gesture that runs in Bubble.
+    //
+    // The handlers read the cell from their controller: the cell owns
+    // both controllers, so capturing it would be a cycle.
     let gesture = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_PRIMARY).build();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let label_for_press = label.clone();
     let trigger_for_press = trigger.clone();
     gesture.connect_pressed(move |gesture, n_press, _, _| {
         if n_press != 2 {
             return;
         }
+        let Some(label) = gesture.widget().and_downcast::<super::cell_editor::CellEditor>() else {
+            return;
+        };
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        trigger_for_press(&label_for_press);
+        trigger_for_press(&label);
     });
     label.add_controller(gesture);
 
@@ -938,38 +942,40 @@ fn install_edit_triggers(
     //   Tab / Shift+Tab commit + traverse. Return / Esc handled by
     //   CellEditor's built-in entry handlers.
     let controller = gtk::EventControllerKey::new();
-    let label_for_key = label.clone();
     let trigger_for_key = trigger;
-    controller.connect_key_pressed(move |_, keyval, _, modifiers| {
-        let editing = label_for_key.is_editing();
+    controller.connect_key_pressed(move |controller, keyval, _, modifiers| {
+        let Some(label) = controller.widget().and_downcast::<super::cell_editor::CellEditor>() else {
+            return glib::Propagation::Proceed;
+        };
+        let editing = label.is_editing();
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
 
         if !editing {
             match keyval {
                 gtk::gdk::Key::F2 | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
-                    trigger_for_key(&label_for_key);
+                    trigger_for_key(&label);
                     return glib::Propagation::Stop;
                 }
                 // Tab / Shift+Tab when NOT editing: traverse cells.
                 // Without this they'd fall through to GTK's default
                 // focus chain and escape the grid to the paginator.
                 gtk::gdk::Key::Tab if !shift => {
-                    move_focus(&label_for_key, gtk::DirectionType::TabForward);
+                    move_focus(&label, gtk::DirectionType::TabForward);
                     return glib::Propagation::Stop;
                 }
                 gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab if shift => {
-                    move_focus(&label_for_key, gtk::DirectionType::TabBackward);
+                    move_focus(&label, gtk::DirectionType::TabBackward);
                     return glib::Propagation::Stop;
                 }
                 // Left / Right arrow cell navigation. ColumnView's
                 // built-in Up/Down handles row selection; we add the
                 // horizontal axis to match spreadsheet convention.
                 gtk::gdk::Key::Right => {
-                    move_focus(&label_for_key, gtk::DirectionType::TabForward);
+                    move_focus(&label, gtk::DirectionType::TabForward);
                     return glib::Propagation::Stop;
                 }
                 gtk::gdk::Key::Left => {
-                    move_focus(&label_for_key, gtk::DirectionType::TabBackward);
+                    move_focus(&label, gtk::DirectionType::TabBackward);
                     return glib::Propagation::Stop;
                 }
                 _ => {}
@@ -979,13 +985,13 @@ fn install_edit_triggers(
 
         match keyval {
             gtk::gdk::Key::Tab if !shift => {
-                label_for_key.stop_editing(true);
-                move_focus(&label_for_key, gtk::DirectionType::TabForward);
+                label.stop_editing(true);
+                move_focus(&label, gtk::DirectionType::TabForward);
                 glib::Propagation::Stop
             }
             gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab if shift => {
-                label_for_key.stop_editing(true);
-                move_focus(&label_for_key, gtk::DirectionType::TabBackward);
+                label.stop_editing(true);
+                move_focus(&label, gtk::DirectionType::TabBackward);
                 glib::Propagation::Stop
             }
             _ => glib::Propagation::Proceed,
@@ -1010,10 +1016,13 @@ fn show_calendar_popover(label: &super::cell_editor::CellEditor, col_index: usiz
     popover.set_parent(label);
     POPOVER_SLOT.set(label, popover.clone());
 
-    let label_for_cal = label.clone();
-    let popover_for_cal = popover.clone();
+    let label_for_cal = label.downgrade();
+    let popover_for_cal = popover.downgrade();
     let sender_for_cal = sender.clone();
     calendar.connect_day_selected(move |c| {
+        let (Some(label_for_cal), Some(popover_for_cal)) = (label_for_cal.upgrade(), popover_for_cal.upgrade()) else {
+            return;
+        };
         let dt = c.date();
         // glib::DateTime month is 1-based; chrono format directly.
         let formatted = format!("{:04}-{:02}-{:02}", dt.year(), dt.month(), dt.day_of_month());
@@ -1065,10 +1074,15 @@ fn show_spin_button_popover(
     popover.set_parent(label);
     POPOVER_SLOT.set(label, popover.clone());
 
-    let label_for_commit = label.clone();
-    let popover_for_commit = popover.clone();
+    let label_for_commit = label.downgrade();
+    let popover_for_commit = popover.downgrade();
     let sender_for_commit = sender.clone();
     spin.connect_activate(move |s| {
+        let (Some(label_for_commit), Some(popover_for_commit)) =
+            (label_for_commit.upgrade(), popover_for_commit.upgrade())
+        else {
+            return;
+        };
         // Format faithfully to the column kind: integers as "{}",
         // floats as f64::Display (drops trailing zeros, no fixed
         // precision so we don't lie about precision we don't have).
@@ -1147,14 +1161,23 @@ fn show_json_popover(label: &super::cell_editor::CellEditor, col_index: usize, s
     popover.set_parent(label);
     POPOVER_SLOT.set(label, popover.clone());
 
-    let popover_for_cancel = popover.clone();
-    cancel_button.connect_clicked(move |_| popover_for_cancel.popdown());
+    let popover_for_cancel = popover.downgrade();
+    cancel_button.connect_clicked(move |_| {
+        if let Some(popover) = popover_for_cancel.upgrade() {
+            popover.popdown();
+        }
+    });
 
-    let label_for_commit = label.clone();
-    let popover_for_commit = popover.clone();
+    let label_for_commit = label.downgrade();
+    let popover_for_commit = popover.downgrade();
     let sender_for_commit = sender.clone();
     let buffer_for_commit = buffer.clone();
     save_button.connect_clicked(move |_| {
+        let (Some(label_for_commit), Some(popover_for_commit)) =
+            (label_for_commit.upgrade(), popover_for_commit.upgrade())
+        else {
+            return;
+        };
         let start = buffer_for_commit.start_iter();
         let end = buffer_for_commit.end_iter();
         let text = buffer_for_commit.text(&start, &end, true).to_string();
@@ -1182,14 +1205,14 @@ fn show_json_popover(label: &super::cell_editor::CellEditor, col_index: usize, s
 /// per-cell `POPOVER_SLOT`. Used by all three editor popovers
 /// (calendar, spin button, JSON sourceview) to share one lifecycle.
 fn install_popover_close_cleanup(label: &super::cell_editor::CellEditor, popover: &gtk::Popover) {
-    let label_for_close = label.clone();
-    // Use the callback's first parameter rather than a captured clone
-    // so the closure doesn't hold a strong reference back to the
-    // popover. A self-capture would form an Rc cycle that delays the
-    // popover's finalisation past popdown.
+    // The cell holds the popover in its slot and as its child, so the
+    // popover holds the cell weakly and itself not at all.
+    let label_for_close = label.downgrade();
     popover.connect_closed(move |p| {
         p.unparent();
-        POPOVER_SLOT.take(&label_for_close);
+        if let Some(label) = label_for_close.upgrade() {
+            POPOVER_SLOT.take(&label);
+        }
     });
 }
 
@@ -1213,9 +1236,13 @@ fn install_edit_commit_handler(
     // the IME context and emits preedit-changed.
     {
         let text = label.entry();
-        let label_for_preedit = label.clone();
+        // The entry is the cell's own child, so it holds the cell weakly.
+        let label_for_preedit = label.downgrade();
         let sender_for_preedit = sender.clone();
         text.connect_preedit_changed(move |_t, preedit| {
+            let Some(label_for_preedit) = label_for_preedit.upgrade() else {
+                return;
+            };
             let active = !preedit.is_empty();
             PREEDIT_SLOT.set(&label_for_preedit, active);
             // If preedit just cleared and editing has already ended
@@ -1278,6 +1305,24 @@ struct CellContext {
     column_name: String,
 }
 
+/// The right-clicked cell as the shared menu keeps it. The cell holds
+/// the menu through its gesture, so the menu holds the cell weakly.
+struct ClickedCell {
+    widget: glib::WeakRef<gtk::Widget>,
+    col_index: usize,
+    column_name: String,
+}
+
+impl ClickedCell {
+    fn get(&self) -> Option<CellContext> {
+        Some(CellContext {
+            widget: self.widget.upgrade()?,
+            col_index: self.col_index,
+            column_name: self.column_name.clone(),
+        })
+    }
+}
+
 /// What one cell wants from the shared menu: which popover it shows,
 /// and which of the per-cell actions apply to it.
 #[derive(Clone)]
@@ -1313,7 +1358,7 @@ impl CellActions {
 
 #[derive(Clone)]
 pub(super) struct GridMenus {
-    context: Rc<RefCell<Option<CellContext>>>,
+    context: Rc<RefCell<Option<ClickedCell>>>,
     editable_popover: gtk::PopoverMenu,
     readonly_popover: gtk::PopoverMenu,
     actions: CellActions,
@@ -1435,7 +1480,7 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         tab_ctx,
         editable,
     } = init;
-    let context: Rc<RefCell<Option<CellContext>>> = Rc::new(RefCell::new(None));
+    let context: Rc<RefCell<Option<ClickedCell>>> = Rc::new(RefCell::new(None));
     // Every action closure holds the view weakly. The action group
     // belongs to the ColumnView, so a strong clone in a closure is a
     // cycle: the grid, its selection model, its store and every row it
@@ -1451,7 +1496,8 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             let ctx = context.clone();
             gio::ActionEntry::builder($name)
                 .activate(move |_, _, _| {
-                    if let Some($slot) = ctx.borrow().as_ref() {
+                    let clicked = ctx.borrow().as_ref().and_then(ClickedCell::get);
+                    if let Some($slot) = clicked.as_ref() {
                         $body;
                     }
                 })
@@ -1883,8 +1929,8 @@ fn attach_cell_gesture(
         let actions = menus.actions.clone();
         let target = target.clone();
         move |widget: &gtk::Widget, column_view: &gtk::ColumnView| {
-            *context.borrow_mut() = Some(CellContext {
-                widget: widget.clone(),
+            *context.borrow_mut() = Some(ClickedCell {
+                widget: widget.downgrade(),
                 col_index: target.col_index,
                 column_name: target.column_name.clone(),
             });
@@ -1895,23 +1941,26 @@ fn attach_cell_gesture(
         }
     };
 
-    let widget_for_gesture = widget.clone();
+    // The handlers below read the cell from their own arguments: the
+    // cell owns its controllers, so capturing it would be a cycle.
     let view_for_gesture = column_view.clone();
     let popover_for_gesture = popover.clone();
     let prepare_for_gesture = prepare.clone();
     let gesture = gtk::GestureClick::new();
     gesture.set_button(3);
     gesture.connect_pressed(move |g, _, x, y| {
-        let Some(cv) = view_for_gesture.upgrade() else { return };
+        let (Some(cv), Some(cell)) = (view_for_gesture.upgrade(), g.widget()) else {
+            return;
+        };
         g.set_state(gtk::EventSequenceState::Claimed);
-        prepare_for_gesture(&widget_for_gesture, &cv);
+        prepare_for_gesture(&cell, &cv);
         // Translate the click point into the ColumnView's coordinate
         // space — the popover is parented to the ColumnView so
         // pointing_to is interpreted there, not in cell-local coords.
         // `compute_point` is the GTK 4.12+ replacement for the
         // deprecated `translate_coordinates`.
         let local = gtk::graphene::Point::new(x as f32, y as f32);
-        let (cv_x, cv_y) = widget_for_gesture
+        let (cv_x, cv_y) = cell
             .compute_point(&cv, &local)
             .map(|p| (p.x() as i32, p.y() as i32))
             .unwrap_or((x as i32, y as i32));
@@ -1920,7 +1969,6 @@ fn attach_cell_gesture(
     });
     widget.add_controller(gesture);
 
-    let widget_for_key = widget.clone();
     let view_for_key = column_view.clone();
     let popover_for_key = popover;
     let menu_shortcut = gtk::Shortcut::builder()
@@ -1928,15 +1976,15 @@ fn attach_cell_gesture(
             gtk::gdk::Key::Menu,
             gtk::gdk::ModifierType::empty(),
         ))
-        .action(&gtk::CallbackAction::new(move |_, _| {
+        .action(&gtk::CallbackAction::new(move |cell, _| {
             let Some(cv) = view_for_key.upgrade() else {
                 return glib::Propagation::Proceed;
             };
-            prepare(&widget_for_key, &cv);
+            prepare(cell, &cv);
             // Anchor on the cell's full bounds so the popover lands
             // visually under the cell rather than at an arbitrary
             // mouse-position-of-last-click.
-            if let Some(bounds) = widget_for_key.compute_bounds(&cv) {
+            if let Some(bounds) = cell.compute_bounds(&cv) {
                 let rect = gtk::gdk::Rectangle::new(
                     bounds.x() as i32,
                     bounds.y() as i32,
@@ -2217,6 +2265,212 @@ mod tests {
         assert_eq!(delta.pending_count, 1);
         window.close();
         crate::test_support::drain_main_context();
+    }
+
+    fn width_binding(tasks: &tablepro_session::runtime::Tasks, root: &tempfile::TempDir) -> ColumnWidthBinding {
+        ColumnWidthBinding {
+            store: crate::persistence::ColumnWidthStore::load(root.path().join("column-widths.json"), tasks),
+            connection_id: uuid::Uuid::new_v4(),
+            schema: None,
+            table: "t".to_owned(),
+        }
+    }
+
+    #[gtk4::test]
+    fn column_freed_with_column_view() {
+        let runtime = crate::test_support::test_runtime();
+        let root = tempfile::tempdir().expect("tempdir");
+        let mut name = col("text", false);
+        name.name = "name".into();
+        let columns = vec![name];
+        let result = QueryResult::new(
+            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+            vec![vec![Value::Text("a".into())]],
+        );
+        let (sender, _receiver) = relm4::channel::<GridMsg>();
+        let context = TabGridContext {
+            tracker: None,
+            pk_col_indices: Vec::new(),
+            column_widths: Some(width_binding(&runtime.tasks(), &root)),
+        };
+        let (view, selection) = build_column_view(
+            &result,
+            &columns,
+            sender.clone(),
+            true,
+            Some((0, true)),
+            Some(sender),
+            context,
+        );
+        let column = view
+            .columns()
+            .item(0)
+            .and_downcast::<gtk::ColumnViewColumn>()
+            .expect("a column")
+            .downgrade();
+        let view_ref = view.downgrade();
+
+        drop((view, selection));
+        crate::test_support::drain_main_context();
+
+        assert!(column.upgrade().is_none(), "the column outlived its column view");
+        assert!(view_ref.upgrade().is_none(), "the column view outlived its owner");
+    }
+
+    fn menu_gesture(cell: &gtk::Widget) -> Option<gtk::GestureClick> {
+        let controllers = cell.observe_controllers();
+        (0..controllers.n_items())
+            .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
+            .find(|gesture| gesture.button() == 3)
+    }
+
+    #[gtk4::test]
+    fn cells_freed_with_column_view() {
+        let mut id = col("integer", true);
+        id.name = "id".into();
+        let mut name = col("text", false);
+        name.name = "name".into();
+        let mut flag = col("boolean", false);
+        flag.name = "flag".into();
+        let columns = vec![id, name, flag];
+        let result = QueryResult::new(
+            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+            vec![vec![Value::Int(7), Value::Text("a".into()), Value::Bool(true)]],
+        );
+        let (sender, _receiver) = relm4::channel::<GridMsg>();
+        let context = TabGridContext {
+            tracker: Some(TabTrackerHandle::default()),
+            pk_col_indices: vec![0],
+            column_widths: None,
+        };
+        let (view, selection) = build_column_view(&result, &columns, sender, true, None, None, context);
+        let window = gtk::Window::new();
+        window.set_child(Some(&view));
+        window.present();
+        let cells = || -> Vec<gtk::Widget> {
+            crate::test_support::descendants(&view)
+                .into_iter()
+                .filter(|widget| {
+                    widget.is::<crate::ui::cell_editor::CellEditor>()
+                        || widget.is::<gtk::CheckButton>()
+                        || widget
+                            .downcast_ref::<gtk::Label>()
+                            .is_some_and(|label| label.text() == "7")
+                })
+                .collect()
+        };
+        crate::test_support::wait_until(std::time::Duration::from_secs(5), || cells().len() == 3)
+            .expect("the read-only, text and bool cells are drawn");
+        // A right-click is what fills the menu's target, so it has to be
+        // in the picture too.
+        for cell in cells() {
+            let gesture = menu_gesture(&cell).expect("a cell answers a right-click");
+            gesture.emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
+        }
+        let freed: Vec<glib::WeakRef<gtk::Widget>> = cells().iter().map(ObjectExt::downgrade).collect();
+
+        window.destroy();
+        drop(window);
+        drop((view, selection));
+        crate::test_support::drain_main_context();
+
+        let alive = freed.iter().filter(|cell| cell.upgrade().is_some()).count();
+        assert_eq!(alive, 0, "cells outlived their column view");
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum PopoverEditor {
+        Date,
+        Int,
+        Json,
+    }
+
+    /// Commit through the editor's own control, which also closes it.
+    fn commit_popover(editor: PopoverEditor, popover: &gtk::Popover) {
+        use crate::test_support::first_descendant_of_type;
+        match editor {
+            PopoverEditor::Date => first_descendant_of_type::<gtk::Calendar>(popover)
+                .expect("the calendar")
+                .emit_by_name::<()>("day-selected", &[]),
+            PopoverEditor::Int => {
+                let spin = first_descendant_of_type::<gtk::SpinButton>(popover).expect("the spin button");
+                spin.set_value(42.0);
+                spin.emit_by_name::<()>("activate", &[]);
+            }
+            PopoverEditor::Json => {
+                first_descendant_of_type::<sourceview5::View>(popover)
+                    .expect("the JSON view")
+                    .buffer()
+                    .set_text("[1]");
+                crate::test_support::descendants(popover)
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+                    .find(|button| button.has_css_class("suggested-action"))
+                    .expect("the Save button")
+                    .emit_clicked();
+            }
+        }
+    }
+
+    /// Another test's window can take the focus and close an autohide
+    /// popover before it opens, so a dismissed one is shown again.
+    fn open_popover(
+        editor: PopoverEditor,
+        cell: &crate::ui::cell_editor::CellEditor,
+        sender: &relm4::Sender<GridMsg>,
+    ) -> Option<gtk::Popover> {
+        for _ in 0..5 {
+            match editor {
+                PopoverEditor::Date => show_calendar_popover(cell, 0, sender),
+                PopoverEditor::Int => show_spin_button_popover(cell, 0, sender, false),
+                PopoverEditor::Json => show_json_popover(cell, 0, sender),
+            }
+            let popover = crate::test_support::first_descendant_of_type::<gtk::Popover>(cell)?;
+            let settled = crate::test_support::wait_until(std::time::Duration::from_secs(5), || {
+                popover.is_mapped() || !popover.is_visible()
+            });
+            if settled.is_ok() && popover.is_mapped() {
+                return Some(popover);
+            }
+            if popover.parent().is_some() {
+                popover.unparent();
+            }
+            POPOVER_SLOT.take(cell);
+        }
+        None
+    }
+
+    #[gtk4::test]
+    fn a_closed_popover_editor_frees_its_cell() {
+        use crate::test_support::wait_until;
+        let timeout = std::time::Duration::from_secs(5);
+        let window = gtk::Window::new();
+        window.present();
+        for editor in [PopoverEditor::Date, PopoverEditor::Int, PopoverEditor::Json] {
+            let (sender, _receiver) = relm4::channel::<GridMsg>();
+            let cell = crate::ui::cell_editor::CellEditor::new();
+            cell.set_text("x");
+            window.set_child(Some(&cell));
+            wait_until(timeout, || cell.is_mapped()).expect("the cell is drawn");
+            let popover = open_popover(editor, &cell, &sender).expect("the editor popover opens");
+
+            commit_popover(editor, &popover);
+            wait_until(timeout, || popover.parent().is_none()).expect("the popover closes");
+            assert_ne!(cell.text(), "x", "{editor:?} did not commit");
+            assert!(
+                POPOVER_SLOT.take(&cell).is_none(),
+                "{editor:?} left its popover in the cell"
+            );
+            // Only the cell is checked: GTK itself keeps a closed autohide
+            // popover alive once a child of it has taken focus.
+            let freed = cell.downgrade();
+            window.set_child(None::<&gtk::Widget>);
+            drop((cell, popover));
+            crate::test_support::drain_main_context();
+
+            assert!(freed.upgrade().is_none(), "{editor:?} kept its cell alive");
+        }
+        window.destroy();
     }
 
     #[test]

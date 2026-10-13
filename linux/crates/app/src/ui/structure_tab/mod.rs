@@ -44,6 +44,7 @@ use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn};
 use tablepro_core::{ForeignKeyInfo, IndexInfo};
 
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
+use crate::ui::handler_guard::HandlerGuard;
 use crate::ui::structure_tab_dialogs::{present_fk_dialog, present_index_dialog};
 use tablepro_core::sql_ddl::{StructureOp, diff_to_ops, materialize_ops};
 
@@ -142,14 +143,9 @@ pub struct StructureTab {
     /// confusing UX is worse than the no-op rename the user has to
     /// do afterwards).
     next_column_seq: Rc<RefCell<usize>>,
-    /// Popovers attached to column rows (currently only the type
-    /// suggestions popover). Each `rebuild_columns_view` call must
-    /// `popdown` and clear this list before `clear_box`, otherwise an
-    /// open popover keeps a strong reference to the now-detached
-    /// AdwEntryRow and a click on a suggestion `set_text`s a stale
-    /// widget. The detached entry's `changed` handler then dispatches
-    /// `ColumnEdited` with whatever index was captured at build time —
-    /// which may now point at a different (or nonexistent) column.
+    /// The type suggestion popovers of the column rows. A rebuild pops
+    /// them down before it removes the rows, so no menu stays open over
+    /// a row that is gone.
     column_popovers: Rc<RefCell<Vec<gtk::Popover>>>,
     /// True between `SaveCompleted` and the matching `StructureLoaded`
     /// (or `LoadFailed`). During this window the live model has been
@@ -161,6 +157,9 @@ pub struct StructureTab {
     /// flag is set; `StructureLoaded` flips it back and triggers a
     /// fresh recompute against the up-to-date snapshots.
     refetching: Rc<Cell<bool>>,
+    /// The SQL preview follows the desktop theme through the app-wide
+    /// style manager, which would keep the handler past the tab.
+    _theme_handler: HandlerGuard,
 }
 
 #[derive(Debug)]
@@ -340,12 +339,6 @@ impl StructureTab {
         // We re-enable emit on the next idle tick so legitimate user
         // input afterwards flows through.
         self.suppress_emit.set(true);
-        // Popdown + drop any popovers attached to the previous rows
-        // before they're unparented. An open suggestions popover holds
-        // the old AdwEntryRow alive via a closure clone; without this
-        // step a click on a suggestion after a Refresh would `set_text`
-        // a detached widget and dispatch `ColumnEdited` with a stale
-        // index (see `column_popovers` doc on `StructureTab`).
         {
             let mut popovers = self.column_popovers.borrow_mut();
             for p in popovers.drain(..) {
@@ -394,13 +387,15 @@ impl StructureTab {
         }
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
-        let parent_box = self.indexes_box.clone();
+        let parent_box = self.indexes_box.downgrade();
         append_add_button(&list, &crate::i18n::gettext("Add Index…"), move || {
-            present_index_dialog(
-                parent_box.upcast_ref(),
-                &columns_for_dialog.borrow(),
-                sender_for_add.clone(),
-            );
+            if let Some(parent_box) = parent_box.upgrade() {
+                present_index_dialog(
+                    parent_box.upcast_ref(),
+                    &columns_for_dialog.borrow(),
+                    sender_for_add.clone(),
+                );
+            }
         });
         self.indexes_box.append(&list);
     }
@@ -414,15 +409,17 @@ impl StructureTab {
         }
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
-        let parent_box = self.fks_box.clone();
+        let parent_box = self.fks_box.downgrade();
         let driver_id_for_dialog = driver_id.clone();
         append_add_button(&list, &crate::i18n::gettext("Add Foreign Key…"), move || {
-            present_fk_dialog(
-                parent_box.upcast_ref(),
-                &columns_for_dialog.borrow(),
-                &driver_id_for_dialog,
-                sender_for_add.clone(),
-            );
+            if let Some(parent_box) = parent_box.upgrade() {
+                present_fk_dialog(
+                    parent_box.upcast_ref(),
+                    &columns_for_dialog.borrow(),
+                    &driver_id_for_dialog,
+                    sender_for_add.clone(),
+                );
+            }
         });
         self.fks_box.append(&list);
     }
@@ -573,14 +570,17 @@ impl SimpleComponent for StructureTab {
         sql_view.set_left_margin(6);
         sql_view.set_right_margin(6);
         sql_view.set_bottom_margin(6);
-        // Match the system light / dark scheme. Mirrors the editor.rs
-        // hook so the SQL preview's syntax colours track the user's
-        // theme choice instead of staying frozen on the boot scheme.
         apply_sql_scheme(&sql_buffer);
-        let buffer_for_theme = sql_buffer.clone();
-        adw::StyleManager::default().connect_dark_notify(move |_| {
-            apply_sql_scheme(&buffer_for_theme);
-        });
+        let style_manager = adw::StyleManager::default();
+        let buffer_for_theme = sql_buffer.downgrade();
+        let theme_handler = HandlerGuard::new(
+            &style_manager,
+            style_manager.connect_dark_notify(move |_| {
+                if let Some(buffer) = buffer_for_theme.upgrade() {
+                    apply_sql_scheme(&buffer);
+                }
+            }),
+        );
         let sql_scroll = gtk::ScrolledWindow::builder().child(&sql_view).vexpand(true).build();
         // Copy SQL toolbar — saves the user from clicking into the
         // sourceview, Ctrl+A, Ctrl+C every time they want to paste
@@ -728,12 +728,13 @@ impl SimpleComponent for StructureTab {
         retry_button.add_css_class("suggested-action");
         retry_button.add_css_class("pill");
         let sender_for_retry = sender.clone();
-        let inner_stack_for_retry = inner_stack.clone();
+        let inner_stack_for_retry = inner_stack.downgrade();
         retry_button.connect_clicked(move |_| {
-            // Flip back to the loading page so the user sees we're
-            // trying — otherwise the click looks like a no-op until
+            // Without the loading page the click reads as a no-op until
             // StructureLoaded arrives.
-            inner_stack_for_retry.set_visible_child_name("loading");
+            if let Some(inner_stack) = inner_stack_for_retry.upgrade() {
+                inner_stack.set_visible_child_name("loading");
+            }
             let _ = sender_for_retry.output(StructureTabOutput::FetchStructure);
         });
         error_status.set_child(Some(&retry_button));
@@ -839,6 +840,7 @@ impl SimpleComponent for StructureTab {
             next_column_seq: Rc::new(RefCell::new(1)),
             column_popovers: Rc::new(RefCell::new(Vec::new())),
             refetching: Rc::new(Cell::new(false)),
+            _theme_handler: theme_handler,
         };
 
         // Initial render so New-mode tabs aren't blank.
@@ -1133,5 +1135,77 @@ fn apply_sql_scheme(buffer: &sourceview5::Buffer) {
     };
     if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
         buffer.set_style_scheme(Some(&scheme));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use relm4::{Component, ComponentController, Controller};
+
+    use super::*;
+    use crate::test_support::{drain_main_context, first_descendant_of_type};
+
+    fn new_table() -> Controller<StructureTab> {
+        adw::init().expect("libadwaita initialises under the test backend");
+        StructureTab::builder()
+            .launch(StructureTabInit {
+                tracker: StructureTrackerHandle::default(),
+                schema: None,
+                table: "t".to_owned(),
+                mode: StructureMode::New,
+                driver_id: "postgres".to_owned(),
+                defer_initial_fetch: false,
+            })
+            .detach()
+    }
+
+    fn scheme_id(buffer: &sourceview5::Buffer) -> Option<String> {
+        buffer.style_scheme().map(|scheme| scheme.id().to_string())
+    }
+
+    #[gtk4::test]
+    fn style_handler_disconnected_on_shutdown() {
+        let style = adw::StyleManager::default();
+        style.set_color_scheme(adw::ColorScheme::ForceLight);
+        let controller = new_table();
+        let buffer = controller.model().sql_buffer.clone();
+        let light = scheme_id(&buffer);
+
+        drop(controller);
+        drain_main_context();
+        style.set_color_scheme(adw::ColorScheme::ForceDark);
+        let after = scheme_id(&buffer);
+        style.set_color_scheme(adw::ColorScheme::Default);
+
+        assert_eq!(after, light, "a closed structure tab still follows the theme");
+    }
+
+    #[gtk4::test]
+    fn structure_tab_freed_after_drop() {
+        let controller = new_table();
+        controller.emit(StructureTabInput::AddColumn);
+        drain_main_context();
+        let row = first_descendant_of_type::<adw::ExpanderRow>(controller.widget())
+            .expect("the added column's row")
+            .downgrade();
+        let widgets: Vec<gtk::glib::WeakRef<gtk::Widget>> = {
+            let model = controller.model();
+            [
+                model.inner_stack.upcast_ref::<gtk::Widget>(),
+                model.indexes_box.upcast_ref(),
+                model.fks_box.upcast_ref(),
+                controller.widget().upcast_ref(),
+            ]
+            .into_iter()
+            .map(ObjectExt::downgrade)
+            .collect()
+        };
+
+        drop(controller);
+        drain_main_context();
+
+        assert!(row.upgrade().is_none(), "a column row outlived its tab");
+        let alive = widgets.iter().filter(|widget| widget.upgrade().is_some()).count();
+        assert_eq!(alive, 0, "parts of the structure tab outlived its controller");
     }
 }

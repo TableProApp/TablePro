@@ -32,8 +32,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use relm4::adw::prelude::*;
-use relm4::{adw, gtk};
+use gtk4::{self as gtk, glib};
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_core::{ColumnInfo, Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
 
@@ -333,10 +334,13 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
             f();
         }
     });
-    let apply_btn_for_enter = apply_btn.clone();
-    raw_entry.connect_activate(move |_| {
-        apply_btn_for_enter.activate();
-    });
+    raw_entry.connect_activate(glib::clone!(
+        #[weak]
+        apply_btn,
+        move |_| {
+            apply_btn.activate();
+        }
+    ));
     raw_row.append(&where_label);
     raw_row.append(&raw_entry);
     content.append(&raw_row);
@@ -372,13 +376,20 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     rules_body.append(&add_rule_btn);
 
     {
-        let rules_list = rules_list.clone();
         let state = state.clone();
         let columns = columns.clone();
         let suppress = suppress.clone();
-        let rebuild_inner = rebuild.clone();
-        let match_revealer = match_revealer.clone();
+        // Every rule row holds the slot, and the slot holds this closure,
+        // so a strong slot or list here would keep the strip alive.
+        let rebuild_inner = Rc::downgrade(&rebuild);
+        let rules_list = rules_list.downgrade();
+        let match_revealer = match_revealer.downgrade();
         let closure: Rebuilder = Rc::new(move || {
+            let (Some(rebuild_inner), Some(rules_list), Some(match_revealer)) =
+                (rebuild_inner.upgrade(), rules_list.upgrade(), match_revealer.upgrade())
+            else {
+                return;
+            };
             suppress.set(true);
             while let Some(child) = rules_list.first_child() {
                 rules_list.remove(&child);
@@ -444,39 +455,53 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         .build();
     outer.append(&scroller);
 
-    let revealer_for_close = revealer.clone();
-    close_btn.connect_clicked(move |_| {
-        revealer_for_close.set_reveal_child(false);
-    });
+    // The buttons and the Esc shortcut sit inside the revealer, so each
+    // holds it weakly.
+    close_btn.connect_clicked(glib::clone!(
+        #[weak]
+        revealer,
+        move |_| revealer.set_reveal_child(false)
+    ));
 
-    let revealer_for_clear = revealer.clone();
     let on_apply_for_clear = on_apply.clone();
-    clear_btn.connect_clicked(move |_| {
-        on_apply_for_clear(FilterSet::default());
-        revealer_for_clear.set_reveal_child(false);
-    });
+    clear_btn.connect_clicked(glib::clone!(
+        #[weak]
+        revealer,
+        move |_| {
+            on_apply_for_clear(FilterSet::default());
+            revealer.set_reveal_child(false);
+        }
+    ));
 
-    let revealer_for_apply = revealer.clone();
     let state_for_apply = state.clone();
-    apply_btn.connect_clicked(move |_| {
-        let snapshot = state_for_apply.borrow().clone();
-        on_apply(snapshot);
-        revealer_for_apply.set_reveal_child(false);
-    });
+    apply_btn.connect_clicked(glib::clone!(
+        #[weak]
+        revealer,
+        move |_| {
+            let snapshot = state_for_apply.borrow().clone();
+            on_apply(snapshot);
+            revealer.set_reveal_child(false);
+        }
+    ));
 
     // Esc inside the strip collapses it without applying. Local
     // scope so it doesn't compete with cell-editor / search-bar Esc
     // handlers elsewhere in the BrowseTab.
-    let revealer_for_esc = revealer.clone();
     let esc_shortcut = gtk::Shortcut::builder()
         .trigger(&gtk::KeyvalTrigger::new(
             gtk::gdk::Key::Escape,
             gtk::gdk::ModifierType::empty(),
         ))
-        .action(&gtk::CallbackAction::new(move |_, _| {
-            revealer_for_esc.set_reveal_child(false);
-            relm4::gtk::glib::Propagation::Stop
-        }))
+        .action(&gtk::CallbackAction::new(glib::clone!(
+            #[weak]
+            revealer,
+            #[upgrade_or]
+            glib::Propagation::Proceed,
+            move |_, _| {
+                revealer.set_reveal_child(false);
+                glib::Propagation::Stop
+            }
+        )))
         .build();
     let esc_controller = gtk::ShortcutController::new();
     esc_controller.set_scope(gtk::ShortcutScope::Local);
@@ -639,28 +664,35 @@ fn build_rule_row(
                 lo.set_text(a);
                 hi.set_text(b);
             }
+            // Each entry reads the other, so neither may hold it strongly.
             let state_for_lo = state.clone();
             let suppress_for_lo = suppress.clone();
-            let hi_for_lo = hi.clone();
-            lo.connect_changed(move |e| {
-                if suppress_for_lo.get() {
-                    return;
+            lo.connect_changed(glib::clone!(
+                #[weak]
+                hi,
+                move |e| {
+                    if suppress_for_lo.get() {
+                        return;
+                    }
+                    if let Some(rule) = state_for_lo.borrow_mut().rules.get_mut(index) {
+                        rule.value = Some(FilterValue::Pair(e.text().to_string(), hi.text().to_string()));
+                    }
                 }
-                if let Some(rule) = state_for_lo.borrow_mut().rules.get_mut(index) {
-                    rule.value = Some(FilterValue::Pair(e.text().to_string(), hi_for_lo.text().to_string()));
-                }
-            });
+            ));
             let state_for_hi = state.clone();
             let suppress_for_hi = suppress.clone();
-            let lo_for_hi = lo.clone();
-            hi.connect_changed(move |e| {
-                if suppress_for_hi.get() {
-                    return;
+            hi.connect_changed(glib::clone!(
+                #[weak]
+                lo,
+                move |e| {
+                    if suppress_for_hi.get() {
+                        return;
+                    }
+                    if let Some(rule) = state_for_hi.borrow_mut().rules.get_mut(index) {
+                        rule.value = Some(FilterValue::Pair(lo.text().to_string(), e.text().to_string()));
+                    }
                 }
-                if let Some(rule) = state_for_hi.borrow_mut().rules.get_mut(index) {
-                    rule.value = Some(FilterValue::Pair(lo_for_hi.text().to_string(), e.text().to_string()));
-                }
-            });
+            ));
             let pair_box = gtk::Box::builder()
                 .orientation(gtk::Orientation::Horizontal)
                 .spacing(6)
@@ -727,5 +759,109 @@ fn input_purpose_for(column: &ColumnInfo) -> gtk::InputPurpose {
     match column.column_type.kind.is_numeric() {
         true => gtk::InputPurpose::Number,
         false => gtk::InputPurpose::FreeForm,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{drain_main_context, first_descendant_of_type};
+
+    fn rule(column: &str) -> FilterRule {
+        FilterRule {
+            column: column.to_owned(),
+            op: FilterOp::Eq,
+            value: Some(FilterValue::Single("1".to_owned())),
+        }
+    }
+
+    fn strip_with(rules: Vec<FilterRule>) -> FilterStrip {
+        build(
+            vec![placeholder_column("a"), placeholder_column("b")],
+            FilterSet {
+                rules,
+                ..FilterSet::default()
+            },
+            Rc::new(|_| {}),
+        )
+    }
+
+    fn row_count(list: &gtk::ListBox) -> usize {
+        std::iter::successors(list.first_child(), |row| row.next_sibling()).count()
+    }
+
+    #[gtk4::test]
+    fn strip_freed_after_drop() {
+        let strip = strip_with(vec![rule("a"), rule("b")]);
+        let rules = first_descendant_of_type::<gtk::ListBox>(&strip.widget)
+            .expect("the rule list")
+            .downgrade();
+        let revealer = strip.widget.downgrade();
+
+        drop(strip);
+        drain_main_context();
+
+        assert!(rules.upgrade().is_none(), "the rule list outlived the strip");
+        assert!(revealer.upgrade().is_none(), "the strip outlived its owner");
+    }
+
+    #[gtk4::test]
+    fn a_between_rule_frees_its_entries() {
+        let mut amount = placeholder_column("amount");
+        amount.column_type.kind = tablepro_core::column::ColumnKind::Integer(tablepro_core::column::IntegerKind {
+            width: tablepro_core::column::IntegerWidth::W32,
+            signed: true,
+        });
+        let strip = build(
+            vec![amount],
+            FilterSet {
+                rules: vec![FilterRule {
+                    column: "amount".to_owned(),
+                    op: FilterOp::Between,
+                    value: Some(FilterValue::Pair("1".to_owned(), "2".to_owned())),
+                }],
+                ..FilterSet::default()
+            },
+            Rc::new(|_| {}),
+        );
+        let entry = |text: &str| {
+            crate::test_support::descendants(&strip.widget)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk::Entry>().ok())
+                .find(|entry| entry.text() == text)
+        };
+        let from = entry("1").expect("the From entry");
+        let to = entry("2").expect("the To entry");
+        from.set_text("5");
+        assert_eq!(
+            strip.state.borrow().rules[0].value,
+            Some(FilterValue::Pair("5".to_owned(), "2".to_owned()))
+        );
+        to.set_text("9");
+        assert_eq!(
+            strip.state.borrow().rules[0].value,
+            Some(FilterValue::Pair("5".to_owned(), "9".to_owned()))
+        );
+        let freed = [from.downgrade(), to.downgrade()];
+
+        drop((strip, from, to));
+        drain_main_context();
+
+        let alive = freed.iter().filter(|entry| entry.upgrade().is_some()).count();
+        assert_eq!(alive, 0, "the From and To entries outlived the strip");
+    }
+
+    #[gtk4::test]
+    fn an_applied_filter_rebuilds_the_rule_list() {
+        let strip = strip_with(vec![rule("a"), rule("b")]);
+        let rules = first_descendant_of_type::<gtk::ListBox>(&strip.widget).expect("the rule list");
+        assert_eq!(row_count(&rules), 2);
+
+        strip.update_filter(FilterSet {
+            rules: vec![rule("b")],
+            ..FilterSet::default()
+        });
+
+        assert_eq!(row_count(&rules), 1);
     }
 }

@@ -41,6 +41,7 @@ use self::run_log::{RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
 use super::grid::GridMsg;
+use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
 
 glib::wrapper! {
@@ -493,32 +494,43 @@ impl SqlEditor {
         let view = self.imp().source_view.get();
         view.set_monospace(true);
         crate::ui::style_scheme_resolver::apply(&view, &settings.style_scheme());
-        let view_for_theme = view.downgrade();
-        let settings_for_theme = settings.clone();
-        adw::StyleManager::default().connect_dark_notify(move |_| {
-            if let Some(view) = view_for_theme.upgrade() {
-                crate::ui::style_scheme_resolver::apply(&view, &settings_for_theme.style_scheme());
-            }
-        });
-        let view_for_scheme = view.downgrade();
-        settings.gio().connect_changed(
-            Some(tablepro_storage::settings::keys::STYLE_SCHEME),
-            move |settings, key| {
-                if let Some(view) = view_for_scheme.upgrade() {
-                    crate::ui::style_scheme_resolver::apply(&view, &settings.string(key));
+        let style_manager = adw::StyleManager::default();
+        let settings_for_theme = Rc::downgrade(settings);
+        let dark = style_manager.connect_dark_notify(glib::clone!(
+            #[weak]
+            view,
+            move |_| {
+                if let Some(settings) = settings_for_theme.upgrade() {
+                    crate::ui::style_scheme_resolver::apply(&view, &settings.style_scheme());
                 }
-            },
+            }
+        ));
+        let scheme = settings.gio().connect_changed(
+            Some(tablepro_storage::settings::keys::STYLE_SCHEME),
+            glib::clone!(
+                #[weak]
+                view,
+                move |settings, key| crate::ui::style_scheme_resolver::apply(&view, &settings.string(key))
+            ),
         );
+        let mut handlers = vec![
+            HandlerGuard::new(&style_manager, dark),
+            HandlerGuard::new(settings.gio(), scheme),
+        ];
         crate::ui::editor_font_provider::apply(settings);
         for key in [
             tablepro_storage::settings::keys::USE_SYSTEM_FONT,
             tablepro_storage::settings::keys::CUSTOM_FONT,
         ] {
-            let settings_for_key = settings.clone();
-            settings.gio().connect_changed(Some(key), move |_, _| {
-                crate::ui::editor_font_provider::apply(&settings_for_key);
+            let settings_for_key = Rc::downgrade(settings);
+            let font = settings.gio().connect_changed(Some(key), move |_, _| {
+                if let Some(settings) = settings_for_key.upgrade() {
+                    crate::ui::editor_font_provider::apply(&settings);
+                }
             });
+            handlers.push(HandlerGuard::new(settings.gio(), font));
         }
+        self.imp().app_handlers.replace(handlers);
     }
 
     fn connect_completion(&self, schema_buffer: &gtk4::TextBuffer, buffer: &sourceview5::Buffer) {
@@ -531,18 +543,12 @@ impl SqlEditor {
     fn connect_buffer(&self, buffer: &sourceview5::Buffer) {
         let imp = self.imp();
         let cursor_info = imp.cursor_info.get();
-        let update_cursor = move |buffer: &sourceview5::Buffer| {
-            let iter = buffer.iter_at_mark(&buffer.get_insert());
-            cursor_info.set_label(&crate::i18n::gettext_f(
-                "Ln {line}, Col {column}",
-                &[
-                    ("line", &(iter.line() + 1).to_string()),
-                    ("column", &(iter.line_offset() + 1).to_string()),
-                ],
-            ));
-        };
-        update_cursor(buffer);
-        buffer.connect_cursor_position_notify(move |buffer| update_cursor(buffer));
+        show_cursor_position(&cursor_info, buffer);
+        buffer.connect_cursor_position_notify(glib::clone!(
+            #[weak]
+            cursor_info,
+            move |buffer| show_cursor_position(&cursor_info, buffer)
+        ));
 
         let weak = self.downgrade();
         buffer.connect_changed(move |buffer| {
@@ -552,16 +558,11 @@ impl SqlEditor {
         });
 
         let run_button = imp.run_button.get();
-        let update_label = move |buffer: &sourceview5::Buffer| {
-            if buffer.has_selection() {
-                run_button.set_label(&crate::i18n::gettext("Run Selection"));
-                run_button.set_tooltip_text(Some(&crate::i18n::gettext("Run the selected text (Ctrl+Return)")));
-            } else {
-                run_button.set_label(&crate::i18n::gettext("Run"));
-                run_button.set_tooltip_text(Some(&crate::i18n::gettext("Run the script (Ctrl+Return)")));
-            }
-        };
-        buffer.connect_has_selection_notify(move |buffer| update_label(buffer));
+        buffer.connect_has_selection_notify(glib::clone!(
+            #[weak]
+            run_button,
+            move |buffer| label_run_button(&run_button, buffer.has_selection())
+        ));
     }
 
     fn connect_buttons(&self) {
@@ -743,6 +744,27 @@ impl SqlEditor {
                 editor.insert_file(file, true).await;
             }
         });
+    }
+}
+
+fn show_cursor_position(label: &gtk4::Label, buffer: &sourceview5::Buffer) {
+    let iter = buffer.iter_at_mark(&buffer.get_insert());
+    label.set_label(&crate::i18n::gettext_f(
+        "Ln {line}, Col {column}",
+        &[
+            ("line", &(iter.line() + 1).to_string()),
+            ("column", &(iter.line_offset() + 1).to_string()),
+        ],
+    ));
+}
+
+fn label_run_button(button: &gtk4::Button, has_selection: bool) {
+    if has_selection {
+        button.set_label(&crate::i18n::gettext("Run Selection"));
+        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the selected text (Ctrl+Return)")));
+    } else {
+        button.set_label(&crate::i18n::gettext("Run"));
+        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the script (Ctrl+Return)")));
     }
 }
 

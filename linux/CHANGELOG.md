@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Excel export rounded integers past 2^53 and wrote decimals as text when their column padded the scale.
 - Exported arrays wrote each row of a multi-dimensional array as a quoted string.
 - Markdown export broke its table when a column name held a pipe.
+- Closed tabs, earlier result pages and structure edits kept using memory until TablePro quit.
 
 ### Security
 
