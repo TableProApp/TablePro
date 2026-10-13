@@ -102,3 +102,14 @@ fn a_bit_length_that_is_not_plain_digits_is_not_cast() {
     let sql = update_sql("bit(1; drop table x)", Value::Text("a".into()), Value::Text("b".into()));
     assert!(!sql.contains("pg_catalog.bit"), "{sql}");
 }
+
+#[test]
+fn a_real_column_is_compared_after_casting_the_parameter_to_real() {
+    for data_type in ["real", "float4"] {
+        let sql = update_sql(data_type, Value::Float(0.1), Value::Float(2.5));
+        assert!(sql.contains("\"v\" IS NOT DISTINCT FROM $3::real"), "{sql}");
+    }
+    let double = update_sql("double precision", Value::Float(0.1), Value::Float(2.5));
+    assert!(double.contains("\"v\" IS NOT DISTINCT FROM $3"), "{double}");
+    assert!(!double.contains("::real"), "{double}");
+}

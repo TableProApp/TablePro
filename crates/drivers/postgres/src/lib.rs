@@ -116,6 +116,7 @@ impl DatabaseDriver for PgDriver {
         if opts.read_only {
             pg_opts = pg_opts.options([("default_transaction_read_only", "on")]);
         }
+        pg_opts = pg_opts.statement_cache_capacity(0);
         let cancellation_options = pg_opts.clone();
         let session_options = pg_opts.clone();
         let pool = PgPoolOptions::new()

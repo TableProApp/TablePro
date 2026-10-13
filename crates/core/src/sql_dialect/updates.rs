@@ -178,6 +178,9 @@ fn optimistic_predicate(
 ) -> Result<String, BuildSqlError> {
     let placeholder = placeholder_for(driver_id, params.len());
     let predicate = match driver_id {
+        "postgres" if matches!(column.data_type.trim().to_ascii_lowercase().as_str(), "real" | "float4") => {
+            format!("{name} IS NOT DISTINCT FROM {placeholder}::real")
+        }
         "postgres" if column.data_type.trim().eq_ignore_ascii_case("json") => {
             format!("{name}::jsonb IS NOT DISTINCT FROM {placeholder}::jsonb")
         }
