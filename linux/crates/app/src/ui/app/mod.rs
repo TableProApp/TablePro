@@ -73,7 +73,8 @@ pub struct App {
     /// Ends the credential prompt loop with the window.
     prompt_presenter: glib::JoinHandle<()>,
     /// Which connect attempt is current, so a late result is discarded.
-    connect_attempts: tablepro_session::ConnectAttempts,
+    /// Shared with the close handler, which stops the one in flight.
+    connect_attempts: std::rc::Rc<tablepro_session::ConnectAttempts>,
     settings: std::rc::Rc<tablepro_storage::AppSettings>,
     storage: crate::storage::SharedStorage,
     tasks: tablepro_session::runtime::Tasks,
@@ -853,6 +854,9 @@ impl SimpleComponent for App {
         let in_flight_saves_handle = in_flight_saves.clone();
         let in_flight_saves_for_close = in_flight_saves.clone();
         let close_request_input_sender = sender.input_sender().clone();
+        let connect_attempts = std::rc::Rc::new(tablepro_session::ConnectAttempts::new());
+        let context_for_close = context.clone();
+        let connect_attempts_for_close = connect_attempts.clone();
         widgets.window.connect_close_request(move |w| {
             // If a Save is mid-flight (async transaction running), block
             // the close until it resolves. Without this, the completion
@@ -966,6 +970,11 @@ impl SimpleComponent for App {
                 return glib::Propagation::Stop;
             }
             crate::ui::window_geometry::persist(w, &settings_for_close);
+            connection::close_window_session(
+                &context_for_close.active,
+                &*context_for_close.hold,
+                &connect_attempts_for_close,
+            );
             // The last column drag or filter change may still be on its
             // way to disk. The hold keeps the process alive until it
             // lands, so quitting does not lose it.
@@ -1282,7 +1291,7 @@ impl SimpleComponent for App {
             context,
             session_links: None,
             prompt_presenter,
-            connect_attempts: tablepro_session::ConnectAttempts::new(),
+            connect_attempts,
             settings: settings.clone(),
             storage: storage.clone(),
             tasks: tasks.clone(),
@@ -1364,6 +1373,9 @@ impl SimpleComponent for App {
         self.history_gate.abort();
         self.prompt_presenter.abort();
         self.session_links = None;
+        // The close request already did this; a window destroyed
+        // without one still stops its session's work here.
+        connection::close_window_session(&self.context.active, &*self.context.hold, &self.connect_attempts);
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
