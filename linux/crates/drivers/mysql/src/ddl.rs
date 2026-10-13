@@ -1,16 +1,15 @@
-use tablepro_core::column::{ColumnDefault, ColumnKind};
-use tablepro_core::ddl::ddl_sql::{
-    column_list, create_index_sql, default_sql, foreign_key_sql, index_keys_sql, parenthesized,
-};
+mod mysql_column_definition;
+
+use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, foreign_key_sql, index_keys_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnAttributes, ColumnCapabilities, ColumnDefinition, ColumnVisibility, DdlCapabilities,
-    DdlDialect, DdlPlan, DraftColumn, DraftType, Permission, ReferentialAction, RefusalReason, TableChanges,
-    TableDefinition, TableDraft,
+    BuildDdlError, ChangedAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlPlan,
+    Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
 
 use crate::dialect::MySqlDialect;
+use mysql_column_definition::{nullability_permission, render, restatement};
 
 const fn capabilities(expression_index_keys: bool) -> DdlCapabilities {
     DdlCapabilities {
@@ -85,14 +84,23 @@ impl DdlDialect for MySqlDialect {
         self
     }
 
-    /// A comment is part of the definition MODIFY restates, so it takes
-    /// what a restatement takes. A MODIFY restates the type too, so a
+    /// Every change but a rename writes the column again whole, its
+    /// comment included, so each takes what the restatement takes. A
+    /// generated column is restated with its expression, but takes no
+    /// default and no AUTO_INCREMENT. A MODIFY restates the type too, so a
     /// column whose type the catalogue did not spell cannot take one.
     fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
-        let mut permissions = ColumnCapabilities::standard(DdlDialect::capabilities(self), table, column);
-        permissions.alter_comment = permissions
-            .alter_comment
-            .and(|| ColumnCapabilities::restatement(column));
+        let capabilities = DdlDialect::capabilities(self);
+        let engine = |allowed: bool| Permission::unless(allowed, RefusalReason::EngineUnsupported);
+        let restated = || restatement(column);
+        let mut permissions = ColumnCapabilities::standard(capabilities, table, column);
+        permissions.alter_type = engine(capabilities.alter_column_type).and(restated);
+        permissions.alter_nullability = engine(capabilities.alter_column_nullability)
+            .and(restated)
+            .and(|| nullability_permission(self, column));
+        permissions.alter_default = permissions.alter_default.and(restated);
+        permissions.alter_auto_increment = permissions.alter_auto_increment.and(restated);
+        permissions.alter_comment = engine(capabilities.column_comments).and(restated);
         if column.info.column_type.catalog.is_none() {
             let unreadable = || Permission::Refused(RefusalReason::UnreadableDefinition);
             permissions.alter_nullability = permissions.alter_nullability.and(unreadable);
@@ -121,7 +129,7 @@ impl DdlDialect for MySqlDialect {
         let mut definitions = draft
             .columns
             .iter()
-            .map(|column| self.column_definition(column))
+            .map(|column| render(self, column))
             .collect::<Result<Vec<_>, _>>()?;
         let key: Vec<String> = draft.primary_key().into_iter().map(str::to_owned).collect();
         if !key.is_empty() {
@@ -190,7 +198,7 @@ impl DdlDialect for MySqlDialect {
                 Some(alteration) => actions.push(format!(
                     "CHANGE COLUMN {} {}",
                     self.quote_identifier(&rename.from),
-                    self.column_definition(&alteration.draft)?
+                    render(self, &alteration.draft)?
                 )),
                 None => actions.push(format!(
                     "RENAME COLUMN {} TO {}",
@@ -202,11 +210,11 @@ impl DdlDialect for MySqlDialect {
         for alteration in &changes.altered_columns {
             let renamed = alteration.original.name() != alteration.draft.name;
             if !renamed && restates(alteration.changed) {
-                actions.push(format!("MODIFY COLUMN {}", self.column_definition(&alteration.draft)?));
+                actions.push(format!("MODIFY COLUMN {}", render(self, &alteration.draft)?));
             }
         }
         for column in &changes.added_columns {
-            actions.push(format!("ADD COLUMN {}", self.column_definition(column)?));
+            actions.push(format!("ADD COLUMN {}", render(self, column)?));
         }
         if let Some(change) = changes.primary_key.as_ref().filter(|change| !change.to.is_empty()) {
             actions.push(format!("ADD PRIMARY KEY ({})", column_list(self, &change.to)));
@@ -247,137 +255,18 @@ impl DdlDialect for MySqlDialect {
 
 /// Whether an alteration needs the column's definition restated. A
 /// primary-key flag alone is the table's key clause.
-fn restates(changed: tablepro_core::ddl::ChangedAttributes) -> bool {
+fn restates(changed: ChangedAttributes) -> bool {
     changed.column_type || changed.nullability || changed.default || changed.auto_increment || changed.comment
-}
-
-impl MySqlDialect {
-    /// The whole definition MODIFY or CHANGE replaces the old one with:
-    /// an attribute it leaves out is gone, so every one the column had
-    /// that still fits its type is written again.
-    fn column_definition(&self, column: &DraftColumn) -> Result<String, BuildDdlError> {
-        let resolved = column.column_type.resolve(self, &column.name)?;
-        let kind = &resolved.column_type.kind;
-        let added = ColumnAttributes::default();
-        let kept = column.original.as_ref().map_or(&added, |original| &original.attributes);
-        let mut parts = vec![self.quote_identifier(&column.name), resolved.sql.clone()];
-        // The catalogue names a character set only for a column that
-        // holds text, and a type the user typed may not.
-        let textual = matches!(column.column_type, DraftType::Catalog(_))
-            || matches!(kind, ColumnKind::Text { .. } | ColumnKind::Enum { .. });
-        if textual {
-            if let Some(character_set) = &kept.character_set {
-                parts.push(format!("CHARACTER SET {}", self.quote_identifier(character_set)));
-            }
-            if let Some(collation) = &kept.collation {
-                parts.push(format!("COLLATE {}", self.quote_identifier(&collation.name)));
-            }
-        }
-        parts.push(if column.nullable { "NULL" } else { "NOT NULL" }.to_owned());
-        if !column.auto_increment
-            && let Some(default) = default_sql(self, &column.name, &column.default, &resolved.column_type)?
-        {
-            parts.push(format!(
-                "DEFAULT {}",
-                default_clause(&column.default, &default, &resolved.sql)
-            ));
-        }
-        if let Some(expression) = kept
-            .on_update
-            .as_ref()
-            .filter(|_| matches!(kind, ColumnKind::Timestamp { .. }))
-        {
-            parts.push(format!("ON UPDATE {}", expression.as_sql()));
-        }
-        if column.auto_increment {
-            parts.push("AUTO_INCREMENT".to_owned());
-        }
-        if kept.visibility == ColumnVisibility::Invisible {
-            parts.push("INVISIBLE".to_owned());
-        }
-        if let Some(srid) = kept.spatial_reference.filter(|_| matches!(kind, ColumnKind::Spatial)) {
-            parts.push(format!("SRID {srid}"));
-        }
-        if let Some(comment) = column.comment_text() {
-            parts.push(format!("COMMENT {}", comment_literal(comment)));
-        }
-        Ok(parts.join(" "))
-    }
-}
-
-/// MySQL takes an expression default only in parentheses, apart from the
-/// CURRENT_TIMESTAMP family, and takes a literal on a BLOB, TEXT, JSON or
-/// spatial column only as an expression.
-fn default_clause(default: &ColumnDefault, sql: &str, declaration: &str) -> String {
-    match default {
-        ColumnDefault::Expression(_) if is_current_timestamp(sql) => sql.to_owned(),
-        ColumnDefault::Expression(_) => parenthesized(sql),
-        ColumnDefault::Literal(_) if needs_expression_default(declaration) => format!("({sql})"),
-        _ => sql.to_owned(),
-    }
-}
-
-fn is_current_timestamp(sql: &str) -> bool {
-    let compact: String = sql
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect::<String>()
-        .to_ascii_lowercase();
-    let name = compact.split('(').next().unwrap_or_default();
-    let arguments = compact.get(name.len()..).unwrap_or_default();
-    let precision_only = arguments.is_empty()
-        || (arguments.starts_with('(')
-            && arguments.ends_with(')')
-            && arguments
-                .get(1..arguments.len() - 1)
-                .is_some_and(|digits| digits.chars().all(|character| character.is_ascii_digit())));
-    matches!(name, "current_timestamp" | "now" | "localtime" | "localtimestamp") && precision_only
-}
-
-fn needs_expression_default(declaration: &str) -> bool {
-    let name = declaration
-        .trim()
-        .split(|character: char| character == '(' || character.is_whitespace())
-        .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    matches!(
-        name.as_str(),
-        "tinytext"
-            | "text"
-            | "mediumtext"
-            | "longtext"
-            | "tinyblob"
-            | "blob"
-            | "mediumblob"
-            | "longblob"
-            | "json"
-            | "geometry"
-            | "point"
-            | "linestring"
-            | "polygon"
-            | "multipoint"
-            | "multilinestring"
-            | "multipolygon"
-            | "geometrycollection"
-    )
-}
-
-/// COMMENT takes a plain string only, with no introducer or hex form.
-/// Workspace sessions run with backslash escapes on, so doubling both the
-/// quote and the backslash reads back as the text.
-fn comment_literal(text: &str) -> String {
-    format!("'{}'", text.replace('\\', "\\\\").replace('\'', "''"))
 }
 
 #[cfg(test)]
 mod tests {
     use tablepro_core::ForeignKeyInfo;
     use tablepro_core::ServerInfo;
-    use tablepro_core::column::{ColumnInfo, SqlExpression};
+    use tablepro_core::column::{ColumnDefault, ColumnInfo, SqlExpression};
     use tablepro_core::ddl::{
-        CollationName, DdlOperation, DropTableOptions, GeneratedColumn, GeneratedStorage, InboundForeignKey,
-        PrimaryKeyConstraint, UnmodeledAttribute, diff_table,
+        CollationName, ColumnAttributes, ColumnVisibility, DdlOperation, DraftColumn, DraftType, DropTableOptions,
+        GeneratedColumn, GeneratedStorage, InboundForeignKey, PrimaryKeyConstraint, UnmodeledAttribute, diff_table,
     };
     use tablepro_core::meta::{IndexInfo, IndexKey};
     use tablepro_core::value::Value;
@@ -387,6 +276,10 @@ mod tests {
 
     fn dialect() -> MySqlDialect {
         MySqlDialect::new(MySqlFlavour::MySql, &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3))
+    }
+
+    fn mariadb() -> MySqlDialect {
+        MySqlDialect::new(MySqlFlavour::MariaDb, &ServerInfo::new("MariaDB", "11.4.5", 11, 4, 5))
     }
 
     fn column(name: &str, declaration: &str, primary_key: bool) -> ColumnDefinition {
@@ -437,9 +330,17 @@ mod tests {
     }
 
     fn alter(original: &TableDefinition, edit: impl FnOnce(&mut TableDraft)) -> Result<DdlPlan, BuildDdlError> {
+        alter_on(&dialect(), original, edit)
+    }
+
+    fn alter_on(
+        dialect: &MySqlDialect,
+        original: &TableDefinition,
+        edit: impl FnOnce(&mut TableDraft),
+    ) -> Result<DdlPlan, BuildDdlError> {
         let mut draft = TableDraft::from_definition(original);
         edit(&mut draft);
-        dialect().plan_alter_table(original, &diff_table(original, &draft))
+        dialect.plan_alter_table(original, &diff_table(original, &draft))
     }
 
     fn sql(plan: Result<DdlPlan, BuildDdlError>) -> Vec<String> {
@@ -707,11 +608,18 @@ mod tests {
         );
     }
 
+    fn refused(plan: &Result<DdlPlan, BuildDdlError>, operation: DdlOperation, reason: &RefusalReason) -> bool {
+        matches!(plan, Err(BuildDdlError::Refused { operation: refused, reason: why, .. }) if *refused == operation && why == reason)
+    }
+
     #[test]
-    fn a_restatement_keeps_charset_collation_on_update_invisible_and_srid() {
-        let plan = alter(&attributed(), |draft| {
+    fn mysql_render_restates_comment_charset_collation_on_update_invisible_srid() {
+        let mut table = attributed();
+        table.columns[3].info.comment = Some("kept \\ note".to_owned());
+
+        let plan = alter(&table, |draft| {
             edit_column(draft, "code", |column| column.nullable = false);
-            edit_column(draft, "stamp", |column| column.comment = Some("touched".to_owned()));
+            edit_column(draft, "stamp", |column| column.comment = Some("it's \\ x".to_owned()));
             edit_column(draft, "shape", |column| column.nullable = false);
         });
 
@@ -719,14 +627,14 @@ mod tests {
             sql(plan),
             [
                 "ALTER TABLE `app`.`users` MODIFY COLUMN `code` varchar(20) CHARACTER SET `utf8mb4` COLLATE \
-                 `utf8mb4_bin` NOT NULL, MODIFY COLUMN `stamp` timestamp NULL ON UPDATE CURRENT_TIMESTAMP INVISIBLE \
-                 COMMENT 'touched', MODIFY COLUMN `shape` point NOT NULL SRID 4326"
+                 `utf8mb4_bin` NOT NULL COMMENT 'kept \\\\ note', MODIFY COLUMN `stamp` timestamp NULL ON UPDATE \
+                 CURRENT_TIMESTAMP INVISIBLE COMMENT 'it''s \\\\ x', MODIFY COLUMN `shape` point NOT NULL SRID 4326"
             ]
         );
     }
 
     #[test]
-    fn a_new_type_drops_the_attributes_it_cannot_hold() {
+    fn mysql_type_change_to_int_drops_charset_and_collation() {
         let plan = alter(&attributed(), |draft| {
             edit_column(draft, "code", |column| {
                 column.column_type = DraftType::Typed("int".to_owned())
@@ -734,11 +642,17 @@ mod tests {
             edit_column(draft, "stamp", |column| {
                 column.column_type = DraftType::Typed("date".to_owned())
             });
+            edit_column(draft, "shape", |column| {
+                column.column_type = DraftType::Typed("polygon".to_owned())
+            });
         });
 
         assert_eq!(
             sql(plan),
-            ["ALTER TABLE `app`.`users` MODIFY COLUMN `code` int NULL, MODIFY COLUMN `stamp` date NULL INVISIBLE"]
+            [
+                "ALTER TABLE `app`.`users` MODIFY COLUMN `code` int NULL, MODIFY COLUMN `stamp` date NULL INVISIBLE, \
+                 MODIFY COLUMN `shape` polygon NULL SRID 4326"
+            ]
         );
         // A character set typed with the type would clash with the one
         // kept from the catalogue, so the type parser has to refuse it.
@@ -747,75 +661,152 @@ mod tests {
     }
 
     #[test]
-    fn a_comment_is_refused_where_a_restatement_is() {
+    fn mysql_unmodeled_attribute_refuses_alteration() {
         let mut table = users();
         table.columns.extend([
-            with_attributes("total", "int", |attributes| {
-                attributes.generated = Some(GeneratedColumn {
-                    expression: SqlExpression::from_catalog_text("`id` * 2"),
-                    storage: GeneratedStorage::Stored,
-                });
-            }),
             with_attributes("note", "varchar(20)", |attributes| {
                 attributes.unmodeled = vec![UnmodeledAttribute::new("WITHOUT SYSTEM VERSIONING")];
             }),
+            with_attributes("label", "varchar(20)", |attributes| {
+                attributes.collation = Some(CollationName::new(None, "odd-name"));
+            }),
         ]);
-        table.columns[3].info.is_generated = true;
+        let unmodeled = RefusalReason::UnmodeledAttribute("WITHOUT SYSTEM VERSIONING".to_owned());
+        let odd = RefusalReason::UnmodeledAttribute("COLLATE odd-name".to_owned());
 
-        let generated = dialect().column_capabilities(&table, &table.columns[3]);
-        let unmodeled = dialect().column_capabilities(&table, &table.columns[4]);
-        let commented = alter(&table, |draft| {
-            edit_column(draft, "total", |column| column.comment = Some("x".to_owned()));
-        });
+        for (column, reason) in [(&table.columns[3], &unmodeled), (&table.columns[4], &odd)] {
+            let permissions = dialect().column_capabilities(&table, column);
+            for permission in [
+                &permissions.alter_type,
+                &permissions.alter_nullability,
+                &permissions.alter_default,
+                &permissions.alter_auto_increment,
+                &permissions.alter_comment,
+            ] {
+                assert_eq!(permission, &Permission::Refused(reason.clone()), "{}", column.name());
+            }
+            assert_eq!(permissions.rename, Permission::Allowed);
+        }
         let renamed_and_commented = alter(&table, |draft| {
             edit_column(draft, "note", |column| {
                 column.name = "remark".to_owned();
                 column.comment = Some("x".to_owned());
             });
         });
+        let renamed = alter(&table, |draft| {
+            edit_column(draft, "label", |column| column.name = "tag".to_owned())
+        });
 
+        assert!(
+            refused(&renamed_and_commented, DdlOperation::SetColumnComment, &unmodeled),
+            "{renamed_and_commented:?}"
+        );
         assert_eq!(
-            generated.alter_comment,
+            sql(renamed),
+            ["ALTER TABLE `app`.`users` RENAME COLUMN `label` TO `tag`"]
+        );
+    }
+
+    fn generated(table: &mut TableDefinition, name: &str, expression: Option<&str>) {
+        let mut column = with_attributes(name, "int", |attributes| {
+            attributes.generated = expression.map(|expression| GeneratedColumn {
+                expression: SqlExpression::from_catalog_text(expression),
+                storage: GeneratedStorage::Stored,
+            });
+        });
+        column.info.is_generated = true;
+        table.columns.push(column);
+    }
+
+    #[test]
+    fn a_generated_column_is_restated_with_its_expression() {
+        let mut table = users();
+        generated(&mut table, "total", Some("(`id` * 2)"));
+        generated(&mut table, "unread", None);
+
+        let total = dialect().column_capabilities(&table, &table.columns[3]);
+        let unread = dialect().column_capabilities(&table, &table.columns[4]);
+        let plan = alter(&table, |draft| {
+            edit_column(draft, "total", |column| {
+                column.column_type = DraftType::Typed("bigint".to_owned());
+                column.nullable = false;
+                column.comment = Some("doubled".to_owned());
+            });
+        });
+
+        assert_eq!(total.alter_type, Permission::Allowed);
+        assert_eq!(total.alter_nullability, Permission::Allowed);
+        assert_eq!(total.alter_comment, Permission::Allowed);
+        assert_eq!(total.alter_default, Permission::Refused(RefusalReason::GeneratedColumn));
+        assert_eq!(
+            total.alter_auto_increment,
             Permission::Refused(RefusalReason::GeneratedColumn)
         );
         assert_eq!(
-            unmodeled.alter_comment,
-            Permission::Refused(RefusalReason::UnmodeledAttribute(
-                "WITHOUT SYSTEM VERSIONING".to_owned()
-            ))
+            unread.alter_comment,
+            Permission::Refused(RefusalReason::GeneratedColumn)
         );
-        assert_eq!(generated.rename, Permission::Allowed);
-        assert!(
-            matches!(
-                commented,
-                Err(BuildDdlError::Refused {
-                    operation: DdlOperation::SetColumnComment,
-                    reason: RefusalReason::GeneratedColumn,
-                    ..
-                })
-            ),
-            "{commented:?}"
-        );
-        assert!(
-            matches!(
-                renamed_and_commented,
-                Err(BuildDdlError::Refused {
-                    operation: DdlOperation::SetColumnComment,
-                    reason: RefusalReason::UnmodeledAttribute(_),
-                    ..
-                })
-            ),
-            "{renamed_and_commented:?}"
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE `app`.`users` MODIFY COLUMN `total` bigint GENERATED ALWAYS AS (`id` * 2) STORED NOT NULL \
+                 COMMENT 'doubled'"
+            ]
         );
     }
 
     #[test]
-    fn only_the_current_timestamp_family_goes_bare() {
-        assert!(is_current_timestamp("CURRENT_TIMESTAMP"));
-        assert!(is_current_timestamp("current_timestamp(6)"));
-        assert!(is_current_timestamp("now()"));
-        assert!(!is_current_timestamp("now() + interval 1 day"));
-        assert!(!is_current_timestamp("uuid()"));
+    fn an_expression_default_is_restated_in_parentheses() {
+        let mut table = users();
+        table.columns.push(with_attributes("token", "char(36)", |_| {}));
+        table.columns[3].info.default = ColumnDefault::Expression(SqlExpression::from_catalog_text("uuid()"));
+
+        let plan = alter(&table, |draft| {
+            edit_column(draft, "token", |column| column.nullable = false)
+        });
+
+        assert_eq!(
+            sql(plan),
+            ["ALTER TABLE `app`.`users` MODIFY COLUMN `token` char(36) NOT NULL DEFAULT (uuid())"]
+        );
+    }
+
+    #[test]
+    fn mariadb_restates_its_srid_column_check_and_generated_columns() {
+        let mut table = users();
+        table.columns.extend([
+            with_attributes("shape", "point", |attributes| attributes.spatial_reference = Some(4326)),
+            with_attributes("doc", "longtext", |attributes| {
+                attributes.character_set = Some("utf8mb4".to_owned());
+                attributes.collation = Some(CollationName::new(None, "utf8mb4_bin"));
+                attributes.check = Some(SqlExpression::from_catalog_text("json_valid(`doc`)"));
+                attributes.visibility = ColumnVisibility::Invisible;
+            }),
+        ]);
+        generated(&mut table, "total", Some("`id` * 2"));
+        table.columns[5].attributes.visibility = ColumnVisibility::Invisible;
+
+        let total = mariadb().column_capabilities(&table, &table.columns[5]);
+        let plan = alter_on(&mariadb(), &table, |draft| {
+            edit_column(draft, "shape", |column| column.nullable = false);
+            edit_column(draft, "doc", |column| column.comment = Some("x".to_owned()));
+            edit_column(draft, "total", |column| column.comment = Some("y".to_owned()));
+        });
+
+        assert_eq!(
+            total.alter_nullability,
+            Permission::Refused(RefusalReason::GeneratedColumn)
+        );
+        assert_eq!(total.alter_comment, Permission::Allowed);
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE `app`.`users` MODIFY COLUMN `shape` point REF_SYSTEM_ID=4326 NOT NULL, MODIFY COLUMN \
+                 `doc` longtext CHARACTER SET `utf8mb4` COLLATE `utf8mb4_bin` NULL INVISIBLE COMMENT 'x' CHECK \
+                 (json_valid(`doc`)), MODIFY COLUMN `total` int GENERATED ALWAYS AS (`id` * 2) STORED INVISIBLE \
+                 COMMENT 'y'"
+            ]
+        );
     }
 
     #[test]

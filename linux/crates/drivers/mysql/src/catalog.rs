@@ -12,7 +12,10 @@ mod table_definition;
 pub(crate) use catalog_cells::CatalogCells;
 pub(crate) use mysql_column_row::{MySqlColumnRow, columns_sql};
 pub(crate) use mysql_extra::{ExtraGenerated, MySqlExtra};
-pub(crate) use table_definition::{COLUMN_ENGINE_ATTRIBUTES_SQL, INBOUND_FOREIGN_KEYS_SQL, inbound_foreign_keys};
+pub(crate) use table_definition::{
+    COLUMN_ENGINE_ATTRIBUTES_SQL, INBOUND_FOREIGN_KEYS_SQL, MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL,
+    column_checks, geometry_srids, inbound_foreign_keys,
+};
 
 use sqlx::mysql::{MySql, MySqlColumn};
 use sqlx::{Column as _, Type, TypeInfo as _};

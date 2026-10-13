@@ -5,7 +5,7 @@
 use futures_util::TryStreamExt;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
-use tablepro_core::column::ColumnInfo;
+use tablepro_core::column::{ColumnInfo, SqlExpression};
 use tablepro_core::ddl::{
     InboundForeignKey, PrimaryKeyConstraint, ReferentialAction, TableDefinition, TableSource, UnmodeledAttribute,
 };
@@ -17,8 +17,9 @@ use tablepro_core::meta::{
 use tablepro_core::{DriverError, ForeignKeyInfo};
 
 use crate::catalog::{
-    COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, INBOUND_FOREIGN_KEYS_SQL, MySqlColumnRow, column_definition,
-    column_info, columns_sql, inbound_foreign_keys,
+    COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, INBOUND_FOREIGN_KEYS_SQL, MARIADB_COLUMN_CHECKS_SQL,
+    MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, column_checks, column_definition, column_info, columns_sql,
+    geometry_srids, inbound_foreign_keys,
 };
 use crate::decode::decode_row;
 use crate::dialect::MySqlDialect;
@@ -317,9 +318,37 @@ pub(crate) async fn fetch_table_definition(
     table: &TableRef,
 ) -> Result<TableDefinition, DriverError> {
     let flavour = dialect.flavour();
-    let rows = column_rows(connection, flavour, table).await?;
+    let mut rows = column_rows(connection, flavour, table).await?;
     let engine = table_engine::lookup(connection, flavour, table).await?;
     let attributes = engine_attributes(connection, dialect, table).await;
+    let checks = match flavour {
+        MySqlFlavour::MariaDb => {
+            let binds = table_binds(table);
+            let geometry = catalog_rows(
+                connection,
+                flavour,
+                MARIADB_GEOMETRY_SRIDS_SQL,
+                "GEOMETRY_COLUMNS",
+                &binds,
+            )
+            .await?;
+            for (column, srid) in geometry_srids(&geometry)? {
+                if let Some(row) = rows.iter_mut().find(|row| row.name == column) {
+                    row.srs_id = Some(srid);
+                }
+            }
+            let checks = catalog_rows(
+                connection,
+                flavour,
+                MARIADB_COLUMN_CHECKS_SQL,
+                "CHECK_CONSTRAINTS",
+                &binds,
+            )
+            .await?;
+            column_checks(&checks)?
+        }
+        MySqlFlavour::MySql => Vec::new(),
+    };
     let columns = rows
         .iter()
         .map(|row| {
@@ -331,7 +360,12 @@ pub(crate) async fn fetch_table_definition(
             if engine.is_ndb() {
                 unmodeled.push(UnmodeledAttribute::new("ENGINE=ndbcluster"));
             }
-            column_definition(row, flavour, unmodeled)
+            let mut definition = column_definition(row, flavour, unmodeled);
+            definition.attributes.check = checks
+                .iter()
+                .find(|(column, _)| *column == row.name)
+                .map(|(_, clause)| SqlExpression::from_catalog_text(clause.as_str()));
+            definition
         })
         .collect();
     let indexes = fetch_indexes(connection, dialect, table).await?;
