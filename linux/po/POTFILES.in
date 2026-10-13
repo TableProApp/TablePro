@@ -29,8 +29,10 @@ crates/app/src/services/structure_tracker_handle.rs
 crates/app/src/services/structure_tracker_registry.rs
 crates/app/src/services/tab_registry.rs
 crates/app/src/services/tab_tracker_handle.rs
+crates/app/src/services/touch.rs
 crates/app/src/services/tracker_delta.rs
 crates/app/src/services/tracker_edit.rs
+crates/app/src/services/undo_op.rs
 crates/app/src/services/workspace_state.rs
 crates/app/src/storage.rs
 crates/app/src/test_support.rs
@@ -104,8 +106,10 @@ crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
 crates/app/src/ui/export_dialog.rs
+crates/app/src/ui/file_read.rs
 crates/app/src/ui/filter_strip.rs
 crates/app/src/ui/grid.rs
+crates/app/src/ui/handler_guard.rs
 crates/app/src/ui/history_dialog.rs
 crates/app/src/ui/icons.rs
 crates/app/src/ui/import_dialog.rs
