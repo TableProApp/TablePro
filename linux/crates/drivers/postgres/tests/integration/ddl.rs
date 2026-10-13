@@ -178,9 +178,8 @@ async fn change_primary_key_to_composite_applies() {
     connection.close().await.expect("a close");
 }
 
-/// The table and column take capitals and a space, which
-/// `pg_get_serial_sequence` reads only when the table is quoted and the
-/// column is not.
+/// The table and column take capitals and a space, which `regclass`
+/// reads only when the table is quoted and the column is not.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn toggle_identity_on_populated_table_then_insert() {
@@ -248,6 +247,54 @@ async fn toggle_identity_on_populated_table_then_insert() {
             name: Some("Ticket Log_pkey".to_owned()),
             columns: vec!["Id".to_owned()],
         })
+    );
+    connection.close().await.expect("a close");
+}
+
+/// A serial turned off keeps its sequence, owned by the column, so the
+/// identity added later is not the only sequence the column has.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn identity_after_serial_off_numbers_past_rows() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id serial PRIMARY KEY, label text)",
+            "INSERT INTO kept (label) VALUES ('a'), ('b'), ('c')",
+        ],
+    )
+    .await;
+    let numbering = |on: bool| {
+        move |column: &mut DraftColumn| {
+            if column.name == "id" {
+                column.auto_increment = on;
+            }
+        }
+    };
+
+    let plain = change(connection.as_ref(), &kept(), numbering(false)).await;
+    assert_eq!(
+        plain.column("id").map(|id| id.attributes.identity),
+        Some(IdentityStyle::None)
+    );
+    let numbered = change(connection.as_ref(), &kept(), numbering(true)).await;
+    apply(
+        connection.as_ref(),
+        WriteKind::RowChanges,
+        &["INSERT INTO kept (label) VALUES ('next')"],
+    )
+    .await
+    .expect("an insert without an id");
+
+    assert_eq!(
+        numbered.column("id").map(|id| id.attributes.identity),
+        Some(IdentityStyle::GeneratedByDefault)
+    );
+    assert_eq!(
+        value(connection.as_ref(), "SELECT id FROM kept WHERE label = 'next'").await,
+        "4"
     );
     connection.close().await.expect("a close");
 }
