@@ -36,7 +36,6 @@ impl App {
     }
 
     fn build_workspace_root(&mut self, sender: ComponentSender<Self>) {
-        let workspace_tabs = self.workspace_tabs.clone();
         let schema_buffer = self.schema_buffer.clone();
         let settings = self.settings.clone();
         let history = self.history.store();
@@ -44,41 +43,22 @@ impl App {
         let session = self.context.active.clone();
         let hold = self.context.hold.clone();
         let close_timeout = self.context.close_timeout();
-        let input = sender.input_sender().clone();
-        let toasts = self.toast_overlay.downgrade();
-        // Numbered like the tabs `append_editor_tab` makes, so the two
-        // ways of opening one look the same.
-        let create_tab = move |tab_view: &adw::TabView| {
-            let tab_id = Uuid::new_v4();
-            let editor = SqlEditor::new(SqlEditorInit {
-                schema_buffer: schema_buffer.clone(),
-                initial_query: None,
-                settings: settings.clone(),
-                history: history.clone(),
-                tasks: tasks.clone(),
-                session: session.clone(),
-                hold: hold.clone(),
-                close_timeout,
-            });
-            connect_editor(&editor, tab_id, &input, &toasts);
-            let page = tab_view.append(&editor);
-            let editor_count = workspace_tabs
-                .borrow()
-                .values()
-                .filter(|t| matches!(t, WorkspaceTab::Editor(_)))
-                .count();
-            page.set_title(&default_editor_tab_label(editor_count + 1));
-            write_workspace_tab_id(&page, tab_id);
-            let slot = EditorTabSlot {
-                editor,
-                page: page.clone(),
-                draft: tablepro_storage::DraftId::new(),
-                query: String::new(),
-            };
-            workspace_tabs.borrow_mut().insert(tab_id, WorkspaceTab::Editor(slot));
-            input.emit(AppMsg::WorkspaceTabsChanged);
-            page
+        let editor_init = move || SqlEditorInit {
+            schema_buffer: schema_buffer.clone(),
+            initial_query: None,
+            settings: settings.clone(),
+            history: history.clone(),
+            tasks: tasks.clone(),
+            session: session.clone(),
+            hold: hold.clone(),
+            close_timeout,
         };
+        let create_tab = overview_editor_tab(
+            self.workspace_tabs.clone(),
+            editor_init,
+            sender.input_sender().clone(),
+            self.toast_overlay.downgrade(),
+        );
         let chrome = build_workspace_chrome(sender.input_sender(), create_tab);
         self.workspace_root = Some(chrome.overview);
         self.workspace_tab_view = Some(chrome.view);
@@ -1269,19 +1249,48 @@ fn build_workspace_chrome(
         .enable_search(true)
         .child(&inner)
         .build();
-    // `connect_create_tab` has to return a page, and an overview with no
-    // view has none to make.
-    overview.connect_closure(
-        "create-tab",
-        false,
-        glib::closure_local!(move |overview: &adw::TabOverview| -> Option<adw::TabPage> {
-            overview.view().map(|view| create_tab(&view))
-        }),
-    );
+    // The signal returns its page (transfer none), and this binding hands
+    // it over without a reference of its own. A generic closure adds one,
+    // so every page the overview made would outlive its close. The
+    // overview already holds its view, so this capture adds no cycle.
+    let create_view = tab_view.clone();
+    overview.connect_create_tab(move |_| create_tab(&create_view));
 
     WorkspaceChrome {
         overview,
         view: tab_view,
+    }
+}
+
+/// The page the overview's own new-tab button asks for: an empty editor
+/// tab, numbered like the ones `append_editor_tab` makes.
+fn overview_editor_tab(
+    workspace_tabs: Rc<RefCell<HashMap<Uuid, WorkspaceTab>>>,
+    editor_init: impl Fn() -> SqlEditorInit + 'static,
+    input: relm4::Sender<AppMsg>,
+    toasts: glib::WeakRef<adw::ToastOverlay>,
+) -> impl Fn(&adw::TabView) -> adw::TabPage + 'static {
+    move |tab_view| {
+        let tab_id = Uuid::new_v4();
+        let editor = SqlEditor::new(editor_init());
+        connect_editor(&editor, tab_id, &input, &toasts);
+        let page = tab_view.append(&editor);
+        let editor_count = workspace_tabs
+            .borrow()
+            .values()
+            .filter(|t| matches!(t, WorkspaceTab::Editor(_)))
+            .count();
+        page.set_title(&default_editor_tab_label(editor_count + 1));
+        write_workspace_tab_id(&page, tab_id);
+        let slot = EditorTabSlot {
+            editor,
+            page: page.clone(),
+            draft: tablepro_storage::DraftId::new(),
+            query: String::new(),
+        };
+        workspace_tabs.borrow_mut().insert(tab_id, WorkspaceTab::Editor(slot));
+        input.emit(AppMsg::WorkspaceTabsChanged);
+        page
     }
 }
 
@@ -1466,27 +1475,111 @@ mod tests {
         view.append(&gtk::Label::new(None))
     }
 
+    fn overview_new_tab_button(overview: &adw::TabOverview) -> gtk::Button {
+        crate::test_support::descendants(overview)
+            .into_iter()
+            .find_map(|widget| {
+                let button = widget.downcast::<gtk::Button>().ok()?;
+                let content = button.child()?.downcast::<adw::ButtonContent>().ok()?;
+                (content.icon_name() == "adw-tab-new-symbolic").then_some(button)
+            })
+            .expect("the overview's new-tab button")
+    }
+
+    /// The chrome with the editor tabs the window's overview makes.
+    fn editor_chrome(
+        runtime: &crate::runtime::AppRuntime,
+        settings: &crate::test_support::MemorySettings,
+        tabs: &Rc<RefCell<HashMap<Uuid, WorkspaceTab>>>,
+        toasts: &adw::ToastOverlay,
+        input: &relm4::Sender<AppMsg>,
+    ) -> WorkspaceChrome {
+        adw::init().expect("libadwaita initialises under the test backend");
+        crate::register_test_resources();
+        let schema_buffer = crate::ui::editor::build_schema_buffer();
+        let settings = settings.get().clone();
+        let tasks = runtime.tasks();
+        let editor_init = move || SqlEditorInit {
+            schema_buffer: schema_buffer.clone(),
+            initial_query: None,
+            settings: settings.clone(),
+            history: None,
+            tasks: tasks.clone(),
+            session: crate::services::active_session::ActiveSession::new(),
+            hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
+            close_timeout: std::time::Duration::from_secs(5),
+        };
+        let create_tab = overview_editor_tab(tabs.clone(), editor_init, input.clone(), toasts.downgrade());
+        build_workspace_chrome(input, create_tab)
+    }
+
+    #[gtk4::test]
+    fn a_closed_tab_from_the_overview_is_freed() {
+        let runtime = crate::test_support::test_runtime();
+        let settings = crate::test_support::MemorySettings::new();
+        let tabs = Rc::new(RefCell::new(HashMap::new()));
+        let toasts = adw::ToastOverlay::new();
+        let (input, _receiver) = relm4::channel::<AppMsg>();
+        let chrome = editor_chrome(&runtime, &settings, &tabs, &toasts, &input);
+        toasts.set_child(Some(&chrome.overview));
+
+        overview_new_tab_button(&chrome.overview).emit_clicked();
+        let page = chrome.view.selected_page().expect("the new-tab button made a page");
+        let id = read_workspace_tab_id(&page).expect("the page names its tab");
+        assert!(tabs.borrow().contains_key(&id), "the window does not know the new tab");
+        let editor = page.child().downgrade();
+        let freed_page = page.downgrade();
+
+        // What the window does once the tab may close.
+        chrome.view.close_page(&page);
+        let removed = tabs.borrow_mut().remove(&id);
+        if let Some(WorkspaceTab::Editor(slot)) = &removed {
+            slot.editor.shutdown();
+        }
+        chrome.view.close_page_finish(&page, true);
+        drop((removed, page));
+        drain_main_context();
+
+        assert!(freed_page.upgrade().is_none(), "the closed page is still alive");
+        assert!(editor.upgrade().is_none(), "the closed page's editor is still alive");
+    }
+
     #[gtk4::test]
     fn tab_view_freed_after_teardown() {
-        adw::init().expect("libadwaita initialises under the test backend");
+        let runtime = crate::test_support::test_runtime();
+        let settings = crate::test_support::MemorySettings::new();
+        let tabs = Rc::new(RefCell::new(HashMap::new()));
+        let toasts = adw::ToastOverlay::new();
         let (input, _receiver) = relm4::channel::<AppMsg>();
-        let chrome = build_workspace_chrome(&input, blank_page);
+        let chrome = editor_chrome(&runtime, &settings, &tabs, &toasts, &input);
         let stack = gtk::Stack::new();
         stack.add_named(&chrome.overview, Some("tabs"));
-        blank_page(&chrome.view);
-        let created = chrome.overview.emit_by_name::<Option<adw::TabPage>>("create-tab", &[]);
-        assert!(created.is_some(), "the overview's new-tab button made no page");
-        drop(created);
+        toasts.set_child(Some(&stack));
+        overview_new_tab_button(&chrome.overview).emit_clicked();
+        overview_new_tab_button(&chrome.overview).emit_clicked();
         assert_eq!(chrome.view.n_pages(), 2);
+        let selected = chrome.view.selected_page().expect("a selected page");
+        let editor = selected.child().downgrade();
+        let page = selected.downgrade();
+        drop(selected);
         let view = chrome.view.downgrade();
         let overview = chrome.overview.downgrade();
 
+        // What the window does on disconnect.
+        for tab in tabs.borrow().values() {
+            if let WorkspaceTab::Editor(slot) = tab {
+                slot.editor.shutdown();
+            }
+        }
         stack.remove(&chrome.overview);
         drop(chrome);
+        tabs.borrow_mut().clear();
         drain_main_context();
 
         assert!(view.upgrade().is_none(), "the tab view outlived its teardown");
         assert!(overview.upgrade().is_none(), "the overview outlived its teardown");
+        assert!(page.upgrade().is_none(), "a page outlived its teardown");
+        assert!(editor.upgrade().is_none(), "an editor outlived its teardown");
     }
 
     #[gtk4::test]
