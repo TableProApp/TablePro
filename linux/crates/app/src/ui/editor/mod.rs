@@ -412,7 +412,6 @@ impl SqlEditor {
         self.show_new_entries(before);
     }
 
-    /// Add the log's lines from `from` on to the results list.
     fn show_new_entries(&self, from: usize) {
         let imp = self.imp();
         let log = imp.log.borrow();
@@ -422,7 +421,6 @@ impl SqlEditor {
         imp.results.append(log.entries().get(from..).unwrap_or_default());
     }
 
-    /// The page the results list shows for the log's line `index`.
     fn result_page(&self, index: u32) -> Option<gtk4::Widget> {
         let imp = self.imp();
         let grid_sender = imp.grid_sender.get()?;

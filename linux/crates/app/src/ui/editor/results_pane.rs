@@ -140,9 +140,8 @@ impl ResultsPane {
         imp.transaction_label.set_visible(false);
     }
 
-    /// What builds a line's page. A page is built when its line is
-    /// first shown, so a script with thousands of statements builds
-    /// one, not thousands.
+    /// A page is built when its line is first shown, so a script with
+    /// thousands of statements builds one, not thousands.
     pub fn set_page_builder(&self, builder: impl Fn(u32) -> Option<gtk4::Widget> + 'static) {
         self.imp().page_builder.replace(Some(Box::new(builder)));
     }
@@ -161,7 +160,6 @@ impl ResultsPane {
         imp.transaction_label.set_visible(label.is_some());
     }
 
-    /// Add the lines for `entries`, which follow the ones listed.
     pub fn append(&self, entries: &[RunLogEntry]) {
         let imp = self.imp();
         let Some(items) = imp.items.get() else {
@@ -226,8 +224,6 @@ impl ResultsPane {
         }
     }
 
-    /// Build the line's page unless it is kept already, letting go of
-    /// the page shown longest ago once more than `PAGES_KEPT` are kept.
     fn keep_page(&self, index: u32) -> bool {
         let imp = self.imp();
         {
