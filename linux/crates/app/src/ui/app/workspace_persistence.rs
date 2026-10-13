@@ -78,8 +78,8 @@ impl WorkspacePersistence {
     /// Write the tabs as they are now and stop writing for this session.
     /// The future resolves once the record is on disk.
     pub fn detach(&self) -> Option<impl Future<Output = Result<(), WorkspaceSaveError>> + use<>> {
-        // A request still pending would read the tabs after the teardown
-        // emptied them, and save an empty list.
+        // Taking the target is what keeps a pending request from saving
+        // the emptied tabs; this only stops its timer.
         self.debouncer.cancel();
         let target = self.target.borrow_mut().take()?;
         if let Some(record) = target.record() {
@@ -280,6 +280,56 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn only_a_structure_tab_of_an_existing_table_is_saved() {
+        let fixture = Fixture::new();
+        let session = crate::test_support::FakeSession::start(
+            tablepro_test_support::ConnectionScript::default(),
+            [],
+            fixture.runtime.tasks(),
+        );
+        for (mode, table) in [(StructureMode::Edit, "users"), (StructureMode::New, "")] {
+            let structure = crate::ui::structure_tab::StructureTab::new(crate::ui::structure_tab::StructureTabInit {
+                tracker: Default::default(),
+                schema: Some("public".to_owned()),
+                table: table.to_owned(),
+                mode,
+                driver_id: "postgres".to_owned(),
+                session: session.session.clone(),
+                tasks: fixture.runtime.tasks(),
+            });
+            let page = fixture.view.append(&structure);
+            let id = Uuid::new_v4();
+            write_workspace_tab_id(&page, id);
+            fixture.tabs.borrow_mut().insert(
+                id,
+                WorkspaceTab::Structure(crate::ui::app::StructureTabSlot {
+                    id,
+                    structure,
+                    page,
+                    schema: Some("public".to_owned()),
+                    table: table.to_owned(),
+                    mode,
+                }),
+            );
+        }
+
+        let record = workspace_record(&fixture.view, &fixture.tabs.borrow());
+
+        assert_eq!(
+            record.tabs,
+            [TabRecord::Structure {
+                schema: Some("public".to_owned()),
+                table: "users".to_owned(),
+            }]
+        );
+        for tab in fixture.tabs.borrow().values() {
+            if let WorkspaceTab::Structure(slot) = tab {
+                slot.structure.shutdown();
+            }
+        }
+    }
+
+    #[gtk4::test]
     fn restore_selects_active_tab_and_reopens_structure_tabs() {
         adw::init().expect("libadwaita initialises under the test backend");
         let view = adw::TabView::new();
@@ -351,6 +401,10 @@ mod tests {
 
         persistence.request();
         let flushing = persistence.detach().expect("an attached session");
+        assert!(
+            !persistence.debouncer.is_pending(),
+            "a write timer outlived the session"
+        );
         // What the window's teardown does next.
         fixture.tabs.borrow_mut().clear();
         finish_on_main(WAIT, flushing)
