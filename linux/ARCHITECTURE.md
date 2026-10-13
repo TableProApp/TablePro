@@ -193,6 +193,8 @@ On Linux the system store is the distribution's CA bundle. Under Flatpak it is t
 
 A window holds one `Session`. Every use of its connection goes through the `OperationRunner`, which adds no timer of its own: the deadline travels in `CallOptions` so the driver stops the statement on the server. The session's monitor probes every 30 s and calls the connection lost after three failed probes in a row, or as soon as `Connection::lost()` fires, which a driver resolves only when the link is gone, never for one dead backend in its pool. It then reconnects on a backoff from 5 s to 60 s. A failure that a retry cannot fix (authentication, TLS, configuration, a host key to review) parks the session until the user acts. A read that failed because its connection was lost runs once more on the replacement link; a save never does.
 
+The session's `SchemaCatalog` holds what the window knows about the database: the schemas, each scope's objects and each table's columns. Callers that ask for the same thing at once share one fetch, a fetch runs as its own task so a view that closes does not stop it, and a failed refresh keeps the list it had. A reconnect commits the catalog the new connection read and marks the rest stale; `invalidate_table` does the same for one table after a schema change. The sidebar and the editor's completion words follow the default schema's list through a watch the window drops before the session closes.
+
 ## Workspace tab system
 
 The active connection drives a single `AdwTabView` hosting heterogeneous tabs. The `App` component owns the strip; tabs are typed via the `WorkspaceTab` enum:
@@ -206,9 +208,11 @@ pub enum WorkspaceTab {
 }
 ```
 
-Each tab is a Relm4 `Controller<T>` whose widget the `AdwTabView` adopts. `App` keeps a `HashMap<Uuid, WorkspaceTab>` keyed by the tab's UUID; the canonical display order comes from `tab_view.pages()` (drag-reorderable). The UUID is stashed on the `AdwTabPage` via `glib::Quark` qdata so close / right-click actions can recover it.
+Each tab is a gtk-rs widget with a composite template, which the `AdwTabView` adopts. `App` keeps a `HashMap<Uuid, WorkspaceTab>` keyed by the tab's UUID; the canonical display order comes from `tab_view.pages()` (drag-reorderable). The UUID is stashed on the `AdwTabPage` via `glib::Quark` qdata so close / right-click actions can recover it.
 
-App routing is hub-and-spoke: every per-tab event becomes an output that App's `forward(...)` closure tags with the tab's UUID and re-emits as an `AppMsg::*ForTab(id, ...)`. App's `update` looks up the slot and dispatches back to the controller's input. This keeps the per-tab controllers ignorant of each other and gives App one place to enforce cross-tab invariants (refetch siblings after Save, close all tabs for a dropped table, etc.).
+App routing is hub-and-spoke: a tab emits signals, and the closures App connects tag them with the tab's UUID and re-emit them as `AppMsg` inputs. App's `update` looks up the slot and calls back into the tab. This keeps the tabs ignorant of each other and gives App one place to enforce cross-tab invariants (reload the tabs on a table whose schema changed, close all tabs for a dropped table, etc.).
+
+A browse or structure tab reads its own data through the session. A `RequestSequencer` keeps one request of each kind current: a new page stops the one it replaces, and a reply to a replaced request is dropped. A page and a count wait for the table's columns from the catalog. A read that failed is asked again once the session reconnects, while a tab whose reads all landed keeps its rows. Closing a tab stops its reads, so the server drops the statement.
 
 Reopening a closed tab uses a 10-deep `VecDeque<ClosedTabDescriptor>` snapshot taken in `finish_close_workspace_tab` before the slot is dropped. The stack clears on disconnect because descriptors reference tables in the active connection.
 
