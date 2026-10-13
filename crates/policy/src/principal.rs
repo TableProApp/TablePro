@@ -53,12 +53,76 @@ impl Principal {
         match self {
             Self::Human { session } => format!("human:{session}"),
             Self::Agent { token, client, .. } => {
-                let short = if token.len() > 8 { &token[..8] } else { token };
+                let short: String = token.chars().take(8).collect();
                 match client {
                     Some(c) => format!("agent:{c}:{short}"),
                     None => format!("agent:{short}"),
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn agent(token: &str, client: Option<&str>) -> Principal {
+        Principal::Agent {
+            token: token.into(),
+            client: client.map(str::to_string),
+            model: None,
+        }
+    }
+
+    #[test]
+    fn a_label_shortens_the_token_without_splitting_a_character() {
+        assert_eq!(agent("abcdefghijkl", None).label(), "agent:abcdefgh");
+        assert_eq!(agent("short", None).label(), "agent:short");
+        assert_eq!(agent("abcdefgh", Some("claude")).label(), "agent:claude:abcdefgh");
+        assert_eq!(Principal::human_gui().label(), "human:gui");
+
+        for token in ["tokéééééé", "ééééé-token", "日本語のトークン", "abcdefgé", "😀😀😀😀😀"]
+        {
+            let label = agent(token, Some("client")).label();
+            assert!(label.starts_with("agent:client:"), "{token}: {label}");
+            assert!(label.chars().count() <= "agent:client:".len() + 8, "{token}: {label}");
+        }
+    }
+
+    #[test]
+    fn the_audit_form_replaces_the_token_with_a_stable_digest() {
+        let first = agent("super-secret-token", Some("claude")).sanitized();
+        let again = agent("super-secret-token", Some("claude")).sanitized();
+        let other = agent("another-token", Some("claude")).sanitized();
+
+        let Principal::Agent { token, client, .. } = &first else {
+            panic!("an agent stays an agent: {first:?}");
+        };
+        assert!(
+            token.starts_with("sha256:") && token.len() == "sha256:".len() + 16,
+            "{token}"
+        );
+        assert!(!token.contains("super-secret"));
+        assert_eq!(client.as_deref(), Some("claude"));
+        assert_eq!(first, again, "the digest is stable so attempts can be correlated");
+        assert_ne!(first, other);
+        assert_eq!(Principal::human_gui().sanitized(), Principal::human_gui());
+    }
+
+    #[test]
+    fn a_principal_reads_from_json_with_its_defaults() {
+        let human: Principal = serde_json::from_str(r#"{"kind":"human"}"#).unwrap();
+        assert_eq!(human, Principal::human_gui());
+        let agent: Principal = serde_json::from_str(r#"{"kind":"agent","token":"t"}"#).unwrap();
+        assert_eq!(
+            agent,
+            super::Principal::Agent {
+                token: "t".into(),
+                client: None,
+                model: None
+            }
+        );
+        assert!(agent.is_agent() && !human.is_agent());
     }
 }
