@@ -56,11 +56,17 @@ class ClassifyCiFailureTests(unittest.TestCase):
         self.assertEqual(self.tag(text), "code")
 
     def test_an_unrecognised_log_is_unknown(self):
-        self.assertEqual(self.tag("everything is fine"), "unknown")
+        self.assertEqual(self.tag("everything is fine\nJob failed"), "unknown")
 
     def test_the_evidence_is_the_matching_line(self):
         _, _, evidence = classifier.classify_log("a\nMySQL fixture did not become ready\nb")
         self.assertEqual(evidence, "MySQL fixture did not become ready")
+
+    def test_a_log_that_ends_without_a_result_is_infrastructure(self):
+        self.assertEqual(self.tag("test a ... ok\ntest b ... ok\n"), "infra")
+
+    def test_a_finished_log_with_nothing_recognised_stays_unknown(self):
+        self.assertEqual(self.tag("something odd\n\U0001f3c1  Job failed"), "unknown")
 
 
 if __name__ == "__main__":

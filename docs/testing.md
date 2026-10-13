@@ -212,7 +212,7 @@ Gates are serialised by a host lock and one full run takes 10 to 20 minutes, so 
 
 | Tag | Meaning | What to do |
 |---|---|---|
-| `infra` | Image pull or fixture start timeout, compiler crash, rate limit, runner volume path | Retry before reading code |
+| `infra` | Image pull or fixture start timeout, compiler crash, rate limit, runner volume path, a job log that ends without a result (runner or Forgejo connection lost) | Retry before reading code |
 | `gui-timing` | The window did not appear | Retry once |
 | `gui` | A GUI assertion failed | Ambiguous: a missing accessible node can be load or a real regression. Rerun once; if the same scenario fails again on a quiet runner, treat it as code |
 | `code` | Test panic, compile or lint error, application crash, startup layout abort | Read the log and fix |

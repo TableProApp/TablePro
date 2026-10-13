@@ -35,7 +35,7 @@ if ! flock -n 9; then
   flock 9
 fi
 latest_run_id() {
-  curl -fsS -H "Authorization: token $token" "$api/actions/runs?limit=1" | python3 -c '
+  curl -fsS --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 -H "Authorization: token $token" "$api/actions/runs?limit=1" | python3 -c '
 import json, sys
 runs = json.load(sys.stdin)["workflow_runs"]
 print(runs[0]["id"] if runs else 0)
@@ -47,12 +47,16 @@ if [ "$remote_sha" = "$sha" ]; then
   echo "$target already points at $sha on $remote; using its latest ci run, which may be older than this check"
 else
   after="$(latest_run_id)"
-  git push --quiet "$remote" "$branch:$target"
+  for attempt in 1 2 3; do
+    git push --quiet "$remote" "$branch:$target" && break
+    [ "$attempt" -lt 3 ] || exit 1
+    sleep 10
+  done
 fi
 deadline=$((SECONDS + timeout_minutes * 60))
 
 summarize() {
-  curl -fsS -H "Authorization: token $token" "$api/actions/runs?limit=50" | python3 -c '
+  curl -fsS --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 -H "Authorization: token $token" "$api/actions/runs?limit=50" | python3 -c '
 import json, sys
 sha, after = sys.argv[1], int(sys.argv[2])
 runs = [
@@ -72,7 +76,7 @@ while [ "$SECONDS" -lt "$deadline" ]; do
   case "$status" in
     success) echo "forgejo run $run_id passed for $sha"; exit 0 ;;
     failure|cancelled)
-      report="$(curl -fsS -H "Authorization: token $token" "$api/actions/tasks?limit=100" | python3 -c '
+      report="$(curl -fsS --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 -H "Authorization: token $token" "$api/actions/tasks?limit=100" | python3 -c '
 import json, sys
 run = int(sys.argv[1])
 tasks = [task for task in json.load(sys.stdin).get("workflow_runs", []) if task.get("run_number") == run]

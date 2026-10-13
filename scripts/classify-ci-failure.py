@@ -53,6 +53,8 @@ def classify_log(text):
             line_end = tail.find("\n", match.end())
             evidence = tail[line_start : line_end if line_end != -1 else len(tail)].strip()
             return tag, label, evidence[:200]
+    if not re.search(r"Job (succeeded|failed)", text):
+        return "infra", "the job log ends without a result (runner or Forgejo connection lost)", tail.strip().splitlines()[-1][:200] if tail.strip() else ""
     return "unknown", "no known signature", ""
 
 
