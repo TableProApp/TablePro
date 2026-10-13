@@ -18,3 +18,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
+- PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.

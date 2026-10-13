@@ -1,9 +1,14 @@
 //! Read-only is held per transaction, so no statement escapes it and no
 //! setting outlives it.
 
-use tablepro_core::{DriverError, ReadOnlyRefusal, RowLimit, RunEnd, TransactionState, Value, WriteKind};
+use tablepro_core::{
+    Connection, DriverError, ReadOnlyRefusal, ReadStatement, RowLimit, RunEnd, StreamSummary, TransactionState,
+    UserSql, Value, WriteKind,
+};
 
-use crate::support::{CALL, apply, connect, run, run_ok, scalar, session, setup, start, statement, within};
+use crate::support::{
+    CALL, EventSink, Events, apply, connect, run, run_ok, scalar, session, setup, start, statement, within,
+};
 
 fn refused_by_server(end: &RunEnd) -> bool {
     matches!(
@@ -126,4 +131,67 @@ async fn query_bound_nextval_is_25006() {
         "a generated read wrote: {:?}",
         outcome.map(|result| result.rows)
     );
+}
+
+async fn stream_user_sql(connection: &dyn Connection, sql: &str) -> Result<StreamSummary, DriverError> {
+    connection
+        .stream_read(
+            &ReadStatement::User(UserSql::new(sql)),
+            Box::new(EventSink::new(&Events::default())),
+            within(CALL),
+        )
+        .await
+}
+
+/// The read's own transaction has taken its snapshot before user SQL
+/// runs, so none of these can make it writable.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn stream_read_user_sql_cannot_turn_the_transaction_writable() {
+    let fixture = start().await;
+    let owner = connect(&fixture, false).await;
+    setup(owner.as_ref(), &["CREATE TABLE t (id int)", "INSERT INTO t VALUES (1)"]).await;
+
+    for sql in [
+        "SET TRANSACTION READ WRITE; DELETE FROM t",
+        "SET transaction_read_only = off; DELETE FROM t",
+        "SET LOCAL transaction_read_only TO false; DELETE FROM t",
+        "SELECT set_config('transaction_read_only', 'off', true); DELETE FROM t",
+        "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; DELETE FROM t",
+    ] {
+        let outcome = stream_user_sql(owner.as_ref(), sql).await;
+
+        assert!(
+            matches!(outcome, Err(DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(_)))),
+            "{sql}: {outcome:?}"
+        );
+    }
+    assert_eq!(scalar(owner.as_ref(), "SELECT count(*) FROM t").await, Value::Int(1));
+}
+
+/// With `standard_conforming_strings` off the server reads `\'` as an
+/// escaped quote, so the COMMIT is a statement of its own and the guard
+/// has to see it that way too.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn stream_read_guard_splits_as_a_non_conforming_session_does() {
+    let fixture = start().await;
+    let owner = connect(&fixture, false).await;
+    setup(
+        owner.as_ref(),
+        &[
+            "CREATE TABLE t (id int)",
+            "INSERT INTO t VALUES (1)",
+            "ALTER ROLE CURRENT_USER SET standard_conforming_strings = off",
+        ],
+    )
+    .await;
+
+    let outcome = stream_user_sql(owner.as_ref(), "SELECT 'a\\', '; COMMIT; DELETE FROM t; SELECT '1'").await;
+
+    assert!(
+        matches!(outcome, Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))),
+        "{outcome:?}"
+    );
+    assert_eq!(scalar(owner.as_ref(), "SELECT count(*) FROM t").await, Value::Int(1));
 }

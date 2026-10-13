@@ -23,6 +23,9 @@ pub(crate) const READ_ONLY_TRANSACTION: u16 = 1792;
 /// ER_WARNING_NOT_COMPLETE_ROLLBACK: a table that cannot roll back was
 /// written inside the transaction.
 pub(crate) const INCOMPLETE_ROLLBACK: u16 = 1196;
+/// ER_UNSUPPORTED_PS: the server parsed the statement and cannot run it
+/// as a prepared statement.
+pub(crate) const UNSUPPORTED_PS: u16 = 1295;
 /// MySQL's ER_QUERY_TIMEOUT for `max_execution_time`.
 pub(crate) const MYSQL_QUERY_TIMEOUT: u16 = 3024;
 /// MariaDB's ER_STATEMENT_TIMEOUT for `max_statement_time`.

@@ -12,6 +12,9 @@ use tokio_postgres::error::{DbError, ErrorPosition};
 const AUTHENTICATION_KIND: &str = "authentication error";
 const TLS_KIND: &str = "error performing TLS handshake";
 
+/// query_canceled: a cancel request or a statement timeout took effect.
+pub(crate) const QUERY_CANCELED: &str = "57014";
+
 /// What a tokio-postgres error means to the app.
 pub(crate) fn map_error(error: &tokio_postgres::Error) -> DriverError {
     if let Some(carried) = carried(error) {
@@ -71,12 +74,6 @@ pub(crate) fn map_diagnostics(diagnostics: ServerDiagnostics) -> DriverError {
     match diagnostics.sqlstate().unwrap_or_default() {
         "28P01" | "28000" => DriverError::auth(Some(diagnostics)),
         "25006" => DriverError::ReadOnly(ReadOnlyRefusal::server(diagnostics)),
-        // The SQLSTATE of a statement_timeout is the one a cancel request
-        // raises too, and only the message tells them apart.
-        "57014" if diagnostics.message.contains("statement timeout") => DriverError::Timeout {
-            phase: TimeoutPhase::Statement,
-            server_cancelled: true,
-        },
         "55P03" => DriverError::Timeout {
             phase: TimeoutPhase::LockWait,
             server_cancelled: true,
@@ -119,12 +116,25 @@ pub(crate) fn sqlstate(error: &DriverError) -> Option<&str> {
         DriverError::Timeout {
             phase: TimeoutPhase::Statement,
             server_cancelled: true,
-        } => Some("57014"),
+        } => Some(QUERY_CANCELED),
         DriverError::Timeout {
             phase: TimeoutPhase::LockWait,
             ..
         } => Some("55P03"),
         _ => None,
+    }
+}
+
+/// Inside a read-only transaction the driver opened, a statement that
+/// cannot run in a transaction block at all (VACUUM, CREATE DATABASE),
+/// or one that tries to make it writable, fails with 25001, which there
+/// means the read-only rule refused it.
+pub(crate) fn read_only_refusal(error: DriverError) -> DriverError {
+    match error {
+        DriverError::Server(diagnostics) if diagnostics.sqlstate() == Some("25001") => {
+            DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(diagnostics))
+        }
+        other => other,
     }
 }
 
@@ -194,15 +204,13 @@ mod tests {
             ("25006", "cannot execute INSERT in a read-only transaction", |e| {
                 matches!(e, DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(_)))
             }),
-            ("57014", "canceling statement due to statement timeout", |e| {
-                matches!(
-                    e,
-                    DriverError::Timeout {
-                        phase: TimeoutPhase::Statement,
-                        server_cancelled: true
-                    }
-                )
-            }),
+            // Only the call that set the timeout can tell it from a
+            // cancel, so here both stay the server's own answer.
+            (
+                "57014",
+                "canceling statement due to statement timeout",
+                |e| matches!(e, DriverError::Server(d) if d.sqlstate() == Some("57014")),
+            ),
             (
                 "57014",
                 "canceling statement due to user request",
@@ -241,6 +249,25 @@ mod tests {
             Some("57014")
         );
         assert_eq!(sqlstate(&DriverError::Busy), None);
+    }
+
+    #[test]
+    fn a_25001_in_a_read_only_transaction_is_a_read_only_refusal() {
+        let refused = [
+            "VACUUM cannot run inside a transaction block",
+            "transaction read-write mode must be set before any query",
+        ];
+        for message in refused {
+            assert!(
+                matches!(
+                    read_only_refusal(map_diagnostics(diagnostics("25001", message))),
+                    DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(_))
+                ),
+                "{message}"
+            );
+        }
+        let other = map_diagnostics(diagnostics("42P01", "relation does not exist"));
+        assert_eq!(read_only_refusal(other.clone()), other);
     }
 
     #[test]

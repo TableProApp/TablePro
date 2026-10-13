@@ -13,26 +13,31 @@ use tokio_postgres::{Client, SimpleQueryMessage};
 use crate::catalog::{result_column, text_column};
 use crate::codec::typed;
 use crate::editor::statement_class::{StatementClass, classify};
-use crate::errors::map_error;
+use crate::errors::{map_error, read_only_refusal};
 use crate::workspace_call::{decode_row, describe};
 
 const BATCH_ROWS: usize = 256;
 
+/// The read's transaction. Its SELECT takes the snapshot, after which
+/// the server refuses SET TRANSACTION READ WRITE and any other way of
+/// making the transaction writable, so user SQL cannot write in it.
+const BEGIN: &str = "START TRANSACTION READ ONLY; SET LOCAL statement_timeout = 0; SELECT 1";
+
 /// Every row of a read, into the sink, inside a read-only transaction
 /// with no server timeout: an export can take minutes, and the caller's
-/// deadline and cancel still stop it.
+/// deadline and cancel still stop it. `conforming` is the session's
+/// `standard_conforming_strings`, which decides how the server splits
+/// the user's SQL.
 pub(crate) async fn stream(
     client: &Client,
+    conforming: bool,
     read: &ReadStatement,
     sink: &mut dyn ResultSink,
 ) -> Result<StreamSummary, DriverError> {
     if let ReadStatement::User(sql) = read {
-        refuse_transaction_control(sql.as_str())?;
+        refuse_transaction_control(sql.as_str(), conforming)?;
     }
-    client
-        .batch_execute("START TRANSACTION READ ONLY; SET LOCAL statement_timeout = 0")
-        .await
-        .map_err(|error| map_error(&error))?;
+    client.batch_execute(BEGIN).await.map_err(|error| map_error(&error))?;
     let mut emitter = Emitter {
         sink,
         batch: Vec::new(),
@@ -56,20 +61,21 @@ pub(crate) async fn stream(
         }
     };
     let committed = client.batch_execute("COMMIT").await.map_err(|error| map_error(&error));
-    streamed?;
+    streamed.map_err(read_only_refusal)?;
     committed?;
     Ok(StreamSummary::new(emitter.rows))
 }
 
 /// The read-only transaction is the export's whole guarantee, so user
 /// SQL that would end it, or a routine that may, is refused before
-/// anything is sent.
-fn refuse_transaction_control(sql: &str) -> Result<(), DriverError> {
+/// anything is sent. The server reads the whole text before it runs any
+/// of it, so the split is the one the session's setting gives.
+fn refuse_transaction_control(sql: &str, conforming: bool) -> Result<(), DriverError> {
     let plan = ScriptPlan::build(
         sql,
         SqlGrammar::PostgreSql,
         LexicalSettings {
-            backslash_escapes: false,
+            backslash_escapes: !conforming,
         },
     );
     for statement in plan.statements() {
@@ -185,17 +191,28 @@ impl Emitter<'_> {
 mod tests {
     use super::*;
 
+    fn guarded(sql: &str, conforming: bool) -> bool {
+        matches!(
+            refuse_transaction_control(sql, conforming),
+            Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
+        )
+    }
+
     #[test]
     fn user_sql_that_would_end_the_read_only_transaction_is_refused() {
-        assert!(refuse_transaction_control("SELECT 1; SELECT 2").is_ok());
+        assert!(refuse_transaction_control("SELECT 1; SELECT 2", true).is_ok());
         for sql in ["COMMIT; DELETE FROM t", "SELECT 1; ROLLBACK", "CALL p()", "BEGIN"] {
-            assert!(
-                matches!(
-                    refuse_transaction_control(sql),
-                    Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
-                ),
-                "{sql}"
-            );
+            assert!(guarded(sql, true), "{sql}");
         }
+    }
+
+    /// With `standard_conforming_strings` off the server reads `\'` as an
+    /// escaped quote, so the COMMIT here is a statement of its own.
+    #[test]
+    fn the_guard_splits_the_way_a_non_conforming_server_does() {
+        let sql = "SELECT 'a\\', '; COMMIT; DELETE FROM t; SELECT '1'";
+
+        assert!(guarded(sql, false), "{sql}");
+        assert!(!guarded(sql, true), "{sql}");
     }
 }

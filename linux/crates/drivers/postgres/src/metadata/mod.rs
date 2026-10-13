@@ -69,9 +69,17 @@ pub(crate) async fn fetch_table_definition(
     table: &TableRef,
     relation: &str,
 ) -> Result<TableDefinition, DriverError> {
-    let columns = column_rows(client, relation).await?;
-    let primary_key = text_rows(client, PRIMARY_KEY_NAME_SQL, &[relation])
-        .await?
+    // Every query is sent before the first answer is awaited, so all of
+    // them run inside the flight's transaction, ahead of its COMMIT.
+    let params = [relation];
+    let (columns, primary_key, indexes, foreign_keys, inbound_foreign_keys) = futures_util::try_join!(
+        column_rows(client, relation),
+        text_rows(client, PRIMARY_KEY_NAME_SQL, &params),
+        fetch_indexes(client, relation),
+        fetch_foreign_keys(client, relation),
+        text_rows(client, INBOUND_FOREIGN_KEYS_SQL, &params),
+    )?;
+    let primary_key = primary_key
         .first()
         .map(|row| -> Result<PrimaryKeyConstraint, DriverError> {
             let field = decode_error("pg_constraint");
@@ -81,10 +89,7 @@ pub(crate) async fn fetch_table_definition(
             })
         })
         .transpose()?;
-    let indexes = fetch_indexes(client, relation).await?;
-    let foreign_keys = fetch_foreign_keys(client, relation).await?;
-    let inbound_foreign_keys = text_rows(client, INBOUND_FOREIGN_KEYS_SQL, &[relation])
-        .await?
+    let inbound_foreign_keys = inbound_foreign_keys
         .iter()
         .map(inbound_foreign_key)
         .collect::<Result<_, _>>()?;

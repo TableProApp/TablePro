@@ -17,6 +17,7 @@ pub(crate) struct Standalone {
     client: Option<Client>,
     driving: Option<JoinHandle<()>>,
     abandon: Arc<AtomicBool>,
+    conforming: bool,
 }
 
 impl Standalone {
@@ -25,6 +26,7 @@ impl Standalone {
             client: None,
             driving: None,
             abandon: Arc::new(AtomicBool::new(false)),
+            conforming: true,
         }
     }
 
@@ -44,6 +46,7 @@ impl Standalone {
             opened = endpoint.open(&never) => opened?,
         };
         let (client, connection) = opened;
+        self.conforming = connection.parameter("standard_conforming_strings") != Some("off");
         stop.arm(client.cancel_token());
         self.driving = Some(tracker.spawn(async move {
             if let Err(error) = connection.await {
@@ -55,6 +58,12 @@ impl Standalone {
             return Err(stop.interrupted(request));
         }
         Ok(())
+    }
+
+    /// The session's `standard_conforming_strings` as the login reported
+    /// it.
+    pub(crate) fn standard_conforming_strings(&self) -> bool {
+        self.conforming
     }
 
     pub(crate) fn client(&self) -> Result<&Client, DriverError> {

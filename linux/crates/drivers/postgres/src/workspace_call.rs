@@ -5,13 +5,13 @@ use std::time::Duration;
 use futures_util::{StreamExt, TryStreamExt};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::statement::Statement;
-use tablepro_core::{DriverError, QueryResult, RowLimit, Value, WorkspaceSettings};
+use tablepro_core::{DriverError, QueryResult, RowLimit, TimeoutPhase, Value, WorkspaceSettings};
 use tokio::time::Instant;
 use tokio_postgres::Client;
 
 use crate::catalog::result_column;
 use crate::codec::{RawCell, typed};
-use crate::errors::map_error;
+use crate::errors::{QUERY_CANCELED, map_error};
 use crate::pg_call::PgCall;
 
 pub(crate) type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -40,16 +40,52 @@ pub(crate) enum Access {
 ///
 /// `statement_timeout` of `None` sends 0, the server's "no limit". A
 /// bound is never rendered as 0 otherwise, since that would lift it.
-pub(crate) fn preamble(access: Access, statement_timeout: Option<Duration>, lock_timeout: Duration) -> String {
-    let mode = match access {
-        Access::ReadOnly => "READ ONLY",
-        Access::ReadWrite => "READ WRITE",
-    };
-    let statement = statement_timeout.map_or(0, millis);
-    format!(
-        "START TRANSACTION {mode}; SET LOCAL statement_timeout = {statement}; SET LOCAL lock_timeout = {}",
-        millis(lock_timeout)
-    )
+#[derive(Debug, Clone)]
+pub(crate) struct Preamble {
+    sql: String,
+    statement_timeout_ms: Option<u128>,
+}
+
+impl Preamble {
+    pub(crate) fn new(access: Access, statement_timeout: Option<Duration>, lock_timeout: Duration) -> Self {
+        let mode = match access {
+            Access::ReadOnly => "READ ONLY",
+            Access::ReadWrite => "READ WRITE",
+        };
+        let statement_timeout_ms = statement_timeout.map(millis);
+        let sql = format!(
+            "START TRANSACTION {mode}; SET LOCAL statement_timeout = {}; SET LOCAL lock_timeout = {}",
+            statement_timeout_ms.unwrap_or(0),
+            millis(lock_timeout)
+        );
+        Self {
+            sql,
+            statement_timeout_ms,
+        }
+    }
+
+    pub(crate) fn sql(&self) -> &str {
+        &self.sql
+    }
+
+    /// A 57014 no stop asked for is this transaction's statement timeout
+    /// or someone else's cancel, and only the message, which
+    /// `lc_messages` translates, tells them apart. The server never fires
+    /// the timeout early, so one that came after the bound is the timeout.
+    pub(crate) fn explain(&self, error: DriverError, started: Instant) -> DriverError {
+        let ran_out = self
+            .statement_timeout_ms
+            .is_some_and(|bound| started.elapsed().as_millis() >= bound);
+        match error {
+            DriverError::Server(diagnostics) if ran_out && diagnostics.sqlstate() == Some(QUERY_CANCELED) => {
+                DriverError::Timeout {
+                    phase: TimeoutPhase::Statement,
+                    server_cancelled: true,
+                }
+            }
+            other => other,
+        }
+    }
 }
 
 /// Whole milliseconds, at least one: a sub-millisecond remainder still
@@ -72,10 +108,15 @@ pub(crate) fn statement_bound(settings: &WorkspaceSettings, deadline: Option<Ins
 /// together and their answers come back in order, so a read costs one
 /// round trip. A failed step leaves the transaction aborted, and the
 /// COMMIT then ends it as a rollback.
-pub(crate) async fn flight<T>(call: &PgCall, preamble: &str, op: ReadOp<T>) -> Result<T, DriverError> {
+///
+/// The COMMIT is queued as soon as the work first waits for an answer,
+/// so the work must send every query before that: one sent later lands
+/// after the COMMIT, outside the transaction and its bounds.
+pub(crate) async fn flight<T>(call: &PgCall, preamble: &Preamble, op: ReadOp<T>) -> Result<T, DriverError> {
     let client = call.client()?;
+    let started = Instant::now();
     let (begun, result, committed) = futures_util::join!(
-        client.batch_execute(preamble),
+        client.batch_execute(preamble.sql()),
         op(client),
         client.batch_execute("COMMIT")
     );
@@ -84,7 +125,7 @@ pub(crate) async fn flight<T>(call: &PgCall, preamble: &str, op: ReadOp<T>) -> R
     }
     match (begun, result, committed) {
         (Err(error), _, _) => Err(map_error(&error)),
-        (Ok(()), Err(error), _) => Err(error),
+        (Ok(()), Err(error), _) => Err(preamble.explain(error, started)),
         (Ok(()), Ok(_), Err(error)) => Err(map_error(&error)),
         (Ok(()), Ok(value), Ok(())) => Ok(value),
     }
@@ -92,7 +133,7 @@ pub(crate) async fn flight<T>(call: &PgCall, preamble: &str, op: ReadOp<T>) -> R
 
 /// Read at most `limit` rows of a generated statement, and one more to
 /// learn whether the result was cut short.
-pub(crate) fn query_bound_op(statement: Statement, limit: RowLimit, begin: String) -> ReadOp<QueryResult> {
+pub(crate) fn query_bound_op(statement: Statement, limit: RowLimit, begin: Preamble) -> ReadOp<QueryResult> {
     read_op(move |client| {
         Box::pin(async move {
             let stream = client
@@ -132,9 +173,9 @@ pub(crate) fn query_bound_op(statement: Statement, limit: RowLimit, begin: Strin
 /// row of NULLs, typed as its columns, and the planner skips the
 /// subquery itself. The outer flight's COMMIT has already gone out, so
 /// this one is its own read-only transaction.
-async fn describe_in_own_flight(client: &Client, statement: &Statement, begin: &str) -> Vec<ResultColumn> {
+async fn describe_in_own_flight(client: &Client, statement: &Statement, begin: &Preamble) -> Vec<ResultColumn> {
     let (_, described, _) = futures_util::join!(
-        client.batch_execute(begin),
+        client.batch_execute(begin.sql()),
         describe(client, statement),
         client.batch_execute("COMMIT")
     );
@@ -192,11 +233,31 @@ pub(crate) fn decode_row(row: &tokio_postgres::Row) -> Result<Vec<Value>, Driver
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::{ServerCode, ServerDiagnostics};
+
     use super::*;
+
+    fn sql(access: Access, statement_timeout: Option<Duration>, lock_timeout: Duration) -> String {
+        Preamble::new(access, statement_timeout, lock_timeout).sql().to_owned()
+    }
+
+    fn cancelled(message: &str) -> DriverError {
+        DriverError::reported(ServerDiagnostics::new(
+            Some(ServerCode::SqlState(QUERY_CANCELED.to_owned())),
+            message,
+        ))
+    }
+
+    fn timed_out() -> DriverError {
+        DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled: true,
+        }
+    }
 
     #[test]
     fn preamble_uses_integer_milliseconds() {
-        let preamble = preamble(
+        let preamble = sql(
             Access::ReadOnly,
             Some(Duration::from_millis(1_500)),
             Duration::from_secs(10),
@@ -210,7 +271,7 @@ mod tests {
 
     #[test]
     fn a_sub_millisecond_bound_never_renders_as_zero() {
-        let preamble = preamble(Access::ReadWrite, Some(Duration::from_micros(300)), Duration::ZERO);
+        let preamble = sql(Access::ReadWrite, Some(Duration::from_micros(300)), Duration::ZERO);
 
         assert!(preamble.contains("statement_timeout = 1;"), "{preamble}");
         assert!(preamble.ends_with("lock_timeout = 1"), "{preamble}");
@@ -219,7 +280,7 @@ mod tests {
 
     #[test]
     fn an_unbounded_schema_change_sends_the_servers_no_limit() {
-        assert!(preamble(Access::ReadWrite, None, Duration::from_secs(10)).contains("statement_timeout = 0;"));
+        assert!(sql(Access::ReadWrite, None, Duration::from_secs(10)).contains("statement_timeout = 0;"));
     }
 
     #[tokio::test(start_paused = true)]
@@ -229,5 +290,52 @@ mod tests {
         assert_eq!(statement_bound(&settings, None), WorkspaceSettings::STATEMENT_TIMEOUT);
         let near = Instant::now() + Duration::from_secs(2);
         assert_eq!(statement_bound(&settings, Some(near)), Duration::from_secs(2));
+    }
+
+    /// The message is the server's, in whatever language `lc_messages`
+    /// picked, so only the time tells the timeout apart.
+    #[tokio::test(start_paused = true)]
+    async fn a_57014_once_the_bound_ran_out_is_the_timeout_in_any_language() {
+        let preamble = Preamble::new(
+            Access::ReadOnly,
+            Some(Duration::from_millis(1_500)),
+            Duration::from_secs(10),
+        );
+        let started = Instant::now();
+        tokio::time::advance(Duration::from_millis(1_500)).await;
+
+        for message in [
+            "canceling statement due to statement timeout",
+            "Anweisung wird abgebrochen wegen Zeitüberschreitung",
+            "annulation de la requête à cause du délai écoulé pour l'exécution de l'instruction",
+        ] {
+            assert_eq!(preamble.explain(cancelled(message), started), timed_out(), "{message}");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_57014_before_the_bound_or_without_one_is_the_servers_answer() {
+        let bounded = Preamble::new(
+            Access::ReadOnly,
+            Some(Duration::from_millis(1_500)),
+            Duration::from_secs(10),
+        );
+        let unbounded = Preamble::new(Access::ReadWrite, None, Duration::from_secs(10));
+        let started = Instant::now();
+        tokio::time::advance(Duration::from_millis(1_499)).await;
+
+        assert_eq!(
+            bounded.explain(cancelled("canceling statement due to statement timeout"), started),
+            cancelled("canceling statement due to statement timeout")
+        );
+        tokio::time::advance(Duration::from_secs(60)).await;
+        assert_eq!(
+            unbounded.explain(cancelled("canceling statement due to user request"), started),
+            cancelled("canceling statement due to user request")
+        );
+        assert_eq!(
+            bounded.explain(DriverError::server("relation does not exist"), started),
+            DriverError::server("relation does not exist")
+        );
     }
 }

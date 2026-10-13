@@ -82,9 +82,10 @@ impl MysqlEditorSession {
         }))
     }
 
-    /// Run the script, stopping it on a cancel, at the deadline or when
-    /// the session closes. A stop is KILL QUERY on a connection of the
-    /// session's own; the statement then has the cancel grace to end.
+    /// Run the script, stopping it on a cancel, at the deadline, when
+    /// the session closes or when the sink stops reading. A stop is KILL
+    /// QUERY on a connection of the session's own; the statement then
+    /// has the cancel grace to end.
     async fn supervise(
         &self,
         held: &mut Held,
@@ -97,26 +98,32 @@ impl MysqlEditorSession {
             return finished(Err(error)).map(|end| (end, true));
         }
         let deadline = options.deadline.map(|limit| Instant::now() + limit);
-        let running = run_script(&mut held.connection, self.flavour, sql.as_str(), limit, sink);
+        let consumer_gone = CancellationToken::new();
+        let running = run_script(
+            &mut held.connection,
+            self.flavour,
+            sql.as_str(),
+            limit,
+            sink,
+            &consumer_gone,
+        );
         let mut running = std::pin::pin!(running);
         let stop = tokio::select! {
             outcome = &mut running => return finished(outcome).map(|end| (end, true)),
             () = options.cancel.cancelled() => Stop::Cancelled,
             () = self.closing.cancelled() => Stop::Cancelled,
+            () = consumer_gone.cancelled() => Stop::Cancelled,
             () = elapsed(deadline) => Stop::DeadlineElapsed,
         };
         let until = Instant::now() + self.liveness.cancel_grace;
-        let killing = self.control.kill_query(self.connection_id);
-        let mut killing = std::pin::pin!(killing);
-        let mut delivered = None;
-        let settled = loop {
-            tokio::select! {
-                biased;
-                sent = &mut killing, if delivered.is_none() => delivered = Some(sent.is_ok()),
-                outcome = &mut running => break Some(outcome),
-                () = tokio::time::sleep_until(until) => break None,
-            }
-        };
+        // Nothing more is read until the KILL has landed. A batch the
+        // server is still sending then waits on the socket, so it cannot
+        // move on to its next statement before the KILL stops it.
+        let delivered = tokio::time::timeout_at(until, self.control.kill_query(self.connection_id))
+            .await
+            .ok()
+            .map(|sent| sent.is_ok());
+        let settled = tokio::time::timeout_at(until, &mut running).await.ok();
         let server_cancelled = delivered == Some(true);
         let end = match stop {
             Stop::Cancelled => RunEnd::Cancelled,
