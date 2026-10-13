@@ -69,7 +69,7 @@ impl SqlEditor {
 
 fn mark_outcomes(buffer: &sourceview5::Buffer, sql: &str, driver: &str, outcomes: &[StatementOutcome]) {
     let (start, end) = buffer.bounds();
-    let text = buffer.text(&start, &end, false).to_string();
+    let text = buffer.text(&start, &end, true).to_string();
     let Ok(planned) = script_statements(sql, driver) else {
         return;
     };

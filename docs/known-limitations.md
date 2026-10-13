@@ -43,7 +43,7 @@ What the application does not do, or does differently from what you might expect
 
 ## Interface
 
-- No code folding or multi-cursor (UI-22, [#629](https://github.com/cozyGarage/BookiE/issues/629)). Split panes are available from the **Split** toolbar button. Vim keys are an opt-in preference; typed vim commands in a running editor are not yet covered by an installed scenario. Preview tabs are temporary and are not restored after restart; tabs you keep are restored (UI-17b). Query history now opens in a docked panel (UI-18).
+- Multi-cursor editing is not available (UI-22 / [#552](https://github.com/cozyGarage/BookiE/issues/552)). Split panes are available from the **Split** toolbar button. Vim keys are an opt-in preference; typed vim commands in a running editor are not yet covered by an installed scenario. Preview tabs are temporary and are not restored after restart; tabs you keep are restored (UI-17b). Query history now opens in a docked panel (UI-18).
 - The PostgreSQL catalog lists materialized views, routines, triggers, sequences, extensions and roles; a typed activity console is deferred and the activity dialog stays a plain result grid (UI-23).
 - Text and JSON values over the preview threshold are read-only in the grid; View Value and Copy value give the full text. Editing them needs the full-value dialog ([#610](https://github.com/cozyGarage/BookiE/issues/610), [#659](https://github.com/cozyGarage/BookiE/issues/659)).
 - No server messages (NOTICE, PRINT) and no timing breakdown; timing shows elapsed time only (UI-20, PERF-4 / [#550](https://github.com/cozyGarage/BookiE/issues/550)).

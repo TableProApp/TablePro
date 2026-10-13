@@ -221,6 +221,8 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
             ("<Primary><Shift>Return", crate::tr!("Run statement at cursor")),
             ("<Primary><Shift>s", crate::tr!("Save the SQL file as")),
             ("<Primary>slash", crate::tr!("Toggle line comment")),
+            ("<Primary><Shift>bracketleft", crate::tr!("Fold SQL block at cursor")),
+            ("<Primary><Shift>bracketright", crate::tr!("Unfold all SQL blocks")),
             ("<Primary>t", crate::tr!("New editor tab")),
             ("<Primary>w", crate::tr!("Close current tab or window")),
             ("<Primary>Tab", crate::tr!("Switch to the most recently used tab")),
@@ -292,6 +294,8 @@ mod window_shortcut_tests {
         "<Primary>Return",
         "<Primary><Shift>Return",
         "<Primary><Shift>f",
+        "<Primary><Shift>bracketleft",
+        "<Primary><Shift>bracketright",
     ];
 
     #[test]

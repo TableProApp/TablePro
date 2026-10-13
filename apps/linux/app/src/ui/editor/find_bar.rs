@@ -94,7 +94,7 @@ impl FindBar {
     pub fn open(&self) {
         let buffer = self.view.buffer();
         if let Some((start, end)) = buffer.selection_bounds()
-            && let Some(text) = prefill_text(buffer.text(&start, &end, false).as_str())
+            && let Some(text) = prefill_text(buffer.text(&start, &end, true).as_str())
         {
             self.entry.set_text(text);
         }

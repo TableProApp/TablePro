@@ -19,7 +19,7 @@ pub(crate) fn toggle_line_comment(buffer: &gtk::TextBuffer) {
             };
             let mut e = s;
             e.forward_to_line_end();
-            buffer.text(&s, &e, false).to_string()
+            buffer.text(&s, &e, true).to_string()
         })
         .collect();
 

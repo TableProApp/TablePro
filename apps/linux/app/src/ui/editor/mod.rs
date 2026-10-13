@@ -3,6 +3,7 @@ mod diagnostics;
 mod error_location;
 mod find_bar;
 mod finish_notice;
+mod folding;
 pub(crate) mod open_file;
 use tablepro_core::sql_format as format_plan;
 mod outcomes;
@@ -53,6 +54,7 @@ pub struct SqlEditor {
     split_view: split_view::SplitEditorView,
     find: Option<find_bar::FindBar>,
     run_button: gtk::Button,
+    folding: std::rc::Rc<std::cell::RefCell<folding::FoldController>>,
     session_button: gtk::ToggleButton,
     session: Option<session_mode::EditorSession>,
     retired_session_connection_id: Option<(Uuid, Uuid)>,
@@ -159,6 +161,8 @@ pub enum SqlEditorInput {
         forward: bool,
     },
     ToggleLineComment,
+    ToggleFold,
+    UnfoldAll,
     ShowFind,
     Explain,
     Grid(GridMsg),
@@ -260,6 +264,20 @@ impl SimpleComponent for SqlEditor {
 
                 gtk::Box {
                     set_hexpand: true,
+                },
+
+                gtk::Button {
+                    set_label: &crate::tr!("Fold block"),
+                    set_tooltip_text: Some(crate::tr!("Fold the SQL block at the cursor").as_str()),
+                    add_css_class: "flat",
+                    connect_clicked => SqlEditorInput::ToggleFold,
+                },
+
+                gtk::Button {
+                    set_label: &crate::tr!("Unfold all"),
+                    set_tooltip_text: Some(crate::tr!("Show all folded SQL blocks").as_str()),
+                    add_css_class: "flat",
+                    connect_clicked => SqlEditorInput::UnfoldAll,
                 },
 
                 #[name = "cursor_info"]
@@ -410,6 +428,21 @@ impl SimpleComponent for SqlEditor {
             init.connection_id,
         );
         run_marks::install(&widgets.source_view);
+        let folding = std::rc::Rc::new(std::cell::RefCell::new(folding::FoldController::new(
+            &widgets.source_view.buffer(),
+        )));
+        folding.borrow().install(&widgets.source_view);
+        folding.borrow().install(split_view.secondary_view());
+        for view in [&widgets.source_view, split_view.secondary_view()] {
+            let folding_for_mark = folding.clone();
+            view.connect_line_mark_activated(move |view, iter, button, _, _| {
+                if button == 1
+                    && let Ok(buffer) = view.buffer().downcast::<sourceview5::Buffer>()
+                {
+                    folding_for_mark.borrow_mut().unfold_line(&buffer, iter.line());
+                }
+            });
+        }
         let find = find_bar::FindBar::new(&widgets.source_view);
         if let Some(find) = &find {
             root.add_top_bar(find.widget());
@@ -467,11 +500,15 @@ impl SimpleComponent for SqlEditor {
         let sender_for_change = sender.clone();
         let refresh_on_change = refresh_completion.clone();
         let drop_generation_for_change = drop_generation.clone();
+        let folding_for_change = folding.clone();
         widgets.source_view.buffer().connect_changed(move |_| {
             drop_generation_for_change.changed();
+            if let Ok(buffer) = view_for_change.buffer().downcast::<sourceview5::Buffer>() {
+                folding_for_change.borrow_mut().clear(&buffer);
+            }
             let buffer = view_for_change.buffer();
             let (start, end) = buffer.bounds();
-            let text = buffer.text(&start, &end, false).to_string();
+            let text = buffer.text(&start, &end, true).to_string();
             let _ = sender_for_change.output(SqlEditorOutput::QueryChanged(text));
             refresh_on_change();
         });
@@ -498,6 +535,7 @@ impl SimpleComponent for SqlEditor {
             ),
             source_view: widgets.source_view.clone(),
             split_view,
+            folding,
             find,
             run_button: widgets.run_button.clone(),
             session_button: widgets.session_button.clone(),
@@ -598,7 +636,7 @@ impl SimpleComponent for SqlEditor {
             SqlEditorInput::Run => {
                 let buffer = self.source_view.buffer();
                 let (start, end) = buffer.bounds();
-                let sql = buffer.text(&start, &end, false).to_string();
+                let sql = buffer.text(&start, &end, true).to_string();
                 let trimmed = sql.trim().to_string();
                 if trimmed.is_empty() {
                     self.status.set_label(&crate::tr!("empty query"));
@@ -618,6 +656,22 @@ impl SimpleComponent for SqlEditor {
 
             SqlEditorInput::ToggleLineComment => {
                 toggle_line_comment(&self.source_view.buffer());
+            }
+
+            SqlEditorInput::ToggleFold => {
+                let grammar = self
+                    .metadata()
+                    .and_then(|metadata| statement_cursor::grammar_for(&metadata.driver_id))
+                    .unwrap_or(tablepro_core::sql_syntax::SqlGrammar::PostgreSql);
+                if let Ok(buffer) = self.source_view.buffer().downcast::<sourceview5::Buffer>() {
+                    self.folding.borrow_mut().toggle_at_cursor(&buffer, grammar);
+                }
+            }
+
+            SqlEditorInput::UnfoldAll => {
+                if let Ok(buffer) = self.source_view.buffer().downcast::<sourceview5::Buffer>() {
+                    self.folding.borrow_mut().unfold_all(&buffer);
+                }
             }
 
             SqlEditorInput::Explain => {
@@ -646,7 +700,7 @@ impl SimpleComponent for SqlEditor {
             SqlEditorInput::JumpStatement { forward } => {
                 let buffer = self.source_view.buffer();
                 let (start, end) = buffer.bounds();
-                let sql = buffer.text(&start, &end, false).to_string();
+                let sql = buffer.text(&start, &end, true).to_string();
                 let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
                 let cursor_byte = cursor_byte_offset(&sql, cursor_chars);
                 let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
@@ -661,7 +715,7 @@ impl SimpleComponent for SqlEditor {
             SqlEditorInput::RunAtCursor => {
                 let buffer = self.source_view.buffer();
                 let (start, end) = buffer.bounds();
-                let sql = buffer.text(&start, &end, false).to_string();
+                let sql = buffer.text(&start, &end, true).to_string();
                 let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
                 let cursor_byte = cursor_byte_offset(&sql, cursor_chars);
                 let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
@@ -775,7 +829,7 @@ impl SimpleComponent for SqlEditor {
                 }
                 let buffer = self.source_view.buffer();
                 let (start, end) = buffer.bounds();
-                if buffer.text(&start, &end, false).trim().is_empty() {
+                if buffer.text(&start, &end, true).trim().is_empty() {
                     buffer.set_text(&text);
                 } else {
                     buffer.insert_at_cursor(&text);
@@ -801,7 +855,7 @@ impl SimpleComponent for SqlEditor {
             SqlEditorInput::Format => {
                 let buffer = self.source_view.buffer();
                 let (start, end) = buffer.bounds();
-                let text = buffer.text(&start, &end, false).to_string();
+                let text = buffer.text(&start, &end, true).to_string();
                 if text.trim().is_empty() {
                     return;
                 }
@@ -828,7 +882,7 @@ impl SqlEditor {
     fn export_name(&self) -> String {
         let buffer = self.source_view.buffer();
         let (start, end) = buffer.bounds();
-        export_name_for_query(&buffer.text(&start, &end, false))
+        export_name_for_query(&buffer.text(&start, &end, true))
     }
 
     fn metadata(&self) -> Option<ConnectionMetadata> {
@@ -1079,7 +1133,7 @@ fn build_completion_refresh(
     std::rc::Rc::new(move || {
         let buffer = view.buffer();
         let (start, end) = buffer.bounds();
-        let sql = buffer.text(&start, &end, false).to_string();
+        let sql = buffer.text(&start, &end, true).to_string();
         let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
         let cursor_byte = cursor_byte_offset(&sql, cursor_chars);
         let Ok(index) = schema_index.try_borrow() else {

@@ -244,6 +244,13 @@ A text or JSON cell over 8 KiB shows the start of the value and `… (N bytes to
 - [ ] Type in the sidebar search: groups holding a match open even if collapsed; clearing the search restores your collapsed groups. Quit and reopen the connection: the groups you collapsed are still collapsed.
 - [ ] New Table and Table from CSV on a Tables group still open their dialogs for that schema. Light and dark look right.
 
+## SQL code folding
+
+- [ ] Place the cursor inside a multiline CASE block and press Ctrl+Shift+[. The block body folds and its opening and closing lines remain visible.
+- [ ] Click the fold marker in the gutter. The body returns without changing the query text.
+- [ ] Fold two blocks, then use Unfold all and Ctrl+Shift+]. Both show the complete query.
+- [ ] Edit the query while a block is folded. The editor reveals the full query and clears stale fold markers.
+
 ## Pinned results and gutter marks
 
 - [ ] Run `SELECT 1; SELECT 2;`, click Pin results, change the script and run it again: the first results stay as tabs marked 📌 ahead of the new ones. The button now reads Unpin results (2); clicking it drops the pinned tabs. **2026-10-12 Hyprland dark:** passed; also covered by the installed GTK scenario `pinned_results_stay_ahead_of_the_next_run`. Statement numbers continue after the pinned tabs, [#660](https://github.com/cozyGarage/BookiE/issues/660).

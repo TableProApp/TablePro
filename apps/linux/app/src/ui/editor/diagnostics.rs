@@ -39,7 +39,7 @@ impl Diagnostics {
                     pending.remove();
                 }
                 let (start, end) = buffer.bounds();
-                let sql = buffer.text(&start, &end, false).to_string();
+                let sql = buffer.text(&start, &end, true).to_string();
                 let Some(metadata) = connection_id.and_then(|id| database.metadata(id)) else {
                     return;
                 };

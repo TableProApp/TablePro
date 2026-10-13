@@ -25,7 +25,7 @@ fn band_char_range(text: &str, driver: &str, cursor_chars: usize) -> Option<(i32
 fn refresh(buffer: &gtk::TextBuffer, driver: &str) {
     let (start, end) = buffer.bounds();
     buffer.remove_tag_by_name(TAG_NAME, &start, &end);
-    let text = buffer.text(&start, &end, false).to_string();
+    let text = buffer.text(&start, &end, true).to_string();
     let cursor = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
     let Some((from, to)) = band_char_range(&text, driver, cursor) else {
         return;
