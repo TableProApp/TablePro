@@ -139,18 +139,15 @@ impl BrowseTab {
         tab.collapse_top_bars_with(&filter_strip.widget);
         tab.connect_widgets();
 
-        // Delivered once the signal that sent it returns: a commit
-        // refreshes its own row, which replaces the row's widgets, and
-        // the Tab that ended the edit still has to move focus from them.
+        // Handled at once: a tracked change redraws the cells bound to its
+        // row in place, so the cell that sent it is still there for the
+        // Tab that ended the edit to move focus from.
         let grid_sink: GridSink = {
             let tab = tab.downgrade();
             Rc::new(move |msg| {
-                let tab = tab.clone();
-                glib::spawn_future_local(async move {
-                    if let Some(tab) = tab.upgrade() {
-                        tab.send(BrowseTabInput::from(msg));
-                    }
-                });
+                if let Some(tab) = tab.upgrade() {
+                    tab.send(BrowseTabInput::from(msg));
+                }
             })
         };
         let link_generation = init.session.link_generation();

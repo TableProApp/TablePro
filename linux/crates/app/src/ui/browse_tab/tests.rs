@@ -989,7 +989,7 @@ fn rename(id: i64, from: &str, to: &str) -> TrackerEdit {
 }
 
 #[gtk4::test]
-fn a_commit_leaves_its_cell_in_the_window_for_the_tab_that_follows() {
+fn a_commit_is_tracked_at_once_and_leaves_its_cell_in_the_window() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
     let harness = Harness::open(script, []);
@@ -1006,7 +1006,7 @@ fn a_commit_leaves_its_cell_in_the_window_for_the_tab_that_follows() {
         cell.root().is_some(),
         "the commit took its own cell out of the window before Tab could move on"
     );
-    wait_until(WAIT, || harness.tracker.pending_count() == 1).expect("the edit reaches the tracker");
+    assert_eq!(harness.tracker.pending_count(), 1, "the edit waited for the main loop");
     assert_eq!(cell_text(&cell), "Ada Lovelace");
     assert!(
         has_class(&cell, "tp-cell-modified"),
