@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A page read before a filter, sort or page change could replace the newer page when it arrived late.
 - Closing a table tab left its query running on the server until it finished.
 - Refresh did not show a column added to the table since the tab opened.
+- A table tab kept the old header of a column renamed in the Structure tab.
 
 ### Security
 

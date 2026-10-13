@@ -179,7 +179,7 @@ impl BrowseTab {
             loading_page: imp.loading_page.get(),
             error_page: imp.error_page.get(),
             current_column_view: None,
-            rendered_column_count: Cell::new(0),
+            rendered_columns: Vec::new(),
             read_only_banner: imp.read_only_banner.get(),
             no_pk_banner: imp.no_pk_banner.get(),
             was_dirty: Cell::new(false),
@@ -265,8 +265,9 @@ impl BrowseTab {
         }
     }
 
+    /// `None` once the tab is closed, and while it is handling an input.
     fn read<T>(&self, read: impl FnOnce(&BrowseModel) -> T) -> Option<T> {
-        self.imp().model.borrow().as_ref().map(read)
+        self.imp().model.try_borrow().ok()?.as_ref().map(read)
     }
 
     pub fn snapshot(&self) -> Option<QueryResult> {
@@ -576,9 +577,10 @@ pub(crate) struct BrowseModel {
     loading_page: adw::StatusPage,
     error_page: adw::StatusPage,
     current_column_view: Option<gtk::ColumnView>,
-    /// Column count the current view was built for; a page with the
-    /// same count reuses the view and only swaps its rows.
-    rendered_column_count: Cell<usize>,
+    /// The columns the current view was built for. A page under the
+    /// same columns reuses the view and only swaps its rows; a schema
+    /// change that renames or retypes one builds the view again.
+    rendered_columns: Vec<ColumnInfo>,
     /// Banners are for states the user cannot clear by saving; pending
     /// edits show in the footer and the tab title instead.
     read_only_banner: adw::Banner,
@@ -1142,7 +1144,7 @@ impl BrowseModel {
         );
         self.current_selection = Some(selection);
         self.current_column_view = Some(column_view.clone());
-        self.rendered_column_count.set(self.current_columns.len());
+        self.rendered_columns = self.current_columns.clone();
 
         // The selection model is new per rebuild, so the previous
         // handler goes with the old one.
@@ -1171,7 +1173,7 @@ impl BrowseModel {
     }
 
     fn column_view_matches_current_columns(&self) -> bool {
-        self.current_column_view.is_some() && self.rendered_column_count.get() == self.current_columns.len()
+        self.current_column_view.is_some() && self.rendered_columns == self.current_columns
     }
 
     /// New rows under the same columns. The drafts go back on top so
@@ -1353,6 +1355,11 @@ impl BrowseModel {
     }
 
     fn on_columns_loaded(&mut self, columns: Vec<ColumnInfo>, fx: &mut Effects) {
+        // A page read under other columns would put their names in the
+        // headers, so the grid waits for the page read under these.
+        if self.current_columns != columns {
+            self.current_result = None;
+        }
         self.current_columns = columns.clone();
         if let Some(result) = self.current_result.as_mut()
             && result.columns.is_empty()

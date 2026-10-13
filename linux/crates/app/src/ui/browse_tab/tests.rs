@@ -527,6 +527,47 @@ fn schema_change_reads_the_columns_again_then_the_page() {
     assert_eq!(CallCounters::get(&counters.fetch_columns), 2);
 }
 
+fn header_titles(tab: &BrowseTab) -> Vec<String> {
+    let Some(view) = crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(tab) else {
+        return Vec::new();
+    };
+    let columns = view.columns();
+    (0..columns.n_items())
+        .filter_map(|position| columns.item(position).and_downcast::<gtk4::ColumnViewColumn>())
+        .filter_map(|column| column.title().map(|title| title.to_string()))
+        .collect()
+}
+
+#[gtk4::test]
+fn a_renamed_column_builds_the_grid_again() {
+    let renamed = [column("id", true), column("full_name", false)];
+    let mut script = serving_table();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .always(FakeReply::ok(renamed.to_vec()));
+    script
+        .query_bound
+        .when_sql_contains(
+            "full_name",
+            FakeReply::ok(QueryResult::new(
+                renamed.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+                vec![vec![Value::Int(0), Value::Text("Ada".to_owned())]],
+            )),
+        )
+        .always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || header_titles(harness.tab()).contains(&"name".to_owned())).expect("the first grid");
+
+    harness
+        .session
+        .invalidate_table(&tablepro_core::TableRef::unqualified("users"));
+    harness.tab().send(BrowseTabInput::SchemaChanged);
+
+    wait_until(WAIT, || header_titles(harness.tab()).contains(&"full_name".to_owned()))
+        .expect("the grid kept the old column's header");
+}
+
 #[gtk4::test]
 fn browse_tab_and_filter_strip_freed_after_drop() {
     let mut script = serving_table();
