@@ -22,6 +22,7 @@ pub struct TestDialect {
     row_ids: bool,
     default_row: bool,
     count_all: &'static str,
+    grammar: SqlGrammar,
     binds: Mutex<Vec<RecordedBind>>,
     ddl: Option<TestDdl>,
 }
@@ -72,6 +73,7 @@ impl Default for TestDialect {
             row_ids: true,
             default_row: true,
             count_all: "COUNT(*)",
+            grammar: SqlGrammar::PostgreSql,
             binds: Mutex::new(Vec::new()),
             ddl: Some(TestDdl::default()),
         }
@@ -114,6 +116,10 @@ impl TestDialect {
         Self { count_all, ..self }
     }
 
+    pub fn parsing_as(self, grammar: SqlGrammar) -> Self {
+        Self { grammar, ..self }
+    }
+
     pub fn targets(&self) -> Vec<RecordedTarget> {
         self.recorded().into_iter().map(|bind| bind.target).collect()
     }
@@ -149,7 +155,7 @@ impl SqlDialect for TestDialect {
     }
 
     fn grammar(&self) -> SqlGrammar {
-        SqlGrammar::PostgreSql
+        self.grammar
     }
 
     fn quote_identifier(&self, name: &str) -> String {
@@ -257,12 +263,12 @@ impl SqlDialect for TestDialect {
     }
 
     fn parse_type(&self, text: &str) -> Result<ColumnType, TypeSyntaxError> {
-        let parsed = parse_type(SqlGrammar::PostgreSql, text, crate::sql_syntax::MAX_TYPE_LEN)?;
+        let parsed = parse_type(self.grammar, text, crate::sql_syntax::MAX_TYPE_LEN)?;
         Ok(ColumnType::untyped_text(parsed.text))
     }
 
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
-        let parsed = parse_expression(SqlGrammar::PostgreSql, text, crate::sql_syntax::MAX_EXPRESSION_LEN)?;
+        let parsed = parse_expression(self.grammar, text, crate::sql_syntax::MAX_EXPRESSION_LEN)?;
         Ok(SqlExpression::from_catalog_text(parsed.text))
     }
 

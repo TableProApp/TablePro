@@ -5,7 +5,7 @@ use sqlparser::tokenizer::Token;
 use super::SqlGrammar;
 use super::errors::ExpressionSyntaxError;
 use super::literal_token::LiteralToken;
-use super::parse_type::{RECURSION_LIMIT, reject_comment_tokens};
+use super::parse_type::{RECURSION_LIMIT, contains_comment};
 use crate::value::SqlDecimal;
 
 /// An expression the engine's own parser accepted, plus the literal it
@@ -33,7 +33,7 @@ pub fn parse_expression(
     if text.chars().count() > max_len {
         return Err(ExpressionSyntaxError::TooLong { max: max_len });
     }
-    if reject_comment_tokens(grammar, text).is_err() && (text.contains("--") || text.contains("/*")) {
+    if contains_comment(grammar, text) {
         return Err(ExpressionSyntaxError::Comment);
     }
 
@@ -151,5 +151,15 @@ mod tests {
             parse_expression(SqlGrammar::PostgreSql, "now()", 2),
             Err(ExpressionSyntaxError::TooLong { max: 2 })
         );
+    }
+
+    #[test]
+    fn a_hash_is_a_comment_only_where_the_engine_reads_one() {
+        assert_eq!(
+            parse_expression(SqlGrammar::MySql, "a = 1 # x", MAX_EXPRESSION_LEN),
+            Err(ExpressionSyntaxError::Comment)
+        );
+        assert!(parse_expression(SqlGrammar::MySql, "a = '#'", MAX_EXPRESSION_LEN).is_ok());
+        assert!(parse("a # b").is_ok(), "PostgreSQL reads # as XOR");
     }
 }
