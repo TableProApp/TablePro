@@ -346,6 +346,12 @@ impl ConnectionStore {
                 }
                 Some(_) => {
                     connection.id = Uuid::new_v4();
+                    // Two rows of one name, one of them pointing somewhere
+                    // else, would leave the user guessing which is theirs.
+                    let taken: Vec<&str> = list.iter().map(|saved| saved.name.as_str()).collect();
+                    if taken.contains(&connection.name.as_str()) {
+                        connection.name = suffixed_name(&connection.name, "imported", &taken);
+                    }
                     list.push(connection);
                     report.added += 1;
                 }
@@ -472,7 +478,11 @@ fn read_document(path: &Path) -> Result<Vec<SavedConnection>, DocumentProblem> {
 pub fn duplicate(source: &SavedConnection, taken: &[SavedConnection]) -> SavedConnection {
     SavedConnection {
         id: Uuid::new_v4(),
-        name: copy_name(&source.name, &taken.iter().map(|c| c.name.as_str()).collect::<Vec<_>>()),
+        name: suffixed_name(
+            &source.name,
+            "copy",
+            &taken.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+        ),
         // A copy has never been opened, whatever the original did, so
         // it sorts by name rather than claiming the original's recency.
         // The colour and the group do carry: a copy points at the same
@@ -483,15 +493,15 @@ pub fn duplicate(source: &SavedConnection, taken: &[SavedConnection]) -> SavedCo
 }
 
 /// `name (copy)`, then `name (copy 2)` and on, until one is free.
-fn copy_name(name: &str, taken: &[&str]) -> String {
-    let first = format!("{name} (copy)");
+fn suffixed_name(name: &str, suffix: &str, taken: &[&str]) -> String {
+    let first = format!("{name} ({suffix})");
     if !taken.contains(&first.as_str()) {
         return first;
     }
     // A name is short and the list is a person's own connections, so
     // counting up from two is bounded by how many copies they made.
     (2..)
-        .map(|n| format!("{name} (copy {n})"))
+        .map(|n| format!("{name} ({suffix} {n})"))
         .find(|candidate| !taken.contains(&candidate.as_str()))
         .unwrap_or(first)
 }
@@ -1112,15 +1122,45 @@ mod tests {
             let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
             assert_eq!(*kept, mine, "{variant}: the import changed the saved entry");
             let imported = list.iter().find(|saved| saved.id != mine.id).expect("the import");
+            assert_eq!(imported.name, "production (imported)", "{variant}");
             assert_eq!(
                 SavedConnection {
                     id: crafted.id,
+                    name: crafted.name.clone(),
                     ..imported.clone()
                 },
                 crafted,
                 "{variant}"
             );
         }
+    }
+
+    #[test]
+    fn an_import_added_under_a_new_id_keeps_a_name_nobody_holds() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = saved("production");
+        store.upsert_blocking(mine.clone()).expect("upsert");
+        let theirs = SavedConnection {
+            id: mine.id,
+            host: "staging.internal".to_owned(),
+            ..saved("staging")
+        };
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: vec![theirs],
+        })
+        .expect("encode");
+
+        store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        let mut names: Vec<String> = store
+            .load_blocking()
+            .expect("load")
+            .iter()
+            .map(|saved| saved.name.clone())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["production", "staging"]);
     }
 
     #[test]
