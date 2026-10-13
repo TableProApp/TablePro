@@ -13,6 +13,8 @@ mod decode;
 #[cfg(test)]
 mod dialect;
 #[cfg(test)]
+mod lock_wait;
+#[cfg(test)]
 mod metadata;
 #[cfg(test)]
 mod open_semantics;

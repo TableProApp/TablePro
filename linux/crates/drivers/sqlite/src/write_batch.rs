@@ -7,6 +7,7 @@
 //! as Busy after the lock timeout, before anything has run.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use sqlx::sqlite::SqliteConnection as SqlxConnection;
 use sqlx::{AssertSqlSafe, Connection as _, Row};
@@ -32,8 +33,9 @@ pub(crate) async fn run(
     ledger: &WriteLedger,
     flag: &InterruptFlag,
     request: &StopRequest,
+    lock_timeout: Duration,
 ) -> Result<WriteReport, DriverError> {
-    flag.install(pooled.connection()).await?;
+    flag.install(pooled.connection(), lock_timeout).await?;
     let checks = match &batch.foreign_keys {
         ForeignKeyMode::Enforced => None,
         ForeignKeyMode::SuspendedThenVerified { checks } => Some(checks.as_slice()),
@@ -240,10 +242,12 @@ impl Write<'_> {
         }
     }
 
-    /// What the caller is told when `error` is the interrupt a stop
-    /// raised.
+    /// What the caller is told when `error` is how SQLite gave way to a
+    /// stop: an interrupt, or a lock wait given up as busy. The flag is
+    /// lowered for the rollback by then, so the request says whether a
+    /// stop came.
     fn stopped(&self, error: &DriverError) -> Option<DriverError> {
-        match is_interrupt(error) {
+        match is_interrupt(error) || *error == DriverError::Busy {
             true => self.request.reason().map(stop_cause),
             false => None,
         }

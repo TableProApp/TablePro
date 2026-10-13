@@ -20,3 +20,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
+- Stop could not end a SQLite statement waiting for another connection's lock.

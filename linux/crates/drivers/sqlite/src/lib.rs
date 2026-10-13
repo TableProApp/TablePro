@@ -16,6 +16,7 @@ mod errors;
 mod foreign_key_verification;
 mod index_sql;
 mod interrupt;
+mod lock_wait;
 mod metadata;
 mod open;
 mod result_stream;

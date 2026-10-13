@@ -2,9 +2,8 @@
 //!
 //! sqlx tracks only the transactions it began itself and keeps its own
 //! flag crate-private, so a BEGIN the user typed in the editor is
-//! invisible to it. SQLite's own answer is `sqlite3_get_autocommit`.
-//! This is the crate's one unsafe call, an interim until sqlx exposes
-//! the state on `LockedSqliteHandle`.
+//! invisible to it. SQLite's own answer is `sqlite3_get_autocommit`,
+//! called directly until sqlx exposes the state on `LockedSqliteHandle`.
 
 use sqlx::sqlite::LockedSqliteHandle;
 
