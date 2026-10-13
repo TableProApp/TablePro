@@ -9,10 +9,11 @@ use super::significant_tokens::significant_tokens;
 /// sqlformat has its own lexer, and it does not know every dialect the
 /// app connects to: it reads `//` as an operator, ends a nested block
 /// comment at the first `*/`, treats a backslash as an escape inside
-/// quotes, and takes `$$` for a keyword. Reformatting through it can
-/// therefore change what a statement means. Each statement is checked
-/// against its own tokens afterwards, and one that came back different
-/// is written out as the user typed it.
+/// quotes, takes `$$` for a keyword, and puts a space inside `+=` and
+/// `b'01'`. Reformatting through it can therefore change what a
+/// statement means. Each statement is checked against its own tokens
+/// afterwards, and one that came back different is written out as the
+/// user typed it.
 pub fn format_script(text: &str, grammar: SqlGrammar, settings: LexicalSettings) -> String {
     let plan = ScriptPlan::build(text, grammar, settings);
     let mut out = String::with_capacity(text.len());
@@ -159,6 +160,30 @@ mod tests {
 
         assert!(out.contains("DELIMITER $$"), "the delimiter line was lost: {out}");
         assert!(out.contains("DELIMITER ;"), "the delimiter reset was lost: {out}");
+    }
+
+    #[test]
+    fn statements_sqlformat_would_respace_into_something_else_kept_verbatim() {
+        let cases = [
+            // `+=` would become `+ =`.
+            ("SET @x += 1", SqlGrammar::MsSql),
+            // A bit literal and a charset introducer would become a
+            // column with a string alias.
+            ("select b'01', _utf8mb4'x' from t", SqlGrammar::MySql),
+            // `@@ version` is not a system variable.
+            ("select @@version", SqlGrammar::MySql),
+            // `U & '…'` is a bitwise and, not a Unicode escape string.
+            (r"select U&'d\0061t'", SqlGrammar::PostgreSql),
+            // A string continued on the next line is one string; on
+            // one line the two are a syntax error.
+            ("select 'a'\n'b'", SqlGrammar::PostgreSql),
+            // A query parameter's name, colon and type are one unit.
+            ("SELECT {id:UInt32}", SqlGrammar::ClickHouse),
+        ];
+
+        for (source, grammar) in cases {
+            assert_eq!(format(source, grammar), source, "{grammar:?}");
+        }
     }
 
     #[test]
