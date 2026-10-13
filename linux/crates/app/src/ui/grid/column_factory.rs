@@ -1,29 +1,18 @@
+use std::rc::Rc;
+
 use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 
 use tablepro_core::column::ResultColumn;
-use tablepro_core::{ColumnInfo, QueryResult, Value};
+use tablepro_core::{ColumnInfo, QueryResult};
 
 use super::cell_editability::column_takes_edits;
 use super::cell_editor_kind::{CellEditorKind, classify_editor_kind, is_bool_type};
+use super::column_drawing::ColumnDrawing;
 use super::context_menu::{CellMenuTarget, attach_cell_gesture};
-use super::display_text::{auto_filled_sentinel, editable_null_sentinel, value_to_display_text, value_to_edit_text};
 use super::grid_menus::{GridMenuInit, GridMenus, install_grid_context_menus};
 use super::inline_edit::{install_edit_commit_handler, install_edit_triggers};
-use super::{
-    CellEditor, CellLock, GridCell, GridMsg, GridRowId, GridSink, RowObject, TabGridContext, cell_editability,
-};
-
-const PENDING_CSS_CLASSES: &[&str] = &[
-    "tp-cell-modified",
-    "tp-row-pending-delete",
-    "tp-row-pending-insert",
-    "tp-row-leftmost-error-flash",
-];
-
-/// Shorter text fits a typical 200 px column, so its ellipsized label
-/// needs no tooltip.
-const TOOLTIP_MIN_CHARS: usize = 40;
+use super::{CellEditor, GridCell, GridMsg, GridSink, RowObject, TabGridContext};
 
 const WIDE_TABLE_THRESHOLD: usize = 8;
 /// About 14 characters at the default font size.
@@ -173,11 +162,14 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         }
         _ => CellKind::ReadOnly,
     };
-    // The server fills these in, so a draft row shows a placeholder
-    // rather than an empty cell the user should type in.
     let auto_filled = catalog
         .as_ref()
         .is_some_and(|column| column.is_auto_increment || column.is_generated);
+    let drawing = Rc::new(ColumnDrawing {
+        catalog,
+        tab_ctx: tab_ctx.clone(),
+        auto_filled,
+    });
     let target = CellMenuTarget {
         text_editable: matches!(kind, CellKind::Text(_)),
         accepts_empty: matches!(kind, CellKind::Text(_)) && info.column_type.kind.accepts_empty_string(),
@@ -189,6 +181,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         };
         let grid_cell = GridCell::new();
         grid_cell.attach(cell, idx);
+        grid_cell.set_drawing(drawing.clone());
         match kind {
             CellKind::ReadOnly => setup_readonly_cell(&grid_cell),
             CellKind::Toggle => setup_toggle_cell(&grid_cell, sink.clone()),
@@ -198,40 +191,26 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         cell.set_child(Some(&grid_cell));
     });
 
-    let tab_ctx_for_bind = tab_ctx.clone();
-    factory.connect_bind(move |_, item| {
+    factory.connect_bind(|_, item| {
         let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
             return;
         };
-        let (Some(row), Some(grid_cell)) = (
+        if let (Some(row), Some(grid_cell)) = (
             cell.item().and_downcast::<RowObject>(),
             cell.child().and_downcast::<GridCell>(),
-        ) else {
-            return;
-        };
-        let lock = cell_lock(catalog.as_ref(), row.id(), &tab_ctx_for_bind);
-        grid_cell.set_lock(lock);
-        let (value, pending_classes) = tab_ctx_for_bind.bind_state(&row, idx);
-        draw_cell(&grid_cell, &value, &pending_classes, lock.is_none(), auto_filled);
+        ) {
+            grid_cell.bind(&row);
+        }
     });
 
     factory.connect_unbind(|_, item| {
-        let Some(grid_cell) = item
+        if let Some(grid_cell) = item
             .downcast_ref::<gtk::ColumnViewCell>()
             .and_then(|cell| cell.child())
             .and_downcast::<GridCell>()
-        else {
-            return;
-        };
-        if let Some(editor) = grid_cell.editor()
-            && editor.is_editing()
         {
-            editor.stop_editing(false);
+            grid_cell.unbind();
         }
-        if let Some(popover) = grid_cell.take_popover() {
-            popover.popdown();
-        }
-        grid_cell.take_edit();
     });
 
     let column = gtk::ColumnViewColumn::builder()
@@ -259,68 +238,6 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         column.set_fixed_width(min);
     }
     column
-}
-
-fn cell_lock(catalog: Option<&ColumnInfo>, row: &GridRowId, tab_ctx: &TabGridContext) -> Option<CellLock> {
-    match catalog {
-        Some(column) => cell_editability(column, row, &tab_ctx.identity, !tab_ctx.editable).err(),
-        None => Some(CellLock::ResultRow),
-    }
-}
-
-/// `editable` is whether this row's cell takes an edit: such a cell
-/// shows NULL as `<NULL>`, so it reads differently from an empty
-/// string, and a locked one dims a plain NULL.
-fn draw_cell(grid_cell: &GridCell, value: &Value, pending_classes: &[&'static str], editable: bool, auto_filled: bool) {
-    let is_null = matches!(value, Value::Null);
-    let text = if is_null && auto_filled {
-        auto_filled_sentinel()
-    } else if editable {
-        if is_null {
-            editable_null_sentinel()
-        } else {
-            value_to_edit_text(value)
-        }
-    } else {
-        value_to_display_text(value)
-    };
-    let is_pending_delete = pending_classes.contains(&"tp-row-pending-delete");
-    let Some(content) = grid_cell.content() else {
-        return;
-    };
-    if let Some(editor) = content.downcast_ref::<CellEditor>() {
-        editor.set_text(&text);
-        // A locked cell's text is there to be read and copied, as a
-        // read-only column's is.
-        editor.set_selectable(!editable);
-        apply_cell_tooltip(content, &text, is_null);
-        set_class(content, "dim-label", is_null && !editable);
-        set_class(content, "tp-null-sentinel", is_null && (editable || auto_filled));
-        apply_pending_classes(content, pending_classes);
-        editor.set_strikethrough(is_pending_delete);
-    } else if let Some(checkbox) = content.downcast_ref::<gtk::CheckButton>() {
-        // Suppressed, so drawing the value does not echo back as an edit.
-        grid_cell.suppress_toggle(true);
-        // A value that is not a bool shows as inconsistent rather than as
-        // a confidently wrong check box.
-        let (active, inconsistent) = match value {
-            Value::Bool(flag) => (*flag, false),
-            _ => (false, true),
-        };
-        checkbox.set_inconsistent(inconsistent);
-        checkbox.set_active(active);
-        grid_cell.suppress_toggle(false);
-        checkbox.set_sensitive(editable);
-        apply_pending_classes(content, pending_classes);
-        // A check box has no strikethrough, so a pending delete dims it.
-        checkbox.set_opacity(if is_pending_delete { 0.5 } else { 1.0 });
-    } else if let Some(label) = content.downcast_ref::<gtk::Label>() {
-        label.set_text(&text);
-        apply_cell_tooltip(content, &text, is_null);
-        set_class(content, "dim-label", is_null);
-        apply_pending_classes(content, pending_classes);
-        set_label_strikethrough(label, is_pending_delete);
-    }
 }
 
 fn setup_editable_cell(grid_cell: &GridCell, sink: GridSink, editor_kind: CellEditorKind) {
@@ -372,43 +289,6 @@ fn setup_readonly_cell(grid_cell: &GridCell) {
         .margin_end(8)
         .build();
     grid_cell.set_content(&label);
-}
-
-fn set_class(widget: &gtk::Widget, class: &str, on: bool) {
-    if on {
-        widget.add_css_class(class);
-    } else {
-        widget.remove_css_class(class);
-    }
-}
-
-fn apply_pending_classes(widget: &gtk::Widget, pending_classes: &[&'static str]) {
-    for cls in PENDING_CSS_CLASSES {
-        widget.remove_css_class(cls);
-    }
-    for cls in pending_classes {
-        widget.add_css_class(cls);
-    }
-}
-
-fn apply_cell_tooltip(widget: &gtk::Widget, text: &str, is_null: bool) {
-    if is_null || text.chars().take(TOOLTIP_MIN_CHARS + 1).count() <= TOOLTIP_MIN_CHARS {
-        widget.set_tooltip_text(None);
-    } else {
-        widget.set_tooltip_text(Some(text));
-    }
-}
-
-/// A Pango attribute, because CSS `text-decoration` does not cascade
-/// reliably into a cell's label.
-fn set_label_strikethrough(label: &gtk::Label, on: bool) {
-    if on {
-        let attrs = gtk::pango::AttrList::new();
-        attrs.insert(gtk::pango::AttrInt::new_strikethrough(true));
-        label.set_attributes(Some(&attrs));
-    } else {
-        label.set_attributes(None);
-    }
 }
 
 #[cfg(test)]
@@ -762,29 +642,104 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn edit_during_rebind_shows_pending_value() {
+    fn a_revision_bump_draws_the_pending_value_in_the_same_cell() {
         let grid = two_text_rows();
-        let texts = || -> Vec<String> {
-            descendants(&grid.view)
-                .into_iter()
-                .filter_map(|widget| widget.downcast::<CellEditor>().ok())
-                .map(|cell| cell.text().to_string())
-                .collect()
-        };
-
+        let cell = grid.cell_of(1, 1);
         let delta = grid.tracker.apply(TrackerEdit::Cell {
             row_key: key(1),
             col: 1,
             original: Value::Text("A".into()),
             value: Value::Text("new".into()),
         });
-        // A fresh row object, because the list item manager skips the
-        // rebind for an items-changed that keeps the same item.
-        let row = grid.store.item(0).and_downcast::<RowObject>().expect("a row");
-        grid.store.splice(0, 1, &[row.replacement()]);
 
-        wait_until(WAIT, || texts().iter().any(|text| text == "new")).expect("the rebind draws the pending value");
+        grid.store
+            .item(0)
+            .and_downcast::<RowObject>()
+            .expect("a row")
+            .bump_revision();
+
         assert_eq!(delta.pending_count, 1);
+        assert_eq!(cell.editor().expect("a text cell").text(), "new");
+        assert!(
+            cell.content()
+                .is_some_and(|content| content.has_css_class("tp-cell-modified"))
+        );
+    }
+
+    #[gtk4::test]
+    fn an_edit_in_progress_keeps_its_text_when_the_row_is_drawn_again() {
+        let grid = two_text_rows();
+        let cell = grid.cell_of(2, 1);
+        let editor = type_into(&cell, "typed");
+        let row = cell.row().expect("a bound row");
+
+        row.bump_revision();
+        editor.stop_editing(false);
+
+        assert_eq!(editor.text(), "B", "Escape did not go back to the row's value");
+        type_into(&cell, "typed");
+        row.bump_revision();
+        assert_eq!(editor.entry().text(), "typed", "the redraw overwrote what was typed");
+    }
+
+    #[gtk4::test]
+    fn unbind_disconnects_revision_handler() {
+        let columns = vec![named("id", "integer", true), named("name", "text", false)];
+        let rows: Vec<Vec<Value>> = (0..300)
+            .map(|id| vec![Value::Int(id), Value::Text(format!("row {id}"))])
+            .collect();
+        let result = QueryResult::new(
+            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+            rows.clone(),
+        );
+        let tracker = TabTrackerHandle::default();
+        let (sink, _messages) = recorder();
+        let (view, _selection) = build_column_view(
+            &result,
+            persisted(&rows),
+            &columns,
+            sink,
+            None,
+            false,
+            tracked(&tracker),
+        );
+        let scrolled = gtk::ScrolledWindow::builder().child(&view).build();
+        let window = gtk::Window::new();
+        window.set_default_size(600, 400);
+        window.set_child(Some(&scrolled));
+        window.present();
+        // Not the first row, which the view may keep bound as its focus.
+        let name_cell = || {
+            descendants(&view)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<GridCell>().ok())
+                .find(|cell| cell.column() == 1 && cell.row().is_some_and(|row| row.key() == Some(&key(3))))
+        };
+        let mut found = None;
+        wait_until(WAIT, || {
+            found = name_cell();
+            found.is_some()
+        })
+        .expect("the fourth row is drawn");
+        let cell = found.expect("a cell");
+        let row = cell.row().expect("a bound row");
+        let bound_renders = cell.render_count();
+        row.bump_revision();
+        assert_eq!(cell.render_count(), bound_renders + 1, "a bound cell did not redraw");
+
+        view.scroll_to(299, None, gtk::ListScrollFlags::NONE, None);
+        wait_until(WAIT, || cell.row().as_ref() != Some(&row)).expect("the fourth row's cell was never let go");
+        let unbound_renders = cell.render_count();
+        row.bump_revision();
+        drain_main_context();
+
+        assert_eq!(
+            cell.render_count(),
+            unbound_renders,
+            "a cell drew again for a row it no longer shows"
+        );
+        window.destroy();
+        drain_main_context();
     }
 
     fn width_binding(tasks: &tablepro_session::runtime::Tasks, root: &tempfile::TempDir) -> ColumnWidthBinding {

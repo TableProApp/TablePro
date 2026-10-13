@@ -40,8 +40,8 @@ columnview > listview > row > cell:focus-within > tp-grid-cell > .tp-cell-editor
   border-radius: 2px;
 }
 
-/* One-shot flash on the row whose statement failed to commit. The bind
-   callback re-applies the class until the tab clears its error row. */
+/* One-shot flash on the row whose statement failed to commit. Each
+   redraw of the row keeps the class until the tab clears its error row. */
 @keyframes tp-flash-error {
   0% {
     background: color-mix(in srgb, var(--error-bg-color) 55%, transparent);

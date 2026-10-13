@@ -1,7 +1,8 @@
-use std::cell::OnceCell;
+use std::cell::{Cell, OnceCell};
 use std::sync::Arc;
 
 use gtk4::glib;
+use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
 use tablepro_core::Value;
@@ -12,12 +13,17 @@ use crate::services::change_tracker::RowKey;
 mod imp {
     use super::*;
 
-    #[derive(Default)]
+    #[derive(Default, glib::Properties)]
+    #[properties(wrapper_type = super::RowObject)]
     pub struct RowObject {
         pub id: OnceCell<GridRowId>,
         /// The row as it was read. A draft has none: its cells are the
         /// tracker's.
         pub cells: OnceCell<Arc<[Value]>>,
+        /// Moves on when the row's pending state changes, so the cells
+        /// bound to it draw again without the store swapping the row.
+        #[property(get)]
+        pub revision: Cell<u32>,
     }
 
     #[glib::object_subclass]
@@ -26,6 +32,7 @@ mod imp {
         type Type = super::RowObject;
     }
 
+    #[glib::derived_properties]
     impl ObjectImpl for RowObject {}
 }
 
@@ -64,13 +71,6 @@ impl RowObject {
         Self::with(GridRowId::Result, Some(cells))
     }
 
-    /// A new object for the same row. The list item manager skips the
-    /// rebind for an items-changed that keeps the same item, so a row
-    /// whose pending state changed is swapped for one of these.
-    pub fn replacement(&self) -> Self {
-        Self::with(self.id().clone(), self.imp().cells.get().cloned())
-    }
-
     pub fn id(&self) -> &GridRowId {
         self.imp().id.get().unwrap_or(&UNNAMED)
     }
@@ -90,10 +90,20 @@ impl RowObject {
     pub fn cell(&self, column: usize) -> Option<&Value> {
         self.imp().cells.get()?.get(column)
     }
+
+    /// Tell the cells bound to this row that its pending state changed.
+    pub(crate) fn bump_revision(&self) {
+        let revision = &self.imp().revision;
+        revision.set(revision.get().wrapping_add(1));
+        self.notify_revision();
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
     use tablepro_core::Value;
 
     use super::RowObject;
@@ -112,7 +122,19 @@ mod tests {
         assert_eq!(unkeyed.id(), &GridRowId::Unkeyed);
         assert_eq!(draft.draft_id(), Some(5));
         assert!(draft.cells().is_none(), "a draft's cells are the tracker's");
-        assert_eq!(persisted.replacement().id(), persisted.id());
-        assert_eq!(persisted.replacement().cells(), persisted.cells());
+    }
+
+    #[test]
+    fn bump_revision_notifies_each_listener_once() {
+        let row = RowObject::draft(1);
+        let heard = Rc::new(Cell::new(0));
+        let counter = heard.clone();
+        row.connect_revision_notify(move |_| counter.set(counter.get() + 1));
+
+        row.bump_revision();
+        row.bump_revision();
+
+        assert_eq!(row.revision(), 2);
+        assert_eq!(heard.get(), 2);
     }
 }

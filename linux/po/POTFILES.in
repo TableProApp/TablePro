@@ -134,12 +134,14 @@ crates/app/src/ui/error_text/tls_remedy.rs
 crates/app/src/ui/export_dialog.rs
 crates/app/src/ui/file_read.rs
 crates/app/src/ui/filter_strip.rs
+crates/app/src/ui/grid/cell_binding.rs
 crates/app/src/ui/grid/cell_editability.rs
 crates/app/src/ui/grid/cell_editor.rs
 crates/app/src/ui/grid/cell_editor_kind.rs
 crates/app/src/ui/grid/cell_lock.rs
 crates/app/src/ui/grid/cell_popovers.rs
 crates/app/src/ui/grid/cell_preset.rs
+crates/app/src/ui/grid/column_drawing.rs
 crates/app/src/ui/grid/column_factory.rs
 crates/app/src/ui/grid/column_width_binding.rs
 crates/app/src/ui/grid/context_menu.rs
@@ -149,6 +151,7 @@ crates/app/src/ui/grid/grid_cell.rs
 crates/app/src/ui/grid/grid_menus.rs
 crates/app/src/ui/grid/grid_msg.rs
 crates/app/src/ui/grid/grid_row_id.rs
+crates/app/src/ui/grid/grid_row_index.rs
 crates/app/src/ui/grid/inline_edit.rs
 crates/app/src/ui/grid/mod.rs
 crates/app/src/ui/grid/row_json_dialog.rs

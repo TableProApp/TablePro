@@ -1,9 +1,12 @@
 use std::cell::{Cell, OnceCell, RefCell};
+use std::rc::Rc;
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 
+use super::cell_binding::CellBinding;
+use super::column_drawing::ColumnDrawing;
 use super::{CellEditor, CellLock, EditSnapshot, RowObject};
 
 mod imp {
@@ -26,6 +29,10 @@ mod imp {
         /// text from before the composition.
         pub preedit_active: Cell<bool>,
         pub lock: Cell<Option<CellLock>>,
+        pub drawing: OnceCell<Rc<ColumnDrawing>>,
+        pub binding: RefCell<Option<CellBinding>>,
+        #[cfg(test)]
+        pub renders: Cell<u32>,
     }
 
     #[glib::object_subclass]
@@ -42,6 +49,7 @@ mod imp {
 
     impl ObjectImpl for GridCell {
         fn dispose(&self) {
+            self.binding.take();
             if let Some(popover) = self.popover.take() {
                 popover.unparent();
             }
@@ -125,8 +133,55 @@ impl GridCell {
         self.imp().lock.get()
     }
 
-    pub(super) fn set_lock(&self, lock: Option<CellLock>) {
+    pub(super) fn set_drawing(&self, drawing: Rc<ColumnDrawing>) {
+        let _ = self.imp().drawing.set(drawing);
+    }
+
+    /// Show `row`, and draw it again each time its revision moves.
+    pub(super) fn bind(&self, row: &RowObject) {
+        let lock = match self.imp().drawing.get() {
+            Some(drawing) => drawing.lock(row.id()),
+            None => Some(CellLock::ResultRow),
+        };
         self.imp().lock.set(lock);
+        self.imp().binding.replace(Some(CellBinding::new(self, row)));
+        self.render();
+    }
+
+    /// An edit or popover still open is cancelled, since the row it was
+    /// for is no longer this cell's.
+    pub(super) fn unbind(&self) {
+        self.imp().binding.take();
+        if let Some(editor) = self.editor()
+            && editor.is_editing()
+        {
+            editor.stop_editing(false);
+        }
+        if let Some(popover) = self.take_popover() {
+            popover.popdown();
+        }
+        self.take_edit();
+    }
+
+    /// Draw the bound row as the tracker has it now.
+    pub(super) fn render(&self) {
+        #[cfg(test)]
+        self.imp().renders.set(self.imp().renders.get() + 1);
+        let row = self
+            .imp()
+            .binding
+            .borrow()
+            .as_ref()
+            .map(|binding| binding.row().clone());
+        let (Some(row), Some(drawing)) = (row, self.imp().drawing.get().cloned()) else {
+            return;
+        };
+        drawing.draw(self, &row);
+    }
+
+    #[cfg(test)]
+    pub(super) fn render_count(&self) -> u32 {
+        self.imp().renders.get()
     }
 
     pub(super) fn begin_edit(&self, snapshot: EditSnapshot) {

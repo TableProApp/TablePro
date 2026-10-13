@@ -38,15 +38,6 @@ impl GridRowId {
             Self::Result | Self::Unkeyed => None,
         }
     }
-
-    /// Whether the tracker's `key` is this row, without building one.
-    pub fn is_tracked_as(&self, key: &RowKey) -> bool {
-        match (self, key) {
-            (Self::Persisted(own), _) => own == key,
-            (Self::Draft(own), RowKey::Draft(other)) => own == other,
-            _ => false,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -66,16 +57,5 @@ mod tests {
         assert_eq!(GridRowId::Persisted(key.clone()).key(), Some(&key));
         assert_eq!(GridRowId::Draft(3).tracker_key(), Some(RowKey::Draft(3)));
         assert_eq!(GridRowId::Result.tracker_key(), None);
-    }
-
-    #[test]
-    fn a_draft_is_never_taken_for_a_persisted_row() {
-        let key = RowKey::from_pk_values(&[Value::Int(3)]).expect("a key");
-
-        assert!(GridRowId::Draft(3).is_tracked_as(&RowKey::Draft(3)));
-        assert!(!GridRowId::Draft(3).is_tracked_as(&key));
-        assert!(GridRowId::Persisted(key.clone()).is_tracked_as(&key));
-        assert!(!GridRowId::Persisted(key).is_tracked_as(&RowKey::Draft(3)));
-        assert!(!GridRowId::Unkeyed.is_tracked_as(&RowKey::Draft(3)));
     }
 }

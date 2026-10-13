@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
 - A new row removed with Delete stayed in the grid while the save left it out.
 - An edit, Set Value or row action in the table grid could land on another row once a row above it came or went.
+- Editing, undoing or deleting a row in the table grid dropped it from a selection of several rows.
 - Copy as INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.
 - Duplicate left out the row's unsaved edits.
 - Cells of a table without a primary key opened for editing, then dropped what was typed.

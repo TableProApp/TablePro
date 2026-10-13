@@ -133,7 +133,7 @@ impl TabChangeTracker {
         self.drafts.len() + self.deletes.len() + self.updates.len()
     }
 
-    /// An edit the running save holds back comes back as a rebind of its
+    /// An edit the running save holds back comes back as a redraw of its
     /// row, so the grid stops showing what was typed into it.
     pub fn apply(&mut self, edit: TrackerEdit) -> TrackerDelta {
         if self.edit_is_in_flight(&edit) {
@@ -475,7 +475,7 @@ impl TabChangeTracker {
     }
 
     /// Clear the flash unless a newer one has started. Returns whether
-    /// it cleared, so the caller knows the row needs a rebind.
+    /// it cleared, so the caller knows the row needs a redraw.
     pub fn clear_error_row_if(&mut self, generation: u64) -> bool {
         if self.error_row_gen != generation {
             return false;
