@@ -17,7 +17,7 @@ use tablepro_core::{
 
 use crate::cancel::{MySqlStop, acknowledges_stop, interrupted};
 use crate::decode::decode_row;
-use crate::errors::{INCOMPLETE_ROLLBACK, map_error};
+use crate::errors::{INCOMPLETE_ROLLBACK, map_error, means_link_lost};
 use crate::flavour::MySqlFlavour;
 use crate::mysql_call::Tainter;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
@@ -208,9 +208,10 @@ async fn statement_by_statement(
             return Err(stopped_between_statements(context, plan, report.len()).await);
         }
         plan.ledger.statement_sending(index);
-        let affected = execute(context, &step.statement)
-            .await
-            .map_err(|error| plan.ledger.failed(index, error, SessionFate::RolledBack))?;
+        let affected = match execute(context, &step.statement).await {
+            Ok(affected) => affected,
+            Err(error) => return Err(step_failed(&context.tainter, &plan.ledger, index, error)),
+        };
         let guard_failed = matches!(step.guard, RowGuard::AffectedExactly(expected) if affected != expected);
         // A statement that matched no row changed nothing, so it is not
         // one of the applied ones; one that matched more did change them.
@@ -227,6 +228,17 @@ async fn statement_by_statement(
         report.push(Some(affected));
     }
     Ok(WriteReport::new(report))
+}
+
+/// A statement the server refused did not run. One whose connection
+/// dropped may have run before the reply was lost, so on an engine that
+/// cannot roll back it is reported as unknown, not as refused.
+fn step_failed(tainter: &Tainter, ledger: &WriteLedger, index: usize, error: DriverError) -> DriverError {
+    if means_link_lost(&error) {
+        tainter.taint();
+        return ledger.interrupted(error, SessionFate::Discarded);
+    }
+    ledger.failed(index, error, SessionFate::RolledBack)
 }
 
 /// Each DDL statement commits on its own. MariaDB's statement timeout
@@ -322,6 +334,42 @@ mod tests {
             Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
         );
         assert_eq!(precheck(&batch(ForeignKeyMode::Enforced), false), Ok(()));
+    }
+
+    #[test]
+    fn a_lost_statement_is_unknown_and_a_refused_one_did_not_apply() {
+        let tainter = crate::mysql_call::MysqlCall::new().tainter();
+        let lost = || DriverError::ConnectionLost {
+            during: tablepro_core::LossPhase::Statement,
+        };
+
+        let first = WriteLedger::new(WriteAtomicity::StatementByStatement);
+        first.statement_sending(0);
+        assert!(matches!(
+            step_failed(&tainter, &first, 0, lost()),
+            DriverError::CommitOutcomeUnknown { .. }
+        ));
+
+        let second = WriteLedger::new(WriteAtomicity::StatementByStatement);
+        second.statement_sending(0);
+        second.statement_confirmed(0);
+        second.statement_sending(1);
+        assert!(matches!(
+            step_failed(&tainter, &second, 1, lost()),
+            DriverError::PartiallyApplied {
+                applied: 1,
+                statement_index: 1,
+                failed_outcome: tablepro_core::StatementOutcome::Unknown,
+                ..
+            }
+        ));
+
+        let refused = WriteLedger::new(WriteAtomicity::StatementByStatement);
+        refused.statement_sending(0);
+        assert!(matches!(
+            step_failed(&tainter, &refused, 0, DriverError::server("duplicate key")),
+            DriverError::RolledBack { statement_index: 0, .. }
+        ));
     }
 
     #[test]
