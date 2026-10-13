@@ -1,6 +1,8 @@
 use super::*;
 use crate::classify::StatementClass;
 use crate::classify::classify;
+use sqlparser::ast::{Statement, TableObject};
+use sqlparser::parser::Parser;
 
 /// Rows one approved import may write. A budget larger than this is
 /// refused before the user is asked, so no single approval can cover an
@@ -161,6 +163,17 @@ impl PolicyGuard {
     pub async fn begin_bulk_insert(&self, request: BulkInsertRequest) -> Result<BulkInsertScope, DriverError> {
         self.require_governed_write_available()?;
         let facts = bulk_facts(&request, &self.ctx.driver_id)?;
+        if !statement_target_matches_request(&request, &self.ctx.driver_id) {
+            self.record_bulk_refusal(
+                &request,
+                &facts,
+                "bulk_target_mismatch",
+                AuditApprovalOutcome::NotRequired,
+                None,
+            )
+            .await?;
+            return Err(denied("the INSERT target does not match the approved import target"));
+        }
         let env_policy = self
             .ctx
             .policy
@@ -306,7 +319,7 @@ impl PolicyGuard {
             batch_id: None,
             sql: &request.statement,
             class: AuditOperationClass::from_statement(facts.class, facts.writes()),
-            targets: vec![qualified_target(request.schema.as_deref(), &request.table)],
+            targets: facts.tables.clone(),
             decision_rule: rule.to_owned(),
             approval_outcome,
             preview_state: preview.map_or(AuditPreviewState::NotRequested, AuditPreviewState::Available),
@@ -396,4 +409,34 @@ fn bulk_facts(request: &BulkInsertRequest, driver_id: &str) -> Result<StatementF
         ));
     }
     Ok(facts)
+}
+
+fn statement_target_matches_request(request: &BulkInsertRequest, driver_id: &str) -> bool {
+    let dialect = crate::classify::dialect_for(driver_id);
+    let Ok(statements) = Parser::parse_sql(dialect.as_ref(), &request.statement) else {
+        return false;
+    };
+    let [Statement::Insert(insert)] = statements.as_slice() else {
+        return false;
+    };
+    let TableObject::TableName(name) = &insert.table else {
+        return false;
+    };
+    let mut expected = Vec::with_capacity(2);
+    if let Some(schema) = request.schema.as_deref() {
+        expected.push(schema);
+    }
+    expected.push(request.table.as_str());
+    name.0.len() == expected.len()
+        && name.0.iter().zip(expected).all(|(part, requested)| {
+            let Some(identifier) = part.as_ident() else {
+                return false;
+            };
+            let actual = if identifier.quote_style.is_none() && driver_id == "postgres" {
+                identifier.value.to_ascii_lowercase()
+            } else {
+                identifier.value.clone()
+            };
+            actual == requested
+        })
 }

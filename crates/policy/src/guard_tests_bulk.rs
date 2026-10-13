@@ -532,6 +532,69 @@ async fn a_scope_is_refused_for_anything_that_is_not_one_insert() {
 }
 
 #[tokio::test]
+async fn an_import_scope_is_refused_when_its_statement_targets_another_table() {
+    let (connection, batches) = BulkConn::open(usize::MAX);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let audit = Arc::new(SequenceAuditSink::new(vec![]));
+    let guard = bulk_guard(
+        connection,
+        Uuid::new_v4(),
+        Arc::new(CountingApprovalSink { calls: calls.clone() }),
+        audit.clone(),
+        Arc::new(AuditState::new()),
+    );
+    let mut request = request(9);
+    request.statement = "INSERT INTO audit_log (id, name) VALUES ($1, $2)".into();
+
+    let result = guard.begin_bulk_insert(request).await;
+
+    assert!(matches!(result, Err(DriverError::PolicyDenied(_))));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(batches.lock().expect("batch lock").is_empty());
+    let recorded = events(&audit);
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].phase, AuditRecordPhase::Outcome);
+    assert_eq!(recorded[0].terminal_status, AuditTerminalStatus::Denied);
+    assert_eq!(recorded[0].targets, vec!["audit_log"]);
+}
+
+#[tokio::test]
+async fn an_import_scope_is_refused_when_its_statement_targets_another_schema() {
+    let (connection, _batches) = BulkConn::open(usize::MAX);
+    let (guard, audit, _state) = approved_guard(connection, Uuid::new_v4());
+    let mut request = request(9);
+    request.schema = Some("public".into());
+    request.statement = "INSERT INTO archive.people (id, name) VALUES ($1, $2)".into();
+
+    let result = guard.begin_bulk_insert(request).await;
+
+    assert!(matches!(result, Err(DriverError::PolicyDenied(_))));
+    let recorded = events(&audit);
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].terminal_status, AuditTerminalStatus::Denied);
+    assert_eq!(recorded[0].targets, vec!["archive.people"]);
+}
+
+#[tokio::test]
+async fn an_import_scope_accepts_the_exact_quoted_target() {
+    let (connection, _batches) = BulkConn::open(usize::MAX);
+    let (guard, _audit, _state) = approved_guard(connection, Uuid::new_v4());
+    let mut request = request(9);
+    request.schema = Some("sales".into());
+    request.statement = "INSERT INTO \"sales\".\"people\" (id, name) VALUES ($1, $2)".into();
+
+    let mut scope = guard
+        .begin_bulk_insert(request)
+        .await
+        .expect("matching quoted target is approved");
+
+    guard
+        .finish_bulk_insert(&mut scope, BulkInsertEnd::Cancelled)
+        .await
+        .expect("finish import");
+}
+
+#[tokio::test]
 async fn a_row_budget_outside_the_import_limit_is_refused() {
     let (connection, _batches) = BulkConn::open(usize::MAX);
     let (guard, _audit, _state) = approved_guard(connection, Uuid::new_v4());
