@@ -940,3 +940,69 @@ mod keyset_page_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod filter_shape_tests {
+    use super::*;
+
+    fn filter(where_clause: &str, params: &[Value]) -> Result<Option<Document>, DriverError> {
+        let sql = format!("SELECT * FROM records WHERE {where_clause} LIMIT 10 OFFSET 0");
+        Ok(parse_browse_page_select(&sql, params, "appdb")?.map(|parsed| parsed.filter))
+    }
+
+    fn text(value: &str) -> Value {
+        Value::Text(value.into())
+    }
+
+    #[test]
+    fn null_checks_between_and_boolean_groups_translate_to_selectors() {
+        let explicit_null = filter("note IS NULL", &[]).unwrap().unwrap();
+        assert_eq!(explicit_null, explicit_null_selector("note".into()));
+        assert_eq!(
+            filter("note IS NOT NULL", &[]).unwrap().unwrap(),
+            doc! { "note": { "$exists": true, "$ne": Bson::Null } }
+        );
+        assert_eq!(
+            filter("n BETWEEN ? AND ?", &[Value::Int(1), Value::Int(5)])
+                .unwrap()
+                .unwrap(),
+            doc! { "n": { "$gte": 1_i64, "$lte": 5_i64 } }
+        );
+        assert_eq!(
+            filter("(a = ? OR b = ?)", &[text("x"), text("y")]).unwrap().unwrap(),
+            doc! { "$or": [{ "a": { "$eq": "x" } }, { "b": { "$eq": "y" } }] }
+        );
+        assert_eq!(
+            filter("(a > ? AND a < ?)", &[Value::Int(1), Value::Int(9)])
+                .unwrap()
+                .unwrap(),
+            doc! { "$and": [{ "a": { "$gt": 1_i64 } }, { "a": { "$lt": 9_i64 } }] },
+            "two conditions on one field must not overwrite each other"
+        );
+    }
+
+    #[test]
+    fn unsupported_filter_shapes_are_refused_rather_than_misread() {
+        for (clause, params) in [
+            ("n BETWEEN ? AND ?", vec![Value::Null, Value::Int(5)]),
+            ("1 = ?", vec![text("x")]),
+            ("n IS NULL OR 1 IS NULL", vec![]),
+            ("lower(n) = ?", vec![text("x")]),
+            ("a = ? AND b LIKE ? ESCAPE 'ab'", vec![text("x"), text("y")]),
+            ("a LIKE ?", vec![Value::Int(3)]),
+            ("NOT (a = ?)", vec![text("x")]),
+        ] {
+            let outcome = filter(clause, &params);
+            assert!(
+                matches!(outcome, Err(DriverError::Unsupported(_)) | Ok(None)),
+                "{clause} was not refused: {outcome:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_filter_with_unused_or_missing_parameters_is_not_translated() {
+        assert!(filter("a = ?", &[text("x"), text("extra")]).unwrap().is_none());
+        assert!(filter("a = ?", &[]).is_err());
+    }
+}
