@@ -3,8 +3,13 @@
 //! A driver's integration target implements an engine adapter and
 //! invokes `connection_conformance_suite!` and `tls_conformance_suite!`
 //! with flags for what the engine supports. A flag that is off emits no
-//! test, and the flags themselves are checked against the driver's
-//! capability table, so a case cannot be skipped by declaring less.
+//! test. The flags with a capability behind them (`endpoint`,
+//! `editor_transactions` and the TLS `client_identity`) are checked
+//! against the driver's capability table, so those cases cannot be
+//! skipped by declaring less. `pool`, `unsupported_types` and
+//! `bounded_ddl` describe the server rather than the driver (MySQL and
+//! MariaDB differ on `bounded_ddl` under one driver), so the adapter
+//! states them and no capability can contradict them.
 
 mod bounded_ddl_engine;
 pub mod cases;

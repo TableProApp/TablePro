@@ -17,7 +17,8 @@
 ///
 /// `suite_flags_match_driver_capabilities` is always emitted and never
 /// ignored: it fails when `endpoint` or `editor_transactions` disagrees
-/// with the driver's capabilities.
+/// with the driver's capabilities. `pool`, `unsupported_types` and
+/// `bounded_ddl` have no capability to check against.
 ///
 /// A case that has not finished `CASE_LIMIT` after its engine started
 /// fails with its name, so a driver that ignores a deadline or a cancel
