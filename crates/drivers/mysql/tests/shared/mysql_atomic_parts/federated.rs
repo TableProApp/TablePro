@@ -1,6 +1,8 @@
 use super::*;
 use secrecy::ExposeSecret;
+use testcontainers::GenericImage;
 use testcontainers::ImageExt;
+use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 
@@ -78,4 +80,81 @@ async fn mysql_failed_batch_federated_write_survives_rollback() {
     observer.close().await;
     conn.close().await.unwrap();
     container.stop().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn mariadb_failed_batch_federated_write_survives_rollback() {
+    let (container, opts) = start_mariadb_with_federated().await;
+    let conn = connect(opts.clone()).await;
+    conn.execute("CREATE TABLE federated_remote_effects (id INT PRIMARY KEY) ENGINE=InnoDB")
+        .await
+        .unwrap();
+    conn.execute("INSERT INTO federated_remote_effects VALUES (1)")
+        .await
+        .unwrap();
+    conn.execute(
+        "CREATE TABLE federated_batch_effects (id INT PRIMARY KEY) ENGINE=FEDERATED \
+         CONNECTION='mysql://root:tablepro_test@127.0.0.1:3306/test/federated_remote_effects'",
+    )
+    .await
+    .unwrap();
+
+    let batch = vec![
+        ("INSERT INTO federated_batch_effects VALUES (2)".into(), vec![]),
+        ("INSERT INTO missing_federated_batch_effects VALUES (3)".into(), vec![]),
+    ];
+    let error = conn
+        .execute_in_transaction(&batch)
+        .await
+        .expect_err("the absent table must fail after the FEDERATED write");
+    assert!(
+        matches!(error, DriverError::Transaction { statement_index: 1, .. }),
+        "the failed statement index must be preserved, got {error:?}"
+    );
+
+    let rows = remote_federated_rows(&opts).await;
+    assert_eq!(rows, [1, 2], "the remote write is independent of local rollback");
+    conn.close().await.unwrap();
+    container.stop().await.unwrap();
+}
+
+async fn start_mariadb_with_federated() -> (testcontainers::ContainerAsync<GenericImage>, ConnectOptions) {
+    let image = GenericImage::new("mariadb", "11")
+        .with_exposed_port(3306.tcp())
+        .with_wait_for(WaitFor::message_on_stderr("port: 3306"))
+        .with_env_var("MARIADB_ROOT_PASSWORD", "tablepro_test")
+        .with_env_var("MARIADB_DATABASE", "test")
+        .with_cmd(["mariadbd", "--plugin-load-add=ha_federated"]);
+    let container = image.start().await.unwrap();
+    let opts = ConnectOptions {
+        host: container.get_host().await.unwrap().to_string(),
+        port: container.get_host_port_ipv4(3306).await.unwrap(),
+        database: "test".into(),
+        username: "root".into(),
+        password: secrecy::SecretString::new("tablepro_test".to_string().into()),
+        tls: tablepro_core::TlsConfig::disabled(),
+        ..Default::default()
+    };
+    (container, opts)
+}
+
+async fn remote_federated_rows(opts: &ConnectOptions) -> Vec<i32> {
+    let observer = sqlx::mysql::MySqlPoolOptions::new()
+        .connect_with(
+            sqlx::mysql::MySqlConnectOptions::new()
+                .host(&opts.host)
+                .port(opts.port)
+                .username(&opts.username)
+                .password(opts.password.expose_secret())
+                .database(&opts.database),
+        )
+        .await
+        .unwrap();
+    let rows = sqlx::query_scalar::<_, i32>("SELECT id FROM federated_remote_effects ORDER BY id")
+        .fetch_all(&observer)
+        .await
+        .unwrap();
+    observer.close().await;
+    rows
 }
