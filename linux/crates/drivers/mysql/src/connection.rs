@@ -458,16 +458,15 @@ impl Connection for MysqlConnection {
         self.settle(outcome, &stop).await
     }
 
-    /// No COMMIT outcome can be asked about after the fact: MySQL keeps
-    /// no record of a transaction once its session is gone.
+    /// MySQL keeps no record of a transaction once its session is gone,
+    /// so a lost COMMIT has no answer.
     async fn resolve_commit(
         &self,
         _token: &CommitToken,
         _options: CallOptions,
     ) -> Result<CommitResolution, DriverError> {
-        Err(DriverError::Unsupported {
-            feature: "commit resolution",
-        })
+        self.ensure_open()?;
+        Ok(CommitResolution::Unresolvable)
     }
 
     async fn open_editor_session(

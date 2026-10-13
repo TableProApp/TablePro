@@ -50,7 +50,7 @@ sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its 
 
 - `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`.
 - `Require` encrypts without checking the certificate. A server that does not offer TLS is reported as `ServerRefusedTls`.
-- `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the Mozilla roots compiled into sqlx plus the connection's CA file, and **not** the system's CA store ([Trust](../../ARCHITECTURE.md#trust)). A server certificate from a private CA always needs the CA file.
+- `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
 - The name checked is the host sqlx dials, so a server name override works only through an SSH forward, where the dial goes to a socket path (`ServerNameOverride::SshForwardOnly`).
 - A client certificate and key are sent when set, for `REQUIRE X509` logins.
 - With TLS off, `caching_sha2_password` sends the password encrypted with the server's RSA key, never in clear text, also over an SSH forward's socket.
@@ -103,5 +103,5 @@ Whether a write can be undone depends on the table's storage engine, not on the 
 - The editor sends one statement per run. Text with several statements runs as the server's own multi-statement batch over the text protocol, except that mysql-client `DELIMITER` lines split it where the client would, because the server does not know the directive.
 - The row limit is `SET SESSION sql_select_limit = <limit + 1>`, sent when the limit changes. The server stops a plain `SELECT` there, and the set ends with `Truncation::ServerStopped` and no total. A `SELECT` with a `LIMIT` of its own, or one inside a routine, is read to its end: the rows past the limit are counted, never decoded, and the set ends with `Truncation::ReadPastLimit` and its total.
 - A stop sends `KILL QUERY` on the session's own control connection and gives the statement the cancel grace to end. A statement that has not ended by then ends the session, because its answer is still on the way.
-- When the grid stops reading, the run ends as cancelled with no `KILL`, and sqlx reads the rest of the result off the wire before the next statement.
+- When the grid stops reading, the run sends the same `KILL QUERY` and ends as cancelled. The batch already sent is read to its end, unshown, and no later batch is sent.
 - The transaction state after each run comes from `@@in_transaction` on MariaDB and from `performance_schema.events_transactions_current` on MySQL. On MySQL before 8.0.16, with `performance_schema` off, or for a login that cannot read it, the state is `Unknown`, and the tab's close guard warns instead of guessing.

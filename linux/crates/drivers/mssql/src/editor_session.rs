@@ -7,6 +7,7 @@ use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LossPhase,
     ResultSink, RunEnd, RunOptions, RunSummary, StopReason, StopRequest, TimeoutPhase, TransactionState, UserSql,
 };
+use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -24,7 +25,15 @@ use crate::physical::MssqlLink;
 /// step with the server ends the session instead.
 pub(crate) struct MssqlEditorSession {
     id: EditorSessionId,
-    link: tokio::sync::Mutex<Option<MssqlLink>>,
+    shared: Arc<Shared>,
+}
+
+/// What a run needs once its caller is gone. A run goes on a task of
+/// its own, so a dropped caller is a cancel that still sends the
+/// attention and settles the session, rather than a statement left
+/// running for nobody.
+struct Shared {
+    link: Arc<tokio::sync::Mutex<Option<MssqlLink>>>,
     running: AtomicBool,
     lost: AtomicBool,
     /// The running statement's stop, so closing the tab stops it.
@@ -45,15 +54,84 @@ impl MssqlEditorSession {
         let liveness = endpoint.liveness();
         Ok(Arc::new(Self {
             id: EditorSessionId::new(),
-            link: tokio::sync::Mutex::new(Some(link)),
-            running: AtomicBool::new(false),
-            lost: AtomicBool::new(false),
-            current: Mutex::new(None),
-            statement_timeout: options.statement_timeout,
-            policy: StopPolicy::within(liveness.cancel_grace),
-            cancel_grace: liveness.cancel_grace,
-            close_timeout: liveness.close_timeout,
+            shared: Arc::new(Shared {
+                link: Arc::new(tokio::sync::Mutex::new(Some(link))),
+                running: AtomicBool::new(false),
+                lost: AtomicBool::new(false),
+                current: Mutex::new(None),
+                statement_timeout: options.statement_timeout,
+                policy: StopPolicy::within(liveness.cancel_grace),
+                cancel_grace: liveness.cancel_grace,
+                close_timeout: liveness.close_timeout,
+            }),
         }))
+    }
+}
+
+impl Shared {
+    fn state(&self) -> EditorSessionState {
+        if self.lost.load(Ordering::SeqCst) {
+            EditorSessionState::Lost
+        } else if self.running.load(Ordering::SeqCst) {
+            EditorSessionState::Running
+        } else {
+            EditorSessionState::Ready
+        }
+    }
+
+    /// One run on the connection `held` holds, which it gives up when
+    /// the connection cannot take another.
+    async fn run_held(
+        &self,
+        mut held: OwnedMutexGuard<Option<MssqlLink>>,
+        sql: UserSql,
+        options: RunOptions,
+        mut sink: Box<dyn ResultSink>,
+    ) -> Result<RunSummary, DriverError> {
+        // A run whose task died leaves its connection behind, in a state
+        // nothing knows.
+        let Some(link) = held.as_mut().filter(|_| !self.lost.load(Ordering::SeqCst)) else {
+            return Err(DriverError::ConnectionLost {
+                during: LossPhase::Idle,
+            });
+        };
+        let started = Instant::now();
+        self.running.store(true, Ordering::SeqCst);
+        let request = StopRequest::new();
+        self.set_current(Some(request.clone()));
+
+        let supervised = self.supervise(link, &request, &sql, &options, sink.as_mut()).await;
+        let (end, transaction_state, keep) = match supervised {
+            Some(Ok(outcome)) if outcome.reusable => {
+                let (state, keep) = self.state_after_run(link).await;
+                (Ok(outcome.end), state, keep)
+            }
+            // The run ended, but somewhere the connection cannot go on
+            // from: the session ends with it.
+            Some(Ok(outcome)) => (Ok(outcome.end), TransactionState::Unknown, false),
+            Some(Err(error)) => (Err(error), TransactionState::Unknown, false),
+            None => (
+                Ok(match request.reason() {
+                    Some(StopReason::DeadlineElapsed) => RunEnd::TimedOut {
+                        server_cancelled: false,
+                    },
+                    _ => RunEnd::Cancelled,
+                }),
+                TransactionState::Unknown,
+                false,
+            ),
+        };
+        self.set_current(None);
+        self.running.store(false, Ordering::SeqCst);
+        if !keep {
+            self.lost.store(true, Ordering::SeqCst);
+            *held = None;
+        }
+        Ok(RunSummary {
+            elapsed: started.elapsed(),
+            end: end?,
+            transaction_state,
+        })
     }
 
     fn set_current(&self, request: Option<StopRequest>) {
@@ -121,76 +199,43 @@ impl EditorSession for MssqlEditorSession {
     }
 
     fn state(&self) -> EditorSessionState {
-        if self.lost.load(Ordering::SeqCst) {
-            EditorSessionState::Lost
-        } else if self.running.load(Ordering::SeqCst) {
-            EditorSessionState::Running
-        } else {
-            EditorSessionState::Ready
-        }
+        self.shared.state()
     }
 
     async fn run(
         &self,
         sql: UserSql,
         options: RunOptions,
-        mut sink: Box<dyn ResultSink>,
+        sink: Box<dyn ResultSink>,
     ) -> Result<RunSummary, DriverError> {
-        let Ok(mut held) = self.link.try_lock() else {
+        let Ok(held) = self.shared.link.clone().try_lock_owned() else {
             return Err(DriverError::EditorSessionBusy);
         };
-        let Some(link) = held.as_mut() else {
-            return Err(DriverError::ConnectionLost {
-                during: LossPhase::Idle,
-            });
-        };
-        let started = Instant::now();
-        self.running.store(true, Ordering::SeqCst);
-        let request = StopRequest::new();
-        self.set_current(Some(request.clone()));
-
-        let supervised = self.supervise(link, &request, &sql, &options, sink.as_mut()).await;
-        let (end, transaction_state, keep) = match supervised {
-            Some(Ok(outcome)) if outcome.reusable => {
-                let (state, keep) = self.state_after_run(link).await;
-                (Ok(outcome.end), state, keep)
-            }
-            // The run ended, but somewhere the connection cannot go on
-            // from: the session ends with it.
-            Some(Ok(outcome)) => (Ok(outcome.end), TransactionState::Unknown, false),
-            Some(Err(error)) => (Err(error), TransactionState::Unknown, false),
-            None => (
-                Ok(match request.reason() {
-                    Some(StopReason::DeadlineElapsed) => RunEnd::TimedOut {
-                        server_cancelled: false,
-                    },
-                    _ => RunEnd::Cancelled,
-                }),
-                TransactionState::Unknown,
-                false,
-            ),
-        };
-        self.set_current(None);
-        self.running.store(false, Ordering::SeqCst);
-        if !keep {
-            self.lost.store(true, Ordering::SeqCst);
-            *held = None;
-        }
-        Ok(RunSummary {
-            elapsed: started.elapsed(),
-            end: end?,
-            transaction_state,
-        })
+        // Dropping the caller is itself a cancel: the statement is
+        // already running on the server and has to be stopped.
+        let cancel_on_drop = options.cancel.clone().drop_guard();
+        let shared = self.shared.clone();
+        let running = tokio::spawn(async move { shared.run_held(held, sql, options, sink).await });
+        let outcome = running.await.unwrap_or_else(|_| {
+            self.shared.running.store(false, Ordering::SeqCst);
+            self.shared.lost.store(true, Ordering::SeqCst);
+            Err(DriverError::ConnectionLost {
+                during: LossPhase::Statement,
+            })
+        });
+        drop(cancel_on_drop.disarm());
+        outcome
     }
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError> {
+        let shared = &self.shared;
         let mut held = tokio::select! {
             biased;
             () = options.cancel().cancelled() => return Err(DriverError::Cancelled),
             () = elapsed(options.deadline()) => {
                 return Err(DriverError::Timeout { phase: TimeoutPhase::Statement, server_cancelled: false });
             }
-            held = self.link.lock() => held,
+            held = shared.link.lock() => held,
         };
         let Some(link) = held.as_mut() else {
             return Err(DriverError::ConnectionLost {
@@ -208,7 +253,7 @@ impl EditorSession for MssqlEditorSession {
             Some(Ok(state)) => Ok(state),
             Some(Err(error)) => {
                 if ends_connection(&error) {
-                    self.lost.store(true, Ordering::SeqCst);
+                    shared.lost.store(true, Ordering::SeqCst);
                     *held = None;
                 }
                 Err(error)
@@ -216,7 +261,7 @@ impl EditorSession for MssqlEditorSession {
             // The question was cut off mid-request, so the connection is
             // out of step and the session cannot go on.
             None => {
-                self.lost.store(true, Ordering::SeqCst);
+                shared.lost.store(true, Ordering::SeqCst);
                 *held = None;
                 Err(match options.cancel().is_cancelled() {
                     true => DriverError::Cancelled,
@@ -230,17 +275,18 @@ impl EditorSession for MssqlEditorSession {
     }
 
     async fn close(&self) {
-        self.lost.store(true, Ordering::SeqCst);
-        if let Some(request) = self.current.lock().unwrap_or_else(PoisonError::into_inner).take() {
+        let shared = &self.shared;
+        shared.lost.store(true, Ordering::SeqCst);
+        if let Some(request) = shared.current.lock().unwrap_or_else(PoisonError::into_inner).take() {
             request.request(StopReason::Shutdown);
         }
-        // A run still stopping holds the connection; it closes when the
-        // session itself is dropped.
-        let Ok(mut held) = tokio::time::timeout(self.cancel_grace, self.link.lock()).await else {
+        // A run still stopping holds the connection until it settles or
+        // gives the connection up at the end of the cancel grace.
+        let Ok(mut held) = tokio::time::timeout(shared.cancel_grace, shared.link.lock()).await else {
             return;
         };
         if let Some(link) = held.take() {
-            let _ = tokio::time::timeout(self.close_timeout, link.client.close()).await;
+            let _ = tokio::time::timeout(shared.close_timeout, link.client.close()).await;
         }
     }
 }

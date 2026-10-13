@@ -20,6 +20,7 @@ pub(crate) mod code {
     pub(crate) const NETWORK_ERROR: i32 = 210;
     pub(crate) const UNFINISHED: i32 = 341;
     pub(crate) const SESSION_NOT_FOUND: i32 = 372;
+    pub(crate) const SESSION_IS_LOCKED: i32 = 373;
     pub(crate) const QUERY_IS_PROHIBITED: i32 = 392;
     pub(crate) const QUERY_WAS_CANCELLED: i32 = 394;
     pub(crate) const ACCESS_DENIED: i32 = 497;

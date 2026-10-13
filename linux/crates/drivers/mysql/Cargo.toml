@@ -29,6 +29,7 @@ tablepro-test-support = { path = "../../test-support" }
 async-trait.workspace = true
 chrono.workspace = true
 secrecy.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true

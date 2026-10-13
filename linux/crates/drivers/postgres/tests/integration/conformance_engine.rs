@@ -61,7 +61,7 @@ impl ConformanceEngine for PgEngine {
     }
 
     fn unbounded_statement_sql(&self, marker: &str) -> String {
-        format!("SELECT pg_sleep(3600) /* {marker} */")
+        format!("SELECT /* {marker} */ pg_sleep(3600)")
     }
 
     async fn blocking_statement_sql(&self, marker: &str, hold: Duration) -> Result<String, ConformanceFailure> {
@@ -94,10 +94,16 @@ impl NetworkConformanceEngine for PgEngine {
         Ok((options, fault))
     }
 
+    /// An editor run reads a row source through its cursor, so the server
+    /// shows the FETCH, not the statement and its marker. A FETCH asleep
+    /// in `pg_sleep` is the unbounded statement, since each case has the
+    /// server to itself.
     fn running_statement_count_sql(&self, marker: &str) -> String {
         format!(
             "SELECT count(*) FROM pg_stat_activity \
-             WHERE state = 'active' AND query LIKE '%{marker}%' AND pid <> pg_backend_pid()"
+             WHERE state = 'active' AND pid <> pg_backend_pid() \
+             AND (query LIKE '%{marker}%' \
+             OR (query LIKE 'FETCH % FROM tablepro_cursor' AND wait_event = 'PgSleep'))"
         )
     }
 }

@@ -190,9 +190,6 @@ fn timeout_message(error: &DriverError) -> String {
             crate::i18n::gettext("The statement ran past its time limit, so the server stopped it.")
         }
         TimeoutPhase::Probe => crate::i18n::gettext("The server did not answer a check in time."),
-        TimeoutPhase::CancelAcknowledgement => {
-            crate::i18n::gettext("The server did not confirm the stop in time, so the connection was closed.")
-        }
     }
 }
 

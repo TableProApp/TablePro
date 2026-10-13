@@ -25,6 +25,7 @@ mod errors;
 mod http_call;
 mod key_expression;
 mod line_reader;
+mod lingering_query;
 mod metadata;
 mod param_value;
 mod result_reader;

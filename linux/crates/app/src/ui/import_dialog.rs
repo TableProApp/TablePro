@@ -15,7 +15,7 @@ use tablepro_core::import::{CsvImportOptions, CsvSheet, MAX_PREVIEW_ROWS, read_c
 /// decides how much the app holds at once. Refusing is better than a
 /// window that stops painting halfway through a file nobody meant to
 /// open.
-pub const MAX_CSV_FILE_BYTES: u64 = 64 * 1024 * 1024;
+pub const MAX_CSV_FILE_BYTES: usize = 64 * 1024 * 1024;
 
 /// How many values from the file each mapping row shows, so the user
 /// can see they picked the field they meant.

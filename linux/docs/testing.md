@@ -111,13 +111,14 @@ tablepro_test_support::connection_conformance_suite! {
 }
 ```
 
-The cases every engine runs: a created table is listed with its key, a query bound times out within its deadline, a cancelled editor run reports it and leaves the session ready, a read-only connection refuses writes, a write batch commits every step and a failed one ends as the driver's atomicity says, a row guard mismatch applies nothing, `close` is idempotent, and `stream_read` streams every row in bounded batches.
+The cases every engine runs: a created table is listed with its key, a query bound times out within its deadline, a cancelled editor run reports it and leaves the session ready, a read-only connection refuses writes, a write batch commits every step and a failed one ends as the driver's atomicity says, a row guard mismatch applies nothing, `close` is idempotent, a commit the engine keeps no record of resolves as `Unresolvable`, and `stream_read` streams every row in bounded batches.
 
 Each flag adds cases and needs its engine trait:
 
 | Flag | Adds | Needs |
 |---|---|---|
-| `endpoint: network` | a dropped `query_bound` caller stops the server's statement; a lost transport reports `ConnectionLost` | `NetworkConformanceEngine` |
+| `endpoint: network` | a dropped `query_bound` caller or editor run stops the server's statement, and the editor session then runs again or reports `Lost`; a lost transport reports `ConnectionLost` | `NetworkConformanceEngine` |
+| `endpoint: file` | a dropped editor run stops, and the session takes the next run within the cancel grace | `ConformanceEngine` |
 | `pool: pooled` | a probe succeeds while every pool slot is busy | `PooledConformanceEngine` |
 | `editor_transactions: true` | the row limit keeps the transaction and the statements after it | `EditorTransactionEngine` |
 | `unsupported_types: true` | an unsupported type never decodes as NULL | `TypedConformanceEngine` |

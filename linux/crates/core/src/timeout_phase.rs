@@ -9,7 +9,6 @@ pub enum TimeoutPhase {
     LockWait,
     Statement,
     Probe,
-    CancelAcknowledgement,
 }
 
 impl fmt::Display for TimeoutPhase {
@@ -22,7 +21,6 @@ impl fmt::Display for TimeoutPhase {
             Self::LockWait => "lock wait",
             Self::Statement => "statement",
             Self::Probe => "probe",
-            Self::CancelAcknowledgement => "cancel acknowledgement",
         })
     }
 }

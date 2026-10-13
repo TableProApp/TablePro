@@ -106,7 +106,6 @@ The engine pages ([PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drive
 | `LockWait` | `WorkspaceSettings::lock_timeout`, 10 s | Another session holds a lock this statement needs. |
 | `Statement` | The call's deadline, or the workspace statement timeout of 60 s | The statement ran too long. `server_cancelled` says whether the server confirmed the stop. |
 | `Probe` | `probe_timeout`, 5 s | The server did not answer a liveness check. |
-| `CancelAcknowledgement` | `cancel_grace`, 5 s | The server did not confirm a stop. No shipped driver raises it: a stop the server never confirms ends as an abandoned call, `ConnectionLost`. |
 
 ## `TlsFailure` and its remedies
 
@@ -154,7 +153,7 @@ Levels: `error!` for what the user must see or a broken contract, `warn!` for re
 
 Never log a password, a secret, a key or a bound value. sqlx's own statement logging is turned off in the MySQL and SQLite drivers, and a test in each crate (`tests/statement_logging.rs`) proves no statement text reaches the subscriber.
 
-tokio-postgres is not filtered yet. It logs the text of every simple query, which is all editor SQL, through `log` at `debug`, and `tracing-subscriber` forwards `log` records to the same output. A development build logs at `debug` by default, so an `ALTER ROLE ... PASSWORD '...'` run in the editor reaches the journal. Until the default filter covers it, run with `RUST_LOG=debug,tokio_postgres=info`.
+The libraries under the drivers log what a database was sent or answered: tokio-postgres the text of every statement at `debug`, through `log`, which `tracing-subscriber` forwards; sqlx every statement, and a slow one as a warning; tiberius rows at `trace` and server messages as errors; the clickhouse crate exceptions that quote the query; deadpool the errors of the connections it recycles; sqlparser, also through `log`, the text of every statement, filter and default it parses, and the literals in it, at `debug`. So the subscriber drops every event whose target starts with `tokio_postgres`, `deadpool`, `tiberius`, `sqlx`, `clickhouse` or `sqlparser`, at every level. That filter sits beside the `RUST_LOG` one, so no directive turns them back on, however specific. A driver logs what it needs from their errors itself. A new driver's client library, or any other library that logs SQL text, joins `SILENCED_LIBRARIES` in `logging.rs`.
 
 ## `unwrap`, `expect` and `panic!`
 

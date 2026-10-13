@@ -154,7 +154,7 @@ Each engine's TLS stack takes trust in its own form, so the driver builds it:
 |---|---|---|---|
 | PostgreSQL | The system store (rustls-platform-verifier), plus the CA file | Yes | The rustls error |
 | ClickHouse | The system store (rustls-platform-verifier), plus the CA file | Yes, as the login, with no password sent | The rustls error |
-| MySQL, MariaDB | The Mozilla roots compiled into sqlx, plus the CA file. Not the system store | Yes | The rustls error |
+| MySQL, MariaDB | The system store and the CA file as one PEM bundle (`tablepro_net::tls::mysql_ca_bundle_pem`), plus the Mozilla roots compiled into sqlx | Yes | The rustls error |
 | SQL Server | The system store (loaded by tiberius), plus the CA file | No | rustls's message text, because tiberius keeps nothing else |
 | SQLite | No TLS | | |
 

@@ -4318,6 +4318,7 @@ dependencies = [
  "glib-build-tools",
  "gtk4",
  "libadwaita",
+ "log",
  "relm4",
  "secrecy",
  "serde",
@@ -4341,6 +4342,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-log",
  "tracing-subscriber",
  "uuid",
 ]
@@ -4429,6 +4431,7 @@ dependencies = [
  "tablepro-net",
  "tablepro-test-fixtures",
  "tablepro-test-support",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",

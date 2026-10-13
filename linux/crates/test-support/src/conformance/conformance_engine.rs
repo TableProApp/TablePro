@@ -28,7 +28,9 @@ pub trait ConformanceEngine: Send + Sync + Sized + 'static {
     fn create_scratch_table_sql(&self, table: &TableRef) -> String;
 
     /// A read that never finishes on its own and carries `marker` in its
-    /// text, so the server's own session list can find it.
+    /// text, so the server's own session list can find it. The marker
+    /// goes inside the statement: the editor's script splitter drops a
+    /// leading or trailing comment before the text is sent.
     fn unbounded_statement_sql(&self, marker: &str) -> String;
 
     /// A read that finishes after at least `hold`.

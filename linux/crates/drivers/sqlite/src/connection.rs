@@ -436,6 +436,7 @@ impl Connection for SqliteConnection {
         _token: &CommitToken,
         _options: CallOptions,
     ) -> Result<CommitResolution, DriverError> {
+        self.ensure_open()?;
         Ok(CommitResolution::Unresolvable)
     }
 

@@ -69,6 +69,10 @@ tablepro-test-fixtures = { path = "../test-fixtures" }
 tablepro-test-support = { path = "../test-support" }
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 tempfile.workspace = true
+# tokio-postgres logs through `log`, so the logging tests drive that
+# bridge the way it does.
+log = "0.4"
+tracing-log = "0.2"
 
 [build-dependencies]
 glib-build-tools.workspace = true

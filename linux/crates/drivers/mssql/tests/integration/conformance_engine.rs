@@ -56,7 +56,7 @@ impl ConformanceEngine for MssqlEngine {
     }
 
     fn unbounded_statement_sql(&self, marker: &str) -> String {
-        format!("/* {marker} */ WAITFOR DELAY '23:59:59'")
+        format!("WAITFOR /* {marker} */ DELAY '23:59:59'")
     }
 
     async fn blocking_statement_sql(&self, marker: &str, hold: Duration) -> Result<String, ConformanceFailure> {

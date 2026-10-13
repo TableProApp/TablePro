@@ -5,8 +5,9 @@
 /// that passes without checking anything, and a flag that is on requires
 /// the matching engine trait:
 ///
-/// - `endpoint: network` adds the dropped-caller and lost-transport
-///   cases and needs `NetworkConformanceEngine`; `file` adds neither.
+/// - `endpoint: network` adds the dropped-caller, dropped-editor-run and
+///   lost-transport cases and needs `NetworkConformanceEngine`; `file`
+///   adds a dropped-editor-run case that checks the session instead.
 /// - `pool: pooled` adds the busy-pool probe and needs
 ///   `PooledConformanceEngine`; `unbounded` is an engine with no slot
 ///   limit.
@@ -207,6 +208,12 @@ macro_rules! connection_conformance_suite {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
+            commit_with_no_record_is_unresolvable,
+            $crate::conformance::cases::commit_resolution::commit_with_no_record_is_unresolvable::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
             stream_read_streams_every_row_in_bounded_batches,
             $crate::conformance::cases::streaming::stream_read_streams_every_row_in_bounded_batches::<$engine>
         }
@@ -292,11 +299,24 @@ macro_rules! __conformance_endpoint_cases {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
+            dropped_editor_run_stops_server_statement,
+            $crate::conformance::cases::cancellation::dropped_editor_run_stops_server_statement::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
             lost_transport_reports_connection_lost,
             $crate::conformance::cases::liveness::lost_transport_reports_connection_lost::<$engine>
         }
     };
-    (file, $docker:tt, $engine:ty) => {};
+    (file, $docker:tt, $engine:ty) => {
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            dropped_editor_run_frees_the_session,
+            $crate::conformance::cases::cancellation::dropped_editor_run_frees_the_session::<$engine>
+        }
+    };
 }
 
 #[doc(hidden)]

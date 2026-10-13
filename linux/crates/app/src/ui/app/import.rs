@@ -11,7 +11,8 @@ use tablepro_core::statement::GuardedStatement;
 use tablepro_core::{ColumnInfo, ForeignKeyMode, WriteBatch, WriteKind, WriteReport};
 use tablepro_session::{OperationError, OperationKind, Session};
 
-use crate::ui::import_dialog::CsvImport;
+use crate::ui::file_read::{FileReadError, read_capped_file};
+use crate::ui::import_dialog::{CsvImport, MAX_CSV_FILE_BYTES};
 
 use super::ran_statements::RanStatements;
 use super::{App, AppMsg};
@@ -51,25 +52,18 @@ impl App {
         let tasks = self.context.tasks.clone();
         dialog.open(Some(&self.window), gio::Cancellable::NONE, move |outcome| {
             let Ok(file) = outcome else { return };
-            let too_big = file
-                .query_info("standard::size", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-                .map(|info| info.size() as u64 > crate::ui::import_dialog::MAX_CSV_FILE_BYTES)
-                .unwrap_or(false);
-            if too_big {
-                let _ = input.send(AppMsg::ShowToast(crate::i18n::gettext(
-                    "That file is too large to import in one go.",
-                )));
-                return;
-            }
             let input = input.clone();
             let schema = schema.clone();
             let table = table.clone();
             let session = session.clone();
             let tasks = tasks.clone();
             glib::spawn_future_local(async move {
-                let Ok((bytes, _etag)) = file.load_contents_future().await else {
-                    let _ = input.send(AppMsg::ShowToast(crate::i18n::gettext("That file could not be read.")));
-                    return;
+                let bytes = match read_csv_file(&file).await {
+                    Ok(bytes) => bytes,
+                    Err(message) => {
+                        let _ = input.send(AppMsg::ShowToast(message));
+                        return;
+                    }
                 };
                 // The mapping is against the table's own columns, so the
                 // dialog cannot open until they are read. The read runs
@@ -94,7 +88,7 @@ impl App {
                     schema,
                     table,
                     columns,
-                    bytes: bytes.to_vec(),
+                    bytes,
                 });
             });
         });
@@ -176,6 +170,20 @@ impl App {
             }
         });
     }
+}
+
+/// The chosen CSV, whole, or what to tell the user instead.
+async fn read_csv_file(file: &gio::File) -> Result<Vec<u8>, String> {
+    read_capped_file(file, MAX_CSV_FILE_BYTES)
+        .await
+        .map_err(|error| match error {
+            FileReadError::NotRegular => crate::i18n::gettext("Only regular files can be imported."),
+            FileReadError::TooLarge => crate::i18n::gettext("That file is too large to import in one go."),
+            FileReadError::Io(error) => {
+                tracing::warn!(%error, "could not read the CSV to import");
+                crate::i18n::gettext("That file could not be read.")
+            }
+        })
 }
 
 async fn read_columns(session: Arc<Session>, table: TableRef) -> Result<Vec<ColumnInfo>, OperationError> {
@@ -380,6 +388,48 @@ mod tests {
 
         assert!(message.contains('2'), "{message}");
         assert!(message.contains("London"), "{message}");
+    }
+
+    fn read(path: &std::path::Path) -> Result<Vec<u8>, String> {
+        let file = gio::File::for_path(path);
+        crate::test_support::finish_on_main(
+            std::time::Duration::from_secs(10),
+            async move { read_csv_file(&file).await },
+        )
+        .expect("the read to end")
+    }
+
+    #[gtk4::test]
+    fn a_pipe_is_refused_without_waiting_for_a_writer() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("people.csv");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        let refused = read(&path).unwrap_err();
+
+        assert!(refused.contains("regular files"), "{refused}");
+    }
+
+    #[gtk4::test]
+    fn a_device_is_refused_before_it_is_read() {
+        let refused = read(std::path::Path::new("/dev/zero")).unwrap_err();
+
+        assert!(refused.contains("regular files"), "{refused}");
+    }
+
+    #[gtk4::test]
+    fn a_csv_is_read_whole() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("people.csv");
+        std::fs::write(&path, "name,city\nAda,London\n").unwrap();
+
+        assert_eq!(read(&path).unwrap(), b"name,city\nAda,London\n");
     }
 
     #[test]

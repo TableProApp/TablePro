@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.
+- MySQL and MariaDB connections that verify the certificate did not trust certificate authorities installed on the system.
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
 - Stop could not end a SQLite statement waiting for another connection's lock.
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite text containing a NUL character exported as SQL that SQLite cannot read.
 - ClickHouse query or export with a FORMAT clause filled memory instead of failing.
 - ClickHouse editor tab silently lost its temporary tables and settings when the server expired its session.
+- Running a ClickHouse statement right after stopping one failed because the server still held the session.
 - ClickHouse DateTime values showed as UTC text when the server profile or session set ISO output.
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
 - A new row removed with Delete stayed in the grid while the save left it out.
@@ -45,3 +47,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV export did not neutralise formulas in values of a type TablePro does not recognise.
 - Format could put a space inside `+=`, `b'01'` or `@@version`, or between a MySQL function such as `GROUP_CONCAT` and its parenthesis, and change what the statement does.
 - Opening a pipe or a device as a SQL file never finished, or read past the 8 MB limit.
+- Importing a CSV or a connections file from a pipe or a device never finished, a CSV could read past its size limit, and a connections file had none.
+- SQL run in the editor, a typed filter or a column default, and the values in them, reached the journal at debug level.

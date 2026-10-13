@@ -264,7 +264,7 @@ Where the engine can answer later, the ledger carries a `CommitToken`:
 - `PostgresXid { xid, legacy_txid }`: `pg_current_xact_id()` (or `txid_current()` before PostgreSQL 13), read inside the transaction before COMMIT, and asked back with `pg_xact_status` (or `txid_status`).
 - `ClickHouseQuery { query_ids, first_unconfirmed }`: the query id of every statement, looked up in `system.query_log`.
 
-`resolve_commit` answers with a `CommitResolution`: `Applied`, `NotApplied`, `PartiallyApplied`, `StillRunning` or `Unresolvable`. Where `commit_resolution` is `Unavailable`, SQL Server and SQLite answer `Unresolvable` and MySQL returns `Unsupported`. The app reports `CommitOutcomeUnknown` as unknown and asks the user to reload; it does not call `resolve_commit` yet.
+`resolve_commit` answers with a `CommitResolution`: `Applied`, `NotApplied`, `PartiallyApplied`, `StillRunning` or `Unresolvable`. A commit the engine keeps no record of is `Unresolvable`, never an error, so where `commit_resolution` is `Unavailable` (MySQL, SQL Server, SQLite) every answer is `Unresolvable`. The app reports `CommitOutcomeUnknown` as unknown and asks the user to reload; it does not call `resolve_commit` yet.
 
 ## 6. `EditorSession`
 
@@ -273,7 +273,7 @@ An editor tab holds one session for as long as it is open, because the state a u
 - It is never pooled and never reopened behind the user's back. A lost connection is `EditorSessionState::Lost`, and the tab opens a new session on its next run.
 - One run at a time: a second `run` fails with `EditorSessionBusy`.
 - `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `deadline` and `cancel`. A caller stops a run through `RunOptions::cancel`.
-- Only PostgreSQL and ClickHouse arm a drop guard on that token, so a dropped caller is a cancel there. MySQL, SQL Server and SQLite await the run inline: a dropped caller sends no `KILL`, attention or interrupt, and the session reports `Running` from then on. A new driver arms the guard, as `PgEditorSession::run` does.
+- A dropped caller is a cancel. The run goes on a task of its own, or an actor's, and `run` arms `options.cancel.clone().drop_guard()` until the outcome arrives, so the stop still goes out and the session settles to `Ready` or `Lost`. `MysqlEditorSession::run` is the shape to copy.
 - The app's editor splits a script with the engine's grammar and sends one statement per run, or one `GO` batch on SQL Server. A driver still runs whatever text it is given, a whole script included.
 - A statement the server refused ends the run with `RunEnd::Failed` in the `RunSummary`; an `Err` from `run` means the session itself failed.
 - `RunSummary` carries `elapsed`, the `RunEnd` (`Completed`, `Failed`, `Cancelled`, `TimedOut { server_cancelled }`) and the `TransactionState` after the run. `Unknown` is an answer of its own: the tab's close guard warns instead of guessing.
@@ -291,7 +291,7 @@ A run streams `ResultEvent`s into a `ResultSink`:
 - `CommandCompleted { rows_affected }` reports a statement that returned no rows; `None` is "not reported", not zero.
 - `Notice` passes on a server notice or warning.
 
-`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, SQL Server and ClickHouse then stop the statement on the server, and SQLite stops stepping it. MySQL sends no `KILL`: sqlx reads the rest of the result off the wire before the next statement. `stream_read` uses the same sink and events, without a row limit.
+`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, and SQLite stops stepping it. `stream_read` uses the same sink and events, without a row limit.
 
 ## The row-limit rule
 
@@ -356,7 +356,7 @@ tablepro_test_support::tls_conformance_suite! {
 }
 ```
 
-The cases cover listing and identity, deadlines within the cancel grace, a cancelled editor run, a dropped `query_bound` caller stopping the server's statement, a lost transport, a busy pool's probe, read-only refusal, write atomicity, row guards, the row limit, unbounded schema changes, streaming in bounded batches, type fallback and every TLS mode. [testing.md](testing.md#conformance) lists them with their flags. `suite_flags_match_driver_capabilities` runs without Docker and fails when a flag disagrees with the driver's capabilities, so a case cannot be skipped by declaring less.
+The cases cover listing and identity, deadlines within the cancel grace, a cancelled editor run, a dropped `query_bound` caller or editor run stopping the server's statement, a lost transport, a busy pool's probe, read-only refusal, write atomicity, row guards, the row limit, unbounded schema changes, streaming in bounded batches, a commit with no record resolving as `Unresolvable`, type fallback and every TLS mode. [testing.md](testing.md#conformance) lists them with their flags. `suite_flags_match_driver_capabilities` runs without Docker and fails when a flag disagrees with the driver's capabilities, so a case cannot be skipped by declaring less.
 
 Behaviour the suites do not cover gets a test of its own against the real engine: the engine's stop, its error mapping, what a pooler does to it, each write outcome the ledger can produce.
 
@@ -376,6 +376,7 @@ cargo nextest run --locked --profile ci -p tablepro-driver-<engine> --run-ignore
 - [ ] Saves record every step in a `WriteLedger`, and the stop is held while a commit is in flight.
 - [ ] Editor sessions are one connection per tab, one run at a time, with `ResultSink` backpressure and the row-limit rule.
 - [ ] Errors map to `DriverError` by the engine's code ([error-handling.md](error-handling.md)).
+- [ ] The client library's log target is in `SILENCED_LIBRARIES` in `crates/app/src/logging.rs`, so no statement text reaches the journal ([error-handling.md](error-handling.md#logging)).
 - [ ] Registered in `build_registry`; added to the workspace and to `crates/app/Cargo.toml`.
 - [ ] Both conformance suites run; the CI matrix and nextest groups include the package.
 - [ ] A page in `docs/drivers/` covers timeouts, stops, read-only, writes, trust and the engine's limits.
