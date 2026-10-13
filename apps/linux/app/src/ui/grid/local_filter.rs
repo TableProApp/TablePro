@@ -126,14 +126,16 @@ impl LocalResultView {
         self.rebuild_visible_rows();
         if let Some(selected) = settings_store.selection_for(settings_key, &result) {
             selection_syncing.set(true);
+            let positions = gtk4::Bitset::new_empty();
             for position in 0..store.n_items() {
                 if store
                     .source_index_at(position)
                     .is_some_and(|source| selected.contains(&source))
                 {
-                    selection.select_item(position, false);
+                    positions.add(position);
                 }
             }
+            selection.set_selection(&positions, &gtk4::Bitset::new_range(0, store.n_items()));
             selection_syncing.set(false);
         }
         selection.connect_selection_changed(move |selection, _, _| {
@@ -208,12 +210,13 @@ impl LocalResultView {
             syncing.set(false);
             return;
         }
-        selection.unselect_all();
+        let positions = gtk4::Bitset::new_empty();
         for (position, source_index) in order.iter().enumerate() {
             if selected.contains(source_index) {
-                selection.select_item(position as u32, false);
+                positions.add(position as u32);
             }
         }
+        selection.set_selection(&positions, &gtk4::Bitset::new_range(0, order.len() as u32));
         syncing.set(false);
         update_status(&self.0.borrow());
     }

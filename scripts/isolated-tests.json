@@ -295,6 +295,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::local_sort_tests::sorting_a_fully_selected_result_restores_the_selection_in_one_signal"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::local_filter::tests::local_filter_and_sort_keep_selection_attached_to_the_source_row"
     ],
     [

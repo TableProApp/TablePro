@@ -322,12 +322,13 @@ fn sort_local_result(
     if !store.reorder_source_rows(&order) {
         return;
     }
-    selection.unselect_all();
+    let positions = gtk4::Bitset::new_empty();
     for (position, source_index) in order.iter().enumerate() {
         if selected_sources.contains(source_index) {
-            selection.select_item(position as u32, false);
+            positions.add(position as u32);
         }
     }
+    selection.set_selection(&positions, &gtk4::Bitset::new_range(0, order.len() as u32));
 }
 
 pub(crate) fn sortable_result_columns(result: &QueryResult) -> std::collections::HashSet<usize> {
@@ -384,5 +385,43 @@ mod local_sort_tests {
             store.source_value_at(positions.nth(1), 0),
             Some(tablepro_core::Value::Int(3))
         );
+    }
+
+    #[test]
+    #[ignore = "requires isolated GTK display"]
+    fn sorting_a_fully_selected_result_restores_the_selection_in_one_signal() {
+        gtk4::init().unwrap();
+        let rows = (0..2000_i64)
+            .rev()
+            .map(|value| vec![tablepro_core::Value::Int(value)])
+            .collect();
+        let result = std::sync::Arc::new(QueryResult {
+            columns: vec![tablepro_core::ColumnInfo {
+                name: "value".into(),
+                data_type: "INTEGER".into(),
+                nullable: false,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+                comment: None,
+                collation: None,
+                enum_type: None,
+                domain_type: None,
+            }],
+            rows,
+            truncated: false,
+        });
+        let store = RowStore::from_shared(result.clone());
+        let selection = gtk4::MultiSelection::new(Some(store.clone()));
+        selection.select_all();
+        let emissions = std::rc::Rc::new(std::cell::Cell::new(0_u32));
+        let counter = emissions.clone();
+        selection.connect_selection_changed(move |_, _, _| counter.set(counter.get() + 1));
+
+        sort_local_result(&result, 0, true, &store, &selection);
+
+        assert_eq!(selection.selection().size(), 2000);
+        assert!(emissions.get() <= 2, "{} selection-changed emissions", emissions.get());
     }
 }
