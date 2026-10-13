@@ -154,7 +154,7 @@ Levels: `error!` for what the user must see or a broken contract, `warn!` for re
 
 Never log a password, a secret, a key or a bound value. sqlx's own statement logging is turned off in the MySQL and SQLite drivers, and a test in each crate (`tests/statement_logging.rs`) proves no statement text reaches the subscriber.
 
-tokio-postgres is not filtered yet. It logs the text of every simple query, which is all editor SQL, through `log` at `debug`, and `tracing-subscriber` forwards `log` records to the same output. A development build logs at `debug` by default, so an `ALTER ROLE ... PASSWORD '...'` run in the editor reaches the journal. Until the default filter covers it, run with `RUST_LOG=debug,tokio_postgres=info`.
+The client libraries under the drivers log what a database was sent or answered: tokio-postgres the text of every statement at `debug`, through `log`, which `tracing-subscriber` forwards; sqlx every statement, and a slow one as a warning; tiberius rows at `trace` and server messages as errors; the clickhouse crate exceptions that quote the query; deadpool the errors of the connections it recycles. So the subscriber drops every event whose target starts with `tokio_postgres`, `deadpool`, `tiberius`, `sqlx` or `clickhouse`, at every level. That filter sits beside the `RUST_LOG` one, so no directive turns them back on, however specific. A driver logs what it needs from their errors itself. A new driver's client library joins `CLIENT_LIBRARIES` in `logging.rs`.
 
 ## `unwrap`, `expect` and `panic!`
 

@@ -4318,6 +4318,7 @@ dependencies = [
  "glib-build-tools",
  "gtk4",
  "libadwaita",
+ "log",
  "relm4",
  "secrecy",
  "serde",
@@ -4340,6 +4341,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-log",
  "tracing-subscriber",
  "uuid",
 ]
