@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::autocommit::is_autocommit;
 use crate::deadline;
-use crate::errors::{is_interrupt, map_error, map_open_error};
+use crate::errors::{map_error, map_open_error};
 use crate::interrupt::InterruptFlag;
 use crate::result_stream::{StreamOutcome, run_script};
 
@@ -33,6 +33,7 @@ pub(crate) struct SqliteEditorSession {
     /// The running statement's stop, so closing the tab stops it.
     current: Mutex<Option<InterruptFlag>>,
     statement_timeout: Option<Duration>,
+    lock_timeout: Duration,
     cancel_grace: Duration,
     close_timeout: Duration,
 }
@@ -50,6 +51,7 @@ impl SqliteEditorSession {
         path: &Path,
         session: EditorSessionOptions,
         liveness: &LivenessPolicy,
+        lock_timeout: Duration,
         cancel: CancellationToken,
     ) -> Result<Self, DriverError> {
         let connecting = SqlxConnection::connect_with(options);
@@ -73,6 +75,7 @@ impl SqliteEditorSession {
             lost: AtomicBool::new(false),
             current: Mutex::new(None),
             statement_timeout: session.statement_timeout,
+            lock_timeout,
             cancel_grace: liveness.cancel_grace,
             close_timeout: liveness.close_timeout,
         })
@@ -108,8 +111,8 @@ impl SqliteEditorSession {
         let settled = tokio::time::timeout(self.cancel_grace, &mut running).await;
         Ok(match (stop, settled) {
             (_, Ok(Ok(outcome))) => completed(outcome),
-            (Stop::Cancelled, Ok(Err(error))) if is_interrupt(&error) => RunEnd::Cancelled,
-            (Stop::DeadlineElapsed, Ok(Err(error))) if is_interrupt(&error) => {
+            (Stop::Cancelled, Ok(Err(error))) if flag.stopped(&error) => RunEnd::Cancelled,
+            (Stop::DeadlineElapsed, Ok(Err(error))) if flag.stopped(&error) => {
                 RunEnd::TimedOut { server_cancelled: true }
             }
             (_, Ok(Err(error))) => return session_failure(error),
@@ -194,7 +197,7 @@ impl EditorSession for SqliteEditorSession {
         let flag = InterruptFlag::new();
         self.set_current(Some(flag.clone()));
 
-        let ended = match flag.install(connection).await {
+        let ended = match flag.install(connection, self.lock_timeout).await {
             Ok(()) => self.supervise(connection, &flag, &sql, &options, sink.as_mut()).await,
             Err(error) => session_failure(error),
         };

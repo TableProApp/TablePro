@@ -12,7 +12,9 @@ use sqlx::sqlite::{SqliteColumn, SqliteConnection as SqlxConnection};
 use sqlx::{AssertSqlSafe, Column, Executor, SqlSafeStr, Statement as _, TypeInfo};
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
+use tablepro_core::sql_syntax::script::{
+    LexicalSettings, OpenConstruct, ScriptDiagnostic, ScriptPlan, ScriptTokenKind,
+};
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
 use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
@@ -111,19 +113,43 @@ pub(crate) async fn run_bound(
 }
 
 /// The statements of a script, split where SQLite itself would end one
-/// (a trigger body's semicolons do not end it). Text the splitter
-/// cannot finish, such as an unterminated string, goes to SQLite whole
-/// so the error is SQLite's own.
+/// (a trigger body's semicolons do not end it).
+///
+/// An unterminated string, identifier or comment runs to the end of the
+/// text. The statements before it still run one at a time, and the one
+/// it opens goes to SQLite as it stands, so the error is SQLite's own.
+/// Sent whole, the script would run as one statement under the first
+/// statement's columns. SQLite reads an open comment as a comment, so
+/// only the text before one is sent.
 pub(crate) fn split_statements(sql: &str) -> Vec<&str> {
     let plan = ScriptPlan::build(
         sql,
         SqlGrammar::Sqlite,
         LexicalSettings::default_for(SqlGrammar::Sqlite),
     );
-    if !plan.diagnostics().is_empty() {
-        return vec![sql];
+    let open = plan
+        .diagnostics()
+        .iter()
+        .map(|ScriptDiagnostic::Unterminated { construct, start }| (*start, *construct))
+        .min_by_key(|(start, _)| *start);
+    let (open_at, tail_end) = match open {
+        Some((start, OpenConstruct::BlockComment)) => (start, start),
+        Some((start, _)) => (start, sql.len()),
+        None => (sql.len(), sql.len()),
+    };
+    let mut statements = Vec::with_capacity(plan.statements().len());
+    for statement in plan.statements() {
+        if statement.range.end <= open_at {
+            statements.push(statement.text(sql));
+            continue;
+        }
+        let tail = sql.get(statement.range.start..tail_end).unwrap_or_default().trim_end();
+        if !tail.is_empty() {
+            statements.push(tail);
+        }
+        break;
     }
-    plan.statements().iter().map(|statement| statement.text(sql)).collect()
+    statements
 }
 
 /// Whether SQLite's change count describes this statement. It counts
@@ -298,6 +324,19 @@ mod tests {
     fn an_unfinished_script_goes_to_sqlite_whole() {
         assert_eq!(split_statements("SELECT 'open"), ["SELECT 'open"]);
         assert!(split_statements("  -- only a comment\n").is_empty());
+    }
+
+    #[test]
+    fn statements_before_an_unfinished_one_still_run_alone() {
+        assert_eq!(
+            split_statements("SELECT 1 AS a; SELECT 2 AS b, 3 AS c /* open"),
+            ["SELECT 1 AS a", "SELECT 2 AS b, 3 AS c"]
+        );
+        assert_eq!(
+            split_statements("SELECT 1; SELECT 'open; still open"),
+            ["SELECT 1", "SELECT 'open; still open"]
+        );
+        assert_eq!(split_statements("SELECT 1; /* open"), ["SELECT 1"]);
     }
 
     #[test]

@@ -13,9 +13,10 @@ path = "src/lib.rs"
 tablepro-core = { path = "../../core" }
 async-trait.workspace = true
 futures.workspace = true
-# One direct call, sqlite3_get_autocommit, until sqlx exposes the
-# transaction state of a connection. The range follows sqlx-sqlite's own,
-# because only one libsqlite3-sys can be linked.
+# Two direct calls sqlx does not wrap: sqlite3_get_autocommit, until sqlx
+# exposes the transaction state of a connection, and sqlite3_busy_handler.
+# The range follows sqlx-sqlite's own, because only one libsqlite3-sys can
+# be linked.
 libsqlite3-sys.workspace = true
 sqlparser.workspace = true
 sqlx = { workspace = true, features = ["sqlite-unbundled"] }

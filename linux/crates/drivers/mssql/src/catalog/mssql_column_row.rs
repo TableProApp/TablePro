@@ -9,7 +9,8 @@ use super::sql_server_type::{CatalogFacts, SqlServerType};
 /// An alias type is classified by the system type it is stored as,
 /// which `TYPE_NAME(system_type_id)` names; a CLR type keeps its own
 /// name. A collation is reported only where it differs from the
-/// database's, which is the default a column takes.
+/// database's, which is the default a column takes, and the last column
+/// says whether its code page differs too.
 pub(crate) const COLUMNS_SQL: &str = "SELECT \
         c.name, \
         t.name, \
@@ -34,7 +35,10 @@ pub(crate) const COLUMNS_SQL: &str = "SELECT \
              THEN c.collation_name END, \
         CAST(c.is_sparse AS int), \
         cc.definition, \
-        CAST(ISNULL(cc.is_persisted, 0) AS int) \
+        CAST(ISNULL(cc.is_persisted, 0) AS int), \
+        CAST(CASE WHEN COLLATIONPROPERTY(c.collation_name, 'CodePage') \
+                  <> COLLATIONPROPERTY(CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128)), 'CodePage') \
+             THEN 1 ELSE 0 END AS int) \
     FROM sys.columns c \
     JOIN sys.types t ON t.user_type_id = c.user_type_id \
     LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id \
@@ -85,6 +89,7 @@ impl MssqlColumnRow {
             max_length: cells.int(7).unwrap_or(0),
             precision: cells.int(8).unwrap_or(0),
             scale: cells.int(9).unwrap_or(0),
+            foreign_code_page: cells.flag(21),
         });
         Ok(Self {
             name: cells.required_text(0)?,
@@ -135,6 +140,7 @@ mod tests {
             Value::Null,
             Value::Int(0),
             Value::Null,
+            Value::Int(0),
             Value::Int(0),
         ];
 

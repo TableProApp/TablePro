@@ -159,9 +159,10 @@ impl SqliteConnection {
     {
         let flag = InterruptFlag::new();
         let stop = Arc::new(SqliteStop::new(flag.clone()));
+        let lock_timeout = self.settings.lock_timeout;
         self.calls
             .run_read(options, pooled, stop, move |mut pooled, _request| async move {
-                let result = match flag.install(pooled.connection()).await {
+                let result = match flag.install(pooled.connection(), lock_timeout).await {
                     Ok(()) => work(pooled.connection()).await,
                     Err(error) => Err(error),
                 };
@@ -368,6 +369,7 @@ impl Connection for SqliteConnection {
         let connection = self.open_standalone(&options).await?;
         let flag = InterruptFlag::new();
         let stop = Arc::new(SqliteStop::new(flag.clone()));
+        let lock_timeout = self.settings.lock_timeout;
         let read = read.clone();
         let streamed = self
             .calls
@@ -377,7 +379,7 @@ impl Connection for SqliteConnection {
                 stop,
                 move |mut held, _request| async move {
                     let mut sink = sink;
-                    let result = match flag.install(held.connection()).await {
+                    let result = match flag.install(held.connection(), lock_timeout).await {
                         Ok(()) => match &read {
                             ReadStatement::Generated(statement) => {
                                 run_bound(held.connection(), statement, sink.as_mut()).await
@@ -416,11 +418,12 @@ impl Connection for SqliteConnection {
         let ledger = Arc::new(WriteLedger::new(WriteAtomicity::Transactional));
         let flag = InterruptFlag::new();
         let stop = Arc::new(SqliteStop::new(flag.clone()));
+        let lock_timeout = self.settings.lock_timeout;
         let batch = batch.clone();
         let recorded = ledger.clone();
         self.calls
             .run_write(options, pooled, stop, ledger, move |mut pooled, request| async move {
-                let result = write_batch::run(&mut pooled, &batch, &recorded, &flag, &request).await;
+                let result = write_batch::run(&mut pooled, &batch, &recorded, &flag, &request, lock_timeout).await;
                 (pooled, result)
             })
             .await
@@ -447,6 +450,7 @@ impl Connection for SqliteConnection {
             &self.path,
             options,
             &self.liveness,
+            self.settings.lock_timeout,
             cancel,
         )
         .await?;

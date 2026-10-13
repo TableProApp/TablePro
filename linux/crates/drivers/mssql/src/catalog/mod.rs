@@ -108,8 +108,8 @@ pub(crate) fn result_column(column: &Column) -> ResultColumn {
         TdsType::Int4 | TdsType::Intn => integer(IntegerWidth::W32, true),
         TdsType::Int8 => integer(IntegerWidth::W64, true),
         TdsType::Float4 => ColumnKind::Float(FloatWidth::F32),
-        // tiberius reads MONEY as a float, so here it is one.
-        TdsType::Float8 | TdsType::Floatn | TdsType::Money | TdsType::Money4 => ColumnKind::Float(FloatWidth::F64),
+        TdsType::Float8 | TdsType::Floatn => ColumnKind::Float(FloatWidth::F64),
+        TdsType::Money | TdsType::Money4 => ColumnKind::Money { scale: Some(4) },
         TdsType::Decimaln | TdsType::Numericn => ColumnKind::Decimal {
             precision: None,
             scale: None,
@@ -143,14 +143,10 @@ pub(crate) fn result_column(column: &Column) -> ResultColumn {
         TdsType::SSVariant => ColumnKind::Variant,
         TdsType::Null => ColumnKind::Other,
     };
-    let name = match tds {
-        TdsType::Money | TdsType::Money4 => format!("{} (approximate)", type_label(tds)),
-        other => type_label(other).to_owned(),
-    };
     ResultColumn::new(
         column.name(),
         ColumnType {
-            name,
+            name: type_label(tds).to_owned(),
             kind,
             catalog: None,
             dynamic_storage: false,
@@ -255,11 +251,11 @@ mod tests {
     }
 
     #[test]
-    fn editor_money_is_labelled_approximate() {
+    fn editor_money_is_money_of_scale_4() {
         let money = result_column(&Column::new("price".to_owned(), TdsType::Money));
 
-        assert_eq!(money.column_type.name, "money (approximate)");
-        assert_eq!(money.column_type.kind, ColumnKind::Float(FloatWidth::F64));
+        assert_eq!(money.column_type.name, "money");
+        assert_eq!(money.column_type.kind, ColumnKind::Money { scale: Some(4) });
         assert_eq!(
             result_column(&Column::new("v".to_owned(), TdsType::SSVariant))
                 .column_type

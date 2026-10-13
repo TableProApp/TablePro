@@ -19,3 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.
+- SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
+- Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
+- Stop could not end a SQLite statement waiting for another connection's lock.
+- A SQLite save that failed in a way SQLite rolls back itself closed the connection and its temporary tables.
+- A SQLite script ending in an unclosed comment showed later results under the first statement's columns.
+- SQLite text containing a NUL character exported as SQL that SQLite cannot read.

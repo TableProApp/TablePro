@@ -57,6 +57,39 @@ async fn select_star_after_add_column_reads_the_new_column() {
     connection.close().await.unwrap();
 }
 
+/// A comment left open at the end makes the script unfinished, which
+/// must not merge its statements into one run under the first header.
+#[tokio::test]
+async fn an_unterminated_comment_keeps_each_statement_its_own_columns() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    let session = connection
+        .open_editor_session(EditorSessionOptions::default(), CancellationToken::new())
+        .await
+        .unwrap();
+
+    let (summary, collected) = run(session.as_ref(), "SELECT 1 AS a; SELECT 2 AS b, 3 AS c /* open").await;
+
+    assert_eq!(summary.end, RunEnd::Completed);
+    let headers: Vec<Vec<String>> = collected
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            ResultEvent::ResultSetStarted { columns } => {
+                Some(columns.iter().map(|column| column.name.clone()).collect())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(headers, [vec!["a".to_owned()], vec!["b".to_owned(), "c".to_owned()]]);
+    assert_eq!(
+        collected.rows(),
+        vec![vec![Value::Int(1)], vec![Value::Int(2), Value::Int(3)]]
+    );
+    session.close().await;
+    connection.close().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn recursive_cte_cancelled() {
     let file = TestFile::new().await;
@@ -240,6 +273,49 @@ async fn write_interrupt_before_commit_rolls_back() {
     );
     let rows = query(connection.as_ref(), "SELECT count(*) FROM t").await;
     assert_eq!(rows.rows[0][0], Value::Int(0), "a stopped save left rows behind");
+    connection.close().await.unwrap();
+}
+
+/// ON CONFLICT ROLLBACK ends the transaction inside SQLite before the
+/// batch gets to roll back itself; the workspace connection, and the
+/// temporary table on it, must survive that.
+#[tokio::test]
+async fn a_batch_sqlite_already_rolled_back_keeps_its_connection() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE t (a INTEGER UNIQUE ON CONFLICT ROLLBACK)",
+            "INSERT INTO t VALUES (1)",
+            "CREATE TEMP TABLE kept (a)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let written = connection
+        .write_batch(
+            &batch(
+                WriteKind::RowChanges,
+                &["INSERT INTO t VALUES (2)", "INSERT INTO t VALUES (1)"],
+            ),
+            call(),
+        )
+        .await;
+
+    assert!(
+        matches!(&written, Err(DriverError::RolledBack { statement_index: 1, .. })),
+        "{written:?}"
+    );
+    let rows = query(connection.as_ref(), "SELECT count(*) FROM t").await;
+    assert_eq!(rows.rows[0][0], Value::Int(1));
+    let kept = query(connection.as_ref(), "SELECT count(*) FROM temp.kept").await;
+    assert_eq!(kept.rows[0][0], Value::Int(0), "the workspace connection was replaced");
+    let after = connection
+        .write_batch(&batch(WriteKind::RowChanges, &["INSERT INTO t VALUES (3)"]), call())
+        .await;
+    assert!(after.is_ok(), "{after:?}");
     connection.close().await.unwrap();
 }
 

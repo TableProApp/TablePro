@@ -7,6 +7,7 @@
 //! as Busy after the lock timeout, before anything has run.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use sqlx::sqlite::SqliteConnection as SqlxConnection;
 use sqlx::{AssertSqlSafe, Connection as _, Row};
@@ -17,6 +18,7 @@ use tablepro_core::{
     WriteBatch, WriteLedger, WriteReport,
 };
 
+use crate::autocommit::is_autocommit;
 use crate::catalog::{FOREIGN_KEY_CHECK_SQL, MAIN_SCHEMA};
 use crate::encode::bind_all;
 use crate::errors::{SQLITE_IOERR, is_interrupt, map_error, primary_of};
@@ -32,8 +34,9 @@ pub(crate) async fn run(
     ledger: &WriteLedger,
     flag: &InterruptFlag,
     request: &StopRequest,
+    lock_timeout: Duration,
 ) -> Result<WriteReport, DriverError> {
-    flag.install(pooled.connection()).await?;
+    flag.install(pooled.connection(), lock_timeout).await?;
     let checks = match &batch.foreign_keys {
         ForeignKeyMode::Enforced => None,
         ForeignKeyMode::SuspendedThenVerified { checks } => Some(checks.as_slice()),
@@ -219,8 +222,13 @@ impl Write<'_> {
         Ok(reports_changes(sql).then_some(affected))
     }
 
-    async fn rollback(&mut self, transaction: sqlx::Transaction<'_, sqlx::Sqlite>) -> SessionFate {
+    async fn rollback(&mut self, mut transaction: sqlx::Transaction<'_, sqlx::Sqlite>) -> SessionFate {
         self.flag.lower();
+        if let Err(error) = reopen_if_ended(&mut transaction).await {
+            tracing::warn!(%error, "the transaction state could not be read; closing the connection");
+            self.discard = true;
+            return SessionFate::Discarded;
+        }
         match transaction.rollback().await {
             Ok(()) => SessionFate::RolledBack,
             Err(error) => {
@@ -240,14 +248,35 @@ impl Write<'_> {
         }
     }
 
-    /// What the caller is told when `error` is the interrupt a stop
-    /// raised.
+    /// What the caller is told when `error` is how SQLite gave way to a
+    /// stop: an interrupt, or a lock wait given up as busy. The flag is
+    /// lowered for the rollback by then, so the request says whether a
+    /// stop came.
     fn stopped(&self, error: &DriverError) -> Option<DriverError> {
-        match is_interrupt(error) {
+        match is_interrupt(error) || *error == DriverError::Busy {
             true => self.request.reason().map(stop_cause),
             false => None,
         }
     }
+}
+
+/// Some errors end the transaction inside SQLite itself: an interrupted
+/// write, a full disk, a conflict resolved with ROLLBACK. sqlx still
+/// counts it open, so the ROLLBACK it sends would be refused and leave
+/// that count wrong for every later BEGIN. An empty transaction opened
+/// in its place is what that ROLLBACK then ends.
+async fn reopen_if_ended(connection: &mut SqlxConnection) -> Result<(), DriverError> {
+    let ended = {
+        let mut handle = connection.lock_handle().await.map_err(map_error)?;
+        is_autocommit(&mut handle)
+    };
+    if ended {
+        sqlx::query("BEGIN")
+            .execute(&mut *connection)
+            .await
+            .map_err(map_error)?;
+    }
+    Ok(())
 }
 
 enum StepFailure {

@@ -1,22 +1,30 @@
 use chrono::{DateTime, Days, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use tablepro_core::value::{OffsetTimestamp, SqlDecimal, SqlTime, Temporal, UndecodableReason, UndecodedValue, Value};
 use tiberius::time::{Date, DateTime as TdsDateTime, DateTime2, DateTimeOffset, SmallDateTime, Time};
-use tiberius::{ColumnData, Row};
+use tiberius::{ColumnData, ColumnType as TdsType, Row};
 
 use crate::catalog::type_label;
 
 const NANOS_PER_SECOND: u64 = 1_000_000_000;
 
+/// MONEY and SMALLMONEY carry ten-thousandths on the wire.
+const MONEY_SCALE: u32 = 4;
+const MONEY_UNITS_PER_ONE: f64 = 10_000.0;
+
+/// 2^53: past it, neighbouring integers share a float.
+const EXACT_FLOAT_INTEGERS: f64 = 9_007_199_254_740_992.0;
+
 /// Every cell of a row, in column order.
 pub(crate) fn decode_row(row: &Row) -> Vec<Value> {
     row.cells()
-        .map(|(column, data)| decode_cell(data, type_label(column.column_type())))
+        .map(|(column, data)| decode_cell(data, column.column_type()))
         .collect()
 }
 
 /// One cell, exactly. A NULL is the only thing that reads as `Null`; a
 /// value the driver cannot represent says so instead.
-pub(crate) fn decode_cell(data: &ColumnData<'static>, type_name: &str) -> Value {
+pub(crate) fn decode_cell(data: &ColumnData<'static>, wire_type: TdsType) -> Value {
+    let type_name = type_label(wire_type);
     let decoded = match data {
         ColumnData::Bit(value) => value.map(Value::Bool),
         ColumnData::U8(value) => value.map(|integer| Value::Int(i64::from(integer))),
@@ -24,9 +32,10 @@ pub(crate) fn decode_cell(data: &ColumnData<'static>, type_name: &str) -> Value 
         ColumnData::I32(value) => value.map(|integer| Value::Int(i64::from(integer))),
         ColumnData::I64(value) => value.map(Value::Int),
         ColumnData::F32(value) => value.map(Value::Float32),
-        // MONEY arrives here too: tiberius reads it as a float. Browse
-        // reads money columns through a decimal cast instead.
-        ColumnData::F64(value) => value.map(Value::Float64),
+        ColumnData::F64(value) => value.map(|real| match wire_type {
+            TdsType::Money | TdsType::Money4 => money(real, type_name),
+            _ => Value::Float64(real),
+        }),
         ColumnData::String(value) => value.as_ref().map(|text| Value::Text(text.to_string())),
         ColumnData::Guid(value) => value.map(Value::Uuid),
         // CLR types such as geography and hierarchyid arrive as their
@@ -77,6 +86,33 @@ pub(crate) fn decode_cell(data: &ColumnData<'static>, type_name: &str) -> Value 
         }),
     };
     decoded.unwrap_or(Value::Null)
+}
+
+/// tiberius reads MONEY into a float, dividing the scaled integer on the
+/// wire by 10^4. Where only one integer divides to that float, it is the
+/// value exactly; past about 5.5 * 10^11 two can, and the cell says so
+/// rather than pick one.
+fn money(real: f64, type_name: &str) -> Value {
+    match money_units(real) {
+        Some(units) => Value::Decimal(SqlDecimal::from_scaled_i128(i128::from(units), MONEY_SCALE)),
+        None => Value::Undecodable(Box::new(UndecodedValue {
+            type_name: type_name.to_owned(),
+            reason: UndecodableReason::OutOfRange,
+        })),
+    }
+}
+
+/// The scaled integer that tiberius turned into `real`, when no other
+/// one turns into the same float.
+fn money_units(real: f64) -> Option<i64> {
+    let estimate = (real * MONEY_UNITS_PER_ONE).round();
+    if !estimate.is_finite() || estimate.abs() >= EXACT_FLOAT_INTEGERS {
+        return None;
+    }
+    let estimate = estimate as i64;
+    let reads_as = |units: i64| units as f64 / MONEY_UNITS_PER_ONE == real;
+    let units = (estimate - 2..=estimate + 2).find(|units| reads_as(*units))?;
+    (!reads_as(units - 1) && !reads_as(units + 1)).then_some(units)
 }
 
 fn temporal(value: Option<Value>, type_name: &str) -> Value {
@@ -154,7 +190,16 @@ mod tests {
     use super::*;
 
     fn decode(data: ColumnData<'static>) -> Value {
-        decode_cell(&data, "test")
+        decode_cell(&data, TdsType::Null)
+    }
+
+    /// MONEY as tiberius hands it over: the wire's integer over 10^4.
+    fn money_as_read(units: i64) -> Value {
+        decode_cell(&ColumnData::F64(Some(units as f64 / 10_000.0)), TdsType::Money)
+    }
+
+    fn exact_money(units: i64) -> Value {
+        Value::Decimal(SqlDecimal::from_scaled_i128(i128::from(units), 4))
     }
 
     /// 2024-06-15 counted in days from 0001-01-01.
@@ -213,6 +258,33 @@ mod tests {
 
         assert_eq!(max, Value::Decimal("922337203685477.5807".parse().unwrap()));
         assert_eq!(min, Value::Decimal("-922337203685477.5808".parse().unwrap()));
+    }
+
+    #[test]
+    fn money_through_the_editor_is_exact_below_2_pow_39() {
+        // 549755813887.9999, the last value before floats grow coarser
+        // than a ten-thousandth.
+        let widest = 5_497_558_138_879_999;
+        for units in [0, 1, -1, 12_345, 2_147_483_647, -2_147_483_648, widest, -widest] {
+            assert_eq!(money_as_read(units), exact_money(units), "{units}");
+        }
+        assert_eq!(decode_cell(&ColumnData::F64(None), TdsType::Money4), Value::Null);
+        assert_eq!(decode(ColumnData::F64(Some(0.1))), Value::Float64(0.1));
+    }
+
+    #[test]
+    fn money_too_wide_for_a_float_is_never_a_wrong_decimal() {
+        let near_the_ends = (i64::MAX - 1_000..=i64::MAX).chain(i64::MIN..=i64::MIN + 1_000);
+        let ambiguous = 8_000_000_000_000_000..8_000_000_000_001_000;
+        for units in near_the_ends.chain(ambiguous) {
+            let decoded = money_as_read(units);
+            assert!(
+                decoded == exact_money(units)
+                    || matches!(&decoded, Value::Undecodable(undecoded) if undecoded.reason == UndecodableReason::OutOfRange),
+                "{units}: {decoded:?}"
+            );
+        }
+        assert!(matches!(money_as_read(i64::MAX), Value::Undecodable(_)));
     }
 
     #[test]
