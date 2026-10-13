@@ -688,15 +688,19 @@ impl App {
         let input = sender.input_sender().clone();
         dialog.save(Some(&self.window), gio::Cancellable::NONE, move |outcome| {
             let Ok(file) = outcome else { return };
-            let Some(path) = file.path() else { return };
-            let message = match std::fs::write(&path, &bytes) {
-                Ok(()) => crate::i18n::gettext("Connections exported."),
-                Err(error) => {
-                    tracing::warn!(%error, path = %path.display(), "could not write the exported connections");
-                    crate::i18n::gettext("The connections could not be written to that file.")
-                }
-            };
-            let _ = input.send(AppMsg::ShowToast(message));
+            glib::spawn_future_local(async move {
+                let written = file
+                    .replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE)
+                    .await;
+                let message = match written {
+                    Ok(_) => crate::i18n::gettext("Connections exported."),
+                    Err((_, error)) => {
+                        tracing::warn!(%error, uri = %file.uri(), "could not write the exported connections");
+                        crate::i18n::gettext("The connections could not be written to that file.")
+                    }
+                };
+                let _ = input.send(AppMsg::ShowToast(message));
+            });
         });
     }
 
