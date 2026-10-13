@@ -626,7 +626,11 @@ impl SimpleComponent for SqlEditor {
                     buffer.text(&a, &b, true).to_string()
                 } else {
                     let (start, end) = buffer.bounds();
-                    buffer.text(&start, &end, true).to_string()
+                    let all = buffer.text(&start, &end, true).to_string();
+                    let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
+                    let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
+                    let cursor = cursor_byte_offset(&all, cursor_chars);
+                    statement_at_cursor(&all, &driver_id, cursor).unwrap_or(all)
                 };
                 if let Some(window) = self.source_view.root().and_then(|r| r.downcast::<gtk::Window>().ok()) {
                     crate::ui::explain_dialog::present(
