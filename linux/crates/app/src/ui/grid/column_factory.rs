@@ -292,6 +292,9 @@ fn draw_cell(grid_cell: &GridCell, value: &Value, pending_classes: &[&'static st
     };
     if let Some(editor) = content.downcast_ref::<CellEditor>() {
         editor.set_text(&text);
+        // A locked cell's text is there to be read and copied, as a
+        // read-only column's is.
+        editor.set_selectable(!editable);
         apply_cell_tooltip(content, &text, is_null);
         set_class(content, "dim-label", is_null && !editable);
         set_class(content, "tp-null-sentinel", is_null && (editable || auto_filled));
@@ -733,6 +736,31 @@ mod tests {
 
         enter_edit_mode(&grid.cell_of(1, 0));
         assert!(!grid.cell_of(1, 0).editor().expect("a text cell").is_editing());
+    }
+
+    fn label_of(cell: &GridCell) -> gtk::Label {
+        descendants(cell)
+            .into_iter()
+            .find_map(|widget| widget.downcast::<gtk::Label>().ok())
+            .expect("a cell draws its value in a label")
+    }
+
+    #[gtk4::test]
+    fn a_locked_key_cell_keeps_its_text_selectable() {
+        let grid = two_text_rows();
+        grid.insert_draft();
+        let draft_key_cell = grid
+            .cells()
+            .into_iter()
+            .find(|cell| cell.column() == 0 && cell.row().is_some_and(|row| row.draft_id().is_some()))
+            .expect("the draft's key cell");
+
+        assert!(
+            label_of(&grid.cell_of(1, 0)).is_selectable(),
+            "a saved row's key cannot be selected"
+        );
+        assert!(!label_of(&draft_key_cell).is_selectable());
+        assert!(!label_of(&grid.cell_of(1, 1)).is_selectable());
     }
 
     #[gtk4::test]

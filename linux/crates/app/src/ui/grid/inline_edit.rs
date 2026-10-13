@@ -62,6 +62,10 @@ pub(super) fn install_edit_triggers(cell: &GridCell, sink: GridSink, editor_kind
         let Some(cell) = gesture.widget().and_downcast::<GridCell>() else {
             return;
         };
+        // Left to a locked cell's label, which selects a word with it.
+        if cell.lock().is_some() {
+            return;
+        }
         gesture.set_state(gtk::EventSequenceState::Claimed);
         trigger_for_press(&cell);
     });
