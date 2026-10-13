@@ -83,11 +83,13 @@ fn has_unclosed_shared_transaction(sql: &str, driver_id: &str) -> bool {
         match transaction_control(&statement, driver_id) {
             Some(
                 TransactionControl::Begin
+                | TransactionControl::BeginReadWrite
                 | TransactionControl::BeginReadOnly
                 | TransactionControl::BeginReadOnlySnapshot,
             ) if open => return true,
             Some(
                 TransactionControl::Begin
+                | TransactionControl::BeginReadWrite
                 | TransactionControl::BeginReadOnly
                 | TransactionControl::BeginReadOnlySnapshot,
             ) => open = true,

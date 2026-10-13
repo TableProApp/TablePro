@@ -334,6 +334,49 @@ async fn a_read_only_repeatable_read_session_keeps_one_snapshot_across_queries()
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn a_read_only_connection_cannot_enable_writes_with_begin_read_write() {
+    let (_container, mut opts) = start_pg().await;
+    opts.read_only = true;
+    let raw = connect(opts.clone()).await;
+    let audit = Arc::new(CapturingAudit::new());
+    let mut context = guard_context(audit.clone(), Arc::new(AuditState::new()));
+    context.read_only = true;
+    let guard = PolicyGuard::new(Arc::from(raw), context);
+    let mut session = guard.open_session().await.expect("open session");
+
+    let begin = run(&mut session, "BEGIN READ WRITE").await;
+    assert!(matches!(begin, Err(DriverError::PolicyDenied(_))), "{begin:?}");
+    assert!(!session.transaction_open());
+    assert!(run(&mut session, "SELECT lo_creat(-1)").await.is_err());
+    run(&mut session, "BEGIN")
+        .await
+        .expect("default read-only transaction begins");
+    assert!(session.transaction_open());
+    assert!(run(&mut session, "SELECT lo_creat(-1)").await.is_err());
+    run(&mut session, "ROLLBACK")
+        .await
+        .expect("close read-only transaction");
+    session.close().await.expect("close session");
+
+    let verify = connect(opts).await;
+    let large_objects = verify
+        .query("SELECT count(*)::bigint FROM pg_largeobject_metadata")
+        .await
+        .expect("read large object metadata");
+    assert_eq!(large_objects.rows, vec![vec![Value::Int(0)]]);
+
+    let events = audit.events.lock().expect("event lock");
+    let denied = events
+        .iter()
+        .filter(|event| {
+            event.phase == AuditRecordPhase::Outcome && event.terminal_status == AuditTerminalStatus::Denied
+        })
+        .count();
+    assert_eq!(denied, 3);
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_projections() {
     let (_container, opts) = start_pg().await;
     let raw = connect(opts).await;

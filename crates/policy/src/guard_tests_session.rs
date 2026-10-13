@@ -200,6 +200,24 @@ async fn a_read_only_connection_can_open_a_postgres_read_only_session() {
 }
 
 #[tokio::test]
+async fn a_read_only_connection_refuses_and_audits_a_read_write_begin() {
+    let h = harness(SessionScript::default(), true);
+    let mut session = h.guard.open_session().await.expect("open session");
+
+    let error = run(&mut session, "BEGIN READ WRITE")
+        .await
+        .expect_err("read-only connection must refuse a read-write transaction");
+
+    assert!(matches!(error, DriverError::PolicyDenied(_)), "{error:?}");
+    assert!(!session.transaction_open());
+    assert!(h.script.sent.lock().expect("sent lock").is_empty());
+    let events = h.audit.events.lock().expect("event lock");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].phase, AuditRecordPhase::Outcome);
+    assert_eq!(events[0].terminal_status, AuditTerminalStatus::Denied);
+}
+
+#[tokio::test]
 async fn a_read_scoped_agent_can_open_and_audit_a_postgres_read_snapshot() {
     let h = harness_with_principal(
         SessionScript::default(),

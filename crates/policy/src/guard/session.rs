@@ -70,7 +70,15 @@ impl Session for PolicySession {
                 .await;
         }
         match transaction_control(sql, &self.guard.ctx.driver_id) {
-            Some(TransactionControl::Begin) => self.begin(sql, control).await,
+            Some(TransactionControl::BeginReadWrite) if self.guard.ctx.read_only => {
+                self.refuse_policy(
+                    sql,
+                    "connection_read_only",
+                    "read-write transactions are not allowed on a read-only connection",
+                )
+                .await
+            }
+            Some(TransactionControl::Begin | TransactionControl::BeginReadWrite) => self.begin(sql, control).await,
             Some(TransactionControl::BeginReadOnly) => {
                 self.refuse_policy(
                     sql,

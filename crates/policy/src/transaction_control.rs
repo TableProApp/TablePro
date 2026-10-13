@@ -7,6 +7,7 @@ use crate::classify::dialect_for;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionControl {
     Begin,
+    BeginReadWrite,
     BeginReadOnly,
     BeginReadOnlySnapshot,
     Commit { chain: bool },
@@ -94,6 +95,9 @@ fn control_of(statement: &Statement) -> Option<TransactionControl> {
 }
 
 fn transaction_start(modes: &[TransactionMode]) -> Option<TransactionControl> {
+    if modes.contains(&TransactionMode::AccessMode(TransactionAccessMode::ReadWrite)) {
+        return Some(TransactionControl::BeginReadWrite);
+    }
     if !modes.contains(&TransactionMode::AccessMode(TransactionAccessMode::ReadOnly)) {
         return Some(TransactionControl::Begin);
     }
@@ -119,6 +123,12 @@ mod tests {
     fn each_transaction_statement_is_recognised_per_dialect() {
         let cases = [
             ("BEGIN", "postgres", Some(TransactionControl::Begin)),
+            ("BEGIN READ WRITE", "postgres", Some(TransactionControl::BeginReadWrite)),
+            (
+                "START TRANSACTION READ WRITE",
+                "postgres",
+                Some(TransactionControl::BeginReadWrite),
+            ),
             ("BEGIN READ ONLY", "postgres", Some(TransactionControl::BeginReadOnly)),
             (
                 "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
