@@ -50,10 +50,6 @@ impl StoragePaths {
         self.state.join("workspaces")
     }
 
-    pub fn workspace_state_file(&self) -> PathBuf {
-        self.state.join("workspace_state.json")
-    }
-
     pub fn column_widths_file(&self) -> PathBuf {
         self.config.join("column_widths.json")
     }

@@ -62,6 +62,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changing a MySQL column in the Structure tab dropped its collation, ON UPDATE, INVISIBLE and SRID, and a comment turned a generated column into a plain one.
 - Save in a Structure tab's close prompt skipped the tab's checks and dropped a default that did not parse.
 - The Structure tab refused every save on a SQLite table keyed by INTEGER PRIMARY KEY.
+- Saved tabs and editor text were lost on a disconnect or window close right after a change.
+- Every connection's saved tabs were lost when their file could not be read.
+- Opening a connection emptied the editor tabs saved for other connections.
+- Structure tabs did not reopen with their connection.
+- Reopening a connection's tabs stopped at 32 tabs and cut table names longer than 256 bytes.
+- Editor tabs reopened after a reconnect in the same window stopped saving their text.
+- An editor tab whose saved text could not be read opened empty with no notice, and typing in it overwrote that text.
+- Typing in a long SQL script copied the whole script on every keystroke.
 
 ### Security
 

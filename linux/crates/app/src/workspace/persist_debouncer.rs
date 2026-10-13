@@ -77,6 +77,28 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn request_after_fire_emits_no_critical() {
+        // What g_test_init does: removing a source that already fired
+        // logs a critical, which then aborts the test.
+        let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL | glib::LogLevels::LEVEL_WARNING);
+        let debouncer = PersistDebouncer::new(Duration::from_millis(20));
+        let fires = Rc::new(Cell::new(0));
+
+        for expected in 1..=2 {
+            let fires_for_callback = fires.clone();
+            debouncer.request(move || fires_for_callback.set(fires_for_callback.get() + 1));
+            let fired = crate::test_support::wait_until(Duration::from_secs(2), || fires.get() == expected);
+            if fired.is_err() {
+                glib::log_set_always_fatal(previous);
+            }
+            fired.expect("the callback never ran");
+        }
+        glib::log_set_always_fatal(previous);
+
+        assert_eq!(fires.get(), 2);
+    }
+
+    #[gtk4::test]
     fn cancel_stops_a_pending_callback() {
         let debouncer = PersistDebouncer::new(Duration::from_millis(20));
         let fires = Rc::new(Cell::new(0));

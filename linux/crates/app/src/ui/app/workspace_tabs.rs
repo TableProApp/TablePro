@@ -1,18 +1,25 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
 use relm4::{ComponentSender, adw, gtk};
 
+use tablepro_session::SessionKey;
+use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
-use crate::services::workspace_state::{self, ConnectionWorkspaceState, WorkspaceTabRecord};
+use crate::services::from_session::FromSession;
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest, SaveRequest};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
+use crate::workspace::{
+    RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
+};
 
+use super::workspace_persistence::reopen;
 use super::{
     App, AppMsg, CLOSED_TABS_CAPACITY, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceTab,
     read_workspace_tab_id, write_workspace_tab_id,
@@ -63,107 +70,152 @@ impl App {
         self.workspace_tab_view = Some(chrome.view);
     }
 
-    /// Read the saved tabs for the just-connected database, plus the
-    /// editor text that goes with them.
-    ///
-    /// A restored script can be megabytes, so it is read on a blocking
-    /// thread and the tabs are built once it arrives.
-    pub(super) fn restore_workspace_tabs(&mut self, connection_id: Uuid, sender: ComponentSender<Self>) {
-        let Some(saved) = workspace_state::load_connection(connection_id) else {
-            self.workspace_outer_stack.set_visible_child_name("empty");
+    /// Read the saved tabs of the session just adopted, and the editor
+    /// text that goes with them, off the GTK thread.
+    pub(super) fn restore_workspace_tabs(&mut self, key: SessionKey, sender: ComponentSender<Self>) {
+        let Some(session) = self.context.active.get() else {
             return;
         };
-        if saved.tabs.is_empty() {
-            self.workspace_outer_stack.set_visible_child_name("empty");
-            return;
-        }
-        let referenced: HashSet<tablepro_storage::DraftId> = saved
-            .tabs
-            .iter()
-            .filter_map(|record| match record {
-                WorkspaceTabRecord::Editor { draft, .. } => Some(*draft),
-                _ => None,
-            })
-            .collect();
-        // Drafts from tabs the user closed in a session that did not
-        // shut down cleanly have nothing pointing at them.
-        self.drafts
-            .retain(&tablepro_storage::DraftScope::default(), referenced.clone());
-
+        let origin = Arc::downgrade(&session);
+        let loading = self.storage.workspaces().load(&key);
         let store = self.drafts.store().clone();
-        let reading = self.tasks.spawn_blocking_task(move || {
-            let scope = tablepro_storage::DraftScope::default();
-            referenced
-                .into_iter()
-                .filter_map(|draft| match store.read_blocking(&scope, draft) {
-                    Ok(text) => text.map(|text| (draft, text)),
-                    Err(error) => {
-                        tracing::warn!(%error, "could not read an editor draft");
-                        None
-                    }
-                })
-                .collect::<HashMap<_, _>>()
-        });
+        let scope = WorkspaceFileName::for_key(&key).draft_scope();
+        let tasks = self.tasks.clone();
         glib::spawn_future_local(async move {
+            let load = loading.await;
+            let referenced: Vec<DraftId> = match &load {
+                WorkspaceLoad::Restored(record) => saved_drafts(record).collect(),
+                WorkspaceLoad::Empty | WorkspaceLoad::Blocked(_) => Vec::new(),
+            };
+            let reading = tasks.spawn_blocking_task(move || RestoredDrafts::read_blocking(&store, &scope, referenced));
             let drafts = reading.await.unwrap_or_default();
-            sender.input(AppMsg::WorkspaceTabsRead { saved, drafts });
+            sender.input(AppMsg::WorkspaceLoaded(FromSession::new(
+                origin,
+                LoadedWorkspace { key, load, drafts },
+            )));
         });
     }
 
-    /// Build the tabs once their text has been read.
-    pub(super) fn on_workspace_tabs_read(
-        &mut self,
-        saved: workspace_state::ConnectionWorkspaceState,
-        drafts: HashMap<tablepro_storage::DraftId, String>,
-        sender: ComponentSender<Self>,
-    ) {
-        // Legacy Browse / Structure records are migrated to Table by
-        // `clamp_connection`, so the load path only has to handle
-        // Editor + Table. Unknown variants are stripped by clamp too.
-        for record in &saved.tabs {
-            match record {
-                WorkspaceTabRecord::Editor { draft, query } => {
-                    // A record written before drafts carries its text
-                    // inline; the first write moves it into the file.
-                    let text = drafts.get(draft).cloned().unwrap_or_else(|| query.clone());
-                    self.append_editor_tab_with_draft(Some(text), *draft, sender.clone());
-                }
-                WorkspaceTabRecord::Table {
-                    schema,
-                    table,
-                    mode,
-                    offset,
-                    page_size,
-                    sort_col,
-                    sort_asc,
-                } => {
-                    // A Structure tab is a record of its own now.
-                    let _ = mode;
-                    self.append_table_tab(
-                        schema.clone(),
-                        table.clone(),
-                        *offset,
-                        *page_size,
-                        match (sort_col, sort_asc) {
-                            (Some(c), Some(a)) => Some((*c, *a)),
-                            _ => None,
-                        },
-                        sender.clone(),
-                    );
-                }
-                WorkspaceTabRecord::Browse { .. }
-                | WorkspaceTabRecord::Structure { .. }
-                | WorkspaceTabRecord::Unknown => {
-                    // Unreachable post-clamp.
+    /// Rebuild the saved tabs, then start writing the tab list.
+    ///
+    /// Nothing is written for the session before this: a write would
+    /// replace the saved tabs before they were read.
+    pub(super) fn on_workspace_loaded(&mut self, loaded: LoadedWorkspace, sender: ComponentSender<Self>) {
+        let LoadedWorkspace { key, load, drafts } = loaded;
+        let RestoredDrafts { mut texts, unreadable } = drafts;
+        match load {
+            WorkspaceLoad::Restored(record) => {
+                self.retain_drafts(&key, saved_drafts(&record));
+                if let Some(view) = self.workspace_tab_view.clone() {
+                    reopen(&view, record, |tab| self.reopen_tab(tab, &mut texts, sender.clone()));
                 }
             }
+            WorkspaceLoad::Empty => self.retain_drafts(&key, std::iter::empty()),
+            // Which drafts the file names is unknown, so none is deleted.
+            WorkspaceLoad::Blocked(_) => self.show_unreadable_workspace_toast(),
         }
-        if let Some(tab_view) = self.workspace_tab_view.as_ref()
-            && let Some(page) = tab_view.pages().item(saved.active_idx).and_downcast::<adw::TabPage>()
-        {
-            tab_view.set_selected_page(&page);
+        if unreadable > 0 {
+            let count = u32::try_from(unreadable).unwrap_or(u32::MAX);
+            self.show_toast(&crate::i18n::ngettext_f(
+                "Saved text of {n} query tab could not be read. The file was kept.",
+                "Saved text of {n} query tabs could not be read. The files were kept.",
+                count,
+                &[("n", &unreadable.to_string())],
+            ));
         }
-        self.workspace_outer_stack.set_visible_child_name("tabs");
+        if let Some(view) = self.workspace_tab_view.as_ref() {
+            self.workspace.attach(key, view, self.workspace_tabs.clone());
+            self.persist_workspace_state();
+        }
+    }
+
+    /// Delete the session's drafts that neither the saved tabs nor an
+    /// open tab name: those of tabs closed in a session that did not
+    /// shut down cleanly.
+    fn retain_drafts(&self, key: &SessionKey, saved: impl Iterator<Item = DraftId>) {
+        // A copy that Reset moved aside may name drafts the saved tabs
+        // do not, and it leads back to them only while they are kept.
+        if self.storage.workspaces().has_moved_aside_copy(key) {
+            return;
+        }
+        let scope = WorkspaceFileName::for_key(key).draft_scope();
+        let mut keep: HashSet<DraftId> = saved.collect();
+        keep.extend(self.workspace_tabs.borrow().values().filter_map(|tab| match tab {
+            WorkspaceTab::Editor(slot) => Some(slot.draft),
+            _ => None,
+        }));
+        self.drafts.retain(&scope, keep);
+    }
+
+    fn reopen_tab(
+        &mut self,
+        tab: TabRecord,
+        drafts: &mut HashMap<DraftId, String>,
+        sender: ComponentSender<Self>,
+    ) -> Option<adw::TabPage> {
+        match tab {
+            TabRecord::Table {
+                schema,
+                table,
+                offset,
+                page_size,
+                sort,
+            } => self.append_table_tab(
+                schema,
+                table,
+                offset,
+                page_size,
+                sort.map(|sort| (sort.column, sort.ascending)),
+                sender,
+            ),
+            TabRecord::Structure { schema, table } => self.append_existing_structure_tab(schema, table, sender),
+            // Its text is on disk already, or there is none to keep, so
+            // nothing is written until the user types.
+            TabRecord::Editor { draft } => self.append_editor_tab_with_draft(
+                Some(drafts.remove(&draft).unwrap_or_default()),
+                draft,
+                DraftWrite::OnChange,
+                sender,
+            ),
+        }
+    }
+
+    fn show_unreadable_workspace_toast(&self) {
+        let toast = adw::Toast::builder()
+            .title(crate::i18n::gettext("Saved tabs could not be read"))
+            .button_label(crate::i18n::gettext("Reset"))
+            .action_name("win.reset-workspace-layout")
+            .build();
+        self.toast_overlay.add_toast(toast);
+    }
+
+    /// Move the unreadable saved tabs aside, so the open ones can be
+    /// saved in their place.
+    pub(super) fn on_reset_workspace_layout(&self, sender: ComponentSender<Self>) {
+        let (Some(key), Some(session)) = (self.session_key().cloned(), self.context.active.get()) else {
+            return;
+        };
+        let origin = Arc::downgrade(&session);
+        let resetting = self.storage.workspaces().reset(&key);
+        glib::spawn_future_local(async move {
+            let outcome = resetting.await;
+            sender.input(AppMsg::WorkspaceLayoutReset(FromSession::new(origin, outcome)));
+        });
+    }
+
+    pub(super) fn on_workspace_layout_reset(&self, outcome: Result<Option<std::path::PathBuf>, WorkspaceSaveError>) {
+        match outcome {
+            Ok(moved) => {
+                if let Some(moved) = moved {
+                    tracing::info!(moved = %moved.display(), "moved the unreadable saved tabs aside");
+                }
+                self.persist_workspace_state();
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not move the saved tabs aside");
+                self.show_toast(&crate::i18n::gettext("Saved tabs could not be reset"));
+            }
+        }
     }
 
     /// Public entry: append a Structure draft tab for the New-Table
@@ -227,18 +279,13 @@ impl App {
         page_size: u64,
         sort: Option<(usize, bool)>,
         sender: ComponentSender<Self>,
-    ) {
+    ) -> Option<adw::TabPage> {
         self.ensure_workspace_root(sender.clone());
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.workspace_tab_view.clone()?;
         let tab_id = Uuid::new_v4();
         let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
         let read_only = self.read_only;
-
-        let Some(session) = self.context.active.get() else {
-            return;
-        };
+        let session = self.context.active.get()?;
         let browse = BrowseTab::new(BrowseTabInit {
             tracker: self.change_trackers.register(tab_id),
             schema: schema.clone(),
@@ -277,6 +324,7 @@ impl App {
         self.workspace_outer_stack.set_visible_child_name("tabs");
         self.refresh_window_title();
         self.persist_workspace_state();
+        Some(page)
     }
 
     /// Open a Structure (DDL editor) tab for an EXISTING
@@ -289,15 +337,11 @@ impl App {
         schema: Option<String>,
         table: String,
         sender: ComponentSender<Self>,
-    ) {
+    ) -> Option<adw::TabPage> {
         self.ensure_workspace_root(sender.clone());
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.workspace_tab_view.clone()?;
         let tab_id = Uuid::new_v4();
-        let Some(session) = self.context.active.get() else {
-            return;
-        };
+        let session = self.context.active.get()?;
         let mode = StructureMode::Edit;
         let structure = StructureTab::new(StructureTabInit {
             tracker: self.structure_trackers.register(tab_id),
@@ -331,27 +375,28 @@ impl App {
         self.workspace_outer_stack.set_visible_child_name("tabs");
         self.refresh_window_title();
         self.persist_workspace_state();
+        Some(page)
     }
 
     /// Public entry: append an Editor tab with optional initial query.
     pub(super) fn append_editor_tab(&mut self, initial_query: Option<String>, sender: ComponentSender<Self>) {
-        self.append_editor_tab_with_draft(initial_query, tablepro_storage::DraftId::new(), sender);
+        self.append_editor_tab_with_draft(initial_query, DraftId::new(), DraftWrite::Now, sender);
     }
 
     /// Append an Editor tab that writes to a given draft, so a restored
     /// tab keeps the file it was already using.
-    pub(super) fn append_editor_tab_with_draft(
+    fn append_editor_tab_with_draft(
         &mut self,
         initial_query: Option<String>,
-        draft: tablepro_storage::DraftId,
+        draft: DraftId,
+        write: DraftWrite,
         sender: ComponentSender<Self>,
-    ) {
+    ) -> Option<adw::TabPage> {
         self.ensure_workspace_root(sender.clone());
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.workspace_tab_view.clone()?;
         let tab_id = Uuid::new_v4();
-        let query = initial_query.clone().unwrap_or_default();
+        // Such a tab shows the editor's sample query, which names nothing.
+        let opened_empty = initial_query.is_none();
         let editor = SqlEditor::new(SqlEditorInit {
             initial_query,
             settings: self.settings.clone(),
@@ -363,25 +408,27 @@ impl App {
         });
         connect_editor(&editor, tab_id, sender.input_sender(), &self.toast_overlay.downgrade());
         let page = tab_view.append(&editor);
-        let label = match query.trim().is_empty() {
-            true => default_editor_tab_label(self.editor_tab_count() + 1),
-            false => derive_tab_label(&query),
+        let preview = EditorPreview::read(&editor.buffer());
+        let label = if opened_empty || preview.is_blank() {
+            default_editor_tab_label(self.editor_tab_count() + 1)
+        } else {
+            derive_tab_label(&preview.text)
         };
         page.set_title(&label);
-        if let Some(tip) = editor_tab_tooltip(&query, &label) {
+        if !opened_empty && let Some(tip) = editor_tab_tooltip(&preview, &label) {
             page.set_tooltip(&tip);
         }
         write_workspace_tab_id(&page, tab_id);
 
-        // Track the buffer from the start, so text restored into a tab
-        // is written back even if the user never types in it.
-        self.drafts
-            .schedule(&tablepro_storage::DraftScope::default(), draft, &editor.buffer());
+        if write == DraftWrite::Now {
+            // Text a new tab opens with is written even if the user
+            // never types in it.
+            self.drafts.schedule(&self.draft_scope(), draft, &editor.buffer());
+        }
         let slot = EditorTabSlot {
             editor,
             page: page.clone(),
             draft,
-            query,
         };
         self.workspace_tabs
             .borrow_mut()
@@ -390,6 +437,14 @@ impl App {
         self.workspace_outer_stack.set_visible_child_name("tabs");
         self.refresh_window_title();
         self.persist_workspace_state();
+        Some(page)
+    }
+
+    /// The directory this session's editor drafts live in.
+    fn draft_scope(&self) -> DraftScope {
+        self.session_key()
+            .map(|key| WorkspaceFileName::for_key(key).draft_scope())
+            .unwrap_or_default()
     }
 
     pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid, sender: ComponentSender<Self>) {
@@ -559,8 +614,7 @@ impl App {
                 slot.editor.shutdown();
                 // The record no longer names this draft, so the file has
                 // nothing left pointing at it.
-                self.drafts
-                    .discard(&tablepro_storage::DraftScope::default(), slot.draft);
+                self.drafts.discard(&self.draft_scope(), slot.draft);
             }
             WorkspaceTab::Structure(slot) => {
                 slot.structure.shutdown();
@@ -754,98 +808,10 @@ impl App {
         dialog.present(Some(&self.window));
     }
 
-    /// Persist workspace tabs for the active connection. Walks
-    /// `tab_view.pages()` for canonical display order (HashMap is
-    /// unordered; user can drag-reorder).
-    /// Debounced entry point. Coalesces rapid call sites
-    /// (selection-change, drag-reorder, page-size change, state-
-    /// changed) into a single write 500ms after the last call.
+    /// Write the tab list a moment after the last change.
     pub(super) fn persist_workspace_state(&self) {
-        // Trailing: a run of keystrokes writes the tab list once at the
-        // end rather than once at the start and never again.
-        let workspace_tabs = self.workspace_tabs.clone();
-        let tab_view = self.workspace_tab_view.clone();
-        // The tabs belong to the session open now, even if the write
-        // lands after a switch to another one.
-        let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
-        self.persist_debouncer.request(move || {
-            do_persist_workspace_state(connection_id, &workspace_tabs, tab_view.as_ref());
-        });
+        self.workspace.request();
     }
-
-    /// Actual write. Reads the latest tab state, builds the on-disk
-    /// record, hands it to `workspace_state::save_connection`. Called
-    /// only via `persist_workspace_state`'s debounced timer or
-    /// directly from teardown paths that need a synchronous flush.
-    pub(super) fn do_persist_workspace_state_now(&self) {
-        let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
-        do_persist_workspace_state(connection_id, &self.workspace_tabs, self.workspace_tab_view.as_ref());
-    }
-}
-
-fn do_persist_workspace_state(
-    connection_id: Option<Uuid>,
-    workspace_tabs: &std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
-    tab_view: Option<&adw::TabView>,
-) {
-    let Some(connection_id) = connection_id else {
-        return;
-    };
-    let tabs = workspace_tabs.borrow();
-    let Some(tab_view) = tab_view else {
-        return;
-    };
-    let pages = tab_view.pages();
-    let n = pages.n_items();
-    let active_page = tab_view.selected_page();
-    let mut tab_records: Vec<WorkspaceTabRecord> = Vec::with_capacity(n as usize);
-    let mut active_idx: u32 = 0;
-    for i in 0..n {
-        let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
-            continue;
-        };
-        if active_page.as_ref() == Some(&page) {
-            active_idx = i;
-        }
-        let Some(id) = read_workspace_tab_id(&page) else {
-            continue;
-        };
-        let Some(slot) = tabs.get(&id) else { continue };
-        tab_records.push(match slot {
-            WorkspaceTab::Editor(s) => WorkspaceTabRecord::Editor {
-                draft: s.draft,
-                query: String::new(),
-            },
-            // Structure tabs only exist for the New-Table draft flow
-            // post-M-1 cleanup; never persist (the table the user is
-            // drafting doesn't exist yet, so a restore would be a
-            // meaningless empty form).
-            WorkspaceTab::Structure(_) => continue,
-            WorkspaceTab::Table(s) => {
-                // New-mode draft Tables (no committed table name yet)
-                // don't survive a disconnect.
-                if s.table.is_empty() {
-                    continue;
-                }
-                let sort = s.browse.current_sort();
-                WorkspaceTabRecord::Table {
-                    schema: s.schema.clone(),
-                    table: s.table.clone(),
-                    // A Structure tab is a record of its own now.
-                    mode: crate::services::workspace_state::PersistedTableMode::Data,
-                    offset: s.browse.current_offset(),
-                    page_size: s.browse.page_size(),
-                    sort_col: sort.map(|(c, _)| c),
-                    sort_asc: sort.map(|(_, a)| a),
-                }
-            }
-        });
-    }
-    let conn_state = ConnectionWorkspaceState {
-        tabs: tab_records,
-        active_idx,
-    };
-    workspace_state::save_connection(connection_id, conn_state);
 }
 
 impl App {
@@ -942,8 +908,7 @@ impl App {
     }
 
     pub(super) fn teardown_workspace_tabs(&mut self) {
-        // The debounced write would run after the state is gone.
-        self.do_persist_workspace_state_now();
+        self.flush_workspace_state();
         self.cancel_all_editor_runs();
         // The pending edits name rows of the connection going away, so
         // they cannot be saved after it.
@@ -973,6 +938,28 @@ impl App {
         self.workspace_tabs.borrow_mut().clear();
     }
 
+    /// Write the tabs and the editor text as they are now, before the
+    /// teardown frees them. The process is held until the writes land,
+    /// so quitting right after a disconnect does not lose them.
+    fn flush_workspace_state(&self) {
+        let tabs = self.workspace.detach();
+        let drafts = self.drafts.flush_all();
+        let writer = self.drafts.clone();
+        let hold = self.context.hold.acquire();
+        glib::spawn_future_local(async move {
+            for failure in drafts.await {
+                tracing::warn!(failure, "an editor draft was not saved");
+            }
+            writer.release_closed();
+            if let Some(tabs) = tabs
+                && let Err(error) = tabs.await
+            {
+                tracing::debug!(%error, "the open tabs were not saved");
+            }
+            drop(hold);
+        });
+    }
+
     /// Stop every editor run and close each editor tab's connection,
     /// for a disconnect that takes the tabs with it.
     pub(super) fn cancel_all_editor_runs(&self) {
@@ -998,33 +985,27 @@ impl App {
         }
     }
 
-    /// Editor tab title update on query change. Mirrors what was on
-    /// editor_tabs.rs::on_editor_tab_query_changed; lives here now since
-    /// editor tabs are first-class workspace tabs.
-    pub(super) fn on_editor_tab_query_changed(&self, id: Uuid, query: String) {
-        let label = if query.trim().is_empty() {
+    /// Name the tab after the start of its script, and write the script
+    /// a moment later. Only the first `PREVIEW_CHARS` are read here, so a
+    /// long script costs nothing to type in.
+    pub(super) fn on_editor_tab_content_changed(&self, id: Uuid) {
+        let tabs = self.workspace_tabs.borrow();
+        let Some(WorkspaceTab::Editor(slot)) = tabs.get(&id) else {
+            return;
+        };
+        let buffer = slot.editor.buffer();
+        let preview = EditorPreview::read(&buffer);
+        let label = if preview.is_blank() {
             crate::i18n::gettext("Empty query")
         } else {
-            derive_tab_label(&query)
+            derive_tab_label(&preview.text)
         };
-        let scheduled = {
-            let mut tabs = self.workspace_tabs.borrow_mut();
-            let Some(WorkspaceTab::Editor(slot)) = tabs.get_mut(&id) else {
-                return;
-            };
-            slot.page.set_title(&label);
-            // Pass empty when no extra info to clear any prior tooltip;
-            // libadwaita treats empty-string as no tooltip.
-            let tooltip = editor_tab_tooltip(&query, &label).unwrap_or_default();
-            slot.page.set_tooltip(&tooltip);
-            slot.query = query;
-            (slot.draft, slot.editor.buffer())
-        };
-        // The buffer is read once when the write fires, not once per
-        // keystroke, so a long script costs nothing to type in.
-        self.drafts
-            .schedule(&tablepro_storage::DraftScope::default(), scheduled.0, &scheduled.1);
-        self.persist_workspace_state();
+        slot.page.set_title(&label);
+        // libadwaita treats an empty tooltip as none, which clears the
+        // last one.
+        slot.page
+            .set_tooltip(&editor_tab_tooltip(&preview, &label).unwrap_or_default());
+        self.drafts.schedule(&self.draft_scope(), slot.draft, &buffer);
     }
 
     pub(super) fn on_editor_tab_run_state_changed(&self, id: Uuid, running: bool) {
@@ -1048,7 +1029,7 @@ impl App {
     pub(super) fn active_editor_query(&self) -> Option<String> {
         let id = self.selected_workspace_tab_id()?;
         match self.workspace_tabs.borrow().get(&id) {
-            Some(WorkspaceTab::Editor(slot)) => Some(slot.query.clone()),
+            Some(WorkspaceTab::Editor(slot)) => Some(whole_text(&slot.editor.buffer())),
             _ => None,
         }
     }
@@ -1215,8 +1196,7 @@ fn overview_editor_tab(
         let slot = EditorTabSlot {
             editor,
             page: page.clone(),
-            draft: tablepro_storage::DraftId::new(),
-            query: String::new(),
+            draft: DraftId::new(),
         };
         workspace_tabs.borrow_mut().insert(tab_id, WorkspaceTab::Editor(slot));
         input.emit(AppMsg::WorkspaceTabsChanged);
@@ -1250,7 +1230,9 @@ fn browse_tab_tooltip(schema: Option<&str>, table: &str, label: &str) -> Option<
 
 fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
     match slot {
-        WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor { query: s.query.clone() }),
+        WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor {
+            query: whole_text(&s.editor.buffer()),
+        }),
         WorkspaceTab::Table(s) => Some(ClosedTabDescriptor::Table {
             schema: s.schema.clone(),
             table: s.table.clone(),
@@ -1316,29 +1298,66 @@ impl App {
     }
 }
 
-/// At most 200 characters of the query, and none when the label
-/// already shows them.
-fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
-    let q = query.trim();
-    if q.is_empty() {
-        return None;
-    }
-    // Use char_indices().nth(200) to walk only the first 201 chars
-    // instead of materialising the whole query as a Vec<char> via
-    // chars().count(). For a multi-megabyte SQL dump this avoids an
-    // O(n) scan when only a 200-char preview matters.
-    let mut iter = q.char_indices();
-    let mut last_idx = 0;
-    for _ in 0..200 {
-        match iter.next() {
-            Some((i, c)) => last_idx = i + c.len_utf8(),
-            None => {
-                return if q == label { None } else { Some(q.to_string()) };
-            }
+const PREVIEW_CHARS: i32 = 200;
+
+/// The start of an editor's script, read without copying the rest.
+struct EditorPreview {
+    text: String,
+    truncated: bool,
+}
+
+impl EditorPreview {
+    fn read(buffer: &gtk::TextBuffer) -> Self {
+        let end = buffer.iter_at_offset(PREVIEW_CHARS);
+        Self {
+            text: buffer.text(&buffer.start_iter(), &end, false).to_string(),
+            truncated: !end.is_end(),
         }
     }
-    let preview = format!("{}…", &q[..last_idx]);
-    if preview == label { None } else { Some(preview) }
+
+    fn is_blank(&self) -> bool {
+        !self.truncated && self.text.trim().is_empty()
+    }
+}
+
+/// The start of the script, and none when the label already shows it.
+fn editor_tab_tooltip(preview: &EditorPreview, label: &str) -> Option<String> {
+    let text = preview.text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let tooltip = match preview.truncated {
+        true => format!("{}…", preview.text.trim_start()),
+        false => text.to_owned(),
+    };
+    (tooltip != label).then_some(tooltip)
+}
+
+/// The whole script, for the few places that need all of it at once.
+fn whole_text(buffer: &gtk::TextBuffer) -> String {
+    buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
+}
+
+/// Whether a new editor tab's draft is written at once or only after
+/// the user changes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DraftWrite {
+    Now,
+    OnChange,
+}
+
+#[derive(Debug)]
+pub(crate) struct LoadedWorkspace {
+    key: SessionKey,
+    load: WorkspaceLoad,
+    drafts: RestoredDrafts,
+}
+
+fn saved_drafts(record: &WorkspaceRecord) -> impl Iterator<Item = DraftId> + '_ {
+    record.tabs.iter().filter_map(|tab| match tab {
+        TabRecord::Editor { draft } => Some(*draft),
+        _ => None,
+    })
 }
 
 /// The structure tab's signals, as this window's inputs for the tab.
@@ -1407,8 +1426,8 @@ fn connect_editor(
     editor.connect_run_state_changed(move |_, running| {
         run_state.emit(AppMsg::EditorTabRunStateChanged(tab_id, running));
     });
-    let query = input.clone();
-    editor.connect_query_changed(move |_, text| query.emit(AppMsg::EditorTabQueryChanged(tab_id, text)));
+    let content = input.clone();
+    editor.connect_content_changed(move |_| content.emit(AppMsg::EditorTabContentChanged(tab_id)));
     let clipboard = input.clone();
     editor.connect_copy_to_clipboard(move |_, text| clipboard.emit(AppMsg::CopyToClipboard(text)));
     let toast = input.clone();
@@ -1569,6 +1588,32 @@ mod tests {
         chrome.view.close_page(&first);
         chrome.view.close_page_finish(&first, true);
         assert!(!button.is_visible(), "still shown after closing back to one tab");
+    }
+
+    #[gtk4::test]
+    fn an_editor_tab_is_named_from_the_start_of_its_script_only() {
+        let buffer = gtk::TextBuffer::new(None);
+        buffer.set_text(&format!("SELECT 1;\n{}", "-- é\n".repeat(10_000)));
+
+        let preview = EditorPreview::read(&buffer);
+
+        let limit = usize::try_from(PREVIEW_CHARS).expect("a positive limit");
+        assert_eq!(preview.text.chars().count(), limit);
+        assert!(preview.truncated);
+        let tooltip = editor_tab_tooltip(&preview, "SELECT 1;").expect("a tooltip");
+        assert!(tooltip.starts_with("SELECT 1;"), "{tooltip}");
+        assert!(tooltip.ends_with('…'), "{tooltip}");
+    }
+
+    #[gtk4::test]
+    fn a_script_its_label_shows_whole_has_no_tooltip() {
+        let buffer = gtk::TextBuffer::new(None);
+        buffer.set_text("SELECT 1;");
+
+        let preview = EditorPreview::read(&buffer);
+
+        assert!(!preview.truncated);
+        assert_eq!(editor_tab_tooltip(&preview, &derive_tab_label(&preview.text)), None);
     }
 
     #[gtk4::test]

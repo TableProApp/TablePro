@@ -391,10 +391,10 @@ impl App {
         tracing::info!(driver = %driver_id, table_count = objects.len(), "workspace ready");
         self.show_objects(&objects);
         self.refresh_window_title();
-        // Restore tabs (browse + editor) persisted from the prior session
-        // for this connection.
+        if let Some(key) = self.session_key().cloned() {
+            self.restore_workspace_tabs(key, sender.clone());
+        }
         if let Some(connection_id) = self.context.active.metadata().map(|metadata| metadata.id) {
-            self.restore_workspace_tabs(connection_id, sender.clone());
             // Stamp `last_opened_at = now()` then reload connections so
             // the popover + welcome view re-sort with the fresh
             // timestamp. Sequencing matters: ReloadConnections reads
@@ -418,6 +418,12 @@ impl App {
         sender.input(AppMsg::ReloadConnections);
     }
 
+    /// The key this window's session is claimed under, which its saved
+    /// tabs are kept by.
+    pub(super) fn session_key(&self) -> Option<&SessionKey> {
+        self.session_links.as_ref().map(|links| &links.key)
+    }
+
     pub(super) fn on_disconnect(&mut self, sender: ComponentSender<Self>) {
         self.confirm_teardown(Teardown::Disconnect, AppMsg::ForceDisconnect, sender);
     }
@@ -435,8 +441,8 @@ impl App {
     /// held until the close ends, so quitting right after a disconnect
     /// does not cut the connection off mid-close.
     fn release_session(&mut self, _sender: ComponentSender<Self>) {
-        // Persist + tear down workspace tabs before dropping the
-        // session (persist needs the active connection id).
+        // The tabs are saved under the session's key, which goes with
+        // the session links below.
         self.teardown_workspace_tabs();
         // The closed tabs name tables of the connection being released.
         self.clear_closed_tabs_stack();
@@ -571,10 +577,7 @@ impl App {
         drop(spawner.spawn_task(async move {
             let copy_id = copy.id;
             let saved = tasks
-                .spawn_blocking_task({
-                    let connections = connections.clone();
-                    move || connections.upsert_blocking(copy)
-                })
+                .spawn_blocking_task(move || connections.upsert_blocking(copy))
                 .await;
             if let Ok(Err(error)) = saved {
                 tracing::warn!(%error, "could not save the duplicated connection");
@@ -661,34 +664,24 @@ impl App {
     pub(super) fn on_export_connections(&self, sender: ComponentSender<Self>) {
         self.connections_popover.popdown();
         let connections = self.storage.connections().clone();
-        let bytes = match connections.export_blocking() {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                tracing::warn!(%error, "could not read the connections to export");
-                self.show_toast(&crate::i18n::gettext("The connections could not be read."));
-                return;
-            }
-        };
-
-        let dialog = gtk::FileDialog::builder()
-            .title(crate::i18n::gettext("Export Connections"))
-            .modal(true)
-            .initial_name("tablepro-connections.json")
-            .default_filter(&json_filter())
-            .filters(&json_filters())
-            .build();
+        let reading = self.tasks.spawn_blocking_task(move || connections.export_blocking());
+        let window = self.window.downgrade();
         let input = sender.input_sender().clone();
-        dialog.save(Some(&self.window), gio::Cancellable::NONE, move |outcome| {
-            let Ok(file) = outcome else { return };
-            let Some(path) = file.path() else { return };
-            let message = match std::fs::write(&path, &bytes) {
-                Ok(()) => crate::i18n::gettext("Connections exported."),
-                Err(error) => {
-                    tracing::warn!(%error, path = %path.display(), "could not write the exported connections");
-                    crate::i18n::gettext("The connections could not be written to that file.")
+        glib::spawn_future_local(async move {
+            let error = match reading.await {
+                Ok(Ok(bytes)) => {
+                    if let Some(window) = window.upgrade() {
+                        ask_where_to_export(&window, bytes, input);
+                    }
+                    return;
                 }
+                Ok(Err(error)) => error.to_string(),
+                Err(error) => error.to_string(),
             };
-            let _ = input.send(AppMsg::ShowToast(message));
+            tracing::warn!(%error, "could not read the connections to export");
+            let _ = input.send(AppMsg::ShowToast(crate::i18n::gettext(
+                "The connections could not be read.",
+            )));
         });
     }
 
@@ -1046,33 +1039,66 @@ impl App {
         dialog.set_close_response("cancel");
 
         let store = self.storage.connections().clone();
+        let tasks = self.tasks.clone();
         let banner = self.connection_list_banner.clone();
         let toasts = self.toast_overlay.clone();
-        let sender_for_reset = sender;
         dialog.connect_response(None, move |dialog, response| {
             dialog.close();
             if response != "reset" {
                 return;
             }
-            match store.reset_unreadable_blocking(std::time::SystemTime::now()) {
-                Ok(moved) => {
-                    banner.set_revealed(false);
-                    toasts.add_toast(adw::Toast::new(&crate::ui::connection_list_banner::reset_toast_text(
-                        &moved,
-                    )));
-                    sender_for_reset.input(AppMsg::ReloadConnections);
-                }
-                Err(error) => {
-                    tracing::warn!(%error, "could not reset the saved connections");
-                    toasts.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
-                        "Could not reset the saved connections: {error}",
-                        &[("error", &error.to_string())],
-                    )));
-                }
-            }
+            let store = store.clone();
+            let resetting =
+                tasks.spawn_blocking_task(move || store.reset_unreadable_blocking(std::time::SystemTime::now()));
+            let (banner, toasts, sender) = (banner.clone(), toasts.clone(), sender.clone());
+            glib::spawn_future_local(async move {
+                let error = match resetting.await {
+                    Ok(Ok(moved)) => {
+                        banner.set_revealed(false);
+                        toasts.add_toast(adw::Toast::new(&crate::ui::connection_list_banner::reset_toast_text(
+                            &moved,
+                        )));
+                        sender.input(AppMsg::ReloadConnections);
+                        return;
+                    }
+                    Ok(Err(error)) => error.to_string(),
+                    Err(error) => error.to_string(),
+                };
+                tracing::warn!(%error, "could not reset the saved connections");
+                toasts.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
+                    "Could not reset the saved connections: {error}",
+                    &[("error", &error)],
+                )));
+            });
         });
         dialog.present(Some(&self.window));
     }
+}
+
+fn ask_where_to_export(window: &adw::ApplicationWindow, bytes: Vec<u8>, input: relm4::Sender<AppMsg>) {
+    let dialog = gtk::FileDialog::builder()
+        .title(crate::i18n::gettext("Export Connections"))
+        .modal(true)
+        .initial_name("tablepro-connections.json")
+        .default_filter(&json_filter())
+        .filters(&json_filters())
+        .build();
+    dialog.save(Some(window), gio::Cancellable::NONE, move |outcome| {
+        let Ok(file) = outcome else { return };
+        glib::spawn_future_local(async move {
+            let written = file
+                .replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE)
+                .await;
+            let message = match written {
+                Ok(_) => crate::i18n::gettext("Connections exported."),
+                Err((_, error)) => {
+                    tracing::warn!(%error, uri = %file.uri(), "could not write the exported connections");
+                    crate::i18n::gettext("The connections could not be written to that file.")
+                }
+            };
+            let _ = input.send(AppMsg::ShowToast(message));
+        });
+    });
 }
 
 /// An export holds names, hosts and options, never secrets, so even

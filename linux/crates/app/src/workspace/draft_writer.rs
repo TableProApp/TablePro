@@ -101,6 +101,16 @@ impl DraftWriter {
             });
     }
 
+    /// Stop tracking the tabs whose buffers are gone. Their drafts stay
+    /// on disk for the tab to be restored from. Call it once what
+    /// `flush_all` started has landed, since a dropped slot stops its
+    /// writer.
+    pub fn release_closed(&self) {
+        self.slots
+            .borrow_mut()
+            .retain(|_, slot| slot.buffer.upgrade().is_some());
+    }
+
     pub fn store(&self) -> &DraftStore {
         &self.store
     }
@@ -108,6 +118,11 @@ impl DraftWriter {
     fn slot(&self, scope: &DraftScope, id: DraftId, buffer: &gtk4::TextBuffer) -> Rc<Slot> {
         let mut slots = self.slots.borrow_mut();
         if let Some(slot) = slots.get(&id) {
+            // A tab restored after a reconnect keeps its draft id but has
+            // a new buffer, and the old one is gone.
+            if slot.buffer.upgrade().as_ref() != Some(buffer) {
+                slot.buffer.set(Some(buffer));
+            }
             return slot.clone();
         }
         let store = self.store.clone();
@@ -285,6 +300,46 @@ mod tests {
         fixture.flush_all();
 
         assert_eq!(fixture.read(id).as_deref(), Some("SELECT 1"));
+    }
+
+    #[gtk4::test]
+    fn a_restored_tab_writes_through_its_new_buffer() {
+        let fixture = Fixture::new();
+        let id = DraftId::new();
+        {
+            let before = gtk4::TextBuffer::new(None);
+            before.set_text("SELECT 1");
+            fixture.writer.schedule(&fixture.scope, id, &before);
+            fixture.wait_for(id, "SELECT 1");
+        }
+
+        let after = gtk4::TextBuffer::new(None);
+        after.set_text("SELECT 2");
+        fixture.writer.schedule(&fixture.scope, id, &after);
+
+        fixture.wait_for(id, "SELECT 2");
+    }
+
+    #[gtk4::test]
+    fn release_closed_keeps_open_tabs_and_their_drafts() {
+        let fixture = Fixture::new();
+        let (closed, open) = (DraftId::new(), DraftId::new());
+        let kept = gtk4::TextBuffer::new(None);
+        kept.set_text("SELECT 2");
+        {
+            let gone = gtk4::TextBuffer::new(None);
+            gone.set_text("SELECT 1");
+            fixture.writer.schedule(&fixture.scope, closed, &gone);
+            fixture.writer.schedule(&fixture.scope, open, &kept);
+            fixture.flush_all();
+        }
+
+        fixture.writer.release_closed();
+
+        let tracked: Vec<DraftId> = fixture.writer.slots.borrow().keys().copied().collect();
+        assert_eq!(tracked, [open]);
+        assert_eq!(fixture.read(closed).as_deref(), Some("SELECT 1"));
+        assert_eq!(fixture.read(open).as_deref(), Some("SELECT 2"));
     }
 
     #[gtk4::test]

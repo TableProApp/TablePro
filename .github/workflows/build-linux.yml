@@ -106,6 +106,19 @@ jobs:
             echo "::error::crates/app/src/services must not hold thread_local! state"
             exit 1
           fi
+      - name: No blocking file I/O in the window and editor code
+        # This code runs on the GTK thread, where a slow disk or a
+        # network mount freezes the window. A storage call ending in
+        # _blocking is handed to spawn_blocking_task on the same line,
+        # which is what this check can see. Tests may do either.
+        run: |
+          found=$(find crates/app/src/ui/app crates/app/src/ui/editor -name '*.rs' ! -name tests.rs -print0 \
+            | xargs -0 awk '/^mod tests \{/ { nextfile } /std::fs::/ || (/_blocking\(/ && !/spawn_blocking_task\(/) { print FILENAME ":" FNR ": " $0 }')
+          if [ -n "$found" ]; then
+            echo "$found"
+            echo "::error::crates/app/src/ui/app and crates/app/src/ui/editor must not call std::fs, or a _blocking function outside spawn_blocking_task"
+            exit 1
+          fi
       - name: Clippy
         run: meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Clippy without default features

@@ -7,6 +7,7 @@ mod sidebar_section_header;
 mod status_pages;
 mod structure;
 mod teardown_guard;
+mod workspace_persistence;
 mod workspace_tabs;
 
 use relm4::adw::prelude::*;
@@ -161,11 +162,11 @@ pub struct App {
     /// dispatch path short-circuit. Cleared on
     /// `StructureSaveCompleted` / `StructureSaveFailed`.
     structure_saves_in_flight: std::rc::Rc<std::cell::RefCell<std::collections::HashSet<Uuid>>>,
-    /// Coalesces `persist_workspace_state`. Tabs fire
+    /// Writes the tab list for the session this window shows. Tabs fire
     /// `WorkspaceTabsChanged` on every selection, drag-reorder,
-    /// page-size change and state-changed event, and each one would
-    /// otherwise rewrite the whole workspace file.
-    persist_debouncer: crate::workspace::PersistDebouncer,
+    /// page-size change and state-changed event, and it writes once
+    /// after a burst.
+    workspace: std::rc::Rc<workspace_persistence::WorkspacePersistence>,
     /// Recently closed tabs for Ctrl+Shift+T. Cleared on disconnect,
     /// since the tables they name belong to that connection. Pending
     /// edits are not kept: the close has already cleared them.
@@ -173,8 +174,8 @@ pub struct App {
 }
 
 /// Snapshot of a tab the user just closed, retained for Ctrl+Shift+T
-/// reopen. Mirrors the persistence variants in `workspace_state` so
-/// reopen routes back through the same `append_*` constructors.
+/// reopen, so reopen routes back through the same `append_*`
+/// constructors as a restore.
 #[derive(Debug, Clone)]
 pub enum ClosedTabDescriptor {
     Editor {
@@ -195,17 +196,12 @@ pub enum ClosedTabDescriptor {
 
 pub(super) const CLOSED_TABS_CAPACITY: usize = 10;
 
-/// How long after the last tab change the workspace file is rewritten.
-const WORKSPACE_PERSIST_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
-
 pub struct EditorTabSlot {
     pub editor: SqlEditor,
     pub page: adw::TabPage,
     /// The file this tab's text is written to. The text itself lives in
     /// the buffer, not here.
     pub draft: tablepro_storage::DraftId,
-    /// The first line or so, for the tab label and the reopen stack.
-    pub query: String,
 }
 
 pub struct StructureTabSlot {
@@ -349,12 +345,13 @@ pub enum AppMsg {
     /// Ctrl+W → close active workspace tab (browse or editor).
     CloseActiveWorkspaceTab,
     EditorTabRunStateChanged(Uuid, bool),
-    EditorTabQueryChanged(Uuid, String),
-    /// The saved tabs and their editor text, read off the GTK thread.
-    WorkspaceTabsRead {
-        saved: crate::services::workspace_state::ConnectionWorkspaceState,
-        drafts: std::collections::HashMap<tablepro_storage::DraftId, String>,
-    },
+    EditorTabContentChanged(Uuid),
+    /// The session's saved tabs and their editor text, read off the GTK
+    /// thread.
+    WorkspaceLoaded(FromSession<workspace_tabs::LoadedWorkspace>),
+    /// The toast's Reset: move the unreadable saved tabs aside.
+    ResetWorkspaceLayout,
+    WorkspaceLayoutReset(FromSession<Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>>),
     ShowHistory,
     ShowSavedQueries,
     /// Keep the active editor tab's SQL under a name the user picks.
@@ -718,6 +715,7 @@ impl SimpleComponent for App {
             tablepro_storage::DraftStore::new(storage.paths().drafts_dir()),
             tasks.clone(),
         );
+        let workspace = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let widgets = view_output!();
 
         if crate::config::profile() == crate::config::Profile::Development {
@@ -733,6 +731,7 @@ impl SimpleComponent for App {
         let settings_for_close = settings.clone();
         let storage_for_close = storage.clone();
         let drafts_for_close = drafts.clone();
+        let workspace_for_close = workspace.clone();
         let force_close: std::rc::Rc<std::cell::Cell<bool>> = std::rc::Rc::new(std::cell::Cell::new(false));
         let force_close_for_close = force_close.clone();
         let close_after_save_for_close: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, u32>>> =
@@ -866,11 +865,17 @@ impl SimpleComponent for App {
             let column_widths = storage_for_close.column_widths().flush();
             let filter_settings = storage_for_close.filter_settings().flush();
             let editor_drafts = drafts_for_close.flush_all();
+            let tabs = workspace_for_close.detach();
             glib::spawn_future_local(async move {
                 column_widths.await;
                 filter_settings.await;
                 for failure in editor_drafts.await {
                     tracing::warn!(failure, "an editor draft was not saved");
+                }
+                if let Some(tabs) = tabs
+                    && let Err(error) = tabs.await
+                {
+                    tracing::debug!(%error, "the open tabs were not saved");
                 }
                 drop(hold);
             });
@@ -1172,7 +1177,7 @@ impl SimpleComponent for App {
             close_window_after_save: close_window_after_save_handle,
             in_flight_saves: in_flight_saves_handle,
             structure_saves_in_flight: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashSet::new())),
-            persist_debouncer: crate::workspace::PersistDebouncer::new(WORKSPACE_PERSIST_DELAY),
+            workspace,
             closed_tabs_stack: std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::with_capacity(
                 CLOSED_TABS_CAPACITY,
             ))),
@@ -1357,8 +1362,18 @@ impl SimpleComponent for App {
             }
             AppMsg::NewEditorTab => self.append_editor_tab(None, sender),
             AppMsg::EditorTabRunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
-            AppMsg::EditorTabQueryChanged(id, text) => self.on_editor_tab_query_changed(id, text),
-            AppMsg::WorkspaceTabsRead { saved, drafts } => self.on_workspace_tabs_read(saved, drafts, sender),
+            AppMsg::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
+            AppMsg::WorkspaceLoaded(update) => {
+                if let Some(loaded) = update.if_current(&self.context.active) {
+                    self.on_workspace_loaded(loaded, sender);
+                }
+            }
+            AppMsg::ResetWorkspaceLayout => self.on_reset_workspace_layout(sender),
+            AppMsg::WorkspaceLayoutReset(update) => {
+                if let Some(outcome) = update.if_current(&self.context.active) {
+                    self.on_workspace_layout_reset(outcome);
+                }
+            }
             AppMsg::ShowHistory => self.on_show_history(sender),
             AppMsg::ShowSavedQueries => self.on_show_saved_queries(sender),
             AppMsg::SetConnectionColor(id, color) => self.on_set_connection_color(id, color, sender),
@@ -1532,6 +1547,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("save-query", AppMsg::SaveActiveQuery),
         input_action!("export-connections", AppMsg::ExportConnections),
         input_action!("import-connections", AppMsg::ImportConnections),
+        input_action!("reset-workspace-layout", AppMsg::ResetWorkspaceLayout),
     ]);
     let disconnect = gio::SimpleAction::new("disconnect", None);
     let sender_for_disconnect = sender.clone();

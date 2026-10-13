@@ -40,7 +40,6 @@ crates/app/src/services/touch.rs
 crates/app/src/services/tracker_delta.rs
 crates/app/src/services/tracker_edit.rs
 crates/app/src/services/undo_op.rs
-crates/app/src/services/workspace_state.rs
 crates/app/src/storage.rs
 crates/app/src/test_support.rs
 crates/app/src/test_support/accessible_label.rs
@@ -62,6 +61,7 @@ crates/app/src/ui/app/sidebar_section_header.rs
 crates/app/src/ui/app/status_pages.rs
 crates/app/src/ui/app/structure.rs
 crates/app/src/ui/app/teardown_guard.rs
+crates/app/src/ui/app/workspace_persistence.rs
 crates/app/src/ui/app/workspace_tabs.rs
 crates/app/src/ui/browse_tab/browse_command.rs
 crates/app/src/ui/browse_tab/browse_request_kind.rs
@@ -175,6 +175,16 @@ crates/app/src/ui/window_geometry.rs
 crates/app/src/workspace/draft_writer.rs
 crates/app/src/workspace/mod.rs
 crates/app/src/workspace/persist_debouncer.rs
+crates/app/src/workspace/restored_drafts.rs
+crates/app/src/workspace/sort_record.rs
+crates/app/src/workspace/tab_record.rs
+crates/app/src/workspace/workspace_file_name.rs
+crates/app/src/workspace/workspace_load.rs
+crates/app/src/workspace/workspace_load_error.rs
+crates/app/src/workspace/workspace_record.rs
+crates/app/src/workspace/workspace_save_error.rs
+crates/app/src/workspace/workspace_store.rs
+crates/app/src/workspace/write_job.rs
 data/app.tablepro.TablePro.desktop.in.in
 data/app.tablepro.TablePro.gschema.xml
 data/app.tablepro.TablePro.metainfo.xml.in.in
