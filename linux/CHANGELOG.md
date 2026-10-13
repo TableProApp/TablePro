@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
+- A cancelled connect could still save the connection and its password, and left its password dialog open.
 
 ### Security
 

@@ -11,17 +11,17 @@ use tablepro_session::{
     ClaimError, ConnectError, CredentialSource, MonitorSignal, PendingSession, Session, SessionClaim, SessionHealth,
     SessionKey,
 };
-use tablepro_storage::{CredentialDemand, SavedConnection};
+use tablepro_storage::SavedConnection;
 use uuid::Uuid;
 
 use tablepro_session::RequestTarget;
 use tablepro_session::connect::StoreConnectionWrites;
-use tablepro_storage::StorageError;
 
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill, ConnectSubmission, FormField};
 use crate::ui::error_text::TlsRemedy;
 use crate::ui::ssh_inputs::SshEnvironment;
 
+use super::connect_flow::{self, SubmitError};
 use super::teardown_guard::Teardown;
 use super::{App, AppMsg, qualified_label};
 
@@ -31,12 +31,6 @@ use super::{App, AppMsg, qualified_label};
 pub(crate) struct ConnectRetry {
     pub prefill: ConnectPrefill,
     pub remedy: Option<TlsRemedy>,
-}
-
-/// Why a submitted connection did not open.
-enum SubmitError {
-    Connect(ConnectError),
-    Save(StorageError),
 }
 
 /// The password the user typed, so editing after a failure does not
@@ -158,18 +152,16 @@ impl App {
         let secrets = self.context.secrets.clone();
         let writes = StoreConnectionWrites::new(self.storage.connections().clone(), self.tasks.clone());
         let connecting = async move {
-            let pending = connector
-                .establish(request, interaction, cancel)
-                .await
-                .map_err(SubmitError::Connect)?;
-            match tablepro_session::persist_pending_save(&*secrets, &writes, pending_save).await {
-                Ok(report) => Ok((pending, report)),
-                Err(error) => {
-                    let report = pending.discard().await;
-                    tracing::debug!(?report, "closed a connection whose entry could not be saved");
-                    Err(SubmitError::Save(error))
-                }
-            }
+            connect_flow::connect_then_save(
+                &*connector,
+                request,
+                interaction,
+                cancel,
+                &*secrets,
+                &writes,
+                pending_save,
+            )
+            .await
         };
         let context = self.context.clone();
         let settings = self.settings.clone();
@@ -810,19 +802,7 @@ impl App {
         // Reading the keyring, asking for what it lacks and connecting
         // all happen off the GTK thread; only the outcome comes back.
         let connecting = async move {
-            let refreshed = tablepro_session::resolve_saved(
-                &saved,
-                &drivers,
-                &credentials,
-                interaction.clone(),
-                CredentialDemand::default(),
-            )
-            .await?;
-            let pending = connector.establish(refreshed.request, interaction, cancel).await?;
-            // A secret typed into a prompt is kept only once the login
-            // it was typed for has worked.
-            let refused = credentials.remember(refreshed.remember).await;
-            Ok::<_, ConnectError>((pending, refused))
+            connect_flow::connect_saved(&saved, &drivers, &credentials, &*connector, interaction, cancel).await
         };
         crate::runtime::spawn_and_deliver(&self.tasks, connecting, move |outcome| match outcome {
             Ok(Ok((pending, refused))) => sender.input(AppMsg::SessionReady(Box::new(ReadySession {

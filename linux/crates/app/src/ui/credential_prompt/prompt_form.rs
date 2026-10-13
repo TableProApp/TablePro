@@ -89,6 +89,15 @@ impl PromptForm {
         Self { dialog, rows, remember }
     }
 
+    /// Close the dialog with nothing left typed in it, for a prompt
+    /// nobody waits on any more.
+    pub fn abandon(&self) {
+        for row in &self.rows {
+            drop(row.take());
+        }
+        self.dialog.force_close();
+    }
+
     /// The reply for the response the dialog closed with. Anything but
     /// the accept button, including Escape, is a cancel.
     pub fn reply(&self, response: &str) -> PromptReply {
