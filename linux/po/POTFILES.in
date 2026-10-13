@@ -11,8 +11,13 @@ crates/app/src/persistence/mod.rs
 crates/app/src/persistence/state_file.rs
 crates/app/src/runtime/app_runtime.rs
 crates/app/src/runtime/deliver.rs
+crates/app/src/runtime/failed_requests.rs
 crates/app/src/runtime/gio_process_hold.rs
 crates/app/src/runtime/mod.rs
+crates/app/src/runtime/request_sequencer.rs
+crates/app/src/runtime/request_stamp.rs
+crates/app/src/runtime/request_ticket.rs
+crates/app/src/runtime/stamped.rs
 crates/app/src/services/active_session.rs
 crates/app/src/services/cell_overlay.rs
 crates/app/src/services/change_tracker.rs
