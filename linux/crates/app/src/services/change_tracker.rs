@@ -947,6 +947,51 @@ mod tests {
     }
 
     #[test]
+    fn undo_and_redo_of_a_draft_edit_put_its_touch_back() {
+        let mut t = TabChangeTracker::default();
+        let columns = vec![pk_col("id"), data_col("email")];
+        let draft_id = insert(&mut t, vec![Value::Null, Value::Null]);
+        t.track_delete(rk(&[Value::Int(1)]), vec![Value::Int(1), text("a")]);
+        let _ = t.apply(TrackerEdit::DraftCell {
+            draft_id,
+            col: 1,
+            value: text("a"),
+        });
+        let edited = vec!["delete [Int(1)]".to_owned(), format!("insert {draft_id}")];
+        assert_eq!(script(&t, &columns), edited);
+
+        let _ = t.undo();
+        assert_eq!(
+            script(&t, &columns),
+            vec![format!("insert {draft_id}"), "delete [Int(1)]".to_owned()]
+        );
+
+        let _ = t.redo();
+        assert_eq!(script(&t, &columns), edited);
+    }
+
+    #[test]
+    fn undo_and_redo_of_a_cell_edit_put_its_touch_back() {
+        let mut t = TabChangeTracker::default();
+        let columns = vec![pk_col("id"), data_col("name")];
+        edit(&mut t, 1, "a", "b");
+        t.track_delete(rk(&[Value::Int(2)]), vec![Value::Int(2), text("a")]);
+        edit(&mut t, 1, "a", "c");
+        let edited = vec!["delete [Int(2)]".to_owned(), "update [Int(1)]".to_owned()];
+        assert_eq!(script(&t, &columns), edited);
+
+        let _ = t.undo();
+        assert_eq!(
+            script(&t, &columns),
+            vec!["update [Int(1)]".to_owned(), "delete [Int(2)]".to_owned()]
+        );
+
+        let _ = t.redo();
+        assert_eq!(script(&t, &columns), edited);
+        assert_eq!(pending(&t, 1), text("c"));
+    }
+
+    #[test]
     fn change_set_identical_across_trackers() {
         let columns = vec![pk_col("id"), data_col("name")];
         // Every tracker's maps get their own hash seed, so with this

@@ -6,6 +6,7 @@ clickhouse = { max-threads = 1 }
 ssh = { max-threads = 1 }
 fixtures = { max-threads = 1 }
 session = { max-threads = 1 }
+app = { max-threads = 1 }
 
 [profile.default]
 # tiberius 0.13 stops reading at the first end of message, so an attention
@@ -47,6 +48,12 @@ test-group = 'fixtures'
 [[profile.default.overrides]]
 filter = 'package(tablepro-session)'
 test-group = 'session'
+
+# The app's docker tests are integration targets. Its unit tests start
+# no container, so they keep running in parallel.
+[[profile.default.overrides]]
+filter = 'package(tablepro) & kind(test)'
+test-group = 'app'
 
 [profile.ci]
 fail-fast = false
