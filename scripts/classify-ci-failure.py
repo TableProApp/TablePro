@@ -28,6 +28,7 @@ SIGNATURES = [
     ("infra", "container startup timed out", r"StartupTimeout"),
     ("infra", "database fixture did not become ready", r"fixture did not become ready"),
     ("infra", "database fixture refused the connection", r"connect: ConnectionRefused"),
+    ("infra", "a test container did not become ready in time (runner load)", r"must become ready within \d+ seconds"),
     ("infra", "Docker Hub rate limit", r"toomanyrequests"),
     ("infra", "compiler crashed", r"Compiler killed by signal|rustc.*SIGSEGV|signal: 11"),
     ("infra", "runner volume path missing on the Docker host", r"bind source path does not exist"),
@@ -80,7 +81,7 @@ def fetch(url, token):
         return response.read().decode("utf-8", "replace")
 
 
-def classify_run(run_id):
+def classify_run(run_id, tail=0):
     token = Path(os.environ.get("FORGEJO_TOKEN_FILE", Path.home() / ".config/forgejo/token")).read_text().strip()
     base = api_base()
     jobs = json.loads(fetch(f"{base}/actions/runs/{run_id}/jobs", token))
@@ -89,8 +90,9 @@ def classify_run(run_id):
     for job in jobs:
         if job["status"] != "failure":
             continue
-        tag, label, evidence = classify_log(fetch(f"{base}/actions/jobs/{job['id']}/logs", token))
-        results.append((job["name"], tag, label, evidence))
+        log = fetch(f"{base}/actions/jobs/{job['id']}/logs", token)
+        tag, label, evidence = classify_log(log)
+        results.append((job["name"], tag, label, evidence, log.splitlines()[-tail:] if tail else []))
     return results
 
 
@@ -99,21 +101,24 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--log", type=Path)
     group.add_argument("--run", type=int)
+    parser.add_argument("--tail", type=int, default=0, help="also print the last N log lines of each failed job")
     args = parser.parse_args()
     if args.log:
         tag, label, evidence = classify_log(args.log.read_text(errors="replace"))
         print(f"{tag}: {label}" + (f"\n  {evidence}" if evidence else ""))
         return 0
-    results = classify_run(args.run)
+    results = classify_run(args.run, args.tail)
     if not results:
         print("no failed jobs")
         return 0
-    for name, tag, label, evidence in results:
+    for name, tag, label, evidence, tail_lines in results:
         print(f"{tag:11} {name}: {label}")
         if evidence:
             print(f"            {evidence}")
+        for line in tail_lines:
+            print(f"              | {line}")
     counts = {}
-    for _, tag, _, _ in results:
+    for _, tag, _, _, _ in results:
         counts[tag] = counts.get(tag, 0) + 1
     print("summary: " + ", ".join(f"{count} {tag}" for tag, count in sorted(counts.items())))
     return 0
