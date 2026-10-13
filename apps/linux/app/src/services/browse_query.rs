@@ -185,6 +185,9 @@ fn resolved_order_by(driver_id: &str, columns: &[ColumnInfo], sort: Option<(usiz
             tablepro_core::sql_dialect::quote_ident(driver_id, &column.name)
         ));
     }
+    if driver_id == "postgres" && !columns.iter().any(|column| column.primary_key) {
+        terms.push("ctid ASC".to_owned());
+    }
     (!terms.is_empty()).then(|| terms.join(", "))
 }
 
@@ -197,6 +200,8 @@ mod tests {
     mod mongodb_value;
     #[path = "redis_value.rs"]
     mod redis_value;
+    #[path = "stable_order.rs"]
+    mod stable_order;
 
     fn column(name: &str, primary_key: bool) -> ColumnInfo {
         ColumnInfo {
@@ -270,11 +275,6 @@ mod tests {
             resolved_order_by("postgres", &columns, Some((0, false))).as_deref(),
             Some("\"tenant\" DESC, \"id\" ASC")
         );
-    }
-
-    #[test]
-    fn table_without_pk_or_sort_has_no_promised_order() {
-        assert_eq!(resolved_order_by("postgres", &[column("name", false)], None), None);
     }
 
     #[test]
@@ -550,20 +550,26 @@ mod tests {
     #[test]
     fn keyset_cursor_is_ignored_when_the_table_has_no_primary_key() {
         let columns = vec![column("name", false)];
+        let filter = FilterSet::default();
         let target = BrowseTarget {
             driver_id: "postgres",
             schema: None,
             table: "items",
             columns: &columns,
-            filter: &FilterSet::default(),
+            filter: &filter,
             hidden_columns: None,
         };
-        assert!(matches!(
-            target
-                .page(KEYSET_OFFSET_THRESHOLD, 25, None, Some(&[Value::Int(5)]))
-                .unwrap(),
-            PageQuery::Native
-        ));
+        let PageQuery::Sql(page) = target
+            .page(KEYSET_OFFSET_THRESHOLD, 25, None, Some(&[Value::Int(5)]))
+            .unwrap()
+        else {
+            panic!("PostgreSQL unkeyed browse pages require ordered SQL")
+        };
+        assert!(
+            page.sql
+                .ends_with(&format!("ORDER BY ctid ASC LIMIT 25 OFFSET {KEYSET_OFFSET_THRESHOLD}"))
+        );
+        assert!(page.params.is_empty());
     }
 
     #[test]
