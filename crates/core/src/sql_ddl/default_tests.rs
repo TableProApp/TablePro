@@ -90,3 +90,17 @@ fn an_unchanged_empty_string_default_is_not_an_edit() {
     assert!(with_default(Some("''"), None).differs_beyond_name());
     assert!(with_default(None, Some("''")).differs_beyond_name());
 }
+
+#[test]
+fn a_postgres_primary_key_or_identity_toggle_on_an_existing_column_is_refused_not_ignored() {
+    let mut key = loaded(None);
+    key.primary_key = true;
+    let mut identity = loaded(None);
+    identity.auto_increment = true;
+    for column in [key, identity] {
+        assert!(matches!(
+            build_alter_column("postgres", None, "t", &column),
+            Err(super::BuildDdlError::PostgresNotSupported(_))
+        ));
+    }
+}

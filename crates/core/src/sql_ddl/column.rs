@@ -160,6 +160,13 @@ fn alter_column_postgres(
     table: &str,
     column: &DraftColumn,
 ) -> Result<Vec<String>, BuildDdlError> {
+    if column.original.as_ref().is_some_and(|original| {
+        original.primary_key != column.primary_key || original.is_auto_increment != column.auto_increment
+    }) {
+        return Err(BuildDdlError::PostgresNotSupported(
+            "changing the primary key or identity of an existing column; use the SQL editor",
+        ));
+    }
     let qualified = qualified_table(driver_id, schema, table);
     let name = quote_ident(driver_id, &column.name);
     let changed = ChangedAttributes::of(column);
