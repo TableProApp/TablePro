@@ -96,13 +96,40 @@ def classify_run(run_id, tail=0):
     return results
 
 
+def list_runs(limit):
+    token = Path(os.environ.get("FORGEJO_TOKEN_FILE", Path.home() / ".config/forgejo/token")).read_text().strip()
+    base = api_base()
+    runs = json.loads(fetch(f"{base}/actions/runs?limit={limit}", token))
+    runs = runs.get("workflow_runs", runs) if isinstance(runs, dict) else runs
+    for run in runs:
+        title = (run.get("display_title") or run.get("title") or "")[:60]
+        print(f"{run.get('id', run.get('index_in_repo', '?')):>6} {run.get('status', '?'):10} {run.get('event', '?'):18} {run.get('prettyref', run.get('head_branch', ''))[:28]:28} {title}")
+
+
+def run_jobs(run_id):
+    token = Path(os.environ.get("FORGEJO_TOKEN_FILE", Path.home() / ".config/forgejo/token")).read_text().strip()
+    base = api_base()
+    jobs = json.loads(fetch(f"{base}/actions/runs/{run_id}/jobs", token))
+    jobs = jobs["jobs"] if isinstance(jobs, dict) else jobs
+    for job in jobs:
+        print(f"{job['status']:10} {job['name']}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--log", type=Path)
     group.add_argument("--run", type=int)
+    group.add_argument("--list", type=int, metavar="N", help="list the N most recent runs, any workflow, any event")
+    group.add_argument("--jobs", type=int, metavar="RUN", help="list every job of a run with its status")
     parser.add_argument("--tail", type=int, default=0, help="also print the last N log lines of each failed job")
     args = parser.parse_args()
+    if args.list:
+        list_runs(args.list)
+        return 0
+    if args.jobs:
+        run_jobs(args.jobs)
+        return 0
     if args.log:
         tag, label, evidence = classify_log(args.log.read_text(errors="replace"))
         print(f"{tag}: {label}" + (f"\n  {evidence}" if evidence else ""))
