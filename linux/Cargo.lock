@@ -4319,6 +4319,7 @@ dependencies = [
  "gtk4",
  "libadwaita",
  "log",
+ "proptest",
  "relm4",
  "secrecy",
  "serde",

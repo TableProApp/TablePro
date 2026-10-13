@@ -1,3 +1,4 @@
+use super::{BuildDdlError, DdlOperation, TableChanges};
 use crate::foreign_key_mode::ForeignKeyMode;
 use crate::meta::TableRef;
 use crate::statement::{GuardedStatement, Statement, StatementBuilder};
@@ -25,6 +26,16 @@ impl DdlPlan {
                 })
                 .collect(),
             foreign_keys: ForeignKeyMode::Enforced,
+        }
+    }
+
+    /// The statements an engine wrote for a change to an existing table.
+    /// A change that came to no statement would save as done while the
+    /// table stayed as it was, so it is refused instead.
+    pub fn for_changes(changes: &TableChanges, statements: Vec<String>) -> Result<Self, BuildDdlError> {
+        match statements.is_empty() && !changes.is_empty() {
+            true => Err(BuildDdlError::Unsupported(DdlOperation::AlterTable)),
+            false => Ok(Self::from_sql(statements)),
         }
     }
 
@@ -77,5 +88,23 @@ mod tests {
         assert!(batch.foreign_keys.is_enforced());
         assert!(batch.steps.iter().all(|step| step.statement.params().is_empty()));
         assert_eq!(batch.steps[1].statement.sql(), "DROP INDEX i");
+    }
+
+    #[test]
+    fn a_change_that_wrote_nothing_is_refused() {
+        let renamed = TableChanges {
+            renamed_table: Some("u".to_owned()),
+            ..TableChanges::default()
+        };
+
+        assert_eq!(
+            DdlPlan::for_changes(&renamed, Vec::new()),
+            Err(BuildDdlError::Unsupported(DdlOperation::AlterTable))
+        );
+        assert!(DdlPlan::for_changes(&TableChanges::default(), Vec::new()).is_ok_and(|plan| plan.is_empty()));
+        assert_eq!(
+            DdlPlan::for_changes(&renamed, vec!["ALTER TABLE t RENAME TO u".to_owned()]).map(|plan| plan.len()),
+            Ok(1)
+        );
     }
 }

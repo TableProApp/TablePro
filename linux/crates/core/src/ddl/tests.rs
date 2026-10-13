@@ -207,7 +207,7 @@ fn an_unedited_draft_changes_nothing() {
 }
 
 #[test]
-fn a_rename_alone_is_one_change_and_alters_nothing() {
+fn diff_rename_only_is_one_change() {
     let original = users();
     let mut draft = TableDraft::from_definition(&original);
     draft_column(&mut draft, "email").name = "mail".to_owned();
@@ -242,7 +242,7 @@ fn change_count_matches_user_visible_edits() {
 }
 
 #[test]
-fn moving_the_primary_key_is_a_key_change_under_the_new_names() {
+fn diff_primary_key_change_detected() {
     let original = users();
     let mut draft = TableDraft::from_definition(&original);
     let id = draft_column(&mut draft, "id");
@@ -258,6 +258,68 @@ fn moving_the_primary_key_is_a_key_change_under_the_new_names() {
     let change = changes.primary_key.expect("the key moved");
     assert_eq!(change.to, ["user_id", "account_id"]);
     assert_eq!(change.from.and_then(|key| key.name).as_deref(), Some("users_pkey"));
+}
+
+#[test]
+fn renames_into_a_dropped_name_and_a_swap_run_one_at_a_time() {
+    let original = users();
+    let mut draft = TableDraft::from_definition(&original);
+    draft.columns.retain(|column| column.name != "legacy");
+    draft.indexes.retain(|index| index.name != "by_legacy");
+    draft_column(&mut draft, "email").name = "legacy".to_owned();
+    draft_column(&mut draft, "account_id").name = "id".to_owned();
+    draft_column(&mut draft, "id").name = "account_id".to_owned();
+    draft.columns.push(DraftColumn::new(
+        "__tablepro_rename_1",
+        DraftType::Typed("text".to_owned()),
+    ));
+
+    let changes = diff_table(&original, &draft);
+    let steps: Vec<(String, String)> = changes
+        .ordered_renames(&original)
+        .into_iter()
+        .map(|rename| (rename.from, rename.to))
+        .collect();
+
+    let step = |from: &str, to: &str| (from.to_owned(), to.to_owned());
+    assert_eq!(
+        steps,
+        [
+            step("email", "legacy"),
+            step("id", "__tablepro_rename_2"),
+            step("account_id", "id"),
+            step("__tablepro_rename_2", "account_id"),
+        ]
+    );
+}
+
+#[test]
+fn a_moved_key_is_dropped_by_its_name() {
+    let mut table = users();
+    let mut draft = TableDraft::from_definition(&table);
+    draft_column(&mut draft, "account_id").primary_key = true;
+    draft_column(&mut draft, "account_id").nullable = false;
+
+    assert_eq!(
+        diff_table(&table, &draft).dropped_primary_key_name(),
+        Ok(Some("users_pkey"))
+    );
+    table.primary_key = Some(PrimaryKeyConstraint {
+        name: None,
+        columns: vec!["id".to_owned()],
+    });
+    assert_eq!(
+        diff_table(&table, &draft).dropped_primary_key_name(),
+        Err(BuildDdlError::Refused {
+            column: "id".to_owned(),
+            operation: DdlOperation::AlterPrimaryKey,
+            reason: RefusalReason::UnreadableDefinition,
+        })
+    );
+    assert_eq!(
+        diff_table(&table, &TableDraft::from_definition(&table)).dropped_primary_key_name(),
+        Ok(None)
+    );
 }
 
 #[test]

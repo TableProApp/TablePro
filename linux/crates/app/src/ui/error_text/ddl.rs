@@ -16,6 +16,7 @@ pub fn refusal_text(reason: &RefusalReason) -> String {
         RefusalReason::IdentityColumn => {
             crate::i18n::gettext("The database numbers this column, so it has no default.")
         }
+        RefusalReason::NotAnInteger => crate::i18n::gettext("Only an integer column can number itself."),
         RefusalReason::UnmodeledAttribute(attribute) => crate::i18n::gettext_f(
             "This column has an attribute TablePro can't restate: {attribute}",
             &[("attribute", attribute)],

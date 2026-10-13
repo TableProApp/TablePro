@@ -7,6 +7,7 @@
 )]
 
 mod conformance_engine;
+mod ddl;
 mod keys_and_decimals;
 mod metadata;
 mod sessions;

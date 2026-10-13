@@ -1,6 +1,6 @@
 use super::{
     BuildDdlError, ColumnAlteration, ColumnDefinition, ColumnRename, DdlDialect, DdlOperation, DraftColumn, Permission,
-    PrimaryKeyChange, TableDefinition, primary_key_permission,
+    PrimaryKeyChange, RefusalReason, TableDefinition, order_renames, primary_key_permission,
 };
 use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::{IndexInfo, IndexKey, TableRef};
@@ -46,6 +46,35 @@ impl TableChanges {
         match &self.renamed_table {
             Some(name) => TableRef::new(original.schema.clone(), name.clone()),
             None => original.clone(),
+        }
+    }
+
+    /// The column renames as single statements run them, for an engine
+    /// that drops columns before it renames and adds columns after.
+    pub fn ordered_renames(&self, original: &TableDefinition) -> Vec<ColumnRename> {
+        let occupied = original
+            .columns
+            .iter()
+            .map(ColumnDefinition::name)
+            .filter(|name| !self.dropped_columns.iter().any(|column| column.name() == *name));
+        let added = self.added_columns.iter().map(|column| column.name.as_str());
+        order_renames(&self.renamed_columns, occupied, added)
+    }
+
+    /// The name of the primary key this change drops, for an engine that
+    /// drops it by name. A key the catalogue gave no name cannot be
+    /// dropped that way, and adding the new one beside it would fail.
+    pub fn dropped_primary_key_name(&self) -> Result<Option<&str>, BuildDdlError> {
+        let Some(key) = self.primary_key.as_ref().and_then(|change| change.from.as_ref()) else {
+            return Ok(None);
+        };
+        match &key.name {
+            Some(name) => Ok(Some(name)),
+            None => Err(BuildDdlError::Refused {
+                column: key.columns.first().cloned().unwrap_or_default(),
+                operation: DdlOperation::AlterPrimaryKey,
+                reason: RefusalReason::UnreadableDefinition,
+            }),
         }
     }
 

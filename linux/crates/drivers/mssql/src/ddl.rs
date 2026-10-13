@@ -167,15 +167,15 @@ impl DdlDialect for MssqlDialect {
                 self.quote_identifier(&index.name)
             ));
         }
-        let old_key = changes.primary_key.as_ref().and_then(|change| change.from.as_ref());
-        if let Some(name) = old_key.and_then(|key| key.name.as_ref()) {
+        let old_key = changes.dropped_primary_key_name()?;
+        if let Some(name) = old_key {
             statements.push(alter(format!("DROP CONSTRAINT {}", self.quote_identifier(name))));
         }
         for column in &changes.dropped_columns {
             statements.extend(self.drop_default(&table, column));
             statements.push(alter(format!("DROP COLUMN {}", self.quote_identifier(column.name()))));
         }
-        for rename in &changes.renamed_columns {
+        for rename in changes.ordered_renames(original) {
             let object = format!("{}.{}", qualified, self.quote_identifier(&rename.from));
             statements.push(format!(
                 "EXEC sp_rename {}, {}, N'COLUMN'",
@@ -248,7 +248,6 @@ impl DdlDialect for MssqlDialect {
         }
         if let Some(change) = changes.primary_key.as_ref().filter(|change| !change.to.is_empty()) {
             let constraint = old_key
-                .and_then(|key| key.name.as_ref())
                 .map(|name| format!("CONSTRAINT {} ", self.quote_identifier(name)))
                 .unwrap_or_default();
             statements.push(alter(format!(
@@ -265,7 +264,7 @@ impl DdlDialect for MssqlDialect {
         for key in &changes.added_foreign_keys {
             statements.push(alter(format!("ADD {}", foreign_key_sql(self, &table, key))));
         }
-        Ok(DdlPlan::from_sql(statements))
+        DdlPlan::for_changes(changes, statements)
     }
 }
 
@@ -761,6 +760,23 @@ mod tests {
     }
 
     #[test]
+    fn a_swap_steps_aside_through_a_temporary_name() {
+        let plan = alter(&orders(), |draft| {
+            draft.columns[1].name = "note".to_owned();
+            draft.columns[2].name = "status".to_owned();
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "EXEC sp_rename N'[dbo].[orders].[status]', N'__tablepro_rename_1', N'COLUMN'",
+                "EXEC sp_rename N'[dbo].[orders].[note]', N'status', N'COLUMN'",
+                "EXEC sp_rename N'[dbo].[orders].[__tablepro_rename_1]', N'note', N'COLUMN'",
+            ]
+        );
+    }
+
+    #[test]
     fn a_dropped_column_loses_its_default_constraint_first() {
         let plan = alter(&orders(), |draft| {
             draft.columns.retain(|column| column.name != "status")
@@ -776,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn sp_rename_quotes_parts_with_national_literals() {
+    fn sp_rename_quotes_parts() {
         let plan = alter(&orders(), |draft| {
             draft.table.name = "đơn hàng".to_owned();
             draft.columns[2].name = "o'brien".to_owned();
@@ -816,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn a_primary_key_change_drops_and_adds_the_named_constraint() {
+    fn pk_change_order_and_name_reuse() {
         let plan = alter(&orders(), |draft| {
             draft.columns[2].primary_key = true;
             draft.columns[2].nullable = false;
