@@ -152,6 +152,11 @@ macro_rules! connection_conformance_suite {
         }
         $crate::__conformance_case! {
             $docker,
+            calls_share_one_call_options,
+            $crate::conformance::cases::metadata::calls_share_one_call_options::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
             query_bound_times_out_within_deadline_plus_cancel_grace,
             $crate::conformance::cases::deadlines::query_bound_times_out_within_deadline_plus_cancel_grace::<$engine>
         }

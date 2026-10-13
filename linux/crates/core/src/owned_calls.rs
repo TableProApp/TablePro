@@ -112,9 +112,13 @@ impl OwnedCalls {
         });
 
         // Dropping the caller is itself a cancel: the work is already
-        // running on the server and has to be stopped, not forgotten.
-        let _guard = cancel.drop_guard();
-        match receiver.await {
+        // running on the server and has to be stopped, not forgotten. A
+        // call that returns leaves the token alone, since the caller may
+        // hand the same options to its next call.
+        let guard = cancel.drop_guard();
+        let received = receiver.await;
+        drop(guard.disarm());
+        match received {
             Ok(outcome) => outcome,
             Err(_) => {
                 spawned.abort();
@@ -190,8 +194,10 @@ impl OwnedCalls {
             let _ = sender.send(outcome);
         });
 
-        let _guard = cancel.drop_guard();
-        match receiver.await {
+        let guard = cancel.drop_guard();
+        let received = receiver.await;
+        drop(guard.disarm());
+        match received {
             Ok(outcome) => outcome,
             Err(_) => {
                 spawned.abort();
@@ -615,6 +621,44 @@ mod tests {
             0,
             "a stop was sent for a call that finished"
         );
+    }
+
+    /// One operation hands the same options to each of its calls, as a
+    /// page does for its columns, its row identity and its rows.
+    #[tokio::test]
+    async fn a_finished_call_leaves_the_callers_options_usable() {
+        let calls = OwnedCalls::new(Duration::from_secs(1));
+        let (engine, _sent) = Engine::new(StopDelivery::OutOfBand(StopScope::Statement));
+        let cancel = CancellationToken::new();
+        let shared = options(None, &cancel);
+
+        let first = calls
+            .run_read(
+                shared.clone(),
+                Connection::new().0,
+                engine.clone(),
+                |resource, _stop| async move { (resource, Ok(1)) },
+            )
+            .await;
+        let write = calls
+            .run_write(
+                shared.clone(),
+                Connection::new().0,
+                engine.clone(),
+                Arc::new(WriteLedger::new(crate::write_ledger::WriteAtomicity::Transactional)),
+                |resource, _stop| async move { (resource, Ok(WriteReport::default())) },
+            )
+            .await;
+        let second = calls
+            .run_read(shared, Connection::new().0, engine, |resource, _stop| async move {
+                (resource, Ok(2))
+            })
+            .await;
+
+        assert_eq!(first.expect("the first call"), 1);
+        assert!(write.is_ok(), "{write:?}");
+        assert_eq!(second.expect("a later call with the same options"), 2);
+        assert!(!cancel.is_cancelled(), "a finished call cancelled its caller's token");
     }
 
     #[tokio::test(start_paused = true)]
