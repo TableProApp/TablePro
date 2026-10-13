@@ -10,6 +10,8 @@ mod advisory_lock_release;
 mod federated;
 #[path = "mysql_atomic_parts/merge_table.rs"]
 mod merge_table;
+#[path = "mysql_atomic_parts/upsert.rs"]
+mod upsert;
 
 #[tokio::test]
 #[ignore = "requires docker"]
