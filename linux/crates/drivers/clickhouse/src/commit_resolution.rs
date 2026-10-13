@@ -139,7 +139,7 @@ pub(crate) async fn resolve(calls: &CallClient, token: &CommitToken) -> Result<C
     let Some(query_id) = query_ids.get(*first_unconfirmed) else {
         return Ok(CommitResolution::Unresolvable);
     };
-    match drain(calls.raw("SYSTEM FLUSH LOGS")).await {
+    match drain(calls.raw("SYSTEM FLUSH LOGS")?).await {
         Ok(_) => {}
         Err(error) if server_code(&error) == Some(code::ACCESS_DENIED) => {}
         Err(error) => return Err(error),
@@ -160,7 +160,7 @@ pub(crate) async fn resolve(calls: &CallClient, token: &CommitToken) -> Result<C
 }
 
 async fn log_entries(calls: &CallClient, query_id: Uuid) -> Result<Vec<LogEntry>, DriverError> {
-    let query = calls.raw(LOG_SELECT).param("id", query_id.to_string());
+    let query = calls.raw(LOG_SELECT)?.param("id", query_id.to_string());
     let result = read_table(query, None).await?;
     result
         .rows
@@ -184,7 +184,7 @@ async fn log_entries(calls: &CallClient, query_id: Uuid) -> Result<Vec<LogEntry>
 /// lists it, and lost otherwise.
 async fn still_running(calls: &CallClient, query_id: Uuid) -> Result<CommitResolution, DriverError> {
     let query = calls
-        .raw("SELECT count() FROM system.processes WHERE query_id = {id:String}")
+        .raw("SELECT count() FROM system.processes WHERE query_id = {id:String}")?
         .param("id", query_id.to_string());
     let result = read_table(query, None).await?;
     let running = result
@@ -211,10 +211,10 @@ async fn mutation(
         Some(table) => calls
             .raw(&format!(
                 "SELECT is_done FROM system.mutations WHERE database = {{db:String}} AND table = {{tbl:String}} AND {window}"
-            ))
+            ))?
             .param("db", table.database.as_str())
             .param("tbl", table.table.as_str()),
-        None => calls.raw(&format!("SELECT is_done FROM system.mutations WHERE {window}")),
+        None => calls.raw(&format!("SELECT is_done FROM system.mutations WHERE {window}"))?,
     };
     let query = query.param("started", started).param("ended", ended);
     let result = read_table(query, None).await?;

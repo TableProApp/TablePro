@@ -119,15 +119,15 @@ impl ClickHouseConnection {
             Client::Reads => reading(self.endpoint.workspace(), read_bound(options.deadline(), bound)),
             Client::Control => self.endpoint.control().clone(),
         };
-        let calls = CallClient::new(base, stop.clone());
+        let work_stop = stop.clone();
         let outcome = self
             .calls
             .run_read(
                 options,
                 HttpCall::new(),
                 stop.clone(),
-                move |call, _request| async move {
-                    let result = work(calls).await;
+                move |call, request| async move {
+                    let result = work(CallClient::new(base, work_stop, request)).await;
                     (call, result)
                 },
             )
@@ -160,10 +160,9 @@ impl ClickHouseConnection {
         if !suspects_link(&error) {
             return Err(error);
         }
-        let lost = match stop.progress() {
-            StopProgress::InFlight | StopProgress::Unreachable => true,
-            StopProgress::Delivered => false,
-            StopProgress::NotSent | StopProgress::NothingToStop => {
+        let lost = match known_lost(stop.progress(), stop.withheld()) {
+            Some(lost) => lost,
+            None => {
                 let checked = self.endpoint.check(self.liveness().cancel_grace).await;
                 checked.is_err_and(|failure| means_link_lost(&failure))
             }
@@ -190,6 +189,21 @@ fn suspects_link(error: &DriverError) -> bool {
             phase,
         } => matches!(phase, TimeoutPhase::Statement | TimeoutPhase::Probe),
         _ => false,
+    }
+}
+
+/// What the stop already says about the route, or `None` when only a
+/// request of its own can tell.
+///
+/// A call that waits on its KILL and ends with it still out means the
+/// route stopped answering. A call that ended by holding back its next
+/// query waited on nothing, so a KILL still out says nothing yet.
+fn known_lost(progress: StopProgress, withheld: bool) -> Option<bool> {
+    match progress {
+        StopProgress::Unreachable => Some(true),
+        StopProgress::InFlight if !withheld => Some(true),
+        StopProgress::Delivered => Some(false),
+        StopProgress::InFlight | StopProgress::NotSent | StopProgress::NothingToStop => None,
     }
 }
 
@@ -324,7 +338,7 @@ impl Connection for ClickHouseConnection {
     ) -> Result<QueryResult, DriverError> {
         let statement = statement.clone();
         self.workspace_read(options, move |calls| async move {
-            let table = read_table(calls.statement(&statement), Some(limit.get())).await?;
+            let table = read_table(calls.statement(&statement)?, Some(limit.get())).await?;
             Ok(QueryResult::new(table.columns, table.rows).truncated(table.truncated))
         })
         .await
@@ -333,7 +347,7 @@ impl Connection for ClickHouseConnection {
     async fn count_rows(&self, statement: &Statement, options: CallOptions) -> Result<u64, DriverError> {
         let statement = statement.clone();
         self.workspace_read(options, move |calls| async move {
-            let table = read_table(calls.statement(&statement), Some(1)).await?;
+            let table = read_table(calls.statement(&statement)?, Some(1)).await?;
             let value = table
                 .rows
                 .first()
@@ -370,7 +384,7 @@ impl Connection for ClickHouseConnection {
         let plan = WritePlan {
             batch: batch.clone(),
             ledger: ledger.clone(),
-            probes: CallClient::new(reading(self.endpoint.workspace(), probe_bound), stop.clone()),
+            probes: reading(self.endpoint.workspace(), probe_bound),
             writes: self
                 .endpoint
                 .workspace()
@@ -420,5 +434,22 @@ impl Connection for ClickHouseConnection {
         }
         self.calls.shutdown().await;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_kill_still_out_after_a_held_back_query_is_not_a_lost_route() {
+        assert_eq!(known_lost(StopProgress::InFlight, true), None);
+        assert_eq!(known_lost(StopProgress::Unreachable, true), Some(true));
+        assert_eq!(known_lost(StopProgress::Delivered, true), Some(false));
+        assert_eq!(known_lost(StopProgress::InFlight, false), Some(true));
+        assert_eq!(known_lost(StopProgress::Unreachable, false), Some(true));
+        assert_eq!(known_lost(StopProgress::Delivered, false), Some(false));
+        assert_eq!(known_lost(StopProgress::NotSent, false), None);
+        assert_eq!(known_lost(StopProgress::NothingToStop, false), None);
     }
 }

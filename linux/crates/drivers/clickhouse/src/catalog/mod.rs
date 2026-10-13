@@ -43,14 +43,14 @@ pub(crate) async fn column_rows(
     calls: &CallClient,
     table: &CatalogTable,
 ) -> Result<Vec<ClickHouseColumnRow>, DriverError> {
-    let result = read_table(table.bind(calls.raw(COLUMN_SELECT)), None).await?;
+    let result = read_table(table.bind(calls.raw(COLUMN_SELECT)?), None).await?;
     result.rows.iter().map(|row| ClickHouseColumnRow::read(row)).collect()
 }
 
 pub(crate) async fn table_keys(calls: &CallClient, table: &CatalogTable) -> Result<TableKeys, DriverError> {
     let sql = "SELECT sorting_key, primary_key, total_rows FROM system.tables \
                WHERE database = {db:String} AND name = {tbl:String}";
-    let result = read_table(table.bind(calls.raw(sql)), None).await?;
+    let result = read_table(table.bind(calls.raw(sql)?), None).await?;
     let Some(row) = result.rows.first() else {
         return Ok(TableKeys::default());
     };
@@ -80,7 +80,7 @@ pub(crate) async fn fetch_indexes(calls: &CallClient, table: &CatalogTable) -> R
     }
     let sql = "SELECT name, expr FROM system.data_skipping_indices \
                WHERE database = {db:String} AND table = {tbl:String} ORDER BY name";
-    let skipping = read_table(table.bind(calls.raw(sql)), None).await?;
+    let skipping = read_table(table.bind(calls.raw(sql)?), None).await?;
     for row in &skipping.rows {
         let row = CatalogRow(row);
         indexes.push(IndexInfo {

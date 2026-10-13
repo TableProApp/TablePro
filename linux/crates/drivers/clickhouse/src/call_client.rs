@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use clickhouse::query::Query;
 use tablepro_core::statement::Statement;
+use tablepro_core::{DriverError, StopRequest};
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -11,37 +12,46 @@ use crate::param_value::bind_params;
 
 /// The client one call sends its queries through, each under a query id
 /// of its own that the call's stop can name.
+///
+/// A KILL stops only the query running when it arrives, so a call of
+/// several queries would go on to the next one after a stop. Once the
+/// call is stopped, no further query is handed out.
 pub(crate) struct CallClient {
     client: clickhouse::Client,
     stop: Arc<ClickHouseStop>,
+    request: StopRequest,
 }
 
 impl CallClient {
-    pub(crate) fn new(client: clickhouse::Client, stop: Arc<ClickHouseStop>) -> Self {
-        Self { client, stop }
+    pub(crate) fn new(client: clickhouse::Client, stop: Arc<ClickHouseStop>, request: StopRequest) -> Self {
+        Self { client, stop, request }
     }
 
     /// SQL sent as written: a `?` in it is the user's, not a marker.
-    pub(crate) fn raw(&self, sql: &str) -> Query {
+    pub(crate) fn raw(&self, sql: &str) -> Result<Query, DriverError> {
         self.tracked(self.client.query_raw(sql))
     }
 
     /// A generated statement, with its values bound as the server-side
     /// parameters its `{pN:Type}` markers name.
-    pub(crate) fn statement(&self, statement: &Statement) -> Query {
-        bind_params(self.raw(statement.sql()), statement.params())
+    pub(crate) fn statement(&self, statement: &Statement) -> Result<Query, DriverError> {
+        Ok(bind_params(self.raw(statement.sql())?, statement.params()))
     }
 
     /// SQL whose `?` markers the client fills, for identifiers bound
     /// through `clickhouse::sql::Identifier`.
-    pub(crate) fn template(&self, sql: &str) -> Query {
+    pub(crate) fn template(&self, sql: &str) -> Result<Query, DriverError> {
         self.tracked(self.client.query(sql))
     }
 
-    fn tracked(&self, query: Query) -> Query {
+    fn tracked(&self, query: Query) -> Result<Query, DriverError> {
+        if self.request.is_requested() {
+            self.stop.withhold();
+            return Err(self.stop.interrupted(&self.request));
+        }
         let id = Uuid::new_v4();
         self.stop.track(id);
-        query.with_setting("query_id", id.to_string())
+        Ok(query.with_setting("query_id", id.to_string()))
     }
 }
 
@@ -79,7 +89,45 @@ pub(crate) fn whole_seconds(bound: Option<Duration>) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::StopReason;
+
     use super::*;
+
+    fn call(request: &StopRequest) -> (CallClient, Arc<ClickHouseStop>) {
+        let stop = Arc::new(ClickHouseStop::new(clickhouse::Client::default()));
+        let calls = CallClient::new(clickhouse::Client::default(), stop.clone(), request.clone());
+        (calls, stop)
+    }
+
+    #[test]
+    fn a_query_goes_out_until_the_call_is_stopped() {
+        let request = StopRequest::new();
+        let (calls, stop) = call(&request);
+
+        assert!(calls.raw("SELECT 1").is_ok());
+        assert!(!stop.withheld());
+        request.request(StopReason::Cancelled);
+
+        assert_eq!(calls.raw("SELECT 2").err(), Some(DriverError::Cancelled));
+        assert!(calls.template("SHOW CREATE TABLE ?.?").is_err());
+        assert!(stop.withheld());
+    }
+
+    #[test]
+    fn a_withheld_query_reads_as_what_stopped_the_call() {
+        let request = StopRequest::new();
+        let (calls, _stop) = call(&request);
+
+        request.request(StopReason::DeadlineElapsed);
+
+        assert_eq!(
+            calls.raw("SELECT 1").err(),
+            Some(DriverError::Timeout {
+                phase: tablepro_core::TimeoutPhase::Statement,
+                server_cancelled: false,
+            })
+        );
+    }
 
     #[test]
     fn a_bound_rounds_up_to_whole_seconds_and_never_reaches_zero() {

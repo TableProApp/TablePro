@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
@@ -30,6 +31,7 @@ pub(crate) struct ClickHouseStop {
     control: clickhouse::Client,
     running: Mutex<Option<Uuid>>,
     progress: Mutex<StopProgress>,
+    withheld: AtomicBool,
 }
 
 impl ClickHouseStop {
@@ -38,6 +40,7 @@ impl ClickHouseStop {
             control,
             running: Mutex::new(None),
             progress: Mutex::new(StopProgress::NotSent),
+            withheld: AtomicBool::new(false),
         }
     }
 
@@ -54,6 +57,17 @@ impl ClickHouseStop {
 
     pub(crate) fn progress(&self) -> StopProgress {
         *lock(&self.progress)
+    }
+
+    /// The call ended at a stop without sending its next query.
+    pub(crate) fn withhold(&self) {
+        self.withheld.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether the call ended by not sending a query. That was the
+    /// driver's own doing, so it says nothing about the route.
+    pub(crate) fn withheld(&self) -> bool {
+        self.withheld.load(Ordering::SeqCst)
     }
 
     /// What a call stopped before it reached the server reads as.
