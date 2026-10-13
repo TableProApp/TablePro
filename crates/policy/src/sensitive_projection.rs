@@ -84,6 +84,16 @@ fn record_serialization_constructor(lowered: &str) -> bool {
         "jsonb_build_object(",
         "json_object(",
         "jsonb_object(",
+        "table_to_xml(",
+        "table_to_xml_and_xmlschema(",
+        "schema_to_xml(",
+        "schema_to_xml_and_xmlschema(",
+        "database_to_xml(",
+        "database_to_xml_and_xmlschema(",
+        "query_to_xml(",
+        "query_to_xml_and_xmlschema(",
+        "cursor_to_xml(",
+        "cursor_to_xml_and_xmlschema(",
     ] {
         if let Some(function_name) = name.strip_suffix('(')
             && contains_function_call(lowered, function_name)
@@ -263,6 +273,28 @@ mod tests {
             1,
         );
         assert_eq!(positions, vec![true]);
+    }
+
+    #[test]
+    fn postgres_xml_serializers_are_treated_as_sensitive() {
+        for sql in [
+            "SELECT table_to_xml('cards'::regclass, true, false, '')",
+            "SELECT table_to_xml_and_xmlschema('cards'::regclass, true, false, '')",
+            "SELECT schema_to_xml('public', true, false, '')",
+            "SELECT schema_to_xml_and_xmlschema('public', true, false, '')",
+            "SELECT database_to_xml(true, false, '')",
+            "SELECT database_to_xml_and_xmlschema(true, false, '')",
+            "SELECT query_to_xml('SELECT pan FROM cards', true, false, '')",
+            "SELECT query_to_xml_and_xmlschema('SELECT pan FROM cards', true, false, '')",
+            "SELECT cursor_to_xml('sensitive_rows', true, false, '')",
+            "SELECT cursor_to_xml_and_xmlschema('sensitive_rows', true, false, '')",
+        ] {
+            assert_eq!(
+                sensitive_projection(sql, "postgres", &sensitive_patterns(), 1),
+                vec![true],
+                "{sql}"
+            );
+        }
     }
 
     #[test]

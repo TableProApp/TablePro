@@ -443,3 +443,35 @@ async fn an_agent_cannot_expose_sensitive_json_through_an_outer_alias() {
 
     assert_eq!(result.rows, vec![vec![Value::Text("***REDACTED***".into())]]);
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_agent_cannot_expose_sensitive_columns_through_table_to_xml() {
+    let (_container, opts) = start_pg().await;
+    let raw = connect(opts).await;
+    raw.execute("CREATE TABLE cards (pan TEXT NOT NULL, amount BIGINT NOT NULL)")
+        .await
+        .unwrap();
+    raw.execute("INSERT INTO cards VALUES ('4111111111111111', 7)")
+        .await
+        .unwrap();
+    let mut context = guard_context(Arc::new(CapturingAudit::new()), Arc::new(AuditState::new()));
+    context.environment = Environment::Prod;
+    context.principal = Principal::Agent {
+        token: "mask-test".into(),
+        client: None,
+        model: None,
+    };
+    let guard = PolicyGuard::new(Arc::from(raw), context);
+
+    let result = guard
+        .query_params_controlled(
+            "SELECT table_to_xml('cards'::regclass, true, false, '')",
+            &[],
+            &no_timeout(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.rows, vec![vec![Value::Text("***REDACTED***".into())]]);
+}
