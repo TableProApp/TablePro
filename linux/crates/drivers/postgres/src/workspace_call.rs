@@ -108,6 +108,10 @@ pub(crate) fn statement_bound(settings: &WorkspaceSettings, deadline: Option<Ins
 /// together and their answers come back in order, so a read costs one
 /// round trip. A failed step leaves the transaction aborted, and the
 /// COMMIT then ends it as a rollback.
+///
+/// The COMMIT is queued as soon as the work first waits for an answer,
+/// so the work must send every query before that: one sent later lands
+/// after the COMMIT, outside the transaction and its bounds.
 pub(crate) async fn flight<T>(call: &PgCall, preamble: &Preamble, op: ReadOp<T>) -> Result<T, DriverError> {
     let client = call.client()?;
     let started = Instant::now();

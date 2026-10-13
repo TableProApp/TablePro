@@ -11,6 +11,7 @@ mod conformance_engine;
 mod decode;
 mod editor_session;
 mod filter;
+mod flight;
 mod liveness;
 mod metadata;
 mod pgbouncer;
