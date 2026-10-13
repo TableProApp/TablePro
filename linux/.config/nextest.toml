@@ -37,6 +37,9 @@ test-group = 'session'
 
 [profile.ci]
 fail-fast = false
+# A hung test fails with its name after five minutes. Without a bound it
+# holds the runner until the job dies with no report.
+slow-timeout = { period = "60s", terminate-after = 5 }
 
 [profile.ci.junit]
 path = "junit.xml"

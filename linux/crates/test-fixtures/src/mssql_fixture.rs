@@ -11,6 +11,7 @@ use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, Fixture
 const CONTAINER_PORT: u16 = 1433;
 const ADMIN_USER: &str = "sa";
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(240);
+const MEMORY_LIMIT_MB: &str = "2048";
 
 pub struct MssqlFixture {
     container: ContainerAsync<MssqlServer>,
@@ -31,7 +32,10 @@ impl MssqlFixture {
             .with_sa_password(&password)
             .with_name(FixtureImage::MSSQL.name)
             .with_tag(FixtureImage::MSSQL.tag)
-            .with_startup_timeout(STARTUP_TIMEOUT);
+            .with_startup_timeout(STARTUP_TIMEOUT)
+            // SQL Server otherwise takes 80% of the host's memory, and a
+            // container left behind by a killed test keeps all of it.
+            .with_env_var("MSSQL_MEMORY_LIMIT_MB", MEMORY_LIMIT_MB);
         let container = with_files(request, Self::files(&pki)?).start().await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(CONTAINER_PORT).await?;

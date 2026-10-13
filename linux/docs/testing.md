@@ -155,7 +155,7 @@ CI runs one job per package with docker tests:
 cargo nextest run --locked --profile ci -p tablepro-driver-mssql --run-ignored only
 ```
 
-`.config/nextest.toml` puts each driver's tests in a test group with one thread, so the tests of one suite never compete for a container. The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml`.
+`.config/nextest.toml` puts each driver's tests in a test group with one thread, so the tests of one suite never compete for a container. The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml` and kills a test that runs past five minutes, so a hang fails with the test's name.
 
 Locally, with [cargo-nextest](https://nexte.st/) installed:
 
