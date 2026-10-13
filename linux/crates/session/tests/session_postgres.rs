@@ -58,11 +58,22 @@ fn password(credentials: &FixtureCredentials) -> Credentials {
 }
 
 /// SSH services that run the system client with a private config: no
-/// agent, a throwaway known_hosts, and new host keys accepted, so no
-/// prompt is ever raised.
+/// agent and a throwaway known_hosts. The app asks about every host key
+/// it does not know, so a test trusts its server's key first.
 struct IsolatedSsh {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     services: SshServices,
+}
+
+impl IsolatedSsh {
+    async fn trust(&self, sshd: &OpenSshFixture) {
+        let key = sshd.host_public_key().await.expect("the server's host key");
+        std::fs::write(
+            self.dir.path().join("known_hosts"),
+            format!("[{}]:{} {key}\n", sshd.host(), sshd.port()),
+        )
+        .expect("the known_hosts file");
+    }
 }
 
 fn isolated_ssh() -> IsolatedSsh {
@@ -71,7 +82,7 @@ fn isolated_ssh() -> IsolatedSsh {
     std::fs::write(
         &config,
         format!(
-            "Host *\n  UserKnownHostsFile {}\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking accept-new\n  IdentityAgent none\n  IdentitiesOnly yes\n",
+            "Host *\n  UserKnownHostsFile {}\n  GlobalKnownHostsFile /dev/null\n  IdentityAgent none\n  IdentitiesOnly yes\n",
             dir.path().join("known_hosts").display()
         ),
     )
@@ -91,7 +102,7 @@ fn isolated_ssh() -> IsolatedSsh {
         ssh_keygen_program: PathBuf::from("ssh-keygen"),
         askpass_program: PathBuf::from("/nonexistent/tablepro-askpass"),
     };
-    IsolatedSsh { _dir: dir, services }
+    IsolatedSsh { dir, services }
 }
 
 fn connector(ssh: SshServices) -> Arc<DriverConnector> {
@@ -305,6 +316,7 @@ async fn session_through_openssh_reconnects_after_the_master_dies() {
         .await
         .expect("an OpenSSH server");
     let ssh = isolated_ssh();
+    ssh.trust(&sshd).await;
     let connector = connector(ssh.services.clone());
 
     let pending = establish(&connector, request(ssh_target(&sshd, &postgres, &private_key))).await;

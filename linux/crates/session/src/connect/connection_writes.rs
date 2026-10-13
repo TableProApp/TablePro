@@ -1,11 +1,13 @@
 use futures::future::BoxFuture;
 use tablepro_storage::{ConnectionStore, SavedConnection, StorageError};
+use uuid::Uuid;
 
 use crate::runtime::Tasks;
 
 /// Where a saved connection entry is written.
 pub trait ConnectionWrites: Send + Sync {
     fn upsert(&self, connection: SavedConnection) -> BoxFuture<'_, Result<(), StorageError>>;
+    fn remove(&self, id: Uuid) -> BoxFuture<'_, Result<(), StorageError>>;
 }
 
 /// The connection list on disk, written on the blocking pool because a
@@ -32,6 +34,17 @@ impl ConnectionWrites for StoreConnectionWrites {
             written
                 .await
                 .map_err(|failure| StorageError::Schema(format!("the connections write task failed: {failure}")))?
+        })
+    }
+
+    fn remove(&self, id: Uuid) -> BoxFuture<'_, Result<(), StorageError>> {
+        let store = self.store.clone();
+        let removed = self.tasks.spawn_blocking_task(move || store.remove_blocking(id));
+        Box::pin(async move {
+            removed
+                .await
+                .map_err(|failure| StorageError::Schema(format!("the connections write task failed: {failure}")))?
+                .map(|_| ())
         })
     }
 }

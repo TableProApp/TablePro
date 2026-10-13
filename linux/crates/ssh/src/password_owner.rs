@@ -1,19 +1,9 @@
-use std::path::Path;
-
-use crate::SshConfig;
-use crate::first_hop::lookup;
-
 /// The `user@host` OpenSSH puts in the destination's password prompt, so
 /// a stored password goes to that prompt and never to a jump host's.
 ///
 /// sshconnect2.c prints `%.30s@%.128s's password: ` with the server user
 /// and HostKeyAlias, or the resolved HostName when there is no alias.
-pub(crate) async fn resolve_password_owner(ssh_program: &Path, config: &SshConfig) -> Option<String> {
-    let output = lookup(ssh_program, &config.destination, &config.jump_hosts).await?;
-    password_owner(&output)
-}
-
-fn password_owner(ssh_g_output: &str) -> Option<String> {
+pub(crate) fn password_owner(ssh_g_output: &str) -> Option<String> {
     let mut user = None;
     let mut hostname = None;
     let mut alias = None;

@@ -29,8 +29,19 @@ struct Fixture {
     _temp: tempfile::TempDir,
     host: String,
     port: u16,
+    config: PathBuf,
     known_hosts: PathBuf,
     services: SshServices,
+}
+
+fn write_config(config: &Path, known_hosts: &Path, strict_host_key_checking: &str) -> std::io::Result<()> {
+    std::fs::write(
+        config,
+        format!(
+            "Host *\n  UserKnownHostsFile {}\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking {strict_host_key_checking}\n  IdentityAgent none\n  IdentitiesOnly yes\n  PubkeyAuthentication no\n",
+            known_hosts.display()
+        ),
+    )
 }
 
 async fn start() -> TestResult<Fixture> {
@@ -46,13 +57,7 @@ async fn start() -> TestResult<Fixture> {
     let temp = tempfile::tempdir()?;
     let known_hosts = temp.path().join("known_hosts");
     let config = temp.path().join("ssh_config");
-    std::fs::write(
-        &config,
-        format!(
-            "Host *\n  UserKnownHostsFile {}\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking ask\n  IdentityAgent none\n  IdentitiesOnly yes\n  PubkeyAuthentication no\n",
-            known_hosts.display()
-        ),
-    )?;
+    write_config(&config, &known_hosts, "ask")?;
     let wrapper = temp.path().join("ssh");
     std::fs::write(
         &wrapper,
@@ -73,6 +78,7 @@ async fn start() -> TestResult<Fixture> {
         _temp: temp,
         host,
         port,
+        config,
         known_hosts,
         services,
     })
@@ -208,6 +214,56 @@ async fn unknown_host_declined_is_host_key_unknown_declined() {
         session.unwrap_err(),
         TransportError::Ssh(SshFailure::HostKeyUnknown { declined: true, .. })
     ));
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_user_config_that_skips_the_host_key_check_still_asks() {
+    let fixture = start().await.unwrap();
+    for strict in ["no", "accept-new"] {
+        write_config(&fixture.config, &fixture.known_hosts, strict).unwrap();
+        if let Err(error) = std::fs::remove_file(&fixture.known_hosts) {
+            assert_eq!(error.kind(), std::io::ErrorKind::NotFound, "{error}");
+        }
+
+        let (session, prompter) = connect(&fixture, password_auth(), vec![PromptReply::Cancelled]).await;
+
+        assert!(
+            matches!(
+                session,
+                Err(TransportError::Ssh(SshFailure::HostKeyUnknown { declined: true, .. }))
+            ),
+            "StrictHostKeyChecking {strict} trusted the key without asking"
+        );
+        let purposes: Vec<PromptPurpose> = prompter.requests().into_iter().map(|request| request.purpose).collect();
+        assert!(
+            matches!(purposes.as_slice(), [PromptPurpose::SshHostKeyConfirmation { .. }]),
+            "{strict}: {purposes:?}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_user_config_that_requires_a_known_key_refuses_without_asking() {
+    let fixture = start().await.unwrap();
+    write_config(&fixture.config, &fixture.known_hosts, "yes").unwrap();
+
+    let (session, prompter) = connect(&fixture, password_auth(), Vec::new()).await;
+
+    assert!(
+        matches!(
+            session,
+            Err(TransportError::Ssh(SshFailure::HostKeyUnknown {
+                trust_allowed: false,
+                declined: false,
+                ..
+            }))
+        ),
+        "{session:?}"
+    );
+    assert!(prompter.requests().is_empty(), "{:?}", prompter.requests());
+    assert!(!fixture.known_hosts.exists(), "the key was trusted");
 }
 
 #[tokio::test]

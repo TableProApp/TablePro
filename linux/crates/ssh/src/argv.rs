@@ -4,6 +4,7 @@ use std::path::Path;
 
 use tablepro_core::{LivenessPolicy, NetworkEndpoint};
 
+use crate::host_key_checking::HostKeyChecking;
 use crate::{SshAuth, SshConfig};
 
 const FORCED_OPTIONS: [&str; 14] = [
@@ -37,11 +38,20 @@ pub(crate) enum ControlOp<'a> {
     Exit,
 }
 
-pub(crate) fn master_args(config: &SshConfig, control: &Path, liveness: &LivenessPolicy) -> Vec<OsString> {
+pub(crate) fn master_args(
+    config: &SshConfig,
+    control: &Path,
+    liveness: &LivenessPolicy,
+    host_keys: Option<HostKeyChecking>,
+) -> Vec<OsString> {
     let mut args: Vec<OsString> = ["-M", "-N", "-T"].into_iter().map(OsString::from).collect();
     push_option(&mut args, control_path_option(control));
     for option in &FORCED_OPTIONS[..FORCED_OPTIONS.len() - 1] {
         push_option(&mut args, OsString::from(option));
+    }
+    // The app's dialog is the trust decision, so accept-new and no are raised to ask; a config's yes stays a refusal.
+    if matches!(host_keys, Some(HostKeyChecking::AcceptNew | HostKeyChecking::No)) {
+        push_option(&mut args, OsString::from("StrictHostKeyChecking=ask"));
     }
     push_option(
         &mut args,
@@ -163,6 +173,7 @@ mod tests {
             &config(None, None, SshAuth::Agent),
             Path::new("/run/user/1000/app/ssh/0123456789abcdef/89abcdef/control"),
             &LivenessPolicy::DESKTOP,
+            None,
         );
         assert_eq!(
             strings(&args),
@@ -213,12 +224,50 @@ mod tests {
     }
 
     #[test]
+    fn only_a_config_that_would_skip_the_host_key_dialog_is_overridden() {
+        let cases = [
+            (None, None),
+            (Some(HostKeyChecking::Yes), None),
+            (Some(HostKeyChecking::Ask), None),
+            (Some(HostKeyChecking::AcceptNew), Some("StrictHostKeyChecking=ask")),
+            (Some(HostKeyChecking::No), Some("StrictHostKeyChecking=ask")),
+        ];
+        for (host_keys, expected) in cases {
+            let auths = [
+                SshAuth::Agent,
+                SshAuth::PrivateKey {
+                    path: None,
+                    passphrase: None,
+                },
+                SshAuth::Password {
+                    password: SecretString::from("secret"),
+                },
+                SshAuth::KeyboardInteractive,
+            ];
+            for auth in auths {
+                let args = master_args(
+                    &config(None, None, auth),
+                    Path::new("/tmp/control"),
+                    &LivenessPolicy::DESKTOP,
+                    host_keys,
+                );
+                let strict: Vec<&str> = strings(&args)
+                    .into_iter()
+                    .filter(|arg| arg.starts_with("StrictHostKeyChecking="))
+                    .collect();
+                assert_eq!(strict, expected.into_iter().collect::<Vec<_>>(), "{host_keys:?}");
+            }
+        }
+    }
+
+    #[test]
     fn port_and_user_only_when_set() {
         let control = Path::new("/tmp/control");
         let without = strings(&master_args(
             &config(None, None, SshAuth::Agent),
             control,
             &LivenessPolicy::DESKTOP,
+            None,
         ))
         .join(" ");
         assert!(!without.contains(" -p ") && !without.contains(" -l "));
@@ -226,6 +275,7 @@ mod tests {
             &config(Some(2222), Some("deploy"), SshAuth::Agent),
             control,
             &LivenessPolicy::DESKTOP,
+            None,
         );
         assert_eq!(
             strings(&with[with.len() - 6..]),
@@ -237,7 +287,7 @@ mod tests {
     fn jump_hosts_render_one_minus_j() {
         let mut with_jumps = config(None, None, SshAuth::Agent);
         with_jumps.jump_hosts = SshDestination::parse_jump_list("ops@jump1:2200,[fd00::1]").unwrap();
-        let args = master_args(&with_jumps, Path::new("/tmp/control"), &LivenessPolicy::DESKTOP);
+        let args = master_args(&with_jumps, Path::new("/tmp/control"), &LivenessPolicy::DESKTOP, None);
         let args = strings(&args);
         assert_eq!(args.iter().filter(|arg| **arg == "-J").count(), 1);
         let position = args.iter().position(|arg| *arg == "-J").unwrap();
@@ -254,6 +304,7 @@ mod tests {
             &config(None, None, auth),
             Path::new("/tmp/control"),
             &LivenessPolicy::DESKTOP,
+            None,
         );
         let joined = strings(&args).join(" ");
         assert!(
@@ -269,6 +320,7 @@ mod tests {
             &config(None, None, without_path),
             Path::new("/tmp/control"),
             &LivenessPolicy::DESKTOP,
+            None,
         );
         assert!(!strings(&args).contains(&"-i"));
     }
@@ -293,6 +345,7 @@ mod tests {
                 &config(None, None, auth),
                 Path::new("/tmp/control"),
                 &LivenessPolicy::DESKTOP,
+                None,
             );
             let preferred = strings(&args)
                 .into_iter()

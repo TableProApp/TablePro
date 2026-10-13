@@ -6,22 +6,23 @@ use relm4::{ComponentController, ComponentSender, adw, gtk};
 
 use tablepro_core::meta::ObjectInfo;
 use tablepro_session::connect::AttemptGeneration;
-use tablepro_session::runtime::WatchForwarder;
+use tablepro_session::runtime::{ProcessHold, WatchForwarder};
 use tablepro_session::{
-    ClaimError, ConnectError, CredentialSource, MonitorSignal, PendingSession, Session, SessionClaim, SessionHealth,
-    SessionKey,
+    ClaimError, ConnectAttempts, ConnectError, CredentialSource, MonitorSignal, PendingSession, Session, SessionClaim,
+    SessionHealth, SessionKey,
 };
-use tablepro_storage::{CredentialDemand, SavedConnection};
+use tablepro_storage::SavedConnection;
 use uuid::Uuid;
 
 use tablepro_session::RequestTarget;
 use tablepro_session::connect::StoreConnectionWrites;
-use tablepro_storage::StorageError;
 
+use crate::services::active_session::ActiveSession;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill, ConnectSubmission, FormField};
 use crate::ui::error_text::TlsRemedy;
 use crate::ui::ssh_inputs::SshEnvironment;
 
+use super::connect_flow::{self, SubmitError};
 use super::teardown_guard::Teardown;
 use super::{App, AppMsg, qualified_label};
 
@@ -31,12 +32,6 @@ use super::{App, AppMsg, qualified_label};
 pub(crate) struct ConnectRetry {
     pub prefill: ConnectPrefill,
     pub remedy: Option<TlsRemedy>,
-}
-
-/// Why a submitted connection did not open.
-enum SubmitError {
-    Connect(ConnectError),
-    Save(StorageError),
 }
 
 /// The password the user typed, so editing after a failure does not
@@ -158,18 +153,16 @@ impl App {
         let secrets = self.context.secrets.clone();
         let writes = StoreConnectionWrites::new(self.storage.connections().clone(), self.tasks.clone());
         let connecting = async move {
-            let pending = connector
-                .establish(request, interaction, cancel)
-                .await
-                .map_err(SubmitError::Connect)?;
-            match tablepro_session::persist_pending_save(&*secrets, &writes, pending_save).await {
-                Ok(report) => Ok((pending, report)),
-                Err(error) => {
-                    let report = pending.discard().await;
-                    tracing::debug!(?report, "closed a connection whose entry could not be saved");
-                    Err(SubmitError::Save(error))
-                }
-            }
+            connect_flow::connect_then_save(
+                &*connector,
+                request,
+                interaction,
+                cancel,
+                &*secrets,
+                &writes,
+                pending_save,
+            )
+            .await
         };
         let context = self.context.clone();
         let settings = self.settings.clone();
@@ -225,12 +218,8 @@ impl App {
         });
     }
 
-    /// The Connecting toast's Cancel. The attempt is superseded, not
-    /// only cancelled: a driver blocked in a socket call can still
-    /// connect afterwards, and that late session must not be adopted.
     pub(super) fn on_cancel_connect(&mut self) {
-        drop(self.connect_attempts.begin());
-        self.connect_attempts.cancel();
+        stop_connecting(&self.connect_attempts);
         self.dismiss_loading_page();
     }
 
@@ -437,17 +426,7 @@ impl App {
         // different connection would target a non-existent table.
         self.clear_closed_tabs_stack();
         self.session_links = None;
-        if let Some(session) = self.context.active.take() {
-            let hold = self.context.hold.acquire();
-            let closing = session.begin_shutdown();
-            glib::spawn_future_local(async move {
-                match closing.await {
-                    Ok(report) => tracing::debug!(?report, "the session closed"),
-                    Err(failure) => tracing::warn!(%failure, "the session close task failed"),
-                }
-                drop(hold);
-            });
-        }
+        close_session(&self.context.active, &*self.context.hold);
         self.reconnect_banner.set_revealed(false);
         self.schema_buffer.set_text(crate::ui::editor::SQL_KEYWORDS);
         self.current_driver_id = None;
@@ -810,19 +789,7 @@ impl App {
         // Reading the keyring, asking for what it lacks and connecting
         // all happen off the GTK thread; only the outcome comes back.
         let connecting = async move {
-            let refreshed = tablepro_session::resolve_saved(
-                &saved,
-                &drivers,
-                &credentials,
-                interaction.clone(),
-                CredentialDemand::default(),
-            )
-            .await?;
-            let pending = connector.establish(refreshed.request, interaction, cancel).await?;
-            // A secret typed into a prompt is kept only once the login
-            // it was typed for has worked.
-            let refused = credentials.remember(refreshed.remember).await;
-            Ok::<_, ConnectError>((pending, refused))
+            connect_flow::connect_saved(&saved, &drivers, &credentials, &*connector, interaction, cancel).await
         };
         crate::runtime::spawn_and_deliver(&self.tasks, connecting, move |outcome| match outcome {
             Ok(Ok((pending, refused))) => sender.input(AppMsg::SessionReady(Box::new(ReadySession {
@@ -932,9 +899,44 @@ impl App {
     }
 }
 
-/// Performs the actual disk + keyring teardown for a saved connection.
-/// Extracted from `on_delete_connection` so the confirm-yes branch and
-/// the prefs-disabled branch share one implementation.
+/// Supersede the connect in flight, not only cancel it: a driver
+/// blocked in a socket call can still connect afterwards, and that late
+/// session must not be adopted.
+fn stop_connecting(attempts: &ConnectAttempts) {
+    drop(attempts.begin());
+    attempts.cancel();
+}
+
+/// Shut the window's session down and close its connection under the
+/// close deadline. The process is held until the close ends, so the
+/// server sees the connection closed rather than cut off.
+fn close_session(active: &ActiveSession, hold: &dyn ProcessHold) {
+    let Some(session) = active.take() else {
+        return;
+    };
+    let hold = hold.acquire();
+    let closing = session.begin_shutdown();
+    glib::spawn_future_local(async move {
+        match closing.await {
+            Ok(report) => tracing::debug!(?report, "the session closed"),
+            Err(failure) => tracing::warn!(%failure, "the session close task failed"),
+        }
+        drop(hold);
+    });
+}
+
+/// What a closing window still owes its connection: no connect left to
+/// land in it, and the session closed rather than dropped.
+///
+/// The window's close request is where this has to start. relm4 calls
+/// a detached root's `shutdown` only after the main loop has returned,
+/// when no close can run any more and a hold no longer keeps the
+/// process alive.
+pub(super) fn close_window_session(active: &ActiveSession, hold: &dyn ProcessHold, attempts: &ConnectAttempts) {
+    stop_connecting(attempts);
+    close_session(active, hold);
+}
+
 /// Move every secret the original holds onto the copy's own id.
 ///
 /// Returns whether all of them made it: a keyring that is locked or
@@ -1138,10 +1140,54 @@ fn failed_banner_text(cause: tablepro_session::FailureCause) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use tablepro_core::LivenessPolicy;
     use tablepro_core::meta::ObjectKind;
-    use tablepro_session::FailureCause;
+    use tablepro_session::fakes::{FakeConnector, FakeCredentialSource};
+    use tablepro_session::operation::DefaultDeadlines;
+    use tablepro_session::runtime::CountingHold;
+    use tablepro_session::{FailureCause, SessionDeps};
+    use tablepro_test_support::ConnectionScript;
 
     use super::*;
+
+    #[gtk4::test]
+    fn a_closing_window_closes_its_session_and_stops_its_connect() {
+        let runtime = crate::test_support::test_runtime();
+        let (pending, connection) = FakeConnector::pending_session(
+            FakeConnector::request().expect("a request"),
+            ConnectionScript::default(),
+        );
+        let session = Session::start(
+            pending,
+            SessionDeps {
+                connector: Arc::new(FakeConnector::new([])),
+                credentials: Arc::new(FakeCredentialSource::new()),
+                deadlines: Arc::new(DefaultDeadlines::new(LivenessPolicy::DESKTOP)),
+                tasks: runtime.tasks(),
+                prompter: None,
+            },
+        );
+        let active = ActiveSession::new();
+        active.replace(session.clone());
+        let hold = CountingHold::new();
+        let attempts = ConnectAttempts::new();
+        let connecting = attempts.begin();
+
+        close_window_session(&active, &hold, &attempts);
+
+        assert!(connecting.is_cancelled(), "the connect in flight kept running");
+        assert!(
+            !attempts.accepts(connecting.generation()),
+            "a late connect would still be adopted"
+        );
+        assert!(!active.is_connected());
+        assert_eq!(hold.live(), 1, "nothing kept the process alive for the close");
+        crate::test_support::wait_until(Duration::from_secs(5), || hold.live() == 0).expect("the close to end");
+        assert!(session.is_shut_down());
+        assert!(connection.is_closed(), "the connection was cut off rather than closed");
+    }
 
     fn object(name: &str, kind: ObjectKind) -> ObjectInfo {
         ObjectInfo {

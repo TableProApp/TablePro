@@ -160,10 +160,17 @@ async fn reconnect(ctx: &MonitorContext, user_asked: bool) -> Option<ReconnectRe
     let interaction = plan.interaction(user_asked);
     let attempt_cancel = ctx.cancel.child_token();
     let attempt = async move {
-        let refreshed = plan
+        // Only the connect has to run on after a cancel. A password
+        // dialog a Retry raised goes with the session instead of
+        // staying up for an attempt nobody waits on.
+        let request = plan.request.clone();
+        let refreshing = plan
             .credentials
-            .refresh(plan.request.clone(), interaction.clone(), CredentialDemand::default())
-            .await?;
+            .refresh(request, interaction.clone(), CredentialDemand::default());
+        let refreshed = attempt_cancel
+            .run_until_cancelled(refreshing)
+            .await
+            .ok_or(ConnectError::Cancelled)??;
         let pending = plan
             .connector
             .establish(refreshed.request, interaction, attempt_cancel)
@@ -254,10 +261,47 @@ mod tests {
     use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakePrompter, FakeReply};
 
     use super::*;
+    use crate::connect::{ConnectRequest, CredentialSource, RefreshedRequest};
     use crate::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
     use crate::operation::DefaultDeadlines;
     use crate::session::{Session, SessionDeps};
     use crate::test_support::paused_tasks;
+
+    /// Credentials that ask the user, who never answers. Each question
+    /// stays open for as long as the refresh that asked it is alive.
+    #[derive(Debug, Default)]
+    struct UnansweredPrompt {
+        questions: Mutex<Vec<tokio::sync::oneshot::Sender<()>>>,
+    }
+
+    impl UnansweredPrompt {
+        fn still_asking(&self) -> bool {
+            self.questions
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|question| !question.is_closed())
+        }
+    }
+
+    impl CredentialSource for UnansweredPrompt {
+        fn refresh(
+            &self,
+            request: ConnectRequest,
+            _interaction: tablepro_core::credentials::CredentialInteraction,
+            _demand: CredentialDemand,
+        ) -> futures::future::BoxFuture<'static, Result<RefreshedRequest, ConnectError>> {
+            let (question, answer) = tokio::sync::oneshot::channel();
+            self.questions.lock().unwrap().push(question);
+            Box::pin(async move {
+                let _unanswered = answer.await;
+                Ok(RefreshedRequest {
+                    request,
+                    remember: Vec::new(),
+                })
+            })
+        }
+    }
 
     fn refused() -> ConnectError {
         ConnectError::Driver(DriverError::Transport(TransportError::Refused {
@@ -487,6 +531,33 @@ mod tests {
         assert_eq!(started.session.link_changes().borrow().get(), 1);
         tokio::time::sleep(Duration::from_secs(1)).await;
         assert!(started.connection.is_closed(), "the replaced connection was left open");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutting_down_ends_a_prompt_a_retry_raised() {
+        let prompt = Arc::new(UnansweredPrompt::default());
+        let (pending, _connection) = FakeConnector::pending_session(FakeConnector::request().unwrap(), healthy());
+        let connector = Arc::new(FakeConnector::new([]));
+        let session = Session::start(
+            pending,
+            SessionDeps {
+                connector: connector.clone(),
+                credentials: prompt.clone(),
+                deadlines: Arc::new(DefaultDeadlines::new(LivenessPolicy::DESKTOP)),
+                tasks: paused_tasks(),
+                prompter: Some(Arc::new(FakePrompter::new([]))),
+            },
+        );
+        session.signal(MonitorSignal::RetryNow);
+        settle().await;
+        assert!(prompt.still_asking(), "the retry never asked");
+
+        let report = session.begin_shutdown();
+        tokio::time::sleep(Duration::from_secs(30)).await;
+
+        assert!(report.await.is_ok());
+        assert!(!prompt.still_asking(), "the prompt outlived the session that raised it");
+        assert!(connector.calls().is_empty());
     }
 
     #[tokio::test(start_paused = true)]

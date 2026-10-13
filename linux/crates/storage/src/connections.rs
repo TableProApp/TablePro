@@ -80,6 +80,20 @@ impl SavedConnection {
         }
     }
 
+    /// Whether the two differ at most in how the list shows them. A
+    /// field added later counts as part of the connection until it is
+    /// listed here.
+    fn connects_like(&self, other: &Self) -> bool {
+        let shown_alike = |saved: &Self| Self {
+            name: String::new(),
+            last_opened_at: None,
+            color: None,
+            group: None,
+            ..saved.clone()
+        };
+        shown_alike(self) == shown_alike(other)
+    }
+
     fn database_target(&self) -> String {
         let mut target = String::new();
         if !self.username.is_empty() {
@@ -177,16 +191,17 @@ pub struct ConnectionListSnapshot {
 /// What an import did to the list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ImportReport {
-    /// Connections the list did not have.
+    /// Connections the list did not have, including one whose id was
+    /// taken by a different connection and was given its own.
     pub added: usize,
-    /// Connections already in the list under the same id, overwritten
-    /// by the file's version.
-    pub replaced: usize,
+    /// Connections already in the list that the file only renamed,
+    /// recoloured or regrouped.
+    pub updated: usize,
 }
 
 impl ImportReport {
     pub fn total(self) -> usize {
-        self.added + self.replaced
+        self.added + self.updated
     }
 }
 
@@ -308,6 +323,12 @@ impl ConnectionStore {
     /// rather than doubling them, and a file from another machine adds
     /// its own. `path` names the file in any problem reported, since
     /// the user picked it and needs to know which one was refused.
+    ///
+    /// The keyring keeps secrets by connection id, so an entry may only
+    /// be updated by one that sends them to the same place in the same
+    /// way. Anything else under a taken id is added under a new id and
+    /// starts with no secrets, so a crafted file cannot point a saved
+    /// connection's password at another host.
     pub fn import_blocking(&self, path: &Path, bytes: &[u8]) -> Result<ImportReport, StorageError> {
         let incoming = crate::document::decode_document::<ConnectionsDocument>(path, bytes)
             .map_err(StorageError::DocumentUnavailable)?
@@ -315,11 +336,24 @@ impl ConnectionStore {
         let mut state = self.lock();
         let mut list = self.ensure_loaded(&mut state)?.to_vec();
         let mut report = ImportReport::default();
-        for connection in incoming {
+        for mut connection in incoming {
             match list.iter_mut().find(|saved| saved.id == connection.id) {
-                Some(existing) => {
-                    *existing = connection;
-                    report.replaced += 1;
+                Some(existing) if existing.connects_like(&connection) => {
+                    existing.name = connection.name;
+                    existing.color = connection.color;
+                    existing.group = connection.group;
+                    report.updated += 1;
+                }
+                Some(_) => {
+                    connection.id = Uuid::new_v4();
+                    // Two rows of one name, one of them pointing somewhere
+                    // else, would leave the user guessing which is theirs.
+                    let taken: Vec<&str> = list.iter().map(|saved| saved.name.as_str()).collect();
+                    if taken.contains(&connection.name.as_str()) {
+                        connection.name = suffixed_name(&connection.name, "imported", &taken);
+                    }
+                    list.push(connection);
+                    report.added += 1;
                 }
                 None => {
                     list.push(connection);
@@ -444,7 +478,11 @@ fn read_document(path: &Path) -> Result<Vec<SavedConnection>, DocumentProblem> {
 pub fn duplicate(source: &SavedConnection, taken: &[SavedConnection]) -> SavedConnection {
     SavedConnection {
         id: Uuid::new_v4(),
-        name: copy_name(&source.name, &taken.iter().map(|c| c.name.as_str()).collect::<Vec<_>>()),
+        name: suffixed_name(
+            &source.name,
+            "copy",
+            &taken.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+        ),
         // A copy has never been opened, whatever the original did, so
         // it sorts by name rather than claiming the original's recency.
         // The colour and the group do carry: a copy points at the same
@@ -455,15 +493,15 @@ pub fn duplicate(source: &SavedConnection, taken: &[SavedConnection]) -> SavedCo
 }
 
 /// `name (copy)`, then `name (copy 2)` and on, until one is free.
-fn copy_name(name: &str, taken: &[&str]) -> String {
-    let first = format!("{name} (copy)");
+fn suffixed_name(name: &str, suffix: &str, taken: &[&str]) -> String {
+    let first = format!("{name} ({suffix})");
     if !taken.contains(&first.as_str()) {
         return first;
     }
     // A name is short and the list is a person's own connections, so
     // counting up from two is bounded by how many copies they made.
     (2..)
-        .map(|n| format!("{name} (copy {n})"))
+        .map(|n| format!("{name} ({suffix} {n})"))
         .find(|candidate| !taken.contains(&candidate.as_str()))
         .unwrap_or(first)
 }
@@ -1029,7 +1067,7 @@ mod tests {
             .import_blocking(Path::new("/tmp/connections.json"), &bytes)
             .expect("import");
 
-        assert_eq!(report, ImportReport { added: 1, replaced: 0 });
+        assert_eq!(report, ImportReport { added: 1, updated: 0 });
         let list = target.load_blocking().expect("load");
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "production");
@@ -1050,11 +1088,79 @@ mod tests {
         let first = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
         let second = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-        assert_eq!(first, ImportReport { added: 0, replaced: 1 });
-        assert_eq!(second, ImportReport { added: 0, replaced: 1 });
+        assert_eq!(first, ImportReport { added: 0, updated: 1 });
+        assert_eq!(second, ImportReport { added: 0, updated: 1 });
         let list = store.load_blocking().expect("load");
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "production (renamed)");
+    }
+
+    #[test]
+    fn an_import_never_points_a_saved_entry_or_its_secrets_somewhere_else() {
+        let mut elsewhere = saved("production");
+        elsewhere.host = "db.attacker.example".to_owned();
+        let mut in_the_clear = saved("production");
+        in_the_clear.tls = TlsConfig::disabled();
+        for (variant, crafted) in [("another host", elsewhere), ("TLS off", in_the_clear)] {
+            let root = TempDir::new().expect("tempdir");
+            let store = store(&root);
+            let mine = SavedConnection {
+                id: crafted.id,
+                ..saved("production")
+            };
+            store.upsert_blocking(mine.clone()).expect("upsert");
+            let bytes = crate::document::encode_document(&ConnectionsDocument {
+                connections: vec![crafted.clone()],
+            })
+            .expect("encode");
+
+            let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+            assert_eq!(report, ImportReport { added: 1, updated: 0 }, "{variant}");
+            let list = store.load_blocking().expect("load");
+            assert_eq!(list.len(), 2, "{variant}");
+            let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
+            assert_eq!(*kept, mine, "{variant}: the import changed the saved entry");
+            let imported = list.iter().find(|saved| saved.id != mine.id).expect("the import");
+            assert_eq!(imported.name, "production (imported)", "{variant}");
+            assert_eq!(
+                SavedConnection {
+                    id: crafted.id,
+                    name: crafted.name.clone(),
+                    ..imported.clone()
+                },
+                crafted,
+                "{variant}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_import_added_under_a_new_id_keeps_a_name_nobody_holds() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = saved("production");
+        store.upsert_blocking(mine.clone()).expect("upsert");
+        let theirs = SavedConnection {
+            id: mine.id,
+            host: "staging.internal".to_owned(),
+            ..saved("staging")
+        };
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: vec![theirs],
+        })
+        .expect("encode");
+
+        store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        let mut names: Vec<String> = store
+            .load_blocking()
+            .expect("load")
+            .iter()
+            .map(|saved| saved.name.clone())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["production", "staging"]);
     }
 
     #[test]
@@ -1073,7 +1179,7 @@ mod tests {
 
         let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-        assert_eq!(report, ImportReport { added: 1, replaced: 0 });
+        assert_eq!(report, ImportReport { added: 1, updated: 0 });
         let names: Vec<String> = store
             .load_blocking()
             .expect("load")

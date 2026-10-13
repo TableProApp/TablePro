@@ -6,7 +6,7 @@ use std::time::Duration;
 use tablepro_core::NetworkEndpoint;
 use tokio::process::Command;
 
-use crate::{SshConfig, SshDestination};
+use crate::SshDestination;
 
 /// `ssh -G` does no network I/O, but a `Match exec` line can run a
 /// command, so each lookup is still bounded.
@@ -23,27 +23,23 @@ enum Resolved {
     ProxyCommand,
 }
 
-/// The host and port the first TCP connection of a session goes to.
+/// The host and port the first TCP connection of a session goes to,
+/// from what `ssh -G` printed for the session's destination.
 ///
 /// An ssh_config alias is only a name until `ssh -G` resolves it, and a
 /// jump chain starts at its first hop, so this asks ssh rather than
 /// trusting what the user typed. `None` when the route is a
 /// ProxyCommand, whose first hop only that command knows.
-pub(crate) async fn resolve_first_hop(ssh_program: &Path, config: &SshConfig) -> Option<NetworkEndpoint> {
-    let mut destination = config.destination.clone();
-    let mut jumps = config.jump_hosts.clone();
+pub(crate) async fn resolve_first_hop(ssh_program: &Path, destination: Option<&str>) -> Option<NetworkEndpoint> {
+    let mut output = destination?.to_owned();
     for _ in 0..MAX_HOPS {
-        let output = lookup(ssh_program, &destination, &jumps).await?;
         match parse_resolved(&output)? {
             Resolved::Direct(endpoint) => return Some(endpoint),
             Resolved::ProxyCommand => return None,
-            Resolved::Jump(first) => {
-                destination = first;
-                jumps = Vec::new();
-            }
+            Resolved::Jump(first) => output = lookup(ssh_program, &first, &[]).await?,
         }
     }
-    tracing::debug!(destination = %config.destination, "the ssh jump chain did not end");
+    tracing::debug!("the ssh jump chain did not end");
     None
 }
 
@@ -130,7 +126,6 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::SshAuth;
 
     fn endpoint(host: &str, port: u16) -> NetworkEndpoint {
         NetworkEndpoint::new(host, port).unwrap()
@@ -196,15 +191,14 @@ mod tests {
         program
     }
 
-    fn config(host: &str, jumps: &[&str]) -> SshConfig {
-        SshConfig {
-            destination: SshDestination::new(host, None, None).unwrap(),
-            jump_hosts: jumps
-                .iter()
-                .map(|jump| SshDestination::new(*jump, None, None).unwrap())
-                .collect(),
-            auth: SshAuth::Agent,
-        }
+    async fn first_hop(program: &Path, host: &str, jumps: &[&str]) -> Option<NetworkEndpoint> {
+        let destination = SshDestination::new(host, None, None).unwrap();
+        let jumps: Vec<SshDestination> = jumps
+            .iter()
+            .map(|jump| SshDestination::new(*jump, None, None).unwrap())
+            .collect();
+        let resolved = lookup(program, &destination, &jumps).await;
+        resolve_first_hop(program, resolved.as_deref()).await
     }
 
     /// The fake prints a jump for the database host and resolves the
@@ -222,7 +216,7 @@ case "$last" in
 esac"#,
         );
 
-        let first = resolve_first_hop(&program, &config("db", &["bastion"])).await;
+        let first = first_hop(&program, "db", &["bastion"]).await;
 
         assert_eq!(first, Some(endpoint("192.0.2.10", 2222)));
     }
@@ -231,10 +225,10 @@ esac"#,
     async fn a_failing_lookup_and_a_jump_loop_resolve_to_nothing() {
         let temp = tempfile::tempdir().unwrap();
         let failing = fake_ssh(temp.path(), "exit 255");
-        assert_eq!(resolve_first_hop(&failing, &config("db", &[])).await, None);
+        assert_eq!(first_hop(&failing, "db", &[]).await, None);
 
         let looping = tempfile::tempdir().unwrap();
         let program = fake_ssh(looping.path(), r"printf 'hostname x\nproxyjump loop\n'");
-        assert_eq!(resolve_first_hop(&program, &config("loop", &[])).await, None);
+        assert_eq!(first_hop(&program, "loop", &[]).await, None);
     }
 }
