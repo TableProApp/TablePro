@@ -27,6 +27,7 @@ use super::history_dialog::HistoryDialog;
 use super::sidebar_row::{SidebarRow, SidebarRowOutput};
 use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
+use crate::services::from_session::FromSession;
 use crate::services::session_context::SessionContext;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 
@@ -347,10 +348,10 @@ pub enum AppMsg {
     /// The banner's Retry: ask the monitor to reconnect now.
     RetryConnection,
     /// The adopted session's health moved.
-    HealthChanged(SessionHealth),
+    HealthChanged(FromSession<SessionHealth>),
     /// The session's object list for the sidebar changed: a reconnect
     /// read it again, or a schema change refreshed it.
-    CatalogChanged(ObjectListSnapshot),
+    CatalogChanged(FromSession<ObjectListSnapshot>),
     DialogClosed,
     SelectTable {
         schema: Option<String>,
@@ -1368,9 +1369,17 @@ impl SimpleComponent for App {
             } => self.on_connect_failed(generation, message, edit, sender),
             AppMsg::CancelConnect => self.on_cancel_connect(),
             AppMsg::EditConnection(retry) => self.on_edit_connection(*retry, sender),
-            AppMsg::HealthChanged(health) => self.refresh_health_banner(&health),
+            AppMsg::HealthChanged(update) => {
+                if let Some(health) = update.if_current(&self.context.active) {
+                    self.refresh_health_banner(&health);
+                }
+            }
             AppMsg::RetryConnection => self.on_retry_connection(),
-            AppMsg::CatalogChanged(snapshot) => self.on_catalog_changed(&snapshot),
+            AppMsg::CatalogChanged(update) => {
+                if let Some(snapshot) = update.if_current(&self.context.active) {
+                    self.on_catalog_changed(&snapshot);
+                }
+            }
             AppMsg::Disconnect => self.on_disconnect(sender),
             AppMsg::ForceDisconnect => self.do_disconnect(sender),
             AppMsg::DialogClosed => self.dialog = None,

@@ -18,6 +18,7 @@ use tablepro_session::RequestTarget;
 use tablepro_session::connect::StoreConnectionWrites;
 
 use crate::services::active_session::ActiveSession;
+use crate::services::from_session::FromSession;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill, ConnectSubmission, FormField};
 use crate::ui::error_text::TlsRemedy;
 use crate::ui::file_read::{FileReadError, read_capped_file};
@@ -91,17 +92,18 @@ fn spawn_local(future: futures::future::LocalBoxFuture<'static, ()>) {
 /// sidebar's scope. The list on screen when the watch starts is not
 /// delivered again, and a refresh that failed keeps the list it had.
 pub(super) fn catalog_watch(
-    session: &Session,
-    mut deliver: impl FnMut(ObjectListSnapshot) + 'static,
+    session: &Arc<Session>,
+    mut deliver: impl FnMut(FromSession<ObjectListSnapshot>) + 'static,
 ) -> WatchForwarder {
     let objects = session.subscribe_objects(ObjectScope::DefaultSchema);
+    let origin = Arc::downgrade(session);
     let mut shown = objects.borrow().generation;
     WatchForwarder::new(
         objects,
         move |snapshot: ObjectListSnapshot| {
             if snapshot.generation != shown {
                 shown = snapshot.generation;
-                deliver(snapshot);
+                deliver(FromSession::new(origin.clone(), snapshot));
             } else if let Some(error) = &snapshot.last_error {
                 tracing::warn!(%error, "the table list could not be read again");
             }
@@ -296,17 +298,20 @@ impl App {
 
         let first = session.subscribe_objects(ObjectScope::DefaultSchema).borrow().clone();
         let health_sender = sender.clone();
+        let health_origin = Arc::downgrade(&session);
         let catalog_sender = sender.clone();
         self.session_links = Some(SessionLinks {
             key,
             _claim: claim,
             _health: WatchForwarder::new(
                 session.health(),
-                move |health| health_sender.input(AppMsg::HealthChanged(health)),
+                move |health| {
+                    health_sender.input(AppMsg::HealthChanged(FromSession::new(health_origin.clone(), health)));
+                },
                 spawn_local,
             ),
-            _catalog_watch: catalog_watch(&session, move |snapshot| {
-                catalog_sender.input(AppMsg::CatalogChanged(snapshot));
+            _catalog_watch: catalog_watch(&session, move |update| {
+                catalog_sender.input(AppMsg::CatalogChanged(update));
             }),
         });
         for warning in warnings {
@@ -1171,16 +1176,16 @@ fn failed_banner_text(cause: tablepro_session::FailureCause) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+    use std::rc::Rc;
     use std::time::Duration;
 
-    use std::cell::RefCell;
-    use std::rc::Rc;
     use tablepro_core::LivenessPolicy;
     use tablepro_core::meta::ObjectKind;
     use tablepro_session::fakes::{FakeConnector, FakeCredentialSource};
     use tablepro_session::operation::DefaultDeadlines;
     use tablepro_session::runtime::CountingHold;
-
     use tablepro_session::{FailureCause, SessionDeps};
     use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
@@ -1272,6 +1277,38 @@ mod tests {
         snapshot.objects.iter().map(|object| object.name.clone()).collect()
     }
 
+    /// The window's input queue, holding what the catalog watch posted
+    /// until the window handles it.
+    type Queue = Rc<RefCell<VecDeque<FromSession<ObjectListSnapshot>>>>;
+
+    fn post_to(queue: &Queue) -> impl FnMut(FromSession<ObjectListSnapshot>) + 'static {
+        let queue = queue.clone();
+        move |update| queue.borrow_mut().push_back(update)
+    }
+
+    /// Handle the queued lists the way the window's `CatalogChanged` does.
+    fn handle(queue: &Queue, active: &ActiveSession, sidebar: &mut Vec<String>) {
+        let queued: Vec<_> = queue.borrow_mut().drain(..).collect();
+        for update in queued {
+            if let Some(snapshot) = update.if_current(active) {
+                *sidebar = names(&snapshot);
+            }
+        }
+    }
+
+    fn refresh_objects(
+        session: &Arc<Session>,
+        runtime: &crate::runtime::AppRuntime,
+    ) -> impl Future<Output = ()> + use<> {
+        let session = session.clone();
+        let refreshing = runtime
+            .tasks()
+            .spawn_task(async move { session.refresh_objects(ObjectScope::DefaultSchema).await });
+        async move {
+            let _ = refreshing.await;
+        }
+    }
+
     #[gtk4::test]
     fn late_catalog_commit_after_disconnect_leaves_sidebar_untouched() {
         let runtime = crate::test_support::test_runtime();
@@ -1286,18 +1323,12 @@ mod tests {
             .list_objects
             .always(FakeReply::ok(vec![object("from_b", ObjectKind::Table)]));
         let b = FakeSession::start(second, [], runtime.tasks());
-        let sidebar: Rc<RefCell<Vec<String>>> = Rc::default();
-        let show = |sidebar: &Rc<RefCell<Vec<String>>>| {
-            let sidebar = sidebar.clone();
-            move |snapshot: ObjectListSnapshot| *sidebar.borrow_mut() = names(&snapshot)
-        };
-        let watching_a = catalog_watch(&a.session, show(&sidebar));
-        let late = {
-            let session = a.session.clone();
-            runtime
-                .tasks()
-                .spawn_task(async move { session.refresh_objects(ObjectScope::DefaultSchema).await })
-        };
+        let active = ActiveSession::new();
+        active.replace(a.session.clone());
+        let queue = Queue::default();
+        let mut sidebar = Vec::new();
+        let watching_a = catalog_watch(&a.session, post_to(&queue));
+        let late = refresh_objects(&a.session, &runtime);
         let counters = a.connection.counters();
         crate::test_support::wait_until(Duration::from_secs(5), || {
             CallCounters::get(&counters.list_objects) == 1
@@ -1307,26 +1338,51 @@ mod tests {
         // Disconnect A and adopt B, in the order the window does.
         drop(watching_a);
         drop(a.session.begin_shutdown());
-        let _watching_b = catalog_watch(&b.session, show(&sidebar));
-        let refreshed_b = {
-            let session = b.session.clone();
-            runtime
-                .tasks()
-                .spawn_task(async move { session.refresh_objects(ObjectScope::DefaultSchema).await })
-        };
+        active.replace(b.session.clone());
+        let _watching_b = catalog_watch(&b.session, post_to(&queue));
+        let refreshed_b = refresh_objects(&b.session, &runtime);
         crate::test_support::finish_on_main(Duration::from_secs(5), async move {
-            let _ = refreshed_b.await;
-            let _ = late.await;
+            refreshed_b.await;
+            late.await;
         })
         .expect("both lists to land");
         crate::test_support::drain_main_context();
+        handle(&queue, &active, &mut sidebar);
 
         assert_eq!(
             names(&a.session.subscribe_objects(ObjectScope::DefaultSchema).borrow()),
             ["from_a"],
             "A's late list never landed, so the test proved nothing"
         );
-        assert_eq!(*sidebar.borrow(), ["from_b"]);
+        assert_eq!(sidebar, ["from_b"]);
+    }
+
+    #[gtk4::test]
+    fn a_list_queued_before_a_switch_is_not_shown() {
+        let runtime = crate::test_support::test_runtime();
+        let mut first = ConnectionScript::default();
+        first
+            .list_objects
+            .always(FakeReply::ok(vec![object("from_a", ObjectKind::Table)]));
+        let a = FakeSession::start(first, [], runtime.tasks());
+        let b = FakeSession::start(ConnectionScript::default(), [], runtime.tasks());
+        let active = ActiveSession::new();
+        active.replace(a.session.clone());
+        let queue = Queue::default();
+        let mut sidebar = vec!["from_b".to_owned()];
+        let watching_a = catalog_watch(&a.session, post_to(&queue));
+        crate::test_support::finish_on_main(Duration::from_secs(5), refresh_objects(&a.session, &runtime))
+            .expect("A's list to land");
+        crate::test_support::wait_until(Duration::from_secs(5), || queue.borrow().len() == 1)
+            .expect("A's list was posted to the window");
+
+        // B's SessionReady was ahead of A's list in the queue.
+        drop(watching_a);
+        drop(a.session.begin_shutdown());
+        active.replace(b.session.clone());
+        handle(&queue, &active, &mut sidebar);
+
+        assert_eq!(sidebar, ["from_b"], "A's list replaced B's sidebar");
     }
 
     fn object(name: &str, kind: ObjectKind) -> ObjectInfo {
