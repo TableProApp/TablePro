@@ -295,6 +295,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::local_filter::tests::sorting_a_truncated_result_without_a_filter_warns_that_only_loaded_rows_were_sorted"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::local_sort_tests::sorting_a_fully_selected_result_restores_the_selection_in_one_signal"
     ],
     [

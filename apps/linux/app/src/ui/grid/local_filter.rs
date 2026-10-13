@@ -58,6 +58,7 @@ struct LocalResultViewState {
     sort: Option<(usize, bool)>,
     controls: gtk4::Box,
     status: gtk4::Label,
+    clear_button: gtk4::Button,
     settings_store: LocalResultSettingsStore,
     settings_key: ResultViewKey,
     selection_syncing: Rc<Cell<bool>>,
@@ -90,6 +91,7 @@ impl LocalResultView {
             sort: settings.sort,
             controls,
             status,
+            clear_button: clear.clone(),
             settings_store,
             settings_key,
             selection_syncing: Rc::new(Cell::new(false)),
@@ -231,9 +233,18 @@ fn selected_source_rows(store: &RowStore, selection: &gtk4::MultiSelection) -> s
 
 fn update_status(state: &LocalResultViewState) {
     if state.filter.is_none() {
-        state.controls.set_visible(false);
+        let sorted_truncated = state.sort.is_some() && state.result.truncated;
+        state.clear_button.set_visible(false);
+        state.controls.set_visible(sorted_truncated);
+        if sorted_truncated {
+            state.status.add_css_class("warning");
+            state.status.set_text(&crate::tr!(
+                "Sorted the loaded rows only; the result is truncated. Use ORDER BY for the full result."
+            ));
+        }
         return;
     }
+    state.clear_button.set_visible(true);
     let visible = state.store.as_ref().map_or(0, |store| store.n_items());
     let visible_text = visible.to_string();
     let loaded_text = state.result.rows.len().to_string();
@@ -416,6 +427,48 @@ mod tests {
 
         assert_eq!(store.n_items(), 4);
         assert_eq!(store.source_index_at(selection.selection().nth(0)), Some(2));
+        let state = view.0.borrow();
+        assert!(
+            state.controls.is_visible(),
+            "the sort of a truncated result keeps its notice"
+        );
+        assert!(!state.clear_button.is_visible());
+    }
+
+    #[test]
+    #[ignore = "requires isolated GTK display"]
+    fn sorting_a_truncated_result_without_a_filter_warns_that_only_loaded_rows_were_sorted() {
+        gtk4::init().unwrap();
+        let mut loaded = result(vec![Value::Int(3), Value::Int(1), Value::Int(2)]);
+        loaded.truncated = true;
+        let loaded = Arc::new(loaded);
+        let store = crate::ui::row_store::RowStore::from_shared(loaded.clone());
+        let selection = gtk4::MultiSelection::new(Some(store.clone()));
+        let key = ResultViewKey {
+            statement_identity: crate::ui::editor::StatementIdentity {
+                statement_index: 0,
+                digest: [2; 32],
+            },
+            result_set_index: 0,
+        };
+        let view = LocalResultView::new(loaded.clone(), LocalResultSettingsStore::default(), key);
+        view.attach(store, selection);
         assert!(!view.0.borrow().controls.is_visible());
+
+        view.sort_by(0, false);
+
+        let state = view.0.borrow();
+        assert!(state.controls.is_visible());
+        assert!(state.status.has_css_class("warning"));
+        assert!(!state.clear_button.is_visible());
+        drop(state);
+
+        let complete = Arc::new(result(vec![Value::Int(3), Value::Int(1)]));
+        let complete_store = crate::ui::row_store::RowStore::from_shared(complete.clone());
+        let complete_selection = gtk4::MultiSelection::new(Some(complete_store.clone()));
+        let complete_view = LocalResultView::new(complete, LocalResultSettingsStore::default(), key);
+        complete_view.attach(complete_store, complete_selection);
+        complete_view.sort_by(0, true);
+        assert!(!complete_view.0.borrow().controls.is_visible());
     }
 }
