@@ -18,22 +18,43 @@ pub enum UnknownCause {
     Closed,
 }
 
+/// The causes the user is told apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Wording {
+    Stopped,
+    Internal,
+    ConnectionLost,
+}
+
 impl UnknownCause {
     /// What happened to `tabs`, the tab names already joined.
     pub fn sentence(&self, tabs: &str) -> String {
-        match self {
-            Self::Interrupted => crate::i18n::gettext_f(
+        match self.wording() {
+            Wording::Stopped => crate::i18n::gettext_f(
                 "Saving {tabs} was stopped before the database confirmed it. The changes may already be in the database.",
                 &[("tabs", tabs)],
             ),
-            Self::Panicked => crate::i18n::gettext_f(
+            Wording::Internal => crate::i18n::gettext_f(
                 "TablePro hit an internal error while saving {tabs}. The changes may already be in the database.",
                 &[("tabs", tabs)],
             ),
-            Self::CommitAckLost { .. } | Self::PartiallyApplied | Self::Closed => crate::i18n::gettext_f(
+            Wording::ConnectionLost => crate::i18n::gettext_f(
                 "The connection was lost while saving {tabs}. The changes may already be in the database.",
                 &[("tabs", tabs)],
             ),
+        }
+    }
+
+    /// Whether the user is told the same thing about both.
+    pub fn reads_as(&self, other: &Self) -> bool {
+        self.wording() == other.wording()
+    }
+
+    fn wording(&self) -> Wording {
+        match self {
+            Self::Interrupted => Wording::Stopped,
+            Self::Panicked => Wording::Internal,
+            Self::CommitAckLost { .. } | Self::PartiallyApplied | Self::Closed => Wording::ConnectionLost,
         }
     }
 }

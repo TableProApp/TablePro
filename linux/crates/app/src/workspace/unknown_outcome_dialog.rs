@@ -20,17 +20,7 @@ pub(crate) enum UnknownChoice {
 }
 
 pub(crate) async fn resolve_unknown_outcome(parent: &gtk::Widget, tabs: &[DirtyTab]) -> UnknownChoice {
-    let cause = tabs
-        .iter()
-        .find_map(|tab| match &tab.kind {
-            DirtyKind::OutcomeUnknown(cause) => Some(cause.clone()),
-            _ => None,
-        })
-        .unwrap_or(UnknownCause::Interrupted);
-    let dialog = adw::AlertDialog::new(
-        Some(&crate::i18n::gettext("Save Result Unknown")),
-        Some(&cause.sentence(&DirtyTab::names(tabs))),
-    );
+    let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Save Result Unknown")), Some(&body(tabs)));
     dialog.add_response(KEEP, &crate::i18n::gettext("_Keep Open"));
     dialog.add_response(RELOAD, &crate::i18n::gettext("_Reload Table"));
     dialog.add_response(DISCARD, &crate::i18n::gettext("_Discard Changes"));
@@ -41,5 +31,56 @@ pub(crate) async fn resolve_unknown_outcome(parent: &gtk::Widget, tabs: &[DirtyT
         RELOAD => UnknownChoice::Reload,
         DISCARD => UnknownChoice::Discard,
         _ => UnknownChoice::KeepOpen,
+    }
+}
+
+/// One sentence for each cause the user is told apart, naming the tabs
+/// it happened to.
+fn body(tabs: &[DirtyTab]) -> String {
+    let mut groups: Vec<(&UnknownCause, Vec<DirtyTab>)> = Vec::new();
+    for tab in tabs {
+        let DirtyKind::OutcomeUnknown(cause) = &tab.kind else {
+            continue;
+        };
+        match groups.iter_mut().find(|(seen, _)| seen.reads_as(cause)) {
+            Some((_, members)) => members.push(tab.clone()),
+            None => groups.push((cause, vec![tab.clone()])),
+        }
+    }
+    let sentences: Vec<String> = groups
+        .iter()
+        .map(|(cause, members)| cause.sentence(&DirtyTab::names(members)))
+        .collect();
+    sentences.join("\n\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+
+    use super::*;
+
+    fn tab(title: &str, cause: UnknownCause) -> DirtyTab {
+        DirtyTab {
+            id: Uuid::new_v4(),
+            title: title.to_owned(),
+            kind: DirtyKind::OutcomeUnknown(cause),
+        }
+    }
+
+    #[test]
+    fn each_tab_is_told_its_own_cause() {
+        let tabs = [
+            tab("orders", UnknownCause::Interrupted),
+            tab("users", UnknownCause::CommitAckLost { token: None }),
+            tab("items", UnknownCause::Closed),
+        ];
+
+        assert_eq!(
+            body(&tabs),
+            "Saving “orders” was stopped before the database confirmed it. The changes may already be in the \
+             database.\n\nThe connection was lost while saving “users”, “items”. The changes may already be in the \
+             database."
+        );
     }
 }
