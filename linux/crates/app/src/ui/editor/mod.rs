@@ -15,6 +15,7 @@ mod run_scope;
 mod script_runner;
 mod sidebar_policy;
 mod significant_tokens;
+mod sql_file;
 mod statement_cursor;
 #[cfg(test)]
 mod tests;
@@ -227,7 +228,7 @@ impl SqlEditor {
     /// Read a dropped or chosen file and put it in the buffer: the whole
     /// buffer when it is empty, at the cursor otherwise.
     pub async fn insert_file(&self, file: gio::File, replace: bool) {
-        let text = match load_text(&file).await {
+        let text = match sql_file::load_text(&file).await {
             Ok(text) => text,
             Err(message) => {
                 self.emit_by_name::<()>("toast", &[&message]);
@@ -751,27 +752,6 @@ fn buffer_text(buffer: &impl IsA<gtk4::TextBuffer>) -> String {
     let buffer = buffer.as_ref();
     let (start, end) = buffer.bounds();
     buffer.text(&start, &end, false).to_string()
-}
-
-/// The most a file may be before the editor refuses it.
-///
-/// A dump can be gigabytes, and a text buffer holding one stops being
-/// an editor. Refusing is better than a window that will not paint.
-const MAX_SQL_FILE_BYTES: i64 = 8 * 1024 * 1024;
-
-/// Read a file as text off the main thread, or say why it cannot be.
-async fn load_text(file: &gio::File) -> Result<String, String> {
-    let info = file
-        .query_info_future("standard::size", gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT)
-        .await;
-    if info.is_ok_and(|info| info.size() > MAX_SQL_FILE_BYTES) {
-        return Err(crate::i18n::gettext("That file is too large to open in the editor."));
-    }
-    let (bytes, _) = file.load_contents_future().await.map_err(|error| {
-        tracing::warn!(%error, "could not read a file for the editor");
-        crate::i18n::gettext("That file could not be read.")
-    })?;
-    String::from_utf8(bytes.to_vec()).map_err(|_| crate::i18n::gettext("That file is not UTF-8 text."))
 }
 
 /// Toggle SQL line-comment (`-- `) for the lines in the buffer's

@@ -80,6 +80,7 @@ crates/app/src/ui/editor/run_scope.rs
 crates/app/src/ui/editor/script_runner.rs
 crates/app/src/ui/editor/sidebar_policy.rs
 crates/app/src/ui/editor/significant_tokens.rs
+crates/app/src/ui/editor/sql_file.rs
 crates/app/src/ui/editor/statement_cursor.rs
 crates/app/src/ui/editor/tests.rs
 crates/app/src/ui/editor/transaction_dirty.rs
