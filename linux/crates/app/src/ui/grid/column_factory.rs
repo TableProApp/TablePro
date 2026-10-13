@@ -694,6 +694,25 @@ mod tests {
         assert_eq!(editor.entry().text(), "typed", "the redraw overwrote what was typed");
     }
 
+    #[gtk4::test]
+    fn unbind_disconnects_revision_handler() {
+        let grid = two_text_rows();
+        let cell = grid.cell_of(2, 1);
+        let row = cell.row().expect("a bound row");
+        let bound_renders = cell.render_count();
+        row.bump_revision();
+        assert_eq!(cell.render_count(), bound_renders + 1, "a bound cell did not redraw");
+
+        cell.unbind();
+        row.bump_revision();
+
+        assert_eq!(
+            cell.render_count(),
+            bound_renders + 1,
+            "a cell drew again for a row it no longer shows"
+        );
+    }
+
     fn name_rows(first: Value) -> Grid {
         Grid::open(
             vec![named("id", "integer", true), named("name", "text", false)],
@@ -769,66 +788,6 @@ mod tests {
         editor.stop_editing(false);
 
         assert_eq!(edited_rows(&grid.take_messages()), vec![]);
-    }
-
-    #[gtk4::test]
-    fn unbind_disconnects_revision_handler() {
-        let columns = vec![named("id", "integer", true), named("name", "text", false)];
-        let rows: Vec<Vec<Value>> = (0..300)
-            .map(|id| vec![Value::Int(id), Value::Text(format!("row {id}"))])
-            .collect();
-        let result = QueryResult::new(
-            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
-            rows.clone(),
-        );
-        let tracker = TabTrackerHandle::default();
-        let (sink, _messages) = recorder();
-        let (view, _selection) = build_column_view(
-            &result,
-            persisted(&rows),
-            &columns,
-            sink,
-            None,
-            false,
-            tracked(&tracker),
-        );
-        let scrolled = gtk::ScrolledWindow::builder().child(&view).build();
-        let window = gtk::Window::new();
-        window.set_default_size(600, 400);
-        window.set_child(Some(&scrolled));
-        window.present();
-        // Not the first row, which the view may keep bound as its focus.
-        let name_cell = || {
-            descendants(&view)
-                .into_iter()
-                .filter_map(|widget| widget.downcast::<GridCell>().ok())
-                .find(|cell| cell.column() == 1 && cell.row().is_some_and(|row| row.key() == Some(&key(3))))
-        };
-        let mut found = None;
-        wait_until(WAIT, || {
-            found = name_cell();
-            found.is_some()
-        })
-        .expect("the fourth row is drawn");
-        let cell = found.expect("a cell");
-        let row = cell.row().expect("a bound row");
-        let bound_renders = cell.render_count();
-        row.bump_revision();
-        assert_eq!(cell.render_count(), bound_renders + 1, "a bound cell did not redraw");
-
-        view.scroll_to(299, None, gtk::ListScrollFlags::NONE, None);
-        wait_until(WAIT, || cell.row().as_ref() != Some(&row)).expect("the fourth row's cell was never let go");
-        let unbound_renders = cell.render_count();
-        row.bump_revision();
-        drain_main_context();
-
-        assert_eq!(
-            cell.render_count(),
-            unbound_renders,
-            "a cell drew again for a row it no longer shows"
-        );
-        window.destroy();
-        drain_main_context();
     }
 
     fn width_binding(tasks: &tablepro_session::runtime::Tasks, root: &tempfile::TempDir) -> ColumnWidthBinding {

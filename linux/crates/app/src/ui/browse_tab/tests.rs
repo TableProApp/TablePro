@@ -1092,6 +1092,28 @@ fn rejected_edit_restores_cell_display() {
 }
 
 #[gtk4::test]
+fn refused_edit_restores_cell_display() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    // A saved row's key, which the tab refuses to change in place.
+    let cell = grid_cell_of(harness.tab(), 0, 0);
+    let row = cell.row().expect("a bound row");
+    cell.editor().expect("a text cell").set_text("7");
+
+    harness.tab().send(BrowseTabInput::GridCellEdited {
+        row,
+        column: 0,
+        input: "7".to_owned(),
+    });
+
+    assert_eq!(cell_text(&cell), "0", "the cell kept the edit the tab refused");
+    assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+#[gtk4::test]
 fn undo_under_an_open_editor_leaves_nothing_pending() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
