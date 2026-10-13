@@ -24,6 +24,9 @@ pub(super) struct ColumnRowContext {
     /// typed that did not parse.
     pub default_text: String,
     pub default_error: Option<String>,
+    /// Numbering goes off with the key, on an engine that numbers only
+    /// a key column.
+    pub numbering_follows_key: bool,
 }
 
 /// The collapsed row's summary, such as `varchar(255) · NOT NULL ·
@@ -243,6 +246,24 @@ pub(super) fn build_column_expander_row(
         .build();
     pk_row.set_widget_name(&format!("col-pk-{index}"));
     gate(&pk_row, &permissions.alter_primary_key);
+
+    let auto_row = adw::SwitchRow::builder()
+        .title(crate::i18n::gettext("Auto increment"))
+        .active(col.auto_increment)
+        .build();
+    auto_row.set_widget_name(&format!("col-auto-{index}"));
+    let follows_key = context.numbering_follows_key;
+    match &permissions.alter_auto_increment {
+        Permission::Allowed if follows_key => {
+            pk_row
+                .bind_property("active", &auto_row, "sensitive")
+                .sync_create()
+                .build();
+        }
+        Permission::Allowed => {}
+        refused => gate(&auto_row, refused),
+    }
+
     // A refused nullability change keeps the reason it already shows.
     let hold = permissions.alter_nullability.is_allowed();
     if hold {
@@ -250,47 +271,40 @@ pub(super) fn build_column_expander_row(
     }
     let sender_for_pk = sender.clone();
     let suppress_for_pk = suppress_emit.clone();
-    // The row owns the Nullable switch, so this holds it weakly.
+    // The row owns both switches, so this holds them weakly.
     let nullable_for_pk = nullable_row.downgrade();
+    let auto_for_pk = auto_row.downgrade();
+    // Given back when the column leaves the key.
+    let nullable_before_key = Cell::new(col.nullable);
     pk_row.connect_active_notify(move |s| {
         if suppress_for_pk.get() {
             return;
         }
         let key = s.is_active();
-        if hold && let Some(nullable) = nullable_for_pk.upgrade() {
-            // The model sets NOT NULL with the key, so the switch only
-            // shows it.
-            if key {
-                suppress_for_pk.set(true);
-                nullable.set_active(false);
-                suppress_for_pk.set(false);
-            }
-            hold_not_null(&nullable, key);
-        }
         sender_for_pk.input(StructureTabInput::ColumnEdited {
             index,
             field: ColumnField::PrimaryKey(key),
         });
+        // Each switch sends its own edit, so the model holds what the
+        // row shows.
+        if hold && let Some(nullable) = nullable_for_pk.upgrade() {
+            if key {
+                nullable_before_key.set(nullable.is_active());
+                nullable.set_active(false);
+            } else {
+                nullable.set_active(nullable_before_key.get());
+            }
+            hold_not_null(&nullable, key);
+        }
+        if !key
+            && follows_key
+            && let Some(auto) = auto_for_pk.upgrade()
+        {
+            auto.set_active(false);
+        }
     });
     row.add_row(&pk_row);
 
-    // A numbered column has to be a key on every engine, so the switch
-    // follows the primary key's where the engine allows the change.
-    let auto_row = adw::SwitchRow::builder()
-        .title(crate::i18n::gettext("Auto increment"))
-        .active(col.auto_increment)
-        .build();
-    auto_row.set_widget_name(&format!("col-auto-{index}"));
-    match &permissions.alter_auto_increment {
-        Permission::Allowed => {
-            auto_row.set_sensitive(col.primary_key);
-            pk_row
-                .bind_property("active", &auto_row, "sensitive")
-                .sync_create()
-                .build();
-        }
-        refused => gate(&auto_row, refused),
-    }
     let sender_for_auto = sender.clone();
     let suppress_for_auto = suppress_emit.clone();
     auto_row.connect_active_notify(move |s| {

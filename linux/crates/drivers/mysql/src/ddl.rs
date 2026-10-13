@@ -26,6 +26,8 @@ const fn capabilities(expression_index_keys: bool) -> DdlCapabilities {
         alter_column_default: true,
         alter_primary_key: true,
         alter_auto_increment: true,
+        // An AUTO_INCREMENT column has to be a key.
+        auto_increment_outside_primary_key: false,
         create_index: true,
         drop_index: true,
         expression_index_keys,

@@ -691,6 +691,7 @@ impl StructureModel {
                 dialect: self.dialect.clone(),
                 default_text,
                 default_error,
+                numbering_follows_key: !capabilities.auto_increment_outside_primary_key,
             };
             list.append(&build_column_expander_row(
                 i,
@@ -1094,16 +1095,9 @@ impl StructureModel {
                 };
             }
             ColumnField::Nullable(nullable) => column.nullable = nullable,
-            ColumnField::PrimaryKey(primary_key) => {
-                column.primary_key = primary_key;
-                if primary_key {
-                    column.nullable = false;
-                } else {
-                    // Every engine numbers only a key column, and the
-                    // switch only greys out, so the model drops it here.
-                    column.auto_increment = false;
-                }
-            }
+            // The row's Nullable and Auto increment switches follow the
+            // key and send their own edits.
+            ColumnField::PrimaryKey(primary_key) => column.primary_key = primary_key,
             ColumnField::AutoIncrement(auto_increment) => column.auto_increment = auto_increment,
             ColumnField::Default(text) => match self.parse_default(&column, &text) {
                 Ok(default) => {

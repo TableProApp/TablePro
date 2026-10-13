@@ -23,6 +23,7 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     alter_primary_key: true,
     // IDENTITY cannot be added to or taken from an existing column.
     alter_auto_increment: false,
+    auto_increment_outside_primary_key: true,
     create_index: true,
     drop_index: true,
     // An index key is a column; an expression needs a computed one.

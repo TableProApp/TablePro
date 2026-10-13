@@ -24,6 +24,7 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     alter_column_default: true,
     alter_primary_key: false,
     alter_auto_increment: false,
+    auto_increment_outside_primary_key: false,
     // A data-skipping index needs a TYPE and a GRANULARITY the index
     // dialog does not ask for.
     create_index: false,

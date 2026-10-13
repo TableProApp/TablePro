@@ -22,6 +22,7 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     alter_column_default: true,
     alter_primary_key: true,
     alter_auto_increment: true,
+    auto_increment_outside_primary_key: true,
     create_index: true,
     drop_index: true,
     expression_index_keys: true,

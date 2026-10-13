@@ -23,6 +23,8 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     alter_column_default: false,
     alter_primary_key: false,
     alter_auto_increment: false,
+    // AUTOINCREMENT belongs to the INTEGER PRIMARY KEY.
+    auto_increment_outside_primary_key: false,
     create_index: true,
     drop_index: true,
     expression_index_keys: true,

@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structure tab offers only the changes the database can make, and says why a control is off.
 - New rows in the table grid take a value for a primary key that is not auto-increment.
 - Show CREATE TABLE gives the server's own statement on MySQL, ClickHouse and SQLite.
-- Structure tab sets a column NOT NULL when it joins the primary key.
+- Structure tab sets a column NOT NULL when it joins the primary key, and gives its nullability back when it leaves.
+- Auto increment in the Structure tab no longer needs the primary key on PostgreSQL and SQL Server.
 
 ### Fixed
 
