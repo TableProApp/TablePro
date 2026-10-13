@@ -3,9 +3,6 @@ use tablepro_storage::document::VersionedDocument;
 
 use super::TabRecord;
 
-/// More tabs than this is a file to distrust, not a window to rebuild.
-const MAX_TABS: usize = 32;
-
 /// One session's saved tabs, in the order the window showed them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceRecord {
@@ -23,17 +20,18 @@ impl VersionedDocument for WorkspaceRecord {
 }
 
 impl WorkspaceRecord {
-    /// The record as a window can rebuild it: at most `MAX_TABS` tabs,
-    /// none naming something that could not exist, and `active_tab`
-    /// still pointing at the tab it named, or at none.
+    /// The record as a window can rebuild it: no tab naming something
+    /// that could not exist, and `active_tab` still pointing at the tab
+    /// it named, or at none.
+    ///
+    /// The tab count is not capped: the window saves every tab it has,
+    /// and an editor tab cut here would have its draft deleted as one
+    /// no tab names. The store's cap on the file size bounds a load.
     pub fn clamped(self) -> Self {
         let active = self.active_tab.and_then(|index| usize::try_from(index).ok());
-        let mut tabs = Vec::with_capacity(self.tabs.len().min(MAX_TABS));
+        let mut tabs = Vec::with_capacity(self.tabs.len());
         let mut active_tab = None;
         for (index, tab) in self.tabs.into_iter().enumerate() {
-            if tabs.len() == MAX_TABS {
-                break;
-            }
             let Some(tab) = tab.clamped() else {
                 continue;
             };
@@ -99,16 +97,28 @@ mod tests {
     }
 
     #[test]
-    fn clamped_limits_tabs_and_resets_active_tab() {
+    fn clamped_keeps_every_tab_however_many() {
         let record = WorkspaceRecord {
             active_tab: Some(35),
-            tabs: (0..40).map(|index| table(&format!("t{index}"))).collect(),
+            tabs: (0..40)
+                .map(|index| match index % 2 {
+                    0 => TabRecord::Editor { draft: DraftId::new() },
+                    _ => table(&format!("t{index}")),
+                })
+                .collect(),
         };
 
-        let clamped = record.clamped();
+        assert_eq!(record.clone().clamped(), record);
+    }
 
-        assert_eq!(clamped.tabs.len(), MAX_TABS);
-        assert_eq!(clamped.active_tab, None);
+    #[test]
+    fn clamped_resets_an_active_tab_past_the_end() {
+        let record = WorkspaceRecord {
+            active_tab: Some(3),
+            tabs: vec![table("a"), table("b")],
+        };
+
+        assert_eq!(record.clamped().active_tab, None);
     }
 
     #[test]

@@ -8,9 +8,6 @@ use super::SortRecord;
 /// What the page size preference allows.
 const PAGE_SIZES: RangeInclusive<u64> = 100..=100_000;
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
-/// No engine allows a name this long, so a record with one names no
-/// table there is to reopen.
-const MAX_NAME_BYTES: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -45,7 +42,7 @@ impl TabRecord {
                 page_size,
                 sort,
             } => {
-                if !names_fit(schema.as_deref(), &table) {
+                if table.is_empty() {
                     return None;
                 }
                 let page_size = if PAGE_SIZES.contains(&page_size) {
@@ -61,16 +58,10 @@ impl TabRecord {
                     sort,
                 })
             }
-            Self::Structure { schema, table } => {
-                names_fit(schema.as_deref(), &table).then_some(Self::Structure { schema, table })
-            }
+            Self::Structure { schema, table } => (!table.is_empty()).then_some(Self::Structure { schema, table }),
             Self::Editor { draft } => Some(Self::Editor { draft }),
         }
     }
-}
-
-fn names_fit(schema: Option<&str>, table: &str) -> bool {
-    !table.is_empty() && table.len() <= MAX_NAME_BYTES && schema.is_none_or(|schema| schema.len() <= MAX_NAME_BYTES)
 }
 
 #[cfg(test)]
@@ -98,13 +89,25 @@ mod tests {
     }
 
     #[test]
-    fn a_record_naming_no_possible_table_is_dropped() {
+    fn a_record_naming_no_table_is_dropped() {
         assert_eq!(table("", 1_000).clamped(), None);
-        assert_eq!(table(&"t".repeat(MAX_NAME_BYTES + 1), 1_000).clamped(), None);
         let structure = TabRecord::Structure {
-            schema: Some("s".repeat(MAX_NAME_BYTES + 1)),
-            table: "users".to_owned(),
+            schema: Some("public".to_owned()),
+            table: String::new(),
         };
         assert_eq!(structure.clamped(), None);
+    }
+
+    #[test]
+    fn a_long_name_is_kept() {
+        // SQLite sets no limit on a name's length.
+        let long = table(&"t".repeat(1_000), 1_000);
+        let structure = TabRecord::Structure {
+            schema: Some("s".repeat(1_000)),
+            table: "users".to_owned(),
+        };
+
+        assert_eq!(long.clone().clamped(), Some(long));
+        assert_eq!(structure.clone().clamped(), Some(structure));
     }
 }

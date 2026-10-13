@@ -14,6 +14,8 @@ pub enum WorkspaceLoadError {
     Corrupt(String),
     #[error("the saved tabs are in a format this version does not read (found {found:?}, reads {expected})")]
     UnsupportedVersion { found: Option<u32>, expected: u32 },
+    #[error("the saved tabs file is larger than {limit} bytes")]
+    TooLarge { limit: u64 },
 }
 
 impl From<DocumentProblem> for WorkspaceLoadError {

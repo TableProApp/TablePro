@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -15,6 +15,10 @@ use super::write_job::WriteJob;
 use super::{WorkspaceFileName, WorkspaceLoad, WorkspaceLoadError, WorkspaceRecord, WorkspaceSaveError};
 
 type WriteFile = dyn Fn(&Path, &[u8]) -> Result<(), StorageError> + Send + Sync;
+
+/// Thousands of tabs encode to less than this. A file past it is read
+/// no further, so a runaway one costs no memory to refuse.
+const MAX_FILE_BYTES: u64 = 1024 * 1024;
 
 /// Every session's saved tabs, one file each.
 ///
@@ -32,6 +36,7 @@ struct StoreInner {
     tasks: Tasks,
     writer: mpsc::UnboundedSender<WriteJob>,
     blocked: RefCell<HashSet<SessionKey>>,
+    moved_aside: RefCell<HashSet<SessionKey>>,
 }
 
 impl WorkspaceStore {
@@ -50,6 +55,7 @@ impl WorkspaceStore {
                 tasks: tasks.clone(),
                 writer,
                 blocked: RefCell::default(),
+                moved_aside: RefCell::default(),
             }),
         }
     }
@@ -65,11 +71,21 @@ impl WorkspaceStore {
             // A failed write still leaves whatever is on disk to read.
             let _ = written.await;
             let reading = path.clone();
-            let load = inner
+            let (load, moved_aside) = inner
                 .tasks
-                .spawn_blocking_task(move || read_record(&reading))
+                .spawn_blocking_task(move || (read_record(&reading), moved_aside_exists(&reading)))
                 .await
-                .unwrap_or_else(|failure| WorkspaceLoad::Blocked(WorkspaceLoadError::Io(failure.to_string())));
+                .unwrap_or_else(|failure| {
+                    (
+                        WorkspaceLoad::Blocked(WorkspaceLoadError::Io(failure.to_string())),
+                        true,
+                    )
+                });
+            if moved_aside {
+                inner.moved_aside.borrow_mut().insert(key.clone());
+            } else {
+                inner.moved_aside.borrow_mut().remove(&key);
+            }
             match &load {
                 WorkspaceLoad::Blocked(error) => {
                     tracing::warn!(%error, path = %path.display(), "keeping the saved tabs as they are");
@@ -112,24 +128,40 @@ impl WorkspaceStore {
 
     /// Move a file that could not be read aside, bytes and all, and let
     /// the session save again. Gives the name the file now has, or `None`
-    /// when there was no file.
+    /// when nothing was moved: there was no file, or it could be read.
     pub fn reset(&self, key: &SessionKey) -> impl Future<Output = Result<Option<PathBuf>, WorkspaceSaveError>> + use<> {
+        // Checked now: a Reset clicked after a switch to another session
+        // names that session, whose file may be fine.
+        let blocked = self.is_blocked(key);
         let inner = self.inner.clone();
         let key = key.clone();
         let path = self.inner.path(&key);
         async move {
+            if !blocked {
+                return Ok(None);
+            }
             let moved = inner
                 .tasks
                 .spawn_blocking_task(move || move_aside(&path))
                 .await
                 .unwrap_or_else(|failure| Err(WorkspaceSaveError::MoveAside(failure.to_string())))?;
             inner.blocked.borrow_mut().remove(&key);
+            if moved.is_some() {
+                inner.moved_aside.borrow_mut().insert(key);
+            }
             Ok(moved)
         }
     }
 
     pub fn is_blocked(&self, key: &SessionKey) -> bool {
         self.inner.blocked.borrow().contains(key)
+    }
+
+    /// Whether a copy of the session's file that Reset moved aside is
+    /// still there, as of the last load or reset. It may name drafts
+    /// that no saved tab does.
+    pub fn has_moved_aside_copy(&self, key: &SessionKey) -> bool {
+        self.inner.moved_aside.borrow().contains(key)
     }
 }
 
@@ -210,8 +242,9 @@ async fn write_record(
 }
 
 fn read_record(path: &Path) -> WorkspaceLoad {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
+    let bytes = match read_capped(path) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return WorkspaceLoad::Blocked(WorkspaceLoadError::TooLarge { limit: MAX_FILE_BYTES }),
         Err(error) if error.kind() == ErrorKind::NotFound => return WorkspaceLoad::Empty,
         Err(error) => return WorkspaceLoad::Blocked(WorkspaceLoadError::Io(error.to_string())),
     };
@@ -219,6 +252,27 @@ fn read_record(path: &Path) -> WorkspaceLoad {
         Ok(record) => WorkspaceLoad::Restored(record.clamped()),
         Err(problem) => WorkspaceLoad::Blocked(problem.into()),
     }
+}
+
+/// The whole file, or `None` when it is larger than `MAX_FILE_BYTES`.
+fn read_capped(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    let file = std::fs::File::open(path)?;
+    if file.metadata()?.len() > MAX_FILE_BYTES {
+        return Ok(None);
+    }
+    let mut bytes = Vec::new();
+    // The file can grow after the size was read.
+    file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes)?;
+    Ok((bytes.len() as u64 <= MAX_FILE_BYTES).then_some(bytes))
+}
+
+/// A directory that cannot be listed counts as holding a copy, so
+/// nothing is deleted on a guess.
+fn moved_aside_exists(path: &Path) -> bool {
+    tablepro_storage::fs::moved_aside_exists_blocking(path).unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not look for saved tabs moved aside");
+        true
+    })
 }
 
 fn move_aside(path: &Path) -> Result<Option<PathBuf>, WorkspaceSaveError> {
@@ -415,8 +469,75 @@ mod tests {
     #[tokio::test]
     async fn reset_without_a_file_unblocks() {
         let fixture = Fixture::new();
+        let key = key();
+        let path = fixture.seed(&key, b"{ not json");
+        assert!(matches!(fixture.store.load(&key).await, WorkspaceLoad::Blocked(_)));
+        std::fs::remove_file(&path).expect("remove");
 
-        assert_eq!(fixture.store.reset(&key()).await, Ok(None));
+        assert_eq!(fixture.store.reset(&key).await, Ok(None));
+        assert!(!fixture.store.is_blocked(&key));
+    }
+
+    #[tokio::test]
+    async fn reset_leaves_a_readable_file_alone() {
+        let fixture = Fixture::new();
+        let key = key();
+        fixture.store.schedule(&key, record(1)).expect("scheduled");
+        assert_eq!(fixture.store.load(&key).await, WorkspaceLoad::Restored(record(1)));
+
+        assert_eq!(fixture.store.reset(&key).await, Ok(None));
+
+        assert_eq!(fixture.on_disk(&key), record(1));
+        assert!(!fixture.store.has_moved_aside_copy(&key));
+    }
+
+    #[tokio::test]
+    async fn a_copy_moved_aside_is_remembered() {
+        let fixture = Fixture::new();
+        let (key, other) = (key(), key());
+        fixture.seed(&key, b"{ not json");
+        assert!(matches!(fixture.store.load(&key).await, WorkspaceLoad::Blocked(_)));
+        assert!(!fixture.store.has_moved_aside_copy(&key));
+
+        fixture.store.reset(&key).await.expect("reset");
+        assert!(fixture.store.has_moved_aside_copy(&key));
+        // As a later run finds it on disk.
+        let restarted = WorkspaceStore::start(fixture.root.path().join("workspaces"), &paused_tasks());
+        assert_eq!(restarted.load(&key).await, WorkspaceLoad::Empty);
+        restarted.load(&other).await;
+
+        assert!(restarted.has_moved_aside_copy(&key));
+        assert!(!restarted.has_moved_aside_copy(&other));
+    }
+
+    #[tokio::test]
+    async fn a_record_of_many_tabs_loads_whole() {
+        let fixture = Fixture::new();
+        let key = key();
+        let many = WorkspaceRecord {
+            active_tab: Some(39),
+            tabs: (0..40).map(|_| TabRecord::Editor { draft: DraftId::new() }).collect(),
+        };
+        fixture.store.schedule(&key, many.clone()).expect("scheduled");
+
+        assert_eq!(fixture.store.load(&key).await, WorkspaceLoad::Restored(many));
+    }
+
+    #[tokio::test]
+    async fn an_oversized_file_blocks_key() {
+        let fixture = Fixture::new();
+        let key = key();
+        let padding = " ".repeat(usize::try_from(MAX_FILE_BYTES).expect("a size"));
+        let path = fixture.seed(&key, format!(r#"{{"version": 1, "tabs": []{padding}}}"#).as_bytes());
+        let size = std::fs::metadata(&path).expect("metadata").len();
+
+        let load = fixture.store.load(&key).await;
+
+        assert_eq!(
+            load,
+            WorkspaceLoad::Blocked(WorkspaceLoadError::TooLarge { limit: MAX_FILE_BYTES })
+        );
+        assert_eq!(std::fs::metadata(&path).expect("metadata").len(), size);
     }
 
     #[tokio::test]
