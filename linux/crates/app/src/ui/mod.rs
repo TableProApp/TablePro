@@ -12,6 +12,7 @@ pub(crate) mod error_text;
 mod export_dialog;
 mod filter_strip;
 mod grid;
+mod handler_guard;
 mod history_dialog;
 pub(crate) mod icons;
 mod import_dialog;
