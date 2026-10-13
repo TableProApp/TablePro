@@ -18,19 +18,18 @@ const RETRY: Duration = Duration::from_millis(50);
 
 /// Case 5: with every pool slot running a statement, the probe still
 /// answers, because a busy pool is not a dead server.
-pub async fn probe_succeeds_while_every_pool_slot_is_busy<E: PooledConformanceEngine>() -> Result<(), ConformanceFailure>
-{
-    let engine = E::start().await?;
+pub async fn probe_succeeds_while_every_pool_slot_is_busy<E: PooledConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     pool_case(&engine, None).await
 }
 
 /// Case 5 on a network engine, which also asks the server that exactly
 /// the pool's size of statements is running.
-pub async fn probe_succeeds_while_every_network_pool_slot_is_busy<E>() -> Result<(), ConformanceFailure>
+pub async fn probe_succeeds_while_every_network_pool_slot_is_busy<E>(engine: E) -> Result<(), ConformanceFailure>
 where
     E: PooledConformanceEngine + NetworkConformanceEngine,
 {
-    let engine = E::start().await?;
     let count_sql = |marker: &str| engine.running_statement_count_sql(marker);
     pool_case(&engine, Some(&count_sql)).await
 }
@@ -171,7 +170,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn pool_case_fails_when_saturation_never_appears() {
-        let outcome = probe_succeeds_while_every_pool_slot_is_busy::<FakeEngine<NeverFull>>().await;
+        let outcome = probe_succeeds_while_every_pool_slot_is_busy(FakeEngine::<NeverFull>::new()).await;
 
         assert!(
             matches!(&outcome, Err(ConformanceFailure::Expectation { case: CASE, detail }) if detail.contains("still ran")),
@@ -181,7 +180,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn pool_case_passes_when_the_full_pool_reports_busy() {
-        probe_succeeds_while_every_pool_slot_is_busy::<FakeEngine<FillsUp>>()
+        probe_succeeds_while_every_pool_slot_is_busy(FakeEngine::<FillsUp>::new())
             .await
             .unwrap();
     }

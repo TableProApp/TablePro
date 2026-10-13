@@ -12,9 +12,9 @@ const SCHEMA_CHANGE: Duration = Duration::from_secs(3);
 
 /// Case 11: the workspace statement timeout stops a slow row change, and
 /// the same work saved as a schema change runs to the end.
-pub async fn schema_changes_batch_is_not_bounded_by_statement_timeout<E: BoundedDdlEngine>()
--> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn schema_changes_batch_is_not_bounded_by_statement_timeout<E: BoundedDdlEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let settings = WorkspaceSettings {
         statement_timeout: STATEMENT_TIMEOUT,
         ..WorkspaceSettings::workspace(false)

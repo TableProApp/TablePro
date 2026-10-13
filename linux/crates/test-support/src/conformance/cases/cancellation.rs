@@ -20,9 +20,9 @@ const SEEN_LIMIT: Duration = Duration::from_secs(10);
 
 /// Case 3: cancelling an editor run ends it as cancelled within the
 /// cancel grace, and the session takes the next run.
-pub async fn editor_cancel_reports_cancelled_and_session_stays_ready<E: ConformanceEngine>()
--> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn editor_cancel_reports_cancelled_and_session_stays_ready<E: ConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let grace = test_liveness().cancel_grace + SCHEDULING_SLACK;
     let connection = connect(EDITOR_CASE, &engine, writable()).await?;
     let session = connection
@@ -62,8 +62,9 @@ pub async fn editor_cancel_reports_cancelled_and_session_stays_ready<E: Conforma
 
 /// Case 4: dropping the caller of a running read stops it on the server
 /// too, rather than leaving the server working for nobody.
-pub async fn dropped_caller_stops_server_statement<E: NetworkConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn dropped_caller_stops_server_statement<E: NetworkConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let bound = test_liveness().cancel_grace + Duration::from_secs(1);
     let connection = connect(DROPPED_CASE, &engine, writable()).await?;
     // An editor session owns its own connection, so the count never

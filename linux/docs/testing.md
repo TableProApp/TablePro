@@ -125,6 +125,8 @@ Each flag adds cases and needs its engine trait:
 
 A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint` or `editor_transactions` disagrees with the driver's `DriverCapabilities`, so a driver cannot skip a case by declaring less. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite passes `docker: false` and `endpoint: file`, so its suite runs in the unit suite.
 
+Each case starts its own engine, then has two minutes (`CASE_LIMIT`) to finish. A driver that ignores a deadline or a cancel fails the case with its name instead of holding the test run.
+
 ### TLS conformance
 
 Every network driver also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:

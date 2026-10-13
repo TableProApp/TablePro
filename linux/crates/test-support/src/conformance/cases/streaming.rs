@@ -30,9 +30,9 @@ const STREAM_DEADLINE: Duration = Duration::from_secs(120);
 /// sink in bounded batches, inside one started and finished result set,
 /// and a sink that stops reading ends the read without being reported
 /// as a whole one. The connection answers afterwards.
-pub async fn stream_read_streams_every_row_in_bounded_batches<E: ConformanceEngine>() -> Result<(), ConformanceFailure>
-{
-    let engine = E::start().await?;
+pub async fn stream_read_streams_every_row_in_bounded_batches<E: ConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let connection = connect(CASE, &engine, writable()).await?;
 
     let whole = Tally::default();
@@ -208,14 +208,14 @@ mod tests {
 
     #[tokio::test]
     async fn stream_case_passes_when_rows_arrive_in_batches() {
-        stream_read_streams_every_row_in_bounded_batches::<FakeEngine<Batched>>()
+        stream_read_streams_every_row_in_bounded_batches(FakeEngine::<Batched>::new())
             .await
             .unwrap();
     }
 
     #[tokio::test]
     async fn stream_case_fails_when_rows_arrive_in_one_block() {
-        let outcome = stream_read_streams_every_row_in_bounded_batches::<FakeEngine<OneBlock>>().await;
+        let outcome = stream_read_streams_every_row_in_bounded_batches(FakeEngine::<OneBlock>::new()).await;
 
         assert!(
             matches!(&outcome, Err(ConformanceFailure::Expectation { case: CASE, detail }) if detail.contains("one batch held")),

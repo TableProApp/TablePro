@@ -9,8 +9,7 @@ const COMMITS_CASE: &str = "write_batch_commits_every_step";
 const FAILED_CASE: &str = "failed_write_batch_outcome_matches_dml_atomicity";
 
 /// Case 8: a save of three inserts reports each one and lands all three.
-pub async fn write_batch_commits_every_step<E: ConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn write_batch_commits_every_step<E: ConformanceEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let connection = connect(COMMITS_CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, connection.as_ref(), "writes").await?;
     let dialect = connection.dialect();
@@ -32,9 +31,9 @@ pub async fn write_batch_commits_every_step<E: ConformanceEngine>() -> Result<()
 /// Case 9: a save whose second statement fails leaves what the engine's
 /// atomicity promises: nothing on a transactional engine, the first row
 /// on one that applies statement by statement.
-pub async fn failed_write_batch_outcome_matches_dml_atomicity<E: ConformanceEngine>() -> Result<(), ConformanceFailure>
-{
-    let engine = E::start().await?;
+pub async fn failed_write_batch_outcome_matches_dml_atomicity<E: ConformanceEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
     let atomicity = E::driver().capabilities().dml_writes;
     let connection = connect(FAILED_CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, connection.as_ref(), "failed_write").await?;
@@ -122,7 +121,8 @@ mod tests {
 
     #[tokio::test]
     async fn case_reports_expectation_on_wrong_outcome() {
-        let outcome = failed_write_batch_outcome_matches_dml_atomicity::<FakeEngine<PartialOnTransactional>>().await;
+        let outcome =
+            failed_write_batch_outcome_matches_dml_atomicity(FakeEngine::<PartialOnTransactional>::new()).await;
 
         assert!(
             matches!(&outcome, Err(ConformanceFailure::Expectation { case: FAILED_CASE, detail }) if detail.contains("Transactional")),
@@ -132,7 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn failed_write_case_passes_when_a_transactional_engine_rolls_back() {
-        failed_write_batch_outcome_matches_dml_atomicity::<FakeEngine<RollsBack>>()
+        failed_write_batch_outcome_matches_dml_atomicity(FakeEngine::<RollsBack>::new())
             .await
             .unwrap();
     }

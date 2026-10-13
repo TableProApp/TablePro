@@ -84,26 +84,31 @@ macro_rules! tls_conformance_suite {
     (engine: $engine:ty, client_identity: $identity:tt $(,)?) => {
         $crate::__conformance_case! {
             true,
+            $engine as TlsConformanceEngine,
             verify_full_with_issuing_ca_connects,
             $crate::conformance::cases::tls::verify_full_with_issuing_ca_connects::<$engine>
         }
         $crate::__conformance_case! {
             true,
+            $engine as TlsConformanceEngine,
             verify_full_with_unrelated_ca_reports_unknown_issuer,
             $crate::conformance::cases::tls::verify_full_with_unrelated_ca_reports_unknown_issuer::<$engine>
         }
         $crate::__conformance_case! {
             true,
+            $engine as TlsConformanceEngine,
             verify_full_with_wrong_server_name_reports_name_mismatch,
             $crate::conformance::cases::tls::verify_full_with_wrong_server_name_reports_name_mismatch::<$engine>
         }
         $crate::__conformance_case! {
             true,
+            $engine as TlsConformanceEngine,
             require_connects_without_ca,
             $crate::conformance::cases::tls::require_connects_without_ca::<$engine>
         }
         $crate::__conformance_case! {
             true,
+            $engine as TlsConformanceEngine,
             disable_against_tls_only_server_is_refused,
             $crate::conformance::cases::tls::disable_against_tls_only_server_is_refused::<$engine>
         }
@@ -125,6 +130,7 @@ macro_rules! __tls_identity_case {
     (true, $engine:ty) => {
         $crate::__conformance_case! {
             true,
+            $engine as TlsConformanceEngine,
             client_identity_is_required_by_the_server,
             $crate::conformance::cases::tls::client_identity_is_required_by_the_server::<$engine>
         }

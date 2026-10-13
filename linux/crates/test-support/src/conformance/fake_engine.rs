@@ -26,6 +26,10 @@ pub(crate) trait FakeScenario: Send + Sync + 'static {
 pub(crate) struct FakeEngine<S>(PhantomData<fn() -> S>);
 
 impl<S> FakeEngine<S> {
+    pub(crate) fn new() -> Self {
+        Self(PhantomData)
+    }
+
     /// Answers the setup every case does, so a scenario scripts only the
     /// call it is about.
     pub(crate) fn base_script() -> ConnectionScript {
@@ -45,7 +49,7 @@ impl<S: FakeScenario> ConformanceEngine for FakeEngine<S> {
     }
 
     async fn start() -> Result<Self, ConformanceFailure> {
-        Ok(Self(PhantomData))
+        Ok(Self::new())
     }
 
     fn connect_options(&self, settings: WorkspaceSettings, liveness: LivenessPolicy) -> ConnectOptions {

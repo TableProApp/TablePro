@@ -15,8 +15,7 @@ const MISSING_ID: i64 = 999;
 /// row, and fails on its guard without changing anything. The save is
 /// planned the way the grid plans one, so the guard is the one the app
 /// would send to this engine.
-pub async fn row_guard_mismatch_applies_nothing<E: ConformanceEngine>() -> Result<(), ConformanceFailure> {
-    let engine = E::start().await?;
+pub async fn row_guard_mismatch_applies_nothing<E: ConformanceEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let connection = connect(CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, connection.as_ref(), "row_guard").await?;
     let dialect = connection.dialect();
