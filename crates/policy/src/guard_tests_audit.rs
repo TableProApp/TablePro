@@ -29,7 +29,7 @@ fn gui_guard(connection: Arc<dyn Connection>, audit: Arc<SequenceAuditSink>, sta
 #[tokio::test]
 async fn agent_query_errors_do_not_expose_driver_message_details() {
     let guard = PolicyGuard::new(
-        Arc::new(super::TransactionQueryErrorConn),
+        Arc::new(super::ErrorConn(super::query_error)),
         super::context(
             Principal::Agent {
                 token: "test-token".into(),
@@ -53,7 +53,7 @@ async fn agent_query_errors_do_not_expose_driver_message_details() {
 #[tokio::test]
 async fn human_query_errors_preserve_driver_message_details() {
     let guard = gui_guard(
-        Arc::new(super::TransactionQueryErrorConn),
+        Arc::new(super::ErrorConn(super::query_error)),
         Arc::new(SequenceAuditSink::new(vec![])),
         Arc::new(AuditState::new()),
     );
@@ -283,7 +283,7 @@ async fn batch_query_error_records_unknown_and_poisons_state() {
     let state = Arc::new(AuditState::new());
     let audit = Arc::new(SequenceAuditSink::new(vec![]));
     let guard = PolicyGuard::new(
-        Arc::new(TransactionQueryErrorConn),
+        Arc::new(ErrorConn(query_error)),
         context(
             Principal::human_gui(),
             Environment::Prod,
@@ -313,7 +313,7 @@ async fn interactive_transaction_query_error_does_not_poison_later_governed_writ
     let state = Arc::new(AuditState::new());
     let audit = Arc::new(SequenceAuditSink::new(vec![]));
     let guard = PolicyGuard::new(
-        Arc::new(TransactionQueryErrorConn),
+        Arc::new(ErrorConn(query_error)),
         context(
             Principal::human_gui(),
             Environment::Prod,
