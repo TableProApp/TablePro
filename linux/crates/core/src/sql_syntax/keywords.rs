@@ -150,33 +150,6 @@ impl SqlGrammar {
         };
         COMMON.iter().chain(own).copied()
     }
-
-    /// Whether `name` reads as the same identifier written without
-    /// quotes.
-    ///
-    /// PostgreSQL folds an unquoted name to lower case, so a capital
-    /// changes the name there. A keyword the editor completes is quoted
-    /// too, because most of them are reserved somewhere.
-    pub fn is_bare_identifier(self, name: &str) -> bool {
-        let mut chars = name.chars();
-        let Some(first) = chars.next() else {
-            return false;
-        };
-        let letter = |c: char| match self {
-            Self::ClickHouse => c.is_ascii_alphabetic(),
-            _ => c.is_alphabetic(),
-        };
-        let start = letter(first) || first == '_' || (self == Self::MsSql && first == '#');
-        let part = |c: char| {
-            letter(c)
-                || c.is_ascii_digit()
-                || c == '_'
-                || (c == '$' && self != Self::ClickHouse)
-                || (self == Self::MsSql && matches!(c, '#' | '@'))
-        };
-        let folds = self == Self::PostgreSql && name.chars().any(char::is_uppercase);
-        start && chars.all(part) && !folds && !self.keywords().any(|keyword| keyword.eq_ignore_ascii_case(name))
-    }
 }
 
 #[cfg(test)]
@@ -207,32 +180,5 @@ mod tests {
                 assert!(seen.insert(keyword), "{keyword} twice for {grammar:?}");
             }
         }
-    }
-
-    #[test]
-    fn plain_names_stay_bare() {
-        for grammar in SqlGrammar::ALL {
-            assert!(grammar.is_bare_identifier("users"), "{grammar:?}");
-            assert!(grammar.is_bare_identifier("order_items_2"), "{grammar:?}");
-            assert!(grammar.is_bare_identifier("_draft"), "{grammar:?}");
-        }
-        assert!(SqlGrammar::PostgreSql.is_bare_identifier("đơn_hàng"));
-        assert!(SqlGrammar::MySql.is_bare_identifier("Users"));
-        assert!(SqlGrammar::MsSql.is_bare_identifier("#scratch"));
-    }
-
-    #[test]
-    fn names_that_read_differently_bare_need_quotes() {
-        for grammar in SqlGrammar::ALL {
-            assert!(!grammar.is_bare_identifier(""), "{grammar:?}");
-            assert!(!grammar.is_bare_identifier("order items"), "{grammar:?}");
-            assert!(!grammar.is_bare_identifier("2fa"), "{grammar:?}");
-            assert!(!grammar.is_bare_identifier("order"), "{grammar:?}");
-            assert!(!grammar.is_bare_identifier("a-b"), "{grammar:?}");
-        }
-        assert!(!SqlGrammar::PostgreSql.is_bare_identifier("Users"));
-        assert!(!SqlGrammar::PostgreSql.is_bare_identifier("user"));
-        assert!(!SqlGrammar::ClickHouse.is_bare_identifier("đơn"));
-        assert!(!SqlGrammar::ClickHouse.is_bare_identifier("a$b"));
     }
 }

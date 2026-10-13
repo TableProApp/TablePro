@@ -4,6 +4,7 @@ mod keywords;
 mod literal_token;
 mod parse_expression;
 mod parse_type;
+mod reserved_words;
 pub mod script;
 
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};
