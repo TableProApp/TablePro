@@ -1,7 +1,7 @@
 use relm4::adw::prelude::*;
 use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 
-use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogInput, HistoryDialogOutput};
+use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
 
 use super::{App, AppMsg, shortcuts};
 
@@ -90,11 +90,6 @@ impl App {
             self.show_toast(&crate::tr!("Query history is unavailable"));
             return;
         };
-        if let Some(panel) = self.history_dialog.as_ref() {
-            let _ = panel.sender().send(HistoryDialogInput::Refresh);
-            self.history_paned.set_end_child(Some(panel.widget()));
-            return;
-        }
         let panel = HistoryDialog::builder()
             .launch(HistoryDialogInit {
                 history,
@@ -110,8 +105,9 @@ impl App {
         self.history_dialog = Some(panel);
     }
 
-    pub(super) fn hide_history_panel(&self) {
+    pub(super) fn hide_history_panel(&mut self) {
         self.history_paned.set_end_child(None::<&gtk::Widget>);
+        self.history_dialog = None;
     }
 
     pub(super) fn on_show_shortcuts(&self) {
