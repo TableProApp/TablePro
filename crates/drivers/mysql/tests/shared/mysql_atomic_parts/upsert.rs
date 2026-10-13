@@ -18,6 +18,22 @@ async fn mariadb_failed_upsert_keeps_nontransactional_trigger_effect() {
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn mysql_failed_multirow_duplicate_upsert_keeps_before_insert_trigger_effect() {
+    let (_container, opts) = start_mysql().await;
+    let conn = connect(opts.clone()).await;
+    assert_multirow_before_insert_trigger_effect_survives_later_batch_rollback(conn, opts).await;
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn mariadb_failed_multirow_duplicate_upsert_keeps_before_insert_trigger_effect() {
+    let (_container, opts) = start_mariadb().await;
+    let conn = connect(opts.clone()).await;
+    assert_multirow_before_insert_trigger_effect_survives_later_batch_rollback(conn, opts).await;
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn mysql_replace_trigger_effect_survives_later_batch_rollback() {
     let (_container, opts) = start_mysql().await;
     let conn = connect(opts.clone()).await;
@@ -76,6 +92,63 @@ async fn assert_upsert_trigger_effect_survives_later_batch_rollback(conn: Box<dy
             .rows,
         vec![vec![Value::Int(1), Value::Int(11)]],
         "the MyISAM AFTER UPDATE trigger effect survives rollback"
+    );
+}
+
+async fn assert_multirow_before_insert_trigger_effect_survives_later_batch_rollback(
+    conn: Box<dyn Connection>,
+    opts: ConnectOptions,
+) {
+    conn.execute("CREATE TABLE before_upsert_parent (id INT PRIMARY KEY, value INT NOT NULL) ENGINE=InnoDB")
+        .await
+        .unwrap();
+    conn.execute("INSERT INTO before_upsert_parent VALUES (1, 10)")
+        .await
+        .unwrap();
+    conn.execute("CREATE TABLE before_upsert_myisam_effect (id INT, value INT) ENGINE=MyISAM")
+        .await
+        .unwrap();
+    create_trigger(
+        &opts,
+        "CREATE TRIGGER before_upsert_parent_before_insert BEFORE INSERT ON before_upsert_parent \
+         FOR EACH ROW INSERT INTO before_upsert_myisam_effect VALUES (NEW.id, NEW.value)",
+    )
+    .await
+    .unwrap();
+
+    let batch = vec![
+        (
+            "INSERT INTO before_upsert_parent VALUES (1, 11), (2, 20) \
+             ON DUPLICATE KEY UPDATE value = VALUES(value)"
+                .into(),
+            vec![],
+        ),
+        ("INSERT INTO missing_before_upsert_table VALUES (1)".into(), vec![]),
+    ];
+    let error = conn
+        .execute_in_transaction(&batch)
+        .await
+        .expect_err("the multi-row upsert must run its insert triggers before the later failure");
+    assert!(
+        matches!(error, DriverError::Transaction { statement_index: 1, .. }),
+        "the second statement must be reported as the failure, got {error:?}"
+    );
+
+    assert_eq!(
+        conn.query("SELECT id, value FROM before_upsert_parent")
+            .await
+            .unwrap()
+            .rows,
+        vec![vec![Value::Int(1), Value::Int(10)]],
+        "the duplicate upsert's InnoDB update is rolled back"
+    );
+    assert_eq!(
+        conn.query("SELECT id, value FROM before_upsert_myisam_effect")
+            .await
+            .unwrap()
+            .rows,
+        vec![vec![Value::Int(1), Value::Int(11)], vec![Value::Int(2), Value::Int(20)]],
+        "the MyISAM BEFORE INSERT effects for duplicate and new rows survive rollback"
     );
 }
 
