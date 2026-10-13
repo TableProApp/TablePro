@@ -172,7 +172,7 @@ enum Mock {
             text: EditorTheme.Attribute(color: .textColor),
             invisibles: EditorTheme.Attribute(color: .tertiaryLabelColor),
             background: .textBackgroundColor,
-            lineHighlight: .quinaryLabelColor,
+            lineHighlight: .quinaryLabel,
             selection: .selectedTextBackgroundColor,
             keywords: EditorTheme.Attribute(color: .systemPink),
             commands: EditorTheme.Attribute(color: .systemBlue),

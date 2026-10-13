@@ -151,6 +151,14 @@ extension MainSplitViewController: ZoomCommandResponding {
         adjustEditorTextSize(by: -1)
     }
 
+    /// Nil for any other command. The size is the app's setting, not this window's, so it is read
+    /// live instead of through the captured validation context.
+    static func zoomEnablement(_ action: Selector, typography: TypographySettings) -> Bool? {
+        if action == #selector(zoomIn(_:)) { return typography.editorFontSize(zoomedBy: 1) != nil }
+        if action == #selector(zoomOut(_:)) { return typography.editorFontSize(zoomedBy: -1) != nil }
+        return nil
+    }
+
     private func adjustEditorTextSize(by delta: Int) {
         var typography = AppSettingsManager.shared.typography
         guard let size = typography.editorFontSize(zoomedBy: delta) else { return }

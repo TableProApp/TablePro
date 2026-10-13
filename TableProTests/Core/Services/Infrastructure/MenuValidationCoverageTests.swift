@@ -29,6 +29,8 @@ private let liveValidatedSelectors: Set<Selector> = [
     #selector(MainSplitViewController.toggleContentModeFromMenu(_:)),
     #selector(MainSplitViewController.requestDisconnect),
     #selector(MainSplitViewController.retryConnection),
+    #selector(MainSplitViewController.zoomIn(_:)),
+    #selector(MainSplitViewController.zoomOut(_:)),
 ]
 
 @MainActor
