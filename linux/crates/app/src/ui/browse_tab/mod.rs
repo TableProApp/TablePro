@@ -34,7 +34,7 @@ use tablepro_session::{LinkGeneration, Session};
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
 pub(crate) use self::page_reply::PageReply;
-use super::grid::{CellPreset, GridMsg, TabGridContext, build_column_view};
+use super::grid::{CellEditor, CellPreset, ColumnWidthBinding, GridMsg, RowObject, TabGridContext, build_column_view};
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, StatementSource, TrackedChanges};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
@@ -751,14 +751,12 @@ impl BrowseModel {
     fn grid_context(&self) -> TabGridContext {
         TabGridContext {
             tracker: Some(self.tracker.clone()),
-            column_widths: self
-                .connection_id
-                .map(|connection_id| crate::ui::grid::ColumnWidthBinding {
-                    store: self.column_widths.clone(),
-                    connection_id,
-                    schema: self.schema.clone(),
-                    table: self.table.clone(),
-                }),
+            column_widths: self.connection_id.map(|connection_id| ColumnWidthBinding {
+                store: self.column_widths.clone(),
+                connection_id,
+                schema: self.schema.clone(),
+                table: self.table.clone(),
+            }),
             pk_col_indices: self.pk_indices(),
         }
     }
@@ -930,16 +928,16 @@ impl BrowseModel {
         if let (Some(store), Some(store_pos), Some(old)) = (store, store_pos, row_obj) {
             let cells = old.cells_clone();
             let replacement = match old.draft_id() {
-                Some(id) => super::row_object::RowObject::new_draft(id, cells),
-                None => super::row_object::RowObject::new(cells),
+                Some(id) => RowObject::new_draft(id, cells),
+                None => RowObject::new(cells),
             };
             store.splice(store_pos, 1, &[replacement]);
         }
     }
 
-    fn row_object_at(&self, position: u32) -> Option<super::row_object::RowObject> {
+    fn row_object_at(&self, position: u32) -> Option<RowObject> {
         let model = self.current_selection.as_ref()?.model()?;
-        model.item(position)?.downcast::<super::row_object::RowObject>().ok()
+        model.item(position)?.downcast::<RowObject>().ok()
     }
 
     /// Where a row is in the selection model: a draft by its id, a
@@ -953,7 +951,7 @@ impl BrowseModel {
         let n_items = model.n_items();
         for i in 0..n_items {
             let Some(item) = model.item(i) else { continue };
-            let Ok(row) = item.downcast::<super::row_object::RowObject>() else {
+            let Ok(row) = item.downcast::<RowObject>() else {
                 continue;
             };
             let matched = match key {
@@ -1010,9 +1008,7 @@ impl BrowseModel {
             }
             if let Some(selection) = selection_for_clear
                 && let Some(model) = selection.model()
-                && let Some(row_obj) = model
-                    .item(position)
-                    .and_then(|o| o.downcast::<super::row_object::RowObject>().ok())
+                && let Some(row_obj) = model.item(position).and_then(|o| o.downcast::<RowObject>().ok())
                 && let Some(store) = model.downcast::<gtk::gio::ListStore>().ok()
                 && let Some(store_pos) = store.find(&row_obj)
             {
@@ -1041,7 +1037,7 @@ impl BrowseModel {
         let pos = bitset.nth(0);
         let Some(model) = selection.model() else { return };
         let Some(item) = model.item(pos) else { return };
-        let Ok(row) = item.downcast::<super::row_object::RowObject>() else {
+        let Ok(row) = item.downcast::<RowObject>() else {
             return;
         };
         let key = if let Some(draft_id) = row.draft_id() {
@@ -1092,7 +1088,7 @@ impl BrowseModel {
             let Some(focused) = gtk::prelude::GtkWindowExt::focus(&window) else {
                 return;
             };
-            if let Ok(label) = focused.dynamic_cast::<super::cell_editor::CellEditor>() {
+            if let Ok(label) = focused.dynamic_cast::<CellEditor>() {
                 if label.text().as_str() == super::grid::editable_null_sentinel() {
                     label.set_text("");
                 }
@@ -1193,7 +1189,7 @@ impl BrowseModel {
     fn refresh_grid_data(&self, result: &QueryResult, store: &gtk::gio::ListStore) {
         store.remove_all();
         for row in &result.rows {
-            store.append(&super::row_object::RowObject::new(row.clone()));
+            store.append(&RowObject::new(row.clone()));
         }
         self.reprepend_drafts();
     }
@@ -1236,10 +1232,7 @@ impl BrowseModel {
             return;
         };
         for draft in self.tracker.drafts() {
-            store.insert(
-                0,
-                &super::row_object::RowObject::new_draft(draft.draft_id, draft.values),
-            );
+            store.insert(0, &RowObject::new_draft(draft.draft_id, draft.values));
         }
     }
 
@@ -1802,7 +1795,7 @@ impl BrowseModel {
         let mut had_persisted_row = false;
         for pos in &positions {
             let Some(item) = model.item(*pos) else { continue };
-            let Ok(row_obj) = item.downcast::<super::row_object::RowObject>() else {
+            let Ok(row_obj) = item.downcast::<RowObject>() else {
                 continue;
             };
             if let Some(draft_id) = row_obj.draft_id() {
@@ -1878,7 +1871,7 @@ impl BrowseModel {
         let rows: Vec<Vec<Value>> = positions
             .iter()
             .filter_map(|pos| model.item(*pos))
-            .filter_map(|item| item.downcast::<super::row_object::RowObject>().ok())
+            .filter_map(|item| item.downcast::<RowObject>().ok())
             .map(|row| ctx.effective_cells(&row))
             .collect();
         if rows.is_empty() {
@@ -1902,7 +1895,6 @@ fn qualified(schema: Option<&str>, table: &str) -> String {
 }
 
 fn apply_visual_change(store: &gtk::gio::ListStore, change: &VisualChange) {
-    use super::row_object::RowObject;
     let draft_at = |draft_id: u64| {
         (0..store.n_items()).find_map(|position| {
             let row = store.item(position).and_downcast::<RowObject>()?;

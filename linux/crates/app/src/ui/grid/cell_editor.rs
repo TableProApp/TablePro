@@ -1,14 +1,6 @@
-//! `CellEditor` — the cell widget for editable ColumnView cells.
-//!
-//! A thin `Stack[Label | Text]` `gtk::Widget` subclass. The display
-//! page is a plain `GtkLabel` that does not install any pointer-event
-//! controllers, so a single click on the cell bubbles up to the
-//! ColumnView's row-selection gesture without a forwarder. The edit
-//! page is a `GtkText` shown only after `start_editing()`, where
-//! click-to-position-cursor is the desired behaviour. Edit-mode
-//! transitions are observable via `connect_editing_notify`, which
-//! mirrors the stack's `visible-child-name` notify so callers can
-//! snapshot the original text on entry and emit a commit on exit.
+//! The display page is a plain label with no pointer controllers, so a
+//! single click reaches the column view's row selection. The edit page
+//! shows only after `start_editing`.
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -40,9 +32,6 @@ mod imp {
         type ParentType = gtk4::Widget;
 
         fn class_init(klass: &mut Self::Class) {
-            // BinLayout sizes the single child (the stack) to fill
-            // the cell — same effect as having a single-child
-            // container.
             klass.set_layout_manager_type::<gtk4::BinLayout>();
         }
     }
@@ -50,8 +39,7 @@ mod imp {
     impl ObjectImpl for CellEditor {
         fn constructed(&self) {
             self.parent_constructed();
-            // Stable CSS class so app-level selectors can target this
-            // widget without depending on the type-name node default.
+            // App styles select this class, not the type's node name.
             self.obj().add_css_class("tp-cell-editor");
             let stack = &self.stack;
             stack.set_transition_type(gtk4::StackTransitionType::None);
@@ -68,9 +56,6 @@ mod imp {
             stack.set_visible_child_name("display");
             stack.set_parent(&*self.obj());
 
-            // Enter commits the edit. `gtk::Text::activate` fires on
-            // Enter / Return / KP_Enter — the canonical "user is done
-            // typing" signal.
             let weak_for_activate = self.obj().downgrade();
             entry.connect_activate(move |_| {
                 if let Some(this) = weak_for_activate.upgrade() {
@@ -78,11 +63,8 @@ mod imp {
                 }
             });
 
-            // Esc cancels — switch back to the display child without
-            // committing the entry's text. Capture phase so we run
-            // before the inner GtkText handles the key (otherwise
-            // GtkText might consume Escape to clear its own buffer
-            // without us knowing to revert).
+            // Capture phase, so Escape cancels before the GtkText can
+            // take it to clear its own buffer.
             let key_ctrl = gtk4::EventControllerKey::new();
             key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
             let weak_for_key = self.obj().downgrade();
@@ -98,12 +80,8 @@ mod imp {
             });
             entry.add_controller(key_ctrl);
 
-            // Focus-out commits — matches the spreadsheet convention
-            // where moving focus away accepts the value. Without this
-            // an edit would only commit on Enter / Tab. GtkText
-            // flushes any active IME preedit on focus-out before this
-            // fires, so the entry's text holds the final composed
-            // value when stop_editing copies it.
+            // GtkText flushes an IME preedit on focus-out before this
+            // runs, so the commit copies the composed text.
             let focus_ctrl = gtk4::EventControllerFocus::new();
             let weak_for_focus = self.obj().downgrade();
             focus_ctrl.connect_leave(move |_| {
@@ -117,9 +95,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            // BinLayout-managed child must be unparented before our
-            // destructor runs or GTK warns about a finalised widget
-            // with leftover children.
+            // GTK warns about a finalized widget that still has children.
             self.stack.unparent();
         }
     }
@@ -144,9 +120,6 @@ impl CellEditor {
         glib::Object::new()
     }
 
-    /// Current displayed text. In edit mode reads from the entry
-    /// (so a still-editing cell returns the user's in-progress
-    /// value); otherwise reads from the label.
     pub fn text(&self) -> glib::GString {
         if self.is_editing() {
             self.entry_widget().text()
@@ -160,9 +133,7 @@ impl CellEditor {
         self.entry_widget().set_text(s);
     }
 
-    /// Apply or clear a Pango strikethrough attribute on the display
-    /// Label. Edit-mode `GtkText` is intentionally unaffected — a row
-    /// marked for deletion is read-only by definition.
+    /// The entry is left alone: a row marked for deletion is not edited.
     pub fn set_strikethrough(&self, on: bool) {
         let label = self.label_widget();
         if on {
@@ -184,13 +155,10 @@ impl CellEditor {
     pub fn start_editing(&self) {
         let stack = self.stack_widget();
         let entry = self.entry_widget();
-        // Mirror the label's text into the entry before showing it
-        // so the user starts editing the value they see.
         entry.set_text(&self.label_widget().text());
         stack.set_visible_child_name("edit");
         entry.grab_focus();
-        // Select all so the first keystroke replaces — matches the
-        // GTK Files rename flow and is what spreadsheet users expect.
+        // The first keystroke replaces the value, as in a Files rename.
         entry.select_region(0, -1);
     }
 
@@ -199,15 +167,11 @@ impl CellEditor {
             let new_text = self.entry_widget().text();
             self.label_widget().set_text(&new_text);
         } else {
-            // Revert the entry buffer so a subsequent start_editing
-            // doesn't surface stale aborted text.
             self.entry_widget().set_text(&self.label_widget().text());
         }
         self.stack_widget().set_visible_child_name("display");
     }
 
-    /// Subscribe to edit-mode toggles. The callback fires whenever
-    /// the stack's visible child changes (display ↔ edit).
     pub fn connect_editing_notify<F: Fn(&Self) + 'static>(&self, callback: F) -> glib::SignalHandlerId {
         let stack = self.stack_widget();
         let weak = self.downgrade();
@@ -218,9 +182,6 @@ impl CellEditor {
         })
     }
 
-    /// The inner `GtkText` widget. Exposed so callers that need the
-    /// IME-aware delegate (preedit-changed, etc.) can hook directly
-    /// onto it.
     pub fn entry(&self) -> gtk4::Text {
         self.entry_widget()
     }
