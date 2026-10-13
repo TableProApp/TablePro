@@ -35,6 +35,28 @@ async fn temp_table_visible_across_runs() {
     connection.close().await.unwrap();
 }
 
+/// sqlite re-prepares a statement whose table changed shape, so the same
+/// text can come back with more columns than the first run had.
+#[tokio::test]
+async fn select_star_after_add_column_reads_the_new_column() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    let session = connection
+        .open_editor_session(EditorSessionOptions::default(), CancellationToken::new())
+        .await
+        .unwrap();
+    run(session.as_ref(), "CREATE TABLE grown (a); INSERT INTO grown VALUES (1)").await;
+    run(session.as_ref(), "SELECT * FROM grown").await;
+
+    run(session.as_ref(), "ALTER TABLE grown ADD COLUMN b DEFAULT 2").await;
+    let (summary, collected) = run(session.as_ref(), "SELECT * FROM grown").await;
+
+    assert_eq!(summary.end, RunEnd::Completed);
+    assert_eq!(collected.rows(), vec![vec![Value::Int(1), Value::Int(2)]]);
+    session.close().await;
+    connection.close().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn recursive_cte_cancelled() {
     let file = TestFile::new().await;
