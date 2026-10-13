@@ -6,6 +6,8 @@ fn postgres_array_update_casts_allowlist_type_metadata() {
         ("bool[]", "pg_catalog.bool[]"),
         ("boolean[]", "pg_catalog.bool[]"),
         ("bytea[]", "pg_catalog.bytea[]"),
+        ("json[]", "pg_catalog.json[]"),
+        ("jsonb[]", "pg_catalog.jsonb[]"),
         ("name[]", "pg_catalog.name[]"),
         ("int2[]", "pg_catalog.int2[]"),
         ("smallint[]", "pg_catalog.int2[]"),

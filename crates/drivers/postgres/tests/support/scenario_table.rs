@@ -5,7 +5,7 @@ use tablepro_core::sql_dialect::{build_insert_from_draft, build_keyed_delete, bu
 
 use crate::{connect, start_pg};
 
-const KNOWN_UNDECODABLE: [&str; 3] = ["money", "int4range", "point"];
+const KNOWN_UNDECODABLE: [&str; 1] = ["money"];
 
 const SCENARIOS: &[(&str, &str, &str)] = &[
     ("integer", "1", "2"),
@@ -44,6 +44,9 @@ const SCENARIOS: &[(&str, &str, &str)] = &[
     ("integer[]", "{1,2,3}", "{}"),
     ("text[]", "{a,\"b c\"}", "{NULL}"),
     ("point", "(1,2)", "(3,4)"),
+    ("int8range", "[10,20)", "[-5,)"),
+    ("json[]", "{\"{\\\"a\\\":   1}\",\"[1, 2]\"}", "{}"),
+    ("jsonb[]", "{\"{\\\"a\\\": \\\"x\\\"}\"}", "{}"),
     (
         "text[]",
         "{\"a,b\",\"c\\\"d\",\"NULL\",\"\",\"x\\\\y\"}",

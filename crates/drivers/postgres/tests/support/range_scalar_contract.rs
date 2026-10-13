@@ -98,10 +98,19 @@ async fn value_contract_builtin_range_scalars_refuse_lossy_writes_and_preserve_r
             .await
             .unwrap();
         let refusal = value.rows[0][0].clone();
-        assert!(
-            matches!(&refusal, Value::Undecodable(name) if name.eq_ignore_ascii_case(range_type)),
-            "{range_type} must be visibly undecodable: {refusal:?}"
-        );
+        let decodes = matches!(range_type, "int4range" | "int8range");
+        if decodes {
+            assert_eq!(
+                refusal,
+                Value::Text(native_text.into()),
+                "{range_type} reads as the server text"
+            );
+        } else {
+            assert!(
+                matches!(&refusal, Value::Undecodable(name) if name.eq_ignore_ascii_case(range_type)),
+                "{range_type} must be visibly undecodable: {refusal:?}"
+            );
+        }
         assert_eq!(value.rows[0][1], Value::Text(range_type.into()));
         let empty = connection
             .query(&format!(
@@ -109,7 +118,11 @@ async fn value_contract_builtin_range_scalars_refuse_lossy_writes_and_preserve_r
             ))
             .await
             .unwrap();
-        assert!(matches!(&empty.rows[0][0], Value::Undecodable(name) if name.eq_ignore_ascii_case(range_type)));
+        if decodes {
+            assert_eq!(empty.rows[0][0], Value::Text("empty".into()));
+        } else {
+            assert!(matches!(&empty.rows[0][0], Value::Undecodable(name) if name.eq_ignore_ascii_case(range_type)));
+        }
         assert_eq!(empty.rows[0][1], Value::Bool(true));
         let null = connection
             .query(&format!(
@@ -120,22 +133,34 @@ async fn value_contract_builtin_range_scalars_refuse_lossy_writes_and_preserve_r
         assert_eq!(null.rows[0][0], Value::Null);
         assert_eq!(null.rows[0][1], Value::Bool(true));
 
-        assert!(tablepro_core::sql_literal::render_sql_literal("postgres", &refusal).is_err());
-        assert!(
-            connection
-                .query_params("SELECT $1", std::slice::from_ref(&refusal))
-                .await
-                .is_err()
-        );
-        assert!(
+        if decodes {
             connection
                 .execute_params(
-                    &format!("UPDATE builtin_range_scalar_contract SET {column} = $1 WHERE id = 1"),
-                    std::slice::from_ref(&refusal),
+                    &format!(
+                        "UPDATE builtin_range_scalar_contract SET {column} = $1::text::pg_catalog.{range_type} WHERE id = 1"
+                    ),
+                    &[Value::Text(native_text.into())],
                 )
                 .await
-                .is_err()
-        );
+                .unwrap();
+        } else {
+            assert!(tablepro_core::sql_literal::render_sql_literal("postgres", &refusal).is_err());
+            assert!(
+                connection
+                    .query_params("SELECT $1", std::slice::from_ref(&refusal))
+                    .await
+                    .is_err()
+            );
+            assert!(
+                connection
+                    .execute_params(
+                        &format!("UPDATE builtin_range_scalar_contract SET {column} = $1 WHERE id = 1"),
+                        std::slice::from_ref(&refusal),
+                    )
+                    .await
+                    .is_err()
+            );
+        }
         assert_eq!(
             connection.query(snapshot_sql).await.unwrap().rows,
             native.rows,

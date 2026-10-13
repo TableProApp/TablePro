@@ -249,6 +249,8 @@ fn supported(oid: u32) -> bool {
             | XML_OID
             | BIT_OID
             | VARBIT_OID
+            | 114
+            | 3802
             | 1700
             | 2950
             | MACADDR_OID
@@ -300,6 +302,8 @@ fn element_text(oid: u32, text_element: bool, bytes: &[u8]) -> Option<String> {
             _ => return None,
         },
         2950 => uuid::Uuid::from_slice(bytes).ok()?.to_string(),
+        114 => std::str::from_utf8(bytes).ok()?.to_string(),
+        3802 => std::str::from_utf8(bytes.strip_prefix(&[1])?).ok()?.to_string(),
         PG_LSN_OID => crate::decode::decode_pg_binary_text("PG_LSN", bytes)?,
         1082 | 1083 | 1114 | 1184 | 1186 | 1266 => temporal_element(oid, bytes)?,
         _ => return None,
@@ -649,5 +653,16 @@ mod tests {
             let mut reader = Reader { remaining: &bytes };
             assert_eq!(read_dimensions(&mut reader, 1).is_some(), expected, "{payload_bytes}");
         }
+    }
+    #[test]
+    fn json_and_jsonb_elements_decode_to_their_text_and_refuse_other_versions() {
+        assert_eq!(
+            element_text(114, false, br#"{"a":   1}"#).as_deref(),
+            Some(r#"{"a":   1}"#)
+        );
+        assert_eq!(element_text(3802, false, b"\x01[1, 2]").as_deref(), Some("[1, 2]"));
+        assert_eq!(element_text(3802, false, b"\x02[1, 2]"), None);
+        assert_eq!(element_text(3802, false, b""), None);
+        assert!(supported(114) && supported(3802));
     }
 }

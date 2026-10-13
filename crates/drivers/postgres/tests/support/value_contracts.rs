@@ -243,6 +243,13 @@ async fn value_contract_geometric_types_keep_native_oracles_when_projection_is_r
                 panic!("{native_type} should reach the value decoder: {error:?}; native text: {exact_native_text:?}")
             });
         assert_eq!(projected.rows.len(), 1);
+        if native_type == "point" {
+            assert_eq!(
+                projected.rows[0][0], exact_native_text,
+                "point reads as the server text"
+            );
+            continue;
+        }
         assert!(
             matches!(&projected.rows[0][0], Value::Undecodable(name) if name.eq_ignore_ascii_case(native_type)),
             "{native_type} projection must be explicit, not lossy: {:?}; native text: {exact_native_text:?}",
@@ -613,7 +620,7 @@ async fn value_contract_jsonb_domain_keeps_json_null_distinct_from_sql_null() {
 
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn value_contract_int4range_is_explicitly_unsupported() {
+async fn value_contract_int4range_reads_as_the_server_text() {
     let (_container, opts) = start_pg().await;
     let connection = connect(opts).await;
     let result = connection
@@ -626,20 +633,14 @@ async fn value_contract_int4range_is_explicitly_unsupported() {
         .await
         .unwrap();
     let row = &result.rows[0];
-    assert!(matches!(row[0], Value::Undecodable(_)), "{:?}", row[0]);
+    assert_eq!(row[0], Value::Text("[1,5)".into()));
     assert_eq!(row[1], Value::Text("int4range".into()));
     assert_eq!(row[2], Value::Text("[1,5)".into()));
     assert_eq!(row[3], Value::Int(1));
     assert_eq!(row[4], Value::Int(5));
     assert_eq!(row[5], Value::Bool(true));
     assert_eq!(row[6], Value::Bool(false));
-    assert!(tablepro_core::sql_literal::render_sql_literal("postgres", &row[0]).is_err());
-    assert!(
-        connection
-            .query_params("SELECT $1", std::slice::from_ref(&row[0]))
-            .await
-            .is_err()
-    );
+    assert!(tablepro_core::sql_literal::render_sql_literal("postgres", &row[0]).is_ok());
 }
 
 #[tokio::test]
@@ -850,24 +851,31 @@ async fn value_contract_builtin_range_families_are_refused_without_losing_native
             .await
             .unwrap();
         let row = &result.rows[0];
-        assert!(matches!(row[0], Value::Undecodable(_)), "{native_type}: {:?}", row[0]);
+        let decodes = matches!(native_type, "int4range" | "int8range");
+        if decodes {
+            assert_eq!(row[0], Value::Text(exact_text.into()), "{native_type}");
+        } else {
+            assert!(matches!(row[0], Value::Undecodable(_)), "{native_type}: {:?}", row[0]);
+        }
         assert_eq!(row[1], Value::Text(native_type.into()), "{native_type}");
         assert_eq!(row[2], Value::Text(exact_text.into()), "{native_type}");
         assert_eq!(row[3], Value::Text(lower.into()), "{native_type}");
         assert_eq!(row[4], Value::Text(upper.into()), "{native_type}");
         assert_eq!(row[5], Value::Bool(lower_inclusive), "{native_type}");
         assert_eq!(row[6], Value::Bool(upper_inclusive), "{native_type}");
-        assert!(
-            tablepro_core::sql_literal::render_sql_literal("postgres", &row[0]).is_err(),
-            "{native_type} must not produce a lossy SQL literal"
-        );
-        assert!(
-            connection
-                .query_params("SELECT $1", std::slice::from_ref(&row[0]))
-                .await
-                .is_err(),
-            "{native_type} must not be rebound as a lossy parameter"
-        );
+        if !decodes {
+            assert!(
+                tablepro_core::sql_literal::render_sql_literal("postgres", &row[0]).is_err(),
+                "{native_type} must not produce a lossy SQL literal"
+            );
+            assert!(
+                connection
+                    .query_params("SELECT $1", std::slice::from_ref(&row[0]))
+                    .await
+                    .is_err(),
+                "{native_type} must not be rebound as a lossy parameter"
+            );
+        }
     }
 }
 

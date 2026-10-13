@@ -130,3 +130,19 @@ fn geometric_columns_are_written_and_compared_through_text() {
         );
     }
 }
+
+#[test]
+fn json_arrays_are_written_through_text_and_json_arrays_are_compared_as_text() {
+    let sql = update_sql("jsonb[]", Value::Text("{}".into()), Value::Text("{}".into()));
+    assert!(sql.contains("\"v\" = $1::text::pg_catalog.jsonb[]"), "{sql}");
+    assert!(
+        sql.contains("\"v\" IS NOT DISTINCT FROM $3::text::pg_catalog.jsonb[]"),
+        "{sql}"
+    );
+    let sql = update_sql("json[]", Value::Text("{}".into()), Value::Text("{}".into()));
+    assert!(sql.contains("\"v\" = $1::text::pg_catalog.json[]"), "{sql}");
+    assert!(
+        sql.contains("\"v\"::text IS NOT DISTINCT FROM $3::text::pg_catalog.json[]::text"),
+        "{sql}"
+    );
+}

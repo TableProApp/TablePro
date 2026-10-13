@@ -1,6 +1,6 @@
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn value_contract_json_array_elements_are_explicitly_unsupported() {
+async fn value_contract_jsonb_array_elements_read_as_the_server_text() {
     let (_container, options) = crate::start_pg().await;
     let connection = crate::connect(options).await;
     let expression = "ARRAY['{\"a\": 1}'::jsonb, 'null'::jsonb]";
@@ -14,22 +14,22 @@ async fn value_contract_json_array_elements_are_explicitly_unsupported() {
         .unwrap();
 
     let value = &result.rows[0][0];
-    assert!(matches!(value, Value::Undecodable(_)), "{value:?}");
+    let native = connection
+        .query(&format!("SELECT ({expression})::text"))
+        .await
+        .unwrap()
+        .rows[0][0]
+        .clone();
+    assert_eq!(value, &native, "the array reads as the server's own text");
     assert_eq!(result.rows[0][1], Value::Text("jsonb[]".into()));
     assert_eq!(result.rows[0][2], Value::Text("[{\"a\": 1},null]".into()));
     assert_eq!(result.rows[0][3], Value::Bool(true));
-    assert!(tablepro_core::sql_literal::render_sql_literal("postgres", value).is_err());
-    assert!(
-        connection
-            .query_params("SELECT $1", std::slice::from_ref(value))
-            .await
-            .is_err()
-    );
+    assert!(tablepro_core::sql_literal::render_sql_literal("postgres", value).is_ok());
 }
 
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn value_contract_json_text_array_is_explicitly_unsupported() {
+async fn value_contract_json_text_array_elements_read_as_the_server_text() {
     let (_container, options) = crate::start_pg().await;
     let connection = crate::connect(options).await;
     let expression = "ARRAY['{\"a\": 1}'::json, 'null'::json]";
@@ -43,17 +43,17 @@ async fn value_contract_json_text_array_is_explicitly_unsupported() {
         .unwrap();
 
     let value = &result.rows[0][0];
-    assert!(matches!(value, Value::Undecodable(_)), "{value:?}");
+    let native = connection
+        .query(&format!("SELECT ({expression})::text"))
+        .await
+        .unwrap()
+        .rows[0][0]
+        .clone();
+    assert_eq!(value, &native, "the array reads as the server's own text");
     assert_eq!(result.rows[0][1], Value::Text("json[]".into()));
     assert_eq!(result.rows[0][2], Value::Text("[{\"a\": 1},null]".into()));
     assert_eq!(result.rows[0][3], Value::Bool(true));
-    assert!(tablepro_core::sql_literal::render_sql_literal("postgres", value).is_err());
-    assert!(
-        connection
-            .query_params("SELECT $1", std::slice::from_ref(value))
-            .await
-            .is_err()
-    );
+    assert!(tablepro_core::sql_literal::render_sql_literal("postgres", value).is_ok());
 }
 
 #[tokio::test]

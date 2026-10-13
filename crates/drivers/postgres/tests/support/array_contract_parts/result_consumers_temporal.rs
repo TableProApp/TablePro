@@ -962,8 +962,8 @@ async fn value_contract_builtin_array_oid_census_matches_decode_allowlist() {
         .await
         .expect("enumerate built-in array element OIDs");
     let supported_oids = [
-        16, 17, 19, 20, 21, 23, 25, 26, 142, 650, 700, 701, 774, 829, 869, 1042, 1043, 1082, 1083, 1114, 1184,
-        1186, 1266, 1560, 1562, 1700, 2950, 3220,
+        16, 17, 19, 20, 21, 23, 25, 26, 114, 142, 650, 700, 701, 774, 829, 869, 1042, 1043, 1082, 1083, 1114,
+        1184, 1186, 1266, 1560, 1562, 1700, 2950, 3220, 3802,
     ];
     let mut seen_supported = Vec::new();
     let mut refused = 0;

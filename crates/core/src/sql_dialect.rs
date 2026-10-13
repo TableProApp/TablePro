@@ -11,7 +11,7 @@ mod inserts;
 mod pg_native_text;
 #[path = "sql_dialect/updates.rs"]
 mod updates;
-pub(crate) use pg_native_text::{postgres_native_text_cast_type, text_cast_placeholder};
+pub(crate) use pg_native_text::{postgres_array_cast_type, postgres_native_text_cast_type, text_cast_placeholder};
 
 pub use error::BuildSqlError;
 pub use inserts::{build_insert_from_draft, build_insert_from_draft_touched};
@@ -254,51 +254,6 @@ pub fn build_full_row_update(
         &where_clause,
     );
     Ok((sql, params))
-}
-
-pub(crate) fn postgres_array_cast_type(data_type: &str) -> Option<&'static str> {
-    let lowered = data_type.trim().to_ascii_lowercase();
-    let element = lowered.strip_suffix("[]")?;
-    let element = if let Some((base, modifier)) = element.split_once('(') {
-        let modifier = modifier.strip_suffix(')')?;
-        if modifier.is_empty()
-            || !modifier
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || matches!(byte, b',' | b' '))
-        {
-            return None;
-        }
-        base.trim()
-    } else {
-        element
-    };
-    Some(match element {
-        "bool" | "boolean" => "pg_catalog.bool[]",
-        "bytea" => "pg_catalog.bytea[]",
-        "name" => "pg_catalog.name[]",
-        "int2" | "smallint" => "pg_catalog.int2[]",
-        "int4" | "integer" | "int" => "pg_catalog.int4[]",
-        "int8" | "bigint" => "pg_catalog.int8[]",
-        "oid" => "pg_catalog.oid[]",
-        "text" => "pg_catalog.text[]",
-        "xml" => "pg_catalog.xml[]",
-        "bit" => "pg_catalog.bit[]",
-        "bit varying" | "varbit" => "pg_catalog.varbit[]",
-        "float4" | "real" => "pg_catalog.float4[]",
-        "float8" | "double precision" => "pg_catalog.float8[]",
-        "varchar" | "character varying" => "pg_catalog.varchar[]",
-        "char" | "bpchar" | "character" => "pg_catalog.bpchar[]",
-        "numeric" | "decimal" => "pg_catalog.numeric[]",
-        "uuid" => "pg_catalog.uuid[]",
-        "pg_lsn" => "pg_catalog.pg_lsn[]",
-        "date" => "pg_catalog.date[]",
-        "time" | "time without time zone" => "pg_catalog.time[]",
-        "timetz" | "time with time zone" => "pg_catalog.timetz[]",
-        "timestamp" | "timestamp without time zone" => "pg_catalog.timestamp[]",
-        "timestamptz" | "timestamp with time zone" => "pg_catalog.timestamptz[]",
-        "interval" => "pg_catalog.interval[]",
-        _ => return None,
-    })
 }
 
 pub(crate) fn postgres_numeric_cast_type(data_type: &str) -> Option<&'static str> {

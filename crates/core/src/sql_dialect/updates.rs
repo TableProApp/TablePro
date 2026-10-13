@@ -194,6 +194,9 @@ fn optimistic_predicate(
         "postgres" if column.data_type.trim().eq_ignore_ascii_case("xml") => {
             format!("{name}::text IS NOT DISTINCT FROM {placeholder}::text")
         }
+        "postgres" if column.data_type.trim().eq_ignore_ascii_case("json[]") => {
+            format!("{name}::text IS NOT DISTINCT FROM {placeholder}::text::pg_catalog.json[]::text")
+        }
         "postgres" if is_geometric(&column.data_type) => {
             let kind = column.data_type.trim().to_ascii_lowercase();
             format!("{name}::text IS NOT DISTINCT FROM {placeholder}::text::pg_catalog.{kind}::text")
