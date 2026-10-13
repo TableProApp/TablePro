@@ -91,10 +91,8 @@ impl BrowseModel {
         let Some(plan) = self.read_plan() else {
             return;
         };
-        // A filter the dialect cannot write is the user's to fix, so it
-        // is a toast now rather than a failed page later.
         if let Some(message) = self.filter_problem() {
-            fx.output(BrowseTabOutput::ShowToast(message));
+            self.on_filter_problem(&message, fx);
             return;
         }
         let ticket = self.issue(BrowseRequestKind::Page);
@@ -213,6 +211,19 @@ impl BrowseModel {
         tablepro_core::build_filter(&mut builder, &**dialect, &self.current_columns, &self.current_filter)
             .err()
             .map(|error| error.to_string())
+    }
+
+    /// A filter the dialect cannot write is the user's to fix, and no
+    /// page is read under it. A page already read under these columns
+    /// stays with a toast; without one, the error page says why rather
+    /// than a spinner that nothing will replace.
+    fn on_filter_problem(&mut self, message: &str, fx: &mut Effects) {
+        if self.current_result.is_some() {
+            self.refresh_inner_stack_visibility();
+            fx.output(BrowseTabOutput::ShowToast(message.to_owned()));
+            return;
+        }
+        self.show_error(message);
     }
 
     pub(super) fn on_command(&mut self, command: BrowseCommand, fx: &mut Effects) {

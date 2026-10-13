@@ -347,12 +347,21 @@ struct Harness {
 
 impl Harness {
     fn open(script: ConnectionScript, reconnects: impl IntoIterator<Item = FakeEstablish>) -> Self {
+        Self::open_filtered(script, reconnects, FilterSet::default())
+    }
+
+    /// The tab opens under `saved`, the filter the table was left with.
+    fn open_filtered(
+        script: ConnectionScript,
+        reconnects: impl IntoIterator<Item = FakeEstablish>,
+        saved: FilterSet,
+    ) -> Self {
         libadwaita::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
         let runtime = crate::test_support::test_runtime();
         let fake = FakeSession::start(script, reconnects, runtime.tasks());
         let root = tempfile::tempdir().expect("tempdir");
-        let tab = users_tab(&fake.session, &runtime, &root);
+        let tab = filtered_users_tab(&fake.session, &runtime, &root, saved);
         Self {
             tab: Some(tab),
             others: Vec::new(),
@@ -389,18 +398,30 @@ impl Harness {
 }
 
 fn users_tab(session: &Arc<Session>, runtime: &crate::runtime::AppRuntime, root: &tempfile::TempDir) -> BrowseTab {
+    filtered_users_tab(session, runtime, root, FilterSet::default())
+}
+
+fn filtered_users_tab(
+    session: &Arc<Session>,
+    runtime: &crate::runtime::AppRuntime,
+    root: &tempfile::TempDir,
+    saved: FilterSet,
+) -> BrowseTab {
     let tasks = runtime.tasks();
+    let connection_id = uuid::Uuid::new_v4();
+    let filter_settings = crate::persistence::FilterSettingsStore::load(root.path().join("filters.json"), &tasks);
+    filter_settings.set_filters(connection_id, None, "users", saved);
     BrowseTab::new(BrowseTabInit {
         tracker: crate::services::tab_tracker_handle::TabTrackerHandle::default(),
         schema: None,
         table: "users".to_owned(),
-        connection_id: Some(uuid::Uuid::new_v4()),
+        connection_id: Some(connection_id),
         read_only: false,
         page_size: 100,
         initial_offset: 0,
         initial_sort: None,
         column_widths: crate::persistence::ColumnWidthStore::load(root.path().join("column-widths.json"), &tasks),
-        filter_settings: crate::persistence::FilterSettingsStore::load(root.path().join("filters.json"), &tasks),
+        filter_settings,
         session: session.clone(),
         tasks,
     })
@@ -428,15 +449,19 @@ fn text(values: &[&str]) -> Vec<Value> {
     values.iter().map(|value| Value::Text((*value).to_owned())).collect()
 }
 
-fn not_null_name() -> FilterSet {
+fn not_null(column: &str) -> FilterSet {
     FilterSet {
         rules: vec![FilterRule {
-            column: "name".to_owned(),
+            column: column.to_owned(),
             op: FilterOp::IsNotNull,
             value: None,
         }],
         ..FilterSet::default()
     }
+}
+
+fn not_null_name() -> FilterSet {
+    not_null("name")
 }
 
 #[gtk4::test]
@@ -659,6 +684,58 @@ fn a_failed_page_under_a_new_filter_shows_the_error() {
     wait_until(WAIT, || harness.visible_page().as_deref() == Some("error"))
         .expect("rows read without the filter stayed under it");
     assert!(harness.shown().is_empty());
+}
+
+#[gtk4::test]
+fn a_saved_filter_on_a_dropped_column_shows_the_error() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["unfiltered"])));
+    let harness = Harness::open_filtered(script, [], not_null("nickname"));
+    let counters = harness.connection.counters();
+
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the tab stayed on its spinner");
+
+    assert_eq!(CallCounters::get(&counters.query_bound), 0);
+    assert_eq!(CallCounters::get(&counters.count_rows), 0);
+}
+
+#[gtk4::test]
+fn a_filter_column_renamed_away_drops_the_grid_for_the_error() {
+    let renamed = [column("id", true), column("full_name", false)];
+    let mut script = serving_table();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .always(FakeReply::ok(renamed.to_vec()));
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open_filtered(script, [], not_null_name());
+    wait_until(WAIT, || harness.shown() == text(&["Ada"])).expect("the first page");
+
+    harness
+        .session
+        .invalidate_table(&tablepro_core::TableRef::unqualified("users"));
+    harness.tab().send(BrowseTabInput::SchemaChanged);
+
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error"))
+        .expect("the grid read under the old columns stayed on screen");
+    assert!(harness.shown().is_empty());
+    assert_eq!(harness.tab().columns(), renamed);
+}
+
+#[gtk4::test]
+fn a_refresh_under_a_filter_that_no_longer_fits_keeps_the_rows() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["kept"])));
+    let harness = Harness::open_filtered(script, [], not_null_name());
+    wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
+    let toasts = toasts(harness.tab());
+
+    harness.tab().send(BrowseTabInput::FilterApplied(not_null("nickname")));
+    harness.tab().send(BrowseTabInput::Refresh);
+    wait_until(WAIT, || toasts.borrow().len() == 2).expect("the filter that does not fit was not reported");
+
+    assert_eq!(harness.shown(), text(&["kept"]));
+    assert_eq!(harness.visible_page().as_deref(), Some("grid"));
 }
 
 #[gtk4::test]
