@@ -45,6 +45,10 @@ pub struct StructureTab {
     pub discard_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub save_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub saving_spinner: TemplateChild<adw::Spinner>,
+    #[template_child]
+    pub stop_button: TemplateChild<gtk::Button>,
 
     pub(super) model: RefCell<Option<StructureModel>>,
     pub(super) queue: RefCell<VecDeque<StructureTabInput>>,
@@ -79,6 +83,7 @@ impl ObjectImpl for StructureTab {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("save-requested").build(),
+                Signal::builder("stop-save-requested").build(),
                 Signal::builder("drop-table-requested")
                     .param_types([String::static_type(), String::static_type()])
                     .build(),

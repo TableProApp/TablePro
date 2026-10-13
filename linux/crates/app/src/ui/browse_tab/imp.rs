@@ -61,6 +61,10 @@ pub struct BrowseTab {
     pub discard_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub save_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub saving_spinner: TemplateChild<adw::Spinner>,
+    #[template_child]
+    pub stop_button: TemplateChild<gtk::Button>,
 
     pub(super) model: RefCell<Option<BrowseModel>>,
     pub(super) queue: RefCell<VecDeque<BrowseTabInput>>,
@@ -182,9 +186,8 @@ impl ObjectImpl for BrowseTab {
                 Signal::builder("dirty-changed")
                     .param_types([bool::static_type()])
                     .build(),
-                Signal::builder("save-requested")
-                    .param_types([glib::BoxedAnyObject::static_type()])
-                    .build(),
+                Signal::builder("save-requested").build(),
+                Signal::builder("stop-save-requested").build(),
             ]
         })
     }

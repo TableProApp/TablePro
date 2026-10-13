@@ -1,12 +1,45 @@
-//! What the workspace keeps between sessions: which tabs were open and
-//! what the editor ones held.
+//! A window's workspace: which tabs were open and what the editor ones
+//! held, kept between sessions, and the saves its tabs run and the
+//! prompts that decide whether they may close.
 
+mod close_decision;
+mod close_guard;
+mod close_scope;
+mod close_step;
+mod dialog_response;
+mod dirty_kind;
+mod dirty_tab;
 mod draft_writer;
+mod inhibit_reason;
+mod open_transaction_dialog;
+mod pending_state;
 mod persist_debouncer;
+mod ran_statements;
 mod restored_drafts;
+mod rollback_cause;
+mod save_changes_dialog;
+mod save_id;
+mod save_ledger;
+mod save_outcome;
+mod save_rejection;
+mod save_settled;
+mod save_snapshot;
+mod save_start;
+mod save_ticket;
+mod schema_write;
 mod sort_record;
+mod tab_directory;
+mod tab_entry;
 mod tab_record;
+#[cfg(test)]
+mod test_workspace;
+mod unknown_cause;
+mod unknown_outcome_dialog;
+mod waiting_dialog;
+mod window_inhibitor;
+mod workspace_event;
 mod workspace_file_name;
+mod workspace_handle;
 mod workspace_load;
 mod workspace_load_error;
 mod workspace_record;
@@ -14,12 +47,37 @@ mod workspace_save_error;
 mod workspace_store;
 mod write_job;
 
+pub use close_decision::CloseDecision;
+pub(crate) use close_guard::CloseGuard;
+pub use close_scope::CloseScope;
+pub use close_step::{CloseStep, next_close_step};
+pub use dirty_kind::DirtyKind;
+pub use dirty_tab::DirtyTab;
 pub use draft_writer::DraftWriter;
+pub use inhibit_reason::InhibitReason;
+pub use pending_state::PendingState;
 pub use persist_debouncer::PersistDebouncer;
+pub(crate) use ran_statements::RanStatements;
 pub use restored_drafts::RestoredDrafts;
+pub use rollback_cause::RollbackCause;
+pub use save_id::SaveId;
+pub use save_ledger::SaveLedger;
+pub use save_outcome::SaveOutcome;
+pub use save_rejection::SaveRejection;
+pub use save_settled::SaveSettled;
+pub use save_snapshot::SaveSnapshot;
+pub use save_start::SaveStart;
+pub use save_ticket::SaveTicket;
+pub(crate) use schema_write::run_schema_plan;
 pub use sort_record::SortRecord;
+pub use tab_directory::TabDirectory;
+pub use tab_entry::TabEntry;
 pub use tab_record::TabRecord;
+pub use unknown_cause::UnknownCause;
+pub use window_inhibitor::{ApplicationInhibit, WindowInhibitor};
+pub use workspace_event::WorkspaceEvent;
 pub use workspace_file_name::WorkspaceFileName;
+pub use workspace_handle::{WorkspaceDeps, WorkspaceHandle};
 pub use workspace_load::WorkspaceLoad;
 pub use workspace_load_error::WorkspaceLoadError;
 pub use workspace_record::WorkspaceRecord;

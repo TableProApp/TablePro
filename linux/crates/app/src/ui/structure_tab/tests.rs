@@ -502,8 +502,11 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
 
     assert_eq!(preview, "ALTER TABLE \"users\" ALTER COLUMN \"id\" SET DEFAULT 42;");
     assert_eq!(saves.get(), 1);
-    let pending = tracker.begin_save().expect("the change is pending");
+    let pending = tracker.begin_save().expect("a save").expect("the change is pending");
     assert_eq!(pending.changes.altered_columns.len(), 1);
+    tracker.settle_save(&crate::workspace::SaveOutcome::RolledBack(
+        crate::workspace::RollbackCause::NotApplied,
+    ));
 
     tab.send(StructureTabInput::ColumnEdited {
         index: 0,
@@ -514,14 +517,48 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
         "a default that does not parse can be saved"
     );
     // What a close prompt's Save reads.
-    let typed = tracker.begin_save().expect("the change is still pending");
-    assert_eq!(
-        typed.check(),
-        Err(crate::services::pending_structure::SaveBlocker::UnparsedDefault(
-            "id".to_owned()
-        ))
-    );
+    assert!(matches!(
+        tracker.begin_save(),
+        Err(crate::workspace::SaveRejection::Invalid(_))
+    ));
     drop(tab);
     drain_main_context();
     runtime.shutdown();
+}
+
+#[gtk4::test]
+fn stop_saving_shows_only_while_a_save_runs() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(definition("id")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let stops = std::rc::Rc::new(std::cell::Cell::new(0));
+    let stop_sink = stops.clone();
+    harness
+        .tab()
+        .connect_stop_save_requested(move |_| stop_sink.set(stop_sink.get() + 1));
+    harness.tab().send(StructureTabInput::ColumnEdited {
+        index: 0,
+        field: ColumnField::Comment(Some("key".to_owned())),
+    });
+    let imp = harness.tab().imp();
+    let (stop, save) = (imp.stop_button.get(), imp.save_button.get());
+    assert!(!stop.is_visible());
+    assert!(save.is_sensitive());
+
+    harness.tab().send(StructureTabInput::SaveStarted);
+    assert!(stop.is_visible() && imp.saving_spinner.is_visible());
+    harness.tab().send(StructureTabInput::ColumnEdited {
+        index: 0,
+        field: ColumnField::Comment(Some("the key".to_owned())),
+    });
+    assert!(!save.is_sensitive(), "an edit during the save turned Save back on");
+    stop.emit_clicked();
+    assert_eq!(stops.get(), 1);
+
+    harness
+        .tab()
+        .send(StructureTabInput::SaveFailed("rolled back".to_owned()));
+    assert!(!stop.is_visible() && !imp.saving_spinner.is_visible());
+    assert!(save.is_sensitive());
 }

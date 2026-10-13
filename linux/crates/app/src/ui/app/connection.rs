@@ -25,7 +25,6 @@ use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::ssh_inputs::SshEnvironment;
 
 use super::connect_flow::{self, SubmitError};
-use super::teardown_guard::Teardown;
 use super::{App, AppMsg, qualified_label};
 
 /// What a failed connect can be retried from: the connection as it was
@@ -153,7 +152,7 @@ impl App {
     pub(super) fn on_connect_submission(&mut self, submission: ConnectSubmission, sender: ComponentSender<Self>) {
         if self.context.active.is_connected() {
             let proceed = AppMsg::ConnectSubmissionConfirmed(Box::new(submission));
-            self.confirm_teardown(Teardown::Switch, proceed, sender);
+            self.close_workspace_then(proceed, sender);
             return;
         }
         self.connect_submission(submission, sender);
@@ -425,7 +424,7 @@ impl App {
     }
 
     pub(super) fn on_disconnect(&mut self, sender: ComponentSender<Self>) {
-        self.confirm_teardown(Teardown::Disconnect, AppMsg::ForceDisconnect, sender);
+        self.close_workspace_then(AppMsg::ForceDisconnect, sender);
     }
 
     pub(super) fn do_disconnect(&mut self, sender: ComponentSender<Self>) {
@@ -752,7 +751,7 @@ impl App {
             return;
         }
         if self.context.active.is_connected() {
-            self.confirm_teardown(Teardown::Switch, AppMsg::OpenSavedConfirmed(saved), sender);
+            self.close_workspace_then(AppMsg::OpenSavedConfirmed(saved), sender);
             return;
         }
         self.connect_saved(saved, sender);

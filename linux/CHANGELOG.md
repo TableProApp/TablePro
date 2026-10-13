@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite file chooser in the connect dialog, with New Database to create a file.
 - Results list in the SQL editor with one entry per statement, its rows affected or error, and the open transaction.
 - SQL editor completion of tables, views and columns from the database, resolving aliases and matching fuzzily.
+- Stop Saving in table and structure tabs, and in the dialog that waits for a save before closing.
+- Save Changes dialog on close that lists every tab with unsaved changes and saves only the ones left checked.
+- Logout waits while there are unsaved changes, and logout and suspend wait while a save is running.
 
 ### Changed
 
@@ -70,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor tabs reopened after a reconnect in the same window stopped saving their text.
 - An editor tab whose saved text could not be read opened empty with no notice, and typing in it overwrote that text.
 - Typing in a long SQL script copied the whole script on every keystroke.
+- Closing the window never asked about open editor transactions, and never closed the editor tabs' connections.
+- Disconnecting or switching connections offered no way to save pending changes first.
+- A save whose answer was lost with the connection showed as failed, and saving again could apply it twice.
+- Edits made in a table tab while its save ran were dropped when the save finished.
+- Ctrl+S did nothing in a Structure tab.
 
 ### Security
 

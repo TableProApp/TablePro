@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use super::pending_structure::PendingStructure;
 use super::structure_tracker::StructureChangeTracker;
+use crate::workspace::{PendingState, SaveOutcome, SaveRejection};
 
 /// A Structure tab's pending save. Every method borrows only for its own
 /// body and returns owned data.
@@ -14,8 +15,16 @@ impl StructureTrackerHandle {
         self.0.borrow_mut().set_pending(pending);
     }
 
-    pub fn begin_save(&self) -> Option<PendingStructure> {
-        self.0.borrow().begin_save()
+    pub fn begin_save(&self) -> Result<Option<PendingStructure>, SaveRejection> {
+        self.0.borrow_mut().begin_save()
+    }
+
+    pub fn settle_save(&self, outcome: &SaveOutcome) {
+        self.0.borrow_mut().settle_save(outcome);
+    }
+
+    pub fn pending_state(&self) -> PendingState {
+        self.0.borrow().pending_state()
     }
 
     pub fn has_pending(&self) -> bool {

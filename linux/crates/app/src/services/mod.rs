@@ -6,6 +6,7 @@ pub mod from_session;
 pub mod history_availability;
 pub mod history_service;
 pub mod pending_structure;
+pub mod save_batch;
 pub mod secret_labels;
 pub mod secret_save_report;
 pub mod session_context;

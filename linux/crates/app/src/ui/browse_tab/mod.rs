@@ -36,7 +36,8 @@ pub(crate) use self::browse_request_kind::BrowseRequestKind;
 pub(crate) use self::page_reply::PageReply;
 use super::grid::{CellEditor, CellPreset, ColumnWidthBinding, GridMsg, RowObject, TabGridContext, build_column_view};
 use crate::runtime::{FailedRequests, RequestSequencer};
-use crate::services::change_tracker::{RowKey, StatementSource, TrackedChanges};
+use crate::services::change_tracker::{RowKey, StatementSource};
+use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::{TrackerDelta, VisualChange};
 use crate::services::tracker_edit::TrackerEdit;
@@ -80,16 +81,6 @@ pub struct ExportRequest {
     pub result: QueryResult,
     pub name: String,
     pub target: Option<crate::ui::export_dialog::SqlTarget>,
-}
-
-/// The tracker's changes to save as one batch. The columns are the ones
-/// the change set was built against, so the plan binds the same shape;
-/// `changes` maps a failing step back to its grid row.
-#[derive(Debug, Clone)]
-pub struct SaveRequest {
-    pub table: TableRef,
-    pub columns: Vec<ColumnInfo>,
-    pub changes: TrackedChanges,
 }
 
 impl BrowseTab {
@@ -198,6 +189,8 @@ impl BrowseTab {
             pending_revealer: imp.pending_revealer.get(),
             save_button: imp.save_button.get(),
             discard_button: imp.discard_button.get(),
+            saving_spinner: imp.saving_spinner.get(),
+            stop_button: imp.stop_button.get(),
             pending_label: imp.pending_label.get(),
             grid_sender,
             suppress_combo_emit: Cell::new(true),
@@ -355,13 +348,17 @@ impl BrowseTab {
         )
     }
 
-    pub fn connect_save_requested<F: Fn(&Self, SaveRequest) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+    /// Save asked the window to write what the tab's tracker holds.
+    pub fn connect_save_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure("save-requested", false, glib::closure_local!(move |tab: &Self| f(tab)))
+    }
+
+    /// Stop Saving asked the window to stop the tab's save.
+    pub fn connect_stop_save_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
-            "save-requested",
+            "stop-save-requested",
             false,
-            glib::closure_local!(move |tab: &Self, payload: glib::BoxedAnyObject| {
-                f(tab, payload.borrow::<SaveRequest>().clone());
-            }),
+            glib::closure_local!(move |tab: &Self| f(tab)),
         )
     }
 
@@ -380,9 +377,8 @@ impl BrowseTab {
             }
             BrowseTabOutput::ShowToast(text) => self.emit_by_name::<()>("toast", &[&text]),
             BrowseTabOutput::DirtyChanged(dirty) => self.emit_by_name::<()>("dirty-changed", &[&dirty]),
-            BrowseTabOutput::ExecuteTransaction(request) => {
-                self.emit_by_name::<()>("save-requested", &[&glib::BoxedAnyObject::new(request)]);
-            }
+            BrowseTabOutput::SaveRequested => self.emit_by_name::<()>("save-requested", &[]),
+            BrowseTabOutput::StopSaveRequested => self.emit_by_name::<()>("stop-save-requested", &[]),
         }
     }
 
@@ -435,6 +431,7 @@ impl BrowseTab {
         on_click(&imp.export_button, || BrowseTabInput::ExportCurrentPage);
         on_click(&imp.discard_button, || BrowseTabInput::DiscardAll);
         on_click(&imp.save_button, || BrowseTabInput::CommitSave);
+        on_click(&imp.stop_button, || BrowseTabInput::StopSaving);
         let tab = self.downgrade();
         imp.page_size_dropdown.connect_selected_notify(move |dropdown| {
             let index = usize::try_from(dropdown.selected()).unwrap_or(usize::MAX);
@@ -611,6 +608,8 @@ pub(crate) struct BrowseModel {
     pending_revealer: gtk::Revealer,
     save_button: gtk::Button,
     discard_button: gtk::Button,
+    saving_spinner: adw::Spinner,
+    stop_button: gtk::Button,
     pending_label: gtk::Label,
     grid_sender: relm4::Sender<GridMsg>,
     /// Set until the first page lands, so the page-size dropdown being
@@ -681,6 +680,9 @@ pub(crate) enum BrowseTabInput {
     Undo,
     Redo,
     CommitSave,
+    /// The window started saving the tab's changes.
+    SaveStarted,
+    StopSaving,
     DiscardAll,
     DiscardAndRefresh,
     /// A delete the user confirmed, or one small enough to need no
@@ -689,10 +691,14 @@ pub(crate) enum BrowseTabInput {
         rows: Vec<(RowKey, Vec<Value>)>,
         drafts: Vec<u64>,
     },
-    SaveCompleted,
+    /// The save landed. Edits made while it ran stay pending.
+    SaveCommitted,
     /// The pending changes stay, so the user can fix the cause and
     /// save again.
     SaveFailed(String),
+    /// The save may have landed. The changes stay, and the tracker
+    /// refuses to save them again until the table is read again.
+    SaveOutcomeUnknown(String),
     FlashErrorRow(StatementSource),
     CopySelectedRowsAsTsv,
     PasteNotSupported,
@@ -717,7 +723,8 @@ pub(crate) enum BrowseTabOutput {
     },
     ShowToast(String),
     DirtyChanged(bool),
-    ExecuteTransaction(SaveRequest),
+    SaveRequested,
+    StopSaveRequested,
 }
 
 impl BrowseModel {
@@ -805,6 +812,15 @@ impl BrowseModel {
 
     fn table_label(&self) -> String {
         qualified(self.schema.as_deref(), &self.table)
+    }
+
+    /// While a save runs, Save and Discard are off, so a double click
+    /// cannot send two, and Stop Saving takes their place.
+    fn show_saving(&self, saving: bool) {
+        self.save_button.set_sensitive(!saving);
+        self.discard_button.set_sensitive(!saving);
+        self.saving_spinner.set_visible(saving);
+        self.stop_button.set_visible(saving);
     }
 
     fn refresh_pending_bar(&self, count: usize) {
@@ -1385,6 +1401,10 @@ impl BrowseModel {
             self.shown_view = None;
         }
         self.current_columns = columns.clone();
+        self.tracker.set_target(SaveTarget {
+            table: self.table_ref(),
+            columns: columns.clone(),
+        });
         if let Some(result) = self.current_result.as_mut()
             && result.columns.is_empty()
         {
@@ -1668,30 +1688,9 @@ impl BrowseModel {
             }
             BrowseTabInput::GoToFirstRow => self.scroll_to_row(|_| Some(0)),
             BrowseTabInput::GoToLastRow => self.scroll_to_row(|n| n.checked_sub(1)),
-            BrowseTabInput::CommitSave => {
-                let columns = self.current_columns.clone();
-                match self.tracker.change_set(&columns) {
-                    Ok(changes) if !changes.changes.is_empty() => {
-                        // Both buttons stay off while the save runs, so a
-                        // double click cannot send two.
-                        self.save_button.set_sensitive(false);
-                        self.discard_button.set_sensitive(false);
-                        self.capture_focus_for_restore();
-                        fx.output(BrowseTabOutput::ExecuteTransaction(SaveRequest {
-                            table: self.table_ref(),
-                            columns,
-                            changes,
-                        }));
-                    }
-                    Ok(_) => self.refresh_pending_bar(0),
-                    Err(e) => {
-                        fx.output(BrowseTabOutput::ShowSelectionAlert {
-                            title: crate::i18n::gettext("Cannot save"),
-                            body: format!("{e}"),
-                        });
-                    }
-                }
-            }
+            BrowseTabInput::CommitSave => fx.output(BrowseTabOutput::SaveRequested),
+            BrowseTabInput::SaveStarted => self.show_saving(true),
+            BrowseTabInput::StopSaving => fx.output(BrowseTabOutput::StopSaveRequested),
             BrowseTabInput::DiscardAll => {
                 let delta = self.tracker.discard();
                 self.apply_tracker_delta(delta, fx);
@@ -1715,22 +1714,27 @@ impl BrowseModel {
                     selection.unselect_all();
                 }
             }
-            BrowseTabInput::SaveCompleted => {
-                // The reload replaces every row; dropping the saved
-                // drafts from the store first would blank them until it
-                // lands.
-                let delta = self.tracker.discard();
-                self.sync_pending_chrome(delta.pending_count, fx);
-                self.save_button.set_sensitive(true);
-                self.discard_button.set_sensitive(true);
+            BrowseTabInput::SaveCommitted => {
+                self.show_saving(false);
+                // The tracker already let go of what the save wrote. The
+                // reload replaces every row; dropping the saved drafts
+                // from the store first would blank them until it lands.
+                self.sync_pending_chrome(self.tracker.pending_count(), fx);
+                self.capture_focus_for_restore();
                 self.fetch(BrowseRequestKind::Page, fx);
                 self.fetch(BrowseRequestKind::Count, fx);
             }
             BrowseTabInput::SaveFailed(message) => {
-                self.save_button.set_sensitive(true);
-                self.discard_button.set_sensitive(true);
+                self.show_saving(false);
                 fx.output(BrowseTabOutput::ShowSelectionAlert {
                     title: crate::i18n::gettext("Save failed"),
+                    body: message,
+                });
+            }
+            BrowseTabInput::SaveOutcomeUnknown(message) => {
+                self.show_saving(false);
+                fx.output(BrowseTabOutput::ShowSelectionAlert {
+                    title: crate::i18n::gettext("Save Result Unknown"),
                     body: message,
                 });
             }

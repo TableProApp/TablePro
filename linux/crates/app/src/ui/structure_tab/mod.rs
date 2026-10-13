@@ -189,6 +189,9 @@ impl StructureTab {
             save_button: imp.save_button.get(),
             discard_button: imp.discard_button.get(),
             drop_button: imp.drop_button.get(),
+            saving_spinner: imp.saving_spinner.get(),
+            stop_button: imp.stop_button.get(),
+            saving: false,
             last_dirty: false,
             suppress_emit: imp.suppress_emit.clone(),
             next_column_seq: 1,
@@ -277,6 +280,15 @@ impl StructureTab {
         self.connect_closure("save-requested", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
 
+    /// Stop Saving asked the window to stop the tab's save.
+    pub fn connect_stop_save_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "stop-save-requested",
+            false,
+            glib::closure_local!(move |tab: &Self| f(tab)),
+        )
+    }
+
     pub fn connect_drop_table_requested<F: Fn(&Self, Option<String>, String) + 'static>(
         &self,
         f: F,
@@ -308,6 +320,7 @@ impl StructureTab {
         match output {
             StructureTabOutput::DirtyChanged(dirty) => self.emit_by_name::<()>("dirty-changed", &[&dirty]),
             StructureTabOutput::SaveRequested => self.emit_by_name::<()>("save-requested", &[]),
+            StructureTabOutput::StopSaveRequested => self.emit_by_name::<()>("stop-save-requested", &[]),
             StructureTabOutput::DropTableRequested { schema, table } => {
                 self.emit_by_name::<()>("drop-table-requested", &[&schema, &table]);
             }
@@ -325,6 +338,7 @@ impl StructureTab {
         on_click(&imp.save_button, || StructureTabInput::Save);
         on_click(&imp.discard_button, || StructureTabInput::Discard);
         on_click(&imp.drop_button, || StructureTabInput::DropTableRequested);
+        on_click(&imp.stop_button, || StructureTabInput::StopSaving);
         // Without a retry a transient network blip on a remote database
         // would force the user to close the tab and open it again.
         on_click(&imp.retry_button, || StructureTabInput::Retry);
@@ -397,6 +411,10 @@ pub(crate) struct StructureModel {
     save_button: gtk::Button,
     discard_button: gtk::Button,
     drop_button: gtk::Button,
+    saving_spinner: adw::Spinner,
+    stop_button: gtk::Button,
+    /// A save of the tab is running, so Save and Discard stay off.
+    saving: bool,
 
     last_dirty: bool,
     /// Suppress reentrant rebuilds: programmatic `set_text` /
@@ -441,12 +459,21 @@ pub(crate) enum StructureTabInput {
     /// The error page's Try Again.
     Retry,
     Save,
+    /// The window started saving the tab's pending structure.
+    SaveStarted,
+    StopSaving,
     Discard,
+    /// Read the table again and drop the draft, for a save whose outcome
+    /// nobody knows.
+    Reload,
     DropTableRequested,
     SaveCompleted {
         new_table_name: Option<String>,
     },
     SaveFailed(String),
+    /// The save may have landed; the tracker refuses to save again until
+    /// the table is read again or the draft is discarded.
+    SaveOutcomeUnknown(String),
     /// Rebuild the lists and the preview from the model.
     Refresh,
     ColumnEdited {
@@ -479,6 +506,7 @@ pub(crate) enum StructureTabOutput {
     DirtyChanged(bool),
     /// Save asked the window to write the tracker's pending structure.
     SaveRequested,
+    StopSaveRequested,
     DropTableRequested {
         schema: Option<String>,
         table: String,
@@ -547,7 +575,7 @@ impl StructureModel {
     }
 
     fn refresh_buttons(&self, pending_count: usize) {
-        let has_pending = pending_count > 0;
+        let has_pending = pending_count > 0 && !self.saving;
         self.save_button
             .set_sensitive(has_pending && self.invalid_defaults.is_empty());
         self.discard_button.set_sensitive(has_pending);
@@ -967,7 +995,22 @@ impl StructureModel {
                 fx.input(StructureTabInput::Refresh);
             }
             StructureTabInput::Save => self.save(fx),
+            StructureTabInput::SaveStarted => self.show_saving(true),
+            StructureTabInput::StopSaving => fx.output(StructureTabOutput::StopSaveRequested),
+            StructureTabInput::Reload => {
+                // A table the save may have created has nothing to read
+                // yet, so a new one is only cleared.
+                match self.mode {
+                    StructureMode::Edit => {
+                        self.show_loading();
+                        self.fetch_definition();
+                    }
+                    StructureMode::New => fx.input(StructureTabInput::Discard),
+                }
+            }
             StructureTabInput::Discard => {
+                // This also lets go of a save whose outcome was unknown.
+                self.tracker.clear();
                 // New mode clears everything, since a new table starts
                 // empty.
                 let restored = match (self.mode, &self.definition) {
@@ -995,9 +1038,18 @@ impl StructureModel {
             }
             StructureTabInput::SaveCompleted { new_table_name } => self.save_completed(new_table_name, fx),
             StructureTabInput::SaveFailed(message) => {
+                self.show_saving(false);
                 self.recompute_dirty_state(fx);
                 fx.output(StructureTabOutput::ShowAlert {
                     title: crate::i18n::gettext("Save failed"),
+                    body: message,
+                });
+            }
+            StructureTabInput::SaveOutcomeUnknown(message) => {
+                self.show_saving(false);
+                self.recompute_dirty_state(fx);
+                fx.output(StructureTabOutput::ShowAlert {
+                    title: crate::i18n::gettext("Save Result Unknown"),
                     body: message,
                 });
             }
@@ -1096,8 +1148,6 @@ impl StructureModel {
         match pending.plan(ddl) {
             Ok(_) => {
                 self.tracker.set_pending(Some(pending));
-                self.save_button.set_sensitive(false);
-                self.discard_button.set_sensitive(false);
                 fx.output(StructureTabOutput::SaveRequested);
             }
             Err(error) => fx.output(StructureTabOutput::ShowAlert {
@@ -1107,7 +1157,20 @@ impl StructureModel {
         }
     }
 
+    /// While a save runs, Save and Discard are off, so a double click
+    /// cannot send two, and Stop Saving takes their place.
+    fn show_saving(&mut self, saving: bool) {
+        self.saving = saving;
+        self.saving_spinner.set_visible(saving);
+        self.stop_button.set_visible(saving);
+        if saving {
+            self.save_button.set_sensitive(false);
+            self.discard_button.set_sensitive(false);
+        }
+    }
+
     fn save_completed(&mut self, new_table_name: Option<String>, fx: &mut StructureEffects) {
+        self.show_saving(false);
         if let Some(name) = new_table_name {
             self.mode = StructureMode::Edit;
             self.draft.borrow_mut().table.name = name.clone();

@@ -745,24 +745,52 @@ fn export_and_save_reach_the_window_as_signals() {
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
     let exported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let saved = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let saved = std::rc::Rc::new(std::cell::Cell::new(0));
     let export_sink = exported.clone();
     harness.tab().connect_export_results(move |_, request| {
         export_sink.borrow_mut().push((request.name, request.result.rows.len()));
     });
     let save_sink = saved.clone();
-    harness.tab().connect_save_requested(move |_, request| {
-        save_sink
-            .borrow_mut()
-            .push((request.table, request.changes.changes.changes.len()));
-    });
+    harness
+        .tab()
+        .connect_save_requested(move |_| save_sink.set(save_sink.get() + 1));
 
     harness.tab().send(BrowseTabInput::ExportCurrentPage);
     harness.tab().send(BrowseTabInput::InsertRow);
     harness.tab().send(BrowseTabInput::CommitSave);
 
     assert_eq!(*exported.borrow(), [("users".to_owned(), 2)]);
-    assert_eq!(*saved.borrow(), [(tablepro_core::TableRef::unqualified("users"), 1)]);
+    assert_eq!(saved.get(), 1);
+}
+
+#[gtk4::test]
+fn stop_saving_button_visible_only_while_saving() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let stops = std::rc::Rc::new(std::cell::Cell::new(0));
+    let stop_sink = stops.clone();
+    harness
+        .tab()
+        .connect_stop_save_requested(move |_| stop_sink.set(stop_sink.get() + 1));
+    let imp = harness.tab().imp();
+    let (stop, spinner, save) = (imp.stop_button.get(), imp.saving_spinner.get(), imp.save_button.get());
+    harness.tab().send(BrowseTabInput::InsertRow);
+
+    assert!(!stop.is_visible() && !spinner.is_visible());
+    harness.tab().send(BrowseTabInput::SaveStarted);
+    assert!(stop.is_visible() && spinner.is_visible());
+    assert!(!save.is_sensitive(), "Save stayed on while a save ran");
+
+    stop.emit_clicked();
+    assert_eq!(stops.get(), 1);
+
+    harness.tab().send(BrowseTabInput::SaveFailed("rolled back".to_owned()));
+    assert!(!stop.is_visible() && !spinner.is_visible());
+    assert!(save.is_sensitive());
 }
 
 #[gtk4::test]
