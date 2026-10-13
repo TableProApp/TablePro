@@ -5,7 +5,7 @@
 
 pkgname=bookie
 pkgver="${TABLEPRO_RC_VERSION:-0.1.5}"
-pkgrel=1
+pkgrel="${TABLEPRO_RC_PKGREL:-1}"
 pkgdesc="Native Linux database client (internal release candidate)"
 arch=('x86_64')
 provides=("tablepro=$pkgver")
