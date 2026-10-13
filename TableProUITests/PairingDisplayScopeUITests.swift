@@ -14,7 +14,7 @@ final class PairingDisplayScopeUITests: UITestCase {
     }
 
     func testWithTheSettingOffTheSheetSaysTheScopeCannotBeGranted() throws {
-        let app = try launchOpeningURL(pairingLink, arguments: ["-AppleLanguages", "(en)"])
+        let app = try launchOpeningURL(pairingLink, arguments: arguments(mcpSettings: #"{"enabled":true}"#))
 
         let refusal = app.staticTexts["pairing-hidden-connections-refusal"].firstMatch
         XCTAssertTrue(refusal.waitToExist(timeout: 15), "The sheet has to say why the scope is not offered")
