@@ -521,11 +521,9 @@ pub enum AppMsg {
         schema: Option<String>,
         table: String,
     },
-    /// Async result of `ShowCreateTableForExisting`: the synthesised
-    /// CREATE statement is ready, open it in a new editor tab.
-    ShowCreateTableLoaded {
-        sql: String,
-    },
+    /// The CREATE statement `ShowCreateTableForExisting` built, for a
+    /// new editor tab.
+    ShowCreateTableLoaded(FromSession<String>),
     /// Sidebar right-click → "Drop Table…", or in-tab Drop button.
     /// App shows the AdwAlertDialog confirmation; on confirm dispatches
     /// `DropTableConfirmed`.
@@ -533,18 +531,13 @@ pub enum AppMsg {
         schema: Option<String>,
         table: String,
     },
-    /// Confirmed drop: App runs DROP TABLE then closes any open
-    /// Browse / Structure tabs for that table and refreshes sidebar.
+    /// The user confirmed the drop.
     DropTableConfirmed {
         schema: Option<String>,
         table: String,
     },
-    /// DROP TABLE returned Ok from the driver. Now-safe to close
-    /// matching tabs + refresh sidebar.
-    DropTableSucceeded {
-        schema: Option<String>,
-        table: String,
-    },
+    /// The table is gone, so its tabs close without asking.
+    DropTableSucceeded(FromSession<tablepro_core::TableRef>),
     /// Structure tab Save: run the materialised DDL statements
     /// sequentially. Postgres wraps in BEGIN / COMMIT for atomicity;
     /// MySQL / SQLite execute per-statement (DDL implicitly commits).
@@ -1471,10 +1464,18 @@ impl SimpleComponent for App {
             AppMsg::NewTableTab { schema } => self.on_new_table_tab(schema, sender),
             AppMsg::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table, sender),
             AppMsg::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table, sender),
-            AppMsg::ShowCreateTableLoaded { sql } => self.append_editor_tab(Some(sql), sender),
+            AppMsg::ShowCreateTableLoaded(update) => {
+                if let Some(sql) = update.if_current(&self.context.active) {
+                    self.append_editor_tab(Some(sql), sender);
+                }
+            }
             AppMsg::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table, sender),
             AppMsg::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table, sender),
-            AppMsg::DropTableSucceeded { schema, table } => self.on_drop_table_succeeded(schema, table, sender),
+            AppMsg::DropTableSucceeded(update) => {
+                if let Some(table) = update.if_current(&self.context.active) {
+                    self.on_drop_table_succeeded(table, sender);
+                }
+            }
             AppMsg::ExecuteStructureTransaction { tab_id, statements } => {
                 self.on_execute_structure_transaction(tab_id, statements, sender)
             }

@@ -23,6 +23,7 @@ use tablepro_core::{ForeignKeyMode, WriteBatch, WriteKind, WriteReport};
 use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
 
+use crate::services::from_session::FromSession;
 use crate::ui::app::{App, AppMsg, WorkspaceTab};
 use crate::ui::error_text;
 use crate::ui::structure_tab::{StructureMode, StructureTabInput};
@@ -130,10 +131,12 @@ impl App {
             );
             return;
         };
-        let batch = schema_write(TableRef::new(schema.clone(), table.clone()), &[sql]);
+        let dropped = TableRef::new(schema, table);
+        let batch = schema_write(dropped.clone(), &[sql]);
+        let origin = Arc::downgrade(&session);
         crate::runtime::spawn_and_deliver(&self.context.tasks, run_schema_write(session, batch), move |result| {
             match settled(result) {
-                Ok(_) => sender.input(AppMsg::DropTableSucceeded { schema, table }),
+                Ok(_) => sender.input(AppMsg::DropTableSucceeded(FromSession::new(origin, dropped))),
                 Err(error) => sender.input(AppMsg::ShowAlert {
                     title: crate::i18n::gettext("Drop failed"),
                     body: error_text::operation_error_message(&error),
@@ -184,20 +187,11 @@ impl App {
         }
     }
 
-    /// Drop succeeded on the driver: now close any open tabs for
-    /// the dropped table and refresh sidebar. Run synchronously on
-    /// the GTK main thread so the close + sidebar refresh appear
-    /// atomic to the user.
-    pub(super) fn on_drop_table_succeeded(
-        &mut self,
-        schema: Option<String>,
-        table: String,
-        sender: ComponentSender<Self>,
-    ) {
-        self.close_tabs_for_table(schema.as_deref(), &table);
+    pub(super) fn on_drop_table_succeeded(&mut self, table: TableRef, sender: ComponentSender<Self>) {
+        self.close_tabs_for_table(table.schema.as_deref(), &table.name);
         sender.input(AppMsg::SchemaChanged {
-            schema,
-            table: Some(table),
+            schema: table.schema,
+            table: Some(table.name),
         });
     }
 
@@ -423,12 +417,13 @@ impl App {
             return;
         };
         let driver_id = self.driver_id().to_string();
+        let origin = Arc::downgrade(&session);
         let work = read_definition(session, TableRef::new(schema, table.clone()));
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
             let message = match settled(result) {
                 Ok((definition, dialect)) => match create_table_sql(&definition, &driver_id, &*dialect) {
                     Ok(Some(sql)) => {
-                        sender.input(AppMsg::ShowCreateTableLoaded { sql });
+                        sender.input(AppMsg::ShowCreateTableLoaded(FromSession::new(origin, sql)));
                         return;
                     }
                     Ok(None) => crate::i18n::gettext_f("Table {table} has no columns.", &[("table", &table)]),
