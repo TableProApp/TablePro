@@ -190,8 +190,8 @@ impl ObjectImpl for BrowseTab {
         })
     }
 
-    /// Closing the tab stops every read it has running, so the server
-    /// drops the statement rather than finishing it for nobody.
+    /// A cancelled read lets the server drop its statement rather than
+    /// finish it for nobody.
     fn dispose(&self) {
         self.link_watch.take();
         if let Some(forwarding) = self.grid_forward.take() {

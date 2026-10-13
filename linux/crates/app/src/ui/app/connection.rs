@@ -439,9 +439,7 @@ impl App {
         // Persist + tear down workspace tabs before dropping the
         // session (persist needs the active connection id).
         self.teardown_workspace_tabs();
-        // Drop reopen-stack entries: they reference tables in the
-        // connection we're about to release. Reopening one against a
-        // different connection would target a non-existent table.
+        // The closed tabs name tables of the connection being released.
         self.clear_closed_tabs_stack();
         self.session_links = None;
         close_session(&self.context.active, &*self.context.hold);
@@ -509,13 +507,8 @@ impl App {
     }
 
     pub(super) fn on_delete_connection(&self, id: Uuid, sender: ComponentSender<Self>) {
-        // Connection deletion wipes the saved entry and ALL associated
-        // keyring credentials (db password, SSH password, SSH passphrase).
-        // Irreversible (no Undo can recover keyring entries) so we
-        // confirm unconditionally; the previous `confirm_destructive`
-        // preference gate let users skip it, but per HIG (and GNOME
-        // Files' bookmark-delete behaviour) destructive keyring writes
-        // need confirmation regardless of preferences.
+        // The delete takes the keyring secrets with it and has no undo,
+        // so it asks whatever the preferences say.
         let connection_name = self
             .saved_connections
             .iter()
@@ -871,14 +864,8 @@ impl App {
     }
 
     pub(super) fn refresh_window_title(&self) {
-        // Subtitle: "<connection> · <driver>" when connected, empty
-        // otherwise. The active table goes in the tab title (where it
-        // already lives); duplicating it in the WindowTitle subtitle
-        // both overruns the slot's intended ~7-word capacity and
-        // pretends the subtitle is the canonical "where am I?" widget
-        // when the tab strip already serves that role. Matches GNOME
-        // Builder (subtitle = branch name only) and Text Editor
-        // (subtitle = filename only): short, single-purpose.
+        // The table is in the tab title already, so the subtitle leaves
+        // it out, as GNOME Builder's names only the branch.
         let metadata = self.context.active.metadata();
         let connection_name = metadata.as_ref().map(|m| m.name.as_str());
         let active = self.selected_browse_slot_table();
@@ -902,10 +889,8 @@ impl App {
         self.window.set_title(Some(&os_title));
         self.window_title.set_subtitle(&subtitle);
 
-        // Sidebar header acts as a breadcrumb: the title shows the
-        // active connection name when connected, falling back to the
-        // generic "Tables" label on the welcome screen. Subtitle stays
-        // empty: the driver / host already lives in the main header.
+        // The sidebar's header has no subtitle: the main header already
+        // names the driver.
         match connection_name {
             Some(name) => {
                 self.sidebar_title.set_title(name);

@@ -10,9 +10,6 @@ use tablepro_core::meta::IndexKey;
 
 use super::{StructureTabInput, StructureTabSender};
 
-/// Tiny inline pill rendered as an AdwActionRow suffix, used by the
-/// indexes list to show UNIQUE / PRIMARY tags. `accent_class` is the
-/// CSS class controlling the colour (`dim-label`, `accent`, etc.).
 fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
     let badge = gtk::Label::builder().label(label).valign(gtk::Align::Center).build();
     badge.add_css_class("caption");
@@ -20,10 +17,6 @@ fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
     badge
 }
 
-/// Index row as a native `AdwActionRow`: title is the index name,
-/// subtitle is the comma-separated column list. UNIQUE / PRIMARY are
-/// small caption suffixes, the trash button is an end-suffix. The row
-/// participates in `boxed-list` styling for free; no manual margins.
 pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: StructureTabSender) -> adw::ActionRow {
     let subtitle = index_key_summary(idx);
     let row = adw::ActionRow::builder()
@@ -44,8 +37,7 @@ pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: StructureTa
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
-    // Primary index isn't user-droppable: it's owned by the PK
-    // column constraint and removing it breaks the table.
+    // The primary key's constraint owns its index.
     if idx.primary {
         remove_button.set_sensitive(false);
         remove_button.set_tooltip_text(Some(&crate::i18n::gettext(

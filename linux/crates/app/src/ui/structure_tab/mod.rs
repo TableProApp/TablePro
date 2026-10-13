@@ -95,8 +95,8 @@ pub struct StructureTabInit {
     pub tasks: Tasks,
 }
 
-/// What the rows and dialogs of a tab use to reach it. It holds the tab
-/// weakly, so a row's closure never keeps a closed tab alive.
+/// Holds the tab weakly, so a row's or a dialog's closure never keeps a
+/// closed tab alive.
 #[derive(Clone)]
 pub(crate) struct StructureTabSender {
     tab: glib::WeakRef<StructureTab>,
@@ -256,7 +256,9 @@ impl StructureTab {
         imp.dispatching.set(false);
     }
 
-    /// Stop the read the tab has running and stop following reconnects.
+    /// Stop the read the tab has running and stop following reconnects
+    /// now, rather than at dispose, which waits for the last reference
+    /// to the widget.
     pub fn shutdown(&self) {
         let imp = self.imp();
         imp.link_watch.take();

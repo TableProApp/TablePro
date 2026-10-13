@@ -106,9 +106,7 @@ pub struct App {
     row_op_spinner: adw::Spinner,
     read_only_badge: gtk::Label,
     table_search: gtk::SearchEntry,
-    /// Outer Stack inside `content_holder`: swaps between `"empty"`
-    /// (AdwStatusPage "Select a table") and `"tabs"` (the unified
-    /// AdwTabOverview hosting both Browse and Editor sub-components).
+    /// `"empty"` while no tab is open, `"tabs"` otherwise.
     workspace_outer_stack: gtk::Stack,
     /// AdwTabOverview wrapping the unified AdwTabBar + AdwTabView.
     /// Built lazily on connect; torn down on disconnect.
@@ -132,8 +130,7 @@ pub struct App {
     welcome_view: Controller<WelcomeView>,
     /// Driver id is connection-wide, not per-tab.
     current_driver_id: Option<String>,
-    /// All tables in the current connection, fed into `schema_buffer`
-    /// for the editor's autocomplete; not the per-tab columns.
+    /// The table names the editor completes; the tabs add their columns.
     table_names: Vec<String>,
     /// Read-only flag is connection-wide; fanned out to every BrowseTab
     /// when toggled.
@@ -142,15 +139,9 @@ pub struct App {
     /// Per-tab page size lives on each BrowseTab.
     saved_connections: Vec<SavedConnection>,
     connected: bool,
-    /// Tabs the user picked "Save" on in a close-confirmation dialog,
-    /// counted by remaining saves before the close fires. A Table tab
-    /// with both browse-dirty AND structure-dirty dispatches two saves
-    /// (one of each kind) so its entry starts at 2: the first
-    /// completion decrements to 1 (no close yet), the second decrements
-    /// to 0 and finally fires `WorkspaceTabClosed`. A `SaveFailed`
-    /// removes the entry entirely (abort all close intents for that
-    /// tab so the user can fix the error and retry). See
-    /// `dec_close_after_save` for the decrement helper.
+    /// Tabs that close once their saves land, with the number still to
+    /// land: a Table tab with both row and DDL edits waits on two. A
+    /// failed save drops the entry, so the tab stays open to fix it.
     close_after_save: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, u32>>>,
     /// Set when the user picked "Save" on the *window*-close dialog.
     /// While true, the last `SaveCompletedForTab` that empties
@@ -177,14 +168,9 @@ pub struct App {
     /// page-size change and state-changed event, and each one would
     /// otherwise rewrite the whole workspace file.
     persist_debouncer: crate::workspace::PersistDebouncer,
-    /// LIFO stack of recently-closed tab descriptors for Ctrl+Shift+T
-    /// reopen. Capped at `CLOSED_TABS_CAPACITY`; the oldest entry is
-    /// dropped when a new one is pushed against a full stack. Cleared
-    /// on disconnect: descriptors reference the active connection's
-    /// tables, so reopening across connections would target the wrong
-    /// schema. Editor descriptors round-trip the buffer text;
-    /// dirty tabs lose their pending row/DDL edits because the
-    /// trackers have already been cleared by the close path.
+    /// Recently closed tabs for Ctrl+Shift+T. Cleared on disconnect,
+    /// since the tables they name belong to that connection. Pending
+    /// edits are not kept: the close has already cleared them.
     closed_tabs_stack: std::rc::Rc<std::cell::RefCell<std::collections::VecDeque<ClosedTabDescriptor>>>,
 }
 
@@ -236,12 +222,9 @@ pub struct StructureTabSlot {
     pub mode: crate::ui::structure_tab::StructureMode,
 }
 
-/// One workspace tab pinned to a single `(schema, table)` entity in
-/// Data (Browse) mode. The Structure (DDL) view is no longer fused
-/// into the same tab: `WorkspaceTab::Structure` is its own
-/// dedicated tab opened via the sidebar right-click "Edit Structure"
-/// action. This split mirrors GNOME's "one TabPage per surface"
-/// idiom (Files, Builder) instead of a per-tab AdwViewSwitcher.
+/// A tab showing one table's rows. The table's structure opens in a
+/// tab of its own: one TabPage per surface, as GNOME Files and Builder
+/// do.
 pub struct TableTabSlot {
     pub id: Uuid,
     pub page: adw::TabPage,
@@ -256,10 +239,8 @@ pub struct TableTabSlot {
 ///   view. Default for every sidebar single-click.
 /// - **Editor**: a free-form SQL workspace, orthogonal to any one
 ///   table.
-/// - **Structure**: the DDL editor, which opens for "New Table" drafts
-///   AND for "Edit Structure" against an existing table (via the
-///   sidebar right-click action). Replaces the previous inline
-///   AdwViewSwitcher on the Table tab.
+/// - **Structure**: the DDL editor, for a new table's draft or an
+///   existing table.
 pub enum WorkspaceTab {
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
@@ -297,18 +278,14 @@ impl WorkspaceTab {
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpenMode {
-    /// Plain sidebar click: if a Browse tab for the table already
-    /// exists, activate it; otherwise append a new Browse tab.
-    /// Never closes existing tabs: accumulates until the user dismisses.
+    /// Plain sidebar click: activate the table's tab, or append one.
     SwitchOrAppend,
     /// Ctrl+click / right-click "Open in new tab": always append a
     /// new tab even when the same table is already open.
     NewTab,
 }
 
-// One Quark keyed `tp-workspace-tab-id` covers all tabs in the unified
-// workspace. We look up the WorkspaceTab from the HashMap to discover
-// kind: qdata only carries identity.
+// The page carries only the tab's id; its kind is in `workspace_tabs`.
 fn workspace_tab_id_quark() -> glib::Quark {
     static QUARK: std::sync::OnceLock<glib::Quark> = std::sync::OnceLock::new();
     *QUARK.get_or_init(|| glib::Quark::from_str("tp-workspace-tab-id"))
@@ -449,9 +426,8 @@ pub enum AppMsg {
     /// Tab right-click "Close Tabs to the Right" → close every tab
     /// after the targeted one in TabView display order.
     CloseWorkspaceTabsToRight(Uuid),
-    /// Drag-reorder / selection change / browse-tab-state-changed:
-    /// triggers persistence (writes the current display order + each
-    /// slot's state to workspace_state.json).
+    /// The tab order, the selection or a tab's state changed, so the
+    /// workspace is saved.
     WorkspaceTabsChanged,
     /// Save a BrowseTab's pending changes as one batch, planned on the
     /// connection that runs it. App dispatches
@@ -475,16 +451,15 @@ pub enum AppMsg {
     /// Routed before SaveFailedForTab so the tab can scroll-and-select
     /// the offending row before the error alert appears.
     FlashErrorRowForTab(Uuid, crate::services::change_tracker::StatementSource),
-    /// Ctrl+S: fire CommitSave on the active browse tab. No-op if
-    /// the active tab is an Editor or there's no active connection.
+    /// Ctrl+S, for the active Table tab.
     SaveActiveBrowseTab,
     /// Targeted variant: close-confirmation dialogs use this to commit
     /// a specific tab (which may not be the currently-active one when
     /// the user is closing a background tab via its X button).
     SaveActiveBrowseTabById(Uuid),
-    /// Ctrl+Z: undo the last pending change in the active tab.
+    /// Ctrl+Z, for the active Table tab.
     UndoActiveBrowseTab,
-    /// Ctrl+Y: redo a previously undone change in the active tab.
+    /// Ctrl+Y, for the active Table tab.
     RedoActiveBrowseTab,
     /// Show a small alert dialog; used by BrowseTab for "select exactly
     /// one row" type messages.
@@ -492,8 +467,6 @@ pub enum AppMsg {
         title: String,
         body: String,
     },
-    /// Show a transient toast, used for inline-validation feedback like
-    /// "Invalid date format" where a modal alert would be over-heavy.
     ShowToast(String),
     /// Tracker for a specific browse tab moved between empty / non-empty.
     /// Handler updates that tab's page title to add or remove the
@@ -545,10 +518,7 @@ pub enum AppMsg {
         tab_id: Uuid,
         statements: Vec<String>,
     },
-    /// Targeted save for a specific structure tab (close-with-pending
-    /// dialog uses this; mirrors `SaveActiveBrowseTabById`). Looks up
-    /// the slot, materialises the tracker, dispatches
-    /// `ExecuteStructureTransaction`.
+    /// Save one Structure tab, which need not be the active one.
     SaveActiveStructureTabById(Uuid),
     /// Structure tab Save resolved successfully. `new_table_name` is
     /// `Some(name)` for `New` mode CreateTable transitions; the tab
@@ -596,11 +566,8 @@ impl App {
     }
 
     /// The active driver id, or "postgres" if no connection is active.
-    ///
-    /// Single fallback site (was duplicated at 7 call sites). The
-    /// tracing::warn! makes the latent bug visible if anything ever
-    /// asks for the driver id without an active connection: today
-    /// that would silently corrupt SQL quoting on non-Postgres drivers.
+    /// The fallback would quote SQL wrongly for another engine, so it is
+    /// logged.
     pub(super) fn driver_id(&self) -> &str {
         match self.current_driver_id.as_deref() {
             Some(id) => id,
@@ -687,12 +654,9 @@ impl SimpleComponent for App {
                     set_max_sidebar_width: 280.0,
                     set_show_sidebar: false,
 
-                    // Sidebar wrapped in its own AdwToolbarView so it can
-                    // carry a sidebar-local AdwHeaderBar with a search
-                    // toggle, the same structure GNOME Files uses for its
-                    // Places sidebar. Window-decoration buttons live on
-                    // the outer (main) header bar already, so we hide
-                    // them here.
+                    // The sidebar has its own header bar for the search
+                    // toggle, as GNOME Files does; the window buttons are
+                    // on the main one.
                     #[wrap(Some)]
                     #[name = "sidebar_root"]
                     set_sidebar = &adw::ToolbarView {
@@ -757,14 +721,8 @@ impl SimpleComponent for App {
                                 set_revealed: false,
                                 set_use_markup: false,
                             },
-                            // Content is set imperatively at the end of
-                            // init(): show_welcome_page swaps in the
-                            // WelcomeView for the disconnected state,
-                            // and on_connected swaps in the workspace
-                            // tab strip on connect. The previously-
-                            // inlined "Connect to a database" StatusPage
-                            // here was dead UI: built once, replaced
-                            // immediately, never seen.
+                            // The welcome view or the workspace goes in
+                            // here once init() has run.
                         },
                     },
                 },
@@ -820,11 +778,8 @@ impl SimpleComponent for App {
         let context_for_close = context.clone();
         let connect_attempts_for_close = connect_attempts.clone();
         widgets.window.connect_close_request(move |w| {
-            // If a Save is mid-flight (async transaction running), block
-            // the close until it resolves. Without this, the completion
-            // handler would dispatch SaveCompleted to a tab that's
-            // already gone: the transaction commits in the background
-            // with no UI feedback.
+            // A save still running would commit after its tab is gone,
+            // with nothing left to say whether it worked.
             if !force_close_for_close.get() && in_flight_saves_for_close.get() > 0 {
                 let dialog = adw::AlertDialog::new(
                     Some(&crate::i18n::gettext("Saving in progress")),
@@ -850,18 +805,8 @@ impl SimpleComponent for App {
                 });
                 return glib::Propagation::Stop;
             }
-            // Already-confirmed close path (set by the dialog handler
-            // below): skip the guard, save state, allow close.
-            // Browse + Structure tabs share the dirty-state guard:
-            // either source of pending changes triggers the dialog.
             let has_pending = !dirty_tabs(&change_trackers_for_close, &structure_trackers_for_close).is_empty();
             if !force_close_for_close.get() && has_pending {
-                // Plural-form heading matches the per-tab dialog's
-                // tone: factual GNOME HIG language rather than the
-                // colloquial "throws them away" the body used to
-                // carry. Per-tab dialog stays specific ("Save changes
-                // to {name}"); window close groups across N tabs so
-                // it stays generic.
                 let dialog = adw::AlertDialog::new(None, None);
                 dialog.set_heading(Some(&crate::i18n::gettext("Save changes before closing?")));
                 dialog.set_body(&crate::i18n::gettext(
@@ -898,8 +843,6 @@ impl SimpleComponent for App {
                                 }
                             }
                             force_close_for_resp.set(true);
-                            // Re-fire close_request: guard sees the flag,
-                            // saves window state, returns Proceed.
                             window_for_resp.close();
                         }
                         "save" => {
@@ -912,9 +855,7 @@ impl SimpleComponent for App {
                             // the set drains. Any SaveFailed aborts.
                             let browse_tabs = change_trackers_for_resp.dirty();
                             let structure_tabs = structure_trackers_for_resp.dirty();
-                            // Counter increments: a Table tab listed in both
-                            // sets bumps to 2 so the window close waits for
-                            // BOTH the browse save and the structure save.
+                            // A Table tab in both sets waits for both saves.
                             {
                                 let mut map = close_after_save_for_resp.borrow_mut();
                                 for id in browse_tabs.iter().copied() {
@@ -1057,13 +998,7 @@ impl SimpleComponent for App {
             .table_search_bar
             .set_key_capture_widget(Some(&widgets.sidebar_root));
 
-        // Empty-state placeholder. Shown by GtkListBox when no row is
-        // visible: covers both "the database has zero tables" and
-        // "the search filtered everything out". Without this, the
-        // sidebar renders as a blank surface and reads as broken.
-        // AdwStatusPage `.compact` is the documented empty-state
-        // widget for narrow containers (matches GNOME Files's
-        // sidebar-empty look).
+        // An empty list with no placeholder reads as broken.
         let sidebar_placeholder = adw::StatusPage::builder()
             .icon_name(crate::ui::icons::VIEW_LIST)
             .title(crate::i18n::gettext("No tables"))
@@ -1090,12 +1025,8 @@ impl SimpleComponent for App {
             let schemas = schemas_for_header.borrow();
             let total_distinct: std::collections::BTreeSet<&str> =
                 schemas.iter().filter_map(|s| s.as_deref()).collect();
-            // Postgres-style multi-schema connections render a header
-            // per schema with a "+" button for "New Table…". Single-
-            // schema connections (MySQL / SQLite) get one header
-            // anchored to "main" / database-name with the same "+"
-            // affordance: the visual cue matters even when there's
-            // only one schema in the list.
+            // A connection with one schema still gets a header, for its
+            // "New Table" button.
             let multi_schema = total_distinct.len() >= 2;
             let idx = row.index();
             let current = schemas.get(idx as usize).cloned().flatten();
@@ -1117,10 +1048,7 @@ impl SimpleComponent for App {
                 .margin_top(12)
                 .margin_bottom(6)
                 .margin_start(12)
-                // Match the row body's `margin_end: 12` so the "+"
-                // button sits flush with where row content ends: the
-                // previous 6px pulled it inward of the row label edge
-                // and read as a misaligned column.
+                // Lines the "+" up with the end of the row content.
                 .margin_end(12)
                 .build();
             let label_text = current
@@ -1132,12 +1060,7 @@ impl SimpleComponent for App {
                 .xalign(0.0)
                 .hexpand(true)
                 .build();
-            // GtkPlacesSidebar section-header typography: small + bold
-            // + ~55% alpha. `.heading` (libadwaita's "emphasized body")
-            // combined with `.dim-label` rendered as bold-dim at body
-            // size: too loud for a section divider. `.caption-heading`
-            // is the small-bold variant the toolkit ships for exactly
-            // this purpose.
+            // GtkPlacesSidebar's section header: small, bold and dim.
             label.add_css_class("caption-heading");
             label.add_css_class("dim-label");
             header_box.append(&label);

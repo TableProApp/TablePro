@@ -139,11 +139,7 @@ impl App {
                     sort_col,
                     sort_asc,
                 } => {
-                    // The persisted `mode` field is now ignored: Data
-                    // and Structure are separate AdwTabPages. Restoring
-                    // a Table record always opens the Data side; if the
-                    // user had a Structure tab open, that's captured as
-                    // a separate `WorkspaceTabRecord::Structure` record.
+                    // A Structure tab is a record of its own now.
                     let _ = mode;
                     self.append_table_tab(
                         schema.clone(),
@@ -321,10 +317,8 @@ impl App {
 
         let page = tab_view.append(&structure);
         let title = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
-        // Disambiguate from the Data-side tab with the same base name
-        // by suffixing the structure tab title: "products · Structure".
-        // GNOME uses U+00B7 middle dot as the canonical separator
-        // (Files, Builder, Console all do this for compound titles).
+        // Told apart from the table's own tab, with the middle dot GNOME
+        // apps use in compound titles.
         page.set_title(&format!("{title} · {}", crate::i18n::gettext("Structure")));
         write_workspace_tab_id(&page, tab_id);
 
@@ -427,9 +421,6 @@ impl App {
                 WorkspaceTab::Table(s) => s.page.clone(),
             });
             let Some(page) = page else { return };
-            // Tab title without the dirty bullet: the heading reads
-            // as the natural-language name of the tab (`categories`),
-            // not `• categories`. Strip a leading "• " if present.
             let raw_title = page.title().to_string();
             let tab_label = raw_title.strip_prefix("• ").unwrap_or(&raw_title).to_string();
             // Cancel | Discard(destructive) | Save(suggested), Save is
@@ -559,12 +550,8 @@ impl App {
         let Some(removed) = removed else {
             return;
         };
-        // Snapshot the closed tab into the reopen stack BEFORE running
-        // the per-kind teardown below: the BrowseModel still has its
-        // pagination + sort state intact, and the EditorTabSlot still
-        // owns the latest query buffer. New-mode Structure drafts are
-        // skipped because the table they describe doesn't exist yet,
-        // so reopening a draft would be useless.
+        // Before the teardown, while the tab still has its page, sort
+        // and query.
         if let Some(descriptor) = describe_closed_tab(&removed) {
             push_closed_tab(&self.closed_tabs_stack, descriptor);
         }
@@ -681,21 +668,8 @@ impl App {
         }
     }
 
-    /// Sidebar-click dispatcher. Two behaviours:
-    ///
-    /// - `SwitchOrAppend` (plain click): if a Browse tab for
-    ///   `(schema, table)` is already open, activate it; otherwise
-    ///   append a new Browse tab. Never closes anything: tabs only
-    ///   go away when the user clicks the X.
-    /// - `NewTab` (Ctrl+click / right-click "Open in new tab"): always
-    ///   append a new tab even if the same table is already open.
-    ///
-    /// The earlier "smart-replace" sub-case (close active + append new
-    /// in one step) was dropped because AdwTabView's close-page
-    /// animation overlapped with the append, producing a visual flash
-    /// where the user briefly saw the closing tab and the new tab
-    /// side by side. Always-append is what every modern DB client
-    /// (TablePlus, DBeaver, DataGrip, Beekeeper) does anyway.
+    /// A sidebar click never replaces the active tab: AdwTabView's
+    /// close animation overlapped the append and flashed both tabs.
     pub(super) fn dispatch_select_table(
         &mut self,
         schema: Option<String>,
@@ -866,9 +840,7 @@ fn do_persist_workspace_state(
                 WorkspaceTabRecord::Table {
                     schema: s.schema.clone(),
                     table: s.table.clone(),
-                    // `mode` is a legacy field: Table records always
-                    // describe a Data-side Browse tab now. Structure
-                    // tabs persist as separate `Structure` records.
+                    // A Structure tab is a record of its own now.
                     mode: crate::services::workspace_state::PersistedTableMode::Data,
                     offset: s.browse.current_offset(),
                     page_size: s.browse.page_size(),
@@ -895,11 +867,8 @@ impl App {
         self.sync_sidebar_selection();
     }
 
-    /// Highlight the sidebar row matching the active Browse tab's
-    /// `(schema, table)`. When the active tab is an Editor (or there
-    /// are no tabs), clear the sidebar selection: leaving a stale
-    /// row highlighted while the user is in the editor would imply
-    /// the editor is showing that table's data, which it isn't.
+    /// With no Table tab active, no row stays selected: one would say
+    /// the editor shows that table.
     fn sync_sidebar_selection(&self) {
         let listbox = self.sidebar_factory.widget();
         let Some((schema, table)) = self.selected_browse_slot_table() else {
@@ -935,10 +904,6 @@ impl App {
         let id = self.selected_workspace_tab_id()?;
         let tabs = self.workspace_tabs.borrow();
         let slot = tabs.get(&id)?;
-        // Treat both legacy `Browse` and unified `Table` (regardless of
-        // active mode) as candidates: the Browse-side controller is
-        // present in both. Save / Discard / Find paths route through
-        // this helper.
         if slot.browse_tab().is_some() { Some(id) } else { None }
     }
 
@@ -968,17 +933,9 @@ impl App {
         distinct.len()
     }
 
-    /// Refresh a browse tab's title based on its tracker dirty state.
-    /// Mirrors GNOME Text Editor's leading "•" prefix convention for
-    /// unsaved buffers. The base label is recomputed (not stored) so
-    /// schema disambiguation stays correct if other tabs change.
-    ///
-    /// Also flips `set_needs_attention` on the AdwTabPage so the tab
-    /// bar's pulsing dot appears for background tabs that have unsaved
-    /// edits: matches AdwTabView's intended use and surfaces the
-    /// dirty state when the user is in another tab. The flag is
-    /// suppressed for the currently-selected tab since the user is
-    /// actively looking at it (the "•" title prefix is enough cue).
+    /// The label is built again rather than stored, so the schema
+    /// prefix follows the other tabs. Only a background tab asks for
+    /// attention; the selected one has its "•" in view.
     pub(super) fn refresh_browse_tab_dirty(&self, tab_id: uuid::Uuid, dirty: bool) {
         let schemas_count = self.sidebar_schemas_distinct();
         let tabs = self.workspace_tabs.borrow();
@@ -1007,8 +964,7 @@ impl App {
     }
 
     pub(super) fn teardown_workspace_tabs(&mut self) {
-        // Synchronous flush: debouncer would skip the write since
-        // teardown drops state before the 500ms timer would fire.
+        // The debounced write would run after the state is gone.
         self.do_persist_workspace_state_now();
         self.cancel_all_editor_runs();
         // The pending edits name rows of the connection going away, so
@@ -1100,11 +1056,6 @@ impl App {
     }
 
     pub(super) fn on_replace_active_tab_query(&mut self, text: String, sender: ComponentSender<Self>) {
-        // If an editor tab is active, replace its buffer in-place. If a
-        // browse tab is active (or no tab at all), fall back to opening
-        // a new editor tab with the query: silent no-op was the prior
-        // (annoying) behaviour for users invoking from history while
-        // browsing.
         if let Some(id) = self.selected_workspace_tab_id()
             && let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&id)
         {
@@ -1330,8 +1281,7 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
             sort: s.browse.current_sort(),
         }),
         WorkspaceTab::Structure(s) => match s.mode {
-            // New-Table drafts have no entity to point at and lose
-            // their in-progress DDL on close: nothing to reopen.
+            // A draft names no table to reopen.
             StructureMode::New => None,
             StructureMode::Edit => Some(ClosedTabDescriptor::Structure {
                 schema: s.schema.clone(),
@@ -1359,10 +1309,7 @@ impl App {
         }
         let descriptor = self.closed_tabs_stack.borrow_mut().pop_back();
         let Some(descriptor) = descriptor else {
-            // Stack empty: nothing to reopen. Toast keeps the
-            // shortcut from feeling broken when the user hits it
-            // before having closed anything (or after a reconnect
-            // wiped the stack).
+            // Without a toast the shortcut would read as broken.
             self.show_toast(&crate::i18n::gettext("No recently closed tab"));
             return;
         };
@@ -1391,10 +1338,8 @@ impl App {
     }
 }
 
-/// Returns a tooltip for an Editor tab. Empty for blank queries; for
-/// non-empty queries, a 200-char preview, but only when distinct from
-/// the (truncated) label, so non-truncated labels don't get a redundant
-/// hover popup.
+/// At most 200 characters of the query, and none when the label
+/// already shows them.
 fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
     let q = query.trim();
     if q.is_empty() {

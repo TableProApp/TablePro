@@ -8,17 +8,11 @@ use super::{App, AppMsg};
 
 impl App {
     pub(super) fn show_welcome_page(&self, _sender: ComponentSender<Self>) {
-        // Welcome lives outside the ViewStack: it's the disconnected mode.
-        // The ViewSwitcherBar is hidden via on_disconnect so the welcome
-        // view occupies the full toolbar surface.
         self.content_holder.set_content(Some(self.welcome_view.widget()));
     }
 
-    /// Used during connect to convey "Connecting…". Persistent toast
-    /// (timeout 0), held in `connect_progress_toast` until the connect
-    /// resolves, at which point `dismiss_loading_page` clears it. Replaces
-    /// the prior fire-and-forget toast which auto-dismissed at 2 s, well
-    /// before remote / SSH-tunnelled connections resolve.
+    /// The toast stays until the connect resolves: a remote or tunnelled
+    /// connect can take longer than any timeout would.
     pub(super) fn set_loading_page(&mut self, title: &str, description: &str, sender: &ComponentSender<Self>) {
         if let Some(prev) = self.connect_progress_toast.take() {
             prev.dismiss();

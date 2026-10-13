@@ -1,19 +1,9 @@
 //! Add-Index and Add-Foreign-Key form dialogs for the Structure tab.
 //!
-//! Split out of `structure_tab.rs` so that file can stay focused on
-//! the SimpleComponent itself. Both dialogs follow the same skeleton
-//! (`build_form_dialog`): an `adw::Dialog` carrying a custom HeaderBar
-//! with Cancel + suggested-action buttons and a vertically-scrolling
-//! content box. Per HIG, AlertDialog is for confirmation prompts; data
-//! entry forms belong on AdwDialog with explicit headerbar buttons.
-//!
-//! Form fields use AdwEntryRow / AdwSwitchRow / AdwComboRow inside an
-//! AdwPreferencesGroup, the same pattern GNOME Settings uses for
-//! every "Add account / Add network / Add printer" dialog. Raw
-//! GtkEntry + sibling labels was the quick-MVP layout but it doesn't
-//! pick up the rounded-corner / row-separator styling and breaks
-//! typing flow (the title float of AdwEntryRow doubles as the
-//! placeholder, halving vertical space).
+//! A form is an `adw::Dialog` with Cancel and a suggested action in
+//! its header bar: the HIG keeps AlertDialog for confirmations. Its
+//! fields are rows in an AdwPreferencesGroup, as in GNOME Settings'
+//! "Add" dialogs.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -93,22 +83,14 @@ fn build_form_dialog(title: &str, submit_label: &str) -> (adw::Dialog, gtk::Box,
     (dialog, content, submit_btn)
 }
 
-/// Build a section header label sized as a small caption, used
-/// above sub-groupings inside form dialogs. AdwPreferencesGroup
-/// already handles its own header, so this is for the "Columns"
-/// label that sits above the column checklist (which is itself a
-/// boxed-list, not a PreferencesGroup).
+/// A heading for the column checklist, which is a boxed list rather
+/// than a PreferencesGroup with a title of its own.
 fn section_label(title: &str) -> gtk::Label {
     let label = gtk::Label::builder().label(title).xalign(0.0).build();
     label.add_css_class("heading");
     label
 }
 
-/// Build a boxed-list `ListBox` of `AdwActionRow` + `CheckButton`,
-/// one per draft column, for picking columns inside a form dialog.
-/// Returns the list (so the caller can `body.append` it) plus the
-/// shared `Rc` of name/check pairs so the submit handler can extract
-/// which columns the user ticked.
 fn build_column_checklist(columns: &[DraftColumn]) -> (gtk::ListBox, ColumnChecks) {
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
     list.add_css_class("boxed-list");
@@ -205,8 +187,6 @@ pub(super) fn present_fk_dialog(
     let (dialog, body, submit_btn) =
         build_form_dialog(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("Add"));
 
-    // Name in its own AdwPreferencesGroup at the top, which matches the
-    // shape of the column-edit drawer + every other GNOME form.
     let name_group = adw::PreferencesGroup::builder().build();
     let name_row = adw::EntryRow::builder()
         .title(crate::i18n::gettext("Name"))
@@ -219,9 +199,8 @@ pub(super) fn present_fk_dialog(
     let (columns_list, column_checks) = build_column_checklist(columns);
     body.append(&columns_list);
 
-    // Reference target + ON DELETE / ON UPDATE in a second group.
-    // Reference columns stay free-text: wiring up an async fetch of
-    // the referenced table's columns is out of scope for an MVP.
+    // The referenced columns are typed: the dialog does not read the
+    // other table.
     let ref_group = adw::PreferencesGroup::builder()
         .title(crate::i18n::gettext("References"))
         .build();
@@ -288,9 +267,8 @@ pub(super) fn present_fk_dialog(
             )));
             return;
         }
-        // Source and reference column counts must match: `(a, b) → (x)`
-        // is structurally invalid SQL. Drivers reject it, but with an
-        // opaque error after Save instead of an inline guard.
+        // The server would reject it too, but only at Save and in its
+        // own words.
         if ref_cols.len() != cols.len() {
             sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Source and reference column counts must match.",

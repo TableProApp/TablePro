@@ -1,7 +1,6 @@
 use tablepro_core::QueryResult;
 use tablepro_core::meta::PagePosition;
 
-/// One page of rows and where in the table it starts.
 #[derive(Debug, Clone)]
 pub(crate) struct PageReply {
     pub position: PagePosition,
@@ -9,7 +8,7 @@ pub(crate) struct PageReply {
 }
 
 impl PageReply {
-    /// The row offset the page starts at, for the paginator.
+    /// `None` when the page starts at a key or a ctid window.
     pub fn offset(&self) -> Option<u64> {
         match self.position {
             PagePosition::First => Some(0),

@@ -9,8 +9,7 @@ use super::{RequestStamp, RequestTicket};
 ///
 /// Issuing a request stops the one of its kind still running, so the
 /// server drops work nobody will look at, and only the reply to the
-/// latest request is accepted. Dropping the sequencer stops them all,
-/// which is what closing a view should do.
+/// latest request is accepted. Dropping the sequencer stops them all.
 #[derive(Debug)]
 pub struct RequestSequencer<K: Eq + Hash> {
     last: u64,

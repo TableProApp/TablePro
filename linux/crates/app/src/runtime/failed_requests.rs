@@ -12,7 +12,6 @@ impl<K: Ord + Copy> FailedRequests<K> {
         Self { kinds: BTreeSet::new() }
     }
 
-    /// Note how the request's last reply went.
     pub fn record<T, E>(&mut self, kind: K, outcome: &Result<T, E>) {
         match outcome {
             Ok(_) => self.kinds.remove(&kind),
@@ -28,8 +27,8 @@ impl<K: Ord + Copy> FailedRequests<K> {
         self.kinds.is_empty()
     }
 
-    /// Every failed kind, in order, leaving none behind. The caller asks
-    /// for each again, and the replies record what happens next.
+    /// Every failed kind, in order, leaving none behind: the replies to
+    /// the requests asked again record them afresh.
     pub fn take(&mut self) -> Vec<K> {
         std::mem::take(&mut self.kinds).into_iter().collect()
     }

@@ -254,8 +254,8 @@ impl BrowseTab {
     }
 
     /// Stop every read the tab has running and stop following
-    /// reconnects. Closing the tab calls this, so the server lets go of
-    /// the statement even while something still holds the widget.
+    /// reconnects now, rather than at dispose, which waits for the last
+    /// reference to the widget.
     pub fn shutdown(&self) {
         let imp = self.imp();
         imp.link_watch.take();
@@ -541,7 +541,6 @@ struct PageView {
     limit: u64,
 }
 
-/// The tab's state and the widgets it updates.
 pub(crate) struct BrowseModel {
     this: glib::WeakRef<BrowseTab>,
     session: Arc<Session>,

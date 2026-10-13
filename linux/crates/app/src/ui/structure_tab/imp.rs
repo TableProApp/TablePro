@@ -92,8 +92,8 @@ impl ObjectImpl for StructureTab {
         })
     }
 
-    /// Closing the tab stops its read and lets go of the theme handler
-    /// on the app-wide style manager.
+    /// The model holds a handler on the app-wide style manager, which
+    /// would otherwise outlive the tab.
     fn dispose(&self) {
         self.link_watch.take();
         if let Ok(mut model) = self.model.try_borrow_mut()
