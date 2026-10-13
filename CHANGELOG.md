@@ -160,6 +160,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - The window opens without waiting for old query history to be pruned at startup
 - Undoing or redoing one of several edits to the same cell keeps the earlier edit pending against the value stored in the database, so saving no longer drops it or reports a changed row
 - A table's column and foreign key lists from a superseded refresh are no longer applied after a newer refresh started
+- Returning to a table after a Structure rename refreshes its browse columns before fetching rows, so exports use the current column names.
 - Saving the window layout no longer waits for a slow disk read at startup, so the window stays responsive while saved tabs load
 - Pressing Cancel while a connection is finishing no longer opens that connection anyway
 - Refreshing, closing or pressing Kill twice in the activity dialog no longer cancels a Kill that is already running, so its result is always shown

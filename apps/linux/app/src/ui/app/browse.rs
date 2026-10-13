@@ -367,11 +367,6 @@ impl App {
     ) {
         let targets = crate::ui::browse_tab::scalar_enum_columns(&columns);
         self.dispatch_to_tab(tab_id, BrowseTabInput::ColumnsLoaded(columns));
-        // Page order depends on the primary-key metadata, and filters depend
-        // on column types. Start both queries only after ColumnsLoaded has
-        // updated the tab model.
-        sender.input(AppMsg::FetchBrowseRowCount(tab_id));
-        sender.input(AppMsg::FetchBrowsePage(tab_id));
         sender.input(AppMsg::FetchBrowseForeignKeys(tab_id));
         if !targets.is_empty() {
             sender.input(AppMsg::FetchBrowseEnumLabels(tab_id, targets));

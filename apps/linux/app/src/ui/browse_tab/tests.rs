@@ -2,8 +2,10 @@ use super::grid_render::column_layout_matches;
 use super::paste::parse_clipboard_grid;
 use super::value_parse::parse_grid_cell_input;
 use super::{
-    BrowsePageRequest, PageRequestTracker, RowCountRequestTracker, columns_for_browse_page, projection_for_loaded_page,
+    BrowsePageRequest, BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput, PageRequestTracker,
+    RowCountRequestTracker, columns_for_browse_page, projection_for_loaded_page,
 };
+use relm4::{Component, ComponentController};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use uuid::Uuid;
 
@@ -45,6 +47,67 @@ fn an_empty_page_uses_full_schema_headers_without_a_sparse_row_map() {
         truncated: false,
     };
     assert_eq!(projection_for_loaded_page(&result, Some(vec![0, 2])), None);
+}
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn browse_page_fetch_waits_until_the_new_columns_are_applied() {
+    relm4::gtk::init().unwrap();
+    let (output_sender, output_receiver) = relm4::channel::<BrowseTabOutput>();
+    let (observed_sender, observed_receiver) = std::sync::mpsc::channel();
+    relm4::spawn_local(async move {
+        while let Some(output) = output_receiver.recv().await {
+            if observed_sender.send(output).is_err() {
+                break;
+            }
+        }
+    });
+    let mut controller = BrowseTab::builder()
+        .launch(BrowseTabInit {
+            tab_id: Uuid::new_v4(),
+            schema: Some("public".into()),
+            table: "customers".into(),
+            driver_id: "postgres".into(),
+            connection_id: None,
+            read_only: false,
+            page_size: 100,
+            initial_offset: 0,
+            initial_sort: None,
+            persistence: crate::services::persistence_stores::PersistenceStores {
+                column_widths: None,
+                filter_settings: None,
+                csv_import_mappings: None,
+                named_filter_presets: None,
+            },
+            database: std::sync::Arc::new(crate::services::database_service::DatabaseService::new_isolated()),
+        })
+        .forward(&output_sender, |output| output);
+    let context = relm4::gtk::glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+
+    controller
+        .sender()
+        .send(BrowseTabInput::ColumnsLoaded(vec![column("email", "text", false)]))
+        .unwrap();
+
+    let mut fetched_page = false;
+    let mut fetched_count = false;
+    while std::time::Instant::now() < deadline && !(fetched_page && fetched_count) {
+        while let Ok(output) = observed_receiver.try_recv() {
+            match output {
+                BrowseTabOutput::FetchPage => fetched_page = true,
+                BrowseTabOutput::FetchRowCount => fetched_count = true,
+                _ => {}
+            }
+        }
+        context.iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+
+    assert!(fetched_page);
+    assert!(fetched_count);
+    assert_eq!(controller.model().columns()[0].name, "email");
+    controller.detach_runtime();
 }
 
 #[test]

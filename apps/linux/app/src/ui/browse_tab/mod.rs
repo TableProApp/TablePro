@@ -897,9 +897,6 @@ impl SimpleComponent for BrowseTab {
             // run for the same mutation.
             crate::services::change_tracker::TrackerEvent::ChangedRows(keys) => BrowseTabInput::ChangedRows(keys),
         }));
-        // Fetch metadata first. The parent starts count + row queries only
-        // after ColumnsLoaded, because deterministic ordering and typed
-        // filters depend on this schema information.
         let _ = sender.output(BrowseTabOutput::FetchColumns);
         ComponentParts { model, widgets: () }
     }
@@ -969,6 +966,7 @@ impl SimpleComponent for BrowseTab {
                     strip.update_columns(columns);
                 }
                 let _ = sender.output(BrowseTabOutput::SchemaWordsChanged(words));
+                self.emit_fetch_page_and_count(&sender);
                 // If rows are already cached, render now with the proper
                 // editability map. Otherwise wait for RowsLoaded.
                 self.render_grid_if_ready(sender);
