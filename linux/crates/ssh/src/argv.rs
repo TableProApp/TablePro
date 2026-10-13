@@ -6,12 +6,14 @@ use tablepro_core::{LivenessPolicy, NetworkEndpoint};
 
 use crate::{SshAuth, SshConfig};
 
-const FORCED_OPTIONS: [&str; 14] = [
+const FORCED_OPTIONS: [&str; 15] = [
     "ControlMaster=yes",
     "ControlPersist=no",
     "ForkAfterAuthentication=no",
     "StreamLocalBindMask=0177",
     "BatchMode=no",
+    // The app's host-key dialog is the trust decision, so a user config's accept-new or no must not skip it.
+    "StrictHostKeyChecking=ask",
     "VisualHostKey=no",
     "Tunnel=no",
     "ClearAllForwardings=yes",
@@ -183,6 +185,8 @@ mod tests {
                 "-o",
                 "BatchMode=no",
                 "-o",
+                "StrictHostKeyChecking=ask",
+                "-o",
                 "VisualHostKey=no",
                 "-o",
                 "Tunnel=no",
@@ -210,6 +214,33 @@ mod tests {
                 "db-bastion",
             ]
         );
+    }
+
+    #[test]
+    fn every_auth_mode_leaves_the_host_key_question_to_the_app() {
+        let auths = [
+            SshAuth::Agent,
+            SshAuth::PrivateKey {
+                path: None,
+                passphrase: None,
+            },
+            SshAuth::Password {
+                password: SecretString::from("secret"),
+            },
+            SshAuth::KeyboardInteractive,
+        ];
+        for auth in auths {
+            let args = master_args(
+                &config(None, None, auth),
+                Path::new("/tmp/control"),
+                &LivenessPolicy::DESKTOP,
+            );
+            let strict: Vec<&str> = strings(&args)
+                .into_iter()
+                .filter(|arg| arg.starts_with("StrictHostKeyChecking="))
+                .collect();
+            assert_eq!(strict, ["StrictHostKeyChecking=ask"]);
+        }
     }
 
     #[test]
