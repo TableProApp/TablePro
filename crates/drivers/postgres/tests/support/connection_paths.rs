@@ -2,6 +2,8 @@
 mod auth_errors;
 #[path = "enum_labels.rs"]
 mod enum_labels;
+#[path = "float4_display.rs"]
+mod float4_display;
 #[path = "network_paths.rs"]
 mod network_paths;
 #[path = "stale_plan.rs"]
