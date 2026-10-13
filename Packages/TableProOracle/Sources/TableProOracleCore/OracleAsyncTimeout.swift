@@ -36,10 +36,11 @@ public func withOracleTimeout<T: Sendable>(
 /// An operation that ignores cancellation can still succeed after the deadline
 /// fired or the caller was cancelled. Nobody receives that value, so it goes to
 /// `onAbandoned`, which must release whatever it holds, such as an open session.
+/// It is synchronous so that releasing never holds up the caller's error.
 public func withOracleTimeout<T: Sendable>(
     seconds: Double,
     onTimeout: @escaping @Sendable () -> Void,
-    onAbandoned: @escaping @Sendable (T) async -> Void = { _ in },
+    onAbandoned: @escaping @Sendable (T) -> Void = { _ in },
     operation: @escaping @Sendable () async throws -> T
 ) async throws -> T {
     try await withThrowingTaskGroup(of: T.self) { group in
@@ -59,7 +60,7 @@ public func withOracleTimeout<T: Sendable>(
             group.cancelAll()
             while !group.isEmpty {
                 if let late = try? await group.next() {
-                    await onAbandoned(late)
+                    onAbandoned(late)
                 }
             }
             throw error

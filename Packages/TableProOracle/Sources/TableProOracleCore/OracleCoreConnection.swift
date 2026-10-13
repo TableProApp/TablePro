@@ -172,15 +172,18 @@ public final class OracleCoreConnection: @unchecked Sendable {
             // The driver's connect does not observe task cancellation, so a login the caller
             // cancelled, or the backstop gave up on, still completes. Nothing downstream will
             // ever see that handle, so it closes its own session rather than leaving one open
-            // on the server per abandoned attempt.
+            // on the server per abandoned attempt. Closing logs off and waits for the server's
+            // answer, so it runs on its own, like every other close here.
             let connection = try await withOracleTimeout(
                 seconds: options.loginTimeoutSeconds + Self.loginTimeoutGraceSeconds,
                 onTimeout: {},
                 onAbandoned: { connection in
-                    try? await connection.close()
-                    osLogger.notice(
-                        "Closed the Oracle connection: \(OracleDisconnectReason.abandonedLoginAttempt.logDescription, privacy: .public)"
-                    )
+                    Task {
+                        try? await connection.close()
+                        osLogger.notice(
+                            "Closed the Oracle connection: \(OracleDisconnectReason.abandonedLoginAttempt.logDescription, privacy: .public)"
+                        )
+                    }
                 }
             ) {
                 try await OracleNIO.OracleConnection.connect(
