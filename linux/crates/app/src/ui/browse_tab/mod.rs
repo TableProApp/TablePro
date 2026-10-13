@@ -304,10 +304,6 @@ impl BrowseTab {
         self.connect_closure("state-changed", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
 
-    pub fn connect_columns_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
-        self.connect_closure("columns-changed", false, glib::closure_local!(move |tab: &Self| f(tab)))
-    }
-
     pub fn connect_copy_row_as_insert<F: Fn(&Self, u32) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "copy-row-as-insert",
@@ -372,7 +368,6 @@ impl BrowseTab {
     fn emit_output(&self, output: BrowseTabOutput) {
         match output {
             BrowseTabOutput::StateChanged => self.emit_by_name::<()>("state-changed", &[]),
-            BrowseTabOutput::ColumnsChanged => self.emit_by_name::<()>("columns-changed", &[]),
             BrowseTabOutput::CopyRowAsInsert { row_position } => {
                 self.emit_by_name::<()>("copy-row-as-insert", &[&row_position]);
             }
@@ -711,9 +706,6 @@ pub(crate) enum BrowseTabOutput {
     /// Something the window keeps for the tab changed: the page, the
     /// sort, the page size.
     StateChanged,
-    /// The columns the tab shows changed, which the editor's completion
-    /// words follow.
-    ColumnsChanged,
     CopyRowAsInsert {
         row_position: u32,
     },
@@ -1404,7 +1396,6 @@ impl BrowseModel {
         if let Some(strip) = self.filter_strip.as_ref() {
             strip.update_columns(columns);
         }
-        fx.output(BrowseTabOutput::ColumnsChanged);
         self.render_grid_if_ready(fx);
     }
 

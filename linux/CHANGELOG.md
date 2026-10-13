@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Security group in the connect dialog: encryption mode, CA certificate, client certificate and TLS server name.
 - SQLite file chooser in the connect dialog, with New Database to create a file.
 - Results list in the SQL editor with one entry per statement, its rows affected or error, and the open transaction.
+- SQL editor completion of tables, views and columns from the database, resolving aliases and matching fuzzily.
 
 ### Fixed
 
