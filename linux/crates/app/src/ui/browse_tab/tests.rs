@@ -1092,6 +1092,29 @@ fn rejected_edit_restores_cell_display() {
 }
 
 #[gtk4::test]
+fn undo_under_an_open_editor_leaves_nothing_pending() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+    harness.apply_delta(&harness.tracker.apply(rename(0, "Ada", "Ada Lovelace")));
+    crate::ui::grid::enter_edit_mode(&cell);
+    let editor = cell.editor().expect("a text cell");
+
+    harness.tab().send(BrowseTabInput::Undo);
+    editor.stop_editing(false);
+
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "closing the editor sent the undone value back"
+    );
+    assert_eq!(cell_text(&cell), "Ada");
+}
+
+#[gtk4::test]
 fn error_flash_sets_and_clears_on_the_failed_row() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));

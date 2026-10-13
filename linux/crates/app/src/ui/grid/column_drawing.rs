@@ -64,7 +64,15 @@ fn draw_cell(grid_cell: &GridCell, value: &Value, pending_classes: &[&'static st
         return;
     };
     if let Some(editor) = content.downcast_ref::<CellEditor>() {
-        editor.set_text(&text);
+        // An edit opened on a value the row no longer has would, once it
+        // ended, send that value back or leave it on screen. An edit on
+        // the same value keeps what was typed.
+        if grid_cell.record_drawn_text(&text) && (editor.is_editing() || grid_cell.is_editing()) {
+            grid_cell.cancel_edit();
+        }
+        if !editor.is_editing() {
+            editor.set_text(&text);
+        }
         // A locked cell's text is there to be read and copied, as a
         // read-only column's is.
         editor.set_selectable(!editable);

@@ -306,10 +306,11 @@ mod tests {
     use super::build_column_view;
     use crate::services::change_tracker::RowKey;
     use crate::services::tab_tracker_handle::TabTrackerHandle;
-    use crate::services::tracker_delta::VisualChange;
+    use crate::services::tracker_delta::{TrackerDelta, VisualChange};
     use crate::services::tracker_edit::TrackerEdit;
     use crate::test_support::{descendants, drain_main_context, wait_until};
     use crate::ui::grid::cell_editability::column_takes_edits;
+    use crate::ui::grid::display_text::editable_null_sentinel;
     use crate::ui::grid::{
         CellEditor, CellPreset, ColumnWidthBinding, GridCell, GridMsg, GridSink, RowObject, TabGridContext,
         enter_edit_mode,
@@ -467,6 +468,17 @@ mod tests {
 
         fn take_messages(&self) -> Vec<GridMsg> {
             self.messages.take()
+        }
+
+        /// What the tab does with a tracker change.
+        fn redraw(&self, delta: &TrackerDelta) {
+            for position in 0..self.store.n_items() {
+                if let Some(row) = self.store.item(position).and_downcast::<RowObject>()
+                    && row.id().tracker_key().is_some_and(|key| delta.rows.contains(&key))
+                {
+                    row.bump_revision();
+                }
+            }
         }
     }
 
@@ -680,6 +692,83 @@ mod tests {
         type_into(&cell, "typed");
         row.bump_revision();
         assert_eq!(editor.entry().text(), "typed", "the redraw overwrote what was typed");
+    }
+
+    fn name_rows(first: Value) -> Grid {
+        Grid::open(
+            vec![named("id", "integer", true), named("name", "text", false)],
+            vec![vec![Value::Int(1), first], vec![Value::Int(2), Value::Text("B".into())]],
+        )
+    }
+
+    /// Row 1's name edited from `from` to `to`, its editor opened on
+    /// `to`, then the edit undone under the open editor.
+    fn undo_under_open_editor(from: Value, to: Value) -> (Grid, GridCell, CellEditor) {
+        let grid = name_rows(from.clone());
+        let cell = grid.cell_of(1, 1);
+        grid.redraw(&grid.tracker.apply(TrackerEdit::Cell {
+            row_key: key(1),
+            col: 1,
+            original: from,
+            value: to,
+        }));
+        enter_edit_mode(&cell);
+        let editor = cell.editor().expect("a text cell");
+        assert!(editor.is_editing(), "the cell did not open for editing");
+
+        grid.redraw(&grid.tracker.undo().expect("an edit to undo"));
+
+        (grid, cell, editor)
+    }
+
+    #[gtk4::test]
+    fn escape_after_an_undo_under_the_editor_sends_nothing() {
+        let (grid, cell, editor) = undo_under_open_editor(Value::Text("A".into()), Value::Text("X".into()));
+        assert!(
+            !editor.is_editing(),
+            "the editor stayed open on a value the row no longer has"
+        );
+
+        editor.stop_editing(false);
+        cell.unbind();
+
+        assert_eq!(edited_rows(&grid.take_messages()), vec![]);
+        assert_eq!(editor.text(), "A");
+        assert_eq!(grid.tracker.pending_count(), 0);
+    }
+
+    #[gtk4::test]
+    fn escape_after_undoing_an_edit_of_null_sends_nothing() {
+        let (grid, _cell, editor) = undo_under_open_editor(Value::Null, Value::Text("hello".into()));
+
+        editor.stop_editing(false);
+
+        assert_eq!(edited_rows(&grid.take_messages()), vec![]);
+        assert_eq!(editor.text().as_str(), editable_null_sentinel());
+    }
+
+    #[gtk4::test]
+    fn enter_after_an_undo_under_the_editor_shows_the_undone_value() {
+        let (grid, _cell, editor) = undo_under_open_editor(Value::Text("A".into()), Value::Text("X".into()));
+
+        editor.stop_editing(true);
+
+        assert_eq!(edited_rows(&grid.take_messages()), vec![]);
+        assert_eq!(editor.text(), "A", "the cell shows an edit the tracker no longer has");
+    }
+
+    #[gtk4::test]
+    fn escape_on_a_null_cell_drawn_again_under_its_editor_sends_nothing() {
+        let grid = name_rows(Value::Null);
+        let cell = grid.cell_of(1, 1);
+        enter_edit_mode(&cell);
+        let editor = cell.editor().expect("a text cell");
+
+        cell.row().expect("a bound row").bump_revision();
+        assert!(editor.is_editing(), "a redraw of the same value closed the editor");
+        editor.stop_editing(false);
+
+        assert_eq!(edited_rows(&grid.take_messages()), vec![]);
     }
 
     #[gtk4::test]

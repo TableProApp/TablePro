@@ -31,6 +31,9 @@ mod imp {
         pub lock: Cell<Option<CellLock>>,
         pub drawing: OnceCell<Rc<ColumnDrawing>>,
         pub binding: RefCell<Option<CellBinding>>,
+        /// The label cannot say what was drawn once an edit has cleared
+        /// a NULL sentinel from it.
+        pub drawn_text: RefCell<String>,
         #[cfg(test)]
         pub renders: Cell<u32>,
     }
@@ -151,6 +154,12 @@ impl GridCell {
     /// for is no longer this cell's.
     pub(super) fn unbind(&self) {
         self.imp().binding.take();
+        self.cancel_edit();
+    }
+
+    /// The snapshot goes first, so the editor closing sends nothing.
+    pub(super) fn cancel_edit(&self) {
+        self.take_edit();
         if let Some(editor) = self.editor()
             && editor.is_editing()
         {
@@ -159,7 +168,16 @@ impl GridCell {
         if let Some(popover) = self.take_popover() {
             popover.popdown();
         }
-        self.take_edit();
+    }
+
+    /// `true` when `text` differs from what the cell drew before it.
+    pub(super) fn record_drawn_text(&self, text: &str) -> bool {
+        let mut drawn = self.imp().drawn_text.borrow_mut();
+        if drawn.as_str() == text {
+            return false;
+        }
+        text.clone_into(&mut drawn);
+        true
     }
 
     pub(super) fn render(&self) {

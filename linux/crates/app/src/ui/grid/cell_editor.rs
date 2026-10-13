@@ -128,13 +128,9 @@ impl CellEditor {
         }
     }
 
-    /// An edit in progress keeps what was typed; a row redrawn under it
-    /// changes what Escape goes back to.
     pub fn set_text(&self, s: &str) {
         self.label_widget().set_text(s);
-        if !self.is_editing() {
-            self.entry_widget().set_text(s);
-        }
+        self.entry_widget().set_text(s);
     }
 
     pub fn set_selectable(&self, selectable: bool) {
