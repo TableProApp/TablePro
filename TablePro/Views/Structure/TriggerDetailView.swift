@@ -8,30 +8,80 @@
 import Combine
 import SwiftUI
 
+@MainActor
 final class TriggerInspectorState: ObservableObject {
     @Published var searchText = ""
-    @Published var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
-    @Published var selectedID: TriggerInfo.ID?
+    @Published var sortState = TriggerListColumns.defaultSort
+    @Published var selectedIDs: Set<TriggerInfo.ID> = []
 
     func displayed(_ triggers: [TriggerInfo]) -> [TriggerInfo] {
         let filtered = searchText.isEmpty
             ? triggers
             : triggers.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-        return filtered.sorted(using: sortOrder)
+        return TriggerListColumns.sorted(filtered, by: sortState)
     }
 
     func selectedTrigger(_ triggers: [TriggerInfo]) -> TriggerInfo? {
         let list = displayed(triggers)
-        if let id = selectedID, let match = list.first(where: { $0.id == id }) {
-            return match
-        }
-        return list.first
+        return list.first { selectedIDs.contains($0.id) } ?? list.first
+    }
+
+    /// Edit and Delete act on one trigger, so they have no target while several rows are selected.
+    func actionTarget(_ triggers: [TriggerInfo]) -> TriggerInfo? {
+        let list = displayed(triggers)
+        let selected = list.filter { selectedIDs.contains($0.id) }
+        guard selected.count <= 1 else { return nil }
+        return selected.first ?? list.first
+    }
+
+    func select(_ ids: Set<TriggerInfo.ID>) {
+        guard ids != selectedIDs else { return }
+        selectedIDs = ids
     }
 
     func ensureSelection(_ triggers: [TriggerInfo]) {
-        if selectedID == nil || !triggers.contains(where: { $0.id == selectedID }) {
-            selectedID = triggers.first?.id
+        let kept = selectedIDs.intersection(triggers.map(\.id))
+        select(kept.isEmpty ? Set(triggers.first.map { [$0.id] } ?? []) : kept)
+    }
+}
+
+enum TriggerListColumns {
+    static let nameColumn = 0
+
+    static var defaultSort: SortState {
+        SortState(
+            columns: [SortColumn(columnIndex: nameColumn, direction: .ascending, columnName: String(localized: "Name"))],
+            source: .user
+        )
+    }
+
+    static func titles(showsEnabled: Bool) -> [String] {
+        let base = [String(localized: "Name"), String(localized: "Timing"), String(localized: "Event")]
+        return showsEnabled ? base + [String(localized: "Enabled")] : base
+    }
+
+    static func values(for trigger: TriggerInfo, showsEnabled: Bool) -> [String] {
+        let base = [trigger.name, trigger.timing, trigger.event]
+        guard showsEnabled else { return base }
+        return base + [trigger.enabled.map { $0 ? "YES" : "NO" } ?? ""]
+    }
+
+    static func sorted(_ triggers: [TriggerInfo], by state: SortState) -> [TriggerInfo] {
+        guard !state.columns.isEmpty else { return triggers }
+        let keyed = triggers.enumerated().map { offset, trigger in
+            (offset: offset, trigger: trigger, values: values(for: trigger, showsEnabled: true))
         }
+        return keyed.sorted { lhs, rhs in
+            for column in state.columns where lhs.values.indices.contains(column.columnIndex) {
+                let comparison = lhs.values[column.columnIndex].localizedStandardCompare(rhs.values[column.columnIndex])
+                guard comparison != .orderedSame else { continue }
+                return column.direction == .ascending
+                    ? comparison == .orderedAscending
+                    : comparison == .orderedDescending
+            }
+            return lhs.offset < rhs.offset
+        }
+        .map(\.trigger)
     }
 }
 
@@ -59,6 +109,7 @@ struct TriggerDetailView: View {
         if isLoading {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gridStandInBackground()
         } else if triggers.isEmpty {
             emptyState
         } else {
@@ -74,6 +125,7 @@ struct TriggerDetailView: View {
             }
             EmptyStateView.triggers()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gridStandInBackground()
         }
         .sheet(item: $editorSheet, content: makeEditorSheet(for:))
     }
@@ -90,7 +142,7 @@ struct TriggerDetailView: View {
                 primaryMinimum: 120,
                 secondaryMinimum: 180
             ) {
-                TriggerListPane(triggers: triggers, state: state)
+                TriggerListPane(triggers: triggers, databaseType: connection.type, state: state)
             } secondary: {
                 TriggerDetailPane(triggers: triggers, state: state, databaseType: connection.type, onOpenInEditor: onOpenInEditor)
             }
@@ -188,23 +240,23 @@ private struct TriggerActionBar: View {
     let onDelete: (TriggerInfo) -> Void
 
     var body: some View {
-        let selected = state.selectedTrigger(triggers)
+        let target = state.actionTarget(triggers)
         HStack(spacing: 8) {
             Button(action: onNew) {
                 Label("New Trigger", systemImage: "plus")
             }
             Button {
-                if let selected { onEdit(selected) }
+                if let target { onEdit(target) }
             } label: {
                 Label("Edit", systemImage: "pencil")
             }
-            .disabled(selected == nil)
+            .disabled(target == nil)
             Button {
-                if let selected { onDelete(selected) }
+                if let target { onDelete(target) }
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-            .disabled(selected == nil)
+            .disabled(target == nil)
             Spacer()
         }
         .buttonStyle(.borderless)
@@ -215,9 +267,16 @@ private struct TriggerActionBar: View {
 
 private struct TriggerListPane: View {
     let triggers: [TriggerInfo]
+    let databaseType: DatabaseType
     @ObservedObject var state: TriggerInspectorState
 
-    private var showEnabled: Bool { triggers.contains { $0.enabled != nil } }
+    @StateObject private var grid = StructureListGridModel<TriggerInfo.ID>(
+        accessibilityLabel: StructureTab.triggers.displayName,
+        restoresSelectionAfterReload: true
+    )
+    @State private var columnLayout = ColumnLayoutState()
+
+    private var showsEnabled: Bool { triggers.contains { $0.enabled != nil } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -229,40 +288,33 @@ private struct TriggerListPane: View {
         }
     }
 
-    @ViewBuilder
     private var table: some View {
-        if showEnabled {
-            Table(state.displayed(triggers), selection: $state.selectedID, sortOrder: $state.sortOrder) {
-                TableColumn(String(localized: "Name"), value: \.name)
-                    .width(min: 140, ideal: 220)
-                TableColumn(String(localized: "Timing"), value: \.timing)
-                    .width(min: 70, ideal: 90)
-                TableColumn(String(localized: "Event"), value: \.event)
-                    .width(min: 90, ideal: 150)
-                TableColumn(String(localized: "Enabled")) { trigger in
-                    enabledIndicator(trigger)
-                }
-                .width(min: 60, ideal: 70)
-            }
-        } else {
-            Table(state.displayed(triggers), selection: $state.selectedID, sortOrder: $state.sortOrder) {
-                TableColumn(String(localized: "Name"), value: \.name)
-                    .width(min: 140, ideal: 240)
-                TableColumn(String(localized: "Timing"), value: \.timing)
-                    .width(min: 70, ideal: 90)
-                TableColumn(String(localized: "Event"), value: \.event)
-                    .width(min: 90, ideal: 160)
-            }
+        let showsEnabled = showsEnabled
+        let rows = state.displayed(triggers).map { trigger in
+            StructureListRow(id: trigger.id, values: TriggerListColumns.values(for: trigger, showsEnabled: showsEnabled))
         }
+        var hasher = Hasher()
+        hasher.combine(rows)
+        return StructureListGrid(
+            model: grid,
+            columns: TriggerListColumns.titles(showsEnabled: showsEnabled),
+            contentKey: hasher.finalize(),
+            rows: { rows },
+            databaseType: databaseType,
+            selectedRows: selection,
+            sortState: $state.sortState,
+            columnLayout: $columnLayout
+        )
     }
 
-    @ViewBuilder
-    private func enabledIndicator(_ trigger: TriggerInfo) -> some View {
-        if let enabled = trigger.enabled {
-            Image(systemName: enabled ? "checkmark.circle.fill" : "xmark.circle")
-                .selectionAwareTint(enabled ? .green : .secondary)
-                .accessibilityLabel(enabled ? String(localized: "Enabled") : String(localized: "Disabled"))
-        }
+    /// Kept by trigger rather than by row, so a sort or a filter moves the selection with its trigger.
+    private var selection: Binding<Set<Int>> {
+        let grid = grid
+        let state = state
+        return Binding(
+            get: { grid.displayRows(of: state.selectedIDs) },
+            set: { state.select(grid.ids(atDisplayRows: $0)) }
+        )
     }
 }
 

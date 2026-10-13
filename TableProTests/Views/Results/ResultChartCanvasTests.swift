@@ -178,6 +178,75 @@ struct ResultChartCanvasTests {
         #expect(widest - narrowest <= 4)
     }
 
+    @Test("The plot stands in for the grid: its background under a theme, its own wash by default")
+    func plotTakesTheGridBackground() throws {
+        try DiagramThemeFixture.preservingEngine {
+            let view = ResultChartCanvas(projection: singleSeriesProjection, chartType: .bar)
+                .frame(width: 640, height: 360)
+                .accentColor(.red)
+            let total = 640 * 360
+            let theme = try #require(DiagramThemeFixture.reference(Color(nsColor: HexColor.color("#FFD0E0")), colorScheme: .light))
+            let wash = try #require(DiagramThemeFixture.reference(
+                Color(nsColor: .controlBackgroundColor).opacity(0.45), colorScheme: .light
+            ))
+
+            try DiagramThemeFixture.adopt([:])
+            let native = try #require(DiagramThemeFixture.render(view, colorScheme: .light))
+            #expect(DiagramThemeFixture.count(in: native, matching: theme) == 0)
+            #expect(DiagramThemeFixture.count(in: native, matching: wash) > total / 5)
+
+            try DiagramThemeFixture.adopt([.gridBackground: "#FFD0E0"])
+            let themed = try #require(DiagramThemeFixture.render(view, colorScheme: .light))
+            #expect(DiagramThemeFixture.count(in: themed, matching: theme) > total / 5)
+            #expect(DiagramThemeFixture.count(in: themed, matching: wash) < total / 50)
+        }
+    }
+
+    @Test("The plot's grid lines take the grid line color under a theme")
+    func gridLinesTakeTheGridLineColor() throws {
+        try DiagramThemeFixture.preservingEngine {
+            let view = ResultChartCanvas(projection: singleSeriesProjection, chartType: .bar)
+                .frame(width: 640, height: 360)
+                .accentColor(.red)
+
+            try DiagramThemeFixture.adopt([.gridBackground: "#000000"])
+            let native = try #require(DiagramThemeFixture.render(view, colorScheme: .light))
+            try DiagramThemeFixture.adopt([.gridBackground: "#000000", .gridLine: "#0000FF"])
+            let themed = try #require(DiagramThemeFixture.render(view, colorScheme: .light))
+
+            #expect(bluePixelCount(in: native) == 0)
+            #expect(bluePixelCount(in: themed) > 200)
+        }
+    }
+
+    private func bluePixelCount(in rep: NSBitmapImageRep) -> Int {
+        var count = 0
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard let color = DiagramThemeFixture.pixel(rep, x: x, y: y) else { continue }
+                if color.blueComponent - max(color.redComponent, color.greenComponent) > 0.3 { count += 1 }
+            }
+        }
+        return count
+    }
+
+    private var singleSeriesProjection: ResultChartProjection {
+        ResultChartProjection(
+            points: [
+                bandPoint(index: 0, x: "A", y: 10, group: 0),
+                bandPoint(index: 1, x: "B", y: 20, group: 1),
+                bandPoint(index: 2, x: "C", y: 15, group: 2),
+            ],
+            xAxisKind: .category,
+            limits: [],
+            loadedRowCount: 3,
+            skippedRowCount: 0,
+            xAxisLabel: "Category",
+            yAxisLabel: "Amount",
+            seriesLabel: nil
+        )
+    }
+
     private func bandPoint(index: Int, x: String, y: Int, group: Int) -> ResultChartProjection.Point {
         ResultChartProjection.Point(
             sourceIndex: index,

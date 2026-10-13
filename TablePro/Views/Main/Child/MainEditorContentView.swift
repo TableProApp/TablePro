@@ -133,7 +133,7 @@ struct MainEditorContentView: View {
                 HistoryPanelView(coordinator: coordinator)
             }
         )
-        .background(.background)
+        .themeBackground(.windowBackdrop, native: .background)
         .onAppear {
             if historyState.isVisible {
                 if #available(macOS 14.0, *) {
@@ -751,6 +751,7 @@ struct MainEditorContentView: View {
             }
 
             resultContent(presentation.content, tab: tab, rows: rows)
+                .gridStandInBackground(isActive: presentation.content.standsInForGrid)
 
             if presentation.showsStatusBar {
                 statusBar(tab: tab)
@@ -767,7 +768,7 @@ struct MainEditorContentView: View {
     ) -> some View {
         switch content {
         case .idle:
-            Spacer()
+            Color.clear
         case .executing:
             ExecutingResultPane()
         case let .structure(tableName):

@@ -5,8 +5,9 @@
 
 import AppKit
 
+@MainActor
 internal enum TreeValueStyle {
-    /// Fixed system colors do not adapt on an emphasized row the way the label colors do.
+    /// A tone does not turn white on an emphasized row the way the label colors do.
     static func textColor(for tone: TreeValueTone, isEmphasized: Bool) -> NSColor {
         isEmphasized ? .alternateSelectedControlTextColor : tone.color
     }

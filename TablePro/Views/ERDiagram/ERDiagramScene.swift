@@ -41,11 +41,12 @@ enum ERDiagramSceneRenderer {
 
     /// The context is expected to be flipped, which is what both callers hand it: the diagram view
     /// is `isFlipped`, and the export builds a flipped `NSGraphicsContext` over its bitmap.
-    static func draw(_ scene: ERDiagramScene, dirtyRect: CGRect, in context: CGContext) {
+    static func draw(_ scene: ERDiagramScene, palette: ERDiagramPalette, dirtyRect: CGRect, in context: CGContext) {
         ERDiagramEdgeRenderer.drawEdges(
             edges: scene.edges,
             nodeRects: scene.nodeRects,
             nodeIndex: scene.nodeIndex,
+            strokeColor: palette.edge,
             in: context
         )
 
@@ -56,6 +57,7 @@ enum ERDiagramSceneRenderer {
                 rect: rect,
                 isSelected: scene.selectedNodeId == node.id,
                 clusterColor: scene.clusterColors[node.id],
+                palette: palette,
                 in: context
             )
         }
@@ -64,9 +66,9 @@ enum ERDiagramSceneRenderer {
     /// Renders at natural scale whatever the viewport is doing, cropped to the nodes rather than to
     /// the canvas, which is what the export has always promised.
     ///
-    /// `NSColor` resolves against the appearance that is current while drawing, and an offscreen
-    /// bitmap has none of its own, so the caller's appearance is made current for the whole render
-    /// or a dark window exports light chrome.
+    /// An offscreen bitmap has no appearance of its own, so the canvas's appearance is made current
+    /// for the whole render, and the palette is baked in it, or a dark or themed window exports in
+    /// other colors than the screen shows.
     static func image(_ scene: ERDiagramScene, appearance: NSAppearance, scale: CGFloat) -> NSImage? {
         let bounds = drawnBounds(of: scene)
         let size = bounds.isNull
@@ -99,8 +101,9 @@ enum ERDiagramSceneRenderer {
         cgContext.scaleBy(x: 1, y: -1)
         NSGraphicsContext.current = NSGraphicsContext(cgContext: cgContext, flipped: true)
 
+        let palette = ERDiagramPalette(appearance: appearance)
         appearance.performAsCurrentDrawingAppearance {
-            cgContext.setFillColor(NSColor.controlBackgroundColor.cgColor)
+            cgContext.setFillColor(palette.backdrop)
             cgContext.fill(CGRect(origin: .zero, size: size))
 
             cgContext.saveGState()
@@ -109,7 +112,7 @@ enum ERDiagramSceneRenderer {
             }
             var flat = scene
             flat.selectedNodeId = nil
-            draw(flat, dirtyRect: bounds.isNull ? .infinite : bounds, in: cgContext)
+            draw(flat, palette: palette, dirtyRect: bounds.isNull ? .infinite : bounds, in: cgContext)
             cgContext.restoreGState()
         }
 

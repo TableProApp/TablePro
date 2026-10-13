@@ -14,6 +14,9 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
 
     weak var outlineView: NSOutlineView?
 
+    private(set) var themeChrome: ThemeTableChrome?
+    private static let rowViewIdentifier = NSUserInterfaceItemIdentifier("query-plan-row")
+
     private(set) var root: QueryPlanOutlineNode?
     private(set) var metrics: QueryPlanMetricIndex?
     private var planId: UUID?
@@ -99,6 +102,11 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
     func collapseAll() {
         guard let outlineView, let root else { return }
         outlineView.collapseItem(root, collapseChildren: true)
+    }
+
+    /// Called once the outline sits in its scroll view, which the chrome needs to reach.
+    func attachThemeChrome(to outlineView: NSOutlineView) {
+        themeChrome = ThemeTableChrome(tableView: outlineView, family: .records)
     }
 
     // MARK: - Columns
@@ -240,6 +248,14 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
         }
 
         return hostingCell(identifier: identifier, outlineView: outlineView, content: content)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        let rowView = outlineView.makeView(withIdentifier: Self.rowViewIdentifier, owner: self) as? ThemeTableRowView
+            ?? ThemeTableRowView()
+        rowView.identifier = Self.rowViewIdentifier
+        rowView.chrome = themeChrome
+        return rowView
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {

@@ -368,6 +368,7 @@ struct TableStructureView: View {
     private var contentArea: some View {
         if let error = errorMessage {
             errorView(error)
+                .gridStandInBackground()
         } else {
             tabContent
         }
@@ -382,6 +383,7 @@ struct TableStructureView: View {
             Group {
                 if shouldShowIndexesEmptyState {
                     EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
+                        .gridStandInBackground()
                 } else {
                     structureGrid
                 }
@@ -392,12 +394,14 @@ struct TableStructureView: View {
         case .foreignKeys:
             if shouldShowForeignKeysEmptyState {
                 EmptyStateView.foreignKeys { gridDelegate.dataGridAddRow() }
+                    .gridStandInBackground()
             } else {
                 structureGrid
             }
         case .checkConstraints:
             if shouldShowCheckConstraintsEmptyState {
                 EmptyStateView.checkConstraints { gridDelegate.dataGridAddRow() }
+                    .gridStandInBackground()
             } else {
                 structureGrid
             }

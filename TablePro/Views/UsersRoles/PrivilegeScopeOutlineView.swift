@@ -14,9 +14,13 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let outlineView = NSOutlineView()
-        outlineView.dataSource = context.coordinator
-        outlineView.delegate = context.coordinator
+        Self.makeScrollView(coordinator: context.coordinator)
+    }
+
+    static func makeScrollView(coordinator: PrivilegeScopeOutlineCoordinator) -> NSScrollView {
+        let outlineView = PrivilegeScopeOutline()
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
         outlineView.style = .fullWidth
         outlineView.rowSizeStyle = .custom
         outlineView.rowHeight = 24
@@ -31,9 +35,9 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
         outlineView.autosaveExpandedItems = false
         outlineView.setAccessibilityIdentifier("usersroles-scope-tree")
 
-        context.coordinator.configureColumns(on: outlineView)
+        coordinator.configureColumns(on: outlineView)
         outlineView.outlineTableColumn = outlineView.tableColumns.first
-        context.coordinator.outlineView = outlineView
+        coordinator.outlineView = outlineView
 
         let scrollView = NSScrollView()
         scrollView.documentView = outlineView
@@ -41,6 +45,8 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        // Attached last: the chrome records the scroll view's background to give it back.
+        outlineView.themeChrome = ThemeTableChrome(tableView: outlineView, family: .records)
         return scrollView
     }
 
@@ -63,5 +69,21 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
             coordinator.principal = principal
             coordinator.refreshVisibleSummaries()
         }
+    }
+}
+
+internal final class PrivilegeScopeOutline: NSOutlineView {
+    internal var themeChrome: ThemeTableChrome?
+}
+
+internal extension PrivilegeScopeOutlineCoordinator {
+    static let themedRowView = NSUserInterfaceItemIdentifier("PrivilegeScopeThemedRow")
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        let rowView = outlineView.makeView(withIdentifier: Self.themedRowView, owner: self) as? ThemeTableRowView
+            ?? ThemeTableRowView()
+        rowView.identifier = Self.themedRowView
+        rowView.chrome = (outlineView as? PrivilegeScopeOutline)?.themeChrome
+        return rowView
     }
 }

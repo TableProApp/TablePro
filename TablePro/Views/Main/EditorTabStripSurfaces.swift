@@ -15,7 +15,13 @@ import SwiftUI
 internal enum EditorTabStripPalette {
     /// Measured at rgb(220) light and rgb(70) dark. The system's own tab track measures rgb(232)
     /// and rgb(71), so this is within a level of it in dark and slightly deeper in light.
-    internal static var trackFill: Color { Color(nsColor: .unemphasizedSelectedContentBackgroundColor) }
+    /// A theme that colors the window takes the track with it, so the strip does not sit on it as a gray band.
+    @MainActor internal static var trackFill: Color {
+        Color(nsColor: ThemeEngine.shared.palette.color(
+            .windowBackdrop,
+            otherwise: .unemphasizedSelectedContentBackgroundColor
+        ))
+    }
 
     /// Opaque white in light, and white at alpha 0.247 in dark. That asymmetry is the whole reason
     /// the selection cannot invert: in light it is the ceiling, so no track can rise above it, and

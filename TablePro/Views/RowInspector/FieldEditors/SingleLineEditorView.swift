@@ -23,13 +23,19 @@ internal struct SingleLineEditorView: View {
     private var readOnlyValue: some View {
         let value = context.value.wrappedValue
         let placeholder = value.isEmpty ? context.emptyStatePlaceholder : nil
-        return Text(placeholder ?? value)
-            .foregroundStyle(placeholder == nil ? .primary : .tertiary)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+        return Group {
+            if let placeholder {
+                Text(placeholder)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Text(value)
+                    .themeForeground(.editorText, native: .primary)
+            }
+        }
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .valueWell()
     }
 }

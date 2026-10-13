@@ -181,7 +181,7 @@ struct OptionsPaneView: View {
 
     private var startupSection: some View {
         Section {
-            StartupCommandsEditor(text: $coordinator.advanced.startupCommands)
+            StartupCommandsEditor(text: $coordinator.advanced.startupCommands, style: .code)
                 .frame(height: 80)
                 .accessibilityIdentifier("connection-form-startup-commands")
         } header: {
@@ -195,7 +195,7 @@ struct OptionsPaneView: View {
 
     private var preConnectSection: some View {
         Section {
-            StartupCommandsEditor(text: $coordinator.advanced.preConnectScript)
+            StartupCommandsEditor(text: $coordinator.advanced.preConnectScript, style: .code)
                 .frame(height: 80)
         } header: {
             Text(String(localized: "Pre-Connect Script"))
@@ -270,7 +270,7 @@ struct OptionsPaneView: View {
 
     private var aiRulesSection: some View {
         Section {
-            StartupCommandsEditor(text: $coordinator.aiRules.rules)
+            StartupCommandsEditor(text: $coordinator.aiRules.rules, style: .plain)
                 .frame(height: 120)
         } header: {
             Text(String(localized: "AI Rules"))

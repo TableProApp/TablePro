@@ -14,13 +14,16 @@ import SwiftUI
 /// inside a form to behave. Startup Commands and Pre-Connect Script trapped Tab; AI Rules did not.
 struct StartupCommandsEditor: View {
     @Binding var text: String
+    /// `.code` for SQL and shell, which wear the editor's colors; prose stays `.plain`.
+    let style: TextValueEditor.Style
 
     var body: some View {
         TextValueEditor(
             text: $text,
             font: .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
             borderType: .bezelBorder,
-            movesFocusOnTab: true
+            movesFocusOnTab: true,
+            style: style
         )
     }
 }

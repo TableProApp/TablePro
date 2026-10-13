@@ -62,6 +62,7 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        context.coordinator.attachThemeChrome(to: outlineView)
         return scrollView
     }
 

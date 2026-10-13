@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 import TableProPluginKit
 
@@ -15,6 +16,7 @@ import TableProPluginKit
 /// on two engine names.
 struct MaintenanceSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var themeEngine = ThemeEngine.shared
 
     let operation: PluginMaintenanceOperation
     let tableName: String?
@@ -59,12 +61,8 @@ struct MaintenanceSheet: View {
                 Text(String(localized: "SQL Preview"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(sqlPreview)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor))
+                HighlightedSQLTextView(sql: sqlPreview)
+                    .frame(height: Self.previewHeight(for: sqlPreview, font: themeEngine.editorFonts.font))
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
@@ -142,5 +140,17 @@ struct MaintenanceSheet: View {
 
     private var sqlPreview: String {
         preview(values).joined(separator: ";\n")
+    }
+
+    internal static let previewMaxLines = 8
+
+    /// The text view does not wrap, so the box grows by line count up to a cap and scrolls past it.
+    /// 24 is the text view's 12 pt inset, top and bottom.
+    internal static func previewHeight(for sql: String, font: NSFont) -> CGFloat {
+        let lineCount = sql.reduce(into: 1) { count, character in
+            if character.isNewline { count += 1 }
+        }
+        let shownLines = min(lineCount, previewMaxLines)
+        return CGFloat(shownLines) * NSLayoutManager().defaultLineHeight(for: font) + 24
     }
 }

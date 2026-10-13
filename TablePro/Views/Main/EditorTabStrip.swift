@@ -496,14 +496,19 @@ private struct EditorTabStripNewButton: View {
     }
 }
 
-private extension View {
-    /// An opaque tone rather than a wash, for the same reason the system's own track is one: a
-    /// wash tints whatever is behind it, and the track has to stay below the selected tab whatever
-    /// that happens to be. The system's own tab bar measures a track of rgb(232) in light against
-    /// this fill's rgb(220), and rgb(71) in dark against this fill's rgb(70).
-    func trackSurface(rowCount: Int) -> some View {
+/// An opaque tone rather than a wash, for the same reason the system's own track is one: a
+/// wash tints whatever is behind it, and the track has to stay below the selected tab whatever
+/// that happens to be. The system's own tab bar measures a track of rgb(232) in light against
+/// this fill's rgb(220), and rgb(71) in dark against this fill's rgb(70).
+internal struct EditorTabStripTrackSurface: ViewModifier {
+    /// The fill reads the theme's window color, which an edit in place changes without rebuilding the strip.
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+
+    internal let rowCount: Int
+
+    internal func body(content: Content) -> some View {
         let shape = EditorTabStripLayout.trackShape(forRowCount: rowCount)
-        return background(
+        return content.background(
             shape
                 .fill(EditorTabStripPalette.trackFill)
                 .overlay(
@@ -514,6 +519,12 @@ private extension View {
                         )
                 )
         )
+    }
+}
+
+private extension View {
+    func trackSurface(rowCount: Int) -> some View {
+        modifier(EditorTabStripTrackSurface(rowCount: rowCount))
     }
 
     /// The selected tab is the one pane of glass the system raises out of the track. An unselected

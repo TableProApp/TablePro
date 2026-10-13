@@ -76,7 +76,7 @@ swiftlint lint --strict <files>
 
 **Change tracking.** A cell edit goes to `DataChangeManager`; Save turns it into statements through `SQLStatementGenerator`; `AnyChangeManager` abstracts the concrete managers. Undo comes from `StructureChangeManager`'s private `UndoManager` and `ConnectionWorkspace.undoManager`.
 
-**Editor and theme.** `ThemeCatalog` owns the theme list, `ThemeResolver` picks the light and dark pair, and `ThemeEngine` holds the palette and the font caches; the fonts themselves are `TypographySettings`. `CompletionEngine` is framework-agnostic and `QueryCompletionAdapter` bridges it to the editor. Editor tabs are drawn by `EditorTabStrip`, not native window tabs. Details: `.claude/rules/editor.md`.
+**Editor and theme.** `ThemeCatalog` owns the theme list, `ThemeResolver` picks the light and dark pair, and `ThemeEngine` holds the palette and the font caches; the fonts themselves are `TypographySettings`. A theme colors content and the window backdrop, never chrome or controls; see `.claude/rules/theme.md`. `CompletionEngine` is framework-agnostic and `QueryCompletionAdapter` bridges it to the editor. Editor tabs are drawn by `EditorTabStrip`, not native window tabs. Details: `.claude/rules/editor.md`.
 
 **Storage.** Passwords in the Keychain, preferences in UserDefaults, query history in SQLite FTS5, tab state as JSON. The full table of which store owns what is in `.claude/rules/data-sync-storage.md`.
 
@@ -137,13 +137,14 @@ For everything: docs, commits, CHANGELOG, UI strings, errors, PR descriptions. S
 | `connection-window.md` | connection windows, workspaces, sessions, `DatabaseManager` |
 | `data-grid.md` | the data grid under `TablePro/Views/Results` |
 | `data-sync-storage.md` | storage, CloudKit sync, the database core |
-| `editor.md` | `Packages/TableProEditor`, `TablePro/Theme`, editor views |
+| `editor.md` | `Packages/TableProEditor`, editor views, fonts |
 | `libs.md` | `Libs/` and the libs scripts |
 | `mongodb-driver.md`, `mysql-driver.md`, `redis-driver.md` | those drivers |
 | `native-bridges.md` | `Native/` and the Dameng and HANA plugins |
 | `plugin-system.md` | `Plugins/`, TableProPluginKit, `project.yml`, plugin CI |
 | `split-views.md` | split view controllers and workspace panes |
 | `tests.md` | `TableProTests`, `TableProUITests` |
+| `theme.md` | `TablePro/Theme`, every view a theme reaches, content windows |
 | `ui-lifecycle.md` | views, view models, UI tests |
 | `welcome-library.md` | the welcome window's connection list |
 

@@ -24,14 +24,17 @@ struct ClickHousePartsView: View {
     @State private var parts: [ClickHousePartInfo] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var selection: Set<UUID> = []
+    @State private var selection: Set<Int> = []
+    @State private var columnLayout = ColumnLayoutState()
     @State private var loadedToken: Int?
+    @StateObject private var grid = StructureListGridModel<UUID>(accessibilityLabel: StructureTab.parts.displayName)
 
     var body: some View {
         VStack(spacing: 0) {
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .gridStandInBackground()
             } else if let error = errorMessage {
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
@@ -42,6 +45,7 @@ struct ClickHousePartsView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gridStandInBackground()
             } else if parts.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "tray")
@@ -52,6 +56,7 @@ struct ClickHousePartsView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gridStandInBackground()
             } else {
                 partsToolbar
                 partsTable
@@ -86,29 +91,46 @@ struct ClickHousePartsView: View {
     }
 
     private var partsTable: some View {
-        Table(parts, selection: $selection) {
-            TableColumn("Partition", value: \.partition)
-                .width(min: 80, ideal: 120)
-            TableColumn("Name", value: \.name)
-                .width(min: 100, ideal: 200)
-            TableColumn("Rows") { part in
-                Text(formatNumber(part.rows))
-                    .monospacedDigit()
-            }
-            .width(min: 60, ideal: 100)
-            TableColumn("Size") { part in
-                Text(formatBytes(part.bytesOnDisk))
-                    .monospacedDigit()
-            }
-            .width(min: 60, ideal: 100)
-            TableColumn("Modified", value: \.modificationTime)
-                .width(min: 100, ideal: 160)
-            TableColumn("Active") { part in
-                Image(systemName: part.active ? "checkmark.circle.fill" : "xmark.circle")
-                    .selectionAwareTint(part.active ? .green : .secondary)
-            }
-            .width(min: 50, ideal: 60)
+        let parts = parts
+        var hasher = Hasher()
+        for part in parts {
+            hasher.combine(part.id)
         }
+        return StructureListGrid(
+            model: grid,
+            columns: Self.columnTitles,
+            contentKey: hasher.finalize(),
+            rows: { parts.map(Self.gridRow(for:)) },
+            databaseType: connection.type,
+            selectedRows: $selection,
+            sortState: nil,
+            columnLayout: $columnLayout
+        )
+    }
+
+    static var columnTitles: [String] {
+        [
+            String(localized: "Partition"),
+            String(localized: "Name"),
+            String(localized: "Rows"),
+            String(localized: "Size"),
+            String(localized: "Modified"),
+            String(localized: "Active"),
+        ]
+    }
+
+    static func gridRow(for part: ClickHousePartInfo) -> StructureListRow<UUID> {
+        StructureListRow(
+            id: part.id,
+            values: [
+                part.partition,
+                part.name,
+                part.rows.formatted(.number.grouping(.automatic)),
+                ByteSizeFormatting.string(bytes: part.bytesOnDisk),
+                part.modificationTime,
+                part.active ? "YES" : "NO",
+            ]
+        )
     }
 
     // MARK: - Actions
@@ -230,7 +252,9 @@ struct ClickHousePartsView: View {
     }
 
     private func selectedPartitionValue() -> String? {
-        guard let selectedId = selection.first,
+        guard selection.count == 1,
+              let row = selection.first,
+              let selectedId = grid.id(atDisplayRow: row),
               let part = parts.first(where: { $0.id == selectedId })
         else { return nil }
         return part.partition
@@ -260,6 +284,7 @@ struct ClickHousePartsView: View {
                 ))
             }
             guard !Task.isCancelled else { return }
+            selection = []
             parts = result.rows.compactMap { row -> ClickHousePartInfo? in
                 guard let name = row[safe: 1]?.asText else { return nil }
                 let partition = row[safe: 0]?.asText ?? ""
@@ -284,15 +309,5 @@ struct ClickHousePartsView: View {
         }
 
         isLoading = false
-    }
-
-    // MARK: - Formatting
-
-    private func formatNumber(_ number: UInt64) -> String {
-        number.formatted(.number.grouping(.automatic))
-    }
-
-    private func formatBytes(_ bytes: UInt64) -> String {
-        ByteSizeFormatting.string(bytes: bytes)
     }
 }

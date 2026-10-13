@@ -131,10 +131,12 @@ internal struct PhpViewerView: View {
         ScrollView {
             Text(rawValue)
                 .font(themeEngine.valueFontSwiftUI)
+                .themeForeground(.editorText, native: .primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
         }
+        .themeBackground(.editorBackground, native: Color.clear)
     }
 
     private func errorPlaceholder(title: String, detail: String, systemImage: String) -> some View {

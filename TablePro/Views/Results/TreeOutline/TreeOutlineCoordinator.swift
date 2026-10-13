@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 
 internal struct TreeOutlineContent<Node: FilterableTreeNode> {
     let rootNode: Node
@@ -26,6 +27,7 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
 
     internal private(set) weak var outlineView: TreeOutlineView?
     internal private(set) var reloadCount = 0
+    internal private(set) var chrome: ThemeTableChrome?
 
     private let cache: TreeProjectionCache<Node>
     private var rootNode: Node?
@@ -36,12 +38,14 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
     private var fonts: TreeOutlineFonts?
     private var isApplyingExpansion = false
     private var menuRows: [Item] = []
+    private var themeCancellable: AnyCancellable?
 
     internal init(cache: TreeProjectionCache<Node>) {
         self.cache = cache
         super.init()
     }
 
+    /// Call once the outline is in its scroll view: a themed background turns the scroll view's own off.
     internal func attach(_ outlineView: TreeOutlineView) {
         self.outlineView = outlineView
         outlineView.dataSource = self
@@ -50,6 +54,9 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
         let menu = NSMenu()
         menu.delegate = self
         outlineView.menu = menu
+        chrome = ThemeTableChrome(tableView: outlineView, family: .code)
+        themeCancellable = AppEvents.shared.themeChanged
+            .sink { [weak self] _ in self?.restyleVisibleCells() }
     }
 
     // MARK: - Content
@@ -157,6 +164,12 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
     /// With the children, or the outline reopens them itself when this row opens again.
     private func close(_ item: Item, in outlineView: TreeOutlineView) {
         outlineView.collapseItem(item, collapseChildren: true)
+    }
+
+    private func restyleVisibleCells() {
+        outlineView?.enumerateAvailableRowViews { rowView, _ in
+            (rowView.view(atColumn: 0) as? TreeOutlineCellView)?.applyStyle()
+        }
     }
 
     private func reconfigureVisibleCells() {
@@ -321,9 +334,9 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
 
     internal func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
         let reused = outlineView.makeView(withIdentifier: TreeOutlineRowView.reuseIdentifier, owner: nil)
-        if let rowView = reused as? TreeOutlineRowView { return rowView }
-        let rowView = TreeOutlineRowView()
+        let rowView = reused as? TreeOutlineRowView ?? TreeOutlineRowView()
         rowView.identifier = TreeOutlineRowView.reuseIdentifier
+        rowView.chrome = chrome
         return rowView
     }
 

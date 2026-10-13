@@ -106,7 +106,7 @@ internal final class TreeOutlineView: SidebarOutlineView {
 }
 
 /// Unemphasized while its value holds a text selection, which is unreadable on the accent color.
-internal final class TreeOutlineRowView: NSTableRowView {
+internal final class TreeOutlineRowView: ThemeTableRowView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("TreeOutlineRow")
 
     private var requestedEmphasis: Bool?
