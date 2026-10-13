@@ -312,3 +312,87 @@ fn normalize_pg_default_keeps_an_expression_whole() {
     );
     assert_eq!(normalize_pg_default("'unbalanced".into()), "'unbalanced");
 }
+
+#[test]
+fn the_driver_reports_its_capabilities() {
+    let driver = PgDriver;
+    assert_eq!(driver.display_name(), "PostgreSQL");
+    assert_eq!(driver.default_port(), 5432);
+    assert_eq!(driver.default_database(), "postgres");
+    assert_eq!(driver.default_username(), "postgres");
+    assert!(driver.ddl_is_transactional());
+    assert!(driver.supports_database_listing());
+    assert!(driver.supports_index_metadata());
+    assert!(driver.supports_foreign_key_metadata());
+    assert!(driver.supports_view_metadata());
+    assert!(driver.supports_local_socket());
+    assert_eq!(driver.forwarded_socket_name(15432).as_deref(), Some(".s.PGSQL.15432"));
+    assert!(!driver.catalog_object_kinds().is_empty());
+}
+
+#[test]
+fn foreign_key_action_codes_map_to_sql_keywords() {
+    for (code, keyword) in [
+        ("r", Some("RESTRICT")),
+        ("c", Some("CASCADE")),
+        ("n", Some("SET NULL")),
+        ("d", Some("SET DEFAULT")),
+        ("a", None),
+        ("?", None),
+    ] {
+        assert_eq!(pg_action_char_to_keyword(code).as_deref(), keyword, "{code}");
+    }
+}
+
+#[test]
+fn sqlx_errors_map_to_the_driver_error_the_app_acts_on() {
+    use std::io::{Error, ErrorKind};
+    assert!(matches!(
+        map_sqlx_error(sqlx::Error::PoolClosed),
+        DriverError::Disconnected
+    ));
+    assert!(matches!(
+        map_sqlx_error(sqlx::Error::PoolTimedOut),
+        DriverError::Disconnected
+    ));
+    assert!(matches!(
+        map_sqlx_error(sqlx::Error::Io(Error::from(ErrorKind::ConnectionRefused))),
+        DriverError::ConnectionRefused
+    ));
+    assert!(matches!(
+        map_sqlx_error(sqlx::Error::Io(Error::other("invalid peer certificate: UnknownIssuer"))),
+        DriverError::Tls(_)
+    ));
+    assert!(matches!(
+        map_sqlx_error(sqlx::Error::Io(Error::from(ErrorKind::BrokenPipe))),
+        DriverError::Disconnected
+    ));
+    assert!(matches!(
+        map_sqlx_error(sqlx::Error::Protocol("unable to resolve type OIDs: [1]".into())),
+        DriverError::Unsupported(_)
+    ));
+    assert!(matches!(
+        map_sqlx_error(sqlx::Error::RowNotFound),
+        DriverError::Internal(_)
+    ));
+}
+
+#[test]
+fn connect_options_follow_the_transport_and_refuse_a_socket_file() {
+    use std::path::Path;
+    let tcp = ConnectOptions::default();
+    assert!(postgres_connect_options(&tcp).is_ok());
+    let file = ConnectOptions {
+        local_socket_path: Some(Path::new("/tmp/pg.sock").to_path_buf()),
+        ..ConnectOptions::default()
+    };
+    assert!(matches!(
+        postgres_connect_options(&file),
+        Err(DriverError::Unsupported(_))
+    ));
+    let directory = ConnectOptions {
+        local_socket_dir: Some(Path::new("/var/run/postgresql").to_path_buf()),
+        ..ConnectOptions::default()
+    };
+    assert!(postgres_connect_options(&directory).is_ok());
+}

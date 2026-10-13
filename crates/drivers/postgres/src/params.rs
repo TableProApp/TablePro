@@ -809,4 +809,107 @@ mod tests {
             assert_eq!(encode_pg_network(malformed, true), None, "cidr: {malformed}");
         }
     }
+
+    #[test]
+    fn text_array_parsing_rejects_ragged_escaped_and_malformed_input() {
+        for (text, fragment) in [
+            ("{{1},2}", "array"),
+            ("{{1,2},{3}}", ""),
+            ("{a\\", "escape"),
+            ("[1:x]={a}", ""),
+            ("[1:2]{a,b}", ""),
+            ("[3:1]={a}", ""),
+            ("[1:3]={a,b}", "do not match"),
+            ("[1:1][1:1][1:1][1:1][1:1][1:1][1:1]={{{{{{{a}}}}}}}", "six dimensions"),
+            ("abc", ""),
+        ] {
+            match parse_text_array_text(text) {
+                Err(DriverError::Unsupported(message)) => {
+                    assert!(message.contains(fragment), "{text}: {message}");
+                }
+                other => panic!(
+                    "{text}: expected an unsupported error, got {:?}",
+                    other.map(|parsed| parsed.elements)
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn text_array_parsing_keeps_empty_and_multidimensional_shapes() {
+        let empty = parse_text_array_text("{}").unwrap();
+        assert!(empty.elements.is_empty());
+        let grid = parse_text_array_text("{{1,2},{3,4}}").unwrap();
+        assert_eq!(grid.dimensions, vec![(2, 1), (2, 1)]);
+        assert_eq!(grid.elements.len(), 4);
+    }
+
+    #[test]
+    fn every_value_kind_is_described_to_the_server_with_its_own_type() {
+        use super::pg_parameter_type_infos;
+        use sqlx::TypeInfo;
+        use tablepro_core::Value;
+        let values = [
+            Value::Null,
+            Value::Bool(true),
+            Value::Int(1),
+            Value::Float(1.5),
+            Value::Text("a".into()),
+            Value::JsonText("{}".into()),
+            Value::Bytes(vec![1]),
+            Value::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap()),
+            Value::Time(chrono::NaiveTime::from_hms_opt(1, 2, 3).unwrap()),
+            Value::DateTime(chrono::NaiveDateTime::default()),
+            Value::TimestampTz(chrono::DateTime::<chrono::Utc>::default()),
+            Value::Decimal(rust_decimal::Decimal::new(15, 1)),
+            Value::Uuid(uuid::Uuid::nil()),
+            Value::Json(serde_json::json!({"a": 1})),
+            Value::Undecodable("MONEY".into()),
+        ];
+        let names: Vec<String> = pg_parameter_type_infos(&values)
+            .iter()
+            .map(|type_info| type_info.name().to_ascii_uppercase())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "TEXT",
+                "BOOL",
+                "INT8",
+                "FLOAT8",
+                "TEXT",
+                "JSON",
+                "BYTEA",
+                "DATE",
+                "TIME",
+                "TIMESTAMP",
+                "TIMESTAMPTZ",
+                "NUMERIC",
+                "UUID",
+                "JSONB",
+                "TEXT"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_untyped_null_and_json_text_markers_accept_the_right_server_types() {
+        use super::{PgJsonText, PgUntypedNull};
+        use sqlx::postgres::PgTypeInfo;
+        use sqlx::{Encode, Type};
+        assert!(<PgUntypedNull as Type<sqlx::Postgres>>::compatible(
+            &PgTypeInfo::with_name("INT4")
+        ));
+        assert!(<PgJsonText as Type<sqlx::Postgres>>::compatible(
+            &PgTypeInfo::with_name("json")
+        ));
+        assert!(!<PgJsonText as Type<sqlx::Postgres>>::compatible(
+            &PgTypeInfo::with_name("jsonb")
+        ));
+        let mut buffer = sqlx::postgres::PgArgumentBuffer::default();
+        assert!(matches!(
+            Encode::<sqlx::Postgres>::encode_by_ref(&PgUntypedNull, &mut buffer),
+            Ok(sqlx::encode::IsNull::Yes)
+        ));
+    }
 }
