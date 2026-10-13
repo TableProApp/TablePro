@@ -15,3 +15,4 @@ mod non_transactional;
 mod row_limit;
 mod support;
 mod tls;
+mod write_batch;

@@ -17,7 +17,7 @@ use tablepro_core::{
 
 use crate::cancel::{MySqlStop, acknowledges_stop, interrupted};
 use crate::decode::decode_row;
-use crate::errors::{INCOMPLETE_ROLLBACK, map_error, reply_lost};
+use crate::errors::{INCOMPLETE_ROLLBACK, UNSUPPORTED_PS, map_error, reply_lost, server_number};
 use crate::flavour::MySqlFlavour;
 use crate::mysql_call::Tainter;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
@@ -261,21 +261,22 @@ async fn schema_changes(context: &mut WriteContext<'_>, plan: &WritePlan) -> Res
     outcome
 }
 
-/// One step. A statement with parameters is prepared; one without goes
-/// over the text protocol, which takes statements MySQL cannot prepare,
-/// such as CREATE TRIGGER.
+/// One step, prepared even without parameters: a prepare takes exactly
+/// one statement, so a stray `;` in generated SQL fails to parse instead
+/// of running a second one. Only a statement the server parsed whole
+/// and cannot prepare, such as CREATE TRIGGER on MySQL, goes over the
+/// text protocol, which runs every statement it is given.
 async fn execute(context: &mut WriteContext<'_>, statement: &Statement) -> Result<u64, DriverError> {
-    let done = match statement.params().is_empty() {
-        true => {
-            context
-                .connection
-                .execute(sqlx::raw_sql(AssertSqlSafe(statement.sql().to_owned())))
-                .await
-        }
-        false => prepared(statement)?.execute(&mut *context.connection).await,
+    let outcome = prepared(statement)?.execute(&mut *context.connection).await;
+    let done = match outcome.map_err(|error| map_error(&error, context.flavour)) {
+        Err(error) if statement.params().is_empty() && server_number(&error) == Some(UNSUPPORTED_PS) => context
+            .connection
+            .execute(sqlx::raw_sql(AssertSqlSafe(statement.sql().to_owned())))
+            .await
+            .map_err(|error| map_error(&error, context.flavour))?,
+        other => other?,
     };
-    done.map(|result| result.rows_affected())
-        .map_err(|error| map_error(&error, context.flavour))
+    Ok(done.rows_affected())
 }
 
 async fn run(context: &mut WriteContext<'_>, sql: &str) -> Result<(), DriverError> {
