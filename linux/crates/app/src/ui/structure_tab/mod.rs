@@ -199,6 +199,7 @@ impl StructureTab {
             next_column_seq: Rc::new(RefCell::new(1)),
             column_popovers: Rc::new(RefCell::new(Vec::new())),
             refetching: Rc::new(Cell::new(false)),
+            definition_shown: false,
             _theme_handler: theme_handler,
         };
         imp.model.replace(Some(model));
@@ -435,6 +436,9 @@ pub(crate) struct StructureModel {
     /// still hold the pre-save state, so diffing them would surface
     /// phantom pending ops; `recompute_dirty_state` waits it out.
     refetching: Rc<Cell<bool>>,
+    /// The editor shows a definition that `original_*` still match, so
+    /// a read of it that fails can leave it on screen.
+    definition_shown: bool,
     /// The SQL preview follows the desktop theme through the app-wide
     /// style manager, which would keep the handler past the tab.
     _theme_handler: HandlerGuard,
@@ -733,6 +737,7 @@ impl StructureModel {
         *self.foreign_keys.borrow_mut() = foreign_keys.clone();
         *self.original_fks.borrow_mut() = foreign_keys;
         self.inner_stack.set_visible_child_name("editor");
+        self.definition_shown = true;
         // The snapshots are current again, so the diff counts; it is
         // empty now, which also clears anything typed during the read.
         self.refetching.set(false);
@@ -740,7 +745,15 @@ impl StructureModel {
         fx.input(StructureTabInput::Refresh);
     }
 
-    fn on_load_failed(&self, message: &str) {
+    fn on_load_failed(&mut self, message: &str, fx: &mut StructureEffects) {
+        if self.definition_shown {
+            self.inner_stack.set_visible_child_name("editor");
+            fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext_f(
+                "Couldn't refresh the structure: {error}",
+                &[("error", message)],
+            )));
+            return;
+        }
         // Inline on the status page: a modal alert would say the same
         // and make the user dismiss it before seeing the page.
         self.error_status.set_description(Some(message));
@@ -759,7 +772,7 @@ impl StructureModel {
         match value {
             Ok(loaded) => self.on_loaded(loaded, fx),
             Err(error) => {
-                self.on_load_failed(&crate::ui::error_text::operation_error_message(&error));
+                self.on_load_failed(&crate::ui::error_text::operation_error_message(&error), fx);
                 let issued = self.issued_on.get(&StructureRequestKind::Definition).copied();
                 if issued.is_some_and(|issued| self.session.link_generation() > issued) {
                     self.retry_failed();
@@ -784,7 +797,9 @@ impl StructureModel {
 
     fn retry_failed(&mut self) {
         if self.failed.take().contains(&StructureRequestKind::Definition) {
-            self.show_loading();
+            if !self.definition_shown {
+                self.show_loading();
+            }
             self.fetch_definition();
         }
     }
@@ -1028,6 +1043,7 @@ impl StructureModel {
         }
         drop(last);
         self.refetching.set(true);
+        self.definition_shown = false;
         self.fetch_definition();
     }
 }

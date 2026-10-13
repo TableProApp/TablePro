@@ -257,3 +257,47 @@ fn drop_asks_the_window_with_the_table_it_shows() {
 
     assert_eq!(*asked.borrow(), [(None, "users".to_owned())]);
 }
+
+fn toasts(tab: &StructureTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
+    let toasts = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = toasts.clone();
+    tab.connect_toast(move |_, text| sink.borrow_mut().push(text));
+    toasts
+}
+
+/// The table reads once, then every read after it fails.
+fn readable_once() -> ConnectionScript {
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(definition("id")))
+        .always(FakeReply::err(DriverError::server("denied")));
+    script
+}
+
+#[gtk4::test]
+fn a_failed_read_after_a_schema_change_keeps_the_definition() {
+    let harness = Harness::open(StructureMode::Edit, readable_once(), []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let toasts = toasts(harness.tab());
+
+    harness.tab().send(StructureTabInput::SchemaChanged);
+    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the failed read was not reported");
+
+    assert_eq!(harness.page().as_deref(), Some("editor"));
+    assert_eq!(harness.column_names(), ["id"]);
+    assert!(toasts.borrow()[0].contains("denied"), "{:?}", toasts.borrow());
+}
+
+#[gtk4::test]
+fn a_failed_read_after_a_save_shows_the_error() {
+    let harness = Harness::open(StructureMode::Edit, readable_once(), []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+
+    harness
+        .tab()
+        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+
+    wait_until(WAIT, || harness.page().as_deref() == Some("error"))
+        .expect("a definition from before the save stayed editable");
+}
