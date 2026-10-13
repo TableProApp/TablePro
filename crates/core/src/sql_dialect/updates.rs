@@ -169,6 +169,13 @@ pub fn build_optimistic_keyed_update(
     ))
 }
 
+fn is_geometric(data_type: &str) -> bool {
+    matches!(
+        data_type.trim().to_ascii_lowercase().as_str(),
+        "point" | "line" | "lseg" | "box" | "path" | "polygon" | "circle"
+    )
+}
+
 fn optimistic_predicate(
     driver_id: &str,
     name: &str,
@@ -186,6 +193,10 @@ fn optimistic_predicate(
         }
         "postgres" if column.data_type.trim().eq_ignore_ascii_case("xml") => {
             format!("{name}::text IS NOT DISTINCT FROM {placeholder}::text")
+        }
+        "postgres" if is_geometric(&column.data_type) => {
+            let kind = column.data_type.trim().to_ascii_lowercase();
+            format!("{name}::text IS NOT DISTINCT FROM {placeholder}::text::pg_catalog.{kind}::text")
         }
         "postgres" => {
             let value_sql = text_cast_placeholder(column, old_value, placeholder);

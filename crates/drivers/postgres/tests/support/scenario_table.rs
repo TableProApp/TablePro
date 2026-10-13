@@ -5,7 +5,7 @@ use tablepro_core::sql_dialect::{build_insert_from_draft, build_keyed_delete, bu
 
 use crate::{connect, start_pg};
 
-const KNOWN_UNDECODABLE: [&str; 4] = ["tsvector", "money", "int4range", "point"];
+const KNOWN_UNDECODABLE: [&str; 3] = ["money", "int4range", "point"];
 
 const SCENARIOS: &[(&str, &str, &str)] = &[
     ("integer", "1", "2"),

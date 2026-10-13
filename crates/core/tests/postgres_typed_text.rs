@@ -113,3 +113,20 @@ fn a_real_column_is_compared_after_casting_the_parameter_to_real() {
     assert!(double.contains("\"v\" IS NOT DISTINCT FROM $3"), "{double}");
     assert!(!double.contains("::real"), "{double}");
 }
+
+#[test]
+fn geometric_columns_are_written_and_compared_through_text() {
+    for data_type in ["point", "line", "lseg", "box", "path", "polygon", "circle"] {
+        let sql = update_sql(data_type, Value::Text("(1,2)".into()), Value::Text("(3,4)".into()));
+        assert!(
+            sql.contains(&format!("\"v\" = $1::text::pg_catalog.{data_type}")),
+            "{data_type}: {sql}"
+        );
+        assert!(
+            sql.contains(&format!(
+                "\"v\"::text IS NOT DISTINCT FROM $3::text::pg_catalog.{data_type}::text"
+            )),
+            "{data_type}: {sql}"
+        );
+    }
+}

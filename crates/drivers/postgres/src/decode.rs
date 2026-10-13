@@ -8,6 +8,7 @@ pub(crate) fn decode_pg_binary_text(type_name: &str, bytes: &[u8]) -> Option<Str
         "CIDR" => decode_inet(bytes, true),
         "PG_LSN" => decode_pg_lsn(bytes),
         "XML" => String::from_utf8(bytes.to_vec()).ok(),
+        "TSVECTOR" => decode_tsvector(bytes),
         "OID" | "XID" | "CID" => Some(u32::from_be_bytes(bytes.try_into().ok()?).to_string()),
         _ => None,
     }
@@ -147,6 +148,48 @@ fn decode_inet(bytes: &[u8], force_prefix: bool) -> Option<String> {
 fn decode_pg_lsn(bytes: &[u8]) -> Option<String> {
     let lsn = u64::from_be_bytes(bytes.try_into().ok()?);
     Some(format!("{:X}/{:X}", lsn >> 32, lsn as u32))
+}
+
+fn decode_tsvector(bytes: &[u8]) -> Option<String> {
+    let (count, mut rest) = bytes.split_first_chunk::<4>()?;
+    let mut lexemes = Vec::new();
+    for _ in 0..u32::from_be_bytes(*count) {
+        let end = rest.iter().position(|&byte| byte == 0)?;
+        let word = std::str::from_utf8(&rest[..end]).ok()?;
+        let (positions, tail) = rest[end + 1..].split_first_chunk::<2>()?;
+        let count = usize::from(u16::from_be_bytes(*positions));
+        if tail.len() < count * 2 {
+            return None;
+        }
+        let (raw, tail) = tail.split_at(count * 2);
+        rest = tail;
+        lexemes.push(format_lexeme(word, raw));
+    }
+    rest.is_empty().then(|| lexemes.join(" "))
+}
+
+fn format_lexeme(word: &str, raw_positions: &[u8]) -> String {
+    let quoted = word.replace('\\', "\\\\").replace('\'', "''");
+    let positions: Vec<String> = raw_positions
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| {
+            let packed = u16::from_be_bytes(*pair);
+            let weight = match packed >> 14 {
+                3 => "A",
+                2 => "B",
+                1 => "C",
+                _ => "",
+            };
+            format!("{}{weight}", packed & 0x3fff)
+        })
+        .collect();
+    if positions.is_empty() {
+        format!("'{quoted}'")
+    } else {
+        format!("'{quoted}':{}", positions.join(","))
+    }
 }
 
 #[cfg(test)]
@@ -383,5 +426,23 @@ mod tests {
         for length in 0..16 {
             assert_eq!(decode_pg_binary_text("PG_LSN", &vec![0; length]).is_some(), length == 8);
         }
+    }
+    #[test]
+    fn value_contract_tsvector_wire_values_use_postgres_text() {
+        let vector = [
+            2_u32.to_be_bytes().to_vec(),
+            b"it's\0".to_vec(),
+            2_u16.to_be_bytes().to_vec(),
+            1_u16.to_be_bytes().to_vec(),
+            (0x8000_u16 | 3).to_be_bytes().to_vec(),
+            b"b\0".to_vec(),
+            0_u16.to_be_bytes().to_vec(),
+        ]
+        .concat();
+        assert_eq!(
+            decode_pg_binary_text("TSVECTOR", &vector).as_deref(),
+            Some("'it''s':1,3B 'b'")
+        );
+        assert_eq!(decode_tsvector(&vector[..vector.len() - 1]), None);
     }
 }

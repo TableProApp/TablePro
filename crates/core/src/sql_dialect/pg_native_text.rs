@@ -15,7 +15,8 @@ pub(crate) fn postgres_native_text_cast_type(data_type: &str) -> Option<String> 
         Some(_) => None,
     };
     Some(match base {
-        "inet" | "cidr" | "macaddr" | "macaddr8" | "xml" | "tsvector" | "tsquery" => format!("pg_catalog.{base}"),
+        "inet" | "cidr" | "macaddr" | "macaddr8" | "xml" | "tsvector" | "tsquery" | "point" | "line" | "lseg"
+        | "box" | "path" | "polygon" | "circle" => format!("pg_catalog.{base}"),
         "interval" => "pg_catalog.interval".to_string(),
         "int4range" | "int8range" | "numrange" | "tsrange" | "tstzrange" | "daterange" | "int4multirange"
         | "int8multirange" | "nummultirange" | "tsmultirange" | "tstzmultirange" | "datemultirange" => {
