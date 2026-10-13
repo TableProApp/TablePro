@@ -104,6 +104,17 @@ pub enum StatementSource {
     Delete { row_key: RowKey },
 }
 
+/// The save that is running: where its edits end, and the value it
+/// writes to each cell.
+#[derive(Debug)]
+struct InFlightSave {
+    snapshot: SaveSnapshot,
+    /// Until the save settles, each of these cells holds either this
+    /// value or the one that was fetched, so no later edit to it can be
+    /// called a return to the cell's value.
+    written: HashMap<(RowKey, usize), Value>,
+}
+
 #[derive(Debug, Default)]
 pub struct TabChangeTracker {
     drafts: Vec<DraftRow>,
@@ -121,8 +132,7 @@ pub struct TabChangeTracker {
     /// The table and columns the tab last read, which a save is planned
     /// against.
     target: Option<SaveTarget>,
-    /// Where the save in flight ends.
-    saving: Option<SaveSnapshot>,
+    saving: Option<InFlightSave>,
     /// A save that may have landed. Saving again could apply it twice,
     /// so nothing saves until the tab is reloaded or discarded.
     outcome_unknown: Option<UnknownCause>,
@@ -161,7 +171,7 @@ impl TabChangeTracker {
     /// delete in the save stays as it is until the save settles; a cell
     /// edit is a new value, which the next save writes.
     pub fn edit_is_in_flight(&self, edit: &TrackerEdit) -> bool {
-        let Some(snapshot) = self.saving else {
+        let Some(snapshot) = self.saving.as_ref().map(|save| save.snapshot) else {
             return false;
         };
         let draft_in_flight = |draft_id: u64| {
@@ -209,12 +219,9 @@ impl TabChangeTracker {
     }
 
     fn track_cell_edit(&mut self, row_key: RowKey, col: usize, original: Value, value: Value) -> TrackerDelta {
-        let before = self.updates.get(&(row_key.clone(), col)).cloned();
-        // The running save is writing `before`, so even a value equal to
-        // the fetched one is a change the next save has to write back.
-        let in_flight = before
-            .as_ref()
-            .is_some_and(|edit| self.saving.is_some_and(|snapshot| snapshot.includes(edit.touched)));
+        let key = (row_key.clone(), col);
+        let before = self.updates.get(&key).cloned();
+        let in_flight = self.is_being_written(&key);
         let original = before.as_ref().map_or(original, |edit| edit.original.clone());
         let after = (in_flight || value != original).then(|| CellEdit {
             original,
@@ -295,8 +302,16 @@ impl TabChangeTracker {
         Some((draft.values.get(col)?.clone(), draft.touched))
     }
 
+    fn is_being_written(&self, cell: &(RowKey, usize)) -> bool {
+        self.saving.as_ref().is_some_and(|save| save.written.contains_key(cell))
+    }
+
     fn put_cell_edit(&mut self, row_key: &RowKey, col: usize, edit: Option<CellEdit>) -> TrackerDelta {
         let key = (row_key.clone(), col);
+        // An edit equal to the fetched value is kept only while a save
+        // writes the cell. Undo and redo wait for the save, so they find
+        // such an edit no longer changing anything.
+        let edit = edit.filter(|edit| edit.pending != edit.original || self.is_being_written(&key));
         match edit {
             Some(edit) => self.updates.insert(key, edit),
             None => self.updates.remove(&key),
@@ -632,7 +647,13 @@ impl TabChangeTracker {
             return Ok(None);
         }
         let snapshot = SaveSnapshot(self.next_touch);
-        self.saving = Some(snapshot);
+        let written = self
+            .updates
+            .iter()
+            .filter(|((row_key, _), _)| matches!(row_key, RowKey::Persisted(_)) && !self.deletes.contains_key(row_key))
+            .map(|(cell, edit)| (cell.clone(), edit.pending.clone()))
+            .collect();
+        self.saving = Some(InFlightSave { snapshot, written });
         Ok(Some(SaveBatch {
             table: target.table,
             columns: target.columns,
@@ -642,15 +663,28 @@ impl TabChangeTracker {
     }
 
     /// End the save `snapshot` began. A commit drops what it wrote and
-    /// keeps every edit made while it ran; a rollback keeps everything;
-    /// an unknown outcome keeps everything and refuses the next save.
+    /// keeps every edit made while it ran, now measured against what the
+    /// save wrote; a rollback keeps everything, measured against what was
+    /// fetched; an unknown outcome keeps everything and refuses the next
+    /// save.
     pub(crate) fn settle_save(&mut self, outcome: &SaveOutcome, snapshot: SaveSnapshot) -> TrackerDelta {
-        if self.saving == Some(snapshot) {
-            self.saving = None;
-        }
+        let written = self
+            .saving
+            .take_if(|save| save.snapshot == snapshot)
+            .map(|save| save.written)
+            .unwrap_or_default();
         match outcome {
-            SaveOutcome::Committed { .. } => self.drop_saved(snapshot),
-            SaveOutcome::RolledBack(_) => self.delta(Vec::new(), Vec::new()),
+            SaveOutcome::Committed { .. } => {
+                let mut delta = self.drop_saved(snapshot);
+                delta.rows.extend(self.rebase(written, true));
+                dedup(&mut delta.rows);
+                delta.pending_count = self.pending_count();
+                delta
+            }
+            SaveOutcome::RolledBack(_) => {
+                let rows = self.rebase(written, false);
+                self.delta(rows, Vec::new())
+            }
             SaveOutcome::Unknown(cause) => {
                 self.mark_outcome_unknown(cause.clone());
                 self.delta(Vec::new(), Vec::new())
@@ -660,6 +694,28 @@ impl TabChangeTracker {
 
     pub(crate) fn mark_outcome_unknown(&mut self, cause: UnknownCause) {
         self.outcome_unknown = Some(cause);
+    }
+
+    /// Edits made to cells a settled save wrote. After a commit the cell
+    /// holds what the save wrote, which becomes the value an edit is
+    /// measured against; after a rollback it still holds what was
+    /// fetched. Either way an edit back to that value is no change.
+    fn rebase(&mut self, written: HashMap<(RowKey, usize), Value>, committed: bool) -> Vec<RowKey> {
+        let mut rows = Vec::new();
+        for (cell, value) in written {
+            let Some(edit) = self.updates.get_mut(&cell) else {
+                continue;
+            };
+            if committed {
+                edit.original = value;
+            }
+            if edit.pending == edit.original {
+                self.updates.remove(&cell);
+                rows.push(cell.0);
+            }
+        }
+        dedup(&mut rows);
+        rows
     }
 
     fn drop_saved(&mut self, snapshot: SaveSnapshot) -> TrackerDelta {
@@ -693,10 +749,14 @@ impl TabChangeTracker {
         // and the saved ones are now the rows themselves.
         self.undo.clear();
         self.redo.clear();
-        let mut seen = HashSet::new();
-        rows.retain(|row_key| seen.insert(row_key.clone()));
+        dedup(&mut rows);
         self.delta(rows, visual)
     }
+}
+
+fn dedup(rows: &mut Vec<RowKey>) {
+    let mut seen = HashSet::new();
+    rows.retain(|row_key| seen.insert(row_key.clone()));
 }
 
 /// The tracker's changes in the form a save plans from, with the row
@@ -1507,6 +1567,90 @@ mod tests {
         assert_eq!(edited.state, CellState::Modified);
         assert_eq!(untouched.value, Value::Int(1));
         assert_eq!(untouched.state, CellState::Clean);
+    }
+
+    fn saving_on(columns: Vec<ColumnInfo>) -> TabChangeTracker {
+        let mut t = TabChangeTracker::default();
+        t.set_target(SaveTarget {
+            table: tablepro_core::meta::TableRef::unqualified("t"),
+            columns,
+        });
+        t
+    }
+
+    fn committed() -> SaveOutcome {
+        SaveOutcome::Committed { rows: Some(1) }
+    }
+
+    fn rolled_back() -> SaveOutcome {
+        SaveOutcome::RolledBack(crate::workspace::RollbackCause::Driver(
+            tablepro_core::DriverError::server("no"),
+        ))
+    }
+
+    /// Each UPDATE's assignments, by column name.
+    fn assignments(t: &TabChangeTracker, columns: &[ColumnInfo]) -> Vec<(String, Value)> {
+        t.change_set(columns)
+            .unwrap()
+            .changes
+            .changes
+            .into_iter()
+            .flat_map(|change| match change {
+                RowChange::Update(update) => update.assignments,
+                other => panic!("only updates were made: {other:?}"),
+            })
+            .map(|(col, value)| (columns[col].name.clone(), value))
+            .collect()
+    }
+
+    #[test]
+    fn a_return_to_the_fetched_value_during_a_save_is_written_after_it() {
+        let columns = vec![pk_col("id"), data_col("name")];
+        let mut t = saving_on(columns.clone());
+        edit(&mut t, 1, "a", "b");
+        let batch = t.begin_save().unwrap().unwrap();
+        edit(&mut t, 1, "a", "c");
+        edit(&mut t, 1, "a", "a");
+
+        let _ = t.settle_save(&committed(), batch.snapshot);
+
+        // The save left b in the database, so the a typed while it ran
+        // is a change.
+        assert_eq!(assignments(&t, &columns), vec![("name".to_owned(), text("a"))]);
+        assert_eq!(t.cell_state(&rk(&[Value::Int(1)]), 1), CellState::Modified);
+    }
+
+    #[test]
+    fn a_return_to_the_fetched_value_during_a_save_that_rolls_back_is_no_change() {
+        let columns = vec![pk_col("id"), data_col("name")];
+        let mut t = saving_on(columns.clone());
+        edit(&mut t, 1, "a", "b");
+        let batch = t.begin_save().unwrap().unwrap();
+        edit(&mut t, 1, "a", "c");
+        edit(&mut t, 1, "a", "a");
+
+        let delta = t.settle_save(&rolled_back(), batch.snapshot);
+
+        assert_eq!(delta.pending_count, 0);
+        assert_eq!(t.pending_count(), 0);
+        assert_eq!(delta.rows, vec![rk(&[Value::Int(1)])]);
+    }
+
+    #[test]
+    fn an_edit_that_outlives_a_save_is_measured_against_what_it_wrote() {
+        let columns = vec![pk_col("id"), data_col("name")];
+        let mut t = saving_on(columns.clone());
+        edit(&mut t, 1, "a", "b");
+        let batch = t.begin_save().unwrap().unwrap();
+        edit(&mut t, 1, "a", "c");
+        let _ = t.settle_save(&committed(), batch.snapshot);
+
+        // The page read after the commit holds b.
+        edit(&mut t, 1, "b", "a");
+        assert_eq!(assignments(&t, &columns), vec![("name".to_owned(), text("a"))]);
+
+        edit(&mut t, 1, "b", "b");
+        assert_eq!(t.pending_count(), 0, "a return to what the save wrote stayed pending");
     }
 
     #[test]

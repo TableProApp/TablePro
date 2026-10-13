@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cells of a table without a primary key opened for editing, then dropped what was typed.
 - A save that failed on a new row did not flash that row.
 - Undo after editing a cell twice restored the fetched value instead of the first edit.
+- An edit made while a save ran was dropped when it set the cell back to the value it was read with.
 - A save that deleted a row and added a new one with the same unique value failed.
 - The window title showed no unsaved-changes bullet for pending structure changes.
 - `real` values showed extra digits in the grid, copies and exports, such as 0.10000000149011612 for 0.1.
