@@ -10,12 +10,11 @@ fn in_clause_literal(v: &Value) -> Option<String> {
         // the caller rather than written.
         Value::Null | Value::Bytes(_) => None,
         Value::Bool(b) => Some(if *b { "TRUE".to_string() } else { "FALSE".to_string() }),
-        Value::Int(_)
-        | Value::UInt(_)
-        | Value::WideInt(_)
-        | Value::Float32(_)
-        | Value::Float64(_)
-        | Value::Decimal(_) => value_to_text(v),
+        // The widened double, not the real's own digits: an engine
+        // compares a `real` with a numeric literal as a double, and
+        // `0.1` as a double is not the `real` 0.1.
+        Value::Float32(real) => value_to_text(&Value::Float64(f64::from(*real))),
+        Value::Int(_) | Value::UInt(_) | Value::WideInt(_) | Value::Float64(_) | Value::Decimal(_) => value_to_text(v),
         other => value_to_text(other).map(|s| format!("'{}'", s.replace('\'', "''"))),
     }
 }
@@ -60,6 +59,15 @@ mod tests {
 
         assert_eq!(out.sql, "('O''Brien', 5, TRUE)");
         assert_eq!(out.skipped, 1);
+    }
+
+    #[test]
+    fn in_clause_writes_a_real_as_the_double_it_compares_as() {
+        let rows = vec![vec![Value::Float32(0.1)]];
+
+        let out = render_in_clause(&rows, 0);
+
+        assert_eq!(out.sql, format!("({})", f64::from(0.1_f32)));
     }
 
     #[test]

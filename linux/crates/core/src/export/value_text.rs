@@ -1,6 +1,6 @@
 use chrono::Timelike;
 
-use crate::column::ColumnType;
+use crate::column::{ColumnKind, ColumnType};
 use crate::value::{SqlDecimal, Value};
 
 /// Full text of a value for export, at the precision the column
@@ -12,18 +12,22 @@ use crate::value::{SqlDecimal, Value};
 /// `numeric(38,10)` holding `1`. Export writes what the column says,
 /// because that is what the server would print.
 pub fn value_text(value: &Value, column: &ColumnType) -> Option<String> {
+    kind_text(value, &column.kind)
+}
+
+pub(super) fn kind_text(value: &Value, kind: &ColumnKind) -> Option<String> {
     match value {
-        Value::Time(time) => Some(time.format(second_digits(column))),
+        Value::Time(time) => Some(time.format(second_digits(kind))),
         Value::TimeTz(time) => Some(format!(
             "{}{}",
-            time.time.format(second_digits(column)),
+            time.time.format(second_digits(kind)),
             offset_text(time.offset)
         )),
         Value::Timestamp(stamp) => temporal_text(stamp, |stamp| {
             format!(
                 "{}{}",
                 stamp.format("%Y-%m-%d %H:%M:%S"),
-                fraction_text(stamp.nanosecond(), column.kind.fractional_digits())
+                fraction_text(stamp.nanosecond(), kind.fractional_digits())
             )
         }),
         Value::TimestampTz(stamp) => temporal_text(stamp, |stamp| {
@@ -31,18 +35,29 @@ pub fn value_text(value: &Value, column: &ColumnType) -> Option<String> {
             format!(
                 "{}{}{}",
                 stamp.format("%Y-%m-%d %H:%M:%S"),
-                fraction_text(stamp.nanosecond(), column.kind.fractional_digits()),
+                fraction_text(stamp.nanosecond(), kind.fractional_digits()),
                 stamp.format("%:z")
             )
         }),
-        Value::Decimal(decimal) => Some(decimal_text(decimal, column.kind.decimal_scale())),
+        Value::Decimal(decimal) => Some(decimal_text(decimal, kind.decimal_scale())),
+        Value::Array(values) => Some(array_text(values, Some(element_kind(kind)))),
         other => value_to_text(other),
     }
 }
 
+/// The kind each item of an array holds. A PostgreSQL `int4[][]` is
+/// declared once for every dimension, so a kind that is not itself an
+/// array passes down unchanged.
+pub(super) fn element_kind(kind: &ColumnKind) -> &ColumnKind {
+    match kind {
+        ColumnKind::Array { element } => element,
+        other => other,
+    }
+}
+
 /// The digits a time type declares, in the width `SqlTime` formats at.
-fn second_digits(column: &ColumnType) -> Option<u8> {
-    column.kind.fractional_digits().map(|digits| digits.min(9))
+fn second_digits(kind: &ColumnKind) -> Option<u8> {
+    kind.fractional_digits().map(|digits| digits.min(9))
 }
 
 /// The fractional second, at the digits the column declares.
@@ -99,15 +114,13 @@ pub fn value_to_text(v: &Value) -> Option<String> {
         Value::Int(i) => Some(i.to_string()),
         Value::UInt(i) => Some(i.to_string()),
         Value::WideInt(i) => Some(i.to_string()),
-        // Shortest round-trip form, so the text parses back to the
-        // same bits. The non-finite ones have no numeric spelling.
-        Value::Float32(f) => Some(float_text(
-            f64::from(*f),
-            f.is_nan(),
-            f.is_infinite(),
-            f.is_sign_negative(),
-        )),
-        Value::Float64(f) => Some(float_text(*f, f.is_nan(), f.is_infinite(), f.is_sign_negative())),
+        // Shortest round-trip form at the value's own width: an f32
+        // widened first prints `0.10000000149011612` for a `real`
+        // holding 0.1, digits the column never held.
+        Value::Float32(f) if f.is_finite() => Some(f.to_string()),
+        Value::Float64(f) if f.is_finite() => Some(f.to_string()),
+        Value::Float32(f) => Some(non_finite_text(f.is_nan(), f.is_sign_negative())),
+        Value::Float64(f) => Some(non_finite_text(f.is_nan(), f.is_sign_negative())),
         // Full scale: trimming a trailing zero loses the precision
         // the column declared.
         Value::Decimal(d) => Some(d.to_string()),
@@ -127,7 +140,7 @@ pub fn value_to_text(v: &Value) -> Option<String> {
         }),
         Value::Interval(i) => Some(i.to_string()),
         Value::Bits(b) => Some(b.to_string()),
-        Value::Array(values) => Some(array_text(values)),
+        Value::Array(values) => Some(array_text(values, None)),
         Value::Other(other) => Some(other.text.clone()),
         // The driver could not read it, so there is no text to write.
         // The caller reports the cell rather than inventing one.
@@ -135,14 +148,13 @@ pub fn value_to_text(v: &Value) -> Option<String> {
     }
 }
 
-fn float_text(value: f64, is_nan: bool, is_infinite: bool, is_negative: bool) -> String {
-    if is_nan {
-        return "NaN".to_owned();
+fn non_finite_text(is_nan: bool, is_negative: bool) -> String {
+    match (is_nan, is_negative) {
+        (true, _) => "NaN",
+        (false, true) => "-Infinity",
+        (false, false) => "Infinity",
     }
-    if is_infinite {
-        return if is_negative { "-Infinity" } else { "Infinity" }.to_owned();
-    }
-    value.to_string()
+    .to_owned()
 }
 
 /// An infinite date or timestamp has a keyword rather than a number.
@@ -162,13 +174,18 @@ fn offset_text(offset: chrono::FixedOffset) -> String {
 }
 
 /// An array as JSON array text, which is the one spelling every engine
-/// reads back.
-fn array_text(values: &[Value]) -> String {
+/// reads back. Each item is written at the precision its element kind
+/// declares, when there is one, and an inner dimension stays an array
+/// rather than becoming the string of one.
+fn array_text(values: &[Value], element: Option<&ColumnKind>) -> String {
     let parts: Vec<String> = values
         .iter()
-        .map(|value| match value_to_text(value) {
-            Some(text) => serde_json::Value::String(text).to_string(),
-            None => "null".to_owned(),
+        .map(|value| match value {
+            Value::Array(inner) => array_text(inner, element.map(element_kind)),
+            other => match element.map_or_else(|| value_to_text(other), |kind| kind_text(other, kind)) {
+                Some(text) => serde_json::Value::String(text).to_string(),
+                None => "null".to_owned(),
+            },
         })
         .collect();
     format!("[{}]", parts.join(","))
@@ -314,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn a_timestamp_keeps_the_microseconds_its_column_declares() {
+    fn value_text_timestamp_keeps_declared_microseconds() {
         let column = typed("timestamp(6)", stamp(Some(6), TemporalZone::Naive));
         let stamp = Value::Timestamp(Temporal::Finite(
             NaiveDate::from_ymd_opt(2024, 6, 15)
@@ -330,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn a_time_takes_its_precision_from_its_column() {
+    fn value_text_time_precision_from_kind() {
         let value = Value::Time(SqlTime::new(false, 12, 0, 0, 123_456_000).expect("a time"));
 
         assert_eq!(
@@ -349,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn a_timestamp_with_a_zone_keeps_its_offset() {
+    fn value_text_timestamptz_keeps_offset() {
         let column = typed("timestamptz(3)", stamp(Some(3), TemporalZone::Offset));
         let stamp = chrono::DateTime::parse_from_rfc3339("2024-06-15T12:00:00.5+05:30").expect("a timestamp");
         let value = Value::TimestampTz(Temporal::Finite(crate::value::OffsetTimestamp::from_datetime(stamp)));
@@ -361,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn a_decimal_fills_out_the_scale_its_column_declares() {
+    fn value_text_numeric_38_10_full_scale() {
         let column = typed("numeric(38,10)", decimal(38, 10));
 
         assert_eq!(
@@ -383,6 +400,69 @@ mod tests {
             value_text(&value, &column).as_deref(),
             Some("1.23456"),
             "the server's own digits were rounded away"
+        );
+    }
+
+    #[test]
+    fn a_real_prints_its_own_shortest_digits() {
+        for real in [0.1_f32, 1.1, -3.3, 16_777_216.0] {
+            let text = value_to_text(&Value::Float32(real)).expect("a real has text");
+
+            assert_eq!(text, real.to_string(), "{real} was widened before printing");
+            assert_eq!(text.parse::<f32>().ok(), Some(real), "{text} does not read back");
+        }
+        assert_eq!(
+            value_to_text(&Value::Float32(f32::NEG_INFINITY)).as_deref(),
+            Some("-Infinity")
+        );
+    }
+
+    #[test]
+    fn array_items_take_the_precision_of_their_element() {
+        let column = typed(
+            "timestamp(6)[]",
+            ColumnKind::Array {
+                element: Box::new(stamp(Some(6), TemporalZone::Naive)),
+            },
+        );
+        let value = Value::Array(vec![
+            Value::Timestamp(Temporal::Finite(
+                NaiveDate::from_ymd_opt(2024, 6, 15)
+                    .expect("a date")
+                    .and_hms_nano_opt(12, 0, 0, 100_000_000)
+                    .expect("a time"),
+            )),
+            Value::Null,
+        ]);
+
+        assert_eq!(
+            value_text(&value, &column).as_deref(),
+            Some(r#"["2024-06-15 12:00:00.100000",null]"#)
+        );
+    }
+
+    #[test]
+    fn an_inner_dimension_stays_an_array() {
+        let column = typed(
+            "numeric(5,2)[]",
+            ColumnKind::Array {
+                element: Box::new(decimal(5, 2)),
+            },
+        );
+        let value = Value::Array(vec![
+            Value::Array(vec![Value::Decimal("1".parse().expect("a decimal"))]),
+            Value::Array(vec![Value::Decimal("2.5".parse().expect("a decimal"))]),
+        ]);
+
+        assert_eq!(
+            value_text(&value, &column).as_deref(),
+            Some(r#"[["1.00"],["2.50"]]"#),
+            "a row of a two-dimensional array was written as a string"
+        );
+        assert_eq!(
+            value_to_text(&value).as_deref(),
+            Some(r#"[["1"],["2.5"]]"#),
+            "without a column, a row of the array was written as a string"
         );
     }
 }
