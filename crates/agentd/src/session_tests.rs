@@ -248,3 +248,46 @@ async fn session_preserves_controlled_constraint_metadata() {
         assert!(!controlled.load(Ordering::SeqCst));
     }
 }
+
+#[tokio::test]
+async fn session_forwards_checked_writes_and_result_sets_to_the_driver() {
+    use tablepro_core::{ConnectOptions, DatabaseDriver};
+
+    let inner: Arc<dyn Connection> = Arc::from(
+        drivers_sqlite::SqliteDriver
+            .connect(ConnectOptions {
+                database: ":memory:".into(),
+                ..Default::default()
+            })
+            .await
+            .unwrap(),
+    );
+    inner
+        .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+        .await
+        .unwrap();
+    inner.execute("INSERT INTO t VALUES (1, 'a')").await.unwrap();
+    let session = SessionConnection { inner, _tunnel: None };
+    let control = OperationControl::with_timeout(Duration::from_secs(5));
+    let update = |id: i64| vec![("UPDATE t SET v = 'b' WHERE id = ?".to_string(), vec![Value::Int(id)])];
+
+    assert_eq!(
+        session.execute_in_transaction_checked(&update(1), &[0]).await.unwrap(),
+        vec![1]
+    );
+    assert!(matches!(
+        session.execute_in_transaction_checked(&update(9), &[0]).await,
+        Err(DriverError::Transaction { statement_index: 0, .. })
+    ));
+    assert!(matches!(
+        session
+            .execute_in_transaction_checked_controlled(&update(9), &[0], &control)
+            .await,
+        Err(DriverError::Transaction { statement_index: 0, .. })
+    ));
+    let sets = session
+        .query_result_sets_controlled("SELECT v FROM t", &[], &control)
+        .await
+        .unwrap();
+    assert_eq!(sets.result_sets[0].rows, vec![vec![Value::Text("b".into())]]);
+}

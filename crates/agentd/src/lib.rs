@@ -213,6 +213,42 @@ impl Connection for SessionConnection {
         self.inner.fetch_foreign_keys_controlled(schema, table, control).await
     }
 
+    async fn list_databases(&self) -> Result<Vec<String>, DriverError> {
+        self.inner.list_databases().await
+    }
+
+    async fn open_session(&self) -> Result<Box<dyn tablepro_core::Session>, DriverError> {
+        self.inner.open_session().await
+    }
+
+    async fn query_result_sets_controlled(
+        &self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<tablepro_core::QueryResultBatch, DriverError> {
+        self.inner.query_result_sets_controlled(sql, params, control).await
+    }
+
+    async fn execute_in_transaction_checked(
+        &self,
+        statements: &[(String, Vec<Value>)],
+        expect_one: &[usize],
+    ) -> Result<Vec<u64>, DriverError> {
+        self.inner.execute_in_transaction_checked(statements, expect_one).await
+    }
+
+    async fn execute_in_transaction_checked_controlled(
+        &self,
+        statements: &[(String, Vec<Value>)],
+        expect_one: &[usize],
+        control: &OperationControl,
+    ) -> Result<Vec<u64>, DriverError> {
+        self.inner
+            .execute_in_transaction_checked_controlled(statements, expect_one, control)
+            .await
+    }
+
     async fn begin(&self) -> Result<Box<dyn Transaction>, DriverError> {
         self.inner.begin().await
     }
