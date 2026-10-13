@@ -33,6 +33,9 @@ mod schema_introspection;
 #[path = "shared/mysql_atomic.rs"]
 mod mysql_atomic;
 
+#[path = "shared/mysql_temp_table_rollback.rs"]
+mod mysql_temp_table_rollback;
+
 #[path = "shared/mysql_user_variable.rs"]
 mod mysql_user_variable;
 
