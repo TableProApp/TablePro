@@ -27,6 +27,9 @@ mod read_only_session;
 #[path = "support/result_charset.rs"]
 mod result_charset;
 
+#[path = "support/schema_introspection.rs"]
+mod schema_introspection;
+
 #[path = "shared/mysql_atomic.rs"]
 mod mysql_atomic;
 
