@@ -6,7 +6,7 @@ use tablepro_core::{
 };
 use tokio_postgres::CancelToken;
 
-use crate::errors::sqlstate;
+use crate::errors::{QUERY_CANCELED, sqlstate};
 use crate::physical::PgEndpoint;
 
 /// How far a call's cancel request got.
@@ -98,7 +98,7 @@ impl EngineStop for PgStop {
 /// Whether the server answered a statement with 57014, which is how it
 /// reports a cancel request or a statement timeout taking effect.
 pub(crate) fn acknowledges_stop(error: &DriverError) -> bool {
-    sqlstate(error) == Some("57014")
+    sqlstate(error) == Some(QUERY_CANCELED)
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

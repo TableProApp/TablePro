@@ -7,13 +7,14 @@ use tablepro_core::{
     CommitToken, DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WorkspaceSettings, WriteBatch, WriteKind,
     WriteLedger, WriteReport,
 };
+use tokio::time::Instant;
 use tokio_postgres::Client;
 
 use crate::cancel::{PgStop, acknowledges_stop};
 use crate::codec::{RawCell, typed};
 use crate::errors::map_error;
 use crate::pg_call::PgCall;
-use crate::workspace_call::{Access, preamble};
+use crate::workspace_call::{Access, Preamble};
 
 /// Refuse a batch before anything is sent: a read-only connection never
 /// writes, and PostgreSQL has no way to suspend foreign keys.
@@ -49,8 +50,9 @@ pub(crate) async fn perform(
         WriteKind::RowChanges => Some(plan.settings.statement_timeout),
         WriteKind::SchemaChanges => None,
     };
-    let begin = preamble(Access::ReadWrite, statement_timeout, plan.settings.lock_timeout);
-    if let Err(error) = client.batch_execute(&begin).await {
+    let begin = Preamble::new(Access::ReadWrite, statement_timeout, plan.settings.lock_timeout);
+    let started = Instant::now();
+    if let Err(error) = client.batch_execute(begin.sql()).await {
         let error = map_error(&error);
         let fate = rollback(call, client).await;
         return Err(ledger.failed(0, error, fate));
@@ -68,7 +70,10 @@ pub(crate) async fn perform(
                     let fate = rollback(call, client).await;
                     return Err(ledger.guard_failed(index, expected, actual, fate));
                 }
-                Err(error) => return Err(step_failed(call, client, plan, index, error, request, stop).await),
+                Err(error) => {
+                    let error = begin.explain(error, started);
+                    return Err(step_failed(call, client, plan, index, error, request, stop).await);
+                }
             }
         }
         ledger.statement_sending(index);
@@ -80,7 +85,7 @@ pub(crate) async fn perform(
         let affected = match client.execute_typed(step.statement.sql(), &borrowed).await {
             Ok(affected) => affected,
             Err(error) => {
-                let error = map_error(&error);
+                let error = begin.explain(map_error(&error), started);
                 return Err(step_failed(call, client, plan, index, error, request, stop).await);
             }
         };
@@ -107,7 +112,7 @@ pub(crate) async fn perform(
         // constraint or a serialization failure rolled it all back.
         Err(error) if error.as_db_error().is_some() => Err(DriverError::RolledBack {
             statement_index: plan.batch.steps.len(),
-            source: Box::new(map_error(&error)),
+            source: Box::new(begin.explain(map_error(&error), started)),
         }),
         Err(error) => {
             call.taint();

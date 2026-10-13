@@ -29,7 +29,7 @@ use crate::physical::PgEndpoint;
 use crate::pool::{probe_timeouts, workspace_timeouts};
 use crate::standalone::Standalone;
 use crate::stream_read::stream;
-use crate::workspace_call::{Access, ReadOp, count_op, flight, preamble, query_bound_op, read_op, statement_bound};
+use crate::workspace_call::{Access, Preamble, ReadOp, count_op, flight, query_bound_op, read_op, statement_bound};
 use crate::write_batch::{WritePlan, perform, precheck};
 
 /// A workspace's link to one PostgreSQL server: a pool of four
@@ -114,8 +114,8 @@ impl PgConnection {
         self.settle(outcome, &stop).await
     }
 
-    fn read_preamble(&self, options: &CallOptions) -> String {
-        preamble(
+    fn read_preamble(&self, options: &CallOptions) -> Preamble {
+        Preamble::new(
             Access::ReadOnly,
             Some(statement_bound(&self.settings, options.deadline())),
             self.settings.lock_timeout,
