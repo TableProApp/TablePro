@@ -23,7 +23,6 @@ use tablepro_core::{ForeignKeyMode, WriteBatch, WriteKind, WriteReport};
 use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
 
-use crate::services::structure_tracker;
 use crate::ui::app::{App, AppMsg, WorkspaceTab};
 use crate::ui::error_text;
 use crate::ui::structure_tab::{StructureMode, StructureTabInput};
@@ -180,24 +179,20 @@ impl App {
             ));
             return;
         };
-        let driver_id = self.driver_id().to_string();
-        let result = structure_tracker::with_tab_ref(tab_id, |t| t.materialize(&driver_id, &*dialect));
-        match result {
-            Some(Ok(statements)) if !statements.is_empty() => {
+        let Some(tracker) = self.structure_trackers.get(tab_id) else {
+            return;
+        };
+        match materialize_ops(&tracker.ops(), self.driver_id(), &*dialect) {
+            Ok(statements) if !statements.is_empty() => {
                 self.on_execute_structure_transaction(tab_id, statements, sender);
             }
-            Some(Ok(_)) => {
-                // Nothing to save — short-circuit so close-after-save
-                // can proceed.
-                sender.input(AppMsg::StructureSaveCompleted {
-                    tab_id,
-                    new_table_name: None,
-                });
-            }
-            Some(Err(e)) => {
-                sender.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}")));
-            }
-            None => {}
+            // Nothing to save, so a close waiting on this save can go
+            // ahead.
+            Ok(_) => sender.input(AppMsg::StructureSaveCompleted {
+                tab_id,
+                new_table_name: None,
+            }),
+            Err(e) => sender.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}"))),
         }
     }
 
@@ -276,7 +271,11 @@ impl App {
                 }
             }
         };
-        let ops = structure_tracker::with_tab_ref(tab_id, |t| t.ops().to_vec()).unwrap_or_default();
+        let ops = self
+            .structure_trackers
+            .get(tab_id)
+            .map(|tracker| tracker.ops())
+            .unwrap_or_default();
         let new_table_name = saved_table_name(mode, &ops);
         // The batch names the table as it is before the write: a new
         // table by the name it is being created under.
@@ -604,7 +603,10 @@ impl App {
                 // Combine with the data-side dirty state — either
                 // mode contributing pending changes prefixes the tab
                 // with the "•" GNOME convention.
-                let data = crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
+                let data = self
+                    .change_trackers
+                    .get(s.id)
+                    .is_some_and(|tracker| tracker.pending_count() > 0);
                 (&s.page, s.schema.as_deref(), s.table.clone(), dirty || data)
             }
             _ => return,

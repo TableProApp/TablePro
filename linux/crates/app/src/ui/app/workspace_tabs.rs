@@ -340,7 +340,7 @@ impl App {
         let tab_id = Uuid::new_v4();
         let driver_id = self.driver_id().to_string();
         let init = crate::ui::structure_tab::StructureTabInit {
-            tab_id,
+            tracker: self.structure_trackers.register(tab_id),
             schema: schema.clone(),
             table: String::new(),
             mode: crate::ui::structure_tab::StructureMode::New,
@@ -418,7 +418,7 @@ impl App {
         let read_only = self.read_only;
 
         let browse_init = BrowseTabInit {
-            tab_id,
+            tracker: self.change_trackers.register(tab_id),
             schema: schema.clone(),
             table: table.clone(),
             connection_id,
@@ -500,7 +500,7 @@ impl App {
         let driver_id = self.driver_id().to_string();
         let mode = crate::ui::structure_tab::StructureMode::Edit;
         let init = crate::ui::structure_tab::StructureTabInit {
-            tab_id,
+            tracker: self.structure_trackers.register(tab_id),
             schema: schema.clone(),
             table: table.clone(),
             mode,
@@ -621,28 +621,7 @@ impl App {
             return;
         };
 
-        // If this is a Browse tab with pending changeset, intercept the
-        // close with an AdwAlertDialog (Discard / Cancel). The user can
-        // also cancel close, save manually, then close — no Save-and-
-        // close branch keeps the async commit logic out of this path.
-        let pending = self
-            .workspace_tabs
-            .borrow()
-            .get(&id)
-            .and_then(|t| match t {
-                WorkspaceTab::Structure(s) => {
-                    crate::services::structure_tracker::with_tab_ref(s.id, |tr| tr.has_pending())
-                }
-                WorkspaceTab::Table(s) => {
-                    let data_dirty =
-                        crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
-                    let struct_dirty =
-                        crate::services::structure_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
-                    Some(data_dirty || struct_dirty)
-                }
-                _ => None,
-            })
-            .unwrap_or(false);
+        let pending = self.dirty_tabs().contains(&id);
         let open_transaction = matches!(
             self.workspace_tabs.borrow().get(&id),
             Some(WorkspaceTab::Editor(slot)) if slot.editor.has_open_transaction()
@@ -692,18 +671,23 @@ impl App {
             // branches so a Table tab whose only dirt is on the
             // Structure side doesn't try to save through the Browse
             // path (and vice versa).
-            let data_dirty = crate::services::change_tracker::with_tab_ref(id, |tr| tr.has_pending()).unwrap_or(false);
-            let struct_dirty =
-                crate::services::structure_tracker::with_tab_ref(id, |tr| tr.has_pending()).unwrap_or(false);
+            let data_tracker = self
+                .change_trackers
+                .get(id)
+                .filter(|tracker| tracker.pending_count() > 0);
+            let structure_tracker = self.structure_trackers.get(id).filter(|tracker| tracker.has_pending());
+            let (data_dirty, struct_dirty) = (data_tracker.is_some(), structure_tracker.is_some());
             dialog.connect_response(None, move |dlg, response| {
                 dlg.close();
                 match response {
                     "discard" => {
-                        if data_dirty {
-                            crate::services::change_tracker::with_tab(id, |t| t.clear());
+                        // The tab closes next, so no grid is left to
+                        // show the discarded rows.
+                        if let Some(tracker) = &data_tracker {
+                            let _ = tracker.discard();
                         }
-                        if struct_dirty {
-                            crate::services::structure_tracker::with_tab(id, |t| t.clear());
+                        if let Some(tracker) = &structure_tracker {
+                            tracker.clear();
                         }
                         sender_for_resp.input(AppMsg::WorkspaceTabClosed(id));
                     }
@@ -810,18 +794,11 @@ impl App {
                     .discard(&tablepro_storage::DraftScope::default(), slot.draft);
             }
             WorkspaceTab::Structure(slot) => {
-                crate::services::structure_tracker::close_tab(slot.id);
+                self.structure_trackers.unregister(slot.id);
                 self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
             WorkspaceTab::Table(slot) => {
-                // A Table tab owns BOTH a Browse-side row tracker and a
-                // Structure-side DDL tracker against the same uuid; close
-                // both registries. Also drop the in-flight-save guard
-                // entry so a re-opened tab with the same uuid (or a
-                // dropped async future from `drop_on_shutdown`) doesn't
-                // leave the save path permanently locked.
-                crate::services::change_tracker::close_tab(slot.id);
-                crate::services::structure_tracker::close_tab(slot.id);
+                self.change_trackers.unregister(slot.id);
                 self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
         }
@@ -1177,9 +1154,7 @@ impl App {
             return;
         };
         let (page, schema, table) = (&s.page, s.schema.as_deref(), s.table.as_str());
-        let data = crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
-        let structure = crate::services::structure_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
-        let combined_dirty = data || structure || dirty;
+        let combined_dirty = dirty || self.dirty_tabs().contains(&s.id);
         let base = qualified_browse_tab_label(schemas_count, schema, table);
         let title = if combined_dirty { format!("• {base}") } else { base };
         page.set_title(&title);
@@ -1198,16 +1173,12 @@ impl App {
         // teardown drops state before the 500ms timer would fire.
         self.do_persist_workspace_state_now();
         self.cancel_all_editor_runs();
-        // Drop per-tab pending-change trackers — disconnecting wipes
-        // the connection and its row identities, so any pending edits
-        // would no longer be commitable.
+        // The pending edits name rows of the connection going away, so
+        // they cannot be saved after it.
         for tab in self.workspace_tabs.borrow().values() {
             match tab {
-                WorkspaceTab::Structure(slot) => crate::services::structure_tracker::close_tab(slot.id),
-                WorkspaceTab::Table(slot) => {
-                    crate::services::change_tracker::close_tab(slot.id);
-                    crate::services::structure_tracker::close_tab(slot.id);
-                }
+                WorkspaceTab::Structure(slot) => self.structure_trackers.unregister(slot.id),
+                WorkspaceTab::Table(slot) => self.change_trackers.unregister(slot.id),
                 WorkspaceTab::Editor(_) => {}
             }
         }

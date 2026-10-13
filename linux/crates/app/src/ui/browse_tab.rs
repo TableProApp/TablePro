@@ -10,6 +10,10 @@ use tablepro_core::edit::{CellInput, EditContext, EditParseError};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
 use super::grid::{CellPreset, GridMsg, TabGridContext, build_column_view};
+use crate::services::change_tracker::{RowKey, StatementSource, TrackedChanges};
+use crate::services::tab_tracker_handle::TabTrackerHandle;
+use crate::services::tracker_delta::{TrackerDelta, VisualChange};
+use crate::services::tracker_edit::TrackerEdit;
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
@@ -22,7 +26,7 @@ const DEFAULT_PAGE_SIZE: u64 = 1_000;
 const BULK_DELETE_CONFIRM_THRESHOLD: usize = 10;
 
 pub struct BrowseTabInit {
-    pub tab_id: Uuid,
+    pub tracker: TabTrackerHandle,
     pub schema: Option<String>,
     pub table: String,
     pub connection_id: Option<Uuid>,
@@ -35,7 +39,7 @@ pub struct BrowseTabInit {
 }
 
 pub struct BrowseTab {
-    tab_id: Uuid,
+    tracker: TabTrackerHandle,
     schema: Option<String>,
     table: String,
     connection_id: Option<Uuid>,
@@ -86,7 +90,7 @@ pub struct BrowseTab {
     /// once the new page lands. Persisted rows match by PK; drafts
     /// match by draft_id (for the rare case where a draft is focused
     /// when a sort happens). Cleared by `restore_focused_row`.
-    pending_focus_restore: std::cell::RefCell<Option<crate::services::change_tracker::RowKey>>,
+    pending_focus_restore: std::cell::RefCell<Option<RowKey>>,
     paginator_label: gtk::Label,
     /// Live count of selected rows. Hidden when 0 or 1 rows are
     /// selected; shows "{n} selected" once the user shift-clicks
@@ -224,17 +228,9 @@ pub enum BrowseTabInput {
         row_position: u32,
     },
     GridCopyToClipboard(String),
-    /// Ctrl+Z on this tab. Pops one entry off the change tracker's
-    /// undo stack AND mirrors the visual revert in the grid:
-    /// CellEdit → reset the RowObject's cell + items_changed;
-    /// Insert → remove the draft RowObject from the ListStore;
-    /// Delete → re-bind the row so the strikethrough overlay drops.
-    /// Without the mirror the chrome (counter, .tp-cell-modified
-    /// class) updated correctly while the cell text stayed at the
-    /// post-edit value.
+    /// Ctrl+Z on this tab.
     Undo,
-    /// Ctrl+Shift+Z. Symmetric to Undo: re-applies the popped op
-    /// and mirrors the visual change forward.
+    /// Ctrl+Shift+Z.
     Redo,
     /// User clicked Save: hand the tracker's changes to the App as one
     /// `BrowseTabOutput::ExecuteTransaction`, which saves them as one
@@ -243,14 +239,14 @@ pub enum BrowseTabInput {
     /// User clicked Discard — clear all pending edits and refetch
     /// the page so the grid shows committed values again.
     DiscardAll,
-    /// Pending count changed (from tracker subscription) — refresh
-    /// the Save / Discard / counter visibility.
-    PendingCountChanged(usize),
-    /// Specific rows mutated in the tracker (cell edit, set NULL,
-    /// insert, delete, undo, redo). Triggers a targeted re-bind of
-    /// just those rows so pending-state CSS classes update without
-    /// re-binding the entire visible viewport.
-    ChangedRows(Vec<crate::services::change_tracker::RowKey>),
+    /// Drop every pending edit, then reload the page and count.
+    DiscardAndRefresh,
+    /// Mark persisted rows for deletion and drop drafts, once a bulk
+    /// delete is confirmed.
+    MarkRowsDeleted {
+        rows: Vec<(RowKey, Vec<Value>)>,
+        drafts: Vec<u64>,
+    },
     /// Save command resolved successfully — clear tracker, refetch.
     SaveCompleted,
     /// Save command failed — surface error to the user; keep the
@@ -262,7 +258,7 @@ pub enum BrowseTabInput {
     /// and deletes) and scroll-and-select it. Best-effort: if the row
     /// isn't on the current page (paginated past it, sorted away),
     /// the alert dialog still tells the user which statement failed.
-    FlashErrorRow(crate::services::change_tracker::StatementSource),
+    FlashErrorRow(StatementSource),
     /// Ctrl+C with row(s) selected: serialize each selected row as
     /// tab-separated cells and push to the system clipboard. Falls
     /// through to GTK's default Ctrl+C if no rows are selected so
@@ -322,7 +318,7 @@ pub enum BrowseTabOutput {
     ExecuteTransaction {
         table: tablepro_core::meta::TableRef,
         columns: Vec<ColumnInfo>,
-        changes: crate::services::change_tracker::TrackedChanges,
+        changes: TrackedChanges,
     },
 }
 
@@ -351,7 +347,7 @@ impl BrowseTab {
     /// is looking at, pending edits included.
     fn grid_context(&self) -> TabGridContext {
         TabGridContext {
-            tab_id: Some(self.tab_id),
+            tracker: Some(self.tracker.clone()),
             column_widths: self
                 .connection_id
                 .map(|connection_id| crate::ui::grid::ColumnWidthBinding {
@@ -699,6 +695,71 @@ impl BrowseTab {
         self.refresh_banner_visibility();
     }
 
+    /// Apply what a tracker call changed: the draft rows the store gains
+    /// or loses, then a rebind of each touched row, then the footer.
+    fn apply_tracker_delta(&self, delta: TrackerDelta, sender: &ComponentSender<Self>) {
+        if let Some(store) = self.list_store() {
+            for change in &delta.visual {
+                apply_visual_change(&store, change);
+            }
+        }
+        for key in &delta.rows {
+            if let Some(position) = self.find_row_position_by_key(key) {
+                self.refresh_row_at(position);
+            }
+        }
+        self.sync_pending_chrome(delta.pending_count, sender);
+    }
+
+    /// The footer and the tab's dirty flag, which App turns into the
+    /// title bullet. App hears only real transitions.
+    fn sync_pending_chrome(&self, count: usize, sender: &ComponentSender<Self>) {
+        self.refresh_pending_bar(count);
+        let dirty = count > 0;
+        if dirty != self.was_dirty.replace(dirty) {
+            let _ = sender.output(BrowseTabOutput::DirtyChanged(dirty));
+        }
+    }
+
+    fn apply_edit(&self, edit: TrackerEdit, sender: &ComponentSender<Self>) {
+        let delta = self.tracker.apply(edit);
+        self.apply_tracker_delta(delta, sender);
+    }
+
+    /// A typed or preset value for one cell. A draft keeps the value on
+    /// its own row; a persisted row keeps it in the tracker.
+    fn edit_cell(&self, row_position: u32, col: usize, value: Value, sender: &ComponentSender<Self>) {
+        if let Some(draft_id) = self.row_object_at(row_position).and_then(|row| row.draft_id()) {
+            self.apply_edit(TrackerEdit::DraftCell { draft_id, col, value }, sender);
+            return;
+        }
+        let Some((row_key, row)) = self.row_key_at(row_position) else {
+            return;
+        };
+        let Some(original) = row.get(col).cloned() else {
+            return;
+        };
+        self.apply_edit(
+            TrackerEdit::Cell {
+                row_key,
+                col,
+                original,
+                value,
+            },
+            sender,
+        );
+    }
+
+    fn reload(&self, sender: &ComponentSender<Self>) {
+        self.capture_focus_for_restore();
+        self.show_loading_inner(
+            &crate::i18n::gettext("Loading…"),
+            &crate::i18n::gettext_f("Fetching rows from {table}", &[("table", &self.table_label())]),
+        );
+        let _ = sender.output(BrowseTabOutput::FetchPage);
+        let _ = sender.output(BrowseTabOutput::FetchRowCount);
+    }
+
     /// Reveal at most ONE banner at a time. Read-only takes priority
     /// over no-PK because read-only blocks every kind of edit.
     fn refresh_banner_visibility(&self) {
@@ -775,8 +836,8 @@ impl BrowseTab {
     /// recomputing the row's PK key-tuple from cell values and
     /// comparing. Returns the position in the (filtered) selection
     /// model, or `None` if the row isn't on the current page.
-    fn find_row_position_by_key(&self, key: &crate::services::change_tracker::RowKey) -> Option<u32> {
-        use crate::services::change_tracker::{KeyValue, RowKey};
+    fn find_row_position_by_key(&self, key: &RowKey) -> Option<u32> {
+        use crate::services::change_tracker::KeyValue;
         let selection = self.current_selection.as_ref()?;
         let model = selection.model()?;
         let pk_indices: Vec<usize> = self
@@ -813,16 +874,10 @@ impl BrowseTab {
         None
     }
 
-    /// Locate the row that produced a failing statement and scroll-and-
-    /// select it, plus apply a one-shot red flash animation. The flash
-    /// state lives on `TabChangeTracker.error_row` so the grid bind
-    /// callback picks it up via the existing tracker query path; a
-    /// 1.8s timeout clears the state afterwards (matches the CSS
-    /// animation duration). Best-effort lookup: a row that's been
-    /// paginated past, sorted away, or filtered out won't be found,
-    /// and we silently fall through to just the alert dialog.
-    fn flash_error_row(&self, source: &crate::services::change_tracker::StatementSource) {
-        use crate::services::change_tracker::{RowKey, StatementSource};
+    /// Scroll to the row behind a failed statement and flash it. A row
+    /// paged, sorted or filtered away is not found, and the alert alone
+    /// tells the user which statement failed.
+    fn flash_error_row(&self, source: &StatementSource) {
         let key = match source {
             StatementSource::Insert { draft_id } => RowKey::Draft(*draft_id),
             StatementSource::Update { row_key } | StatementSource::Delete { row_key } => row_key.clone(),
@@ -841,31 +896,15 @@ impl BrowseTab {
                 None,
             );
         }
-        // Mark the row as the error row and trigger a re-bind so the
-        // bind callback applies tp-row-leftmost-error-flash. Schedule
-        // a timeout to clear the state once the animation has played.
-        // The generation counter protects against a second flash that
-        // starts inside the 1.8s window: the older timer's clear runs
-        // but no-ops because gen no longer matches.
-        let tab_id = self.tab_id;
-        let generation =
-            crate::services::change_tracker::with_tab(tab_id, |t| t.set_error_row(key.clone())).unwrap_or(0);
+        let generation = self.tracker.flash_error_row(key);
         self.refresh_row_at(position);
+        let tracker = self.tracker.clone();
         let selection_for_clear = self.current_selection.clone();
+        // Matches the length of the flash animation in the stylesheet.
         glib::timeout_add_local_once(std::time::Duration::from_millis(1800), move || {
-            let cleared = crate::services::change_tracker::with_tab(tab_id, |t| {
-                let was_match = t.is_error_row_gen(generation);
-                t.clear_error_row_if_gen(generation);
-                was_match
-            })
-            .unwrap_or(false);
-            if !cleared {
-                // A newer flash superseded ours; don't disturb its bind.
+            if !tracker.clear_error_row_if(generation) {
                 return;
             }
-            // Inline the underlying-store hop because `self` is gone
-            // from the closure scope (it's a 1.8s deferred timer);
-            // the chain walk is the same as `refresh_row_at`.
             if let Some(selection) = selection_for_clear
                 && let Some(model) = selection.model()
                 && let Some(row_obj) = model
@@ -884,7 +923,6 @@ impl BrowseTab {
     /// (sort flip, save, F5 refresh) so we can re-anchor the user's
     /// view to the same row after the new page renders.
     fn capture_focus_for_restore(&self) {
-        use crate::services::change_tracker::RowKey;
         // If a previous capture is still pending (sort+save fire in
         // quick succession before the first reload's restore runs), keep
         // the original capture. The first user-visible focus should
@@ -1153,16 +1191,11 @@ impl BrowseTab {
         let Some(store) = self.list_store() else {
             return;
         };
-        let drafts = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| {
-            t.drafts()
-                .iter()
-                .map(|d| (d.draft_id, d.values.clone()))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-        for (draft_id, values) in drafts {
-            let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
-            store.insert(0, &draft_row);
+        for draft in self.tracker.drafts() {
+            store.insert(
+                0,
+                &super::row_object::RowObject::new_draft(draft.draft_id, draft.values),
+            );
         }
     }
 
@@ -1188,7 +1221,7 @@ impl BrowseTab {
     /// Returns None for drafts (caller is expected to handle the
     /// draft path before reaching here), for tables with no PK, or
     /// when the position is out of range.
-    fn row_key_at(&self, row_position: u32) -> Option<(crate::services::change_tracker::RowKey, Vec<Value>)> {
+    fn row_key_at(&self, row_position: u32) -> Option<(RowKey, Vec<Value>)> {
         let row_obj = self.row_object_at(row_position)?;
         if row_obj.draft_id().is_some() {
             return None;
@@ -1357,11 +1390,6 @@ impl SimpleComponent for BrowseTab {
     }
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        // Open this tab's pending-changeset tracker. Closed in
-        // workspace_tabs::close_workspace_tab_by_id when the tab is
-        // removed. Idempotent — calling twice is a no-op.
-        crate::services::change_tracker::open_tab(init.tab_id);
-
         // Restore the saved filter for this (connection, schema,
         // table) up front so both the model field and the inline
         // strip start with the same FilterSet.
@@ -1717,7 +1745,7 @@ impl SimpleComponent for BrowseTab {
         }));
 
         let model = BrowseTab {
-            tab_id: init.tab_id,
+            tracker: init.tracker,
             schema: init.schema,
             table: init.table,
             connection_id: init.connection_id,
@@ -1765,25 +1793,6 @@ impl SimpleComponent for BrowseTab {
         // the moment the tab opens.
         model.refresh_filter_chrome();
 
-        // Subscribe to the tracker so we can refresh the pending UI
-        // any time the user adds / undoes / commits a change. The
-        // channel is leaked into the GTK main loop via spawn_future_local,
-        // matching how the per-tab GridMsg channel above is wired.
-        let (tracker_sender, tracker_receiver) = relm4::channel::<crate::services::change_tracker::TrackerEvent>();
-        crate::services::change_tracker::with_tab(init.tab_id, |t| t.subscribe(tracker_sender));
-        let input_for_tracker = sender.input_sender().clone();
-        glib::spawn_future_local(tracker_receiver.forward(input_for_tracker, move |event| match event {
-            crate::services::change_tracker::TrackerEvent::PendingCountChanged(n) => {
-                BrowseTabInput::PendingCountChanged(n)
-            }
-            crate::services::change_tracker::TrackerEvent::Cleared => BrowseTabInput::PendingCountChanged(0),
-            // ChangedRows drives targeted items_changed so only the
-            // affected rows re-bind, not the whole visible viewport.
-            // PendingCountChanged is emitted alongside by the tracker
-            // (see emit_changed) so banner / dirty-flag updates still
-            // run for the same mutation.
-            crate::services::change_tracker::TrackerEvent::ChangedRows(keys) => BrowseTabInput::ChangedRows(keys),
-        }));
         // Trigger the initial fetches the moment the parent attaches us.
         // The parent's forward closure wraps these in AppMsg::… with tab_id.
         let _ = sender.output(BrowseTabOutput::FetchColumns);
@@ -1875,14 +1884,11 @@ impl SimpleComponent for BrowseTab {
                 self.show_error_inner(&message);
                 self.inner_stack.set_visible_child_name("error");
             }
-            BrowseTabInput::Refresh => {
-                self.capture_focus_for_restore();
-                self.show_loading_inner(
-                    &crate::i18n::gettext("Loading…"),
-                    &crate::i18n::gettext_f("Fetching rows from {table}", &[("table", &self.table_label())]),
-                );
-                let _ = sender.output(BrowseTabOutput::FetchPage);
-                let _ = sender.output(BrowseTabOutput::FetchRowCount);
+            BrowseTabInput::Refresh => self.reload(&sender),
+            BrowseTabInput::DiscardAndRefresh => {
+                let delta = self.tracker.discard();
+                self.apply_tracker_delta(delta, &sender);
+                self.reload(&sender);
             }
             BrowseTabInput::ClearSelection => {
                 let Some(sel) = self.current_selection.as_ref() else {
@@ -2020,18 +2026,7 @@ impl SimpleComponent for BrowseTab {
                         }
                     })
                     .collect();
-                let key_opt =
-                    crate::services::change_tracker::with_tab(self.tab_id, |t| t.track_insert(values.clone()));
-                let Some(key) = key_opt else {
-                    return;
-                };
-                let crate::services::change_tracker::RowKey::Draft(draft_id) = key else {
-                    return;
-                };
-                if let Some(store) = self.list_store() {
-                    let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
-                    store.insert(0, &draft_row);
-                }
+                self.apply_edit(TrackerEdit::Insert { values }, &sender);
                 self.refresh_inner_stack_visibility();
                 // Scroll + focus deferred via FocusInsertedDraft — see
                 // the matching note in the `InsertRow` arm above. Same
@@ -2043,25 +2038,8 @@ impl SimpleComponent for BrowseTab {
                 if self.current_columns.is_empty() {
                     return;
                 }
-                // Inline draft: track in the changeset (returns a
-                // RowKey::Draft(N) handle), then prepend a fresh
-                // RowObject tagged with the same draft id to the
-                // grid's ListStore. The new row appears at the top
-                // with a green tint and editable cells; user fills
-                // them inline and clicks Save to commit.
-                let default_values: Vec<Value> = self.current_columns.iter().map(|_| Value::Null).collect();
-                let key_opt =
-                    crate::services::change_tracker::with_tab(self.tab_id, |t| t.track_insert(default_values.clone()));
-                let Some(key) = key_opt else {
-                    return;
-                };
-                let crate::services::change_tracker::RowKey::Draft(draft_id) = key else {
-                    return;
-                };
-                if let Some(store) = self.list_store() {
-                    let draft_row = super::row_object::RowObject::new_draft(draft_id, default_values);
-                    store.insert(0, &draft_row);
-                }
+                let values: Vec<Value> = self.current_columns.iter().map(|_| Value::Null).collect();
+                self.apply_edit(TrackerEdit::Insert { values }, &sender);
                 // The empty-state status page hides the column view —
                 // if we were sitting on it (zero persisted rows on the
                 // first page) the draft we just appended would be
@@ -2112,7 +2090,7 @@ impl SimpleComponent for BrowseTab {
                 let Some(model) = selection.model() else {
                     return;
                 };
-                let mut snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)> = Vec::new();
+                let mut snapshot: Vec<(RowKey, Vec<Value>)> = Vec::new();
                 let mut draft_ids: Vec<u64> = Vec::new();
                 let mut had_persisted_row = false;
                 for pos in &positions {
@@ -2143,26 +2121,9 @@ impl SimpleComponent for BrowseTab {
                     return;
                 }
                 let count = snapshot.len() + draft_ids.len();
-                let tab_id = self.tab_id;
-                let selection_for_commit = selection.clone();
-                let commit_delete = move |snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)>,
-                                          draft_ids: Vec<u64>| {
-                    crate::services::change_tracker::with_tab(tab_id, |t| {
-                        for (key, row) in snapshot {
-                            t.track_delete(key, row);
-                        }
-                        for id in draft_ids {
-                            t.discard_draft(id);
-                        }
-                    });
-                    // Clear the multi-row selection so the
-                    // "{n} selected" badge disappears and the Delete
-                    // button tooltip resets. Without this the bitset
-                    // still contains the now-strikethrough rows
-                    // (they remain in the model until Save). Spreadsheet
-                    // convention: a bulk action ends the selection it
-                    // operated on.
-                    selection_for_commit.unselect_all();
+                let sender_for_commit = sender.clone();
+                let commit_delete = move |rows: Vec<(RowKey, Vec<Value>)>, drafts: Vec<u64>| {
+                    sender_for_commit.input(BrowseTabInput::MarkRowsDeleted { rows, drafts });
                 };
                 if count >= BULK_DELETE_CONFIRM_THRESHOLD {
                     // Dialog parent is any descendant of the toplevel
@@ -2245,27 +2206,7 @@ impl SimpleComponent for BrowseTab {
                         return;
                     }
                 };
-                let row_obj = self.row_object_at(row_position);
-                if let Some(row_obj) = &row_obj
-                    && let Some(draft_id) = row_obj.draft_id()
-                {
-                    // Draft row — mutate the tracker's draft buffer
-                    // directly. The RowObject's own cells are also
-                    // updated so the grid's display reflects the
-                    // pending value without waiting for re-fetch.
-                    crate::services::change_tracker::with_tab(self.tab_id, |t| {
-                        t.track_draft_cell_edit(draft_id, col_index, new.clone());
-                    });
-                    row_obj.set_cell(col_index, new);
-                    return;
-                }
-                let Some((key, row)) = self.row_key_at(row_position) else {
-                    return;
-                };
-                let original = row[col_index].clone();
-                crate::services::change_tracker::with_tab(self.tab_id, |t| {
-                    t.track_cell_edit(key, col_index, original, new);
-                });
+                self.edit_cell(row_position, col_index, new, &sender);
             }
             BrowseTabInput::GridSetCellValue {
                 row_position,
@@ -2279,22 +2220,7 @@ impl SimpleComponent for BrowseTab {
                         return;
                     }
                 };
-                if let Some(row_obj) = self.row_object_at(row_position)
-                    && let Some(draft_id) = row_obj.draft_id()
-                {
-                    crate::services::change_tracker::with_tab(self.tab_id, |t| {
-                        t.track_draft_cell_edit(draft_id, col_index, value.clone());
-                    });
-                    row_obj.set_cell(col_index, value);
-                    return;
-                }
-                let Some((key, row)) = self.row_key_at(row_position) else {
-                    return;
-                };
-                let original = row[col_index].clone();
-                crate::services::change_tracker::with_tab(self.tab_id, |t| {
-                    t.track_cell_edit(key, col_index, original, value);
-                });
+                self.edit_cell(row_position, col_index, value, &sender);
             }
             BrowseTabInput::GridShowToast(message) => {
                 let _ = sender.output(BrowseTabOutput::ShowToast(message));
@@ -2323,12 +2249,16 @@ impl SimpleComponent for BrowseTab {
                 });
             }
             BrowseTabInput::GridDeleteRowAt { row_position } => {
-                let Some((key, row)) = self.row_key_at(row_position) else {
+                let Some((row_key, original_values)) = self.row_key_at(row_position) else {
                     return;
                 };
-                crate::services::change_tracker::with_tab(self.tab_id, |t| {
-                    t.track_delete(key, row);
-                });
+                self.apply_edit(
+                    TrackerEdit::Delete {
+                        row_key,
+                        original_values,
+                    },
+                    &sender,
+                );
             }
             BrowseTabInput::GridCopyRowAsInsert { row_position } => {
                 let _ = sender.output(BrowseTabOutput::CopyRowAsInsert { row_position });
@@ -2417,9 +2347,8 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::CommitSave => {
                 let columns = self.current_columns.clone();
-                let result = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| t.change_set(&columns));
-                match result {
-                    Some(Ok(changes)) if !changes.changes.is_empty() => {
+                match self.tracker.change_set(&columns) {
+                    Ok(changes) if !changes.changes.is_empty() => {
                         // Disable both buttons for the duration of the
                         // in-flight transaction. SaveCompleted /
                         // SaveFailed re-enable them. This prevents a
@@ -2438,55 +2367,44 @@ impl SimpleComponent for BrowseTab {
                             changes,
                         });
                     }
-                    Some(Ok(_)) => {
-                        // Nothing to save (tracker empty) — refresh bar.
-                        self.refresh_pending_bar(0);
-                    }
-                    Some(Err(e)) => {
+                    Ok(_) => self.refresh_pending_bar(0),
+                    Err(e) => {
                         let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
                             title: crate::i18n::gettext("Cannot save"),
                             body: format!("{e}"),
                         });
                     }
-                    None => {}
                 }
             }
             BrowseTabInput::DiscardAll => {
-                crate::services::change_tracker::with_tab(self.tab_id, |t| t.clear());
+                let delta = self.tracker.discard();
+                self.apply_tracker_delta(delta, &sender);
                 let _ = sender.output(BrowseTabOutput::FetchPage);
             }
-            BrowseTabInput::PendingCountChanged(n) => {
-                self.refresh_pending_bar(n);
-                // Tell the App so it can prefix the tab title with the
-                // GNOME-Text-Editor "•" dot for dirty buffers. Only on
-                // real transitions (empty ↔ non-empty) so a count
-                // change like 2 → 3 doesn't re-rewrite the tab title.
-                let dirty = n > 0;
-                if dirty != self.was_dirty.get() {
-                    self.was_dirty.set(dirty);
-                    let _ = sender.output(BrowseTabOutput::DirtyChanged(dirty));
+            BrowseTabInput::MarkRowsDeleted { rows, drafts } => {
+                for (row_key, original_values) in rows {
+                    self.apply_edit(
+                        TrackerEdit::Delete {
+                            row_key,
+                            original_values,
+                        },
+                        &sender,
+                    );
                 }
-                // Note: row re-binds are driven by the parallel
-                // ChangedRows event, not from here. PendingCountChanged
-                // fires on every tracker mutation so re-binding the
-                // viewport here would be wasteful — most edits affect
-                // exactly one row and ChangedRows hits only that row.
-            }
-            BrowseTabInput::ChangedRows(keys) => {
-                // Walk the model once per key. For typical interactive
-                // edits (one cell at a time) this is O(n) per keystroke
-                // where n = visible row count — bounded and cheap.
-                // Bulk operations (Discard) emit one ChangedRows per
-                // op via undo unwind, again bounded.
-                for key in &keys {
-                    if let Some(pos) = self.find_row_position_by_key(key) {
-                        self.refresh_row_at(pos);
-                    }
+                for draft_id in drafts {
+                    self.apply_edit(TrackerEdit::DiscardDraft { draft_id }, &sender);
+                }
+                // A bulk action ends the selection it acted on.
+                if let Some(selection) = self.current_selection.as_ref() {
+                    selection.unselect_all();
                 }
             }
             BrowseTabInput::SaveCompleted => {
-                crate::services::change_tracker::with_tab(self.tab_id, |t| t.clear());
-                self.refresh_pending_bar(0);
+                // The reload replaces every row; dropping the saved
+                // drafts from the store first would blank them until it
+                // lands.
+                let delta = self.tracker.discard();
+                self.sync_pending_chrome(delta.pending_count, &sender);
                 self.save_button.set_sensitive(true);
                 self.discard_button.set_sensitive(true);
                 let _ = sender.output(BrowseTabOutput::FetchPage);
@@ -2507,97 +2425,39 @@ impl SimpleComponent for BrowseTab {
                 self.focus_inserted_draft();
             }
             BrowseTabInput::Undo => {
-                use crate::services::change_tracker::UndoOp;
-                let op = match crate::services::change_tracker::with_tab(self.tab_id, |t| t.undo()) {
-                    Some(Some(op)) => op,
-                    _ => return,
-                };
-                match op {
-                    UndoOp::CellEdit {
-                        row_key,
-                        col,
-                        prev_value,
-                        ..
-                    } => {
-                        // Drafts hold the post-edit value in
-                        // RowObject.cells (mirrored at edit time);
-                        // reverting the visible value requires
-                        // mutating the cell back. Persisted rows
-                        // never mutate RowObject — the tracker is
-                        // the single source of truth and
-                        // connect_bind queries
-                        // `current_cell_value` to overlay the
-                        // pending edit. set_cell on a persisted
-                        // row is a harmless no-op (the cell
-                        // already holds the original).
-                        if let Some(pos) = self.find_row_position_by_key(&row_key)
-                            && let Some(row_obj) = self.row_object_at(pos)
-                        {
-                            row_obj.set_cell(col, prev_value);
-                        }
-                    }
-                    UndoOp::Insert { draft_id, .. } => {
-                        // The draft RowObject is still in the
-                        // ListStore (prepended by InsertRow). Walk
-                        // the store, find the row whose draft_id
-                        // matches, remove it. The subsequent
-                        // ChangedRows event for `Draft(id)` is a
-                        // no-op once the row is gone.
-                        if let Some(store) = self.list_store() {
-                            let n = store.n_items();
-                            for i in 0..n {
-                                if let Some(obj) = store.item(i)
-                                    && let Ok(row) = obj.downcast::<super::row_object::RowObject>()
-                                    && row.draft_id() == Some(draft_id)
-                                {
-                                    store.remove(i);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    UndoOp::Delete { row_key, .. } => {
-                        // No RowObject mutation needed — the row was
-                        // never visually removed; it stayed in the
-                        // ListStore with a strikethrough overlay
-                        // applied at bind time. The tracker's
-                        // emit_changed → items_changed re-bind drops
-                        // the strikethrough automatically because
-                        // `row_state` returns Clean once the deletes
-                        // entry is gone.
-                        let _ = row_key;
-                    }
+                if let Some(delta) = self.tracker.undo() {
+                    self.apply_tracker_delta(delta, &sender);
                 }
             }
             BrowseTabInput::Redo => {
-                use crate::services::change_tracker::UndoOp;
-                let op = match crate::services::change_tracker::with_tab(self.tab_id, |t| t.redo()) {
-                    Some(Some(op)) => op,
-                    _ => return,
-                };
-                match op {
-                    UndoOp::CellEdit {
-                        row_key,
-                        col,
-                        new_value,
-                        ..
-                    } => {
-                        if let Some(pos) = self.find_row_position_by_key(&row_key)
-                            && let Some(row_obj) = self.row_object_at(pos)
-                        {
-                            row_obj.set_cell(col, new_value);
-                        }
-                    }
-                    UndoOp::Insert { draft_id, values } => {
-                        // Re-add the draft RowObject. Match the
-                        // original insert path: prepend at position 0.
-                        if let Some(store) = self.list_store() {
-                            let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
-                            store.insert(0, &draft_row);
-                        }
-                    }
-                    UndoOp::Delete { .. } => {}
+                if let Some(delta) = self.tracker.redo() {
+                    self.apply_tracker_delta(delta, &sender);
                 }
+            }
+        }
+    }
+}
+
+fn apply_visual_change(store: &gtk::gio::ListStore, change: &VisualChange) {
+    use super::row_object::RowObject;
+    let draft_at = |draft_id: u64| {
+        (0..store.n_items()).find_map(|position| {
+            let row = store.item(position).and_downcast::<RowObject>()?;
+            (row.draft_id() == Some(draft_id)).then_some((position, row))
+        })
+    };
+    match change {
+        VisualChange::InsertDraft { draft_id, values } => {
+            store.insert(0, &RowObject::new_draft(*draft_id, values.clone()));
+        }
+        VisualChange::RemoveDraft { draft_id } => {
+            if let Some((position, _)) = draft_at(*draft_id) {
+                store.remove(position);
+            }
+        }
+        VisualChange::SetDraftCell { draft_id, col, value } => {
+            if let Some((_, row)) = draft_at(*draft_id) {
+                row.set_cell(*col, value.clone());
             }
         }
     }
@@ -2633,15 +2493,12 @@ fn normalize_single_line_input(text: &str) -> String {
 /// / RowObject. Callers feed it a clone of the row's cells (already
 /// pulled from the model in selection-model space, see the
 /// row-position-vs-result-rows note in `DeleteSelectedRow`).
-fn build_persisted_row_key(
-    cells: Vec<Value>,
-    pk_indices: &[usize],
-) -> Option<(crate::services::change_tracker::RowKey, Vec<Value>)> {
+fn build_persisted_row_key(cells: Vec<Value>, pk_indices: &[usize]) -> Option<(RowKey, Vec<Value>)> {
     let pk_values: Vec<Value> = pk_indices
         .iter()
         .map(|&i| cells.get(i).cloned())
         .collect::<Option<_>>()?;
-    let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
+    let key = RowKey::from_pk_values(&pk_values)?;
     Some((key, cells))
 }
 
@@ -2735,8 +2592,12 @@ fn result_columns(columns: &[tablepro_core::ColumnInfo]) -> std::sync::Arc<[tabl
 
 #[cfg(test)]
 mod tests {
-    use super::{build_persisted_row_key, format_thousands, parse_input_for_column};
+    use gtk4::prelude::*;
+
+    use super::{apply_visual_change, build_persisted_row_key, format_thousands, parse_input_for_column};
     use crate::services::change_tracker::RowKey;
+    use crate::services::tracker_delta::VisualChange;
+    use crate::ui::row_object::RowObject;
     use tablepro_core::edit::EditContext;
     use tablepro_core::{ColumnInfo, Value};
 
@@ -3010,5 +2871,37 @@ mod tests {
         let cells = vec![Value::Null, Value::Text("x".into())];
         let (key, _) = build_persisted_row_key(cells, &[0]).expect("Null PK is valid");
         assert!(matches!(key, RowKey::Persisted(_)));
+    }
+
+    fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
+        store.item(position).and_downcast::<RowObject>().expect("a row")
+    }
+
+    #[test]
+    fn visual_changes_add_update_and_remove_draft_rows() {
+        let store = gtk4::gio::ListStore::new::<RowObject>();
+        store.append(&RowObject::new(vec![Value::Int(1)]));
+
+        apply_visual_change(
+            &store,
+            &VisualChange::InsertDraft {
+                draft_id: 4,
+                values: vec![Value::Null],
+            },
+        );
+        apply_visual_change(
+            &store,
+            &VisualChange::SetDraftCell {
+                draft_id: 4,
+                col: 0,
+                value: Value::Int(9),
+            },
+        );
+        assert_eq!(row_at(&store, 0).draft_id(), Some(4));
+        assert_eq!(row_at(&store, 0).cell_value(0), Value::Int(9));
+
+        apply_visual_change(&store, &VisualChange::RemoveDraft { draft_id: 4 });
+        assert_eq!(store.n_items(), 1);
+        assert_eq!(row_at(&store, 0).draft_id(), None);
     }
 }

@@ -214,16 +214,14 @@ Reopening a closed tab uses a 10-deep `VecDeque<ClosedTabDescriptor>` snapshot t
 
 ## Per-tab pending-change registries
 
-Two parallel thread-local registries hold the in-flight edit state for each tab, keyed by the same UUID as the workspace slot:
+Each window owns two registries holding the in-flight edit state for its tabs, keyed by the same UUID as the workspace slot. App creates them, registers a tracker when it opens a tab, passes the handle into the tab's init, and unregisters it when the tab closes or the connection goes away:
 
-| Registry | What it tracks | Materialised by |
-|---|---|---|
-| `services::change_tracker` | Row-level INSERT / UPDATE / DELETE for browse tabs | `BrowseTab::commit_save` → `Vec<(String, Vec<Value>)>` |
-| `services::structure_tracker` | Column / index / FK / table-rename DDL for structure tabs | `sql_ddl::materialize_ops` → `Vec<String>` |
+| Registry | Handle | What it tracks | Materialised by |
+|---|---|---|---|
+| `ChangeTrackerRegistry` | `TabTrackerHandle` | Row-level INSERT / UPDATE / DELETE for Table tabs | `TabTrackerHandle::change_set` → `TrackedChanges` |
+| `StructureTrackerRegistry` | `StructureTrackerHandle` | Column / index / FK / table-rename DDL for Structure tabs | `sql_ddl::materialize_ops` → `Vec<String>` |
 
-Both registries live in `thread_local!` `RefCell<HashMap<Uuid, _>>` because relm4 + GTK is single-threaded on the UI side, and a single map keyed by tab UUID is simpler than passing trackers through every component handler. Helpers (`with_tab`, `with_tab_ref`, `open_tab`, `close_tab`, `any_pending_globally`) are the only public surface.
-
-A `Table` tab owns BOTH a row tracker and a DDL tracker against the same UUID. `close_workspace_tab_by_id` closes both registries; the close-with-pending dialog ORs both `has_pending()` flags and may dispatch up to two save transactions, gated through a `close_after_save: HashMap<Uuid, u32>` counter.
+A handle is a newtype over `Rc<RefCell<_>>`. Every method borrows only for its own body, calls no GTK and no callbacks, and returns owned data (`CellOverlay`, `RowState`, `TrackerDelta`), so a grid bind that runs while a tab is applying a change never meets a held borrow. A row edit goes in as a `TrackerEdit` and comes back as a `TrackerDelta`: the rows to rebind, the draft rows the list store gains, loses or updates, and the new pending count. The tab applies it to its `gio::ListStore` after the call returns. `App::dirty_tabs` reads both registries for the close prompts, the teardown guard and the `•` title prefix. CI fails on a `thread_local!` under `crates/app/src/services`, since a process-wide registry would share one window's unsaved edits with every other window.
 
 The Structure tab is **snapshot + diff**, not per-op log. `original_*` snapshots capture the load-time schema; the diff against the live model produces ops via `sql_ddl::diff_to_ops`. Discard restores the snapshot. There is no per-op undo: Discard is the only restore point. The tracker just caches the most recent diff so out-of-band callers (close prompt, save dispatcher) read the same op list without re-deriving.
 

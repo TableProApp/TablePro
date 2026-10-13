@@ -29,3 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse editor tab silently lost its temporary tables and settings when the server expired its session.
 - ClickHouse DateTime values showed as UTC text when the server profile or session set ISO output.
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
+- A new row removed with Delete stayed in the grid while the save left it out.
+- A save that failed on a new row did not flash that row.
+- The window title showed no unsaved-changes bullet for pending structure changes.

@@ -29,7 +29,9 @@ use super::editor::{SqlEditor, build_schema_buffer};
 use super::history_dialog::HistoryDialog;
 use super::sidebar_row::{SidebarRow, SidebarRowOutput};
 use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
+use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::session_context::SessionContext;
+use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 
 pub(crate) use connection::{ConnectRetry, ReadySession};
 
@@ -119,6 +121,10 @@ pub struct App {
     /// HashMap for O(1) tab_id lookup; display order is read from
     /// `tab_view.pages()` since HashMap is unordered.
     workspace_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
+    /// This window's pending row edits, one tracker per Table tab.
+    change_trackers: std::rc::Rc<ChangeTrackerRegistry>,
+    /// This window's pending DDL, one tracker per Structure tab.
+    structure_trackers: std::rc::Rc<StructureTrackerRegistry>,
     dialog: Option<ConnectDialog>,
     schema_buffer: gtk::TextBuffer,
     history_dialog: Option<Controller<HistoryDialog>>,
@@ -634,7 +640,20 @@ impl StatusKind {
     }
 }
 
+/// Tabs in either registry with unsaved changes.
+fn dirty_tabs(changes: &ChangeTrackerRegistry, structures: &StructureTrackerRegistry) -> Vec<Uuid> {
+    let mut dirty = changes.dirty();
+    dirty.extend(structures.dirty());
+    dirty.sort_unstable();
+    dirty.dedup();
+    dirty
+}
+
 impl App {
+    pub(super) fn dirty_tabs(&self) -> Vec<Uuid> {
+        dirty_tabs(&self.change_trackers, &self.structure_trackers)
+    }
+
     /// The active driver id, or "postgres" if no connection is active.
     ///
     /// Single fallback site (was duplicated at 7 call sites). The
@@ -851,6 +870,10 @@ impl SimpleComponent for App {
         let close_window_after_save_handle = close_window_after_save_for_close.clone();
         let in_flight_saves_handle = in_flight_saves.clone();
         let in_flight_saves_for_close = in_flight_saves.clone();
+        let change_trackers = std::rc::Rc::new(ChangeTrackerRegistry::default());
+        let structure_trackers = std::rc::Rc::new(StructureTrackerRegistry::default());
+        let change_trackers_for_close = change_trackers.clone();
+        let structure_trackers_for_close = structure_trackers.clone();
         let close_request_input_sender = sender.input_sender().clone();
         widgets.window.connect_close_request(move |w| {
             // If a Save is mid-flight (async transaction running), block
@@ -887,8 +910,7 @@ impl SimpleComponent for App {
             // below) — skip the guard, save state, allow close.
             // Browse + Structure tabs share the dirty-state guard:
             // either source of pending changes triggers the dialog.
-            let has_pending = crate::services::change_tracker::any_pending_globally()
-                || crate::services::structure_tracker::any_pending_globally();
+            let has_pending = !dirty_tabs(&change_trackers_for_close, &structure_trackers_for_close).is_empty();
             if !force_close_for_close.get() && has_pending {
                 // Plural-form heading matches the per-tab dialog's
                 // tone — factual GNOME HIG language rather than the
@@ -913,15 +935,23 @@ impl SimpleComponent for App {
                 let close_after_save_for_resp = close_after_save_for_close.clone();
                 let close_window_after_save_for_resp = close_window_after_save_for_close.clone();
                 let input_sender_for_resp = close_request_input_sender.clone();
+                let change_trackers_for_resp = change_trackers_for_close.clone();
+                let structure_trackers_for_resp = structure_trackers_for_close.clone();
                 dialog.connect_response(None, move |dlg, response| {
                     dlg.close();
                     match response {
                         "discard" => {
-                            for tab_id in crate::services::change_tracker::pending_tabs() {
-                                crate::services::change_tracker::with_tab(tab_id, |t| t.clear());
+                            // The window closes next, so no grid is left
+                            // to show the discarded rows.
+                            for tab_id in change_trackers_for_resp.dirty() {
+                                if let Some(tracker) = change_trackers_for_resp.get(tab_id) {
+                                    let _ = tracker.discard();
+                                }
                             }
-                            for tab_id in crate::services::structure_tracker::pending_tabs() {
-                                crate::services::structure_tracker::with_tab(tab_id, |t| t.clear());
+                            for tab_id in structure_trackers_for_resp.dirty() {
+                                if let Some(tracker) = structure_trackers_for_resp.get(tab_id) {
+                                    tracker.clear();
+                                }
                             }
                             force_close_for_resp.set(true);
                             // Re-fire close_request — guard sees the flag,
@@ -936,8 +966,8 @@ impl SimpleComponent for App {
                             // the SaveCompletedForTab / StructureSaveCompleted
                             // handlers in App::update close the window once
                             // the set drains. Any SaveFailed aborts.
-                            let browse_tabs: Vec<Uuid> = crate::services::change_tracker::pending_tabs();
-                            let structure_tabs: Vec<Uuid> = crate::services::structure_tracker::pending_tabs();
+                            let browse_tabs = change_trackers_for_resp.dirty();
+                            let structure_tabs = structure_trackers_for_resp.dirty();
                             // Counter increments — a Table tab listed in both
                             // sets bumps to 2 so the window close waits for
                             // BOTH the browse save and the structure save.
@@ -1311,6 +1341,8 @@ impl SimpleComponent for App {
             workspace_tab_view: None,
             workspace_root_added: std::cell::Cell::new(false),
             workspace_tabs: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())),
+            change_trackers,
+            structure_trackers,
             dialog: None,
             schema_buffer: build_schema_buffer(),
             history_dialog: None,
