@@ -40,7 +40,7 @@ pub fn driver_message(error: &DriverError) -> String {
             .replace("{sqlstate}", s)
             .replace("{message}", message),
         DriverError::Query { message, .. } => crate::tr!("Query failed: {message}").replace("{message}", message),
-        DriverError::Disconnected => crate::tr!("The connection was closed. Try reconnecting."),
+        DriverError::Disconnected => crate::tr!("The connection was closed, or all connections are busy with other queries. Try reconnecting."),
         DriverError::ConcurrentModification => crate::tr!(
             "This row changed in the database after you loaded it. Your edits are still available; reload the row and reapply them."
         ),
@@ -165,6 +165,7 @@ mod tests {
         assert!(driver_message(&DriverError::ConnectionRefused).contains("Could not reach"));
         assert!(driver_message(&DriverError::AuthFailed).contains("wrong"));
         assert!(driver_message(&DriverError::Disconnected).contains("Try reconnecting"));
+        assert!(driver_message(&DriverError::Disconnected).contains("busy"));
     }
 
     #[test]
