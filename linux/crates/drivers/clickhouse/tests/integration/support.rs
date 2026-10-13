@@ -145,6 +145,13 @@ pub fn batch(statements: &[&str]) -> WriteBatch {
     )
 }
 
+/// Row changes to the table `name` in the test database.
+pub fn batch_on(name: &str, statements: &[&str]) -> WriteBatch {
+    let mut batch = batch(statements);
+    batch.table = table(name);
+    batch
+}
+
 /// The save the grid would plan for `changes` on `table`.
 pub async fn planned(connection: &dyn Connection, table: &TableRef, changes: &ChangeSet) -> WriteBatch {
     let columns = connection

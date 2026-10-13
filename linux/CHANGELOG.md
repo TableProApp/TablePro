@@ -19,3 +19,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
 - ClickHouse query or export with a FORMAT clause filled memory instead of failing.
+- ClickHouse save with an unknown outcome could read as applied because of another table's mutation.

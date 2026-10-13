@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clickhouse::error::Error as ClickHouseError;
+use tablepro_core::meta::TableRef;
 use tablepro_core::statement::{RowGuard, Statement};
 use tablepro_core::{
     CommitToken, DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport,
@@ -35,6 +36,8 @@ pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), Driver
 /// Everything one write needs once its task runs.
 pub(crate) struct WritePlan {
     pub(crate) batch: WriteBatch,
+    /// The batch's table, qualified, for the commit token.
+    pub(crate) table: TableRef,
     pub(crate) ledger: Arc<WriteLedger>,
     /// Reads that may be stopped, for the probes.
     pub(crate) probes: clickhouse::Client,
@@ -84,6 +87,7 @@ pub(crate) async fn perform(
         ledger.attach_token(CommitToken::ClickHouseQuery {
             query_ids: query_ids.clone(),
             first_unconfirmed: index,
+            table: plan.table.clone(),
         });
         ledger.statement_sending(index);
         match execute(&plan.writes, &step.statement, *query_id).await {

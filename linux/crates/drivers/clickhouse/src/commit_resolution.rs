@@ -5,10 +5,12 @@
 //! waits the query log has no entry for it at all, and a wait that fails
 //! is logged as ExceptionBeforeStart with no table named. The statement
 //! is therefore looked for in `system.processes` when the log is silent,
-//! and its mutation in `system.mutations` by creation time when its ALTER
-//! failed while the mutation may live on. `system.mutations` has no
+//! and its mutation in `system.mutations` by table and creation time when
+//! its ALTER failed while the mutation may live on. The table comes from
+//! the write itself when the log names none. `system.mutations` has no
 //! column linking a mutation to its ALTER, so any doubt is Unresolvable.
 
+use tablepro_core::meta::TableRef;
 use tablepro_core::{CommitResolution, CommitToken, DriverError, Value};
 use uuid::Uuid;
 
@@ -105,6 +107,19 @@ fn mutated_table(entry: &LogEntry) -> Option<MutatedTable> {
     })
 }
 
+/// The table to look for the mutation in: the log's where it names one,
+/// otherwise the one the write was for. Searching every table instead
+/// would take another session's mutation in the same seconds for this
+/// one.
+pub(crate) fn mutation_table(logged: Option<MutatedTable>, written: &TableRef) -> Option<MutatedTable> {
+    logged.or_else(|| {
+        Some(MutatedTable {
+            database: written.schema.clone().filter(|database| !database.is_empty())?,
+            table: written.name.clone(),
+        })
+    })
+}
+
 /// One mutation in the window is the ALTER's; none means someone ran
 /// KILL MUTATION, which removes the row but keeps the parts it already
 /// changed, and more than one cannot be told apart.
@@ -132,6 +147,7 @@ pub(crate) async fn resolve(calls: &CallClient, token: &CommitToken) -> Result<C
     let CommitToken::ClickHouseQuery {
         query_ids,
         first_unconfirmed,
+        table: written,
     } = token
     else {
         return Ok(CommitResolution::Unresolvable);
@@ -154,7 +170,10 @@ pub(crate) async fn resolve(calls: &CallClient, token: &CommitToken) -> Result<C
     let statement = match read_log(&entries) {
         LogVerdict::Resolved(resolution) => resolution,
         LogVerdict::NotEnded => still_running(calls, *query_id).await?,
-        LogVerdict::Mutation { table, started, ended } => mutation(calls, table.as_ref(), &started, &ended).await?,
+        LogVerdict::Mutation { table, started, ended } => match mutation_table(table, written) {
+            Some(table) => mutation(calls, &table, &started, &ended).await?,
+            None => CommitResolution::Unresolvable,
+        },
     };
     Ok(compose(*first_unconfirmed, query_ids.len(), statement))
 }
@@ -202,21 +221,19 @@ async fn still_running(calls: &CallClient, query_id: Uuid) -> Result<CommitResol
 
 async fn mutation(
     calls: &CallClient,
-    table: Option<&MutatedTable>,
+    table: &MutatedTable,
     started: &str,
     ended: &str,
 ) -> Result<CommitResolution, DriverError> {
-    let window = "create_time >= {started:DateTime} AND create_time <= {ended:DateTime}";
-    let query = match table {
-        Some(table) => calls
-            .raw(&format!(
-                "SELECT is_done FROM system.mutations WHERE database = {{db:String}} AND table = {{tbl:String}} AND {window}"
-            ))?
-            .param("db", table.database.as_str())
-            .param("tbl", table.table.as_str()),
-        None => calls.raw(&format!("SELECT is_done FROM system.mutations WHERE {window}"))?,
-    };
-    let query = query.param("started", started).param("ended", ended);
+    let query = calls
+        .raw(
+            "SELECT is_done FROM system.mutations WHERE database = {db:String} AND table = {tbl:String} \
+             AND create_time >= {started:DateTime} AND create_time <= {ended:DateTime}",
+        )?
+        .param("db", table.database.as_str())
+        .param("tbl", table.table.as_str())
+        .param("started", started)
+        .param("ended", ended);
     let result = read_table(query, None).await?;
     let done = result
         .rows
@@ -333,6 +350,27 @@ mod tests {
         for (done, expected) in mutation_rows {
             assert_eq!(read_mutations(done), expected, "{done:?}");
         }
+    }
+
+    #[test]
+    fn a_mutation_is_looked_for_in_the_logged_table_then_the_written_one() {
+        let written = TableRef::new(Some("tablepro".to_owned()), "orders");
+        let orders = Some(MutatedTable {
+            database: "tablepro".to_owned(),
+            table: "orders".to_owned(),
+        });
+
+        assert_eq!(mutation_table(events_table(), &written), events_table());
+        assert_eq!(
+            mutation_table(None, &written),
+            orders,
+            "an ALTER whose wait failed names no table"
+        );
+        assert_eq!(
+            mutation_table(None, &TableRef::unqualified("orders")),
+            None,
+            "a table without its database could be any database's"
+        );
     }
 
     #[test]

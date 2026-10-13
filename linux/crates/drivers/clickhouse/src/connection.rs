@@ -381,8 +381,10 @@ impl Connection for ClickHouseConnection {
         let stop = Arc::new(ClickHouseStop::new(self.endpoint.control().clone()));
         let ledger = Arc::new(WriteLedger::new(WriteAtomicity::StatementByStatement));
         let probe_bound = read_bound(options.deadline(), Some(self.settings.statement_timeout));
+        let written = self.catalog_table(&batch.table);
         let plan = WritePlan {
             batch: batch.clone(),
+            table: TableRef::new(Some(written.database), written.name),
             ledger: ledger.clone(),
             probes: reading(self.endpoint.workspace(), probe_bound),
             writes: self
