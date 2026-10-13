@@ -121,6 +121,7 @@ crates/app/src/ui/editor/statement_cursor.rs
 crates/app/src/ui/editor/tests.rs
 crates/app/src/ui/editor/transaction_dirty.rs
 crates/app/src/ui/editor_font_provider.rs
+crates/app/src/ui/error_text/ddl.rs
 crates/app/src/ui/error_text/driver.rs
 crates/app/src/ui/error_text/mod.rs
 crates/app/src/ui/error_text/operation.rs
@@ -162,7 +163,6 @@ crates/app/src/ui/sidebar_row.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
 crates/app/src/ui/structure_tab/columns.rs
-crates/app/src/ui/structure_tab/ddl_text.rs
 crates/app/src/ui/structure_tab/fks.rs
 crates/app/src/ui/structure_tab/imp.rs
 crates/app/src/ui/structure_tab/indexes.rs

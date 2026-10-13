@@ -54,9 +54,7 @@ impl StructureChangeTracker {
         let Some(pending) = self.pending.clone().filter(PendingStructure::has_changes) else {
             return Ok(None);
         };
-        pending
-            .check()
-            .map_err(|blocker| SaveRejection::Invalid(crate::ui::structure_tab::save_blocker_text(&blocker)))?;
+        pending.check().map_err(SaveRejection::Blocked)?;
         self.saving = true;
         Ok(Some(pending))
     }
@@ -82,10 +80,11 @@ impl StructureChangeTracker {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::ddl::{DraftColumn, DraftType, TableChanges, TableDraft};
+    use tablepro_core::ddl::{DraftColumn, DraftProblem, DraftType, TableChanges, TableDraft};
     use tablepro_core::meta::TableRef;
 
     use super::*;
+    use crate::services::pending_structure::SaveBlocker;
 
     fn new_table(columns: usize) -> PendingStructure {
         let mut draft = TableDraft::new(TableRef::unqualified("t"));
@@ -148,7 +147,12 @@ mod tests {
         unnamed.draft.columns[0].name = String::new();
         tracker.set_pending(Some(unnamed));
 
-        assert!(matches!(tracker.begin_save(), Err(SaveRejection::Invalid(_))));
+        assert_eq!(
+            tracker.begin_save(),
+            Err(SaveRejection::Blocked(SaveBlocker::Draft(
+                DraftProblem::EmptyColumnName
+            )))
+        );
         assert_eq!(tracker.pending_state(), PendingState::Unsaved);
     }
 }

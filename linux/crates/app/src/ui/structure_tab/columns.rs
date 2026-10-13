@@ -11,8 +11,8 @@ use libadwaita::prelude::*;
 use tablepro_core::ddl::{ColumnCapabilities, DraftColumn, DraftType, Permission};
 use tablepro_core::dialect::SqlDialect;
 
-use super::ddl_text::refusal_text;
 use super::{ColumnField, StructureTabInput, StructureTabSender};
+use crate::ui::error_text::refusal_text;
 
 /// What a column row needs beyond the column: which changes the engine
 /// allows on it, and the dialect that checks what the user types.

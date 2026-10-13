@@ -9,7 +9,6 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{ColumnInfo, Value};
-use tablepro_session::OperationError;
 
 use super::cell_overlay::CellOverlay;
 use super::save_batch::{SaveBatch, SaveTarget};
@@ -606,15 +605,9 @@ impl TabChangeTracker {
             return Ok(None);
         }
         let Some(target) = self.target.clone() else {
-            return Err(SaveRejection::Invalid(crate::i18n::gettext(
-                "The table's columns have not been read yet. Try again in a moment.",
-            )));
+            return Err(SaveRejection::ColumnsNotRead);
         };
-        let changes = self.change_set(&target.columns).map_err(|error| {
-            SaveRejection::Invalid(crate::ui::error_text::operation_error_message(&OperationError::Build(
-                error,
-            )))
-        })?;
+        let changes = self.change_set(&target.columns).map_err(SaveRejection::Build)?;
         if changes.changes.is_empty() {
             return Ok(None);
         }

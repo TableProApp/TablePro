@@ -270,7 +270,7 @@ impl App {
                     Ok(None) => crate::i18n::gettext_f("Table {table} has no columns.", &[("table", &table)]),
                     Err(error) => crate::i18n::gettext_f(
                         "Couldn't build SQL: {error}",
-                        &[("error", &crate::ui::structure_tab::build_error_text(&error))],
+                        &[("error", &error_text::build_error_text(&error))],
                     ),
                 },
                 Err(error) => crate::i18n::gettext_f(

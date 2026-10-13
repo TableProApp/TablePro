@@ -545,10 +545,12 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
         "a default that does not parse can be saved"
     );
     // What a close prompt's Save reads.
-    assert!(matches!(
+    assert_eq!(
         tracker.begin_save(),
-        Err(crate::workspace::SaveRejection::Invalid(_))
-    ));
+        Err(crate::workspace::SaveRejection::Blocked(
+            crate::services::pending_structure::SaveBlocker::UnparsedDefault("id".to_owned())
+        ))
+    );
     drop(tab);
     drain_main_context();
     runtime.shutdown();

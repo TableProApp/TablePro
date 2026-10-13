@@ -31,7 +31,6 @@
 //! failed.
 
 mod columns;
-mod ddl_text;
 mod fks;
 mod imp;
 mod indexes;
@@ -62,13 +61,13 @@ use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
 
 use self::columns::{ColumnRowContext, build_column_expander_row};
-pub(crate) use self::ddl_text::{build_error_text, save_blocker_text};
 use self::fks::build_fk_row;
 use self::indexes::build_index_row;
 pub(crate) use self::structure_command::{LoadedStructure, StructureCommand, StructureRequestKind};
 use crate::runtime::{FailedRequests, RequestSequencer, RequestTicket, Stamped};
 use crate::services::pending_structure::PendingStructure;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
+use crate::ui::error_text::{build_error_text, save_blocker_text};
 use crate::ui::handler_guard::HandlerGuard;
 use crate::ui::structure_tab_dialogs::{present_fk_dialog, present_index_dialog};
 

@@ -1,11 +1,12 @@
-//! The structure tab's DDL refusals and problems in the user's words.
+//! DDL refusals and problems in the user's words, for the Structure tab
+//! and for a save refused before it starts.
 
 use tablepro_core::ddl::{BuildDdlError, DdlOperation, DraftProblem, RefusalReason};
 
 use crate::services::pending_structure::SaveBlocker;
 
 /// Why a control is off, for its tooltip.
-pub(crate) fn refusal_text(reason: &RefusalReason) -> String {
+pub fn refusal_text(reason: &RefusalReason) -> String {
     match reason {
         RefusalReason::EngineUnsupported => crate::i18n::gettext("This database can't make this change."),
         RefusalReason::KeyColumn => crate::i18n::gettext(
@@ -33,7 +34,7 @@ pub(crate) fn refusal_text(reason: &RefusalReason) -> String {
 }
 
 /// The first thing to fix before Save.
-pub(crate) fn draft_problem_text(problem: &DraftProblem) -> String {
+fn draft_problem_text(problem: &DraftProblem) -> String {
     match problem {
         DraftProblem::EmptyTableName => crate::i18n::gettext("Table name is required."),
         DraftProblem::NoColumns => crate::i18n::gettext("At least one column is required."),
@@ -62,7 +63,7 @@ pub(crate) fn draft_problem_text(problem: &DraftProblem) -> String {
 }
 
 /// Why Save, from the tab or from a close prompt, refused.
-pub(crate) fn save_blocker_text(blocker: &SaveBlocker) -> String {
+pub fn save_blocker_text(blocker: &SaveBlocker) -> String {
     match blocker {
         SaveBlocker::Draft(problem) => draft_problem_text(problem),
         SaveBlocker::UnparsedDefault(_) => crate::i18n::gettext("Fix the highlighted fields first."),
@@ -70,7 +71,7 @@ pub(crate) fn save_blocker_text(blocker: &SaveBlocker) -> String {
 }
 
 /// Why the change could not be written as SQL.
-pub(crate) fn build_error_text(error: &BuildDdlError) -> String {
+pub fn build_error_text(error: &BuildDdlError) -> String {
     match error {
         BuildDdlError::Draft(problem) => draft_problem_text(problem),
         BuildDdlError::Refused { column, reason, .. } => crate::i18n::gettext_f(
