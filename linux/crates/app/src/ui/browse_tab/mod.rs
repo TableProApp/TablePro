@@ -172,6 +172,7 @@ impl BrowseTab {
             current_filter: initial_filter,
             current_columns: Vec::new(),
             current_result: None,
+            shown_view: None,
             current_selection: None,
             current_total_rows: None,
             inner_stack: imp.inner_stack.get(),
@@ -531,6 +532,15 @@ impl Effects {
     }
 }
 
+/// Which page of the table a read asks for.
+#[derive(Debug, Clone, PartialEq)]
+struct PageView {
+    filter: tablepro_core::FilterSet,
+    sort: Option<(usize, bool)>,
+    offset: u64,
+    limit: u64,
+}
+
 /// The tab's state and the widgets it updates.
 pub(crate) struct BrowseModel {
     this: glib::WeakRef<BrowseTab>,
@@ -569,6 +579,9 @@ pub(crate) struct BrowseModel {
     current_filter: tablepro_core::FilterSet,
     current_columns: Vec<ColumnInfo>,
     current_result: Option<QueryResult>,
+    /// What `current_result` was read under. A read that fails while
+    /// asking for that same page again leaves it on screen.
+    shown_view: Option<PageView>,
     current_selection: Option<gtk::MultiSelection>,
     current_total_rows: Option<u64>,
 
@@ -1333,6 +1346,7 @@ impl BrowseModel {
     /// them before its own page arrives.
     fn show_error(&mut self, message: &str) {
         self.current_result = None;
+        self.shown_view = None;
         self.current_total_rows = None;
         self.paginator_label.set_label("");
         self.first_button.set_sensitive(false);
@@ -1351,7 +1365,32 @@ impl BrowseModel {
             result.columns = result_columns(&self.current_columns);
         }
         self.current_result = Some(result);
+        self.shown_view = Some(self.page_view());
         self.render_grid_if_ready(fx);
+    }
+
+    fn page_view(&self) -> PageView {
+        PageView {
+            filter: self.current_filter.clone(),
+            sort: self.current_sort,
+            offset: self.current_offset,
+            limit: self.page_size,
+        }
+    }
+
+    /// A read failed. When it asked again for the page on screen, as F5
+    /// and a schema change do, the page stays and a toast says why; any
+    /// other page on screen no longer matches what the tab asks for.
+    fn on_read_failed(&mut self, message: &str, fx: &mut Effects) {
+        if self.current_result.is_some() && self.shown_view.as_ref() == Some(&self.page_view()) {
+            self.refresh_inner_stack_visibility();
+            fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext_f(
+                "Couldn't refresh the rows: {error}",
+                &[("error", message)],
+            )));
+            return;
+        }
+        self.show_error(message);
     }
 
     fn on_columns_loaded(&mut self, columns: Vec<ColumnInfo>, fx: &mut Effects) {
@@ -1359,6 +1398,7 @@ impl BrowseModel {
         // headers, so the grid waits for the page read under these.
         if self.current_columns != columns {
             self.current_result = None;
+            self.shown_view = None;
         }
         self.current_columns = columns.clone();
         if let Some(result) = self.current_result.as_mut()

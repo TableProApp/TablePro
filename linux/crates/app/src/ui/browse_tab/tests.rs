@@ -616,6 +616,51 @@ fn a_tab_that_opens_reads_the_columns_the_table_has_now() {
     assert_eq!(CallCounters::get(&harness.connection.counters().fetch_columns), 2);
 }
 
+fn toasts(tab: &BrowseTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
+    let toasts = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = toasts.clone();
+    tab.connect_toast(move |_, text| sink.borrow_mut().push(text));
+    toasts
+}
+
+#[gtk4::test]
+fn a_failed_refresh_keeps_the_rows_on_screen() {
+    let mut script = serving_table();
+    script
+        .query_bound
+        .once(FakeReply::ok(rows(&["kept"])))
+        .always(FakeReply::err(DriverError::server("denied")));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
+    let toasts = toasts(harness.tab());
+    let counters = harness.connection.counters();
+
+    harness.tab().send(BrowseTabInput::Refresh);
+    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the failed refresh was not reported");
+
+    assert_eq!(CallCounters::get(&counters.query_bound), 2);
+    assert_eq!(harness.shown(), text(&["kept"]), "the failed refresh dropped the rows");
+    assert_eq!(harness.visible_page().as_deref(), Some("grid"));
+    assert!(toasts.borrow()[0].contains("denied"), "{:?}", toasts.borrow());
+}
+
+#[gtk4::test]
+fn a_failed_page_under_a_new_filter_shows_the_error() {
+    let mut script = serving_table();
+    script
+        .query_bound
+        .when_sql_contains("IS NOT NULL", FakeReply::err(DriverError::server("denied")))
+        .always(FakeReply::ok(rows(&["unfiltered"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["unfiltered"])).expect("the first page");
+
+    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error"))
+        .expect("rows read without the filter stayed under it");
+    assert!(harness.shown().is_empty());
+}
+
 #[gtk4::test]
 fn export_and_save_reach_the_window_as_signals() {
     let mut script = serving_table();

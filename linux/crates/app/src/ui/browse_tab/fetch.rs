@@ -232,7 +232,7 @@ impl BrowseModel {
                     }
                     Err(error) => {
                         tracing::warn!(%error, "could not read the table's columns");
-                        self.show_error(&crate::ui::error_text::operation_error_message(&error));
+                        self.on_read_failed(&crate::ui::error_text::operation_error_message(&error), fx);
                         self.retry_if_link_moved(BrowseRequestKind::Columns, fx);
                     }
                 }
@@ -248,7 +248,7 @@ impl BrowseModel {
                         self.on_rows_loaded(offset, reply.result, fx);
                     }
                     Err(error) => {
-                        self.show_error(&crate::ui::error_text::operation_error_message(&error));
+                        self.on_read_failed(&crate::ui::error_text::operation_error_message(&error), fx);
                         self.retry_if_link_moved(BrowseRequestKind::Page, fx);
                     }
                 }

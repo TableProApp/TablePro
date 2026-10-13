@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Closing a table tab left its query running on the server until it finished.
 - Refresh did not show a column added to the table since the tab opened.
 - A table tab kept the old header of a column renamed in the Structure tab.
+- A refresh that failed replaced the rows in a table tab with an error page.
 
 ### Security
 
