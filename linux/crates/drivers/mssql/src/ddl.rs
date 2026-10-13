@@ -8,6 +8,7 @@ use tablepro_core::ddl::{
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
 
+use crate::catalog::SqlServerType;
 use crate::dialect::{MssqlDialect, national_literal};
 
 static CAPABILITIES: DdlCapabilities = DdlCapabilities {
@@ -77,7 +78,9 @@ impl DdlDialect for MssqlDialect {
 
     /// ALTER COLUMN restates the type with the collation and the
     /// nullability, so a column whose type the catalogue did not spell, or
-    /// whose collation is not a name T-SQL takes bare, cannot take one.
+    /// whose collation is not a name T-SQL takes bare, cannot take one. A
+    /// SPARSE column is always nullable and takes no default (errors 1731
+    /// and 1791), so either change can only be one the server refuses.
     fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
         let mut permissions = ColumnCapabilities::standard(&CAPABILITIES, table, column);
         let collation = || collation_permission(&column.attributes);
@@ -87,6 +90,11 @@ impl DdlDialect for MssqlDialect {
             permissions.alter_nullability = permissions
                 .alter_nullability
                 .and(|| Permission::Refused(RefusalReason::UnreadableDefinition));
+        }
+        if column.attributes.sparse {
+            let sparse = || Permission::Refused(RefusalReason::ConflictingAttribute("SPARSE".to_owned()));
+            permissions.alter_nullability = permissions.alter_nullability.and(sparse);
+            permissions.alter_default = permissions.alter_default.and(sparse);
         }
         permissions
     }
@@ -194,6 +202,13 @@ impl DdlDialect for MssqlDialect {
                     true => DdlOperation::AlterColumnType,
                     false => DdlOperation::AlterColumnNullability,
                 };
+                if changed.column_type {
+                    kept_on_new_type(&resolved, attributes).map_err(|attribute| BuildDdlError::Refused {
+                        column: alteration.original.name().to_owned(),
+                        operation,
+                        reason: RefusalReason::ConflictingAttribute(attribute),
+                    })?;
+                }
                 let mut parts = vec![format!("ALTER COLUMN {name}"), resolved.sql.clone()];
                 parts.extend(collate_clause(draft, &resolved, attributes, operation)?);
                 if attributes.sparse {
@@ -349,6 +364,46 @@ fn collation_permission(attributes: &ColumnAttributes) -> Permission {
 
 fn masked_with(function: &str) -> String {
     format!("MASKED WITH (FUNCTION = {})", national_literal(function))
+}
+
+/// SPARSE and a data mask go back on after a type change, so the new type
+/// has to take them. `Err` names the one it does not take.
+fn kept_on_new_type(resolved: &ResolvedType, attributes: &ColumnAttributes) -> Result<(), String> {
+    if attributes.sparse && !SqlServerType::parse(&resolved.sql).takes_sparse() {
+        return Err("SPARSE".to_owned());
+    }
+    match &attributes.masking_function {
+        Some(function) if !mask_takes(function, &resolved.column_type.kind) => Err(masked_with(function)),
+        _ => Ok(()),
+    }
+}
+
+/// The types each mask function takes; SQL Server refuses the others
+/// with error 16003. default() takes any.
+fn mask_takes(function: &str, kind: &ColumnKind) -> bool {
+    let name = function
+        .split('(')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    match name.as_str() {
+        "default" => true,
+        "email" | "partial" => matches!(kind, ColumnKind::Text { .. }),
+        "random" => matches!(
+            kind,
+            ColumnKind::Integer(_)
+                | ColumnKind::Decimal { .. }
+                | ColumnKind::Float(_)
+                | ColumnKind::Money { .. }
+                | ColumnKind::Bool(_)
+        ),
+        "datetime" => matches!(
+            kind,
+            ColumnKind::Date | ColumnKind::Time { .. } | ColumnKind::Timestamp { .. }
+        ),
+        _ => false,
+    }
 }
 
 fn plain_name(name: &str) -> bool {
@@ -577,7 +632,7 @@ mod tests {
         let plan = alter(&original, |draft| {
             draft.columns[2].nullable = false;
             draft.columns[3].column_type = DraftType::Typed("bigint".to_owned());
-            draft.columns[4].column_type = DraftType::Typed("int".to_owned());
+            draft.columns[4].column_type = DraftType::Typed("varchar(40)".to_owned());
         });
 
         assert_eq!(
@@ -585,7 +640,7 @@ mod tests {
             [
                 "ALTER TABLE [dbo].[orders] ALTER COLUMN [note] nvarchar(20) COLLATE Latin1_General_100_CS_AS NOT NULL",
                 "ALTER TABLE [dbo].[orders] ALTER COLUMN [weight] bigint SPARSE NULL",
-                "ALTER TABLE [dbo].[orders] ALTER COLUMN [code] int NULL",
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [code] varchar(40) COLLATE Latin1_General_BIN NULL",
                 "ALTER TABLE [dbo].[orders] ALTER COLUMN [code] ADD MASKED WITH (FUNCTION = N'partial(1,\"X''s\",0)')",
             ]
         );
@@ -596,6 +651,76 @@ mod tests {
              COLLATE Latin1_General_BIN MASKED WITH (FUNCTION = N'partial(1,\"X''s\",0)') NULL,\n  PRIMARY KEY \
              ([id])\n)"
         );
+    }
+
+    #[test]
+    fn a_type_that_cannot_keep_the_mask_or_sparse_is_refused() {
+        let mut original = orders();
+        let mut weight = column("weight", "int", None);
+        weight.attributes.sparse = true;
+        original.columns.push(weight);
+        let mut code = column("code", "varchar(10)", None);
+        code.attributes.masking_function = Some("partial(1,\"X\",0)".to_owned());
+        original.columns.push(code);
+        let mut amount = column("amount", "int", None);
+        amount.attributes.masking_function = Some("random(1, 9)".to_owned());
+        original.columns.push(amount);
+        let retyped = |column: usize, declared: &str| {
+            alter(&original, |draft| {
+                draft.columns[column].column_type = DraftType::Typed(declared.to_owned())
+            })
+        };
+        let conflict = |attribute: &str| {
+            Err(BuildDdlError::Refused {
+                column: original.columns[3].name().to_owned(),
+                operation: DdlOperation::AlterColumnType,
+                reason: RefusalReason::ConflictingAttribute(attribute.to_owned()),
+            })
+        };
+
+        assert_eq!(retyped(3, "text"), conflict("SPARSE"));
+        assert_eq!(retyped(3, "geometry"), conflict("SPARSE"));
+        assert!(retyped(3, "nvarchar(40)").is_ok());
+        assert!(matches!(
+            retyped(4, "int"),
+            Err(BuildDdlError::Refused { reason: RefusalReason::ConflictingAttribute(mask), .. })
+                if mask == "MASKED WITH (FUNCTION = N'partial(1,\"X\",0)')"
+        ));
+        assert!(retyped(4, "nchar(10)").is_ok());
+        assert!(matches!(
+            retyped(5, "varchar(10)"),
+            Err(BuildDdlError::Refused {
+                reason: RefusalReason::ConflictingAttribute(_),
+                ..
+            })
+        ));
+        assert!(retyped(5, "money").is_ok());
+        assert!(mask_takes("default()", &ColumnKind::Uuid));
+        assert!(mask_takes("datetime(\"Y\")", &ColumnKind::Date));
+        assert!(!mask_takes("email()", &ColumnKind::Date));
+    }
+
+    #[test]
+    fn a_sparse_column_takes_neither_not_null_nor_a_default() {
+        let mut original = orders();
+        let mut weight = column("weight", "int", None);
+        weight.attributes.sparse = true;
+        original.columns.push(weight);
+        let sparse = Permission::Refused(RefusalReason::ConflictingAttribute("SPARSE".to_owned()));
+
+        let permissions = dialect().column_capabilities(&original, &original.columns[3]);
+        let not_null = alter(&original, |draft| draft.columns[3].nullable = false);
+
+        assert_eq!(permissions.alter_nullability, sparse);
+        assert_eq!(permissions.alter_default, sparse);
+        assert_eq!(permissions.alter_type, Permission::Allowed);
+        assert!(matches!(
+            not_null,
+            Err(BuildDdlError::Refused {
+                operation: DdlOperation::AlterColumnNullability,
+                ..
+            })
+        ));
     }
 
     #[test]
