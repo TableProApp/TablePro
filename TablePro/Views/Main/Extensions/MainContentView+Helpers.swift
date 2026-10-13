@@ -47,6 +47,16 @@ extension MainContentView {
         toolbarState.syncFromSession(for: connection)
     }
 
+    /// The banner appears without the user doing anything and macOS has no live region for it, so VoiceOver
+    /// hears it only through an announcement. Every window on the session shows the banner, and announcements
+    /// are app-wide, so only the key window speaks.
+    func announceConnectionWarning(_ warning: String?) {
+        guard let warning, coordinator.isKeyWindow else { return }
+        AccessibilityAnnouncement.post(
+            String(format: String(localized: "Connected with a warning. %@"), warning)
+        )
+    }
+
     private func consumePendingLoad(trigger: TableLoadTrigger) {
         if let tabId = tabManager.selectedTab?.id {
             coordinator.resolveTableTabSchemaIfNeeded(tabId: tabId)

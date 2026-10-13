@@ -139,6 +139,7 @@ def configure(lib):
     lib.sqlite3_column_text.argtypes = [p, ctypes.c_int]
     lib.sqlite3_column_text.restype = p
     lib.sqlite3_changes.argtypes = [p]
+    lib.sqlite3_total_changes.argtypes = [p]
     lib.sqlite3_finalize.argtypes = [p]
     lib.sqlite3_reset.argtypes = [p]
     lib.sqlite3_interrupt.argtypes = [p]
@@ -331,6 +332,7 @@ def execute(lib, db, sql, parameters, row_cap):
                 header += bytes([0])
         send(OP_HEADER, header)
 
+        total_changes_before = lib.sqlite3_total_changes(db)
         batch = []
         batch_bytes = 0
         row_count = 0
@@ -356,7 +358,9 @@ def execute(lib, db, sql, parameters, row_cap):
         if step != SQLITE_ROW and step != SQLITE_DONE and not truncated:
             send(OP_ERROR, struct.pack(">I", step & 0xFFFFFFFF) + encode_str(lib.sqlite3_errmsg(db).decode("utf-8", "replace")))
             return
-        changes = lib.sqlite3_changes(db) if column_count == 0 else 0
+        # sqlite3_changes keeps the last write's count, so a statement that wrote nothing would repeat it.
+        wrote = lib.sqlite3_total_changes(db) != total_changes_before
+        changes = lib.sqlite3_changes(db) if column_count == 0 and wrote else 0
         send(OP_DONE, struct.pack(">q", changes) + bytes([1 if truncated else 0]))
     finally:
         lib.sqlite3_finalize(stmt)

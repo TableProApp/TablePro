@@ -72,4 +72,25 @@ final class TrinoIntrospectionSQLTests: XCTestCase {
             "SHOW CREATE VIEW \"hive\".\"sales\".\"v\""
         )
     }
+
+    /// Trino refuses `SHOW CREATE VIEW` on a materialized view, which has its own statement.
+    func testShowCreateMaterializedView() {
+        XCTAssertEqual(
+            TrinoIntrospectionSQL.showCreateMaterializedView(catalog: "hive", schema: "sales", view: "mv"),
+            "SHOW CREATE MATERIALIZED VIEW \"hive\".\"sales\".\"mv\""
+        )
+    }
+
+    func testRelationTypeReadsOneRelation() {
+        let sql = TrinoIntrospectionSQL.relationType(catalog: "hive", schema: "sales", table: "o'v")
+        XCTAssertTrue(sql.hasPrefix("SELECT table_type FROM \"hive\".information_schema.tables"))
+        XCTAssertTrue(sql.contains("table_schema = 'sales'"))
+        XCTAssertTrue(sql.contains("table_name = 'o''v'"))
+    }
+
+    func testMaterializedViewNarrowsTheListingToOneName() {
+        let sql = TrinoIntrospectionSQL.materializedView(catalog: "hive", schema: "sales", name: "mv")
+        XCTAssertTrue(sql.hasPrefix(TrinoIntrospectionSQL.listMaterializedViews(catalog: "hive", schema: "sales")))
+        XCTAssertTrue(sql.hasSuffix(" AND name = 'mv'"))
+    }
 }

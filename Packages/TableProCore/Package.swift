@@ -89,7 +89,7 @@ let package = Package(
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit"],
+            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar"],
             path: "Sources/TableProDatabase"
         ),
         .target(
@@ -114,7 +114,7 @@ let package = Package(
         ),
         .target(
             name: "TableProMSSQLCore",
-            dependencies: ["TableProCoreTypes"],
+            dependencies: ["TableProCoreTypes", "TableProSQLGrammar"],
             path: "Sources/TableProMSSQLCore"
         ),
         .target(

@@ -195,6 +195,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// Reads one type again, definition included. The type must be one this driver listed,
     /// because its `identity` is the driver's own key for finding it.
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo
+    /// The statement that creates the named relation, whatever kind it is: a view or a materialized
+    /// view answers with its own `CREATE VIEW`, never a `CREATE TABLE` rebuilt from its columns, which
+    /// most catalogs list for a view as they do for a table. A driver may answer a view here from
+    /// `fetchViewDefinition`, or the other way round, but not both.
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
@@ -246,6 +250,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// it and say so. Throwing is reserved for a release that was attempted and failed.
     func releaseIdleResource() async throws -> PluginResourceRelease
     var serverVersion: String? { get }
+    /// The warning the server sent with a login that succeeded, in the server's own words, such as an Oracle
+    /// password in its grace period, or `nil` when there was none. The app reads it once `connect()` returns.
+    var connectionWarning: String? { get }
     var hasLostConnection: Bool { get }
     var parameterStyle: ParameterStyle { get }
     func resolveQueryCompletionProfile(
@@ -846,6 +853,8 @@ public extension PluginDatabaseDriver {
     }
 
     var serverVersion: String? { nil }
+
+    var connectionWarning: String? { nil }
 
     var hasLostConnection: Bool { false }
 

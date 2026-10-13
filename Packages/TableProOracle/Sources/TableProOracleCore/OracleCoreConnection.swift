@@ -107,6 +107,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var capturesServerOutput = false
         var close = OracleCloseRecord()
         var serverRelease: OracleServerRelease?
+        var loginWarning: String?
         /// Read before the first statement of each session, and again before the statement after one that can
         /// change them, so no result ever waits on them mid-stream.
         var sessionZones: OracleSessionTimeZones?
@@ -122,6 +123,12 @@ public final class OracleCoreConnection: @unchecked Sendable {
     /// channel, because the redial that replaces the channel reaches the same server.
     public var serverRelease: OracleServerRelease? {
         state.withLock { $0.serverRelease }
+    }
+
+    /// The warning the server attached to the last login that succeeded, such as ORA-28002 for a password in
+    /// its grace period, in the server's own words. The session is usable; the warning is for the user to read.
+    public var loginWarning: String? {
+        state.withLock { $0.loginWarning }
     }
 
     public init(options: OracleConnectionOptions) {
@@ -161,29 +168,29 @@ public final class OracleCoreConnection: @unchecked Sendable {
             return counter
         }
 
-        let attempt = OSAllocatedUnfairLock(initialState: false)
-
         do {
+            // The driver's connect does not observe task cancellation, so a login the caller
+            // cancelled, or the backstop gave up on, still completes. Nothing downstream will
+            // ever see that handle, so it closes its own session rather than leaving one open
+            // on the server per abandoned attempt. Closing logs off and waits for the server's
+            // answer, so it runs on its own, like every other close here.
             let connection = try await withOracleTimeout(
                 seconds: options.loginTimeoutSeconds + Self.loginTimeoutGraceSeconds,
-                onTimeout: { attempt.withLock { $0 = true } }
+                onTimeout: {},
+                onAbandoned: { connection in
+                    Task {
+                        try? await connection.close()
+                        osLogger.notice(
+                            "Closed the Oracle connection: \(OracleDisconnectReason.abandonedLoginAttempt.logDescription, privacy: .public)"
+                        )
+                    }
+                }
             ) {
-                let connection = try await OracleNIO.OracleConnection.connect(
+                try await OracleNIO.OracleConnection.connect(
                     configuration: connectConfig,
                     id: connectionId,
                     logger: connectLogger
                 )
-                // A connect that lands after the backstop fired has already been given
-                // up on, and nothing downstream will ever see this handle. It closes its
-                // own socket rather than leaking one per abandoned attempt.
-                guard !attempt.withLock({ $0 }) else {
-                    try? await connection.close()
-                    osLogger.notice(
-                        "Closed the Oracle connection: \(OracleDisconnectReason.abandonedLoginAttempt.logDescription, privacy: .public)"
-                    )
-                    throw OracleCoreError.loginTimedOut
-                }
-                return connection
             }
 
             let release = OracleServerRelease(
@@ -201,6 +208,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 current.isConnected = true
                 current.hasEverConnected = true
                 current.serverRelease = release
+                current.loginWarning = connection.loginWarning?.message
                 current.sessionZones = nil
                 current.close.clearOnConnect()
                 return true
@@ -216,6 +224,8 @@ public final class OracleCoreConnection: @unchecked Sendable {
         } catch is OracleTimeoutError {
             osLogger.error("Oracle login handshake timed out after \(self.options.loginTimeoutSeconds, privacy: .public)s")
             throw OracleCoreError.loginTimedOut
+        } catch let cancellation as CancellationError {
+            throw cancellation
         } catch let sqlError as OracleSQLError {
             throw connectError(from: sqlError)
         } catch let nioSslError as NIOSSLError {
@@ -894,6 +904,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
             continuation.yield(.rows([decoder.decode(row)]))
         }
         await warnOnce(about: decoder.unsupportedTypeNames)
+
+        guard columns.isEmpty else { return }
+        continuation.yield(.affectedRows(try await stream.affectedRows))
     }
 
     // MARK: - Session Time Zones

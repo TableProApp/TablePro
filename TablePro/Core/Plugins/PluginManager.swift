@@ -130,7 +130,12 @@ final class PluginManager: ObservableObject {
     /// and `DriverConnectionConfig.refreshPassword`, which mints a token password again for a
     /// sign-in the driver makes on its own. The old initializer keeps its symbol, so the minimum
     /// stays and no bulk re-release is needed.
-    nonisolated static let currentPluginKitVersion = 37
+    ///
+    /// 38 adds `PluginDatabaseDriver.connectionWarning`, the warning a server sent with a login that
+    /// succeeded, such as an Oracle password in its grace period. The default is `nil`, so an
+    /// already-built plugin keeps loading and reports none; the minimum stays and no bulk re-release
+    /// is needed.
+    nonisolated static let currentPluginKitVersion = 38
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

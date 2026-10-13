@@ -156,6 +156,7 @@ extension DatabaseManager {
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
+                session.connectionWarning = driver.connectionWarning
                 /// A connect is the answer to whatever went wrong before it, including a reconnect
                 /// that gave up on this same entry, so the mark and the reason it carried go here.
                 session.liveness = .live
@@ -797,6 +798,11 @@ extension DatabaseManager {
         let driverAfter = session.driver as AnyObject?
         guard !session.isContentViewEquivalent(to: before) || driverBefore !== driverAfter else { return }
         setSession(session, for: sessionId)
+    }
+
+    /// Hides the login warning in every window on this session, until the next connect brings it back.
+    func dismissConnectionWarning(for connectionId: UUID) {
+        updateSession(connectionId) { $0.connectionWarning = nil }
     }
 
     func observeConnectionUpdates() {

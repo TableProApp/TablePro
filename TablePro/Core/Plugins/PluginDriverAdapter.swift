@@ -24,6 +24,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         var connectAttempt: ConnectAttempt?
         var connectionMayBeOpen = false
         var disconnectInProgress = false
+        /// Read from the driver when its connect is adopted, so it outlives the `disconnect()` Test Connection
+        /// makes before anyone asks for it.
+        var connectionWarning: String?
     }
 
     let connection: DatabaseConnection
@@ -44,6 +47,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     var serverVersion: String? { pluginDriver.serverVersion }
+    var connectionWarning: String? { state.withLock { $0.connectionWarning } }
     var sessionLexicalState: PluginSessionLexicalState? { pluginDriver.sessionLexicalState }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 
@@ -160,6 +164,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             state.nextConnectGeneration &+= 1
             let generation = state.nextConnectGeneration
             state.status = .connecting
+            state.connectionWarning = nil
             state.connectAttempt = ConnectAttempt(generation: generation, gate: gate)
             return generation
         }
@@ -304,6 +309,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         adopted: Bool,
         error: Error?
     ) {
+        let warning = succeeded ? pluginDriver.connectionWarning : nil
         let shouldDisconnect = state.withLock { state in
             guard let attempt = state.connectAttempt, attempt.generation == generation else {
                 return false
@@ -313,6 +319,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             if keepsConnection {
                 state.connectionMayBeOpen = true
                 state.status = .connected
+                state.connectionWarning = warning
                 return false
             }
             if let error, adopted {

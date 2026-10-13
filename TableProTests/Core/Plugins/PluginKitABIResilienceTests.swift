@@ -16,6 +16,34 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+/// Implements only what `PluginDatabaseDriver` requires, for the defaults `FakeMSSQLPluginDriver` overrides.
+private final class BareRequiredSurfaceDriver: PluginDatabaseDriver, @unchecked Sendable {
+    var supportsSchemas: Bool { false }
+    var supportsTransactions: Bool { false }
+    var currentSchema: String? { nil }
+
+    func connect() async throws {}
+    func disconnect() {}
+
+    func execute(query: String) async throws -> PluginQueryResult {
+        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
+    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        PluginTableMetadata(tableName: table)
+    }
+    func fetchDatabases() async throws -> [String] { [] }
+    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
+        PluginDatabaseMetadata(name: database)
+    }
+}
+
 struct PluginKitABIResilienceTests {
     private func makeMinimalDriver() -> any PluginDatabaseDriver {
         FakeMSSQLPluginDriver()
@@ -49,6 +77,13 @@ struct PluginKitABIResilienceTests {
                 to: PluginSchemaDefinition(name: "app")
             ) == nil
         )
+    }
+
+    @Test("A driver built before connect warnings existed reports none")
+    func connectionWarningDefaultsToNone() {
+        let driver: any PluginDatabaseDriver = BareRequiredSurfaceDriver()
+        #expect(driver.connectionWarning == nil)
+        #expect(driver.hasLostConnection == false)
     }
 
     @Test("A driver that answers only the older name list has it lifted into table-like descriptors")

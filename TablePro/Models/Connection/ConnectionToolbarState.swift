@@ -69,6 +69,9 @@ final class ConnectionToolbarState: ObservableObject {
     /// Current connection state
     @Published var connectionState: ToolbarConnectionState = .disconnected
 
+    /// The session's login warning, mirrored here so the window shows and hides it as the session changes.
+    @Published var connectionWarning: String?
+
     // MARK: - Query Execution
 
     /// How long the last completed query took, and which tab ran it.
@@ -197,6 +200,11 @@ final class ConnectionToolbarState: ObservableObject {
         if safeModeLevel != resolvedSafeMode {
             safeModeLevel = resolvedSafeMode
         }
+
+        let resolvedWarning = DatabaseManager.shared.session(for: connection.id)?.connectionWarning
+        if connectionWarning != resolvedWarning {
+            connectionWarning = resolvedWarning
+        }
     }
 
     /// Update connection state from ConnectionStatus.
@@ -217,6 +225,7 @@ final class ConnectionToolbarState: ObservableObject {
         currentDatabase = ""
         currentSchema = nil
         connectionState = .disconnected
+        connectionWarning = nil
         queryTimings = [:]
         safeModeLevel = .silent
         isTableTab = false

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Setting in Settings > General to hide the version and Check for Updates on the Welcome window.
 - Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
 - Cloud Firestore and Firebase Realtime Database as a registry plugin over their REST APIs. (#2504)
+- Warning banner and Test Connection notice for a server warning at login, such as an Oracle password about to expire. (#3401)
 
 ### Changed
 
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP server runs only while Enable MCP Server is on in Settings > MCP. Clients and pairing no longer start it while it is off.
 - Edit > Data shown only in data file windows.
 - Smaller updates: about 6 MB from any of the last five releases and 21 MB from older ones, down from 34 MB.
+- Several statements run together on PostgreSQL from iPhone and iPad commit one at a time, and a failure keeps the ones before it. (#3399)
 
 ### Removed
 
@@ -80,6 +82,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
 - Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
 - Database type icon and checkmark hard to see on the selected row in Choose a Database.
+- Oracle connection timing out after 30 seconds when the password is about to expire. (#3401)
+- Oracle session left open on the server when a connect was canceled during login.
+- Only the first statement running on iPhone and iPad when the query holds several. (#3399)
+- Query on iPhone and iPad appearing to do nothing after CREATE, DROP or a write that changed no rows, including every Oracle write. (#3399)
+- SQLite on iPhone and iPad reporting a CHECK or UNIQUE violation as a saved row in Add Row, the row editor and Shortcuts. (#3399)
+- Previous write's row count shown after a SQLite CREATE, DROP or ALTER. (#3399)
+- SQLite, PostgreSQL, MySQL and DuckDB query on iPhone and iPad hiding an error raised after the first rows. (#3399)
+- Stop on iPhone and iPad letting a running SQLite or PostgreSQL statement finish and commit, and running a DuckDB query again from the start. (#3399)
+- Query run right after Stop on iPhone and iPad showing no rows. (#3399)
+- PostgreSQL query on iPhone and iPad downloading the whole table before showing the first 10,000 rows. (#3399)
+- DuckDB result on iPhone and iPad cut at 10,000 rows without the notice that more rows exist. (#3399)
+- MySQL connection failing every query after calling a procedure that returns rows, and a procedure that failed after its first rows reported as a success. (#3399)
+- Redis command on iPhone and iPad reading a line break as part of a value, and dropping an empty quoted value. (#3399)
+- View DDL shown as a made-up CREATE TABLE on SQL Server, Oracle, Dameng, DuckDB, Redshift and Cassandra. (#3402)
+- Show DDL and Copy DDL failing on every view on SQLite, libSQL, Cloudflare D1, SAP HANA, Spanner, Trino and Teradata.
+- SQL Server view definitions naming the view's old name after a rename, and blank for an encrypted view or a name with a period.
+- SQL Server Edit View Definition template creating the view in the default schema instead of the view's own.
+- Oracle view DDL losing the view's column names, and cut off after 4000 bytes without saying so.
+- Trino materialized views left out of SQL exports.
 
 ### Security
 

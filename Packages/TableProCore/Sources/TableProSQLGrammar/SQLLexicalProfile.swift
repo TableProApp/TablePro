@@ -133,7 +133,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// A `GO` line is sqlcmd's, not the server's: sent to it, Azure SQL Edge answers Msg 102 and runs nothing. A
     /// statement needs no `;`: `SELECT 1` followed by `DROP TABLE t` runs both. A `MERGE` is the exception, and one
     /// sent without its `;` fails the whole batch with Msg 10713.
-    static let sqlServer: SQLLexicalGrammar = [
+    public static let sqlServer: SQLLexicalGrammar = [
         .bracketQuotedIdentifiers, .doubledClosingBracketEscapes, .nestedBlockComments,
         .carriageReturnEndsLineComments, .batchSeparatorLines, .unterminatedStatements, .terminatedMergeStatements,
     ]

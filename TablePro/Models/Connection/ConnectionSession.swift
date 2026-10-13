@@ -21,6 +21,10 @@ struct ConnectionSession: Identifiable {
     /// this struct's own default value.
     var liveness: ConnectionLiveness = .live
     var lastError: String?
+    /// The warning the server sent with the login that opened this session, such as an Oracle password in its
+    /// grace period. The user dismissing it clears it; the next connect brings it back, because the server sends
+    /// it on every login. A reconnect the app makes on its own leaves it as it is.
+    var connectionWarning: String?
 
     /// Live write-protection level. Seeded from the saved default; the toolbar
     /// updates this, so reading `connection.safeModeLevel` is wrong afterwards.
@@ -130,6 +134,7 @@ struct ConnectionSession: Identifiable {
             && tableOperationOptions == other.tableOperationOptions
             && browseSchema == other.browseSchema
             && browseDatabase == other.browseDatabase
+            && connectionWarning == other.connectionWarning
     }
 
     /// Puts back the Truncate and Drop a save took off the queue and did not complete.

@@ -42,7 +42,7 @@ extension ConnectionFormCoordinator {
             cloudSQLProxy.state.enabled = newValue == .cloudSQLProxy
             socksProxy.state.enabled = newValue == .socksProxy
             tunnelCommand.state.enabled = newValue == .tunnelCommand
-            testSucceeded = false
+            testResult = nil
         }
     }
 
@@ -81,7 +81,7 @@ extension ConnectionFormCoordinator {
         if network.usesLocalSocket {
             transport = nil
         }
-        testSucceeded = false
+        testResult = nil
     }
 
     var supportsRemoteDatabaseFile: Bool {

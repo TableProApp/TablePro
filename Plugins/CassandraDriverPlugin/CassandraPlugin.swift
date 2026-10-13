@@ -551,8 +551,13 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             quote: { "\"\(escapeIdentifier($0))\"" })
     }
 
+    /// `system_schema.columns` lists a materialized view's columns as it lists a table's, so a view
+    /// is looked up first: without it a view read here came back as a `CREATE TABLE` of its columns.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let ks = resolveKeyspace(schema)
+        if await isMaterializedView(table, keyspace: ks) {
+            return try await fetchViewDefinition(view: table, schema: ks)
+        }
 
         let columns = try await fetchColumns(table: table, schema: ks)
 
@@ -578,6 +583,17 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         ddl += "\n);"
 
         return ddl
+    }
+
+    /// A cluster without `system_schema.views` has no materialized views, so a failed read answers no.
+    private func isMaterializedView(_ name: String, keyspace: String) async -> Bool {
+        let query = """
+            SELECT view_name FROM system_schema.views
+            WHERE keyspace_name = '\(escapeSingleQuote(keyspace))'
+              AND view_name = '\(escapeSingleQuote(name))'
+            """
+        guard let result = try? await execute(query: query) else { return false }
+        return !result.rows.isEmpty
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {

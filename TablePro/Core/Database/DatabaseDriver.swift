@@ -25,6 +25,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Optional - not all drivers may implement this
     var serverVersion: String? { get }
 
+    /// The warning the server sent with the last login that succeeded. See
+    /// `PluginDatabaseDriver.connectionWarning`.
+    var connectionWarning: String? { get }
+
     /// The lexical facts the server decided for this session and the driver has read. See
     /// `PluginDatabaseDriver.sessionLexicalState`.
     var sessionLexicalState: PluginSessionLexicalState? { get }
@@ -224,7 +228,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// pattern and type, rather than by table filters. Nil when the driver has no such count.
     func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int?
 
-    /// Fetch the DDL (CREATE TABLE statement) for a specific table
+    /// The statement that creates the named relation: a view answers with its own `CREATE VIEW`.
     func fetchTableDDL(table: String) async throws -> String
 
     /// The CREATE INDEX statements this table needs that `fetchTableDDL` does not already declare.
@@ -448,6 +452,8 @@ extension DatabaseDriver {
     /// Default implementation returns nil
     /// Override in drivers that support version querying
     var serverVersion: String? { nil }
+
+    var connectionWarning: String? { nil }
 
     var sessionLexicalState: PluginSessionLexicalState? { nil }
 
