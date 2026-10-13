@@ -241,7 +241,24 @@ struct ThemeDocumentTests {
         let editor = try #require(root["editor"] as? [String: Any])
 
         #expect(root["dataGrid"] == nil)
+        #expect(root["window"] == nil)
         #expect(Set(editor.keys) == ["syntax"])
+    }
+
+    @Test("The window background loads from the window group and round-trips")
+    func windowBackgroundRoundTrips() throws {
+        let document = try Self.document(Self.withColor("#282a36", at: ["window", "background"]))
+        #expect(document.colors.mapValues(\.hex) == [.windowBackdrop: "#282A36"])
+
+        let theme = document.definition()
+        let object = try JSONSerialization.jsonObject(with: try ThemeEncoder.data(for: theme))
+        let root = try #require(object as? [String: Any])
+        #expect(root["window"] as? [String: String] == ["background": "#282A36"])
+        #expect(root["editor"] == nil)
+
+        let reread = try ThemeDocument(data: try ThemeEncoder.data(for: theme)).definition()
+        #expect(reread == theme)
+        #expect(reread.overrides[.windowBackdrop]?.hex == "#282A36")
     }
 
     @Test("A theme round-trips through the encoder")

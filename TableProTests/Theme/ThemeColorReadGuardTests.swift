@@ -45,6 +45,8 @@ struct ThemeColorReadGuardTests {
         "VimCursorManager",
         "GhostTextRenderer",
         "ThemePreviewCard",
+        "CodeWell",
+        "ValueWell",
     ]
 
     static func isAllowed(_ path: String) -> Bool {

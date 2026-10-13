@@ -43,5 +43,8 @@
   },
   "id": "tablepro.dracula",
   "name": "Dracula",
-  "schema": 3
+  "schema": 3,
+  "window": {
+    "background": "#282A36"
+  }
 }

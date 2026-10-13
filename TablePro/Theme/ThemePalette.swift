@@ -44,9 +44,11 @@ internal struct ThemePalette {
     internal let revision: Int
 
     private let colors: [ThemeSlot: NSColor]
+    private let source: ThemeSource
 
     internal init(revision: Int, source: ThemeSource = .shared) {
         self.revision = revision
+        self.source = source
 
         var built: [ThemeSlot: NSColor] = [:]
         built.reserveCapacity(ThemeSlot.allCases.count)
@@ -54,7 +56,7 @@ internal struct ThemePalette {
         for slot in ThemeSlot.allCases {
             let name = NSColor.Name("tablepro.\(slot.rawValue).\(revision)")
             built[slot] = NSColor(name: name) { appearance in
-                source.pair[ThemeAppearance(matching: appearance)].color(for: slot)
+                source.pair[ThemeAppearance(matching: appearance)].color(for: slot, in: appearance)
             }
         }
 
@@ -67,6 +69,17 @@ internal struct ThemePalette {
 
     internal func color(_ slot: ThemeSlot) -> Color {
         Color(nsColor: self[slot])
+    }
+
+    /// For a surface that has its own system color today: the theme's color in each appearance whose
+    /// theme sets the slot, and `native` itself, still dynamic, in the other.
+    /// Unnamed, because two dynamic colors with one name compare equal whatever they draw.
+    internal func color(_ slot: ThemeSlot, otherwise native: NSColor) -> NSColor {
+        let source = source
+        return NSColor(name: nil) { appearance in
+            let theme = source.pair[ThemeAppearance(matching: appearance)]
+            return theme.isOverridden(slot, in: appearance) ? theme.color(for: slot) : native
+        }
     }
 }
 
@@ -110,12 +123,33 @@ internal struct ResolvedTheme: Equatable {
         Color(nsColor: self[slot])
     }
 
+    /// The override when the active theme sets the slot, else `native` itself.
+    internal func color(_ slot: ThemeSlot, otherwise native: NSColor) -> NSColor {
+        guard isOverridden(slot) else { return native }
+        guard slot.yieldsToIncreasedContrast else { return self[slot] }
+        let override = self[slot]
+        return NSColor(name: nil) { appearance in
+            appearance.isHighContrast ? native : override
+        }
+    }
+
     /// A view drawing in the other appearance than the active theme (a preview of the other slot)
     /// takes that slot's theme, the way a `palette` color would.
     internal func cgColor(_ slot: ThemeSlot, in appearance: NSAppearance) -> CGColor {
         let color = ThemeAppearance(matching: appearance) == definition.appearance
             ? self[slot]
             : ThemeSource.shared.pair[ThemeAppearance(matching: appearance)].color(for: slot)
+        return Self.cgColor(color, in: appearance)
+    }
+
+    internal func cgColor(_ slot: ThemeSlot, otherwise native: NSColor, in appearance: NSAppearance) -> CGColor {
+        let theme = ThemeAppearance(matching: appearance) == definition.appearance
+            ? definition
+            : ThemeSource.shared.pair[ThemeAppearance(matching: appearance)]
+        return Self.cgColor(theme.isOverridden(slot, in: appearance) ? theme.color(for: slot) : native, in: appearance)
+    }
+
+    private static func cgColor(_ color: NSColor, in appearance: NSAppearance) -> CGColor {
         var result: CGColor?
         appearance.performAsCurrentDrawingAppearance {
             result = color.cgColor

@@ -43,5 +43,8 @@
   },
   "id": "tablepro.nord",
   "name": "Nord",
-  "schema": 3
+  "schema": 3,
+  "window": {
+    "background": "#2E3440"
+  }
 }
