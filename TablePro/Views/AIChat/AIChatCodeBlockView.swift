@@ -10,6 +10,7 @@ import TableProGrammars
 
 struct AIChatCodeBlockView: View, Equatable {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let code: String
     let language: String?
     var prefersLightweightRendering: Bool = false
@@ -23,6 +24,7 @@ struct AIChatCodeBlockView: View, Equatable {
     @State private var isCopied: Bool = false
     @State private var isEditorReady = false
     @State private var editorState = SourceEditorState()
+    @State private var editorConfiguration = makeConfiguration()
     @State private var measuredWidth: CGFloat = 0
     @Environment(\.commandActions) private var actions
 
@@ -107,20 +109,22 @@ struct AIChatCodeBlockView: View, Equatable {
     private var codeContent: some View {
         Group {
             if usesLightweightContent {
+                // Stands in for the editor while the block streams, so it wears the editor's colors and the block
+                // does not change color when the editor replaces it.
                 Text(code.isEmpty ? " " : code)
                     .font(Font(Self.editorFont))
                     .lineSpacing(CodeBlockHeightEstimator.extraLineSpacing(for: Self.editorFont))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(themeEngine.palette.color(.editorText))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(8)
                     .frame(minHeight: CodeBlockHeightEstimator.minimumHeight, alignment: .topLeading)
-                    .background(Color(nsColor: .textBackgroundColor))
+                    .background(themeEngine.palette.color(.editorBackground))
             } else {
                 SourceEditor(
                     .constant(code),
                     language: treeSitterLanguage,
-                    configuration: Self.makeConfiguration(),
+                    configuration: editorConfiguration,
                     state: $editorState,
                     foldProvider: FoldProviderResolver.provider(for: treeSitterLanguage)
                 )
@@ -132,6 +136,12 @@ struct AIChatCodeBlockView: View, Equatable {
             proxy.size.width
         } action: { newWidth in
             measuredWidth = newWidth
+        }
+        .onReceive(AppEvents.shared.themeChanged) { _ in
+            editorConfiguration = Self.makeConfiguration()
+        }
+        .onChange(of: settingsManager.editor) { _ in
+            editorConfiguration = Self.makeConfiguration()
         }
     }
 

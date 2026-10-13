@@ -203,7 +203,6 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
         .alert(String(localized: "Reset All Settings"), isPresented: $showResetConfirmation) {
             Button(String(localized: "Reset"), role: .destructive) { onResetAll() }
             Button(String(localized: "Cancel"), role: .cancel) {}

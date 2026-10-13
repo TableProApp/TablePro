@@ -135,6 +135,8 @@ final class DataGridRowGutterView: NSView {
         )
         let font = ThemeEngine.shared.dataGridFonts.rowNumber
         let pageOffset = coordinator.paginationOffsetProvider()
+        coordinator.cellRegistry.preparePalette(in: NSAppearance.currentDrawing())
+        let palette = coordinator.cellRegistry.palette
 
         for band in DataGridBodyChrome.rowBands(in: dirtyRect, of: self, tableView: tableView) {
             let stripRect = NSRect(x: 0, y: band.rect.minY, width: bounds.width, height: band.rect.height)
@@ -153,7 +155,7 @@ final class DataGridRowGutterView: NSView {
                 band.row + pageOffset + 1,
                 in: NSRect(x: cellFrame.minX, y: stripRect.minY, width: cellFrame.width, height: stripRect.height),
                 font: font,
-                color: numberColor(isSelected: isSelected, emphasized: emphasized, state: state, coordinator: coordinator)
+                color: palette.rowNumberColor(for: state, onEmphasizedSelection: isSelected && emphasized)
             )
         }
 
@@ -161,9 +163,8 @@ final class DataGridRowGutterView: NSView {
     }
 
     /// What the row under the strip paints, in its order, for `DataGridBodyChrome.fill` to blend over
-    /// the table's background: `NSTableRowView`'s stripe, then either the selection a `.plain` table
-    /// with the regular highlight draws, or the tint `DataGridRowView` gives an unselected row. A
-    /// band past the last row has the stripe alone.
+    /// the table's background: the row's stripe, then either its selection or the tint
+    /// `DataGridRowView` gives an unselected row. A band past the last row has the stripe alone.
     private func rowLayers(
         row: Int,
         isSelected: Bool,
@@ -176,21 +177,11 @@ final class DataGridRowGutterView: NSView {
             layers.append(stripe)
         }
         if isSelected {
-            layers.append(emphasized ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor)
+            layers.append(DataGridBodyChrome.selectionColor(emphasized: emphasized))
         } else if let tint = state.tint {
             layers.append(tint)
         }
         return layers
-    }
-
-    private func numberColor(
-        isSelected: Bool,
-        emphasized: Bool,
-        state: RowVisualState,
-        coordinator: TableViewCoordinator
-    ) -> NSColor {
-        if isSelected, emphasized { return .alternateSelectedControlTextColor }
-        return coordinator.cellRegistry.rowNumberColor(for: state)
     }
 
     /// Right-aligned inside the cell frame AppKit gives the mounted row-number cell, with the insets

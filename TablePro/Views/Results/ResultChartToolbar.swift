@@ -73,7 +73,7 @@ struct ResultChartToolbar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
     }
 
     @ViewBuilder

@@ -28,6 +28,7 @@ struct DataGridCellAppearance: Equatable {
     let drawsFocusBorder: Bool
     /// The cell cursor on an unselected row.
     let drawsFocusRing: Bool
+    let focusColor: NSColor
     let checkboxMark: DataGridCheckboxMark?
 
     static func resolve(
@@ -68,17 +69,16 @@ struct DataGridCellAppearance: Equatable {
             stateTint = highlightColor?.washColor
         }
 
-        // A find match keeps its own highlight whatever else is true, and the text turns black
-        // against it. Otherwise a selected row's text takes the selection's own colour, and the
-        // modified or highlight tint stands down so the selection fill is not painted over.
+        // The modified or highlight tint stands down on a selected row so the selection fill is
+        // not painted over; a find match keeps its own highlight whatever else is true.
         let backgroundTint: NSColor?
         let textColor: NSColor
         if let findTint {
             backgroundTint = findTint
-            textColor = .black
+            textColor = palette.findMatchText
         } else if onEmphasizedSelection {
             backgroundTint = nil
-            textColor = .alternateSelectedControlTextColor
+            textColor = palette.selectionText
         } else {
             backgroundTint = stateTint
             textColor = baseColor
@@ -109,6 +109,7 @@ struct DataGridCellAppearance: Equatable {
             ),
             drawsFocusBorder: isCursorVisible && onEmphasizedSelection,
             drawsFocusRing: isCursorVisible && !onEmphasizedSelection,
+            focusColor: onEmphasizedSelection ? palette.selectionText : palette.focusRing,
             checkboxMark: kind == .checkbox ? checkboxMark : nil
         )
     }

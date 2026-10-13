@@ -5,6 +5,7 @@
 //  What a link line of the JSON inspector prints and where a click on it goes.
 //
 
+import AppKit
 import Foundation
 import SwiftUI
 import Testing
@@ -57,5 +58,24 @@ struct JSONNodeRowViewTests {
 
         JSONNodeRowView.openLink(allowed)
         #expect(opened == [allowed])
+    }
+
+    @Test("A value takes the tone the JSON tree viewer gives the same kind of value")
+    func valuesShareTheTreeTones() {
+        #expect(JSONRowColors.tone(for: .string("a")) == .string)
+        #expect(JSONRowColors.tone(for: .binary(Data([0x01]))) == .string)
+        #expect(JSONRowColors.tone(for: .number("1")) == .number)
+        #expect(JSONRowColors.tone(for: .bool(true)) == .literal)
+        #expect(JSONRowColors.tone(for: .null) == .literal)
+    }
+
+    @Test("Punctuation is primary text and every tone is a system color under any theme")
+    func colorsIgnoreTheTheme() throws {
+        try PaneThemeFixture.withEverySlotOverridden {
+            #expect(JSONRowColors.punctuation == .primary)
+            #expect(JSONRowColors.key == Color(nsColor: .systemBlue))
+            #expect(JSONRowColors.placeholder == Color(nsColor: .secondaryLabelColor))
+            #expect(JSONRowColors.color(for: .number("1")) == Color(nsColor: .systemPurple))
+        }
     }
 }

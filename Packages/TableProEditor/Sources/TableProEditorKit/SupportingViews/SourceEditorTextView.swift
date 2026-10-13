@@ -37,7 +37,21 @@ final class SourceEditorTextView: TextView {
     /// view, the trigger editor, the SQL preview and the AI chat code blocks all use this class.
     var statementBoundaryProvider: ((_ offset: Int, _ forward: Bool) -> Int?)?
 
+    /// Painted by the text view itself, the way `NSTextView.drawsBackground` does. Left to the enclosing scroll view,
+    /// a semantic color such as `textBackgroundColor` is drawn as the window's background inside a window with a
+    /// toolbar, so the text area no longer matched the gutter in Dark.
+    var backgroundFillColor: NSColor? {
+        didSet {
+            guard backgroundFillColor != oldValue else { return }
+            needsDisplay = true
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
+        if let backgroundFillColor {
+            backgroundFillColor.setFill()
+            dirtyRect.fill()
+        }
         drawStatementHighlight(in: dirtyRect)
         super.draw(dirtyRect)
     }

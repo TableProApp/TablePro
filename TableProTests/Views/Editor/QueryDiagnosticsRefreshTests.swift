@@ -193,7 +193,7 @@ struct QueryDiagnosticMessageTests {
 
         let emphases = manager.getEmphases(for: QueryDiagnosticsController.emphasisGroup)
         #expect(emphases.map(\.range) == [range])
-        #expect(emphases.first?.style == .underline(color: ThemeEngine.shared.palette[.statusWarning]))
+        #expect(emphases.first?.style == .underline(color: .systemOrange))
         #expect(
             manager.toolTip(at: try center(of: range, in: controller))
                 == "Full-width semicolon (U+FF1B). SQL reads only ; as a statement separator."

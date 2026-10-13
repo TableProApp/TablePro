@@ -7,10 +7,12 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import TableProPluginKit
 
-/// Read-only text view that applies SQL/MQL syntax highlighting via regex
+/// A code view, so it wears the editor theme: background, text and syntax. The colors are the palette's dynamic ones,
+/// which resolve per appearance when the text view draws.
 struct HighlightedSQLTextView: NSViewRepresentable {
     let sql: String
     var databaseType: DatabaseType = .mysql
@@ -33,8 +35,8 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         textView.isSelectable = true
         textView.font = themeEngine.editorFonts.font
         textView.textContainerInset = NSSize(width: 12, height: 12)
-        textView.backgroundColor = themeEngine.palette[.editorBackground]
         textView.textColor = themeEngine.palette[.editorText]
+        applyBackground(to: scrollView, textView: textView)
 
         // Disable line wrapping
         textView.textContainer?.widthTracksTextView = false
@@ -44,6 +46,7 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         )
         textView.isHorizontallyResizable = true
 
+        context.coordinator.redisplayOnThemeChange(scrollView)
         return scrollView
     }
 
@@ -57,8 +60,7 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         if fontChanged {
             textView.font = editorFont
         }
-        textView.backgroundColor = themeEngine.palette[.editorBackground]
-        textView.textColor = themeEngine.palette[.editorText]
+        applyBackground(to: scrollView, textView: textView)
 
         if textChanged {
             textView.string = sql
@@ -73,6 +75,14 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         applyHighlighting(to: textView)
     }
 
+    /// The scroll view paints the same color, so a short query never shows another background below its last line.
+    private func applyBackground(to scrollView: NSScrollView, textView: NSTextView) {
+        let background = themeEngine.palette[.editorBackground]
+        guard textView.backgroundColor != background else { return }
+        textView.backgroundColor = background
+        scrollView.backgroundColor = background
+    }
+
     private var themeRevision: Int {
         themeEngine.revision
     }
@@ -81,8 +91,21 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         Coordinator()
     }
 
+    @MainActor
     final class Coordinator {
         var revision = -1
+        private var themeCancellable: AnyCancellable?
+
+        /// An Accent, Highlight or contrast change moves no published value, so nothing would otherwise redraw the
+        /// system colors the text view holds.
+        func redisplayOnThemeChange(_ scrollView: NSScrollView) {
+            themeCancellable = AppEvents.shared.themeChanged
+                .receive(on: RunLoop.main)
+                .sink { [weak scrollView] _ in
+                    scrollView?.needsDisplay = true
+                    scrollView?.documentView?.needsDisplay = true
+                }
+        }
     }
 
     // MARK: - Syntax Highlighting

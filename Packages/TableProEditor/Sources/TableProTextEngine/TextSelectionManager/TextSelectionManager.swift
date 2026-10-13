@@ -23,11 +23,32 @@ public class TextSelectionManager: NSObject {
 
     public static let selectionChangedNotification = Notification.Name("com.CodeEdit.TextSelectionManager.TextSelectionChangedNotification")
 
-    public var insertionPointColor = NSColor.labelColor {
+    /// `nil` leaves the caret to the system: an `NSTextInsertionIndicator` keeps its own color, and the drawn caret
+    /// takes ``nativeInsertionPointColor``.
+    public var insertionPointColor: NSColor? {
         didSet {
-            textSelections.compactMap({ $0.view as? CursorView }).forEach { $0.color = insertionPointColor }
+            for view in textSelections.compactMap(\.view) {
+                if let cursorView = view as? CursorView {
+                    cursorView.color = drawnInsertionPointColor
+                } else if #available(macOS 14.0, *), let indicator = view as? NSTextInsertionIndicator {
+                    indicator.color = insertionPointColor
+                }
+            }
         }
     }
+
+    /// The color the system gives a caret: the Highlight color from macOS 14, the text color before it.
+    public static var nativeInsertionPointColor: NSColor {
+        if #available(macOS 14.0, *) {
+            return .textInsertionPointColor
+        }
+        return .textColor
+    }
+
+    var drawnInsertionPointColor: NSColor {
+        insertionPointColor ?? Self.nativeInsertionPointColor
+    }
+
     public var highlightSelectedLine: Bool = true
     public var selectedLineBackgroundColor = NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled)
     public var selectionBackgroundColor = NSColor.selectedTextBackgroundColor
@@ -213,8 +234,11 @@ public class TextSelectionManager: NSObject {
                     let systemCursorView = NSTextInsertionIndicator(frame: .zero)
                     cursorView = systemCursorView
                     systemCursorView.displayMode = .automatic
+                    if let insertionPointColor {
+                        systemCursorView.color = insertionPointColor
+                    }
                 } else {
-                    let internalCursorView = CursorView(color: insertionPointColor)
+                    let internalCursorView = CursorView(color: drawnInsertionPointColor)
                     cursorView = internalCursorView
                     cursorTimer.register(internalCursorView)
                 }

@@ -31,7 +31,7 @@ struct QueryInsightsToolbar: View {
 
             Divider()
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
     }
 
     private var scopePicker: some View {

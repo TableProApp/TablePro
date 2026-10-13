@@ -69,7 +69,7 @@ internal final class ThemeEngine: ObservableObject {
     internal var activeTheme: ThemeDefinition { pair[effectiveAppearance] }
 
     internal var change: ThemeChange {
-        ThemeChange(revision: revision, appearance: effectiveAppearance)
+        ThemeChange(revision: revision, appearance: effectiveAppearance, generation: generation)
     }
 
     /// Every control that shows or edits a stored value takes this, so one value reads the same in
@@ -82,7 +82,10 @@ internal final class ThemeEngine: ObservableObject {
 
     private var mode: AppAppearanceMode = .auto
     private var typography: TypographySettings = .default
+    private var generation = 0
+    private var systemFingerprint: SystemColorFingerprint?
     private var appearanceObservation: NSKeyValueObservation?
+    private var systemColorsObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
     private var lastAccessibilityScale: CGFloat = 1
 
@@ -91,11 +94,39 @@ internal final class ThemeEngine: ObservableObject {
         effectiveAppearance = .light
         revision = 1
         palette = ThemePalette(revision: 1)
-        resolved = ResolvedTheme(definition: BuiltInThemes.light, appearance: .light)
+        resolved = ResolvedTheme(definition: BuiltInThemes.light)
         editorFonts = EditorFontCache(from: .default)
         dataGridFonts = DataGridFontCache(from: .default)
 
+        observeSystemColorChanges()
         observeAccessibilityChanges()
+    }
+
+    /// What the system colors depend on besides the theme. A notification or KVO callback that
+    /// leaves it unchanged is not a change: `NSApp.appearance = nil` fires the observer even when
+    /// it was already nil, and a light/dark flip can arrive through more than one channel.
+    private struct SystemColorFingerprint: Equatable {
+        let appearance: NSAppearance.Name?
+        let accent: String
+        let highlight: String
+        let increaseContrast: Bool
+
+        @MainActor
+        static func current() -> SystemColorFingerprint {
+            let appearance = NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
+            var accent = ""
+            var highlight = ""
+            appearance.performAsCurrentDrawingAppearance {
+                accent = HexColor.string(from: .controlAccentColor)
+                highlight = HexColor.string(from: .selectedTextBackgroundColor)
+            }
+            return SystemColorFingerprint(
+                appearance: appearance.name,
+                accent: accent,
+                highlight: highlight,
+                increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            )
+        }
     }
 
     // MARK: - Settings entry points
@@ -103,7 +134,7 @@ internal final class ThemeEngine: ObservableObject {
     internal func apply(mode: AppAppearanceMode, lightThemeId: String, darkThemeId: String) {
         self.mode = mode
         applyApplicationAppearance(mode)
-        updateSystemAppearanceObserver(mode)
+        observeApplicationAppearance()
 
         let selection = ThemeResolver.resolve(
             mode: mode,
@@ -126,7 +157,7 @@ internal final class ThemeEngine: ObservableObject {
     }
 
     /// Called when the catalog changes under a selection that is already live, so a saved edit is
-    /// visible without the settings round trip that used to re-activate a stale cached copy.
+    /// visible without a settings round trip.
     internal func reapply(lightThemeId: String, darkThemeId: String) {
         apply(mode: mode, lightThemeId: lightThemeId, darkThemeId: darkThemeId)
     }
@@ -146,7 +177,7 @@ internal final class ThemeEngine: ObservableObject {
         if pairChanged {
             bumpRevision()
         }
-        resolved = ResolvedTheme(definition: activeTheme, appearance: effectiveAppearance)
+        resolved = ResolvedTheme(definition: activeTheme)
 
         publishChange()
         Self.logger.info("Theme \(self.activeTheme.id, privacy: .public) revision \(self.revision)")
@@ -158,83 +189,72 @@ internal final class ThemeEngine: ObservableObject {
     }
 
     private func publishChange() {
+        generation += 1
+        systemFingerprint = SystemColorFingerprint.current()
         AppEvents.shared.themeChanged.send(change)
+    }
+
+    /// A system color change gets new palette objects, because SwiftUI caches a resolved
+    /// `Color(nsColor:)` by object identity and would keep the old accent otherwise.
+    private func systemColorsMayHaveChanged() {
+        let appearance = ThemeResolver.effectiveAppearance(mode: mode, systemIsDark: Self.systemIsDark())
+        let appearanceChanged = appearance != effectiveAppearance
+        guard appearanceChanged || SystemColorFingerprint.current() != systemFingerprint else { return }
+
+        if appearanceChanged {
+            effectiveAppearance = appearance
+            resolved = ResolvedTheme(definition: activeTheme)
+        }
+        bumpRevision()
+        publishChange()
     }
 
     // MARK: - Application appearance
 
     private func applyApplicationAppearance(_ mode: AppAppearanceMode) {
+        guard let app = NSApp else { return }
+        let target: NSAppearance.Name?
         switch mode {
-        case .light: NSApp?.appearance = NSAppearance(named: .aqua)
-        case .dark: NSApp?.appearance = NSAppearance(named: .darkAqua)
-        case .auto: NSApp?.appearance = nil
+        case .light: target = .aqua
+        case .dark: target = .darkAqua
+        case .auto: target = nil
         }
+        guard app.appearance?.name != target else { return }
+        app.appearance = target.flatMap { NSAppearance(named: $0) }
     }
 
     private static func systemIsDark() -> Bool {
-        NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        NSApp?.effectiveAppearance.isDarkTheme ?? false
     }
 
-    /// KVO on `NSApplication.effectiveAppearance` is the channel Apple names in the
-    /// `NSControlTintDidChangeNotification` deprecation text. Only the static tier and the change
-    /// signal depend on it: the dynamic slot colours answer for the drawing appearance themselves.
-    private func updateSystemAppearanceObserver(_ mode: AppAppearanceMode) {
-        appearanceObservation = nil
-        guard mode == .auto else { return }
-
+    /// `NSApplication.effectiveAppearance` changes on a light/dark flip and, per the
+    /// `NSControlTintDidChangeNotification` deprecation text, on an Accent change. Observed in
+    /// every mode: a forced Light window still needs to re-bake its colors when the accent moves.
+    private func observeApplicationAppearance() {
+        guard appearanceObservation == nil else { return }
         appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
-            Task { @MainActor [weak self] in
-                self?.systemAppearanceDidChange()
+            guard Thread.isMainThread else {
+                Task { @MainActor [weak self] in self?.systemColorsMayHaveChanged() }
+                return
+            }
+            MainActor.assumeIsolated {
+                self?.systemColorsMayHaveChanged()
             }
         }
     }
 
-    private func systemAppearanceDidChange() {
-        guard mode == .auto else { return }
-        let appearance: ThemeAppearance = Self.systemIsDark() ? .dark : .light
-        guard appearance != effectiveAppearance else { return }
-
-        effectiveAppearance = appearance
-        resolved = ResolvedTheme(definition: activeTheme, appearance: appearance)
-        publishChange()
-    }
-
-    // MARK: - TableProEditorKit
-
-    internal func makeEditorTheme() -> EditorTheme {
-        let editorSettings = AppSettingsManager.shared.editor
-        let text = EditorTheme.Attribute(color: resolved[.editorText])
-        let comment = EditorTheme.Attribute(color: resolved[.syntaxComment])
-        let keyword = EditorTheme.Attribute(color: resolved[.syntaxKeyword], bold: true)
-        let string = EditorTheme.Attribute(color: resolved[.syntaxString])
-        let number = EditorTheme.Attribute(color: resolved[.syntaxNumber])
-        let variable = EditorTheme.Attribute(color: resolved[.syntaxNull])
-        let type = EditorTheme.Attribute(color: resolved[.syntaxType])
-        let operatorAttribute = EditorTheme.Attribute(color: resolved[.syntaxOperator])
-        let function = EditorTheme.Attribute(color: resolved[.syntaxFunction])
-
-        return EditorTheme(
-            text: text,
-            insertionPoint: resolved[.editorCursor],
-            invisibles: EditorTheme.Attribute(color: resolved[.editorInvisibles]),
-            background: resolved[.editorBackground],
-            lineHighlight: editorSettings.highlightCurrentLine ? resolved[.editorCurrentLine] : .clear,
-            statementHighlight: editorSettings.highlightCurrentStatement ? resolved[.editorCurrentStatement] : .clear,
-            selection: resolved[.editorSelection],
-            lineNumber: resolved[.editorLineNumber],
-            keywords: keyword,
-            commands: keyword,
-            types: type,
-            attributes: variable,
-            variables: variable,
-            values: variable,
-            numbers: number,
-            strings: string,
-            characters: string,
-            comments: comment,
-            operators: operatorAttribute,
-            functions: function
-        )
+    /// The Highlight color, and any other system color, changes through this notification rather
+    /// than through the appearance.
+    private func observeSystemColorChanges() {
+        systemColorsObserver = NotificationCenter.default.addObserver(
+            forName: NSColor.systemColorsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.systemColorsMayHaveChanged()
+            }
+        }
     }
 
     // MARK: - Accessibility
@@ -246,17 +266,23 @@ internal final class ThemeEngine: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.accessibilityDisplayOptionsDidChange()
             }
         }
     }
 
+    /// Increase Contrast changes every system color's resolved value, so baked colors are
+    /// rebuilt even when the text scale did not move.
     private func accessibilityDisplayOptionsDidChange() {
         let scale = EditorFontCache.accessibilityScale()
-        guard abs(scale - lastAccessibilityScale) > 0.01 else { return }
+        let scaleChanged = abs(scale - lastAccessibilityScale) > 0.01
         lastAccessibilityScale = scale
 
+        guard scaleChanged else {
+            systemColorsMayHaveChanged()
+            return
+        }
         editorFonts = EditorFontCache(from: typography)
         dataGridFonts = DataGridFontCache(from: typography)
         bumpRevision()

@@ -70,8 +70,8 @@ extension RowVisualState {
     /// The wash a row in this state carries, read by the row and by the pinned row gutter over it so
     /// the two cannot disagree.
     @MainActor var tint: NSColor? {
-        if isDeleted { return ThemeEngine.shared.palette[.gridDeleted] }
-        if isInserted { return ThemeEngine.shared.palette[.gridInserted] }
+        if isDeleted { return ThemeEngine.shared.resolved[.gridDeleted] }
+        if isInserted { return ThemeEngine.shared.resolved[.gridInserted] }
         return highlight.rowColor?.washColor
     }
 

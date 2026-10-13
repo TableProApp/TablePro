@@ -68,10 +68,10 @@ struct DataGridRowTintThemeTests {
         return try #require(color.usingColorSpace(.sRGB))
     }
 
-    private func selection(_ base: ThemeDefinition, id: String, deletedHex: String) -> ThemeSelection {
+    private func selection(_ base: ThemeDefinition, id: String, deletedHex: String) throws -> ThemeSelection {
         var copy = base
         copy.id = id
-        copy.dataGrid.deleted = .hex(deletedHex)
+        copy.overrides[.gridDeleted] = try ThemeColor(validating: deletedHex)
 
         let pair = copy.appearance == .dark
             ? ThemePair(light: BuiltInThemes.light, dark: copy)
@@ -87,11 +87,11 @@ struct DataGridRowTintThemeTests {
         let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
         defer { engine.adopt(restore) }
 
-        engine.adopt(selection(original, id: "test.tint.red", deletedHex: "#FF0000"))
+        try engine.adopt(selection(original, id: "test.tint.red", deletedHex: "#FF0000"))
         let harness = makeRowView(state: Self.deleted)
         let firstTint = try renderedTint(of: harness.rowView)
 
-        engine.adopt(selection(original, id: "test.tint.blue", deletedHex: "#0000FF"))
+        try engine.adopt(selection(original, id: "test.tint.blue", deletedHex: "#0000FF"))
         harness.rowView.invalidateVisualState()
         let secondTint = try renderedTint(of: harness.rowView)
 
@@ -105,7 +105,7 @@ struct DataGridRowTintThemeTests {
         let original = engine.activeTheme
         let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
         defer { engine.adopt(restore) }
-        engine.adopt(selection(original, id: "test.tint.red", deletedHex: "#FF0000"))
+        try engine.adopt(selection(original, id: "test.tint.red", deletedHex: "#FF0000"))
 
         let harness = makeRowView(state: .empty)
         let before = try renderedTint(of: harness.rowView)
@@ -123,7 +123,7 @@ struct DataGridRowTintThemeTests {
         let original = engine.activeTheme
         let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
         defer { engine.adopt(restore) }
-        engine.adopt(selection(original, id: "test.tint.red", deletedHex: "#FF0000"))
+        try engine.adopt(selection(original, id: "test.tint.red", deletedHex: "#FF0000"))
 
         let highlight = RowHighlight(
             rowRule: HighlightRule(columnName: "status", value: "paid", color: .blue),
@@ -133,7 +133,7 @@ struct DataGridRowTintThemeTests {
         let tint = try renderedTint(of: harness.rowView)
 
         #expect(tint.redComponent > tint.blueComponent)
-        #expect(Self.deleted.highlighted(highlight).tint == engine.palette[.gridDeleted])
+        #expect(Self.deleted.highlighted(highlight).tint == engine.resolved[.gridDeleted])
         #expect(RowVisualState.empty.highlighted(highlight).tint == HighlightColor.blue.washColor)
     }
 
@@ -144,11 +144,11 @@ struct DataGridRowTintThemeTests {
         let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
         defer { engine.adopt(restore) }
 
-        engine.adopt(selection(original, id: "test.tint.red", deletedHex: "#FF0000"))
+        try engine.adopt(selection(original, id: "test.tint.red", deletedHex: "#FF0000"))
         let harness = makeRowView(state: .empty)
         let firstTint = try renderedTint(of: harness.rowView)
 
-        engine.adopt(selection(original, id: "test.tint.blue", deletedHex: "#0000FF"))
+        try engine.adopt(selection(original, id: "test.tint.blue", deletedHex: "#0000FF"))
         harness.rowView.invalidateVisualState()
         let secondTint = try renderedTint(of: harness.rowView)
 

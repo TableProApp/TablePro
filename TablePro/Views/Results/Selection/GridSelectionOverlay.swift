@@ -32,11 +32,17 @@ final class GridSelectionOverlay: NSView {
     override var acceptsFirstResponder: Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let tableView, let coordinator else { return }
         let editingCell = activeOverlayCell(in: coordinator)
 
-        ThemeEngine.shared.palette[.gridSelection].withAlphaComponent(Self.borderAlpha).setStroke()
+        let resolved = ThemeEngine.shared.resolved
+        resolved[.gridSelection].withAlphaComponent(Self.borderAlpha).setStroke()
         for rect in selection.rectangles {
             guard let frame = frame(for: rect, in: tableView, coordinator: coordinator) else { continue }
             guard frame.intersects(dirtyRect) else { continue }
@@ -53,7 +59,8 @@ final class GridSelectionOverlay: NSView {
            selection.rectangles.count > 1 || (selection.rectangles.first?.rows.count ?? 0) > 1 || (selection.rectangles.first?.columns.count ?? 0) > 1,
            let frame = frame(for: GridRect(cell: active), in: tableView, coordinator: coordinator),
            frame.intersects(dirtyRect) {
-            NSColor.controlAccentColor.setStroke()
+            let activeColor = resolved.isOverridden(.gridFocusBorder) ? resolved[.gridFocusBorder] : .controlAccentColor
+            activeColor.setStroke()
             let inset = frame.insetBy(dx: Self.activeCellBorderWidth / 2, dy: Self.activeCellBorderWidth / 2)
             let path = NSBezierPath(rect: inset)
             path.lineWidth = Self.activeCellBorderWidth

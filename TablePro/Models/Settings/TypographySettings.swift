@@ -1,11 +1,7 @@
 import Foundation
 
-/// Device-local on purpose. Fonts used to live inside the theme file, so a zoom shortcut rewrote
-/// and saved a whole theme. Moving them into a synced settings category would be worse: sync
-/// replaces the whole struct on apply, so a Mac still on an older build would push a payload
-/// without these keys and reset the fonts on every other Mac, and each zoom press would push a
-/// record. The one range here is shared by the pickers, the zoom commands and the font caches;
-/// three disagreeing ranges are what let zoom store a size the renderer clamped away.
+/// Device-local on purpose: sync replaces a whole category, so an older Mac would reset these and
+/// every zoom press would push a record. One range serves the pickers, zoom and the font caches.
 internal struct TypographySettings: Codable, Equatable, Sendable {
     internal var editorFontFamily: String
     internal var editorFontSize: Int
@@ -53,5 +49,12 @@ internal struct TypographySettings: Codable, Equatable, Sendable {
 
     internal static func clamp(_ size: Int) -> Int {
         min(max(size, sizeRange.lowerBound), sizeRange.upperBound)
+    }
+
+    /// Nil at either end of the range, which is what dims Zoom In and Zoom Out there.
+    internal func editorFontSize(zoomedBy delta: Int) -> Int? {
+        let current = clampedEditorFontSize
+        let zoomed = Self.clamp(current + delta)
+        return zoomed == current ? nil : zoomed
     }
 }

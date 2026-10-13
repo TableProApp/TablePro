@@ -166,14 +166,14 @@ enum Mock {
         return (window, controller)
     }
 
+    /// System colors, unflattened, the way the app hands the editor a theme that overrides nothing.
     static func theme() -> EditorTheme {
         EditorTheme(
             text: EditorTheme.Attribute(color: .textColor),
-            insertionPoint: .textColor.usingColorSpace(.deviceRGB) ?? .black,
-            invisibles: EditorTheme.Attribute(color: .gray),
-            background: .textBackgroundColor.usingColorSpace(.deviceRGB) ?? .black,
-            lineHighlight: .highlightColor.usingColorSpace(.deviceRGB) ?? .black,
-            selection: .selectedTextColor.usingColorSpace(.deviceRGB) ?? .black,
+            invisibles: EditorTheme.Attribute(color: .tertiaryLabelColor),
+            background: .textBackgroundColor,
+            lineHighlight: .quinaryLabelColor,
+            selection: .selectedTextBackgroundColor,
             keywords: EditorTheme.Attribute(color: .systemPink),
             commands: EditorTheme.Attribute(color: .systemBlue),
             types: EditorTheme.Attribute(color: .systemMint),

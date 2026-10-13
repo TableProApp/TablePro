@@ -257,8 +257,9 @@ final class CellOverlayContainerView: NSView {
     /// A `CGColor` is a resolved colour and a layer never resolves it again, so the two layer
     /// colours are reapplied whenever the appearance or the theme changes under an open overlay.
     func applyLayerColors() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.borderColor = ThemeEngine.shared.palette[.gridFocusBorder].cgColor
+        let appearance = effectiveAppearance
+        layer?.borderColor = ThemeEngine.shared.resolved.cgColor(.gridFocusBorder, in: appearance)
+        appearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
         }
     }

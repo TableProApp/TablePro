@@ -169,7 +169,11 @@ internal struct TreeSiblingCounter {
 
 // MARK: - Row Content
 
+/// Shared by the JSON and PHP tree viewers, the results tree and the JSON row inspector. These are
+/// system colors on purpose: a theme colors only the SQL editor and the data grid, so a value reads
+/// the same here under every theme.
 internal enum TreeValueTone: Equatable, Sendable {
+    case key
     case container
     case string
     case number
@@ -178,16 +182,15 @@ internal enum TreeValueTone: Equatable, Sendable {
     case reference
     case muted
 
-    @MainActor
     var color: NSColor {
         switch self {
-        case .container: return ThemeEngine.shared.palette[.syntaxKeyword]
-        case .string: return ThemeEngine.shared.palette[.syntaxString]
-        case .number: return ThemeEngine.shared.palette[.syntaxNumber]
-        case .literal: return ThemeEngine.shared.palette[.syntaxNull]
-        case .serialized: return ThemeEngine.shared.palette[.syntaxType]
+        case .key, .container: return .systemBlue
+        case .string: return .systemRed
+        case .number: return .systemPurple
+        case .literal: return .systemOrange
+        case .serialized: return .systemTeal
         case .reference: return .systemGray
-        case .muted: return ThemeEngine.shared.palette[.panelSecondaryText]
+        case .muted: return .secondaryLabelColor
         }
     }
 }

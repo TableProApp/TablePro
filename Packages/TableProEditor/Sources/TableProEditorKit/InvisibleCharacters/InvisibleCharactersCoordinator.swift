@@ -178,8 +178,10 @@ final class InvisibleCharactersCoordinator: InvisibleCharactersDelegate {
         )
     }
 
+    private static let warningColor = NSColor.systemRed.withDynamicAlpha(0.3)
+
     private func warningCharacterStyle(for character: UInt16) -> InvisibleCharacterStyle? {
         guard warningCharacters.contains(character) else { return nil }
-        return .emphasize(color: .systemRed.withAlphaComponent(0.3))
+        return .emphasize(color: Self.warningColor)
     }
 }

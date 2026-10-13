@@ -52,7 +52,6 @@ struct SQLEditorView: View {
     @StateObject private var coordinator = SQLEditorCoordinator()
     @State private var editorConfiguration = makeConfiguration()
     @State private var favoritesCancellables: Set<AnyCancellable> = []
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         // Keep callbacks fresh on every parent re-render
@@ -136,9 +135,6 @@ struct SQLEditorView: View {
         .task(id: completionProfileRequest) {
             await resolveCompletionProfile()
         }
-        .onChange(of: colorScheme) { _ in
-            editorConfiguration = Self.makeConfiguration()
-        }
         .onChange(of: settingsManager.editor) { _ in
             editorConfiguration = Self.makeConfiguration()
         }
@@ -147,7 +143,6 @@ struct SQLEditorView: View {
         }
         .onReceive(AppEvents.shared.themeChanged) { _ in
             editorConfiguration = Self.makeConfiguration()
-            coordinator.reapplyThemeColors()
         }
         .onAppear {
             initializeEditor()

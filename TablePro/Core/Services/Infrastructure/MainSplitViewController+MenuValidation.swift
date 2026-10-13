@@ -153,6 +153,8 @@ struct MenuValidationContext: Equatable {
     var hasDatabaseFilter = false
     var canFilterSchemas = false
     var hasSchemaFilter = false
+    var canZoomIn = false
+    var canZoomOut = false
 }
 
 extension MainSplitViewController: NSMenuItemValidation {
@@ -416,10 +418,10 @@ extension MainSplitViewController: NSMenuItemValidation {
         /// connection and something that can hold a selection, not merely a window.
         case #selector(clearSelection(_:)): return context.isConnected
 
-        /// Unconditional on purpose, and stated rather than left to the fall-through. The window is
-        /// the last responder to answer these, and what it does with them is change the editor font
-        /// size, which is an app setting and needs no session. A focused diagram claims them first.
-        case #selector(zoomIn(_:)), #selector(zoomOut(_:)): return true
+        /// The window's zoom changes the editor font, an app setting that needs no session. A focused
+        /// diagram claims these first.
+        case #selector(zoomIn(_:)): return context.canZoomIn
+        case #selector(zoomOut(_:)): return context.canZoomOut
 
         default: return isAgentSessionCommandEnabled(selector, context: context)
         }
@@ -602,6 +604,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// command actions, so read from them, the one command that reaches its composer was dimmed.
     var menuValidationContext: MenuValidationContext {
         let conversations = assistantConversationModel
+        let typography = AppSettingsManager.shared.typography
         guard let actions = commandActions else {
             return MenuValidationContext(
                 hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
@@ -612,7 +615,9 @@ extension MainSplitViewController: NSMenuItemValidation {
                 canFocusAssistant: canFocusAssistant,
                 canMoveTabToConnection: canMoveSelectedTabToConnection,
                 hasOtherWindowTabs: hasOtherWindowTabs,
-                canToggleWorkspaceRail: canToggleWorkspaceRail
+                canToggleWorkspaceRail: canToggleWorkspaceRail,
+                canZoomIn: typography.editorFontSize(zoomedBy: 1) != nil,
+                canZoomOut: typography.editorFontSize(zoomedBy: -1) != nil
             )
         }
         return MenuValidationContext(
@@ -700,7 +705,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             canFavoriteActiveDatabase: actions.canFavoriteActiveDatabase,
             hasDatabaseFilter: actions.hasDatabaseFilter,
             canFilterSchemas: actions.canFilterSchemas,
-            hasSchemaFilter: actions.hasSchemaFilter
+            hasSchemaFilter: actions.hasSchemaFilter,
+            canZoomIn: typography.editorFontSize(zoomedBy: 1) != nil,
+            canZoomOut: typography.editorFontSize(zoomedBy: -1) != nil
         )
     }
 

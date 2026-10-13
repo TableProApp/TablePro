@@ -34,9 +34,11 @@ internal final class ThemeSource: Sendable {
     }
 }
 
-/// The dynamic tier. One `NSColor(name:dynamicProvider:)` per slot, so a slot resolves against
-/// whatever appearance the view is drawing in, including the vibrant appearances inside a sidebar.
-/// The revision only names the colour: SwiftUI caches `Color(nsColor:)` by object identity, so a
+/// The dynamic tier. One `NSColor(name:dynamicProvider:)` per slot, reading the live pair, so a
+/// color an AppKit view already holds answers for the theme in effect and for the appearance the
+/// view draws in. A slot the theme leaves out returns the system color itself, which AppKit then
+/// resolves for that same appearance, including vibrancy, accent, highlight and contrast.
+/// The revision only names the color: SwiftUI caches `Color(nsColor:)` by object identity, so a
 /// stable object would never repaint on a theme swap even though the provider answers correctly.
 internal struct ThemePalette {
     internal let revision: Int
@@ -52,8 +54,7 @@ internal struct ThemePalette {
         for slot in ThemeSlot.allCases {
             let name = NSColor.Name("tablepro.\(slot.rawValue).\(revision)")
             built[slot] = NSColor(name: name) { appearance in
-                let definition = source.pair[ThemeAppearance(matching: appearance)]
-                return definition[keyPath: slot.keyPath].nsColor
+                source.pair[ThemeAppearance(matching: appearance)].color(for: slot)
             }
         }
 
@@ -61,7 +62,7 @@ internal struct ThemePalette {
     }
 
     internal subscript(slot: ThemeSlot) -> NSColor {
-        colors[slot] ?? .labelColor
+        colors[slot] ?? slot.nativeColor
     }
 
     internal func color(_ slot: ThemeSlot) -> Color {
@@ -69,66 +70,71 @@ internal struct ThemePalette {
     }
 }
 
-/// The static tier. Snapshot consumers (the CodeEdit `EditorTheme`, `CALayer` colours, the data
-/// grid's per-cell draw path) resolve once against the appearance the app has actually settled on.
-/// They must not resolve a dynamic colour implicitly: outside a draw pass
-/// `NSAppearance.currentDrawing()` still reports the old appearance for at least half a second
-/// after `NSApp.appearance` changes, and a dynamic `cgColor` costs 254ns against 11ns for a
-/// static one, which the grid pays per cell.
+/// The active theme's colors for code that holds on to them: the editor theme, a `CALayer`, the
+/// grid's per-cell drawing. A slot the theme overrides is a fixed sRGB color; a slot it leaves out
+/// is the system color object itself, never a flattened copy, so text drawn with it still resolves
+/// at draw time against the view's real appearance. Turning one into a `CGColor` happens in the
+/// drawing view's appearance (`cgColor(_:in:)`), never against a hand-built `NSAppearance(named:)`,
+/// which has no vibrancy and no increased-contrast variant.
 internal struct ResolvedTheme: Equatable {
     internal let definition: ThemeDefinition
-    internal let appearance: ThemeAppearance
 
     private let colors: [ThemeSlot: NSColor]
 
-    internal init(definition: ThemeDefinition, appearance: ThemeAppearance) {
+    internal init(definition: ThemeDefinition) {
         self.definition = definition
-        self.appearance = appearance
 
-        let nsAppearance = NSAppearance(named: appearance == .dark ? .darkAqua : .aqua)
         var built: [ThemeSlot: NSColor] = [:]
         built.reserveCapacity(ThemeSlot.allCases.count)
-
-        let resolve = {
-            for slot in ThemeSlot.allCases {
-                let value = definition[keyPath: slot.keyPath]
-                built[slot] = value.nsColor.usingColorSpace(.sRGB) ?? value.nsColor
-            }
+        for slot in ThemeSlot.allCases {
+            built[slot] = definition.color(for: slot)
         }
-
-        if let nsAppearance {
-            nsAppearance.performAsCurrentDrawingAppearance(resolve)
-        } else {
-            resolve()
-        }
-
         colors = built
     }
 
+    internal static func == (lhs: ResolvedTheme, rhs: ResolvedTheme) -> Bool {
+        lhs.definition == rhs.definition
+    }
+
+    internal var appearance: ThemeAppearance { definition.appearance }
+
     internal subscript(slot: ThemeSlot) -> NSColor {
-        colors[slot] ?? .labelColor
+        colors[slot] ?? slot.nativeColor
+    }
+
+    internal func isOverridden(_ slot: ThemeSlot) -> Bool {
+        definition.isOverridden(slot)
     }
 
     internal func color(_ slot: ThemeSlot) -> Color {
         Color(nsColor: self[slot])
     }
 
-    internal func cgColor(_ slot: ThemeSlot) -> CGColor {
-        self[slot].cgColor
+    /// A view drawing in the other appearance than the active theme (a preview of the other slot)
+    /// takes that slot's theme, the way a `palette` color would.
+    internal func cgColor(_ slot: ThemeSlot, in appearance: NSAppearance) -> CGColor {
+        let color = ThemeAppearance(matching: appearance) == definition.appearance
+            ? self[slot]
+            : ThemeSource.shared.pair[ThemeAppearance(matching: appearance)].color(for: slot)
+        var result: CGColor?
+        appearance.performAsCurrentDrawingAppearance {
+            result = color.cgColor
+        }
+        return result ?? color.cgColor
     }
 }
 
 internal extension ThemeAppearance {
     init(matching appearance: NSAppearance) {
-        let match = appearance.bestMatch(from: [.aqua, .darkAqua])
-        self = match == .darkAqua ? .dark : .light
+        self = appearance.isDarkTheme ? .dark : .light
     }
 }
 
-/// Sent on a theme change and on an effective-appearance change, because the snapshot consumers
-/// need both: a forced Light/Dark switch never changes the theme pair, and a theme switch never
-/// changes the appearance.
+/// Sent whenever a color a view may have baked could have changed: a theme or pair change, a
+/// light/dark flip, an Accent or Highlight change, or an Increase Contrast toggle. `generation`
+/// moves on every send, so two sends are never equal.
 internal struct ThemeChange: Equatable, Sendable {
     internal let revision: Int
     internal let appearance: ThemeAppearance
+    internal let generation: Int
 }

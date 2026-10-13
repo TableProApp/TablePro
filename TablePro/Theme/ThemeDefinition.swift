@@ -1,141 +1,89 @@
-import Foundation
+import AppKit
 
 internal enum ThemeAppearance: String, Codable, CaseIterable, Sendable {
     case light
     case dark
 }
 
-internal struct SyntaxThemeColors: Equatable, Sendable {
-    var keyword: ThemeColorValue
-    var string: ThemeColorValue
-    var number: ThemeColorValue
-    var comment: ThemeColorValue
-    var null: ThemeColorValue
-    var `operator`: ThemeColorValue
-    var function: ThemeColorValue
-    var type: ThemeColorValue
-}
-
-internal struct EditorThemeColors: Equatable, Sendable {
-    var background: ThemeColorValue
-    var text: ThemeColorValue
-    var cursor: ThemeColorValue
-    var selection: ThemeColorValue
-    var currentLine: ThemeColorValue
-    var currentStatement: ThemeColorValue
-    var lineNumber: ThemeColorValue
-    var invisibles: ThemeColorValue
-    var syntax: SyntaxThemeColors
-}
-
-internal struct DataGridThemeColors: Equatable, Sendable {
-    var background: ThemeColorValue
-    var text: ThemeColorValue
-    var alternateRow: ThemeColorValue
-    var headerBackground: ThemeColorValue
-    var headerText: ThemeColorValue
-    var gridLine: ThemeColorValue
-    var selection: ThemeColorValue
-    var selectionText: ThemeColorValue
-    var inactiveSelection: ThemeColorValue
-    var focusBorder: ThemeColorValue
-    var nullValue: ThemeColorValue
-    var boolTrue: ThemeColorValue
-    var boolFalse: ThemeColorValue
-    var rowNumber: ThemeColorValue
-    var modified: ThemeColorValue
-    var inserted: ThemeColorValue
-    var deleted: ThemeColorValue
-    var deletedText: ThemeColorValue
-}
-
-internal struct StatusThemeColors: Equatable, Sendable {
-    var success: ThemeColorValue
-    var warning: ThemeColorValue
-    var error: ThemeColorValue
-}
-
-internal struct PanelThemeColors: Equatable, Sendable {
-    var background: ThemeColorValue
-    var controlBackground: ThemeColorValue
-    var text: ThemeColorValue
-    var secondaryText: ThemeColorValue
-    var tertiaryText: ThemeColorValue
-    var separator: ThemeColorValue
-}
-
+/// A theme is a set of overrides for the two surfaces it may color, the SQL editor and the data
+/// grid. A slot it leaves out draws in the color AppKit itself uses there, so Default Light and
+/// Default Dark declare nothing but syntax colors and render exactly like a native text view and
+/// table, following Accent, Highlight and Increase Contrast.
 internal struct ThemeDefinition: Identifiable, Equatable, Sendable {
     var id: String
     var name: String
     var author: String
     var appearance: ThemeAppearance
-    var editor: EditorThemeColors
-    var dataGrid: DataGridThemeColors
-    var panel: PanelThemeColors
-    var status: StatusThemeColors
+    var overrides: [ThemeSlot: ThemeColor]
 
     internal static let builtInPrefix = "tablepro."
     internal static let userPrefix = "user."
 
     internal var isBuiltIn: Bool { id.hasPrefix(Self.builtInPrefix) }
     internal var isEditable: Bool { !isBuiltIn }
+
+    internal func isOverridden(_ slot: ThemeSlot) -> Bool {
+        overrides[slot] != nil
+    }
+
+    /// Syntax has no system color, so a syntax slot the theme leaves out takes the same-appearance
+    /// default's value, which switches to Xcode's high-contrast palette under Increase Contrast.
+    /// Operator falls back to the editor text, overridden or not.
+    internal func color(for slot: ThemeSlot) -> NSColor {
+        if slot.group == .syntax, BuiltInThemes.isDefault(id) || overrides[slot] == nil,
+           let adaptive = BuiltInThemes.adaptiveSyntaxColor(slot, appearance: appearance) {
+            return adaptive
+        }
+        if let override = overrides[slot] {
+            return override.nsColor
+        }
+        if slot == .syntaxOperator {
+            return color(for: .editorText)
+        }
+        return slot.nativeColor
+    }
 }
 
 /// The single registry every slot goes through. A slot exists here because a call site reads it,
-/// which is what `ThemeSlotCoverageTests` enforces: the previous schema let whole groups
-/// ship with no reader at all, and nothing caught it. The gate, the theme editor and the document
-/// decoder all enumerate this list rather than keeping their own copies.
+/// which `ThemeSlotCoverageTests` enforces. The document decoder, the encoder and the theme editor
+/// all enumerate this list rather than keeping their own copies.
 internal enum ThemeSlot: String, CaseIterable, Sendable {
-    case editorBackground = "content.editor.background"
-    case editorText = "content.editor.text"
-    case editorCursor = "content.editor.cursor"
-    case editorSelection = "content.editor.selection"
-    case editorCurrentLine = "content.editor.currentLine"
-    case editorCurrentStatement = "content.editor.currentStatement"
-    case editorLineNumber = "content.editor.lineNumber"
-    case editorInvisibles = "content.editor.invisibles"
+    case editorBackground = "editor.background"
+    case editorText = "editor.text"
+    case editorCursor = "editor.cursor"
+    case editorSelection = "editor.selection"
+    case editorCurrentLine = "editor.currentLine"
+    case editorCurrentStatement = "editor.currentStatement"
+    case editorLineNumber = "editor.lineNumber"
+    case editorInvisibles = "editor.invisibles"
 
-    case syntaxKeyword = "content.editor.syntax.keyword"
-    case syntaxString = "content.editor.syntax.string"
-    case syntaxNumber = "content.editor.syntax.number"
-    case syntaxComment = "content.editor.syntax.comment"
-    case syntaxNull = "content.editor.syntax.null"
-    case syntaxOperator = "content.editor.syntax.operator"
-    case syntaxFunction = "content.editor.syntax.function"
-    case syntaxType = "content.editor.syntax.type"
+    case syntaxKeyword = "editor.syntax.keyword"
+    case syntaxString = "editor.syntax.string"
+    case syntaxNumber = "editor.syntax.number"
+    case syntaxComment = "editor.syntax.comment"
+    case syntaxNull = "editor.syntax.null"
+    case syntaxOperator = "editor.syntax.operator"
+    case syntaxFunction = "editor.syntax.function"
+    case syntaxType = "editor.syntax.type"
 
-    case gridBackground = "content.dataGrid.background"
-    case gridText = "content.dataGrid.text"
-    case gridAlternateRow = "content.dataGrid.alternateRow"
-    case gridHeaderBackground = "content.dataGrid.headerBackground"
-    case gridHeaderText = "content.dataGrid.headerText"
-    case gridLine = "content.dataGrid.gridLine"
-    case gridSelection = "content.dataGrid.selection"
-    case gridSelectionText = "content.dataGrid.selectionText"
-    case gridInactiveSelection = "content.dataGrid.inactiveSelection"
-    case gridFocusBorder = "content.dataGrid.focusBorder"
-    case gridNullValue = "content.dataGrid.nullValue"
-    case gridBoolTrue = "content.dataGrid.boolTrue"
-    case gridBoolFalse = "content.dataGrid.boolFalse"
-    case gridRowNumber = "content.dataGrid.rowNumber"
-    case gridModified = "content.dataGrid.modified"
-    case gridInserted = "content.dataGrid.inserted"
-    case gridDeleted = "content.dataGrid.deleted"
-    case gridDeletedText = "content.dataGrid.deletedText"
-
-    case panelBackground = "content.panel.background"
-    case panelControlBackground = "content.panel.controlBackground"
-    case panelText = "content.panel.text"
-    case panelSecondaryText = "content.panel.secondaryText"
-    case panelTertiaryText = "content.panel.tertiaryText"
-    case panelSeparator = "content.panel.separator"
-
-    case statusSuccess = "content.status.success"
-    case statusWarning = "content.status.warning"
-    case statusError = "content.status.error"
-
-
-    internal var since: Int { 2 }
+    case gridBackground = "dataGrid.background"
+    case gridText = "dataGrid.text"
+    case gridAlternateRow = "dataGrid.alternateRow"
+    case gridHeaderBackground = "dataGrid.headerBackground"
+    case gridHeaderText = "dataGrid.headerText"
+    case gridLine = "dataGrid.gridLine"
+    case gridSelection = "dataGrid.selection"
+    case gridSelectionText = "dataGrid.selectionText"
+    case gridInactiveSelection = "dataGrid.inactiveSelection"
+    case gridFocusBorder = "dataGrid.focusBorder"
+    case gridNullValue = "dataGrid.nullValue"
+    case gridBoolTrue = "dataGrid.boolTrue"
+    case gridBoolFalse = "dataGrid.boolFalse"
+    case gridRowNumber = "dataGrid.rowNumber"
+    case gridModified = "dataGrid.modified"
+    case gridInserted = "dataGrid.inserted"
+    case gridDeleted = "dataGrid.deleted"
+    case gridDeletedText = "dataGrid.deletedText"
 
     internal var group: ThemeSlotGroup {
         switch self {
@@ -150,63 +98,6 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
              .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber,
              .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return .dataGrid
-        case .panelBackground, .panelControlBackground, .panelText,
-             .panelSecondaryText, .panelTertiaryText, .panelSeparator:
-            return .panel
-        case .statusSuccess, .statusWarning, .statusError:
-            return .status
-        }
-    }
-
-    internal var keyPath: WritableKeyPath<ThemeDefinition, ThemeColorValue> {
-        switch self {
-        case .editorBackground: return \.editor.background
-        case .editorText: return \.editor.text
-        case .editorCursor: return \.editor.cursor
-        case .editorSelection: return \.editor.selection
-        case .editorCurrentLine: return \.editor.currentLine
-        case .editorCurrentStatement: return \.editor.currentStatement
-        case .editorLineNumber: return \.editor.lineNumber
-        case .editorInvisibles: return \.editor.invisibles
-
-        case .syntaxKeyword: return \.editor.syntax.keyword
-        case .syntaxString: return \.editor.syntax.string
-        case .syntaxNumber: return \.editor.syntax.number
-        case .syntaxComment: return \.editor.syntax.comment
-        case .syntaxNull: return \.editor.syntax.null
-        case .syntaxOperator: return \.editor.syntax.operator
-        case .syntaxFunction: return \.editor.syntax.function
-        case .syntaxType: return \.editor.syntax.type
-
-        case .gridBackground: return \.dataGrid.background
-        case .gridText: return \.dataGrid.text
-        case .gridAlternateRow: return \.dataGrid.alternateRow
-        case .gridHeaderBackground: return \.dataGrid.headerBackground
-        case .gridHeaderText: return \.dataGrid.headerText
-        case .gridLine: return \.dataGrid.gridLine
-        case .gridSelection: return \.dataGrid.selection
-        case .gridSelectionText: return \.dataGrid.selectionText
-        case .gridInactiveSelection: return \.dataGrid.inactiveSelection
-        case .gridFocusBorder: return \.dataGrid.focusBorder
-        case .gridNullValue: return \.dataGrid.nullValue
-        case .gridBoolTrue: return \.dataGrid.boolTrue
-        case .gridBoolFalse: return \.dataGrid.boolFalse
-        case .gridRowNumber: return \.dataGrid.rowNumber
-        case .gridModified: return \.dataGrid.modified
-        case .gridInserted: return \.dataGrid.inserted
-        case .gridDeleted: return \.dataGrid.deleted
-        case .gridDeletedText: return \.dataGrid.deletedText
-
-        case .panelBackground: return \.panel.background
-        case .panelControlBackground: return \.panel.controlBackground
-        case .panelText: return \.panel.text
-        case .panelSecondaryText: return \.panel.secondaryText
-        case .panelTertiaryText: return \.panel.tertiaryText
-        case .panelSeparator: return \.panel.separator
-
-        case .statusSuccess: return \.status.success
-        case .statusWarning: return \.status.warning
-        case .statusError: return \.status.error
         }
     }
 
@@ -243,15 +134,6 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
         case .gridInserted: return String(localized: "Inserted")
         case .gridDeleted: return String(localized: "Deleted")
         case .gridDeletedText: return String(localized: "Deleted Text")
-        case .statusSuccess: return String(localized: "Success")
-        case .statusWarning: return String(localized: "Warning")
-        case .statusError: return String(localized: "Error")
-        case .panelBackground: return String(localized: "Pane Background")
-        case .panelControlBackground: return String(localized: "Field Background")
-        case .panelText: return String(localized: "Pane Text")
-        case .panelSecondaryText: return String(localized: "Secondary Text")
-        case .panelTertiaryText: return String(localized: "Tertiary Text")
-        case .panelSeparator: return String(localized: "Separator")
         }
     }
 }
@@ -260,16 +142,12 @@ internal enum ThemeSlotGroup: String, CaseIterable, Sendable {
     case editor
     case syntax
     case dataGrid
-    case panel
-    case status
 
     internal var label: String {
         switch self {
         case .editor: return String(localized: "Editor")
-        case .syntax: return String(localized: "Syntax Colors")
+        case .syntax: return String(localized: "Syntax")
         case .dataGrid: return String(localized: "Data Grid")
-        case .panel: return String(localized: "Panels")
-        case .status: return String(localized: "Status")
         }
     }
 
@@ -279,6 +157,8 @@ internal enum ThemeSlotGroup: String, CaseIterable, Sendable {
 }
 
 internal enum ThemeSchema {
-    internal static let current = 2
-    internal static let oldestSupported = 2
+    /// Format 3 dropped the pane and status groups, made every color optional and removed
+    /// `system:` values. Format 2 never shipped in a release, and format 1 files carried fonts the
+    /// app now keeps in settings.
+    internal static let current = 3
 }

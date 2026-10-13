@@ -1,62 +1,47 @@
 {
   "appearance": "dark",
   "author": "TablePro",
-  "content": {
-    "dataGrid": {
-      "alternateRow": "#3B4252",
-      "background": "#2E3440",
-      "boolFalse": "#BF616A",
-      "boolTrue": "#A3BE8C",
-      "deleted": "#BF616A26",
-      "deletedText": "#BF616A80",
-      "focusBorder": "#88C0D0",
-      "gridLine": "#434C5E",
-      "headerBackground": "#3B4252",
-      "headerText": "#D8DEE9",
-      "inactiveSelection": "#434C5E80",
-      "inserted": "#A3BE8C26",
-      "modified": "#EBCB8B4D",
-      "nullValue": "#4C566A",
-      "rowNumber": "#4C566A",
-      "selection": "#434C5E",
-      "selectionText": "#ECEFF4",
-      "text": "#D8DEE9"
+  "dataGrid": {
+    "alternateRow": "#3B4252",
+    "background": "#2E3440",
+    "boolFalse": "#BF616A",
+    "boolTrue": "#A3BE8C",
+    "deleted": "#BF616A26",
+    "deletedText": "#BF616A80",
+    "focusBorder": "#88C0D0",
+    "gridLine": "#434C5E",
+    "headerBackground": "#3B4252",
+    "headerText": "#D8DEE9",
+    "inactiveSelection": "#434C5E80",
+    "inserted": "#A3BE8C26",
+    "modified": "#EBCB8B4D",
+    "nullValue": "#4C566A",
+    "rowNumber": "#4C566A",
+    "selection": "#434C5E",
+    "selectionText": "#ECEFF4",
+    "text": "#D8DEE9"
+  },
+  "editor": {
+    "background": "#2E3440",
+    "currentLine": "#3B4252",
+    "currentStatement": "#FFFFFF0F",
+    "cursor": "#88C0D0",
+    "invisibles": "#3B4252",
+    "lineNumber": "#4C566A",
+    "selection": "#434C5E",
+    "syntax": {
+      "comment": "#616E88",
+      "function": "#88C0D0",
+      "keyword": "#81A1C1",
+      "null": "#D08770",
+      "number": "#B48EAD",
+      "operator": "#81A1C1",
+      "string": "#A3BE8C",
+      "type": "#EBCB8B"
     },
-    "editor": {
-      "background": "#2E3440",
-      "currentLine": "#3B4252",
-      "currentStatement": "#FFFFFF0F",
-      "cursor": "#88C0D0",
-      "invisibles": "#3B4252",
-      "lineNumber": "#4C566A",
-      "selection": "#434C5E",
-      "syntax": {
-        "comment": "#616E88",
-        "function": "#88C0D0",
-        "keyword": "#81A1C1",
-        "null": "#D08770",
-        "number": "#B48EAD",
-        "operator": "#81A1C1",
-        "string": "#A3BE8C",
-        "type": "#EBCB8B"
-      },
-      "text": "#D8DEE9"
-    },
-    "panel": {
-      "background": "#2E3440",
-      "controlBackground": "#3B4252",
-      "secondaryText": "#9DA5B4",
-      "separator": "#434C5E",
-      "tertiaryText": "#616E88",
-      "text": "#D8DEE9"
-    },
-    "status": {
-      "error": "#BF616A",
-      "success": "#A3BE8C",
-      "warning": "#D08770"
-    }
+    "text": "#D8DEE9"
   },
   "id": "tablepro.nord",
   "name": "Nord",
-  "schema": 2
+  "schema": 3
 }

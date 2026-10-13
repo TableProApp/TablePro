@@ -7,89 +7,116 @@
 import Testing
 
 struct ThemeSlotValidationTests {
-    @Test("A matching theme fits its slot")
-    func matchingThemeFits() {
-        #expect(ThemeSlotValidation.fits(.light, slot: .light))
-        #expect(ThemeSlotValidation.fits(.dark, slot: .dark))
-    }
-
-    @Test("A contradicting theme does not fit")
-    func contradictingThemeDoesNotFit() {
-        #expect(ThemeSlotValidation.fits(.dark, slot: .light) == false)
-        #expect(ThemeSlotValidation.fits(.light, slot: .dark) == false)
-    }
-
-    private func theme(_ id: String, _ appearance: ThemeAppearance) -> ThemeDefinition {
+    private static func theme(_ id: String, _ appearance: ThemeAppearance) -> ThemeDefinition {
         var copy = BuiltInThemes.default(for: appearance)
         copy.id = id
+        copy.name = id
         return copy
     }
 
-    private var sample: [ThemeDefinition] {
-        [theme("light", .light), theme("dark", .dark)]
-    }
+    private static let sample = [theme("user.light", .light), theme("user.dark", .dark)]
 
-    @Test("Only fitting themes stay in the list")
-    func listIsFiltered() {
-        let eligible = ThemeSlotValidation.eligibleThemes(sample, slot: .light, keeping: nil)
-        #expect(eligible.map(\.id) == ["light"])
-    }
+    private static var catalog: [ThemeDefinition] { BuiltInThemes.all + sample }
 
-    /// The row the user is standing on can never be filtered away, because the alternative was to
-    /// rewrite their saved theme so the filter came out true.
-    @Test("A contradicting theme stays listed while it is the one selected")
-    func selectedContradictingThemeIsKept() {
-        let eligible = ThemeSlotValidation.eligibleThemes(sample, slot: .light, keeping: "dark")
-        #expect(eligible.map(\.id) == ["light", "dark"])
-    }
-
-    @Test("Keeping a selection does not duplicate a theme that already fits")
-    func keptSelectionIsNotDuplicated() {
-        let eligible = ThemeSlotValidation.eligibleThemes(sample, slot: .light, keeping: "light")
-        #expect(eligible.map(\.id) == ["light"])
-    }
-
-    @Test("An unknown selected id adds nothing to the list")
-    func unknownSelectionAddsNothing() {
-        let eligible = ThemeSlotValidation.eligibleThemes(sample, slot: .dark, keeping: "does.not.exist")
-        #expect(eligible.map(\.id) == ["dark"])
-    }
-
-    /// A slot whose theme is missing, rejected, or of the wrong appearance falls back to that
-    /// slot's own built-in. Falling back to Default Light whichever slot asked painted a white
-    /// editor inside dark chrome.
-    @Test("A dark slot that cannot resolve falls back to Default Dark")
-    func darkSlotFallsBackToDefaultDark() {
-        let selection = ThemeResolver.resolve(
-            mode: .dark,
-            lightThemeId: BuiltInThemes.defaultLightId,
-            darkThemeId: "user.deleted",
-            themes: BuiltInThemes.all,
-            systemIsDark: true
+    private static func resolve(
+        mode: AppAppearanceMode = .auto,
+        light: String = BuiltInThemes.defaultLightId,
+        dark: String = BuiltInThemes.defaultDarkId,
+        systemIsDark: Bool = false
+    ) -> ThemeSelection {
+        ThemeResolver.resolve(
+            mode: mode,
+            lightThemeId: light,
+            darkThemeId: dark,
+            themes: catalog,
+            systemIsDark: systemIsDark
         )
-
-        #expect(selection.pair.dark.id == BuiltInThemes.defaultDarkId)
-        #expect(selection.active.appearance == .dark)
     }
 
-    @Test("A light theme sitting in the dark slot falls back to Default Dark")
-    func misfitThemeInDarkSlotFallsBack() {
-        let selection = ThemeResolver.resolve(
-            mode: .dark,
-            lightThemeId: BuiltInThemes.defaultLightId,
-            darkThemeId: BuiltInThemes.defaultLightId,
-            themes: BuiltInThemes.all,
-            systemIsDark: true
-        )
+    // MARK: - Resolver
 
+    @Test("A theme that exists and fits its slot is used")
+    func fittingThemesResolve() {
+        let selection = Self.resolve(light: "user.light", dark: "user.dark")
+        #expect(selection.pair.light.id == "user.light")
+        #expect(selection.pair.dark.id == "user.dark")
+    }
+
+    /// A slot whose theme is missing falls back to that slot's own built-in. Falling back to
+    /// Default Light whichever slot asked painted a white editor inside dark chrome.
+    @Test("A missing theme falls back to its own slot's built-in")
+    func missingThemeFallsBackPerSlot() {
+        let selection = Self.resolve(light: "user.deleted", dark: "user.deleted")
+        #expect(selection.pair.light.id == BuiltInThemes.defaultLightId)
         #expect(selection.pair.dark.id == BuiltInThemes.defaultDarkId)
     }
 
-    @Test("Auto follows the system appearance")
+    @Test("A theme of the wrong appearance falls back to that slot's built-in")
+    func misfitThemeFallsBackPerSlot() {
+        let selection = Self.resolve(light: "user.dark", dark: "user.light")
+        #expect(selection.pair.light.id == BuiltInThemes.defaultLightId)
+        #expect(selection.pair.dark.id == BuiltInThemes.defaultDarkId)
+
+        let swappedDefaults = Self.resolve(light: BuiltInThemes.defaultDarkId, dark: BuiltInThemes.defaultLightId)
+        #expect(swappedDefaults.pair.light.id == BuiltInThemes.defaultLightId)
+        #expect(swappedDefaults.pair.dark.id == BuiltInThemes.defaultDarkId)
+    }
+
+    @Test("Auto follows the system appearance, forced modes ignore it")
     func autoFollowsSystem() {
         #expect(ThemeResolver.effectiveAppearance(mode: .auto, systemIsDark: true) == .dark)
         #expect(ThemeResolver.effectiveAppearance(mode: .auto, systemIsDark: false) == .light)
         #expect(ThemeResolver.effectiveAppearance(mode: .light, systemIsDark: true) == .light)
         #expect(ThemeResolver.effectiveAppearance(mode: .dark, systemIsDark: false) == .dark)
+    }
+
+    @Test("The active theme is the pair's theme for the effective appearance")
+    func activeThemeFollowsTheEffectiveAppearance() {
+        let dark = Self.resolve(mode: .auto, light: "user.light", dark: "user.dark", systemIsDark: true)
+        #expect(dark.effectiveAppearance == .dark)
+        #expect(dark.active.id == "user.dark")
+
+        let light = Self.resolve(mode: .auto, light: "user.light", dark: "user.dark", systemIsDark: false)
+        #expect(light.effectiveAppearance == .light)
+        #expect(light.active.id == "user.light")
+
+        let forced = Self.resolve(mode: .light, light: "user.light", dark: "user.dark", systemIsDark: true)
+        #expect(forced.active.id == "user.light")
+    }
+
+    // MARK: - Eligible themes
+
+    @Test("A theme fits only the slot of its own appearance")
+    func fitsMatchesAppearance() {
+        #expect(ThemeSlotValidation.fits(.light, slot: .light))
+        #expect(ThemeSlotValidation.fits(.dark, slot: .dark))
+        #expect(!ThemeSlotValidation.fits(.dark, slot: .light))
+        #expect(!ThemeSlotValidation.fits(.light, slot: .dark))
+    }
+
+    @Test("Only fitting themes are listed")
+    func listIsFiltered() {
+        let eligible = ThemeSlotValidation.eligibleThemes(Self.catalog, slot: .light, keeping: nil)
+        #expect(eligible.map(\.id) == [BuiltInThemes.defaultLightId, "user.light"])
+    }
+
+    /// The row the user is standing on is never filtered away, because the alternative was to
+    /// rewrite their saved theme so the filter came out true.
+    @Test("A misfit theme stays listed while it is the one selected")
+    func selectedMisfitIsKept() {
+        let eligible = ThemeSlotValidation.eligibleThemes(Self.sample, slot: .light, keeping: "user.dark")
+        #expect(eligible.map(\.id) == ["user.light", "user.dark"])
+    }
+
+    @Test("Keeping a fitting selection does not list it twice")
+    func keptSelectionIsNotDuplicated() {
+        let eligible = ThemeSlotValidation.eligibleThemes(Self.sample, slot: .light, keeping: "user.light")
+        #expect(eligible.map(\.id) == ["user.light"])
+    }
+
+    @Test("An unknown selected id adds nothing")
+    func unknownSelectionAddsNothing() {
+        let eligible = ThemeSlotValidation.eligibleThemes(Self.sample, slot: .dark, keeping: "user.missing")
+        #expect(eligible.map(\.id) == ["user.dark"])
     }
 }

@@ -9,7 +9,6 @@ import AppKit
 import SwiftUI
 
 struct InlineErrorBanner: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     let message: String
     var onFixWithAI: (() -> Void)?
     var onDismiss: (() -> Void)?
@@ -22,7 +21,7 @@ struct InlineErrorBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(themeEngine.palette.color(.statusError))
+                .foregroundStyle(.red)
             ScrollView(.vertical) {
                 RevealedTextView(message)
                     .font(.subheadline)
@@ -64,7 +63,7 @@ struct InlineErrorBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(themeEngine.palette.color(.statusError).opacity(0.08))
+        .background(.red.opacity(0.08))
     }
 }
 

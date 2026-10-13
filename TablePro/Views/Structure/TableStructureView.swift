@@ -36,7 +36,6 @@ struct TableStructureView: View {
     @ObservedObject var toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
     @ObservedObject var selectionState: GridSelectionState
-    @ObservedObject var themeEngine = ThemeEngine.shared
 
     @Environment(\.appServices) var services
 
@@ -568,7 +567,7 @@ struct TableStructureView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
-                .foregroundStyle(themeEngine.palette.color(.statusWarning))
+                .foregroundStyle(.orange)
                 .accessibilityHidden(true)
             RevealedTextView(message)
                 .foregroundStyle(.secondary)

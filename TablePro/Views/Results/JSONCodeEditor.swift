@@ -23,7 +23,6 @@ internal struct JSONCodeEditor: View {
     /// text view itself, which is where an accessibility identifier has to land: the SwiftUI
     /// modifier names the representable and never reaches it.
     @State private var coordinators: [any TextViewCoordinator]
-    @Environment(\.colorScheme) private var colorScheme
 
     init(text: Binding<String>, isEditable: Bool, accessibilityIdentifier: String? = nil) {
         self._text = text
@@ -43,9 +42,6 @@ internal struct JSONCodeEditor: View {
             coordinators: coordinators
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: colorScheme) { _ in
-            rebuildConfiguration()
-        }
         .onChange(of: isEditable) { _ in
             rebuildConfiguration()
         }

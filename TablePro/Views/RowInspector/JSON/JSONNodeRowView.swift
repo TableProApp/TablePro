@@ -11,7 +11,6 @@ import SwiftUI
 struct JSONNodeRowView: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     let row: JSONDisplayRow
-    let colors: JSONRowColors
     let onToggle: () -> Void
     let onOpenReferencedTable: (JSONForeignKeyRef, String) -> Void
     /// Classified once per line that is drawn, for the swatch, the link and the menu alike.
@@ -36,12 +35,10 @@ struct JSONNodeRowView: View {
 
     init(
         row: JSONDisplayRow,
-        colors: JSONRowColors,
         onToggle: @escaping () -> Void,
         onOpenReferencedTable: @escaping (JSONForeignKeyRef, String) -> Void
     ) {
         self.row = row
-        self.colors = colors
         self.onToggle = onToggle
         self.onOpenReferencedTable = onOpenReferencedTable
         decoration = row.decoration
@@ -91,11 +88,11 @@ struct JSONNodeRowView: View {
             if row.showsKey, let key = row.key.text {
                 Text("\"\(JSONScalarText.escaped(key))\"")
                     .font(valueFont)
-                    .foregroundStyle(colors.key)
+                    .foregroundStyle(JSONRowColors.key)
                     .lineLimit(1)
                 Text(": ")
                     .font(valueFont)
-                    .foregroundStyle(colors.punctuation)
+                    .foregroundStyle(JSONRowColors.punctuation)
             }
             token
             status
@@ -139,7 +136,7 @@ struct JSONNodeRowView: View {
         if case .link(let url) = decoration, case .string(let text) = scalar {
             Text(Self.linkedText(text, url: url, needsComma: row.needsComma))
                 .font(valueFont)
-                .foregroundStyle(colors.color(for: scalar))
+                .foregroundStyle(JSONRowColors.color(for: scalar))
                 .fixedSize(horizontal: false, vertical: true)
                 .environment(\.openURL, Self.openLink)
                 .accessibilityAction(named: Text(String(localized: "Open Link"))) {
@@ -148,7 +145,7 @@ struct JSONNodeRowView: View {
         } else {
             Text(JSONScalarText.printed(scalar) + (row.needsComma ? "," : ""))
                 .font(valueFont)
-                .foregroundStyle(colors.color(for: scalar))
+                .foregroundStyle(JSONRowColors.color(for: scalar))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -166,7 +163,7 @@ struct JSONNodeRowView: View {
     private func punctuation(_ text: String) -> some View {
         Text(text)
             .font(valueFont)
-            .foregroundStyle(colors.punctuation)
+            .foregroundStyle(JSONRowColors.punctuation)
     }
 
     private func collapsed(open: String, close: String, count: Int) -> some View {
@@ -176,7 +173,7 @@ struct JSONNodeRowView: View {
                 ? String(localized: "1 item")
                 : String(format: String(localized: "%d items"), count))
                 .font(.caption)
-                .foregroundStyle(colors.placeholder)
+                .foregroundStyle(JSONRowColors.placeholder)
             punctuation(close + (row.needsComma ? "," : ""))
         }
     }

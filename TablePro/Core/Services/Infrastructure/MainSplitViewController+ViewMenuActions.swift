@@ -153,8 +153,7 @@ extension MainSplitViewController: ZoomCommandResponding {
 
     private func adjustEditorTextSize(by delta: Int) {
         var typography = AppSettingsManager.shared.typography
-        let size = TypographySettings.clamp(typography.editorFontSize + delta)
-        guard size != typography.editorFontSize else { return }
+        guard let size = typography.editorFontSize(zoomedBy: delta) else { return }
         typography.editorFontSize = size
         AppSettingsManager.shared.typography = typography
     }

@@ -188,9 +188,12 @@ extension TextView: NSDraggingSource {
             let systemCursor = NSTextInsertionIndicator()
             cursor = systemCursor
             systemCursor.displayMode = .visible
+            if let color = selectionManager.insertionPointColor {
+                systemCursor.color = color
+            }
             addSubview(cursor)
         } else {
-            cursor = CursorView(color: selectionManager.insertionPointColor)
+            cursor = CursorView(color: selectionManager.drawnInsertionPointColor)
             addSubview(cursor)
         }
 

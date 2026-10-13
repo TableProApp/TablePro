@@ -139,7 +139,6 @@ struct DatabaseTreeFilterPopover: View {
             }
         }
         .listStyle(.inset)
-        .scrollContentBackground(.hidden)
         .frame(minHeight: 160, maxHeight: 320)
     }
 

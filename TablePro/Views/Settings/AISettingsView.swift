@@ -33,7 +33,6 @@ struct AISettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
         .task(id: settings.enabled ? settings.providers.map(\.id) : []) { refreshKeyAvailability() }
         .task(id: AIProviderAccountProbes.types(toProbe: settings)) {
             await refreshAccountStatus(of: AIProviderAccountProbes.types(toProbe: settings))

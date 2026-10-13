@@ -9,10 +9,9 @@ import AppKit
 
 /// Animates a cursor. Will sync animation with any other cursor views.
 open class CursorView: NSView {
-    /// The color of the cursor.
     public var color: NSColor {
         didSet {
-            layer?.backgroundColor = color.safeCGColor
+            needsDisplay = true
         }
     }
 
@@ -25,13 +24,14 @@ open class CursorView: NSView {
         true
     }
 
+    /// The layer holds a resolved color, so it is set where AppKit has made this view's appearance current, and set
+    /// again whenever that appearance changes.
+    override open var wantsUpdateLayer: Bool {
+        true
+    }
+
     override open func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    /// Create a cursor view.
-    /// - Parameters:
-    ///   - blinkDuration: The duration to blink, leave as nil to never blink.
-    ///   - color: The color of the cursor.
-    ///   - width: How wide the cursor should be.
     init(
         color: NSColor = NSColor.labelColor,
         width: CGFloat = 1.0
@@ -43,6 +43,11 @@ open class CursorView: NSView {
 
         frame.size.width = width
         wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        needsDisplay = true
+    }
+
+    override open func updateLayer() {
         layer?.backgroundColor = color.safeCGColor
     }
 

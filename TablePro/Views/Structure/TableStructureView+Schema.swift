@@ -94,7 +94,7 @@ extension TableStructureView {
                 if showCopyConfirmation {
                     HStack {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(themeEngine.palette.color(.statusSuccess))
+                            .foregroundStyle(.green)
                         Text("Copied!")
                     }
                     .transition(.opacity)
@@ -117,7 +117,7 @@ extension TableStructureView {
                 .buttonStyle(.bordered)
             }
             .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(.bar)
 
             Divider()
 

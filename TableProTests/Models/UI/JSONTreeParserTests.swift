@@ -316,17 +316,29 @@ struct JSONTreeParserTests {
         #expect(marker.decoration == .none)
     }
 
+    @Test("each tone keeps the color its values were drawn in")
+    func tonesKeepTheirColors() {
+        expectSystemTones()
+    }
+
     @MainActor
-    @Test("each tone takes its color from the theme's syntax and panel slots")
-    func tonesTakeTheThemeColors() {
-        let palette = ThemeEngine.shared.palette
-        #expect(TreeValueTone.container.color == palette[.syntaxKeyword])
-        #expect(TreeValueTone.string.color == palette[.syntaxString])
-        #expect(TreeValueTone.number.color == palette[.syntaxNumber])
-        #expect(TreeValueTone.literal.color == palette[.syntaxNull])
-        #expect(TreeValueTone.serialized.color == palette[.syntaxType])
+    @Test("A theme that overrides every slot leaves each tone on its system color")
+    func tonesIgnoreTheTheme() throws {
+        try PaneThemeFixture.withEverySlotOverridden {
+            #expect(ThemeEngine.shared.resolved.isOverridden(.syntaxKeyword))
+            expectSystemTones()
+        }
+    }
+
+    private func expectSystemTones() {
+        #expect(TreeValueTone.key.color == .systemBlue)
+        #expect(TreeValueTone.container.color == .systemBlue)
+        #expect(TreeValueTone.string.color == .systemRed)
+        #expect(TreeValueTone.number.color == .systemPurple)
+        #expect(TreeValueTone.literal.color == .systemOrange)
+        #expect(TreeValueTone.serialized.color == .systemTeal)
         #expect(TreeValueTone.reference.color == .systemGray)
-        #expect(TreeValueTone.muted.color == palette[.panelSecondaryText])
+        #expect(TreeValueTone.muted.color == .secondaryLabelColor)
     }
 
     // MARK: - Search

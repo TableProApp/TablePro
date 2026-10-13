@@ -522,8 +522,8 @@ struct DataGridRowNumberRenderingTests {
         defer { engine.adopt(restore) }
         var theme = BuiltInThemes.light
         theme.id = "test.grid-stripes"
-        theme.dataGrid.background = .hex("#282A36")
-        theme.dataGrid.alternateRow = .hex("#44475A")
+        theme.overrides[.gridBackground] = try ThemeColor(validating: "#282A36")
+        theme.overrides[.gridAlternateRow] = try ThemeColor(validating: "#44475A")
         engine.adopt(ThemeSelection(
             pair: ThemePair(light: theme, dark: BuiltInThemes.dark),
             effectiveAppearance: .light

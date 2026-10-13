@@ -32,7 +32,6 @@ struct GeneralPaneView: View {
             authenticationSection
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
         .defaultFocus($nameFocused, true)
     }
 

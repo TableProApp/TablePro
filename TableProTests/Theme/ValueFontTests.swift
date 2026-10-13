@@ -166,12 +166,12 @@ struct ValueFontTests {
 
     /// The sidebar's JSON editor caches its whole configuration in `@State`, so it repaints only when
     /// something tells it to. It used to watch the colour scheme alone, which left it on the old font
-    /// after a size, theme or accessibility change until the row was reselected.
+    /// after a size, theme or accessibility change until the row was reselected. `themeChanged` also
+    /// fires on a light/dark flip, so it covers what the colour scheme did.
     @Test("The JSON editor rebuilds its configuration on every appearance change")
     func jsonEditorWatchesEveryAppearanceChange() throws {
         let source = try source(of: "TablePro/Views/Results/JSONCodeEditor.swift")
 
-        #expect(source.contains("onChange(of: colorScheme)"))
         /// Observed, not read off the shared instance. The value `onChange(of:)` compares is read
         /// while the body is built, and a body that does not observe the settings is never rebuilt
         /// when they change, so `onChange(of: AppSettingsManager.shared.editor)` never fired.

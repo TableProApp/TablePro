@@ -10,7 +10,6 @@ import SwiftUI
 import TableProPluginKit
 
 struct ClickHousePartsView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePartsView")
 
     let tableName: String
@@ -37,7 +36,7 @@ struct ClickHousePartsView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.largeTitle)
-                        .foregroundStyle(themeEngine.palette.color(.statusWarning))
+                        .foregroundStyle(.orange)
                         .accessibilityHidden(true)
                     RevealedTextView(error)
                         .foregroundStyle(.secondary)
@@ -106,7 +105,7 @@ struct ClickHousePartsView: View {
                 .width(min: 100, ideal: 160)
             TableColumn("Active") { part in
                 Image(systemName: part.active ? "checkmark.circle.fill" : "xmark.circle")
-                    .foregroundStyle(part.active ? themeEngine.palette.color(.statusSuccess) : .secondary)
+                    .selectionAwareTint(part.active ? .green : .secondary)
             }
             .width(min: 50, ideal: 60)
         }

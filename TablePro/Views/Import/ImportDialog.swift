@@ -84,7 +84,6 @@ struct ImportDialog: View {
 
             footerView
         }
-        .background(Color(nsColor: .windowBackgroundColor))
         .background {
             WindowAccessor { window in
                 hostWindow = window

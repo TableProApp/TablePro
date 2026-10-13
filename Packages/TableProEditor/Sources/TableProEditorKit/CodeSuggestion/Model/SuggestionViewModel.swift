@@ -14,8 +14,6 @@ final class SuggestionViewModel: ObservableObject {
     /// The items to be displayed in the window
     @Published var items: [CodeSuggestionEntry] = []
     @Published var selectedIndex: Int = 0
-    @Published var themeBackground: NSColor = .windowBackgroundColor
-    @Published var themeTextColor: NSColor = .labelColor
 
     var itemsRequestTask: Task<Void, Never>?
     weak var activeTextView: TextViewController?
@@ -73,28 +71,6 @@ final class SuggestionViewModel: ObservableObject {
     private func notifySelection() {
         if let item = selectedItem {
             delegate?.completionWindowDidSelect(item: item)
-        }
-    }
-
-    func updateTheme(from textView: TextViewController) {
-        themeTextColor = textView.theme.text.color
-        switch textView.systemAppearance {
-        case .aqua:
-            let color = textView.theme.background
-            if color != .clear {
-                themeBackground = NSColor(
-                    red: color.redComponent * 0.95,
-                    green: color.greenComponent * 0.95,
-                    blue: color.blueComponent * 0.95,
-                    alpha: 1.0
-                )
-            } else {
-                themeBackground = .windowBackgroundColor
-            }
-        case .darkAqua:
-            themeBackground = textView.theme.background
-        default:
-            break
         }
     }
 

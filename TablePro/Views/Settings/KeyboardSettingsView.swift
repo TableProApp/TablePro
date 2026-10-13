@@ -51,7 +51,6 @@ struct KeyboardSettingsView: View {
                 }
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
         }
     }
 

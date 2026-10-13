@@ -28,7 +28,7 @@ struct WelcomeActionsPanel: View {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 96, height: 96)
-                    .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
+                    .shadow(color: Color(nsColor: .shadowColor).opacity(0.18), radius: 8, x: 0, y: 4)
                     .accessibilityHidden(true)
 
                 VStack(spacing: 4) {

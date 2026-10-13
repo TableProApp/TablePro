@@ -15,16 +15,16 @@ import TableProGrammars
 /// back yields plain text. An editor runs the same tree-sitter grammar and the same theme over the block, so the peek
 /// matches the code it stands for. It is neither editable nor selectable, so peeking never moves the caret.
 ///
-/// The peek draws its own surface. A popover over a light editor renders pure white with no border and no shadow, so
-/// content that simply fills it reads as stray text drawn over the code rather than as a panel floating above it. The
-/// code keeps the theme's editor background so its colours stay legible, and a hairline marks where the panel ends.
+/// A popover over a light editor renders pure white with no border and no shadow, so content that simply fills it
+/// reads as stray text drawn over the code rather than as a panel floating above it. The editor draws the theme's
+/// background behind the code so its colours stay legible, and a hairline marks where the panel ends.
 struct FoldPreviewView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     let layout: FoldPreviewMetrics.Layout
     let language: CodeLanguage
 
     @State private var text: String
     @State private var editorState = SourceEditorState()
+    @State private var configuration = makeConfiguration()
 
     init(layout: FoldPreviewMetrics.Layout, language: CodeLanguage) {
         self.layout = layout
@@ -37,10 +37,13 @@ struct FoldPreviewView: View {
             SourceEditor(
                 $text,
                 language: language,
-                configuration: Self.configuration,
+                configuration: configuration,
                 state: $editorState
             )
             .frame(width: layout.size.width, height: layout.size.height)
+            .onReceive(AppEvents.shared.themeChanged) { _ in
+                configuration = Self.makeConfiguration()
+            }
 
             if layout.hiddenLineCount > 0 {
                 Divider()
@@ -52,7 +55,6 @@ struct FoldPreviewView: View {
                     .padding(.vertical, 5)
             }
         }
-        .background(themeEngine.palette.color(.editorBackground))
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
@@ -67,11 +69,10 @@ struct FoldPreviewView: View {
     /// Room for the panel's own edge inside the popover's content area.
     static let surfaceInset: CGFloat = 1
 
-    private static var configuration: SourceEditorConfiguration {
+    private static func makeConfiguration() -> SourceEditorConfiguration {
         SourceEditorConfiguration(
             appearance: .init(
                 theme: TableProEditorTheme.make(),
-                useThemeBackground: false,
                 font: ThemeEngine.shared.editorFonts.font,
                 wrapLines: false
             ),

@@ -1,97 +1,82 @@
-//
-//  AppearanceSettingsView.swift
-//  TablePro
-//
-//  Settings for theme browsing and customization.
-//
-
 import SwiftUI
 
-enum ThemeEditSlot: Hashable {
-    case light
-    case dark
-}
+internal struct AppearanceSettingsView: View {
+    @Binding internal var settings: AppearanceSettings
 
-struct AppearanceSettingsView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
-    @Binding var settings: AppearanceSettings
-    @State private var chosenSlot: ThemeEditSlot?
+    @ObservedObject private var catalog = ThemeCatalog.shared
 
-    /// The slot currently being edited. Defaults to the active appearance so the
-    /// pane opens on the theme in use, but the user can switch to edit the other
-    /// slot without changing the app's appearance mode.
-    private var editSlot: ThemeEditSlot {
-        chosenSlot ?? (themeEngine.effectiveAppearance == .dark ? .dark : .light)
+    private static let modes: [AppAppearanceMode] = [.auto, .light, .dark]
+
+    internal var body: some View {
+        Form {
+            Section {
+                Picker(String(localized: "Appearance"), selection: $settings.appearanceMode) {
+                    ForEach(Self.modes, id: \.self) { mode in
+                        Text(Self.title(for: mode)).tag(mode)
+                    }
+                }
+                .accessibilityIdentifier("appearance-mode-picker")
+            }
+
+            Section {
+                themePicker(ThemeSlotChoice(slot: .light, savedId: settings.preferredLightThemeId, themes: catalog.themes))
+                themePicker(ThemeSlotChoice(slot: .dark, savedId: settings.preferredDarkThemeId, themes: catalog.themes))
+            } footer: {
+                Text("Themes color the SQL editor and the data grid. Everything else follows the system appearance.")
+            }
+
+            CustomThemesSection(settings: $settings)
+        }
+        .formStyle(.grouped)
     }
 
-    private var slotAppearance: ThemeAppearance {
-        editSlot == .dark ? .dark : .light
+    private static func title(for mode: AppAppearanceMode) -> String {
+        switch mode {
+        case .auto: return String(localized: "System")
+        case .light: return String(localized: "Light")
+        case .dark: return String(localized: "Dark")
+        }
     }
 
-    private var slotThemeBinding: Binding<String> {
+    private func themePicker(_ choice: ThemeSlotChoice) -> some View {
+        Picker(selection: selectionBinding(for: choice)) {
+            ForEach(choice.builtIn) { theme in
+                Text(theme.name).tag(theme.id)
+            }
+            if !choice.custom.isEmpty {
+                Divider()
+                ForEach(choice.custom) { theme in
+                    Text(theme.name).tag(theme.id)
+                }
+            }
+        } label: {
+            Text(choice.title)
+            if let note = choice.noteMessage {
+                Text(note)
+                    .accessibilityIdentifier("appearance-\(choice.slot.rawValue)-theme-note")
+            }
+        }
+        .accessibilityIdentifier("appearance-\(choice.slot.rawValue)-theme")
+    }
+
+    /// The popup shows the theme in use, but only a pick writes the setting: a saved id this Mac
+    /// cannot resolve stays saved for the Mac that has the theme.
+    private func selectionBinding(for choice: ThemeSlotChoice) -> Binding<String> {
         Binding(
-            get: {
-                editSlot == .dark ? settings.preferredDarkThemeId : settings.preferredLightThemeId
-            },
-            set: { newId in
+            get: { choice.selectedId },
+            set: { id in
                 var updated = settings
-                if editSlot == .dark {
-                    updated.preferredDarkThemeId = newId
-                } else {
-                    updated.preferredLightThemeId = newId
+                switch choice.slot {
+                case .light: updated.preferredLightThemeId = id
+                case .dark: updated.preferredDarkThemeId = id
                 }
                 settings = updated
             }
         )
     }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("Appearance")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Picker(String(localized: "Appearance"), selection: $settings.appearanceMode) {
-                    ForEach(AppAppearanceMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-
-                Spacer()
-
-                Text("Editing")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Picker(String(localized: "Editing"), selection: Binding(get: { editSlot }, set: { chosenSlot = $0 })) {
-                    Text("Light").tag(ThemeEditSlot.light)
-                    Text("Dark").tag(ThemeEditSlot.dark)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-
-            Divider()
-
-            HSplitView {
-                ThemeListView(selectedThemeId: slotThemeBinding, slotAppearance: slotAppearance)
-                    .frame(minWidth: 180, idealWidth: 210, maxWidth: 250)
-
-                ThemeEditorView(selectedThemeId: slotThemeBinding, slotAppearance: slotAppearance)
-                    .frame(minWidth: 400)
-            }
-        }
-    }
 }
 
 #Preview {
     AppearanceSettingsView(settings: .constant(.default))
-        .frame(width: 720, height: 500)
+        .frame(width: 720, height: 560)
 }

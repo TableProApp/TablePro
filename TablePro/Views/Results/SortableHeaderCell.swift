@@ -68,10 +68,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
         if isColumnSelected {
-            let fill: NSColor = isEmphasized
-                ? .selectedContentBackgroundColor
-                : .unemphasizedSelectedContentBackgroundColor
-            fill.setFill()
+            DataGridBodyChrome.selectionColor(emphasized: isEmphasized).setFill()
             cellFrame.fill()
         }
 
@@ -173,7 +170,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     private func funnelColor(active: Bool, emphasized: Bool) -> NSColor {
-        if emphasized { return .alternateSelectedControlTextColor }
+        if emphasized { return ThemeEngine.shared.resolved[.gridSelectionText] }
         return active ? .controlAccentColor : .secondaryLabelColor
     }
 
@@ -196,14 +193,12 @@ final class SortableHeaderCell: NSTableHeaderCell {
         return headerView.comment(for: self)
     }
 
-    private func foregroundColor(emphasized: Bool) -> NSColor {
-        emphasized
-            ? ThemeEngine.shared.palette[.gridSelectionText]
-            : ThemeEngine.shared.palette[.gridHeaderText]
+    func foregroundColor(emphasized: Bool) -> NSColor {
+        ThemeEngine.shared.resolved[emphasized ? .gridSelectionText : .gridHeaderText]
     }
 
     private func commentColor(emphasized: Bool) -> NSColor {
-        emphasized ? .alternateSelectedControlTextColor : .secondaryLabelColor
+        emphasized ? ThemeEngine.shared.resolved[.gridSelectionText] : .secondaryLabelColor
     }
 
     private func drawTitle(

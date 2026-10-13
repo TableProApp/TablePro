@@ -1,19 +1,10 @@
 import SwiftUI
 
-/// The two font domains, each on the pane that owns the surfaces it applies to. They used to live
-/// inside the theme file, so a zoom shortcut rewrote a whole theme, and a font edit on a built-in
-/// forked it into a copy.
+/// Fonts are settings, not theme: importing Dracula must never change someone's font or size.
 internal struct TypographySection: View {
     internal enum Domain {
         case editor
         case dataGrid
-
-        internal var title: String {
-            switch self {
-            case .editor: return String(localized: "Editor Font")
-            case .dataGrid: return String(localized: "Data Grid Font")
-            }
-        }
 
         internal var caption: String {
             switch self {
@@ -42,7 +33,7 @@ internal struct TypographySection: View {
                 }
             }
         } header: {
-            Text(domain.title)
+            Text("Font")
         } footer: {
             Text(domain.caption)
         }

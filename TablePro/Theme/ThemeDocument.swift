@@ -4,6 +4,7 @@ internal indirect enum ThemeJSONNode: Decodable {
     case string(String)
     case number(Int)
     case object([String: ThemeJSONNode])
+    case other
 
     internal init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -16,7 +17,11 @@ internal indirect enum ThemeJSONNode: Decodable {
             self = .number(value)
             return
         }
-        self = .object(try container.decode([String: ThemeJSONNode].self))
+        if let value = try? container.decode([String: ThemeJSONNode].self) {
+            self = .object(value)
+            return
+        }
+        self = .other
     }
 
     internal var stringValue: String? {
@@ -29,33 +34,32 @@ internal indirect enum ThemeJSONNode: Decodable {
         return nil
     }
 
-    internal func flattened(prefix: String = "") -> [String: String] {
+    /// Every leaf with its dotted path. A leaf that is not a string is kept as `nil`, so the
+    /// decoder can report it instead of dropping it.
+    internal func leaves(prefix: String = "") -> [(path: String, value: String?)] {
         switch self {
         case let .string(value):
-            return prefix.isEmpty ? [:] : [prefix: value]
-        case .number:
-            return [:]
+            return [(prefix, value)]
+        case .number, .other:
+            return [(prefix, nil)]
         case let .object(children):
-            var result: [String: String] = [:]
-            for (key, child) in children {
-                let path = prefix.isEmpty ? key : "\(prefix).\(key)"
-                result.merge(child.flattened(prefix: path)) { _, new in new }
+            return children.flatMap { key, child in
+                child.leaves(prefix: prefix.isEmpty ? key : "\(prefix).\(key)")
             }
-            return result
         }
     }
 }
 
-/// The theme file format, and the only place a file can be rejected. The previous decoder read
-/// every key with `decodeIfPresent` and a Default Light fallback, so an empty object and a VS Code
-/// theme both decoded "successfully" and rendered as Default Light under the file's own name.
+/// The theme file format, and the only place a file can be rejected. Every color is optional: a
+/// slot the file leaves out draws in the system color, or for syntax in the same-appearance
+/// default's color. What is refused is anything that would otherwise load as something the author
+/// did not write: an unknown key, an unparseable color, missing metadata, another format.
 internal struct ThemeDocument {
-    internal let schema: Int
     internal let id: String
     internal let name: String
     internal let author: String
     internal let appearance: ThemeAppearance
-    internal let colors: [ThemeSlot: ThemeColorValue]
+    internal let colors: [ThemeSlot: ThemeColor]
 
     private enum MetadataKey: String, CaseIterable {
         case schema
@@ -69,15 +73,17 @@ internal struct ThemeDocument {
         let root = try JSONDecoder().decode([String: ThemeJSONNode].self, from: data)
 
         guard let schema = root[MetadataKey.schema.rawValue]?.intValue else {
+            if let legacy = root["version"]?.intValue {
+                throw ThemeLoadError.schemaTooOld(found: legacy, supported: ThemeSchema.current)
+            }
             throw ThemeLoadError.missingSchema
         }
-        guard schema >= ThemeSchema.oldestSupported else {
+        guard schema >= ThemeSchema.current else {
             throw ThemeLoadError.schemaTooOld(found: schema, supported: ThemeSchema.current)
         }
         guard schema <= ThemeSchema.current else {
             throw ThemeLoadError.schemaTooNew(found: schema, supported: ThemeSchema.current)
         }
-        self.schema = schema
 
         guard let id = root[MetadataKey.id.rawValue]?.stringValue, !id.isEmpty else {
             throw ThemeLoadError.missingField(MetadataKey.id.rawValue)
@@ -87,7 +93,9 @@ internal struct ThemeDocument {
         }
         self.id = id
 
-        guard let name = root[MetadataKey.name.rawValue]?.stringValue, !name.isEmpty else {
+        guard let name = root[MetadataKey.name.rawValue]?.stringValue,
+              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
             throw ThemeLoadError.missingField(MetadataKey.name.rawValue)
         }
         self.name = name
@@ -102,53 +110,37 @@ internal struct ThemeDocument {
 
         author = root[MetadataKey.author.rawValue]?.stringValue ?? ""
 
-        var flat: [String: String] = [:]
-        for (key, node) in root where MetadataKey(rawValue: key) == nil {
-            flat.merge(node.flattened(prefix: key)) { _, new in new }
-        }
+        let leaves = root
+            .filter { MetadataKey(rawValue: $0.key) == nil }
+            .flatMap { key, node in node.leaves(prefix: key) }
+            .sorted { $0.path < $1.path }
 
-        var parsed: [ThemeSlot: ThemeColorValue] = [:]
+        var parsed: [ThemeSlot: ThemeColor] = [:]
         var unknown: [String] = []
 
-        for (path, raw) in flat {
-            guard let slot = ThemeSlot(rawValue: path) else {
-                unknown.append(path)
+        for leaf in leaves {
+            guard let slot = ThemeSlot(rawValue: leaf.path) else {
+                unknown.append(leaf.path)
                 continue
             }
-            parsed[slot] = try ThemeColorValue(validating: raw)
+            guard parsed[slot] == nil else {
+                throw ThemeLoadError.duplicateKey(leaf.path)
+            }
+            guard let raw = leaf.value else {
+                throw ThemeLoadError.invalidColor(leaf.path)
+            }
+            parsed[slot] = try ThemeColor(validating: raw)
         }
 
         guard unknown.isEmpty else {
-            throw ThemeLoadError.unknownKeys(unknown.sorted())
-        }
-
-        let missing = ThemeSlot.allCases
-            .filter { $0.since <= schema && parsed[$0] == nil }
-            .map(\.rawValue)
-
-        guard missing.isEmpty else {
-            throw ThemeLoadError.missingSlots(missing.sorted())
+            throw ThemeLoadError.unknownKeys(unknown)
         }
 
         colors = parsed
     }
 
-    /// A slot introduced after this file's schema revision takes the same-appearance built-in's
-    /// value for that exact slot. Every slot the file's own revision declares is required, so this
-    /// never papers over an omission the author could have made.
-    internal func resolved() -> ThemeDefinition {
-        var definition = BuiltInThemes.default(for: appearance)
-        definition.id = id
-        definition.name = name
-        definition.author = author
-        definition.appearance = appearance
-
-        for slot in ThemeSlot.allCases {
-            guard let value = colors[slot] else { continue }
-            definition[keyPath: slot.keyPath] = value
-        }
-
-        return definition
+    internal func definition() -> ThemeDefinition {
+        ThemeDefinition(id: id, name: name, author: author, appearance: appearance, overrides: colors)
     }
 }
 
@@ -176,7 +168,8 @@ internal enum ThemeEncoder {
         ]
 
         for slot in ThemeSlot.allCases {
-            insert(theme[keyPath: slot.keyPath].rawValue, at: slot.rawValue.components(separatedBy: "."), into: &root)
+            guard let color = theme.overrides[slot] else { continue }
+            insert(color.hex, at: slot.rawValue.components(separatedBy: "."), into: &root)
         }
 
         return try JSONSerialization.data(

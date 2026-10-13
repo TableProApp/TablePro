@@ -6,7 +6,6 @@
 import SwiftUI
 
 internal struct SingleLineEditorView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
 
     var body: some View {
@@ -30,7 +29,7 @@ internal struct SingleLineEditorView: View {
             .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
-            .background(themeEngine.palette.color(.panelControlBackground), in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(themeEngine.palette.color(.panelSeparator)))
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
     }
 }

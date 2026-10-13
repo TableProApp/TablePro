@@ -1,62 +1,47 @@
 {
   "appearance": "dark",
   "author": "TablePro",
-  "content": {
-    "dataGrid": {
-      "alternateRow": "#21222C",
-      "background": "#282A36",
-      "boolFalse": "#FF5555",
-      "boolTrue": "#50FA7B",
-      "deleted": "#FF555526",
-      "deletedText": "#FF555580",
-      "focusBorder": "#BD93F9",
-      "gridLine": "#44475A",
-      "headerBackground": "#21222C",
-      "headerText": "#F8F8F2",
-      "inactiveSelection": "#44475A80",
-      "inserted": "#50FA7B26",
-      "modified": "#FFB86C4D",
-      "nullValue": "#6272A4",
-      "rowNumber": "#6272A4",
-      "selection": "#44475A",
-      "selectionText": "#F8F8F2",
-      "text": "#F8F8F2"
+  "dataGrid": {
+    "alternateRow": "#21222C",
+    "background": "#282A36",
+    "boolFalse": "#FF5555",
+    "boolTrue": "#50FA7B",
+    "deleted": "#FF555526",
+    "deletedText": "#FF555580",
+    "focusBorder": "#BD93F9",
+    "gridLine": "#44475A",
+    "headerBackground": "#21222C",
+    "headerText": "#F8F8F2",
+    "inactiveSelection": "#44475A80",
+    "inserted": "#50FA7B26",
+    "modified": "#FFB86C4D",
+    "nullValue": "#6272A4",
+    "rowNumber": "#6272A4",
+    "selection": "#44475A",
+    "selectionText": "#F8F8F2",
+    "text": "#F8F8F2"
+  },
+  "editor": {
+    "background": "#282A36",
+    "currentLine": "#44475A",
+    "currentStatement": "#FFFFFF0F",
+    "cursor": "#F8F8F2",
+    "invisibles": "#424450",
+    "lineNumber": "#6272A4",
+    "selection": "#44475A",
+    "syntax": {
+      "comment": "#6272A4",
+      "function": "#50FA7B",
+      "keyword": "#FF79C6",
+      "null": "#FFB86C",
+      "number": "#BD93F9",
+      "operator": "#FF79C6",
+      "string": "#F1FA8C",
+      "type": "#8BE9FD"
     },
-    "editor": {
-      "background": "#282A36",
-      "currentLine": "#44475A",
-      "currentStatement": "#FFFFFF0F",
-      "cursor": "#F8F8F2",
-      "invisibles": "#424450",
-      "lineNumber": "#6272A4",
-      "selection": "#44475A",
-      "syntax": {
-        "comment": "#6272A4",
-        "function": "#50FA7B",
-        "keyword": "#FF79C6",
-        "null": "#FFB86C",
-        "number": "#BD93F9",
-        "operator": "#FF79C6",
-        "string": "#F1FA8C",
-        "type": "#8BE9FD"
-      },
-      "text": "#F8F8F2"
-    },
-    "panel": {
-      "background": "#282A36",
-      "controlBackground": "#343746",
-      "secondaryText": "#BFC0C9",
-      "separator": "#44475A",
-      "tertiaryText": "#6272A4",
-      "text": "#F8F8F2"
-    },
-    "status": {
-      "error": "#FF5555",
-      "success": "#50FA7B",
-      "warning": "#FFB86C"
-    }
+    "text": "#F8F8F2"
   },
   "id": "tablepro.dracula",
   "name": "Dracula",
-  "schema": 2
+  "schema": 3
 }

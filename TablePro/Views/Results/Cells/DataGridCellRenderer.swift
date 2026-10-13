@@ -65,10 +65,8 @@ final class DataGridCellRenderer {
         }
         NSGraphicsContext.current?.restoreGraphicsState()
 
-        if appearance.drawsFocusBorder {
-            drawFocusBorder(in: rect)
-        } else if appearance.drawsFocusRing {
-            drawFocusRing(in: rect)
+        if appearance.drawsFocusBorder || appearance.drawsFocusRing {
+            drawCursor(in: rect, color: appearance.focusColor)
         }
     }
 
@@ -147,19 +145,12 @@ final class DataGridCellRenderer {
         checkboxCell.draw(withFrame: frame, in: controlView)
     }
 
-    private func drawFocusBorder(in rect: NSRect) {
+    /// A mounted cell got its cursor from AppKit's exterior focus ring; a drawn cell has no view to
+    /// hang one on, so it is drawn to the same shape.
+    private func drawCursor(in rect: NSRect, color: NSColor) {
         let path = NSBezierPath(rect: rect.insetBy(dx: 1, dy: 1))
         path.lineWidth = 2
-        NSColor.alternateSelectedControlTextColor.setStroke()
-        path.stroke()
-    }
-
-    /// The cell cursor on an unselected row. A mounted cell got this from AppKit's exterior focus
-    /// ring; a drawn cell has no view to hang one on, so it is drawn to the same shape.
-    private func drawFocusRing(in rect: NSRect) {
-        let path = NSBezierPath(rect: rect.insetBy(dx: 1, dy: 1))
-        path.lineWidth = 2
-        ThemeEngine.shared.palette[.gridFocusBorder].setStroke()
+        color.setStroke()
         path.stroke()
     }
 }

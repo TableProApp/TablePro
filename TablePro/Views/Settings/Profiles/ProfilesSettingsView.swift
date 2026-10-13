@@ -26,7 +26,6 @@ struct ProfilesSettingsView: View {
             sshSection
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
         .onAppear(perform: reload)
         /// The Settings window is kept alive between openings, so a profile created from a
         /// connection window has to reach this list while it is already on screen.

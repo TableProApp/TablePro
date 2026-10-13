@@ -277,7 +277,7 @@ if #available(macOS 14.0, *) {
         if let value {
             Text(value, format: .number)
                 .monospacedDigit()
-                .foregroundStyle(countTint(value, kind: kind))
+                .selectionAwareTint(countTint(value, kind: kind))
         }
     }
 

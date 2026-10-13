@@ -28,7 +28,6 @@ struct TriggerEditorView: View {
     @State private var editorConfiguration: SourceEditorConfiguration
     @State private var isApplying = false
     @State private var errorMessage: String?
-    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
 
     init(
@@ -73,9 +72,6 @@ struct TriggerEditorView: View {
             }
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 360, idealHeight: 460)
-        .onChange(of: colorScheme) { _ in
-            editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
-        }
         .onReceive(AppEvents.shared.themeChanged) { _ in
             editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
         }

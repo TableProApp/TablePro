@@ -575,7 +575,7 @@ private extension View {
                 Circle()
                     .fill(Color(nsColor: .controlColor))
                     .shadow(
-                        color: .black.opacity(isLightAppearance ? 0.12 : 0),
+                        color: Color(nsColor: .shadowColor).opacity(isLightAppearance ? 0.12 : 0),
                         radius: isLightAppearance ? 1 : 0,
                         y: isLightAppearance ? 0.5 : 0
                     )

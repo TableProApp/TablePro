@@ -12,7 +12,6 @@ import TableProPluginKit
 
 /// Read-only DDL display with syntax highlighting powered by TableProEditorKit
 struct DDLTextView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     let ddl: String
     @Binding var fontSize: Double
@@ -21,7 +20,6 @@ struct DDLTextView: View {
     @State private var text: String
     @State private var editorState = SourceEditorState()
     @State private var editorConfiguration: SourceEditorConfiguration
-    @Environment(\.colorScheme) private var colorScheme
 
     /// Primary initializer accepting DDL as a value (read-only display)
     init(ddl: String, fontSize: Binding<Double>, databaseType: DatabaseType? = nil) {
@@ -33,28 +31,21 @@ struct DDLTextView: View {
     }
 
     var body: some View {
-        if ddl.isEmpty {
-            themeEngine.palette.color(.editorBackground)
-        } else {
-            SourceEditor(
-                $text,
-                language: resolvedLanguage,
-                configuration: editorConfiguration,
-                state: $editorState,
-                foldProvider: foldProvider
-            )
-            .onChange(of: ddl) { newDDL in
-                text = newDDL
-            }
-            .onChange(of: colorScheme) { _ in
-                editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
-            }
-            .onReceive(AppEvents.shared.themeChanged) { _ in
-                editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
-            }
-            .onChange(of: fontSize) { newSize in
-                editorConfiguration = Self.makeConfiguration(fontSize: newSize)
-            }
+        SourceEditor(
+            $text,
+            language: resolvedLanguage,
+            configuration: editorConfiguration,
+            state: $editorState,
+            foldProvider: foldProvider
+        )
+        .onChange(of: ddl) { newDDL in
+            text = newDDL
+        }
+        .onReceive(AppEvents.shared.themeChanged) { _ in
+            editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
+        }
+        .onChange(of: fontSize) { newSize in
+            editorConfiguration = Self.makeConfiguration(fontSize: newSize)
         }
     }
 

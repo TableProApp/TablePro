@@ -9,13 +9,10 @@
 import SwiftUI
 
 struct JSONRowInspectorView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     @ObservedObject var viewModel: JSONRowInspectorViewModel
 
     let snapshot: JSONRowSnapshot?
     let onOpenReferencedTable: (JSONForeignKeyRef, String) -> Void
-
-    @State private var colors = JSONRowColors.current()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,7 +25,6 @@ struct JSONRowInspectorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onReceive(AppEvents.shared.themeChanged) { _ in colors = JSONRowColors.current() }
     }
 
     // MARK: - Empty State
@@ -66,7 +62,7 @@ struct JSONRowInspectorView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(ThemeEngine.shared.palette.color(.statusError).opacity(0.6))
+                .strokeBorder(Color.red.opacity(0.6))
                 .opacity(viewModel.isFilterInvalid ? 1 : 0)
         )
         .help(viewModel.isFilterInvalid
@@ -89,7 +85,6 @@ struct JSONRowInspectorView: View {
                     ForEach(rows) { row in
                         JSONNodeRowView(
                             row: row,
-                            colors: colors,
                             onToggle: { viewModel.toggle(row: row) },
                             onOpenReferencedTable: onOpenReferencedTable
                         )
@@ -99,7 +94,6 @@ struct JSONRowInspectorView: View {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(themeEngine.palette.color(.editorBackground))
             .accessibilityLabel(String(localized: "Row as JSON"))
         }
     }

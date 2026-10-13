@@ -7,12 +7,13 @@
 //  and hides it to show the default I-beam cursor in Insert mode.
 //
 //  On macOS 14+, TableProTextEngine uses NSTextInsertionIndicator (system cursor)
-//  instead of its internal CursorView. Setting insertionPointColor only affects
-//  CursorView, so we must directly set displayMode on NSTextInsertionIndicator
-//  subviews to hide/show the I-beam.
+//  instead of its internal CursorView. No caret color hides it, so we must
+//  directly set displayMode on NSTextInsertionIndicator subviews to hide/show
+//  the I-beam.
 //
 
 import AppKit
+import Combine
 import os
 import TableProTextEngine
 
@@ -28,6 +29,7 @@ final class VimCursorManager {
     private var isBlockCursorActive = false
     private var isPaused = false
     private var appObservers: [NSObjectProtocol] = []
+    private var themeCancellable: AnyCancellable?
 
     /// Pending work item for deferred cursor hiding — cancels previous to avoid pileup
     private var deferredHideWorkItem: DispatchWorkItem?
@@ -52,6 +54,9 @@ final class VimCursorManager {
             MainActor.assumeIsolated { self?.resumeBlink() }
         }
         appObservers = [resignObserver, activateObserver]
+        themeCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyBlockCursorColor() }
 
         updateMode(.normal)
     }
@@ -60,6 +65,7 @@ final class VimCursorManager {
     func uninstall() {
         appObservers.forEach { NotificationCenter.default.removeObserver($0) }
         appObservers.removeAll()
+        themeCancellable = nil
 
         deferredHideWorkItem?.cancel()
         deferredHideWorkItem = nil
@@ -154,7 +160,6 @@ final class VimCursorManager {
         } else {
             let layer = CALayer()
             layer.contentsScale = textView.window?.backingScaleFactor ?? 2.0
-            layer.backgroundColor = ThemeEngine.shared.resolved[.editorCursor].withAlphaComponent(0.4).cgColor
             layer.frame = frame
 
             if !isPaused {
@@ -163,7 +168,20 @@ final class VimCursorManager {
 
             textView.layer?.addSublayer(layer)
             blockCursorLayer = layer
+            applyBlockCursorColor()
         }
+    }
+
+    /// A theme without a cursor color leaves the slot on the system caret color, so the block follows the
+    /// Highlight color the way the I-beam does. The layer keeps a resolved color, so it is set again on every
+    /// theme change.
+    private func applyBlockCursorColor() {
+        guard let textView, let layer = blockCursorLayer else { return }
+        let color = ThemeEngine.shared.resolved.cgColor(.editorCursor, in: textView.effectiveAppearance)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.backgroundColor = color.copy(alpha: color.alpha * 0.4)
+        CATransaction.commit()
     }
 
     // MARK: - Private Helpers

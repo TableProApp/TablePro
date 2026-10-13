@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import TableProTextEngine
 
 extension TextViewController {
@@ -158,12 +159,39 @@ extension TextViewController {
             .store(in: &cancellables)
     }
 
+    /// A Highlight color or Increase Contrast change reaches no view's `viewDidChangeEffectiveAppearance`, and the
+    /// editor's system colors are only resolved when drawn, so it redraws what holds them.
+    func setUpSystemColorsObserver() {
+        NotificationCenter.default.publisher(for: NSColor.systemColorsDidChangeNotification)
+            .merge(
+                with: NSWorkspace.shared.notificationCenter.publisher(
+                    for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
+                )
+            )
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.redisplayColors()
+            }
+            .store(in: &cancellables)
+    }
+
+    func redisplayColors() {
+        guard isViewLoaded, let textView else { return }
+        textView.emphasisManager?.refreshColors()
+        textView.needsDisplay = true
+        textView.subviews.forEach { $0.needsDisplay = true }
+        gutterView?.needsDisplay = true
+        gutterView?.foldingRibbon.needsDisplay = true
+        gutterView?.statementRunRibbon.needsDisplay = true
+    }
+
     func setUpOberservers() {
         setUpOnScrollChangeObserver()
         setUpOnScrollViewFrameChangeObserver()
         setUpTextViewFrameChangeObserver()
         setUpSelectionChangedObserver()
         setUpAppearanceChangedObserver()
+        setUpSystemColorsObserver()
     }
 
     /// Asked before any link of any editor's chain, whichever of its views holds focus, for a key

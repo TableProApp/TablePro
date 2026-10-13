@@ -1,9 +1,10 @@
-import Foundation
+import AppKit
 
-/// Default Light and Default Dark are Swift, not JSON: they are the fallback every other theme is
-/// measured against, so they cannot themselves be a file that fails to load. Their surround slots
-/// stay on `system:` values, which keeps the unthemed app pixel-identical to before the theme
-/// owned these surfaces and keeps the system's Increase Contrast and vibrancy adaptations.
+/// Default Light and Default Dark override nothing but syntax, so every other slot draws in the
+/// system color. The syntax values are Xcode's Default (Light) and Default (Dark): SQL `NULL` takes
+/// the keyword color the way Swift's `nil` does, and built-in functions and types take Xcode's
+/// colors for system-provided functions and types. They are Swift, not files, because every other
+/// theme falls back to them and they cannot themselves fail to load.
 internal enum BuiltInThemes {
     internal static let defaultLightId = "tablepro.default-light"
     internal static let defaultDarkId = "tablepro.default-dark"
@@ -13,37 +14,13 @@ internal enum BuiltInThemes {
         name: String(localized: "Default Light"),
         author: "TablePro",
         appearance: .light,
-        editor: EditorThemeColors(
-            background: .hex("#FFFFFF"),
-            text: .hex("#000000"),
-            cursor: .hex("#007AFF"),
-            selection: .hex("#B4D8FD"),
-            currentLine: .hex("#007AFF14"),
-            currentStatement: .hex("#0A0A0A0F"),
-            lineNumber: .hex("#8E8E93"),
-            invisibles: .hex("#C7C7CC"),
-            syntax: SyntaxThemeColors(
-                keyword: .hex("#0A49A5"),
-                string: .hex("#C41A16"),
-                number: .hex("#6C36A9"),
-                comment: .hex("#007400"),
-                null: .hex("#C55B00"),
-                operator: .hex("#000000"),
-                function: .hex("#326D74"),
-                type: .hex("#3F6E74")
-            )
-        ),
-        dataGrid: systemDataGrid(
-            modified: "#FFD60A4D",
-            inserted: "#34C7594D",
-            deleted: "#FF3B304D",
-            deletedText: "#FF3B3080"
-        ),
-        panel: .systemPanel,
-        status: StatusThemeColors(
-            success: .hex("#248A3D"),
-            warning: .hex("#C55B00"),
-            error: .hex("#D70015")
+        overrides: syntax(
+            keyword: "#9B2393",
+            string: "#C41A16",
+            number: "#1C00CF",
+            comment: "#5D6C79",
+            function: "#6C36A9",
+            type: "#3900A0"
         )
     )
 
@@ -52,41 +29,65 @@ internal enum BuiltInThemes {
         name: String(localized: "Default Dark"),
         author: "TablePro",
         appearance: .dark,
-        editor: EditorThemeColors(
-            background: .hex("#1E1E1E"),
-            text: .hex("#D4D4D4"),
-            cursor: .hex("#007AFF"),
-            selection: .hex("#264F78"),
-            currentLine: .hex("#007AFF14"),
-            currentStatement: .hex("#FFFFFF0F"),
-            lineNumber: .hex("#858585"),
-            invisibles: .hex("#4D4D4D"),
-            syntax: SyntaxThemeColors(
-                keyword: .hex("#569CD6"),
-                string: .hex("#CE9178"),
-                number: .hex("#B5CEA8"),
-                comment: .hex("#6A9955"),
-                null: .hex("#FF8C00"),
-                operator: .hex("#D4D4D4"),
-                function: .hex("#DCDCAA"),
-                type: .hex("#4EC9B0")
-            )
-        ),
-        dataGrid: systemDataGrid(
-            modified: "#FFD60A4D",
-            inserted: "#32D74B26",
-            deleted: "#FF453A26",
-            deletedText: "#FF453A80"
-        ),
-        panel: .systemPanel,
-        status: StatusThemeColors(
-            success: .hex("#32D74B"),
-            warning: .hex("#FF9F0A"),
-            error: .hex("#FF453A")
+        overrides: syntax(
+            keyword: "#FC5FA3",
+            string: "#FC6A5D",
+            number: "#D0BF69",
+            comment: "#6C7986",
+            function: "#A167E6",
+            type: "#D0A8FF"
         )
     )
 
     internal static let all: [ThemeDefinition] = [light, dark]
+
+    internal static func isDefault(_ id: String) -> Bool {
+        id == defaultLightId || id == defaultDarkId
+    }
+
+    /// Xcode's High Contrast (Light) and High Contrast (Dark) syntax values, drawn when the view's
+    /// appearance is an increased-contrast one.
+    private static let highContrastLight = syntax(
+        keyword: "#88007E",
+        string: "#9B0509",
+        number: "#1C02CF",
+        comment: "#1A5301",
+        function: "#5C2699",
+        type: "#330090"
+    )
+
+    private static let highContrastDark = syntax(
+        keyword: "#FC6BAA",
+        string: "#FC7467",
+        number: "#D0BC56",
+        comment: "#7CB554",
+        function: "#C08AFF",
+        type: "#DEC1FF"
+    )
+
+    private static let adaptiveLight = adaptive(standard: light.overrides, highContrast: highContrastLight)
+    private static let adaptiveDark = adaptive(standard: dark.overrides, highContrast: highContrastDark)
+
+    internal static func adaptiveSyntaxColor(_ slot: ThemeSlot, appearance: ThemeAppearance) -> NSColor? {
+        switch appearance {
+        case .light: return adaptiveLight[slot]
+        case .dark: return adaptiveDark[slot]
+        }
+    }
+
+    private static func adaptive(
+        standard: [ThemeSlot: ThemeColor],
+        highContrast: [ThemeSlot: ThemeColor]
+    ) -> [ThemeSlot: NSColor] {
+        var colors: [ThemeSlot: NSColor] = [:]
+        for (slot, color) in standard {
+            let contrast = highContrast[slot] ?? color
+            colors[slot] = NSColor(name: NSColor.Name("tablepro.syntax.\(slot.rawValue).\(color.hex)")) { appearance in
+                appearance.isHighContrast ? contrast.nsColor : color.nsColor
+            }
+        }
+        return colors
+    }
 
     internal static func `default`(for appearance: ThemeAppearance) -> ThemeDefinition {
         switch appearance {
@@ -99,44 +100,23 @@ internal enum BuiltInThemes {
         `default`(for: appearance).id
     }
 
-    private static func systemDataGrid(
-        modified: String,
-        inserted: String,
-        deleted: String,
-        deletedText: String
-    ) -> DataGridThemeColors {
-        DataGridThemeColors(
-            background: .system(.controlBackground),
-            text: .system(.label),
-            alternateRow: .system(.alternatingContentBackgroundOdd),
-            headerBackground: .system(.windowBackground),
-            headerText: .system(.label),
-            gridLine: .system(.grid),
-            selection: .system(.selectedContentBackground),
-            selectionText: .system(.alternateSelectedControlText),
-            inactiveSelection: .system(.unemphasizedSelectedContentBackground),
-            focusBorder: .system(.keyboardFocusIndicator),
-            nullValue: .system(.secondaryLabel),
-            boolTrue: .system(.label),
-            boolFalse: .system(.label),
-            rowNumber: .system(.secondaryLabel),
-            modified: .hex(modified),
-            inserted: .hex(inserted),
-            deleted: .hex(deleted),
-            deletedText: .hex(deletedText)
-        )
+    private static func syntax(
+        keyword: String,
+        string: String,
+        number: String,
+        comment: String,
+        function: String,
+        type: String
+    ) -> [ThemeSlot: ThemeColor] {
+        let values: [ThemeSlot: String] = [
+            .syntaxKeyword: keyword,
+            .syntaxNull: keyword,
+            .syntaxString: string,
+            .syntaxNumber: number,
+            .syntaxComment: comment,
+            .syntaxFunction: function,
+            .syntaxType: type,
+        ]
+        return values.compactMapValues { try? ThemeColor(validating: $0) }
     }
-}
-
-internal extension PanelThemeColors {
-    /// The semantic colours these surfaces already named before the theme owned them, so a default
-    /// theme is invisible against the unthemed app and keeps the system's contrast handling.
-    static let systemPanel = PanelThemeColors(
-        background: .system(.controlBackground),
-        controlBackground: .system(.textBackground),
-        text: .system(.label),
-        secondaryText: .system(.secondaryLabel),
-        tertiaryText: .system(.tertiaryLabel),
-        separator: .system(.separator)
-    )
 }

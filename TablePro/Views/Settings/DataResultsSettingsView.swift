@@ -29,7 +29,6 @@ struct DataResultsSettingsView: View {
             DataRewindSection(settings: $history)
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 }
 

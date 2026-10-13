@@ -92,4 +92,30 @@ struct CellOverlayAppearanceTests {
             #expect(lightBorder.brightness != darkBorder.brightness)
         }
     }
+
+    /// The border is a baked `CGColor`, so a theme change reaches an open editor only by being
+    /// applied again, which the `themeChanged` subscription does.
+    @Test("A theme's focus border reaches an open overlay when its colours are reapplied")
+    func themeFocusBorderIsRebaked() throws {
+        let engine = ThemeEngine.shared
+        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
+        defer { engine.adopt(restore) }
+        engine.adopt(ThemeSelection(pair: .builtIn, effectiveAppearance: .light))
+
+        let container = makeContainer()
+        container.appearance = try #require(NSAppearance(named: .aqua))
+        let nativeBorder = try #require(container.layer?.borderColor)
+
+        var theme = BuiltInThemes.light
+        theme.id = "test.overlay-border"
+        theme.overrides[.gridFocusBorder] = try ThemeColor(validating: "#FF0000")
+        engine.adopt(ThemeSelection(pair: ThemePair(light: theme, dark: BuiltInThemes.dark), effectiveAppearance: .light))
+        container.applyLayerColors()
+
+        let themed = try #require(container.layer?.borderColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) })
+        #expect(themed.redComponent > 0.9)
+        #expect(themed.greenComponent < 0.1)
+        #expect(themed.blueComponent < 0.1)
+        #expect(container.layer?.borderColor != nativeBorder)
+    }
 }

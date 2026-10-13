@@ -142,7 +142,7 @@ struct ForeignKeyPickerView: View {
     private var content: some View {
         if let errorMessage {
             RevealedTextView(errorMessage)
-                .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                .foregroundStyle(.red)
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
@@ -189,7 +189,6 @@ struct ForeignKeyPickerView: View {
                     .accessibilityAction { commit(entry) }
             }
             .listStyle(.plain)
-            .scrollContentBackground(.hidden)
             .frame(height: Self.listHeight)
             .onChange(of: selection) { newValue in
                 guard let newValue else { return }

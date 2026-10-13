@@ -35,7 +35,6 @@ struct OptionsPaneView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 
     // MARK: - Timeouts

@@ -82,6 +82,7 @@ public extension SourceEditorConfiguration {
         @MainActor
         func didSetOnController(controller: TextViewController, oldConfig: Appearance?) {
             var needsHighlighterInvalidation = false
+            var needsRestyle = false
 
             if oldConfig?.font != font {
                 controller.textView.font = font
@@ -92,7 +93,7 @@ public extension SourceEditorConfiguration {
 
             if oldConfig?.theme != theme || oldConfig?.useThemeBackground != useThemeBackground {
                 updateControllerNewTheme(controller: controller)
-                needsHighlighterInvalidation = true
+                needsRestyle = true
             }
 
             if oldConfig?.tabWidth != tabWidth {
@@ -140,6 +141,8 @@ public extension SourceEditorConfiguration {
 
             if needsHighlighterInvalidation {
                 controller.highlighter?.invalidate()
+            } else if needsRestyle {
+                controller.highlighter?.restyle()
             }
         }
 
@@ -150,9 +153,7 @@ public extension SourceEditorConfiguration {
                 range: NSRange(location: 0, length: controller.textView.textStorage.length)
             )
             controller.textView.selectionManager.selectionBackgroundColor = theme.selection
-            controller.textView.selectionManager.selectedLineBackgroundColor = getThemeBackground(
-                systemAppearance: controller.systemAppearance
-            )
+            controller.textView.selectionManager.selectedLineBackgroundColor = currentLineColor
             controller.textView.selectionManager.insertionPointColor = theme.insertionPoint
             controller.textView.enclosingScrollView?.backgroundColor = if useThemeBackground {
                 theme.background
@@ -161,23 +162,17 @@ public extension SourceEditorConfiguration {
             }
 
             (controller.textView as? SourceEditorTextView)?.statementHighlightColor = theme.statementHighlight
+            (controller.textView as? SourceEditorTextView)?.backgroundFillColor = useThemeBackground ? theme.background : nil
 
-            let gutterColor = theme.lineNumber ?? theme.text.color.withAlphaComponent(0.35)
+            let gutterColor = theme.lineNumber ?? .secondaryLabelColor
             controller.gutterView.textColor = gutterColor
             controller.gutterView.statementRunRibbon.glyphColor = gutterColor
-            controller.gutterView.statementRunRibbon.hoveredGlyphColor = theme.text.color
             controller.gutterView.foldingRibbon.chevronColor = gutterColor
-            controller.gutterView.foldingRibbon.collapsedChevronColor = theme.text.color.withAlphaComponent(0.65)
+            controller.gutterView.foldingRibbon.collapsedChevronColor = theme.text.color.withDynamicAlpha(0.65)
             controller.gutterView.foldingRibbon.hoveredChevronColor = theme.text.color
-            controller.gutterView.foldingRibbon.foldExtentColor = theme.text.color.withAlphaComponent(0.2)
+            controller.gutterView.foldingRibbon.foldExtentColor = theme.text.color.withDynamicAlpha(0.2)
             controller.gutterView.selectedLineTextColor = theme.text.color
-            controller.gutterView.selectedLineColor = if useThemeBackground {
-                theme.lineHighlight
-            } else if controller.systemAppearance == .darkAqua {
-                NSColor.quaternaryLabelColor
-            } else {
-                NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled)
-            }
+            controller.gutterView.selectedLineColor = currentLineColor
             controller.gutterView.backgroundColor = if useThemeBackground {
                 theme.background
             } else {
@@ -187,18 +182,13 @@ public extension SourceEditorConfiguration {
             controller.textView.typingAttributes = controller.attributesFor(nil)
         }
 
-        /// Finds the preferred use theme background.
-        /// - Returns: The background color to use.
-        private func getThemeBackground(systemAppearance: NSAppearance.Name?) -> NSColor {
-            if useThemeBackground {
-                return theme.lineHighlight
-            }
-
-            if systemAppearance == .darkAqua {
-                return NSColor.quaternaryLabelColor
-            }
-
-            return NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled)
+        private var currentLineColor: NSColor {
+            useThemeBackground ? theme.lineHighlight : Self.transparentCurrentLineColor
         }
+
+        private static let transparentCurrentLineColor = NSColor(
+            light: NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled),
+            dark: .quaternaryLabelColor
+        )
     }
 }

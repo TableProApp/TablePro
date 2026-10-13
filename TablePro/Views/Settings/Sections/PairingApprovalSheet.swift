@@ -55,7 +55,6 @@ struct PairingApprovalSheet: View {
                 expirySection
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
             /// The one greedy child, and the reason the sheet needs a bound at all. A grouped
             /// `Form` is a scroll container, so it answers any proposal with the whole proposed
             /// height: unbounded, it measured `CGFloat.greatestFiniteMagnitude`, and the window

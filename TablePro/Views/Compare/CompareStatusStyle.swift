@@ -6,8 +6,8 @@
 //
 //  Colour is never the carrier on its own. Every call site pairs the tint with
 //  the symbol and the word, and drops the tint when the system asks for shapes
-//  instead of colour. Tints resolve through `ThemeEngine` rather than the
-//  built-in `Color` literals, so a theme owns them the way it owns the grid.
+//  instead of colour. The tints are system colours under every theme: a theme
+//  colours only the SQL editor and the data grid.
 //
 
 import SwiftUI
@@ -43,18 +43,16 @@ internal enum CompareStatusStyle {
         }
     }
 
-    @MainActor
     internal static func tint(for status: TableDiffStatus) -> Color {
-        let palette = ThemeEngine.shared.palette
         switch status {
         case .onlyInSource:
-            return palette.color(.statusSuccess)
+            return success
         case .onlyInTarget:
-            return palette.color(.statusError)
+            return error
         case .differs:
-            return palette.color(.statusWarning)
+            return warning
         case .identical:
-            return Color(nsColor: .secondaryLabelColor)
+            return .secondary
         }
     }
 
@@ -90,35 +88,30 @@ internal enum CompareStatusStyle {
         }
     }
 
-    @MainActor
     internal static func tint(for kind: RowDiffKind) -> Color {
-        let palette = ThemeEngine.shared.palette
         switch kind {
         case .insert:
-            return palette.color(.statusSuccess)
-        case .update:
-            return palette.color(.statusWarning)
+            return success
+        case .update, .conflict:
+            return warning
         case .delete:
-            return palette.color(.statusError)
+            return error
         case .identical:
-            return Color(nsColor: .secondaryLabelColor)
-        case .conflict:
-            return palette.color(.statusWarning)
+            return .secondary
         }
     }
 
-    /// The same tints the data grid paints an inserted, modified or deleted row with, so a row
-    /// difference here reads the way the same row reads in the grid.
-    @MainActor
+    /// The tints a data grid with no theme paints an inserted, modified or deleted row with, so a
+    /// row difference reads the way the same row reads in the default grid. Not the grid's slots:
+    /// a theme stops at the grid.
     internal static func rowTint(for kind: RowDiffKind) -> Color {
-        let palette = ThemeEngine.shared.palette
         switch kind {
         case .insert:
-            return palette.color(.gridInserted)
+            return Color(nsColor: NativeThemeColors.insertedRow)
         case .update:
-            return palette.color(.gridModified)
+            return Color(nsColor: NativeThemeColors.modifiedRow)
         case .delete:
-            return palette.color(.gridDeleted)
+            return Color(nsColor: NativeThemeColors.deletedRow)
         case .identical, .conflict:
             return .clear
         }
@@ -126,18 +119,7 @@ internal enum CompareStatusStyle {
 
     // MARK: - Message tints
 
-    @MainActor
-    internal static var warning: Color {
-        ThemeEngine.shared.palette.color(.statusWarning)
-    }
-
-    @MainActor
-    internal static var error: Color {
-        ThemeEngine.shared.palette.color(.statusError)
-    }
-
-    @MainActor
-    internal static var success: Color {
-        ThemeEngine.shared.palette.color(.statusSuccess)
-    }
+    internal static let warning = Color.orange
+    internal static let error = Color.red
+    internal static let success = Color.green
 }

@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct HistoryRowView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     let entry: QueryHistoryEntry
     let connectionLabel: HistoryConnectionLabel?
 
@@ -73,7 +72,7 @@ struct HistoryRowView: View {
                 .foregroundStyle(Color.secondary)
         } else {
             Image(systemName: "exclamationmark.circle.fill")
-                .selectionAwareTint(themeEngine.palette.color(.statusError))
+                .selectionAwareTint(.red)
         }
     }
 

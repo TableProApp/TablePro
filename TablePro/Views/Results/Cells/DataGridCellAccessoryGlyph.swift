@@ -55,12 +55,13 @@ enum DataGridCellAccessoryGlyph {
             }
         }
 
-        var color: NSColor {
+        /// An emphasized glyph sits on the row's selection, so it takes the selection's text color.
+        func color(selectionText: NSColor) -> NSColor {
             switch self {
             case .foreignKeyNormal, .chevronNormal:
                 return .secondaryLabelColor
             case .foreignKeyEmphasized, .chevronEmphasized:
-                return .alternateSelectedControlTextColor
+                return selectionText
             case .chevronDisabled:
                 return .tertiaryLabelColor
             }
@@ -79,26 +80,34 @@ enum DataGridCellAccessoryGlyph {
     }
 
     private static var glyphs: [Key: Glyph] = [:]
+    private static var glyphsRevision: Int?
 
     /// Rasterizing resolves the dynamic symbol color, so a cached bitmap belongs to exactly one
-    /// appearance. Keying on the appearance is what keeps a dark window from being served the
-    /// light bitmap, and `NSAppearance.currentDrawing()` only reports the drawing appearance while
-    /// AppKit is inside `draw(_:)`, `updateLayer` or `layout`.
+    /// appearance and one theme revision. Keying on the appearance is what keeps a dark window from
+    /// being served the light bitmap, and `NSAppearance.currentDrawing()` only reports the drawing
+    /// appearance while AppKit is inside `draw(_:)`, `updateLayer` or `layout`.
     static func image(for role: Role) -> Glyph? {
+        let engine = ThemeEngine.shared
+        if glyphsRevision != engine.revision {
+            glyphs.removeAll()
+            glyphsRevision = engine.revision
+        }
         let key = Key(
             role: role,
             appearance: NSAppearance.currentDrawing().name,
             increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         )
         if let cached = glyphs[key] { return cached }
-        guard let glyph = make(role) else { return nil }
+        guard let glyph = make(role, color: role.color(selectionText: engine.resolved[.gridSelectionText])) else {
+            return nil
+        }
         glyphs[key] = glyph
         return glyph
     }
 
-    private static func make(_ role: Role) -> Glyph? {
+    private static func make(_ role: Role, color: NSColor) -> Glyph? {
         let config = NSImage.SymbolConfiguration(pointSize: role.pointSize, weight: .regular)
-            .applying(.init(hierarchicalColor: role.color))
+            .applying(.init(hierarchicalColor: color))
         guard let image = NSImage(systemSymbolName: role.symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return nil }
         var rect = CGRect(origin: .zero, size: image.size)

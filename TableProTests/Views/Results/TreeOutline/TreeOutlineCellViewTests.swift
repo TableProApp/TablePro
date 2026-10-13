@@ -85,7 +85,7 @@ struct TreeOutlineCellViewTests {
         #expect(field.isSelectable)
         #expect(!field.allowsEditingTextAttributes)
         #expect(field.stringValue == "\"Acme\"")
-        #expect(field.textColor == ThemeEngine.shared.palette[.syntaxString])
+        #expect(field.textColor == .systemRed)
         #expect(field.font == TreeOutlineFixture.fonts.value)
         #expect(cell.accessibilityCustomActions()?.isEmpty ?? true)
     }
@@ -158,8 +158,8 @@ struct TreeOutlineCellViewTests {
         #expect(plain.valueField.textColor == .alternateSelectedControlTextColor)
         #expect(plain.keyField.textColor == .alternateSelectedControlTextColor)
         plain.backgroundStyle = .normal
-        #expect(plain.valueField.textColor == ThemeEngine.shared.palette[.syntaxNumber])
-        #expect(plain.keyField.textColor == ThemeEngine.shared.palette[.syntaxKeyword])
+        #expect(plain.valueField.textColor == .systemPurple)
+        #expect(plain.keyField.textColor == .systemBlue)
 
         let link = try cell("site")
         link.backgroundStyle = .emphasized
@@ -168,7 +168,7 @@ struct TreeOutlineCellViewTests {
         link.backgroundStyle = .normal
         let normal = link.valueField.attributedStringValue
         #expect(normal.attribute(.foregroundColor, at: 3, effectiveRange: nil) as? NSColor == .linkColor)
-        #expect(normal.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == ThemeEngine.shared.palette[.syntaxString])
+        #expect(normal.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .systemRed)
     }
 
     @Test("The accessibility action opens the link through the link policy")

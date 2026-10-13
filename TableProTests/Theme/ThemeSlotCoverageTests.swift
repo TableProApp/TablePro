@@ -2,9 +2,9 @@
 //  ThemeSlotCoverageTests.swift
 //  TableProTests
 //
-//  Whole colour groups shipped declared, editable and read by nothing: `sidebar` and `toolbar` had
-//  no reader at all, `ui` had one, and `ui.accentColor` was declared by every bundled theme and had
-//  no property to decode into. A slot exists here only because a call site reads it.
+//  A slot exists only because a call site reads it. Whole colour groups once shipped declared,
+//  editable and read by nothing, and the substring check that replaced them passed for
+//  `.editorText` through `self.editorText` and for `.gridSelection` through `.gridSelectionText`.
 //
 
 import Foundation
@@ -12,52 +12,73 @@ import Foundation
 import Testing
 
 struct ThemeSlotCoverageTests {
-    private static let repositoryRoot: URL = {
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0 ..< 3 {
-            url.deleteLastPathComponent()
+    /// The bridge that builds the editor theme is the one file under `TablePro/Theme/` that reads
+    /// slots rather than declaring them; the editor slots have no other reader.
+    private static let readerInsideThemeDirectory = "TablePro/Theme/ThemeEngine+EditorTheme.swift"
+
+    private static func isReader(_ path: String) -> Bool {
+        !path.hasPrefix("TablePro/Theme/") || path == readerInsideThemeDirectory
+    }
+
+    private static func referencedSlots(in lines: [ThemeSourceScan.Line]) throws -> Set<String> {
+        let expression = try NSRegularExpression(pattern: ThemeSourceScan.slotTokenPattern())
+        var found: Set<String> = []
+        for line in lines {
+            let range = NSRange(line.text.startIndex..., in: line.text)
+            for match in expression.matches(in: line.text, range: range) {
+                guard let name = Range(match.range(at: 1), in: line.text) else { continue }
+                found.insert(String(line.text[name]))
+            }
         }
-        return url
-    }()
+        return found
+    }
 
-    /// The files that declare the slots. Everything else counts as a reader, including
-    /// `ThemeEngine.makeEditorTheme`, which is where the editor and syntax slots are read.
-    private static let definitionFiles: Set<String> = [
-        "ThemeDefinition.swift", "BuiltInThemes.swift", "ThemeColorValue.swift",
-        "ThemeDocument.swift", "ThemePalette.swift", "ThemeCatalog.swift", "ThemeResolver.swift",
-    ]
+    @Test("Every slot is read as a whole token outside the theme definitions")
+    func everySlotHasAReader() throws {
+        let slotRule = try ThemeSourceScan.Rule("theme slot", ThemeSourceScan.slotTokenPattern())
+        let tree = try ThemeSourceScan.scan(
+            ["TablePro", "Packages"],
+            skipping: ["Tests"],
+            rules: [slotRule],
+            including: Self.isReader
+        )
+        let referenced = try Self.referencedSlots(in: tree.lines)
 
-    private static let appSource: String = {
-        let directory = repositoryRoot.appendingPathComponent("TablePro", isDirectory: true)
-        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else {
-            return ""
-        }
-
-        var source = ""
-        for case let url as URL in enumerator where url.pathExtension == "swift" {
-            guard !Self.definitionFiles.contains(url.lastPathComponent) else { continue }
-            source += (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        }
-        return source
-    }()
-
-    @Test("Every slot is read by app code")
-    func everySlotHasAReader() {
-        #expect(!Self.appSource.isEmpty)
-
+        #expect(tree.fileCount > 500, "Scanned only \(tree.fileCount) files; the tree did not resolve")
         for slot in ThemeSlot.allCases {
-            #expect(Self.appSource.contains(".\(String(describing: slot))"), "Nothing reads \(slot.rawValue)")
+            #expect(referenced.contains(String(describing: slot)), "Nothing outside TablePro/Theme/ reads .\(slot)")
         }
     }
 
-    @Test("Slot paths are unique and namespaced")
+    @Test("The token match ignores properties, longer names and comments")
+    func tokenMatchIsExact() throws {
+        let sample = """
+        let request = self.editorText
+        let fill = palette[.gridSelectionText]
+        // resolved[.gridDeleted] was removed
+        let text = resolved[.syntaxKeyword]
+        let typed = ThemeSlot.gridLine
+        """
+        let referenced = try Self.referencedSlots(in: ThemeSourceScan.codeLines(of: sample, path: "Sample.swift"))
+
+        #expect(referenced == ["gridSelectionText", "syntaxKeyword", "gridLine"])
+    }
+
+    @Test("Slot paths are unique and sit under their group's key")
     func slotPathsAreWellFormed() {
         let paths = ThemeSlot.allCases.map(\.rawValue)
         #expect(Set(paths).count == paths.count)
 
-        for path in paths {
-            #expect(path.hasPrefix("content."), "\(path)")
-            #expect(path.components(separatedBy: ".").count >= 3, "\(path)")
+        for slot in ThemeSlot.allCases {
+            switch slot.group {
+            case .editor:
+                #expect(slot.rawValue.hasPrefix("editor."), "\(slot.rawValue)")
+                #expect(!slot.rawValue.hasPrefix("editor.syntax."), "\(slot.rawValue)")
+            case .syntax:
+                #expect(slot.rawValue.hasPrefix("editor.syntax."), "\(slot.rawValue)")
+            case .dataGrid:
+                #expect(slot.rawValue.hasPrefix("dataGrid."), "\(slot.rawValue)")
+            }
         }
     }
 
@@ -70,44 +91,70 @@ struct ThemeSlotCoverageTests {
 
     // MARK: - Bundled themes
 
-    @Test("Every bundled theme passes the gate", arguments: ["tablepro.dracula", "tablepro.nord"])
-    func bundledThemesPassTheGate(id: String) throws {
-        let url = Self.repositoryRoot.appendingPathComponent("TablePro/Resources/Themes/\(id).json")
-        let document = try ThemeDocument(data: try Data(contentsOf: url))
-
-        #expect(document.id == id)
-        #expect(document.colors.count == ThemeSlot.allCases.count)
+    /// The files on disk are the list, so a third bundled theme is decoded here the day it lands.
+    private static func bundledThemeFiles() throws -> [URL] {
+        let directory = try ThemeSourceScan.repositoryRoot().appendingPathComponent("TablePro/Resources/Themes")
+        return try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "json" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
-    /// The bundled themes are the only ones shipped, so a hand-typed colour that never renders is
-    /// caught here rather than by a user.
-    @Test("Bundled themes declare a real colour for every slot", arguments: ["tablepro.dracula", "tablepro.nord"])
-    func bundledThemesDeclareHexColors(id: String) throws {
-        let url = Self.repositoryRoot.appendingPathComponent("TablePro/Resources/Themes/\(id).json")
-        let theme = try ThemeDocument(data: try Data(contentsOf: url)).resolved()
+    @Test("Every bundled theme decodes, and its id is its file name")
+    func bundledThemesDecode() throws {
+        let files = try Self.bundledThemeFiles()
+        var ids: Set<String> = []
 
-        for slot in ThemeSlot.allCases {
-            let value = theme[keyPath: slot.keyPath]
-            #expect(!value.isSystem, "\(id) leaves \(slot.rawValue) on a system colour")
+        for file in files {
+            let document = try ThemeDocument(data: try Data(contentsOf: file))
+            #expect(document.id == file.deletingPathExtension().lastPathComponent)
+            #expect(document.id.hasPrefix(ThemeDefinition.builtInPrefix))
+            #expect(!document.colors.isEmpty, "\(document.id) overrides nothing")
+            ids.insert(document.id)
         }
+
+        #expect(ids.isSuperset(of: ["tablepro.dracula", "tablepro.nord"]))
     }
 
-    /// Default Light and Default Dark keep the surrounds on system colours so the unthemed app is
-    /// unchanged and keeps the system's Increase Contrast handling.
-    @Test("The default themes keep the grid surrounds on system colours")
-    func defaultThemesUseSystemSurrounds() {
-        for theme in BuiltInThemes.all {
-            #expect(theme.dataGrid.background.isSystem)
-            #expect(theme.dataGrid.text.isSystem)
-            #expect(theme.dataGrid.alternateRow.isSystem)
-            #expect(theme.dataGrid.selection.isSystem)
-            #expect(theme.editor.background.isSystem == false)
-        }
-    }
+    // MARK: - Default Light and Default Dark
 
-    @Test("The default themes declare the appearance of their slot")
-    func defaultThemesDeclareTheirAppearance() {
+    private static let syntaxWithoutOperator = Set(ThemeSlotGroup.syntax.slots).subtracting([.syntaxOperator])
+
+    /// Xcode 27.1 `Default (Light).xccolortheme`: keyword, string, number, comment, system function
+    /// and system type. SQL `NULL` takes the keyword colour the way Swift's `nil` does.
+    @Test("Default Light overrides only syntax, with Xcode's Default (Light) values")
+    func defaultLightIsXcodeDefaultLight() {
+        let expected: [ThemeSlot: String] = [
+            .syntaxKeyword: "#9B2393",
+            .syntaxString: "#C41A16",
+            .syntaxNumber: "#1C00CF",
+            .syntaxComment: "#5D6C79",
+            .syntaxFunction: "#6C36A9",
+            .syntaxType: "#3900A0",
+            .syntaxNull: "#9B2393",
+        ]
+        let actual = BuiltInThemes.light.overrides.mapValues { $0.hex }
+
+        #expect(Set(actual.keys) == Self.syntaxWithoutOperator)
+        #expect(actual == expected)
         #expect(BuiltInThemes.light.appearance == .light)
+        #expect(BuiltInThemes.light.id == BuiltInThemes.defaultLightId)
+    }
+
+    @Test("Default Dark overrides only syntax, with Xcode's Default (Dark) values")
+    func defaultDarkIsXcodeDefaultDark() {
+        let expected: [ThemeSlot: String] = [
+            .syntaxKeyword: "#FC5FA3",
+            .syntaxString: "#FC6A5D",
+            .syntaxNumber: "#D0BF69",
+            .syntaxComment: "#6C7986",
+            .syntaxFunction: "#A167E6",
+            .syntaxType: "#D0A8FF",
+            .syntaxNull: "#FC5FA3",
+        ]
+        let actual = BuiltInThemes.dark.overrides.mapValues { $0.hex }
+
+        #expect(Set(actual.keys) == Self.syntaxWithoutOperator)
+        #expect(actual == expected)
         #expect(BuiltInThemes.dark.appearance == .dark)
         #expect(BuiltInThemes.default(for: .dark).id == BuiltInThemes.defaultDarkId)
     }

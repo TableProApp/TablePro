@@ -62,8 +62,10 @@ public final class EmphasisManager {
     }
 
     private var emphasisGroups: [String: [EmphasisLayer]] = [:]
-    private let activeColor: NSColor = .findHighlightColor
-    private let inactiveColor = NSColor.lightGray.withAlphaComponent(0.4)
+    private static let activeColor: NSColor = .findHighlightColor
+    private static let activeTextColor: NSColor = .black
+    private static let inactiveColor: NSColor = .unemphasizedSelectedTextBackgroundColor
+    private static let inactiveTextColor: NSColor = .unemphasizedSelectedTextColor
     private var originalSelectionColor: NSColor?
     private var hasPendingGeometryUpdates = false
     let toolTips = EmphasisToolTips()
@@ -177,6 +179,17 @@ public final class EmphasisManager {
     /// - Returns: Array of emphases in the group
     public func getEmphases(for id: String) -> [Emphasis] {
         emphasisGroups[id, default: []].map(\.emphasis)
+    }
+
+    /// Every emphasis holds its colors resolved for one appearance, so they are resolved again when the text view's
+    /// appearance, accent, highlight or contrast changes.
+    public func refreshColors() {
+        withoutImplicitAnimations {
+            forEachEmphasisLayer { emphasisLayer in
+                applyColors(of: emphasisLayer.emphasis, to: emphasisLayer.layer)
+                refreshTextLayer(of: emphasisLayer)
+            }
+        }
     }
 
     /// The tool tip an emphasis presents at a point in the text view, or `nil` where none is registered.
@@ -411,30 +424,50 @@ public final class EmphasisManager {
         switch emphasis.style {
         case .standard:
             layer.cornerRadius = 4.0
-            layer.fillColor = (emphasis.inactive ? inactiveColor : activeColor).safeCGColor
-            layer.shadowColor = .black
             layer.shadowOpacity = emphasis.inactive ? 0.0 : 0.5
             layer.shadowOffset = CGSize(width: 0, height: 1.5)
             layer.shadowRadius = 1.5
             layer.opacity = 1.0
             layer.zPosition = emphasis.inactive ? 0 : 1
-        case .underline(let color):
+        case .underline:
             layer.lineWidth = 1.0
             layer.lineCap = .round
-            layer.strokeColor = color.safeCGColor
             layer.fillColor = nil
             layer.opacity = emphasis.flash ? 0.0 : 1.0
             layer.zPosition = 1
-        case let .outline(color, shouldFill):
+        case .outline:
             layer.cornerRadius = 2.5
-            layer.borderColor = color.safeCGColor
             layer.borderWidth = 0.5
-            layer.fillColor = shouldFill ? color.safeCGColor : nil
             layer.opacity = emphasis.flash ? 0.0 : 1.0
             layer.zPosition = 1
         }
 
+        applyColors(of: emphasis, to: layer)
         return layer
+    }
+
+    private func applyColors(of emphasis: Emphasis, to layer: CAShapeLayer) {
+        switch emphasis.style {
+        case .standard:
+            layer.fillColor = cgColor(emphasis.inactive ? Self.inactiveColor : Self.activeColor)
+            layer.shadowColor = .black
+        case .underline(let color):
+            layer.strokeColor = cgColor(color)
+        case let .outline(color, shouldFill):
+            layer.borderColor = cgColor(color)
+            layer.fillColor = shouldFill ? cgColor(color) : nil
+        }
+    }
+
+    private func cgColor(_ color: NSColor) -> CGColor {
+        guard let textView else { return color.safeCGColor }
+        return color.safeCGColor(in: textView.effectiveAppearance)
+    }
+
+    private func resolvedTextColor(for emphasis: Emphasis) -> NSColor {
+        let color = emphasis.inactive ? Self.inactiveTextColor : Self.activeTextColor
+        guard let textView else { return color }
+        return color.resolved(in: textView.effectiveAppearance)
     }
 
     private func createTextLayer(for emphasis: Emphasis) -> CATextLayer? {
@@ -475,7 +508,7 @@ public final class EmphasisManager {
         with originalString: NSAttributedString,
         emphasis: Emphasis
     ) {
-        let textColor = emphasis.inactive ? getInactiveTextColor() : NSColor.black
+        let textColor = resolvedTextColor(for: emphasis)
         let text = NSMutableAttributedString(attributedString: originalString)
         text.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: text.length))
         let display = SpecialCharacterDisplay.make(from: text, style: textView?.layoutManager.specialCharacterStyle)
@@ -500,11 +533,18 @@ public final class EmphasisManager {
         layer.setNeedsDisplay()
     }
 
-    private func getInactiveTextColor() -> NSColor {
-        if textView?.effectiveAppearance.name == .darkAqua {
-            return .white
+    private func refreshTextLayer(of emphasisLayer: EmphasisLayer) {
+        guard let textLayer = emphasisLayer.textLayer,
+              let textStorage = textView?.textStorage,
+              rangeIsInDocument(emphasisLayer.emphasis.range) else {
+            return
         }
-        return .black
+        textLayer.sublayers?.forEach { $0.removeFromSuperlayer() }
+        updateTextLayer(
+            textLayer,
+            with: textStorage.attributedSubstring(from: emphasisLayer.emphasis.range),
+            emphasis: emphasisLayer.emphasis
+        )
     }
 
     // MARK: - Animations

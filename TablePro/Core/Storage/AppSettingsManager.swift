@@ -206,7 +206,7 @@ final class AppSettingsManager: ObservableObject {
         self.sync = storage.loadSync()
         self.mcp = storage.loadMCP()
         self.notifications = storage.loadNotifications()
-        self.typography = storage.loadTypography()
+        self.typography = storage.loadTypography(systemIsDark: NSApp?.effectiveAppearance.isDarkTheme ?? false)
 
         general.language.apply()
 

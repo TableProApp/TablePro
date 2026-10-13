@@ -634,20 +634,40 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func observeThemeChanges() {
         themeCancellable = AppEvents.shared.themeChanged
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                if let tableView = self?.tableView {
-                    DataGridBodyChrome.applyThemeColors(to: tableView)
-                    tableView.headerView?.needsDisplay = true
-                    tableView.cornerView?.needsDisplay = true
-                }
-                self?.reloadVisibleRowsAndStates()
-                /// The row-number font is a theme value and it decides the column's width, which
-                /// the pinned gutter mirrors. Nothing re-measured it on a theme change before, so
-                /// the width was already going stale here.
-                self?.resizeRowNumberColumnForCurrentRange()
-                self?.repaintRowGutter()
-                self?.selectionController.overlay?.needsDisplay = true
-            }
+            .sink { [weak self] _ in self?.themeDidChange() }
+    }
+
+    /// `themeChanged` also fires for an Accent, Highlight or Increase Contrast change, and none of
+    /// them moves a value, so this repaints what is on screen and never reloads or refetches.
+    func themeDidChange() {
+        guard let tableView else { return }
+        cellRegistry.preparePalette(in: tableView.effectiveAppearance)
+        DataGridBodyChrome.applyThemeColors(to: tableView)
+        tableView.headerView?.needsDisplay = true
+        tableView.cornerView?.needsDisplay = true
+        restyleRowNumberCells(in: tableView)
+        tableView.enumerateAvailableRowViews { rowView, _ in
+            rowView.needsDisplay = true
+            (rowView as? DataGridRowView)?.redrawCells()
+        }
+        // The row-number font decides the column's width, which the pinned gutter mirrors.
+        resizeRowNumberColumnForCurrentRange()
+        repaintRowGutter()
+        selectionController.overlay?.needsDisplay = true
+    }
+
+    /// The mounted row-number cells carry the number for accessibility and a row drag image, and
+    /// take their font and color when mounted, so the ones already on screen are restyled in place.
+    private func restyleRowNumberCells(in tableView: NSTableView) {
+        let column = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+        guard column >= 0 else { return }
+        let font = ThemeEngine.shared.dataGridFonts.rowNumber
+        tableView.enumerateAvailableRowViews { _, row in
+            guard let field = (tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? NSTableCellView)?
+                .textField else { return }
+            field.font = font
+            field.textColor = cellRegistry.rowNumberColor(for: visualState(for: row))
+        }
     }
 
     /// The grid mounts no view for a data cell, so a client that attaches mid-session finds a table

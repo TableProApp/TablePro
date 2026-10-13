@@ -5,12 +5,13 @@ internal enum ThemeLoadError: LocalizedError, Equatable {
     case schemaTooOld(found: Int, supported: Int)
     case schemaTooNew(found: Int, supported: Int)
     case missingField(String)
-    case missingSlots([String])
     case invalidColor(String)
-    case unknownSystemColor(String)
     case unknownKeys([String])
+    case duplicateKey(String)
     case reservedIdentifier(String)
     case invalidIdentifier(String)
+    case duplicateIdentifier(String, existingFile: String)
+    case changedOnDisk(String)
 
     internal var errorDescription: String? {
         switch self {
@@ -30,26 +31,28 @@ internal enum ThemeLoadError: LocalizedError, Equatable {
             )
         case let .missingField(name):
             return String(format: String(localized: "The theme is missing the required field \"%@\"."), name)
-        case let .missingSlots(names):
-            return String(
-                format: String(localized: "The theme is missing %1$d required colors, starting with \"%2$@\"."),
-                names.count,
-                names.first ?? ""
-            )
         case let .invalidColor(value):
-            return String(format: String(localized: "\"%@\" is not a valid color."), value)
-        case let .unknownSystemColor(name):
-            return String(format: String(localized: "\"%@\" is not a system color TablePro knows."), name)
+            return String(format: String(localized: "\"%@\" is not a valid color. Use #RRGGBB or #RRGGBBAA."), value)
         case let .unknownKeys(names):
-            return String(
-                format: String(localized: "The theme declares %1$d colors TablePro does not use, starting with \"%2$@\"."),
-                names.count,
-                names.first ?? ""
-            )
+            let shown = ListFormatter.localizedString(byJoining: names.prefix(3).map { "\"\($0)\"" })
+            return String(format: String(localized: "TablePro does not use these theme keys: %@."), shown)
+        case let .duplicateKey(path):
+            return String(format: String(localized: "The theme sets \"%@\" more than once."), path)
         case let .reservedIdentifier(identifier):
             return String(format: String(localized: "\"%@\" is a reserved theme identifier."), identifier)
         case let .invalidIdentifier(identifier):
             return String(format: String(localized: "\"%@\" is not a valid theme identifier."), identifier)
+        case let .changedOnDisk(fileName):
+            return String(
+                format: String(localized: "%@ changed on disk since it was opened. The newer file was kept and reloaded."),
+                fileName
+            )
+        case let .duplicateIdentifier(identifier, existingFile):
+            return String(
+                format: String(localized: "The theme identifier \"%1$@\" is already used by %2$@."),
+                identifier,
+                existingFile
+            )
         }
     }
 }

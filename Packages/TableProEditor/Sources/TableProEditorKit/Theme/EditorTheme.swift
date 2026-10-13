@@ -26,7 +26,10 @@ public struct EditorTheme: Equatable {
     }
 
     public var text: Attribute
-    public var insertionPoint: NSColor
+
+    /// `nil` leaves the caret to the system, which draws it in the Highlight color on macOS 14 and later.
+    public var insertionPoint: NSColor?
+
     public var invisibles: Attribute
     public var background: NSColor
     public var lineHighlight: NSColor
@@ -36,7 +39,7 @@ public struct EditorTheme: Equatable {
 
     public var selection: NSColor
 
-    /// The gutter's line numbers. `nil` keeps the derived look: the text colour at 35% alpha.
+    /// The gutter's line numbers, run controls and fold chevrons. `nil` draws them in `secondaryLabelColor`.
     public var lineNumber: NSColor?
 
     public var keywords: Attribute
@@ -54,7 +57,7 @@ public struct EditorTheme: Equatable {
 
     public init(
         text: Attribute,
-        insertionPoint: NSColor,
+        insertionPoint: NSColor? = nil,
         invisibles: Attribute,
         background: NSColor,
         lineHighlight: NSColor,

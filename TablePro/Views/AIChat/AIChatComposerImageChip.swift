@@ -24,7 +24,7 @@ struct AIChatComposerImageChip: View {
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.caption)
-                    .foregroundStyle(.white, Color.black.opacity(0.6))
+                    .foregroundStyle(Color(nsColor: .textBackgroundColor), Color(nsColor: .secondaryLabelColor))
             }
             .buttonStyle(.plain)
             .padding(2)

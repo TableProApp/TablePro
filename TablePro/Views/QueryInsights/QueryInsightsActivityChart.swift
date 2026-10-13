@@ -2,7 +2,6 @@ import Charts
 import SwiftUI
 
 struct QueryInsightsActivityChart: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     let buckets: [QueryInsightsActivityBucket]
     let granularity: QueryInsightsGranularity
 
@@ -54,7 +53,7 @@ struct QueryInsightsActivityChart: View {
             }
             .chartForegroundStyleScale([
                 Outcome.succeeded: Color.accentColor,
-                Outcome.failed: themeEngine.palette.color(.statusWarning),
+                Outcome.failed: Color.orange,
             ])
             .chartLegend(position: .top, alignment: .trailing, spacing: 8)
             .chartYAxis {

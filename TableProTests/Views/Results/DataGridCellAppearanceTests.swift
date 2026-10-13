@@ -39,7 +39,9 @@ struct DataGridCellAppearanceTests {
         rowNumberText: .systemTeal,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,
-        findMatchTint: .systemOrange
+        findMatchTint: .systemOrange,
+        selectionText: .systemIndigo,
+        focusRing: .systemMint
     )
 
     private func resolve(
@@ -120,12 +122,28 @@ struct DataGridCellAppearanceTests {
         #expect(appearance.backgroundTint == nil)
     }
 
-    @Test("The find match keeps its highlight and turns its text black")
+    @Test("The find match keeps its highlight and its text takes the find indicator's color")
     func findMatchWins() {
         let appearance = resolve(isCurrentFindMatch: true, onEmphasizedSelection: true)
 
         #expect(appearance.backgroundTint == palette.findMatchTint)
-        #expect(appearance.textColor == .black)
+        #expect(appearance.textColor == palette.findMatchText)
+        #expect(palette.findMatchText == DataGridCellPalette.findMatchTextColor)
+    }
+
+    /// `findHighlightColor` is a light yellow in both appearances, so text on it has to stay dark
+    /// in Dark Mode too, where the label color is white.
+    @Test("Find match text stays dark in both appearances")
+    func findMatchTextStaysDark() throws {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try #require(NSAppearance(named: name))
+            var luminance: CGFloat = 1
+            appearance.performAsCurrentDrawingAppearance {
+                let color = DataGridCellPalette.findMatchTextColor.usingColorSpace(.sRGB)
+                luminance = color.map { ($0.redComponent + $0.greenComponent + $0.blueComponent) / 3 } ?? 1
+            }
+            #expect(luminance < 0.2, "find match text is \(luminance) in \(name.rawValue)")
+        }
     }
 
     /// The selection paints the whole row, so a modified cell's tint would be painted over it.
@@ -316,8 +334,31 @@ struct DataGridCellAppearanceTests {
         )
         let found = resolve(kind: .boolean, text: "1", rawValue: "1", isCurrentFindMatch: true, palette: themedPalette)
 
-        #expect(selected.textColor == .alternateSelectedControlTextColor)
+        #expect(selected.textColor == .systemIndigo)
         #expect(deleted.textColor == .systemRed)
-        #expect(found.textColor == .black)
+        #expect(found.textColor == themedPalette.findMatchText)
+    }
+
+    // MARK: - Selection
+
+    @Test("Without a theme override, a selected cell and its cursor take the system's colors")
+    func nativeSelectionColors() {
+        let selected = resolve(isFocused: true, onEmphasizedSelection: true)
+        let unselected = resolve(isFocused: true)
+
+        #expect(selected.textColor == .alternateSelectedControlTextColor)
+        #expect(selected.focusColor == .alternateSelectedControlTextColor)
+        #expect(unselected.focusColor == .keyboardFocusIndicatorColor)
+    }
+
+    @Test("A theme's selection text reaches a selected cell's text and its cursor")
+    func themedSelectionColors() {
+        let selected = resolve(isFocused: true, onEmphasizedSelection: true, palette: themedPalette)
+        let unselected = resolve(isFocused: true, palette: themedPalette)
+
+        #expect(selected.textColor == .systemIndigo)
+        #expect(selected.focusColor == .systemIndigo)
+        #expect(unselected.textColor == .systemPurple)
+        #expect(unselected.focusColor == .systemMint)
     }
 }

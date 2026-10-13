@@ -86,11 +86,12 @@ final class AppSettingsStorage: Sendable {
         load(key: Keys.appearance, default: .default)
     }
 
-    /// Fonts moved out of the theme file, and the theme file format they lived in is no longer
-    /// read. Without this every user who had picked a font or zoomed the editor would silently be
-    /// returned to System Mono 13 on upgrade, so their sizes are lifted once from whichever theme
-    /// their slot pointed at, and the theme file itself is left untouched.
-    func loadTypography() -> TypographySettings {
+    /// The first launch with no typography setting lifts the fonts out of the old theme files once,
+    /// so an upgrade does not return everyone to System Mono 13.
+    func loadTypography(
+        systemIsDark: Bool,
+        legacyThemesDirectory: URL = ThemeCatalog.defaultUserDirectory
+    ) -> TypographySettings {
         if let stored = defaults.data(forKey: Keys.typography) {
             do {
                 return try decoder.decode(TypographySettings.self, from: stored)
@@ -100,7 +101,11 @@ final class AppSettingsStorage: Sendable {
             }
         }
 
-        let carried = LegacyThemeFonts.read(preferring: loadAppearance())
+        let carried = LegacyThemeFonts.read(
+            appearance: loadAppearance(),
+            systemIsDark: systemIsDark,
+            themesDirectory: legacyThemesDirectory
+        )
         saveTypography(carried)
         return carried
     }

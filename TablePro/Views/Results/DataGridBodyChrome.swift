@@ -114,15 +114,20 @@ enum DataGridBodyChrome {
         return bands
     }
 
-    /// The theme's background and grid line, set on the table rather than read from the theme at
-    /// each draw: AppKit reads the table's own `backgroundColor` for the area an elastic scroll
-    /// uncovers, and the separators draw in its `gridColor`.
+    /// Set on the table rather than read at each draw: AppKit reads the table's own
+    /// `backgroundColor` for the area an elastic scroll uncovers, and the separators draw in its
+    /// `gridColor`. A theme that declares neither leaves both at the table's own defaults,
+    /// `controlBackgroundColor` and `separatorColor`.
     static func applyThemeColors(to tableView: NSTableView) {
-        let palette = ThemeEngine.shared.palette
-        tableView.gridColor = palette[.gridLine]
-        let background = palette[.gridBackground]
-        guard tableView.backgroundColor != background else { return }
-        tableView.backgroundColor = background
+        let resolved = ThemeEngine.shared.resolved
+        let gridColor = resolved[.gridLine]
+        if tableView.gridColor != gridColor {
+            tableView.gridColor = gridColor
+        }
+        let background = resolved[.gridBackground]
+        if tableView.backgroundColor != background {
+            tableView.backgroundColor = background
+        }
     }
 
     /// The alternate stripe a row carries, or nil when the table does not alternate, where a row
@@ -132,9 +137,29 @@ enum DataGridBodyChrome {
     /// which is the pair `NSTableView` itself hands its row views.
     static func stripeColor(forRow row: Int, of tableView: NSTableView) -> NSColor? {
         guard tableView.usesAlternatingRowBackgroundColors else { return nil }
-        return row.isMultiple(of: 2)
-            ? ThemeEngine.shared.palette[.gridBackground]
-            : ThemeEngine.shared.palette[.gridAlternateRow]
+        let resolved = ThemeEngine.shared.resolved
+        return row.isMultiple(of: 2) ? resolved[.gridBackground] : resolved[.gridAlternateRow]
+    }
+
+    // MARK: - Selection
+
+    static func selectionSlot(emphasized: Bool) -> ThemeSlot {
+        emphasized ? .gridSelection : .gridInactiveSelection
+    }
+
+    /// What a selected row shows, for the surfaces that paint it themselves: the pinned row gutter
+    /// and a selected column's heading. Without a theme override it is the color `NSTableRowView`
+    /// fills with, so they match the rows AppKit draws.
+    static func selectionColor(emphasized: Bool) -> NSColor {
+        ThemeEngine.shared.resolved[selectionSlot(emphasized: emphasized)]
+    }
+
+    /// Nil unless the theme declares its own selection; a row then leaves the selection to
+    /// `NSTableRowView`, which follows Accent and focus.
+    static func themedSelectionColor(emphasized: Bool) -> NSColor? {
+        let resolved = ThemeEngine.shared.resolved
+        let slot = selectionSlot(emphasized: emphasized)
+        return resolved.isOverridden(slot) ? resolved[slot] : nil
     }
 
     /// What a row view lays down before its tint and selection: its stripe, or the table's own

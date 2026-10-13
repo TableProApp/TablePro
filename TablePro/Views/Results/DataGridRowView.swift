@@ -154,13 +154,30 @@ class DataGridRowView: NSTableRowView {
     /// The columns are still real `NSTableColumn`s, so AppKit answers which of them the area covers
     /// and where each one sits; only the cell content is drawn rather than mounted.
     func drawCells(in dirtyRect: NSRect, of view: NSView) {
-        guard let tableView = coordinator?.tableView else { return }
+        guard let coordinator, let tableView = coordinator.tableView else { return }
+        coordinator.cellRegistry.preparePalette(in: NSAppearance.currentDrawing())
         let inTableView = view.convert(dirtyRect, to: tableView)
         let dragged = Self.draggedColumnIndex(of: tableView)
+        let themedRange = themedRangeColumns()
 
         for tableColumnIndex in tableView.columnIndexes(in: inTableView) where tableColumnIndex != dragged {
-            drawCell(atTableColumnIndex: tableColumnIndex, in: tableView.rect(ofColumn: tableColumnIndex), of: view)
+            drawCell(
+                atTableColumnIndex: tableColumnIndex,
+                in: tableView.rect(ofColumn: tableColumnIndex),
+                of: view,
+                onThemedRange: themedRange.contains(tableColumnIndex)
+            )
         }
+    }
+
+    /// The columns of an unselected row that a cell range covers with a theme's opaque selection,
+    /// whose text has to switch to the theme's selection text like a selected row's does.
+    func themedRangeColumns() -> Set<Int> {
+        guard !isSelected, isEmphasized,
+              DataGridBodyChrome.themedSelectionColor(emphasized: true) != nil,
+              let coordinator else { return [] }
+        let columns = coordinator.selectionController.selection.columns(in: rowIndex)
+        return Set(columns.compactMap { coordinator.tableColumnIndex(forDisplayPosition: $0) })
     }
 
     /// Draws the column a header drag is moving at the pointer, the way `NSTableView` floats a dragged
@@ -194,14 +211,19 @@ class DataGridRowView: NSTableRowView {
         return dragged
     }
 
-    private func drawCell(atTableColumnIndex tableColumnIndex: Int, in rectInTable: NSRect, of view: NSView) {
+    private func drawCell(
+        atTableColumnIndex tableColumnIndex: Int,
+        in rectInTable: NSRect,
+        of view: NSView,
+        onThemedRange: Bool = false
+    ) {
         guard let coordinator, let tableView = coordinator.tableView,
               tableColumnIndex < tableView.tableColumns.count,
               let dataColumn = coordinator.dataColumnIndex(from: tableView.tableColumns[tableColumnIndex].identifier),
               let appearance = coordinator.cellAppearance(
                   row: rowIndex,
                   columnIndex: dataColumn,
-                  onEmphasizedSelection: isSelected && isEmphasized
+                  onEmphasizedSelection: (isSelected && isEmphasized) || onThemedRange
               ) else { return }
 
         let columnRect = view.convert(rectInTable, from: tableView)
@@ -289,12 +311,13 @@ class DataGridRowView: NSTableRowView {
         dirtyRect.fill()
     }
 
-    /// `NSTableRowView` fills a selected row with the system's selection colour and offers no way
-    /// to change it, so the theme's own selection is painted here instead. `super` is not called:
-    /// its fill would sit on top of this one.
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected else { return }
-        cellSelectionFill.setFill()
+        guard let themed = DataGridBodyChrome.themedSelectionColor(emphasized: isEmphasized) else {
+            super.drawSelection(in: dirtyRect)
+            return
+        }
+        themed.setFill()
         dirtyRect.fill()
     }
 
@@ -323,12 +346,13 @@ class DataGridRowView: NSTableRowView {
     /// `unemphasizedSelectedContentBackgroundColor` is a background colour and is used as one, the
     /// way AppKit fills a selection in a view that does not hold focus. Thinning it out instead
     /// left the range at 1.09:1 against a white grid, which is no visible selection at all. The
-    /// emphasized accent is far too dark to sit behind text these rows do not recolour, so that
-    /// one goes on as a tint.
+    /// system's emphasized accent is far too dark to sit behind text these rows do not recolour, so
+    /// that one goes on as a tint; a theme's selection is chosen to sit behind its own text.
     private var cellSelectionFill: NSColor {
-        let palette = ThemeEngine.shared.palette
-        guard isEmphasized else { return palette[.gridInactiveSelection] }
-        return palette[.gridSelection].withAlphaComponent(Self.emphasizedCellSelectionAlpha)
+        let resolved = ThemeEngine.shared.resolved
+        let slot = DataGridBodyChrome.selectionSlot(emphasized: isEmphasized)
+        guard isEmphasized, !resolved.isOverridden(slot) else { return resolved[slot] }
+        return resolved[slot].withAlphaComponent(Self.emphasizedCellSelectionAlpha)
     }
 
     private static let emphasizedCellSelectionAlpha: CGFloat = 0.28

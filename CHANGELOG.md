@@ -10,14 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Header, grid line, selection and focus colors in the theme editor.
-- Panel and status colors in the theme editor, covering the results, inspector, structure, compare and query plan panes.
-- Themes that name a system color for a slot, so the built-in themes keep the system's own contrast settings.
+- Light theme and Dark theme pickers, and New Theme Based On, Rename and Show in Finder for custom themes in Settings > Appearance.
 - Reason shown in Settings > Appearance for a theme file that could not be loaded.
 - Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
 
 ### Changed
 
-- Theme file format 2. Themes written for earlier versions are not read and need to be recreated.
+- Default Light and Default Dark draw the editor and data grid in the system colors and use Xcode's default syntax colors.
+- Themes color only the SQL editor, other code views and the data grid. Every other pane keeps the system colors.
+- Theme file format 3, where every color is optional. Themes written for earlier versions are not read and need to be recreated.
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
@@ -61,9 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme editor changing the active theme instead of the theme selected for the slot being edited.
 - Malformed theme files loading as Default Light under their own name.
 - Color with a typo in it rendering as a different color instead of being reported.
-- Content panes outside the editor and the data grid ignoring the theme.
+- Editor and data grid colors not following a change to the Accent color, Highlight color or Increase Contrast.
+- Selected text in the editor ignoring the Highlight color, and the cursor ignoring the Accent color.
+- Zoom In and Zoom Out staying enabled at the largest and smallest font size.
 - JSON and PHP tree values colored differently from the same values in the row inspector.
-- Autocomplete icon colors ignoring the theme.
 - Theme color wells and the theme preview unreadable to VoiceOver.
 - Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
 - GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.

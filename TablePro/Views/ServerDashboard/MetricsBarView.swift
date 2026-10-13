@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct MetricsBarView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     let metrics: [DashboardMetric]
     let error: String?
 
@@ -18,7 +17,7 @@ struct MetricsBarView: View {
                         Image(systemName: "exclamationmark.triangle")
                     }
                     .font(.caption)
-                    .foregroundStyle(themeEngine.palette.color(.statusError))
+                    .foregroundStyle(.red)
                 }
             }
             .padding(.horizontal, 12)

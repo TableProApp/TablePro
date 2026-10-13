@@ -176,7 +176,7 @@ struct ObjectSourceTabView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
     }
 
     @ViewBuilder

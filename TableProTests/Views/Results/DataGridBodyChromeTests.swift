@@ -167,19 +167,51 @@ struct DataGridBodyChromeTests {
         #expect(!grid.coordinator.presentsColumn(atTableColumnIndex: rowNumber))
     }
 
-    @Test("The theme's grid line becomes the table's grid colour, which the separators draw in")
-    func themeGridLineBecomesTheTableGridColor() {
+    /// `NSTableView`'s own grid colour is `separatorColor`, not `NSColor.gridColor`, which in dark
+    /// mode is darker than the rows it separates. A theme that declares no grid line has to leave the
+    /// table on that default, and a table a previous theme recoloured has to go back to it.
+    @Test("Without a theme override the table keeps AppKit's own grid and background colours")
+    func defaultThemeKeepsTheTableDefaults() {
+        let engine = ThemeEngine.shared
+        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
+        defer { engine.adopt(restore) }
+        engine.adopt(ThemeSelection(pair: .builtIn, effectiveAppearance: .light))
+
+        let tableView = NSTableView()
+        let stock = NSTableView()
+        tableView.gridColor = .systemRed
+        tableView.backgroundColor = .systemRed
+        DataGridBodyChrome.applyThemeColors(to: tableView)
+
+        #expect(tableView.gridColor == .separatorColor)
+        #expect(tableView.gridColor == stock.gridColor)
+        #expect(tableView.backgroundColor == .controlBackgroundColor)
+        #expect(tableView.backgroundColor == stock.backgroundColor)
+    }
+
+    @Test("A theme's grid line and background become the table's colours")
+    func themeOverridesBecomeTheTableColors() throws {
+        let engine = ThemeEngine.shared
+        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
+        defer { engine.adopt(restore) }
+        var theme = BuiltInThemes.light
+        theme.id = "test.body-chrome"
+        theme.overrides[.gridLine] = try ThemeColor(validating: "#FF0000")
+        theme.overrides[.gridBackground] = try ThemeColor(validating: "#102030")
+        engine.adopt(ThemeSelection(pair: ThemePair(light: theme, dark: BuiltInThemes.dark), effectiveAppearance: .light))
+
         let tableView = NSTableView()
         DataGridBodyChrome.applyThemeColors(to: tableView)
 
-        #expect(tableView.gridColor == ThemeEngine.shared.palette[.gridLine])
-        #expect(tableView.backgroundColor == ThemeEngine.shared.palette[.gridBackground])
+        #expect(tableView.gridColor == engine.resolved[.gridLine])
+        #expect(tableView.backgroundColor == engine.resolved[.gridBackground])
+        #expect(tableView.gridColor != .separatorColor)
     }
 
     /// The colour has to come from `tableView.gridColor`, which is the dynamic catalog colour AppKit
-    /// was filling with, so an appearance change carries the separator with it and there is no
-    /// second spelling to keep in sync. A hardcoded colour would pass a geometry test and be wrong
-    /// in dark mode.
+    /// fills with, so an appearance change carries the separator with it and there is no second
+    /// spelling to keep in sync. A hardcoded colour would pass a geometry test and be wrong in dark
+    /// mode.
     @Test("The separator is drawn in the table view's own grid colour")
     func separatorUsesTheTableViewGridColor() throws {
         let grid = makeGrid(columns: ["id", "name"])
