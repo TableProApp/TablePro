@@ -223,6 +223,30 @@ fn a_read_only_connection_denies_a_postgres_host_read() {
 }
 
 #[test]
+fn a_read_only_postgres_connection_denies_side_effect_functions_but_allows_reads() {
+    let policy = PolicyConfig::default().for_environment(Environment::Local);
+    for sql in [
+        "SELECT pg_notify('channel', 'payload')",
+        "SELECT pg_logical_emit_message(true, 'prefix', 'message')",
+        "SELECT pg_stat_reset()",
+        "SELECT pg_stat_reset_shared('bgwriter')",
+        "SELECT lo_creat(-1)",
+        "SELECT pg_replication_slot_advance('slot', '0/0')",
+        "SELECT * FROM pg_logical_slot_get_changes('slot', NULL, NULL)",
+        "SELECT pg_ls_logicalsnapdir()",
+        "SELECT pg_ls_replslotdir('slot')",
+    ] {
+        let facts = classify(sql, "postgres");
+        let decision = evaluate(&Principal::human_gui(), Environment::Local, &facts, true, &policy, None);
+        assert!(matches!(decision, Decision::Deny { .. }), "{sql}: {decision:?}");
+    }
+
+    let facts = classify("SELECT lower('A')", "postgres");
+    let decision = evaluate(&Principal::human_gui(), Environment::Local, &facts, true, &policy, None);
+    assert!(matches!(decision, Decision::Allow { .. }), "{decision:?}");
+}
+
+#[test]
 fn copy_that_reaches_the_host_is_administrative() {
     for sql in [
         "COPY t TO PROGRAM 'curl http://example.com'",
