@@ -1399,7 +1399,9 @@ impl BrowseModel {
                 // A saved filter shows on the button before the first page
                 // returns.
                 self.refresh_filter_chrome();
-                self.reload_from_columns(false);
+                // DDL from the SQL editor or another client never reaches
+                // the catalog, so a tab that opens asks the server.
+                self.reload_from_columns(true);
             }
             BrowseTabInput::Command(command) => self.on_command(command, fx),
             BrowseTabInput::LinkChanged(generation) => self.on_link_changed(generation, fx),

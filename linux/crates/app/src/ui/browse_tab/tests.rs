@@ -337,10 +337,11 @@ fn serving_table() -> ConnectionScript {
 
 struct Harness {
     tab: Option<BrowseTab>,
+    others: Vec<BrowseTab>,
     session: Arc<Session>,
     connection: Arc<FakeConnection>,
     fake: FakeSession,
-    _root: tempfile::TempDir,
+    root: tempfile::TempDir,
     runtime: Option<crate::runtime::AppRuntime>,
 }
 
@@ -349,35 +350,30 @@ impl Harness {
         libadwaita::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
         let runtime = crate::test_support::test_runtime();
-        let tasks = runtime.tasks();
-        let fake = FakeSession::start(script, reconnects, tasks.clone());
+        let fake = FakeSession::start(script, reconnects, runtime.tasks());
         let root = tempfile::tempdir().expect("tempdir");
-        let tab = BrowseTab::new(BrowseTabInit {
-            tracker: crate::services::tab_tracker_handle::TabTrackerHandle::default(),
-            schema: None,
-            table: "users".to_owned(),
-            connection_id: Some(uuid::Uuid::new_v4()),
-            read_only: false,
-            page_size: 100,
-            initial_offset: 0,
-            initial_sort: None,
-            column_widths: crate::persistence::ColumnWidthStore::load(root.path().join("column-widths.json"), &tasks),
-            filter_settings: crate::persistence::FilterSettingsStore::load(root.path().join("filters.json"), &tasks),
-            session: fake.session.clone(),
-            tasks,
-        });
+        let tab = users_tab(&fake.session, &runtime, &root);
         Self {
             tab: Some(tab),
+            others: Vec::new(),
             session: fake.session.clone(),
             connection: fake.connection.clone(),
             fake,
-            _root: root,
+            root,
             runtime: Some(runtime),
         }
     }
 
     fn tab(&self) -> &BrowseTab {
         self.tab.as_ref().expect("the tab is open")
+    }
+
+    /// Another tab on the same table and session.
+    fn open_another(&mut self) -> BrowseTab {
+        let runtime = self.runtime.as_ref().expect("the runtime is running");
+        let tab = users_tab(&self.session, runtime, &self.root);
+        self.others.push(tab.clone());
+        tab
     }
 
     fn shown(&self) -> Vec<Value> {
@@ -392,9 +388,28 @@ impl Harness {
     }
 }
 
+fn users_tab(session: &Arc<Session>, runtime: &crate::runtime::AppRuntime, root: &tempfile::TempDir) -> BrowseTab {
+    let tasks = runtime.tasks();
+    BrowseTab::new(BrowseTabInit {
+        tracker: crate::services::tab_tracker_handle::TabTrackerHandle::default(),
+        schema: None,
+        table: "users".to_owned(),
+        connection_id: Some(uuid::Uuid::new_v4()),
+        read_only: false,
+        page_size: 100,
+        initial_offset: 0,
+        initial_sort: None,
+        column_widths: crate::persistence::ColumnWidthStore::load(root.path().join("column-widths.json"), &tasks),
+        filter_settings: crate::persistence::FilterSettingsStore::load(root.path().join("filters.json"), &tasks),
+        session: session.clone(),
+        tasks,
+    })
+}
+
 impl Drop for Harness {
     fn drop(&mut self) {
         self.tab.take();
+        self.others.clear();
         drain_main_context();
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown();
@@ -566,6 +581,39 @@ fn a_renamed_column_builds_the_grid_again() {
 
     wait_until(WAIT, || header_titles(harness.tab()).contains(&"full_name".to_owned()))
         .expect("the grid kept the old column's header");
+}
+
+#[gtk4::test]
+fn a_tab_that_opens_reads_the_columns_the_table_has_now() {
+    let altered = [column("id", true), column("name", false), column("email", false)];
+    let mut script = serving_table();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .always(FakeReply::ok(altered.to_vec()));
+    script
+        .query_bound
+        .when_sql_contains(
+            "email",
+            FakeReply::ok(QueryResult::new(
+                altered.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+                vec![vec![
+                    Value::Int(0),
+                    Value::Text("Ada".to_owned()),
+                    Value::Text("ada@example.com".to_owned()),
+                ]],
+            )),
+        )
+        .always(FakeReply::ok(rows(&["Ada"])));
+    let mut harness = Harness::open(script, []);
+    wait_until(WAIT, || header_titles(harness.tab()).contains(&"name".to_owned())).expect("the first grid");
+
+    // The column was added by a client the catalog never hears from.
+    let reopened = harness.open_another();
+
+    wait_until(WAIT, || header_titles(&reopened).contains(&"email".to_owned()))
+        .expect("the new tab was built from the columns cached when the first one opened");
+    assert_eq!(CallCounters::get(&harness.connection.counters().fetch_columns), 2);
 }
 
 #[gtk4::test]
