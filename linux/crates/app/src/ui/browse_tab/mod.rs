@@ -512,6 +512,8 @@ impl From<GridMsg> for BrowseTabInput {
 pub(crate) struct Effects {
     outputs: Vec<BrowseTabOutput>,
     inputs: VecDeque<BrowseTabInput>,
+    /// A bulk delete over rows in the running save says so once.
+    told_edit_held: bool,
 }
 
 impl Effects {
@@ -869,6 +871,11 @@ impl BrowseModel {
     }
 
     fn apply_edit(&self, edit: TrackerEdit, fx: &mut Effects) {
+        if self.tracker.refuses(&edit) && !std::mem::replace(&mut fx.told_edit_held, true) {
+            fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
+                "This row is being saved. Change it again once the save finishes.",
+            )));
+        }
         let delta = self.tracker.apply(edit);
         self.apply_tracker_delta(delta, fx);
     }

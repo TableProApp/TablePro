@@ -31,6 +31,11 @@ impl TabTrackerHandle {
         self.0.borrow_mut().apply(edit)
     }
 
+    /// Whether `apply` would hold the edit back for the running save.
+    pub fn refuses(&self, edit: &TrackerEdit) -> bool {
+        self.0.borrow().edit_is_in_flight(edit)
+    }
+
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub fn undo(&self) -> Option<TrackerDelta> {
         self.0.borrow_mut().undo()
@@ -209,13 +214,18 @@ mod tests {
         };
         let batch = tracker.begin_save().expect("a save").expect("changes to save");
 
-        let _ = tracker.apply(TrackerEdit::DraftCell {
+        let typed = TrackerEdit::DraftCell {
             draft_id,
             col: 1,
             value: Value::Int(10),
-        });
+        };
+        assert!(tracker.refuses(&typed));
+        let held = tracker.apply(typed);
         let _ = tracker.apply(TrackerEdit::DiscardDraft { draft_id });
         assert!(tracker.undo().is_none(), "undo ran while a save was in flight");
+
+        assert_eq!(held.rows, [RowKey::Draft(draft_id)], "the typed value stayed on screen");
+        assert!(held.visual.is_empty());
 
         assert_eq!(tracker.drafts()[0].values[1], Value::Int(9));
         let _ = tracker.settle_save(&rolled_back(), batch.snapshot);

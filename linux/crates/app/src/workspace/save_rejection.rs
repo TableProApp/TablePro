@@ -38,6 +38,12 @@ impl SaveRejection {
             Self::NoConnection => crate::i18n::gettext("No active connection."),
         }
     }
+
+    /// A Save pressed again while the first runs needs no alert: the tab
+    /// already shows the save running.
+    pub fn needs_alert(&self) -> bool {
+        !matches!(self, Self::AlreadySaving)
+    }
 }
 
 #[cfg(test)]
@@ -45,6 +51,20 @@ mod tests {
     use tablepro_core::ddl::DraftProblem;
 
     use super::*;
+
+    #[test]
+    fn only_a_save_already_running_goes_untold() {
+        let told = [
+            SaveRejection::OutcomeUnknown,
+            SaveRejection::ReadOnly,
+            SaveRejection::ColumnsNotRead,
+            SaveRejection::Blocked(SaveBlocker::Draft(DraftProblem::NoColumns)),
+            SaveRejection::NoConnection,
+        ];
+
+        assert!(told.iter().all(SaveRejection::needs_alert));
+        assert!(!SaveRejection::AlreadySaving.needs_alert());
+    }
 
     #[test]
     fn a_blocked_structure_says_what_to_fix() {

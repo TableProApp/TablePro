@@ -133,9 +133,11 @@ impl TabChangeTracker {
         self.drafts.len() + self.deletes.len() + self.updates.len()
     }
 
+    /// An edit the running save holds back comes back as a rebind of its
+    /// row, so the grid stops showing what was typed into it.
     pub fn apply(&mut self, edit: TrackerEdit) -> TrackerDelta {
         if self.edit_is_in_flight(&edit) {
-            return self.delta(Vec::new(), Vec::new());
+            return self.delta(edit.row_key().into_iter().collect(), Vec::new());
         }
         match edit {
             TrackerEdit::Cell {
@@ -158,7 +160,7 @@ impl TabChangeTracker {
     /// An insert or a delete cannot be sent twice, so a draft or a
     /// delete in the save stays as it is until the save settles; a cell
     /// edit is a new value, which the next save writes.
-    fn edit_is_in_flight(&self, edit: &TrackerEdit) -> bool {
+    pub fn edit_is_in_flight(&self, edit: &TrackerEdit) -> bool {
         let Some(snapshot) = self.saving else {
             return false;
         };

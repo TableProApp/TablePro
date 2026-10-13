@@ -14,10 +14,10 @@ impl App {
         for start in self.workspace_handle.save(&[tab]) {
             match start {
                 SaveStart::Started(save) => tracing::debug!(?save, %tab, "save started"),
-                SaveStart::NothingToSave => {}
-                SaveStart::Rejected(rejection) => {
+                SaveStart::Rejected(rejection) if rejection.needs_alert() => {
                     self.show_error_alert(&crate::i18n::gettext("Cannot Save"), &rejection.message());
                 }
+                SaveStart::NothingToSave | SaveStart::Rejected(_) => {}
             }
         }
     }

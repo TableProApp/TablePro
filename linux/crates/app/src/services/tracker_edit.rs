@@ -27,3 +27,14 @@ pub enum TrackerEdit {
         draft_id: u64,
     },
 }
+
+impl TrackerEdit {
+    /// The row the edit changes. An insert makes a new one.
+    pub fn row_key(&self) -> Option<RowKey> {
+        match self {
+            Self::Cell { row_key, .. } | Self::Delete { row_key, .. } => Some(row_key.clone()),
+            Self::DraftCell { draft_id, .. } | Self::DiscardDraft { draft_id } => Some(RowKey::Draft(*draft_id)),
+            Self::Insert { .. } => None,
+        }
+    }
+}

@@ -794,6 +794,37 @@ fn stop_saving_button_visible_only_while_saving() {
 }
 
 #[gtk4::test]
+fn an_edit_held_for_the_running_save_says_so_once() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let tracker = harness
+        .tab()
+        .imp()
+        .model
+        .borrow()
+        .as_ref()
+        .map(|model| model.tracker.clone())
+        .expect("the tab has a model");
+    let toasts = toasts(harness.tab());
+    harness.tab().send(BrowseTabInput::InsertRow);
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let _saving = tracker.begin_save().expect("a save").expect("the drafts");
+    let drafts: Vec<u64> = tracker.drafts().iter().map(|draft| draft.draft_id).collect();
+
+    harness.tab().send(BrowseTabInput::MarkRowsDeleted {
+        rows: Vec::new(),
+        drafts,
+    });
+
+    assert_eq!(tracker.drafts().len(), 2, "a draft the save holds was dropped");
+    assert_eq!(toasts.borrow().len(), 1, "{:?}", toasts.borrow());
+}
+
+#[gtk4::test]
 fn browse_tab_and_filter_strip_freed_after_drop() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["row"])));
