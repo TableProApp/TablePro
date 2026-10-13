@@ -2378,6 +2378,101 @@ mod tests {
         assert_eq!(alive, 0, "cells outlived their column view");
     }
 
+    #[derive(Clone, Copy, Debug)]
+    enum PopoverEditor {
+        Date,
+        Int,
+        Json,
+    }
+
+    /// Commit through the editor's own control, which also closes it.
+    fn commit_popover(editor: PopoverEditor, popover: &gtk::Popover) {
+        use crate::test_support::first_descendant_of_type;
+        match editor {
+            PopoverEditor::Date => first_descendant_of_type::<gtk::Calendar>(popover)
+                .expect("the calendar")
+                .emit_by_name::<()>("day-selected", &[]),
+            PopoverEditor::Int => {
+                let spin = first_descendant_of_type::<gtk::SpinButton>(popover).expect("the spin button");
+                spin.set_value(42.0);
+                spin.emit_by_name::<()>("activate", &[]);
+            }
+            PopoverEditor::Json => {
+                first_descendant_of_type::<sourceview5::View>(popover)
+                    .expect("the JSON view")
+                    .buffer()
+                    .set_text("[1]");
+                crate::test_support::descendants(popover)
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+                    .find(|button| button.has_css_class("suggested-action"))
+                    .expect("the Save button")
+                    .emit_clicked();
+            }
+        }
+    }
+
+    /// Another test's window can take the focus and close an autohide
+    /// popover before it opens, so a dismissed one is shown again.
+    fn open_popover(
+        editor: PopoverEditor,
+        cell: &crate::ui::cell_editor::CellEditor,
+        sender: &relm4::Sender<GridMsg>,
+    ) -> Option<gtk::Popover> {
+        for _ in 0..5 {
+            match editor {
+                PopoverEditor::Date => show_calendar_popover(cell, 0, sender),
+                PopoverEditor::Int => show_spin_button_popover(cell, 0, sender, false),
+                PopoverEditor::Json => show_json_popover(cell, 0, sender),
+            }
+            let popover = crate::test_support::first_descendant_of_type::<gtk::Popover>(cell)?;
+            let settled = crate::test_support::wait_until(std::time::Duration::from_secs(5), || {
+                popover.is_mapped() || !popover.is_visible()
+            });
+            if settled.is_ok() && popover.is_mapped() {
+                return Some(popover);
+            }
+            if popover.parent().is_some() {
+                popover.unparent();
+            }
+            POPOVER_SLOT.take(cell);
+        }
+        None
+    }
+
+    #[gtk4::test]
+    fn a_closed_popover_editor_frees_its_cell() {
+        use crate::test_support::wait_until;
+        let timeout = std::time::Duration::from_secs(5);
+        let window = gtk::Window::new();
+        window.present();
+        for editor in [PopoverEditor::Date, PopoverEditor::Int, PopoverEditor::Json] {
+            let (sender, _receiver) = relm4::channel::<GridMsg>();
+            let cell = crate::ui::cell_editor::CellEditor::new();
+            cell.set_text("x");
+            window.set_child(Some(&cell));
+            wait_until(timeout, || cell.is_mapped()).expect("the cell is drawn");
+            let popover = open_popover(editor, &cell, &sender).expect("the editor popover opens");
+
+            commit_popover(editor, &popover);
+            wait_until(timeout, || popover.parent().is_none()).expect("the popover closes");
+            assert_ne!(cell.text(), "x", "{editor:?} did not commit");
+            assert!(
+                POPOVER_SLOT.take(&cell).is_none(),
+                "{editor:?} left its popover in the cell"
+            );
+            // Only the cell is checked: GTK itself keeps a closed autohide
+            // popover alive once a child of it has taken focus.
+            let freed = cell.downgrade();
+            window.set_child(None::<&gtk::Widget>);
+            drop((cell, popover));
+            crate::test_support::drain_main_context();
+
+            assert!(freed.upgrade().is_none(), "{editor:?} kept its cell alive");
+        }
+        window.destroy();
+    }
+
     #[test]
     fn a_tracked_draft_carries_its_insert_tint_and_error_flash() {
         let tracker = TabTrackerHandle::default();
