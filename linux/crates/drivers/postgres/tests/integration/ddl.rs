@@ -134,6 +134,42 @@ async fn swap_column_names_applies() {
     connection.close().await.expect("a close");
 }
 
+/// PostgreSQL keeps `Name` and `name` apart, so `Name` takes its
+/// lowercase name only once `name` has moved off it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn case_only_rename_waits_for_its_name() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id int PRIMARY KEY, \"Name\" text, name integer)",
+            "INSERT INTO kept VALUES (1, 'x', 2)",
+        ],
+    )
+    .await;
+
+    let after = change(connection.as_ref(), &kept(), |column| {
+        column.name = match column.name.as_str() {
+            "Name" => "name",
+            "name" => "old",
+            other => other,
+        }
+        .to_owned();
+    })
+    .await;
+
+    let names: Vec<&str> = after.columns.iter().map(|column| column.name()).collect();
+    assert_eq!(names, ["id", "name", "old"]);
+    assert_eq!(type_of(&after, "name"), "text");
+    assert_eq!(
+        value(connection.as_ref(), "SELECT name || '|' || old FROM kept").await,
+        "x|2"
+    );
+    connection.close().await.expect("a close");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn change_primary_key_to_composite_applies() {

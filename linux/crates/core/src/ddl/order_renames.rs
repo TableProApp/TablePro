@@ -19,7 +19,9 @@ const TEMPORARY_PREFIX: &str = "__tablepro_rename_";
 ///
 /// Names match without regard to case: MySQL, SQL Server and SQLite
 /// compare column names that way, and the extra step this can cost a
-/// case-sensitive engine changes nothing it ends with.
+/// case-sensitive engine changes nothing it ends with. A rename that
+/// changes only case waits while another column holds the name in some
+/// case, which only a case-sensitive engine allows.
 pub fn order_renames<'a>(
     renames: &[ColumnRename],
     occupied: impl IntoIterator<Item = &'a str>,
@@ -75,9 +77,10 @@ pub fn order_renames<'a>(
     ordered
 }
 
-/// A rename into its own name in other case frees what it takes.
+/// A rename into its own name in other case frees what it takes, unless
+/// another column holds that name too.
 fn is_free(held: &Held, rename: &ColumnRename) -> bool {
-    same(&rename.from, &rename.to) || !held.contains(&rename.to)
+    !held.contains(&rename.to) || (same(&rename.from, &rename.to) && held.count(&rename.to) == 1)
 }
 
 /// A rename whose new name another pending rename starts from, and so on
@@ -130,6 +133,10 @@ impl Held {
 
     fn contains(&self, name: &str) -> bool {
         self.counts.contains_key(&fold(name))
+    }
+
+    fn count(&self, name: &str) -> usize {
+        self.counts.get(&fold(name)).copied().unwrap_or_default()
     }
 }
 
@@ -221,6 +228,26 @@ mod tests {
         assert_eq!(
             steps(&swapped),
             [("a", "__tablepro_rename_1"), ("b", "A"), ("__tablepro_rename_1", "B")]
+        );
+    }
+
+    #[test]
+    fn order_renames_keeps_names_that_differ_only_in_case_apart() {
+        let freed_first = order_renames(
+            &[rename("Name", "name"), rename("name", "old")],
+            ["id", "Name", "name"],
+            [],
+        );
+        let swapped = order_renames(&[rename("Name", "name"), rename("name", "Name")], ["Name", "name"], []);
+
+        assert_eq!(steps(&freed_first), [("name", "old"), ("Name", "name")]);
+        assert_eq!(
+            steps(&swapped),
+            [
+                ("Name", "__tablepro_rename_1"),
+                ("name", "Name"),
+                ("__tablepro_rename_1", "name"),
+            ]
         );
     }
 
