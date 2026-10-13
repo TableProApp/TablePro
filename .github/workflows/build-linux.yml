@@ -98,6 +98,14 @@ jobs:
         run: meson setup _build -Dprofile=development
       - name: Format check
         run: cargo fmt --all -- --check
+      - name: No thread-local state in app services
+        # Trackers belong to a workspace; a thread_local! registry shares
+        # one window's unsaved edits with every other window.
+        run: |
+          if grep -rn 'thread_local!' crates/app/src/services; then
+            echo "::error::crates/app/src/services must not hold thread_local! state"
+            exit 1
+          fi
       - name: Clippy
         run: meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Clippy without default features
