@@ -12,9 +12,8 @@ use gtk4 as gtk;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
-use tablepro_core::ddl::ReferentialAction;
+use tablepro_core::ddl::{DraftColumn, ReferentialAction};
 use tablepro_core::meta::IndexKey;
-use tablepro_core::sql_ddl::DraftColumn;
 use tablepro_core::{ForeignKeyInfo, IndexInfo};
 
 use super::structure_tab::{StructureTabInput, StructureTabOutput, StructureTabSender};
@@ -176,13 +175,14 @@ pub(super) fn present_index_dialog(parent: &gtk::Widget, columns: &[DraftColumn]
     dialog.present(Some(parent));
 }
 
+/// `fk_actions` are the engine's, from its DDL dialect, so the combos
+/// offer nothing the engine would refuse.
 pub(super) fn present_fk_dialog(
     parent: &gtk::Widget,
     columns: &[DraftColumn],
-    driver_id: &str,
+    fk_actions: &'static [ReferentialAction],
     sender: StructureTabSender,
 ) {
-    let fk_actions = tablepro_core::sql_ddl::supported_fk_actions(driver_id);
     let action_labels = action_labels(fk_actions);
     let (dialog, body, submit_btn) =
         build_form_dialog(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("Add"));
@@ -386,7 +386,8 @@ mod tests {
 
     #[test]
     fn combo_rows_decode_to_the_actions_they_are_labelled_with() {
-        let mssql = tablepro_core::sql_ddl::supported_fk_actions("mssql");
+        use tablepro_core::ddl::DdlDialect;
+        let mssql = drivers_mssql::MssqlDialect::new(16).referential_actions();
 
         let labels = action_labels(mssql);
 

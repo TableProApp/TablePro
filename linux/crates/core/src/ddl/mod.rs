@@ -1,35 +1,77 @@
-//! The model of a table that structure changes are planned against.
+//! Structure changes: the definition of a table, a draft of it the user
+//! edits, the changes between the two, and the per-engine plans that
+//! turn them into DDL.
 
+mod build_ddl_error;
+mod changed_attributes;
 mod collation_name;
+mod column_alteration;
 mod column_attributes;
+mod column_capabilities;
 mod column_definition;
 mod column_key_roles;
+mod column_rename;
 mod column_visibility;
 mod ddl_capabilities;
 mod ddl_dialect;
+mod ddl_operation;
+mod ddl_plan;
+pub mod ddl_sql;
+mod default_text;
+mod diff_table;
+mod draft_column;
+mod draft_problem;
+mod draft_type;
+mod drop_table_options;
 mod generated_column;
 mod identity_style;
 mod inbound_foreign_key;
+mod permission;
+mod primary_key_change;
 mod primary_key_constraint;
 mod referential_action;
+mod refusal_reason;
 mod schema_object_source;
+mod table_changes;
 mod table_definition;
+mod table_draft;
 mod table_source;
 mod unmodeled_attribute;
 
+#[cfg(test)]
+mod tests;
+
+pub use build_ddl_error::BuildDdlError;
+pub use changed_attributes::ChangedAttributes;
 pub use collation_name::CollationName;
+pub use column_alteration::ColumnAlteration;
 pub use column_attributes::ColumnAttributes;
+pub use column_capabilities::{ColumnCapabilities, primary_key_permission};
 pub use column_definition::ColumnDefinition;
 pub use column_key_roles::ColumnKeyRoles;
+pub use column_rename::ColumnRename;
 pub use column_visibility::ColumnVisibility;
 pub use ddl_capabilities::DdlCapabilities;
 pub use ddl_dialect::DdlDialect;
+pub use ddl_operation::DdlOperation;
+pub use ddl_plan::DdlPlan;
+pub use default_text::{default_text, parse_default};
+pub use diff_table::diff_table;
+pub use draft_column::DraftColumn;
+pub use draft_problem::DraftProblem;
+pub use draft_type::{DraftType, ResolvedType};
+pub use drop_table_options::DropTableOptions;
 pub use generated_column::{GeneratedColumn, GeneratedStorage};
 pub use identity_style::IdentityStyle;
 pub use inbound_foreign_key::InboundForeignKey;
+pub use permission::Permission;
+pub use primary_key_change::PrimaryKeyChange;
 pub use primary_key_constraint::PrimaryKeyConstraint;
 pub use referential_action::ReferentialAction;
+pub use refusal_reason::RefusalReason;
 pub use schema_object_source::{SchemaObjectKind, SchemaObjectSource};
+pub use table_changes::TableChanges;
 pub use table_definition::TableDefinition;
+pub use table_draft::TableDraft;
 pub use table_source::TableSource;
 pub use unmodeled_attribute::UnmodeledAttribute;

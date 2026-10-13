@@ -6,13 +6,10 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use tablepro_core::ForeignKeyInfo;
-use tablepro_core::ddl::ReferentialAction;
+use tablepro_core::ddl::{Permission, ReferentialAction};
 
+use super::columns::gate;
 use super::{StructureTabInput, StructureTabSender};
-
-fn driver_can_drop_foreign_key(driver_id: &str) -> bool {
-    !matches!(driver_id, "sqlite")
-}
 
 /// Foreign-key row as a native `AdwActionRow`. Subtitle encodes both
 /// local columns and the reference target so users see the full
@@ -20,7 +17,7 @@ fn driver_can_drop_foreign_key(driver_id: &str) -> bool {
 pub(super) fn build_fk_row(
     index: usize,
     fk: &ForeignKeyInfo,
-    driver_id: &str,
+    removable: &Permission,
     sender: StructureTabSender,
 ) -> adw::ActionRow {
     let qualified_ref = match &fk.ref_schema {
@@ -53,12 +50,8 @@ pub(super) fn build_fk_row(
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
-    if !driver_can_drop_foreign_key(driver_id) {
-        remove_button.set_sensitive(false);
-        remove_button.set_tooltip_text(Some(&crate::i18n::gettext(
-            "Dropping a foreign key isn't supported by SQLite.",
-        )));
-    }
+    remove_button.set_widget_name(&format!("fk-remove-{index}"));
+    gate(&remove_button, removable);
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveForeignKey(index)));
     row.add_suffix(&remove_button);

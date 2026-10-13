@@ -11,26 +11,23 @@ impl TrackerHandle for StructureTrackerHandle {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::sql_ddl::{DraftColumn, StructureOp};
+    use tablepro_core::ddl::{DraftColumn, DraftType, TableChanges, TableDraft};
+    use tablepro_core::meta::TableRef;
     use uuid::Uuid;
 
     use super::*;
+    use crate::services::pending_structure::PendingStructure;
 
-    fn add_column() -> StructureOp {
-        StructureOp::AddColumn {
-            schema: None,
-            table: "t".into(),
-            column: DraftColumn {
-                original: None,
-                name: "a".into(),
-                data_type: "int".into(),
-                nullable: true,
-                primary_key: false,
-                auto_increment: false,
-                default_value: None,
-                comment: None,
-            },
-        }
+    fn new_table() -> Option<PendingStructure> {
+        let mut draft = TableDraft::new(TableRef::unqualified("t"));
+        draft
+            .columns
+            .push(DraftColumn::new("a", DraftType::Typed("int".to_owned())));
+        Some(PendingStructure {
+            original: None,
+            draft,
+            changes: TableChanges::default(),
+        })
     }
 
     #[test]
@@ -39,7 +36,7 @@ mod tests {
         let second = StructureTrackerRegistry::default();
         let tab = Uuid::new_v4();
 
-        first.register(tab).set_ops(vec![add_column()]);
+        first.register(tab).set_pending(new_table());
         second.register(tab);
 
         assert_eq!(first.dirty(), vec![tab]);
@@ -50,7 +47,7 @@ mod tests {
     fn dirty_lists_only_pending_tabs() {
         let registry = StructureTrackerRegistry::default();
         let edited = Uuid::new_v4();
-        registry.register(edited).set_ops(vec![add_column()]);
+        registry.register(edited).set_pending(new_table());
         registry.register(Uuid::new_v4());
 
         assert_eq!(registry.dirty(), vec![edited]);

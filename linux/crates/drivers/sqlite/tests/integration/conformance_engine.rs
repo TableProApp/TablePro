@@ -13,7 +13,7 @@ use tablepro_core::{
     WorkspaceSettings,
 };
 use tablepro_test_support::conformance::{
-    ConformanceEngine, ConformanceFailure, EditorTransactionEngine, PooledConformanceEngine,
+    ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine, PooledConformanceEngine,
 };
 use tempfile::TempDir;
 
@@ -111,6 +111,29 @@ impl EditorTransactionEngine for SqliteEngine {
     fn commit_sql(&self) -> String {
         "COMMIT".to_owned()
     }
+}
+
+impl ConformanceDdlEngine for SqliteEngine {
+    fn integer_type(&self) -> &'static str {
+        "INTEGER"
+    }
+
+    fn text_type(&self) -> &'static str {
+        "TEXT"
+    }
+
+    fn timestamp_type(&self) -> &'static str {
+        "TEXT"
+    }
+
+    fn current_timestamp_expression(&self) -> &'static str {
+        "CURRENT_TIMESTAMP"
+    }
+}
+
+tablepro_test_support::ddl_conformance_suite! {
+    engine: SqliteEngine,
+    docker: false,
 }
 
 // Every stored value is one of five storage classes and all five are

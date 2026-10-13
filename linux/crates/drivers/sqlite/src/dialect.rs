@@ -1,5 +1,5 @@
 use tablepro_core::column::{ColumnInfo, ColumnKind, ColumnType, SqlExpression};
-use tablepro_core::ddl::{DdlCapabilities, DdlDialect};
+use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, KeysetDirection, LikeCase, LikeForm, LiteralError, Placeholder,
     SqlDialect,
@@ -18,43 +18,6 @@ use crate::catalog::{SqliteVersion, declared_column_type};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqliteDialect {
     version: SqliteVersion,
-}
-
-/// What the structure tab can change on SQLite without rebuilding the
-/// table. Everything ALTER TABLE cannot do is off until the rebuild
-/// plans exist.
-static DDL: SqliteDdl = SqliteDdl {
-    capabilities: DdlCapabilities {
-        create_table: true,
-        rename_table: true,
-        add_column: true,
-        drop_column: true,
-        rename_column: true,
-        alter_column_type: false,
-        alter_column_nullability: false,
-        nullability_switch: false,
-        alter_column_default: false,
-        alter_primary_key: false,
-        alter_auto_increment: false,
-        create_index: true,
-        drop_index: true,
-        expression_index_keys: true,
-        partial_indexes: true,
-        add_foreign_key: false,
-        drop_foreign_key: false,
-        drop_table_cascade: false,
-    },
-};
-
-#[derive(Debug)]
-struct SqliteDdl {
-    capabilities: DdlCapabilities,
-}
-
-impl DdlDialect for SqliteDdl {
-    fn capabilities(&self) -> &DdlCapabilities {
-        &self.capabilities
-    }
 }
 
 impl SqliteDialect {
@@ -198,7 +161,7 @@ impl SqlDialect for SqliteDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
-        Some(&DDL)
+        Some(self)
     }
 }
 

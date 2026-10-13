@@ -50,7 +50,6 @@ mod server_diagnostics;
 mod server_info;
 mod server_name_override;
 mod session_fate;
-pub mod sql_ddl;
 pub mod sql_syntax;
 mod ssh_failure;
 pub mod statement;

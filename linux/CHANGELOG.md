@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite file chooser in the connect dialog, with New Database to create a file.
 - Results list in the SQL editor with one entry per statement, its rows affected or error, and the open transaction.
 
+### Changed
+
+- Structure tab offers only the changes the database can make, and says why a control is off.
+- Show CREATE TABLE gives the server's own statement on MySQL, ClickHouse and SQLite.
+
 ### Fixed
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
@@ -49,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A refresh that failed replaced the rows in a table tab with an error page.
 - Switching connections could show the previous connection's tables in the sidebar, or its reconnect banner.
 - Switching connections during a table drop could close the new connection's tabs on a table of the same name.
+- Renaming a MySQL table in another database moved it to the connection's database, and renaming a ClickHouse table failed.
+- Turning a column's primary key on or off in the Structure tab saved nothing.
+- Dropping a SQL Server column that has a default failed.
+- Creating a SQLite table with a foreign key failed.
 
 ### Security
 
@@ -57,3 +66,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a pipe or a device as a SQL file never finished, or read past the 8 MB limit.
 - Importing a CSV or a connections file from a pipe or a device never finished, a CSV could read past its size limit, and a connections file had none.
 - SQL run in the editor, a typed filter or a column default, and the values in them, reached the journal at debug level.
+- Column types and defaults typed in the Structure tab reached the SQL after a text filter instead of the database's own parser.

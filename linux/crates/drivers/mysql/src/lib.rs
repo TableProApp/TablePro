@@ -10,6 +10,7 @@ mod cancel;
 mod capabilities;
 mod catalog;
 mod connection;
+mod ddl;
 mod decode;
 mod dialect;
 mod driver;

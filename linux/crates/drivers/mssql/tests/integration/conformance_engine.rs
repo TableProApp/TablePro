@@ -13,8 +13,8 @@ use tablepro_core::{ConnectOptions, DatabaseDriver, LivenessPolicy, NetworkEndpo
 use tablepro_test_fixtures::MssqlFixture;
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
-    BoundedDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine, NetworkConformanceEngine,
-    PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
+    NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
 };
 
 use crate::support::{dbo, delay, direct, options_over, password, quoted, require};
@@ -142,6 +142,24 @@ impl BoundedDdlEngine for MssqlEngine {
     }
 }
 
+impl ConformanceDdlEngine for MssqlEngine {
+    fn integer_type(&self) -> &'static str {
+        "int"
+    }
+
+    fn text_type(&self) -> &'static str {
+        "nvarchar(255)"
+    }
+
+    fn timestamp_type(&self) -> &'static str {
+        "datetime2"
+    }
+
+    fn current_timestamp_expression(&self) -> &'static str {
+        "getdate()"
+    }
+}
+
 mod suite {
     use super::MssqlEngine;
 
@@ -153,5 +171,10 @@ mod suite {
         editor_transactions: true,
         unsupported_types: true,
         bounded_ddl: true,
+    }
+
+    tablepro_test_support::ddl_conformance_suite! {
+        engine: MssqlEngine,
+        docker: true,
     }
 }

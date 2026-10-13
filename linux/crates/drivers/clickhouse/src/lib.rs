@@ -16,6 +16,7 @@ mod clickhouse_type;
 mod client_factory;
 mod commit_resolution;
 mod connection;
+mod ddl;
 mod dialect;
 mod driver;
 mod editor_run;

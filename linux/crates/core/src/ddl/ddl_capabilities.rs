@@ -21,5 +21,8 @@ pub struct DdlCapabilities {
     pub partial_indexes: bool,
     pub add_foreign_key: bool,
     pub drop_foreign_key: bool,
+    /// Whether a column can carry a comment. SQLite drops one from the
+    /// CREATE TABLE text, so it has nowhere to keep it.
+    pub column_comments: bool,
     pub drop_table_cascade: bool,
 }

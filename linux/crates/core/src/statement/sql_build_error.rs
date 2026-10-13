@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::ddl::BuildDdlError;
 use crate::dialect::{BindError, LiteralError};
 
 /// Why SQL could not be built.
@@ -19,6 +20,12 @@ pub enum SqlBuildError {
 
 impl From<LiteralError> for SqlBuildError {
     fn from(error: LiteralError) -> Self {
+        Self::Ddl(error.to_string())
+    }
+}
+
+impl From<BuildDdlError> for SqlBuildError {
+    fn from(error: BuildDdlError) -> Self {
         Self::Ddl(error.to_string())
     }
 }

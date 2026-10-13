@@ -3,7 +3,7 @@ use tablepro_core::column::{
     BoolStorage, ColumnInfo, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, SqlExpression,
     TemporalZone, TextLength,
 };
-use tablepro_core::ddl::{DdlCapabilities, DdlDialect};
+use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, KeysetDirection, LikeCase, LikeForm, LiteralError, Placeholder,
     SqlDialect,
@@ -56,48 +56,6 @@ impl MySqlDialect {
     /// arrived in MySQL 8.0.13.
     pub fn has_functional_key_parts(&self) -> bool {
         self.mysql_at_least((8, 0, 13))
-    }
-}
-
-const fn ddl_capabilities(expression_index_keys: bool) -> DdlCapabilities {
-    DdlCapabilities {
-        create_table: true,
-        rename_table: true,
-        add_column: true,
-        drop_column: true,
-        rename_column: true,
-        alter_column_type: true,
-        alter_column_nullability: true,
-        nullability_switch: true,
-        alter_column_default: true,
-        alter_primary_key: true,
-        alter_auto_increment: true,
-        create_index: true,
-        drop_index: true,
-        expression_index_keys,
-        partial_indexes: false,
-        add_foreign_key: true,
-        drop_foreign_key: true,
-        // MySQL parses CASCADE on DROP TABLE and does nothing with it.
-        drop_table_cascade: false,
-    }
-}
-
-static FUNCTIONAL_KEY_DDL: MySqlDdl = MySqlDdl {
-    capabilities: ddl_capabilities(true),
-};
-static COLUMN_KEY_DDL: MySqlDdl = MySqlDdl {
-    capabilities: ddl_capabilities(false),
-};
-
-#[derive(Debug)]
-struct MySqlDdl {
-    capabilities: DdlCapabilities,
-}
-
-impl DdlDialect for MySqlDdl {
-    fn capabilities(&self) -> &DdlCapabilities {
-        &self.capabilities
     }
 }
 
@@ -224,10 +182,7 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
-        Some(match self.has_functional_key_parts() {
-            true => &FUNCTIONAL_KEY_DDL,
-            false => &COLUMN_KEY_DDL,
-        })
+        Some(self)
     }
 
     fn insert_default_row(&self, table_sql: &str) -> Option<String> {
@@ -419,20 +374,6 @@ mod tests {
 
     fn dialect(flavour: MySqlFlavour) -> MySqlDialect {
         MySqlDialect::new(flavour, &ServerInfo::new(flavour.product(), "8.4.3", 8, 4, 3))
-    }
-
-    #[test]
-    fn renames_quote_with_backticks() {
-        let dialect = dialect(MySqlFlavour::MySql);
-
-        assert_eq!(
-            tablepro_core::sql_ddl::build_rename_table("mysql", &dialect, None, "old", "new`t").unwrap(),
-            "ALTER TABLE `old` RENAME TO `new``t`"
-        );
-        assert_eq!(
-            tablepro_core::sql_ddl::build_rename_column("mysql", &dialect, None, "t", "old", "new").unwrap(),
-            "ALTER TABLE `t` RENAME COLUMN `old` TO `new`"
-        );
     }
 
     #[test]

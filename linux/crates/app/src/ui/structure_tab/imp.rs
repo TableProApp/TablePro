@@ -78,9 +78,7 @@ impl ObjectImpl for StructureTab {
                 Signal::builder("dirty-changed")
                     .param_types([bool::static_type()])
                     .build(),
-                Signal::builder("execute")
-                    .param_types([glib::BoxedAnyObject::static_type()])
-                    .build(),
+                Signal::builder("save-requested").build(),
                 Signal::builder("drop-table-requested")
                     .param_types([String::static_type(), String::static_type()])
                     .build(),

@@ -1,9 +1,9 @@
 //! The suites every driver runs against a real server.
 //!
 //! A driver's integration target implements an engine adapter and
-//! invokes `connection_conformance_suite!` and `tls_conformance_suite!`
-//! with flags for what the engine supports. A flag that is off emits no
-//! test. The flags with a capability behind them (`endpoint`,
+//! invokes `connection_conformance_suite!`, `ddl_conformance_suite!` and
+//! `tls_conformance_suite!` with flags for what the engine supports. A
+//! flag that is off emits no test. The flags with a capability behind them (`endpoint`,
 //! `editor_transactions` and the TLS `client_identity`) are checked
 //! against the driver's capability table, so those cases cannot be
 //! skipped by declaring less. `pool`, `unsupported_types` and
@@ -18,6 +18,8 @@ mod conformance_engine;
 mod conformance_failure;
 mod connection_suite_flags;
 mod connection_suite_macro;
+mod ddl_conformance_engine;
+mod ddl_suite_macro;
 mod editor_transaction_engine;
 #[cfg(test)]
 mod fake_engine;
@@ -37,6 +39,7 @@ pub use client_identity_engine::ClientIdentityEngine;
 pub use conformance_engine::ConformanceEngine;
 pub use conformance_failure::ConformanceFailure;
 pub use connection_suite_flags::ConnectionSuiteFlags;
+pub use ddl_conformance_engine::ConformanceDdlEngine;
 pub use editor_transaction_engine::EditorTransactionEngine;
 pub use network_conformance_engine::NetworkConformanceEngine;
 pub use pooled_conformance_engine::PooledConformanceEngine;
