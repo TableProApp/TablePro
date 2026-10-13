@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tablepro_core::value::Temporal;
 use tablepro_core::{
     Connection, DriverError, ReadStatement, ResultEvent, ResultSink, RowLimit, RunEnd, RunOptions, SinkFlow,
     Truncation, UserSql, Value,
@@ -233,5 +234,27 @@ async fn a_format_clause_fails_an_export_instead_of_filling_memory() {
         "{outcome:?}"
     );
     wait_until_gone(connection.as_ref(), &marker).await;
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_session_set_to_iso_still_reads_timestamps_in_their_own_zone() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let editor = session(connection.as_ref()).await;
+
+    run_ok(editor.as_ref(), "SET date_time_output_format = 'iso'").await;
+    let rows = run_ok(
+        editor.as_ref(),
+        "SELECT toDateTime('2024-06-15 08:30:00', 'Asia/Tokyo')",
+    )
+    .await;
+
+    let stamp = chrono::NaiveDate::from_ymd_opt(2024, 6, 15)
+        .and_then(|date| date.and_hms_opt(8, 30, 0))
+        .expect("a timestamp");
+    assert_eq!(rows.rows(), vec![vec![Value::Timestamp(Temporal::Finite(stamp))]]);
+    editor.close().await;
     connection.close().await.expect("a close");
 }
