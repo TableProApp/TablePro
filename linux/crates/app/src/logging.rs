@@ -10,14 +10,22 @@ use tracing_subscriber::{EnvFilter, Layer};
 
 use crate::config::Profile;
 
-/// The client libraries under the drivers, by target prefix. Each can
-/// log what a user's database was sent or answered: tokio-postgres the
-/// text of every statement at debug, sqlx every statement and a slow
-/// one as a warning, tiberius rows at trace and server messages as
-/// errors, the clickhouse crate exceptions that quote the query, and
-/// deadpool the errors of the connections it recycles. The drivers map
-/// and log what they need from these libraries themselves.
-const CLIENT_LIBRARIES: &[&str] = &["tokio_postgres", "deadpool", "tiberius", "sqlx", "clickhouse"];
+/// The libraries under the drivers, by target prefix. Each can log
+/// what a user's database was sent or answered: tokio-postgres the text
+/// of every statement at debug, sqlx every statement and a slow one as
+/// a warning, tiberius rows at trace and server messages as errors, the
+/// clickhouse crate exceptions that quote the query, deadpool the errors
+/// of the connections it recycles, and sqlparser at debug the text it
+/// parses and the tokens and literals it reads. The drivers map and log
+/// what they need from these libraries themselves.
+const SILENCED_LIBRARIES: &[&str] = &[
+    "tokio_postgres",
+    "deadpool",
+    "tiberius",
+    "sqlx",
+    "clickhouse",
+    "sqlparser",
+];
 
 #[derive(Debug, ThisError)]
 pub enum LoggingError {
@@ -89,8 +97,9 @@ pub fn init(profile: Profile) -> Result<(), LoggingError> {
 
 /// What `init` installs, writing to `writer`.
 ///
-/// The client libraries are filtered beside `filter` rather than inside
-/// it, so no `RUST_LOG` directive, however specific, turns them back on.
+/// The silenced libraries are filtered beside `filter` rather than
+/// inside it, so no `RUST_LOG` directive, however specific, turns them
+/// back on.
 fn subscriber<W>(filter: EnvFilter, format: LogFormat, writer: W) -> impl Subscriber + Send + Sync + 'static
 where
     W: for<'writer> MakeWriter<'writer> + Send + Sync + 'static,
@@ -102,11 +111,11 @@ where
         LogFormat::Json => output.json().boxed(),
         LogFormat::Text => output.boxed(),
     };
-    tracing_subscriber::registry().with(output.with_filter(filter.and(client_libraries_silenced())))
+    tracing_subscriber::registry().with(output.with_filter(filter.and(libraries_silenced())))
 }
 
-fn client_libraries_silenced() -> Targets {
-    CLIENT_LIBRARIES
+fn libraries_silenced() -> Targets {
+    SILENCED_LIBRARIES
         .iter()
         .fold(Targets::new().with_default(LevelFilter::TRACE), |targets, library| {
             targets.with_target(*library, LevelFilter::OFF)
@@ -117,6 +126,8 @@ fn client_libraries_silenced() -> Targets {
 mod tests {
     use std::io::Write;
     use std::sync::{Arc, Mutex, PoisonError};
+
+    use tablepro_core::sql_syntax::{MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 
     use super::*;
 
@@ -192,11 +203,29 @@ mod tests {
             log::debug!(target: "tokio_postgres::simple_query", "executing simple query: {SECRET}");
             log::debug!(target: "tokio_postgres::prepare", "preparing query s0: {SECRET}");
             log::info!(target: "tokio_postgres::connection", "NOTICE: {SECRET}");
+            log::debug!(target: "sqlparser::parser", "Parsing sql '{SECRET}'...");
+            log::debug!(target: "sqlparser::dialect", "get_next_precedence_full() {SECRET}");
             log::debug!(target: "drivers_postgres::pool", "a pooled connection ended");
         });
 
         assert!(!text.contains("hunter2"), "{text}");
         assert!(text.contains("a pooled connection ended"), "{text}");
+    }
+
+    #[test]
+    fn a_filter_the_parser_reads_stays_out_of_the_logs() {
+        let _ = tracing_log::LogTracer::init();
+
+        let text = written("debug", LogFormat::Text, || {
+            for grammar in SqlGrammar::ALL {
+                let parsed = parse_expression(grammar, "api_key = 'hunter2'", MAX_EXPRESSION_LEN);
+                assert!(parsed.is_ok(), "{grammar:?}: {parsed:?}");
+            }
+            tracing::debug!(target: "tablepro::ui::browse", "the filter applied");
+        });
+
+        assert!(!text.contains("hunter2"), "{text}");
+        assert!(text.contains("the filter applied"), "{text}");
     }
 
     #[test]

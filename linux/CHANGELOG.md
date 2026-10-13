@@ -45,4 +45,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Format could put a space inside `+=`, `b'01'` or `@@version`, or between a MySQL function such as `GROUP_CONCAT` and its parenthesis, and change what the statement does.
 - Opening a pipe or a device as a SQL file never finished, or read past the 8 MB limit.
 - Importing a CSV or a connections file from a pipe or a device never finished, or read past the size limit.
-- SQL run in the editor, and its values, reached the journal from the database client libraries at debug level.
+- SQL run in the editor, a typed filter or a column default, and the values in them, reached the journal at debug level.

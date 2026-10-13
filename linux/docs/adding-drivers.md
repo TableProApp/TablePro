@@ -376,7 +376,7 @@ cargo nextest run --locked --profile ci -p tablepro-driver-<engine> --run-ignore
 - [ ] Saves record every step in a `WriteLedger`, and the stop is held while a commit is in flight.
 - [ ] Editor sessions are one connection per tab, one run at a time, with `ResultSink` backpressure and the row-limit rule.
 - [ ] Errors map to `DriverError` by the engine's code ([error-handling.md](error-handling.md)).
-- [ ] The client library's log target is in `CLIENT_LIBRARIES` in `crates/app/src/logging.rs`, so no statement text reaches the journal ([error-handling.md](error-handling.md#logging)).
+- [ ] The client library's log target is in `SILENCED_LIBRARIES` in `crates/app/src/logging.rs`, so no statement text reaches the journal ([error-handling.md](error-handling.md#logging)).
 - [ ] Registered in `build_registry`; added to the workspace and to `crates/app/Cargo.toml`.
 - [ ] Both conformance suites run; the CI matrix and nextest groups include the package.
 - [ ] A page in `docs/drivers/` covers timeouts, stops, read-only, writes, trust and the engine's limits.
