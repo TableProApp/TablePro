@@ -3,10 +3,12 @@
 //  TablePro
 //
 
+import Combine
 import SwiftUI
 
 struct WelcomeActionsPanel: View {
     @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var updater = SoftwareUpdater.shared
     let onActivateLicense: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void
@@ -16,7 +18,12 @@ struct WelcomeActionsPanel: View {
     let onImportConnectionsFile: () -> Void
     let onOpenProjectFolder: () -> Void
 
-    private let updater = SoftwareUpdater.shared
+    // One key, not the whole manager: the window lives all session and every settings write would redraw it.
+    @State private var showsVersionInfo = AppSettingsManager.shared.general.showWelcomeVersionInfo
+
+    private static let versionInfoSetting = AppSettingsManager.shared.$general
+        .map(\.showWelcomeVersionInfo)
+        .removeDuplicates()
 
     /// Captured once, because the stored value is overwritten on the same appearance that reads
     /// it. Without the capture the line would replace itself with nothing on the next redraw.
@@ -35,16 +42,23 @@ struct WelcomeActionsPanel: View {
                     Text(verbatim: "TablePro")
                         .font(.title2.weight(.semibold))
 
-                    Text(String(format: String(localized: "Version %@"), Bundle.main.appVersion))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-
-                    Button(updater.checkForUpdatesTitle) {
-                        updater.checkForUpdates()
+                    if showsVersionInfo {
+                        Text(String(format: String(localized: "Version %@"), Bundle.main.appVersion))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("welcome-version-line")
                     }
-                    .buttonStyle(.link)
-                    .font(.callout)
-                    .disabled(!updater.canCheckForUpdates)
+
+                    // A deferred update has its gentle reminder here, so hiding the line never hides that.
+                    if showsVersionInfo || updater.hasPendingUpdate {
+                        Button(updater.checkForUpdatesTitle) {
+                            updater.checkForUpdates()
+                        }
+                        .buttonStyle(.link)
+                        .font(.callout)
+                        .disabled(!updater.canCheckForUpdates)
+                        .accessibilityIdentifier("welcome-check-for-updates-link")
+                    }
 
                     if showsWhatsNew {
                         Button(String(format: String(localized: "What's New in %@"), Bundle.main.appVersion)) {
@@ -103,6 +117,7 @@ struct WelcomeActionsPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: recordAppVersion)
+        .onReceive(Self.versionInfoSetting) { showsVersionInfo = $0 }
     }
 
     private func recordAppVersion() {

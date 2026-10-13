@@ -567,6 +567,12 @@ targets:
       - Plugins/EtcdDriverPlugin/EtcdServerFault.swift
       - Plugins/EtcdDriverPlugin/EtcdServerTrust.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
+      - Plugins/FirebaseDriverPlugin/FirebaseCredentialFactory.swift
+      - Plugins/FirebaseDriverPlugin/FirebasePlugin.swift
+      - Plugins/FirebaseDriverPlugin/FirebasePluginDriver+Editing.swift
+      - Plugins/FirebaseDriverPlugin/FirebasePluginDriver+Execution.swift
+      - Plugins/FirebaseDriverPlugin/FirebasePluginDriver+Metadata.swift
+      - Plugins/FirebaseDriverPlugin/FirebasePluginDriver.swift
       - Plugins/TrinoDriverPlugin/TrinoConnectionFailure.swift
       - Plugins/TrinoDriverPlugin/TrinoSSLMapping.swift
       - Plugins/TrinoDriverPlugin/TrinoRowEditValues.swift
@@ -915,7 +921,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProR2SQLCore, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProTLSClientIdentity, TableProTrinoCore, TableProWeaviateCore]
+        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProFirebaseCore, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProR2SQLCore, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProTLSClientIdentity, TableProTrinoCore, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -1608,6 +1614,19 @@ targets:
       - package: TableProCore
         product: TableProDocumentPath
 
+  FirebaseDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: FirebaseDriverPlugin
+      principalClass: FirebasePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProGoogleCloud
+      - package: TableProCore
+        product: TableProFirebaseCore
+      - package: TableProCore
+        product: TableProLogRedaction
+
   WeaviateDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1635,6 +1654,7 @@ aggregateTargets:
       - DynamoDBDriverPlugin
       - ElasticsearchDriverPlugin
       - EtcdDriverPlugin
+      - FirebaseDriverPlugin
       - HanaDriver
       - JSONExport
       - JSONImport

@@ -857,6 +857,8 @@ private extension QueryClassifier {
             return trimmed.isEmpty ? .safe : typesenseClassification(trimmed)
         case .weaviate:
             return trimmed.isEmpty ? .safe : weaviateClassification(trimmed)
+        case .firestore, .firebaseRealtimeDatabase:
+            return trimmed.isEmpty ? .safe : firebaseClassification(trimmed, databaseType: databaseType)
         default:
             return nil
         }
@@ -1020,5 +1022,71 @@ private extension QueryClassifier {
             return .safe
         }
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    /// A grid page is a tagged spec and anything else a request line read the way the driver reads
+    /// it. A write that leaves a node holding nothing deletes it, so it ranks with DELETE.
+    static func firebaseClassification(_ trimmed: String, databaseType: DatabaseType) -> QueryClassification {
+        if trimmed.hasPrefix("FIREBASE_BROWSE:") {
+            return .safe
+        }
+        let destructive = QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
+        let request = firebaseRequestLine(trimmed)
+        switch request.verb {
+        case "GET", "QUERY":
+            return .safe
+        case "DELETE":
+            return destructive
+        case "PUT" where request.isRoot || firebaseHoldsNothing(request.body):
+            return destructive
+        case "PATCH" where databaseType == .firebaseRealtimeDatabase && firebaseRemovesChild(request.body):
+            return destructive
+        default:
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        }
+    }
+
+    /// The body is the rest of the first line and every line after it, as the driver takes it.
+    static func firebaseRequestLine(_ trimmed: String) -> (verb: String, isRoot: Bool, body: String) {
+        let lines = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        let header = lines.first.map(String.init) ?? ""
+        let parts = header.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace).map(String.init)
+        let target = parts.count > 1 ? String(parts[1].prefix { $0 != "?" }) : ""
+        let path = target.removingPercentEncoding ?? target
+        let inline = parts.count > 2 ? parts[2] : ""
+        let following = lines.count > 1 ? String(lines[1]) : ""
+        return (
+            parts.first?.uppercased() ?? "",
+            path.split(separator: "/").isEmpty,
+            [inline, following].joined(separator: "\n")
+        )
+    }
+
+    static func firebaseHoldsNothing(_ body: String) -> Bool {
+        guard let json = firebaseJSON(body) else { return false }
+        return firebaseHoldsNothing(json: json)
+    }
+
+    static func firebaseRemovesChild(_ body: String) -> Bool {
+        guard let members = firebaseJSON(body) as? [String: Any] else { return false }
+        return members.values.contains { firebaseHoldsNothing(json: $0) }
+    }
+
+    private static func firebaseJSON(_ body: String) -> Any? {
+        guard let data = body.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+    }
+
+    private static func firebaseHoldsNothing(json: Any) -> Bool {
+        switch json {
+        case is NSNull:
+            return true
+        case let members as [String: Any]:
+            return members.values.allSatisfy { firebaseHoldsNothing(json: $0) }
+        case let items as [Any]:
+            return items.allSatisfy { firebaseHoldsNothing(json: $0) }
+        default:
+            return false
+        }
     }
 }
