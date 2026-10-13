@@ -548,6 +548,65 @@ mod tests {
         assert_eq!(decode_int_range(&range[..range.len() - 1], 4), None);
         assert_eq!(decode_int_range(&[range, vec![0]].concat(), 4), None);
     }
+
+    fn all_short_inputs() -> Vec<Vec<u8>> {
+        let alphabet = [0_u8, 1, 2, 4, 8, 0x10, 0x7f, 0x80, 0xff];
+        let mut all = vec![Vec::new()];
+        let mut frontier = vec![Vec::new()];
+        for _ in 0..3 {
+            frontier = frontier
+                .iter()
+                .flat_map(|prefix: &Vec<u8>| {
+                    alphabet.iter().map(move |byte| {
+                        let mut next = prefix.clone();
+                        next.push(*byte);
+                        next
+                    })
+                })
+                .collect();
+            all.extend(frontier.iter().cloned());
+        }
+        all
+    }
+
+    #[test]
+    fn malformed_wire_values_are_refused_and_never_panic() {
+        let types = [
+            "INTERVAL",
+            "BIT",
+            "VARBIT",
+            "MACADDR",
+            "MACADDR8",
+            "INET",
+            "CIDR",
+            "PG_LSN",
+            "XML",
+            "OID",
+            "XID",
+            "CID",
+            "POINT",
+            "INT4RANGE",
+            "INT8RANGE",
+            "TSVECTOR",
+            "NOT_A_TYPE",
+        ];
+        let mut random = crate::test_rng::Xorshift::new(0x9E37_79B9_7F4A_7C15);
+        let mut inputs = all_short_inputs();
+        inputs.extend((0..30_000).map(|_| random.bytes(48)));
+        for bytes in &inputs {
+            for type_name in types {
+                let _ = decode_pg_binary_text(type_name, bytes);
+            }
+            let _ = crate::numeric::decode_binary(bytes);
+            for type_name in ["DATE", "TIMESTAMP", "TIMESTAMPTZ"] {
+                let _ = crate::temporal::decode_temporal(bytes, type_name);
+            }
+            for with_zone in [false, true] {
+                let _ = crate::temporal::decode_time(bytes, with_zone);
+            }
+        }
+    }
+
     #[test]
     fn floats_switch_to_exponent_form_where_the_server_does() {
         for (value, expected) in [

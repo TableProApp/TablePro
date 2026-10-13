@@ -20,6 +20,8 @@ mod params;
 mod query;
 mod session;
 mod temporal;
+#[cfg(test)]
+mod test_rng;
 mod transaction;
 
 use params::{bind_pg_params, describe_query_parameters, needs_text_type_inference};

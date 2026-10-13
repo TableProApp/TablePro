@@ -912,4 +912,24 @@ mod tests {
             Ok(sqlx::encode::IsNull::Yes)
         ));
     }
+    #[test]
+    fn arbitrary_text_is_parsed_or_refused_and_never_panics() {
+        let alphabet = [
+            '{', '}', ',', '"', '\\', 'a', ' ', 'N', 'U', 'L', '[', ']', ':', '=', '1', '\n', 'é',
+        ];
+        let mut random = crate::test_rng::Xorshift::new(0xA076_1D64_78BD_642F);
+        let mut next = move || random.next();
+        for _ in 0..60_000 {
+            let length = next() % 24;
+            let text: String = (0..length)
+                .map(|_| alphabet[(next() as usize >> 4) % alphabet.len()])
+                .collect();
+            let _ = parse_text_array_text(&text);
+        }
+        let nested = format!("{}1{}", "{".repeat(5_000), "}".repeat(5_000));
+        assert!(
+            parse_text_array_text(&nested).is_err(),
+            "deep nesting is refused, not recursed into"
+        );
+    }
 }
