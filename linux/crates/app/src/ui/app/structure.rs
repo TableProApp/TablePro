@@ -483,11 +483,10 @@ impl App {
                 structure.send(StructureTabInput::SchemaChanged);
             }
         }
-        // The new list reaches the sidebar through the catalog watch.
+        // The catalog watch takes the new list to the sidebar, and logs
+        // the error of one that could not be read.
         self.context.tasks.spawn_task(async move {
-            if let Err(error) = session.refresh_objects(ObjectScope::DefaultSchema).await {
-                tracing::warn!(%error, "could not reload the table list");
-            }
+            let _ = session.refresh_objects(ObjectScope::DefaultSchema).await;
         });
     }
 
