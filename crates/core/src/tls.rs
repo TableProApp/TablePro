@@ -64,9 +64,9 @@ pub struct TlsConfig {
     pub client_cert: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_key: Option<PathBuf>,
-    /// Optional SHA-256 fingerprint (hex, lowercase) accepted when the
-    /// presented certificate fails normal chain verification. Reuses the
-    /// TOFU pattern from SSH known_hosts.
+    /// Reserved, not honoured by any driver yet: a certificate that fails
+    /// chain verification is refused even when a fingerprint is set here.
+    /// Planned as a lowercase hex SHA-256 pin, like SSH known_hosts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinned_fingerprint: Option<String>,
 }
