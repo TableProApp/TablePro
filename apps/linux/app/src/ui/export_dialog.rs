@@ -181,6 +181,17 @@ fn suggested_file_name(name: &str, format: ExportFormat) -> String {
     format!("{base}.{}", format.extension())
 }
 
+fn normalize_duplicate_extension(path: std::path::PathBuf, extension: &str) -> std::path::PathBuf {
+    let Some(name) = path.file_name().and_then(std::ffi::OsStr::to_str) else {
+        return path;
+    };
+    let duplicate_suffix = format!(".{extension}.{extension}");
+    if !name.ends_with(&duplicate_suffix) {
+        return path;
+    }
+    path.with_file_name(&name[..name.len() - extension.len() - 1])
+}
+
 pub(crate) fn present(
     parent: &adw::ApplicationWindow,
     toast_overlay: &adw::ToastOverlay,
@@ -400,6 +411,7 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
         let Some(path) = file.path() else {
             return;
         };
+        let path = normalize_duplicate_extension(path, format.extension());
         let options = tablepro_core::export::CsvOptions {
             null_to_empty: false,
             header_row: include_header,
@@ -584,6 +596,22 @@ mod tests {
         assert_eq!(
             suggested_file_name("customers.json", ExportFormat::Csv),
             "customers.csv"
+        );
+    }
+
+    #[test]
+    fn a_file_chooser_duplicate_extension_is_removed_once() {
+        assert_eq!(
+            normalize_duplicate_extension(std::path::PathBuf::from("/tmp/report.sql.sql"), "sql"),
+            std::path::PathBuf::from("/tmp/report.sql")
+        );
+        assert_eq!(
+            normalize_duplicate_extension(std::path::PathBuf::from("/tmp/report.csv.csv"), "csv"),
+            std::path::PathBuf::from("/tmp/report.csv")
+        );
+        assert_eq!(
+            normalize_duplicate_extension(std::path::PathBuf::from("/tmp/report.txt.sql"), "sql"),
+            std::path::PathBuf::from("/tmp/report.txt.sql")
         );
     }
 
