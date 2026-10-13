@@ -2,15 +2,24 @@ use async_trait::async_trait;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{Pool, Postgres};
-use tablepro_core::{DriverError, OperationControl, QueryResult, Value, check_pre_dispatch};
+use tablepro_core::{
+    DriverError, MAX_QUERY_CURSOR_PAGE_ROWS, OperationControl, QueryCursorId, QueryCursorPage, QueryResult, Value,
+    check_pre_dispatch,
+};
 
-use crate::{CONTROL_SETUP_TIMEOUT, backend_pid, controlled_query, map_sqlx_error};
+use crate::{CONTROL_SETUP_TIMEOUT, backend_pid, controlled_execute, controlled_query, map_sqlx_error};
+
+struct ActiveCursor {
+    id: QueryCursorId,
+    columns: Vec<tablepro_core::ColumnInfo>,
+}
 
 pub(crate) struct PgSession {
     connection: Option<PoolConnection<Postgres>>,
     pool: Pool<Postgres>,
     cancellation_pool: Pool<Postgres>,
     backend_pid: i32,
+    active_cursor: Option<ActiveCursor>,
 }
 
 pub(crate) async fn open(
@@ -34,12 +43,163 @@ pub(crate) async fn open(
         pool,
         cancellation_pool,
         backend_pid,
+        active_cursor: None,
     }))
 }
 
 #[async_trait]
 impl tablepro_core::Session for PgSession {
     async fn query_params_controlled(
+        &mut self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryResult, DriverError> {
+        if self.active_cursor.is_some() {
+            return Err(DriverError::Unsupported(
+                "query while a forward-only cursor is active".into(),
+            ));
+        }
+        self.run_query_controlled(sql, params, control).await
+    }
+
+    async fn open_query_cursor_controlled(
+        &mut self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryCursorId, DriverError> {
+        if self.active_cursor.is_some() {
+            return Err(DriverError::Unsupported(
+                "only one forward-only cursor is supported per session".into(),
+            ));
+        }
+        check_pre_dispatch(control)?;
+        let statement = format!("DECLARE bookie_cursor NO SCROLL CURSOR FOR {sql}");
+        let connection = self
+            .connection
+            .take()
+            .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
+        let (connection, result) = controlled_execute(
+            connection,
+            &self.cancellation_pool,
+            self.backend_pid,
+            &statement,
+            params,
+            false,
+            control,
+        )
+        .await;
+        self.connection = connection;
+        if let Err(error) = result {
+            if !matches!(&error, DriverError::Query { sqlstate: Some(code), .. } if code == "25P01") {
+                self.retire_cursor_session();
+            }
+            return Err(error);
+        }
+        let id = QueryCursorId::new();
+        self.active_cursor = Some(ActiveCursor {
+            id,
+            columns: Vec::new(),
+        });
+        Ok(id)
+    }
+
+    async fn fetch_query_cursor_page_controlled(
+        &mut self,
+        cursor_id: QueryCursorId,
+        control: &OperationControl,
+    ) -> Result<QueryCursorPage, DriverError> {
+        self.active_cursor
+            .as_ref()
+            .filter(|cursor| cursor.id == cursor_id)
+            .ok_or_else(|| DriverError::Unsupported("forward-only cursor is not active in this session".into()))?;
+        check_pre_dispatch(control)?;
+        let statement = format!("FETCH FORWARD {MAX_QUERY_CURSOR_PAGE_ROWS} FROM bookie_cursor");
+        let result = self.run_cursor_query_controlled(&statement, control).await;
+        let mut page = match result {
+            Ok(page) => page,
+            Err(error) => {
+                self.retire_cursor_session();
+                return Err(error);
+            }
+        };
+        if page.truncated {
+            self.retire_cursor_session();
+            return Ok(QueryCursorPage {
+                result: page,
+                has_next_page: false,
+            });
+        }
+        let cursor = self
+            .active_cursor
+            .as_mut()
+            .ok_or_else(|| DriverError::Internal("the active PostgreSQL cursor disappeared during fetch".into()))?;
+        if !page.columns.is_empty() {
+            cursor.columns.clone_from(&page.columns);
+        } else if !cursor.columns.is_empty() {
+            page.columns.clone_from(&cursor.columns);
+        }
+        let has_next_page = page.rows.len() == MAX_QUERY_CURSOR_PAGE_ROWS;
+        Ok(QueryCursorPage {
+            result: QueryResult {
+                columns: page.columns,
+                rows: page.rows,
+                truncated: false,
+            },
+            has_next_page,
+        })
+    }
+
+    async fn close_query_cursor_controlled(
+        &mut self,
+        cursor_id: QueryCursorId,
+        control: &OperationControl,
+    ) -> Result<(), DriverError> {
+        if !self.active_cursor.as_ref().is_some_and(|cursor| cursor.id == cursor_id) {
+            return Err(DriverError::Unsupported(
+                "forward-only cursor is not active in this session".into(),
+            ));
+        }
+        check_pre_dispatch(control)?;
+        let connection = self
+            .connection
+            .take()
+            .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
+        let (connection, result) = controlled_execute(
+            connection,
+            &self.cancellation_pool,
+            self.backend_pid,
+            "CLOSE bookie_cursor",
+            &[],
+            false,
+            control,
+        )
+        .await;
+        self.connection = connection;
+        if result.is_err() {
+            self.retire_cursor_session();
+        } else {
+            self.active_cursor = None;
+        }
+        result.map(|_| ())
+    }
+
+    fn is_usable(&self) -> bool {
+        self.connection.is_some()
+    }
+
+    async fn close(mut self: Box<Self>) -> Result<(), DriverError> {
+        if let Some(connection) = self.connection.take() {
+            let _ = connection.close().await;
+        }
+        self.pool.close().await;
+        Ok(())
+    }
+}
+
+impl PgSession {
+    async fn run_query_controlled(
         &mut self,
         sql: &str,
         params: &[Value],
@@ -70,15 +230,31 @@ impl tablepro_core::Session for PgSession {
         result
     }
 
-    fn is_usable(&self) -> bool {
-        self.connection.is_some()
+    async fn run_cursor_query_controlled(
+        &mut self,
+        sql: &str,
+        control: &OperationControl,
+    ) -> Result<QueryResult, DriverError> {
+        let connection = self
+            .connection
+            .take()
+            .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
+        let (connection, result) = controlled_query(
+            connection,
+            &self.cancellation_pool,
+            self.backend_pid,
+            sql,
+            &[],
+            false,
+            control,
+        )
+        .await;
+        self.connection = connection;
+        result
     }
 
-    async fn close(mut self: Box<Self>) -> Result<(), DriverError> {
-        if let Some(connection) = self.connection.take() {
-            let _ = connection.close().await;
-        }
-        self.pool.close().await;
-        Ok(())
+    fn retire_cursor_session(&mut self) {
+        self.connection = None;
+        self.active_cursor = None;
     }
 }

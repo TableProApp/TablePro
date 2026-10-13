@@ -113,6 +113,28 @@ pub enum Value {
 pub const MAX_QUERY_ROWS: usize = 1_000_000;
 pub const MAX_QUERY_RESULT_CELLS: usize = 10_000_000;
 pub const MAX_QUERY_RESULT_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_QUERY_CURSOR_PAGE_ROWS: usize = 5_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct QueryCursorId(uuid::Uuid);
+
+impl QueryCursorId {
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+}
+
+impl Default for QueryCursorId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct QueryCursorPage {
+    pub result: QueryResult,
+    pub has_next_page: bool,
+}
 
 #[derive(Debug, Default)]
 pub struct QueryResultBudget {

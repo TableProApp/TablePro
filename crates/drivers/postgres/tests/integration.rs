@@ -73,7 +73,8 @@ mod interval_contract;
 
 #[path = "support/query_budget_contract.rs"]
 mod query_budget_contract;
-
+#[path = "support/query_cursor.rs"]
+mod query_cursor;
 #[path = "support/value_contracts.rs"]
 mod value_contracts;
 
