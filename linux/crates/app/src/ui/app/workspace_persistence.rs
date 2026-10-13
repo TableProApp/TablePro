@@ -217,7 +217,6 @@ mod tests {
 
         fn add_editor(&self) -> (adw::TabPage, DraftId) {
             let editor = SqlEditor::new(SqlEditorInit {
-                schema_buffer: crate::ui::editor::build_schema_buffer(),
                 initial_query: None,
                 settings: self.settings.get().clone(),
                 history: None,
@@ -293,7 +292,6 @@ mod tests {
                 schema: Some("public".to_owned()),
                 table: table.to_owned(),
                 mode,
-                driver_id: "postgres".to_owned(),
                 session: session.session.clone(),
                 tasks: fixture.runtime.tasks(),
             });
