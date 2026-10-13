@@ -246,6 +246,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// it and say so. Throwing is reserved for a release that was attempted and failed.
     func releaseIdleResource() async throws -> PluginResourceRelease
     var serverVersion: String? { get }
+    /// The warning the server sent with a login that succeeded, in the server's own words, such as an Oracle
+    /// password in its grace period, or `nil` when there was none. The app reads it once `connect()` returns.
+    var connectionWarning: String? { get }
     var hasLostConnection: Bool { get }
     var parameterStyle: ParameterStyle { get }
     func resolveQueryCompletionProfile(
@@ -846,6 +849,8 @@ public extension PluginDatabaseDriver {
     }
 
     var serverVersion: String? { nil }
+
+    var connectionWarning: String? { nil }
 
     var hasLostConnection: Bool { false }
 

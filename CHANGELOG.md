@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Setting in Settings > General to hide the version and Check for Updates on the Welcome window.
 - Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
 - Cloud Firestore and Firebase Realtime Database as a registry plugin over their REST APIs. (#2504)
+- Warning banner and Test Connection notice for a server warning at login, such as an Oracle password about to expire. (#3401)
 
 ### Changed
 
@@ -72,6 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
 - GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
 - Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
+- Oracle connection timing out after 30 seconds when the password is about to expire. (#3401)
+- Oracle session left open on the server when a connect was canceled during login.
 
 ### Security
 

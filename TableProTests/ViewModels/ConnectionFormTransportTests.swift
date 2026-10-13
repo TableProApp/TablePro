@@ -144,7 +144,7 @@ struct ConnectionFormTransportTests {
     @Test("selecting a transport clears a passing test result")
     func selectionInvalidatesTestResult() {
         let coordinator = coordinator()
-        coordinator.testSucceeded = true
+        coordinator.testResult = ConnectionTestResult(succeeded: true)
         coordinator.transport = .ssh
         #expect(!coordinator.testSucceeded)
     }
@@ -321,7 +321,7 @@ struct ConnectionFormTransportTests {
     @Test("choosing an endpoint clears a passing test result")
     func endpointInvalidatesTestResult() {
         let coordinator = coordinator()
-        coordinator.testSucceeded = true
+        coordinator.testResult = ConnectionTestResult(succeeded: true)
         coordinator.selectEndpoint(.localSocket)
         #expect(!coordinator.testSucceeded)
     }

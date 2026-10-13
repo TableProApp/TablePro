@@ -447,8 +447,23 @@ struct MainContentView: View {
 
     // MARK: - Main Content
 
-    @ViewBuilder
     private var mainContentView: some View {
+        VStack(spacing: 0) {
+            if let warning = toolbarState.connectionWarning {
+                ConnectionWarningBanner(message: warning) {
+                    DatabaseManager.shared.dismissConnectionWarning(for: connection.id)
+                }
+                Divider()
+            }
+            editorContentView
+        }
+        .onChange(of: toolbarState.connectionWarning) { warning in
+            announceConnectionWarning(warning)
+        }
+    }
+
+    @ViewBuilder
+    private var editorContentView: some View {
         MainEditorContentView(
             tabManager: tabManager,
             coordinator: coordinator,

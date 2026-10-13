@@ -38,7 +38,7 @@ extension DatabaseManager {
         _ connection: DatabaseConnection,
         sshPassword: String? = nil,
         passwordOverride: String? = nil
-    ) async throws -> Bool {
+    ) async throws -> ConnectionTestResult {
         let timeoutEndpoint = ConnectionTimeoutEndpoint.database(connection.timeoutEndpointName)
         let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
             configuredSeconds: connection.queryTimeoutSeconds,
@@ -47,11 +47,12 @@ extension DatabaseManager {
 
         // A remote file answers the only question this button asks without moving the file.
         if connection.activeTunnelKind == .remoteFile {
-            return try await testRemoteDatabaseFile(
+            let reached = try await testRemoteDatabaseFile(
                 connection,
                 sshPassword: sshPassword,
                 deadline: ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
             )
+            return ConnectionTestResult(succeeded: reached)
         }
 
         let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: connection)
@@ -66,7 +67,7 @@ extension DatabaseManager {
 
         let tunnelManager = activeTunnelManager(for: connection)
 
-        let result: Bool
+        let result: ConnectionTestResult
         do {
             let driver = try await DatabaseDriverFactory.createDriver(
                 for: testConnection,
@@ -77,7 +78,8 @@ extension DatabaseManager {
                 effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
                 preparedConfiguration: preparedConfiguration
             )
-            result = try await driver.testConnection()
+            let succeeded = try await driver.testConnection()
+            result = ConnectionTestResult(succeeded: succeeded, warning: driver.connectionWarning)
         } catch {
             let reportedError = await Self.preferredTunnelFailure(replacing: error) {
                 await self.attributedTunnelFailure(for: connection)

@@ -46089,6 +46089,12 @@
         }
       }
     },
+    "Connected with a warning" : {
+
+    },
+    "Connected with a warning. %@" : {
+
+    },
     "connecting" : {
       "localizations" : {
         "fr" : {
@@ -50629,6 +50635,9 @@
           }
         }
       }
+    },
+    "Copy Warning" : {
+
     },
     "Copy with Headers" : {
       "localizations" : {

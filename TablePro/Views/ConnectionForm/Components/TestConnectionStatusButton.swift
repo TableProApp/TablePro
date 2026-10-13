@@ -30,6 +30,9 @@ struct TestConnectionStatusButton: View {
         if coordinator.isTesting {
             return String(localized: "Testing connection")
         }
+        if coordinator.testResult?.warning != nil {
+            return String(localized: "Connected with a warning")
+        }
         if coordinator.testSucceeded {
             return String(localized: "Connection succeeded")
         }
@@ -41,6 +44,9 @@ struct TestConnectionStatusButton: View {
         if coordinator.isTesting {
             ProgressView()
                 .controlSize(.small)
+        } else if coordinator.testResult?.warning != nil {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
         } else if coordinator.testSucceeded {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)

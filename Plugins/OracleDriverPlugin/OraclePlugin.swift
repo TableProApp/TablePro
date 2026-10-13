@@ -180,6 +180,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var currentSchema: String? { _currentSchema }
     var serverVersion: String? { _serverVersion }
+    var connectionWarning: String? { core?.loginWarning }
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
 

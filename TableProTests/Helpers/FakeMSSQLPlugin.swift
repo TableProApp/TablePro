@@ -87,6 +87,7 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     private static let connectFailures = OSAllocatedUnfairLock<[String: ConnectFailure]>(initialState: [:])
     private static let connectHolds = OSAllocatedUnfairLock<[String: FakeMSSQLConnectHold]>(initialState: [:])
+    private static let connectWarnings = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
     private static let createdDriverConfigurations = OSAllocatedUnfairLock<[String: [CreatedDriverConfiguration]]>(
         initialState: [:]
     )
@@ -97,6 +98,15 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static func clearConnectFailure(for connectionId: UUID) {
         _ = connectFailures.withLock { $0.removeValue(forKey: connectionId.uuidString) }
+    }
+
+    /// The next login on this connection succeeds with this warning, as an Oracle password in its grace period does.
+    static func warnOnConnect(for connectionId: UUID, message: String) {
+        connectWarnings.withLock { $0[connectionId.uuidString] = message }
+    }
+
+    static func clearConnectWarning(for connectionId: UUID) {
+        _ = connectWarnings.withLock { $0.removeValue(forKey: connectionId.uuidString) }
     }
 
     static func holdConnect(for connectionId: UUID) -> FakeMSSQLConnectHold {
@@ -133,8 +143,9 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         Self.createdDriverConfigurations.withLock {
             $0[connectionId]?.append(createdConfiguration)
         }
+        let connectWarning = Self.connectWarnings.withLock { $0[connectionId] }
         guard let failure = Self.connectFailures.withLock({ $0[connectionId] }) else {
-            return FakeMSSQLPluginDriver(connectHold: connectHold)
+            return FakeMSSQLPluginDriver(connectHold: connectHold, connectWarning: connectWarning)
         }
         return FakeMSSQLPluginDriver(
             connectFailure: failure.error,
@@ -160,16 +171,22 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let connectFailure: (any Error & Sendable)?
     private let connectDelay: Duration
     private let connectHold: FakeMSSQLConnectHold?
+    private let connectWarning: String?
     private let queryTimeoutValues = OSAllocatedUnfairLock<[Int]>(initialState: [])
+    private let reportedWarning = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+    var connectionWarning: String? { reportedWarning.withLock { $0 } }
 
     init(
         connectFailure: (any Error & Sendable)? = nil,
         connectDelay: Duration = .zero,
-        connectHold: FakeMSSQLConnectHold? = nil
+        connectHold: FakeMSSQLConnectHold? = nil,
+        connectWarning: String? = nil
     ) {
         self.connectFailure = connectFailure
         self.connectDelay = connectDelay
         self.connectHold = connectHold
+        self.connectWarning = connectWarning
     }
 
     func connect() async throws {
@@ -180,6 +197,7 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             try? await Task.sleep(for: connectDelay)
         }
         if let connectFailure { throw connectFailure }
+        reportedWarning.withLock { $0 = connectWarning }
     }
     func disconnect() { disconnectCallCount += 1 }
 
