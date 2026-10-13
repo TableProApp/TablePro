@@ -21,7 +21,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use crate::cancel::{ControlLink, MySqlStop, StopProgress};
 use crate::dialect::MySqlDialect;
 use crate::editor_session::MysqlEditorSession;
-use crate::errors::{map_error, map_pool_error, means_link_lost};
+use crate::errors::{map_error, map_pool_error};
 use crate::flavour::MySqlFlavour;
 use crate::metadata;
 use crate::mysql_call::MysqlCall;
@@ -194,6 +194,13 @@ fn suspects_link(error: &DriverError) -> bool {
         ),
         _ => false,
     }
+}
+
+fn means_link_lost(error: &DriverError) -> bool {
+    matches!(
+        error.category(),
+        ErrorCategory::Network | ErrorCategory::ConnectionLost | ErrorCategory::Timeout
+    )
 }
 
 #[async_trait]

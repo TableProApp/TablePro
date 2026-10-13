@@ -4,8 +4,8 @@ use std::io;
 use deadpool::managed::{PoolError, TimeoutType};
 use sqlx::mysql::MySqlDatabaseError;
 use tablepro_core::{
-    DriverError, ErrorCategory, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode, ServerDiagnostics,
-    TimeoutPhase, TlsFailure, TransportError,
+    DriverError, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase, TlsFailure,
+    TransportError,
 };
 
 use crate::flavour::MySqlFlavour;
@@ -39,12 +39,17 @@ const MARIADB_CONNECTION_KILLED: u16 = 1927;
 const MYSQL_CLIENT_INTERACTION_TIMEOUT: u16 = 4031;
 
 /// What a sqlx error on an open connection means to the app.
-/// The connection, not the statement, failed: whatever was on the wire
-/// may or may not have run.
-pub(crate) fn means_link_lost(error: &DriverError) -> bool {
+/// No reply came, so what was sent may or may not have run. A timeout
+/// the server enforced is its reply.
+pub(crate) fn reply_lost(error: &DriverError) -> bool {
     matches!(
-        error.category(),
-        ErrorCategory::Network | ErrorCategory::ConnectionLost | ErrorCategory::Timeout
+        error,
+        DriverError::ConnectionLost { .. }
+            | DriverError::Transport(_)
+            | DriverError::Timeout {
+                server_cancelled: false,
+                ..
+            }
     )
 }
 

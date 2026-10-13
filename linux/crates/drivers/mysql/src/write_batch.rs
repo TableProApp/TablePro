@@ -17,7 +17,7 @@ use tablepro_core::{
 
 use crate::cancel::{MySqlStop, acknowledges_stop, interrupted};
 use crate::decode::decode_row;
-use crate::errors::{INCOMPLETE_ROLLBACK, map_error, means_link_lost};
+use crate::errors::{INCOMPLETE_ROLLBACK, map_error, reply_lost};
 use crate::flavour::MySqlFlavour;
 use crate::mysql_call::Tainter;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
@@ -234,7 +234,7 @@ async fn statement_by_statement(
 /// dropped may have run before the reply was lost, so on an engine that
 /// cannot roll back it is reported as unknown, not as refused.
 fn step_failed(tainter: &Tainter, ledger: &WriteLedger, index: usize, error: DriverError) -> DriverError {
-    if means_link_lost(&error) {
+    if reply_lost(&error) {
         tainter.taint();
         return ledger.interrupted(error, SessionFate::Discarded);
     }
@@ -364,12 +364,24 @@ mod tests {
             }
         ));
 
-        let refused = WriteLedger::new(WriteAtomicity::StatementByStatement);
-        refused.statement_sending(0);
-        assert!(matches!(
-            step_failed(&tainter, &refused, 0, DriverError::server("duplicate key")),
-            DriverError::RolledBack { statement_index: 0, .. }
-        ));
+        let server_answers = [
+            DriverError::server("duplicate key"),
+            DriverError::Timeout {
+                phase: tablepro_core::TimeoutPhase::Statement,
+                server_cancelled: true,
+            },
+        ];
+        for answer in server_answers {
+            let refused = WriteLedger::new(WriteAtomicity::StatementByStatement);
+            refused.statement_sending(0);
+            assert!(
+                matches!(
+                    step_failed(&tainter, &refused, 0, answer.clone()),
+                    DriverError::RolledBack { statement_index: 0, .. }
+                ),
+                "{answer:?}"
+            );
+        }
     }
 
     #[test]
