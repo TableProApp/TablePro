@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -347,11 +348,90 @@ struct MSSQLObjectQueryTests {
     @Test("Routine source comes from sys.sql_modules, never ROUTINE_DEFINITION")
     func routineSourceAvoidsInformationSchema() {
         let list = MSSQLObjectQueries.routineList(schema: "dbo")
-        let definition = MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p")
+        let definition = MSSQLObjectQueries.moduleDefinition(schema: "dbo", name: "p")
         #expect(list.contains("sys.sql_modules"))
         #expect(definition.contains("sys.sql_modules"))
         #expect(!list.contains("ROUTINE_DEFINITION"))
         #expect(!definition.contains("ROUTINE_DEFINITION"))
+    }
+
+    /// `OBJECT_ID(N'sales.v.1')` parses `v.1` as two parts and finds nothing, so a view is matched by
+    /// its schema and name as literals rather than through a name the server re-parses.
+    @Test("A module is found by its schema and name, never through OBJECT_ID text")
+    func moduleIsMatchedByLiteralNames() {
+        let sql = MSSQLObjectQueries.moduleDefinition(schema: "sales", name: "v.1")
+        #expect(sql.contains("s.name = N'sales' AND o.name = N'v.1'"))
+        #expect(sql.contains("LEFT JOIN sys.sql_modules"))
+        #expect(!sql.contains("OBJECT_ID("))
+    }
+
+    @Test("Only the view type code reads as a view")
+    func viewTypeCode() {
+        #expect(MSSQLObjectQueries.isView(objectType: "V "))
+        #expect(MSSQLObjectQueries.isView(objectType: "v"))
+        #expect(!MSSQLObjectQueries.isView(objectType: "U "))
+        #expect(!MSSQLObjectQueries.isView(objectType: "P "))
+        #expect(!MSSQLObjectQueries.isView(objectType: ""))
+    }
+
+    /// Measured on Azure SQL Edge: the stored text keeps its comments, and an encrypted view's
+    /// definition is NULL with `IsEncrypted` 1.
+    @Test("A view's stored text is its source, its header naming the view as it is named now")
+    func viewSourceIsTheStoredText() throws {
+        let stored = "-- owner: finance\r\ncreate view [dbo].[v_dscp1]\r\nAS\r\nSELECT id AS idxr FROM dbo.t -- note\r\n"
+        #expect(try MSSQLObjectQueries.viewSource(row: [stored, "0", "V "], schema: "dbo", name: "v_dscp1") == stored)
+
+        let renamed = try MSSQLObjectQueries.viewSource(
+            row: ["CREATE VIEW dbo.v_old AS SELECT 2 AS y", "0", "V "], schema: "dbo", name: "v_new"
+        )
+        #expect(renamed == "CREATE VIEW [dbo].[v_new] AS SELECT 2 AS y")
+    }
+
+    @Test("An encrypted view, a withheld definition and a missing view are three different errors")
+    func viewSourceFailures() {
+        func failure(_ row: [String?]?, _ name: String) -> PluginObjectSourceError? {
+            do {
+                _ = try MSSQLObjectQueries.viewSource(row: row, schema: "dbo", name: name)
+                return nil
+            } catch {
+                return error as? PluginObjectSourceError
+            }
+        }
+        guard case .unsupported("v")? = failure([nil, "1", "V "], "v") else {
+            Issue.record("An encrypted view must say its source cannot be shown")
+            return
+        }
+        guard case .insufficientPrivilege("v")? = failure([nil, "0", "V "], "v") else {
+            Issue.record("A withheld definition must say the account may not read it")
+            return
+        }
+        guard case .notFound("v")? = failure(nil, "v") else {
+            Issue.record("A missing view must say it no longer exists")
+            return
+        }
+        guard case .notFound("t")? = failure([nil, "0", "U "], "t") else {
+            Issue.record("A table is not a view")
+            return
+        }
+    }
+
+    /// A tab's schema is not a search path on SQL Server, so an unqualified template for `sales.v`
+    /// created `dbo.v` when run.
+    @Test("The Edit View template names the view's schema")
+    func editViewTemplateIsQualified() {
+        let template = MSSQLObjectQueries.editViewTemplate(schema: "sales", view: "v", createOrAlter: true)
+        #expect(template == "CREATE OR ALTER VIEW [sales].[v] AS\nSELECT * FROM table_name;")
+    }
+
+    @Test("Before CREATE OR ALTER the template drops in its own batch")
+    func legacyEditViewTemplateSeparatesBatches() {
+        let template = MSSQLObjectQueries.editViewTemplate(schema: "we]ird", view: "o'v", createOrAlter: false)
+        #expect(template == """
+            IF OBJECT_ID(N'[we]]ird].[o''v]', 'V') IS NOT NULL DROP VIEW [we]]ird].[o'v];
+            GO
+            CREATE VIEW [we]]ird].[o'v] AS
+            SELECT * FROM table_name;
+            """)
     }
 
     @Test("Both trigger scopes come from one builder")
@@ -380,7 +460,7 @@ struct MSSQLObjectQueryTests {
     @Test("A non-ASCII schema, routine or table name is an nvarchar literal")
     func catalogNamesAreNationalLiterals() {
         #expect(MSSQLObjectQueries.routineList(schema: "販売").contains("s.name = N'販売'"))
-        let definition = MSSQLObjectQueries.routineDefinition(schema: "販売", name: "集計")
+        let definition = MSSQLObjectQueries.moduleDefinition(schema: "販売", name: "集計")
         #expect(definition.contains("s.name = N'販売' AND o.name = N'集計'"))
         let triggers = MSSQLObjectQueries.triggerList(schema: "販売", table: "注文")
         #expect(triggers.contains("s.name = N'販売'"))
@@ -419,7 +499,7 @@ struct MSSQLObjectQueryTests {
         let list = MSSQLObjectQueries.routineList(schema: "dbo")
         #expect(list.contains("OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS is_encrypted"))
         #expect(list.contains("AS definition_withheld"))
-        #expect(MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p")
+        #expect(MSSQLObjectQueries.moduleDefinition(schema: "dbo", name: "p")
             .contains("OBJECTPROPERTY(o.object_id, 'IsEncrypted')"))
     }
 
@@ -429,7 +509,7 @@ struct MSSQLObjectQueryTests {
     func listingOmitsBodies() {
         let list = MSSQLObjectQueries.routineList(schema: "dbo")
         #expect(!list.contains("m.definition,"))
-        #expect(MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p").contains("m.definition"))
+        #expect(MSSQLObjectQueries.moduleDefinition(schema: "dbo", name: "p").contains("m.definition"))
     }
 
     /// A CLR routine has no sys.sql_modules row at all, so the inner join this replaced returned
@@ -438,7 +518,7 @@ struct MSSQLObjectQueryTests {
     /// left join 1 row.
     @Test("The definition query survives a routine with no SQL module row")
     func definitionQueryUsesLeftJoin() {
-        let sql = MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p")
+        let sql = MSSQLObjectQueries.moduleDefinition(schema: "dbo", name: "p")
         #expect(sql.contains("FROM sys.objects o"))
         #expect(sql.contains("LEFT JOIN sys.sql_modules m"))
         #expect(!sql.contains("FROM sys.sql_modules"))

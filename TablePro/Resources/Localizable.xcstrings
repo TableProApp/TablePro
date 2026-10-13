@@ -126293,6 +126293,10 @@
         }
       }
     },
+    "Oracle returns only the first 4000 bytes of this view's definition, so the full text cannot be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database." : {
       "localizations" : {
         "fr" : {

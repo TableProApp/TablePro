@@ -72,6 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
 - GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
 - Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
+- Show DDL, Copy DDL and Structure > DDL showing a made-up CREATE TABLE for a view on SQL Server, Oracle, Dameng, DuckDB and Redshift. (#3402)
+- Show DDL and Copy DDL failing on every view on SQLite, libSQL, Cloudflare D1, SAP HANA, Spanner, Trino and Teradata.
+- SQL Server view definitions naming the view's old name after a rename, and blank for an encrypted view or a name with a period.
+- SQL Server Edit View Definition template creating the view in the default schema instead of the view's own.
+- Trino materialized views left out of SQL exports.
 
 ### Security
 

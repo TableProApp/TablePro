@@ -415,19 +415,23 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         "DROP TRIGGER IF EXISTS \(quoteIdentifier(name))"
     }
 
+    /// A view's `CREATE VIEW` sits in `sqlite_master` beside the tables, so one read answers both.
+    /// The view goes back exactly as it was written: SQLite keeps a trailing comment in it, which a
+    /// `;` appended here would land inside.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeStringLiteral(table)
         let query = """
-            SELECT sql FROM sqlite_master
-            WHERE type = 'table' AND name = '\(safeTable)'
+            SELECT type, sql FROM sqlite_master
+            WHERE type IN ('table', 'view') AND name = '\(safeTable)'
             """
         let result = try await execute(query: query)
 
         guard let firstRow = result.rows.first,
-              let ddl = firstRow[0].asText else {
+              let ddl = firstRow[safe: 1]?.asText else {
             throw CloudflareD1Error(message: "Failed to fetch DDL for table '\(table)'")
         }
 
+        guard firstRow[safe: 0]?.asText != "view" else { return ddl }
         let formatted = formatDDL(ddl)
         return formatted.hasSuffix(";") ? formatted : formatted + ";"
     }

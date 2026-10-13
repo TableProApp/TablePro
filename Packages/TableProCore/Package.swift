@@ -114,7 +114,7 @@ let package = Package(
         ),
         .target(
             name: "TableProMSSQLCore",
-            dependencies: ["TableProCoreTypes"],
+            dependencies: ["TableProCoreTypes", "TableProSQLGrammar"],
             path: "Sources/TableProMSSQLCore"
         ),
         .target(

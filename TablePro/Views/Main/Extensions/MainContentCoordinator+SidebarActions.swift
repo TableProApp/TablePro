@@ -135,14 +135,32 @@ extension MainContentCoordinator {
     /// tab there. It used to read through the browse scope with the name alone, so a view selected
     /// in another schema opened the definition of a same-named view in the browsed one, and running
     /// it replaced that other view.
+    ///
+    /// The fallback template comes from the driver pinned to the view's schema, because a driver
+    /// that qualifies the template, as SQL Server must, names the schema it is pinned to.
     func editViewDefinition(_ ref: DatabaseTreeTableRef) {
         guard let target = objectTarget(for: ref) else { return }
         let viewName = ref.table.name
         Task {
+            let lineComment = self.services.pluginManager.editorLanguage(for: self.connection.type).lineCommentMarker
             let query: String
             do {
-                query = try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
-                    try await driver.fetchViewDefinition(view: viewName)
+                let read = try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
+                    do {
+                        return ViewDefinitionRead.definition(try await driver.fetchViewDefinition(view: viewName))
+                    } catch {
+                        return ViewDefinitionRead.unreadable(
+                            error, template: driver.editViewFallbackTemplate(viewName: viewName)
+                        )
+                    }
+                }
+                switch read {
+                case .definition(let definition):
+                    query = definition
+                case .unreadable(let error, let template):
+                    query = Self.viewDefinitionFallback(
+                        viewName: viewName, error: error, template: template, lineComment: lineComment
+                    )
                 }
             } catch {
                 query = Self.viewDefinitionFallback(
@@ -150,7 +168,7 @@ extension MainContentCoordinator {
                     error: error,
                     template: DatabaseManager.shared.driver(for: self.connection.id)?
                         .editViewFallbackTemplate(viewName: viewName),
-                    lineComment: self.services.pluginManager.editorLanguage(for: self.connection.type).lineCommentMarker
+                    lineComment: lineComment
                 )
             }
             WindowManager.shared.openTab(payload: EditorTabPayload(
@@ -385,4 +403,9 @@ extension MainContentCoordinator {
             }
         }
     }
+}
+
+private enum ViewDefinitionRead: Sendable {
+    case definition(String)
+    case unreadable(any Error, template: String?)
 }
