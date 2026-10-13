@@ -125,31 +125,15 @@ async fn assert_multirow_before_insert_trigger_effect_survives_later_batch_rollb
         ),
         ("INSERT INTO missing_before_upsert_table VALUES (1)".into(), vec![]),
     ];
-    let error = conn
-        .execute_in_transaction(&batch)
-        .await
-        .expect_err("the multi-row upsert must run its insert triggers before the later failure");
-    assert!(
-        matches!(error, DriverError::Transaction { statement_index: 1, .. }),
-        "the second statement must be reported as the failure, got {error:?}"
-    );
-
-    assert_eq!(
-        conn.query("SELECT id, value FROM before_upsert_parent")
-            .await
-            .unwrap()
-            .rows,
+    crate::mysql_atomic_assertions::assert_failed_batch_preserves_rows(
+        conn.as_ref(),
+        &batch,
+        "SELECT id, value FROM before_upsert_parent",
         vec![vec![Value::Int(1), Value::Int(10)]],
-        "the duplicate upsert's InnoDB update is rolled back"
-    );
-    assert_eq!(
-        conn.query("SELECT id, value FROM before_upsert_myisam_effect")
-            .await
-            .unwrap()
-            .rows,
+        "SELECT id, value FROM before_upsert_myisam_effect",
         vec![vec![Value::Int(1), Value::Int(11)], vec![Value::Int(2), Value::Int(20)]],
-        "the MyISAM BEFORE INSERT effects for duplicate and new rows survive rollback"
-    );
+    )
+    .await;
 }
 
 async fn assert_replace_trigger_effect_survives_later_batch_rollback(conn: Box<dyn Connection>, opts: ConnectOptions) {
