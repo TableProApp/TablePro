@@ -10,6 +10,7 @@ mod cancellation;
 mod conformance_engine;
 mod decode;
 mod editor_session;
+mod filter;
 mod liveness;
 mod metadata;
 mod pgbouncer;

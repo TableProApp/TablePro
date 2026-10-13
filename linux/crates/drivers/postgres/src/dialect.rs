@@ -195,6 +195,25 @@ impl SqlDialect for PgDialect {
             ReadForm::Native => name,
         }
     }
+
+    /// json, jsonb, xml and enums have no LIKE: `jsonb ~~ text` does not
+    /// exist.
+    fn text_operand(&self, column: &ColumnInfo) -> Option<String> {
+        match column.column_type.kind {
+            ColumnKind::Json { .. } | ColumnKind::Enum { .. } | ColumnKind::Xml => {
+                Some(format!("{}::text", self.quote_identifier(&column.name)))
+            }
+            _ => None,
+        }
+    }
+
+    /// json and xml have no `=`; jsonb and an enum do.
+    fn equality_as_text(&self, column: &ColumnInfo) -> bool {
+        matches!(
+            column.column_type.kind,
+            ColumnKind::Json { binary: false } | ColumnKind::Xml
+        )
+    }
 }
 
 /// What a value binds as, and the cast that turns the parameter into the

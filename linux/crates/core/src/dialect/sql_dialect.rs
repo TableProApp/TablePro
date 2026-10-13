@@ -105,6 +105,19 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         "COUNT(*)"
     }
 
+    /// The column as text, where it meets a LIKE pattern or text the user
+    /// typed, for a type the engine will not compare with text as it is.
+    /// `None` when the column takes text as it is.
+    fn text_operand(&self, _column: &ColumnInfo) -> Option<String> {
+        None
+    }
+
+    /// Whether `=` and `IN` have to compare `text_operand`, because the
+    /// type has no equality of its own.
+    fn equality_as_text(&self, _column: &ColumnInfo) -> bool {
+        false
+    }
+
     /// `!` rather than a backslash: a backslash means something else
     /// inside a string literal under some PostgreSQL and MySQL session
     /// modes, and is no escape at all on SQLite and SQL Server.

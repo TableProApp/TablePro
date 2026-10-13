@@ -10,6 +10,7 @@
 mod cancellation;
 mod conformance_engine;
 mod decode;
+mod filter;
 mod metadata;
 mod read_only;
 mod sessions;

@@ -222,6 +222,16 @@ impl SqlDialect for MssqlDialect {
         }
     }
 
+    /// xml takes neither LIKE nor `=`.
+    fn text_operand(&self, column: &ColumnInfo) -> Option<String> {
+        matches!(column.column_type.kind, ColumnKind::Xml)
+            .then(|| format!("CAST({} AS nvarchar(max))", self.quote_identifier(&column.name)))
+    }
+
+    fn equality_as_text(&self, column: &ColumnInfo) -> bool {
+        matches!(column.column_type.kind, ColumnKind::Xml)
+    }
+
     /// COUNT(*) is an int on SQL Server and overflows past two billion
     /// rows.
     fn count_all(&self) -> &'static str {

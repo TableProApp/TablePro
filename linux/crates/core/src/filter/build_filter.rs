@@ -63,10 +63,16 @@ fn rule_sql(
     rule: &FilterRule,
 ) -> Result<String, BuildFilterError> {
     let column_sql = dialect.quote_identifier(&column.name);
+    let text_sql = dialect.text_operand(column).unwrap_or_else(|| column_sql.clone());
+    let equality_as_text = dialect.equality_as_text(column);
     match rule.op {
         // A null test has no value to bind, so it never takes a marker.
         FilterOp::IsNull => Ok(format!("{column_sql} IS NULL")),
         FilterOp::IsNotNull => Ok(format!("{column_sql} IS NOT NULL")),
+        FilterOp::Eq | FilterOp::NotEq if equality_as_text => {
+            let marker = bind_text(builder, dialect, require_single(rule)?)?;
+            Ok(format!("{text_sql} {} {marker}", comparison_operator(rule.op)))
+        }
         FilterOp::Eq | FilterOp::NotEq | FilterOp::Lt | FilterOp::LtEq | FilterOp::Gt | FilterOp::GtEq => {
             let marker = bind_typed(builder, dialect, column, require_single(rule)?)?;
             Ok(format!("{column_sql} {} {marker}", comparison_operator(rule.op)))
@@ -81,19 +87,19 @@ fn rule_sql(
                 _ => format!("%{escaped}"),
             };
             let marker = builder.bind(dialect, Value::Text(pattern), BindTarget::Pattern)?;
-            Ok(dialect.like_predicate(&column_sql, &marker, LikeForm::contains()))
+            Ok(dialect.like_predicate(&text_sql, &marker, LikeForm::contains()))
         }
         FilterOp::Like | FilterOp::NotLike => {
             // The user typed the wildcards, so they stay.
             let pattern = Value::Text(require_single(rule)?.clone());
             let marker = builder.bind(dialect, pattern, BindTarget::Pattern)?;
             let form = LikeForm::raw(rule.op == FilterOp::NotLike);
-            Ok(dialect.like_predicate(&column_sql, &marker, form))
+            Ok(dialect.like_predicate(&text_sql, &marker, form))
         }
         FilterOp::Ilike => {
             let pattern = Value::Text(require_single(rule)?.clone());
             let marker = builder.bind(dialect, pattern, BindTarget::Pattern)?;
-            Ok(dialect.like_predicate(&column_sql, &marker, LikeForm::insensitive(false)))
+            Ok(dialect.like_predicate(&text_sql, &marker, LikeForm::insensitive(false)))
         }
         FilterOp::In | FilterOp::NotIn => {
             let list = require_list(rule)?;
@@ -102,13 +108,20 @@ fn rule_sql(
             }
             let markers = list
                 .iter()
-                .map(|text| bind_typed(builder, dialect, column, text))
+                .map(|text| match equality_as_text {
+                    true => bind_text(builder, dialect, text),
+                    false => bind_typed(builder, dialect, column, text),
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             let keyword = match rule.op {
                 FilterOp::In => "IN",
                 _ => "NOT IN",
             };
-            Ok(format!("{column_sql} {keyword} ({})", markers.join(", ")))
+            let operand = match equality_as_text {
+                true => &text_sql,
+                false => &column_sql,
+            };
+            Ok(format!("{operand} {keyword} ({})", markers.join(", ")))
         }
         FilterOp::Between => {
             let (low, high) = require_pair(rule)?;
@@ -143,6 +156,11 @@ fn bind_typed(
         source,
     })?;
     Ok(builder.bind(dialect, value, BindTarget::Column(column))?)
+}
+
+/// Text the user typed, bound as text to compare with `text_operand`.
+fn bind_text(builder: &mut StatementBuilder, dialect: &dyn SqlDialect, text: &str) -> Result<String, BuildFilterError> {
+    Ok(builder.bind(dialect, Value::Text(text.to_owned()), BindTarget::Pattern)?)
 }
 
 fn require_single(rule: &FilterRule) -> Result<&String, BuildFilterError> {
