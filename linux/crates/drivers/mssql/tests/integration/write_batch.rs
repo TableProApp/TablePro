@@ -10,9 +10,9 @@ use tablepro_core::{CallOptions, DriverError, ErrorCategory, Value, WriteBatch};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{CALL, batch, browse, columns, connect, dbo, scalar, setup, start, within};
+use crate::support::{CALL, batch, browse, columns, connect, dbo, run_ok, scalar, session, setup, start, within};
 
-async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableRef, id: i64) -> WriteBatch {
+async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableRef, key: Value) -> WriteBatch {
     let columns = columns(connection, table).await;
     let identity = connection.row_identity(table, within(CALL)).await.expect("an identity");
     let label = columns
@@ -21,7 +21,7 @@ async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableR
         .expect("a label column");
     let changes = ChangeSet {
         updates: vec![RowUpdate {
-            key: vec![Value::Int(id)],
+            key: vec![key],
             assignments: vec![(label, Value::Text("changed".to_owned()))],
         }],
         ..ChangeSet::default()
@@ -111,6 +111,42 @@ async fn datetime_key_with_a_third_of_a_millisecond_saves() {
     );
 }
 
+/// Under a SQL_* collation an nvarchar parameter cannot seek a varchar
+/// key, so the probe's UPDLOCK, HOLDLOCK would scan into a row another
+/// transaction holds and wait for it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn varchar_key_save_locks_only_its_own_row() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.codes (code varchar(10) COLLATE SQL_Latin1_General_CP1_CI_AS PRIMARY KEY, \
+             label nvarchar(50) NOT NULL)",
+            "INSERT INTO dbo.codes VALUES ('k1', N'one'), ('k2', N'two'), ('k3', N'three'), ('k4', N'four'), \
+             ('k5', N'five')",
+        ],
+    )
+    .await;
+    let holder = session(connection.as_ref()).await;
+    run_ok(
+        holder.as_ref(),
+        "BEGIN TRANSACTION; UPDATE dbo.codes SET label = N'held' WHERE code = 'k5'",
+    )
+    .await;
+    let save = update_label(connection.as_ref(), &dbo("codes"), Value::Text("k1".to_owned())).await;
+
+    let saved = connection.write_batch(&save, within(Duration::from_secs(5))).await;
+    run_ok(holder.as_ref(), "ROLLBACK").await;
+
+    assert!(saved.is_ok(), "{saved:?}");
+    assert_eq!(
+        scalar(connection.as_ref(), "SELECT label FROM dbo.codes WHERE code = 'k1'").await,
+        Value::Text("changed".to_owned())
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn after_update_trigger_saves_without_false_conflict() {
@@ -129,7 +165,7 @@ async fn after_update_trigger_saves_without_false_conflict() {
     .await;
     let table = dbo("items");
 
-    let save = update_label(connection.as_ref(), &table, 1).await;
+    let save = update_label(connection.as_ref(), &table, Value::Int(1)).await;
     connection.write_batch(&save, within(CALL)).await.expect("the save");
 
     assert_eq!(
@@ -156,7 +192,7 @@ async fn probe_mismatch_rolls_back() {
     )
     .await;
     let table = dbo("items");
-    let mut save = update_label(connection.as_ref(), &table, 999).await;
+    let mut save = update_label(connection.as_ref(), &table, Value::Int(999)).await;
     let first = crate::support::statement("INSERT INTO dbo.items VALUES (2, N'new')");
     save.steps
         .insert(0, tablepro_core::statement::GuardedStatement::unguarded(first));

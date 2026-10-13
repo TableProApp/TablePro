@@ -75,6 +75,9 @@ impl SqlDialect for MssqlDialect {
                 Some(legacy) => format!("CAST({marker} AS {legacy})"),
                 None => marker,
             },
+            (ParamType::Text | ParamType::FixedText, BindTarget::Column(column)) if non_unicode(column) => {
+                format!("CAST({marker} AS {NON_UNICODE_TEXT})")
+            }
             _ => marker,
         };
         Ok(Placeholder::bound(sql, BoundParam::new(value, param_type)?))
@@ -287,6 +290,24 @@ fn legacy_datetime(column: &ColumnInfo) -> Option<&'static str> {
         .find(|legacy| declared.eq_ignore_ascii_case(legacy))
 }
 
+/// What `SqlServerType::cast_target` gives a char or varchar column whose
+/// code page is the database's.
+const NON_UNICODE_TEXT: &str = "varchar(max)";
+
+/// tiberius sends text as nvarchar, which outranks varchar, so
+/// `[code] = @P1` converts the column. Under a SQL_* collation that
+/// cannot seek, and the save probe's UPDLOCK, HOLDLOCK then scans and
+/// locks the whole table until commit. Cast to varchar, the parameter
+/// meets the column as its index has it.
+fn non_unicode(column: &ColumnInfo) -> bool {
+    matches!(column.column_type.kind, ColumnKind::Text { .. })
+        && column
+            .column_type
+            .catalog
+            .as_ref()
+            .is_some_and(|catalog| catalog.cast_target.as_sql().eq_ignore_ascii_case(NON_UNICODE_TEXT))
+}
+
 /// The parameter type a column takes.
 fn param_type_for(column: &ColumnInfo) -> Result<ParamType, BindError> {
     let column_type = &column.column_type;
@@ -381,6 +402,31 @@ mod tests {
         assert_eq!(
             placeholder.param.as_ref().map(BoundParam::param_type),
             Some(&ParamType::Bytes)
+        );
+    }
+
+    #[test]
+    fn text_for_a_varchar_column_is_cast_so_the_column_can_seek() {
+        let text = || Value::Text("k1".to_owned());
+        let mut foreign = column("varchar(10)");
+        if let Some(catalog) = foreign.column_type.catalog.as_mut() {
+            catalog.cast_target = SqlTypeExpr::from_catalog_text("nvarchar(max)");
+        }
+
+        assert_eq!(bound("varchar(10)", text()).sql, "CAST(@P1 AS varchar(max))");
+        assert_eq!(bound("char(4)", text()).sql, "CAST(@P1 AS varchar(max))");
+        assert_eq!(bound("varchar(10)", Value::Null).sql, "CAST(@P1 AS varchar(max))");
+        assert_eq!(bound("nvarchar(10)", text()).sql, "@P1");
+        assert_eq!(
+            dialect()
+                .placeholder(0, text(), BindTarget::Column(&foreign))
+                .unwrap()
+                .sql,
+            "@P1"
+        );
+        assert_eq!(
+            dialect().placeholder(0, text(), BindTarget::Pattern).unwrap().sql,
+            "@P1"
         );
     }
 

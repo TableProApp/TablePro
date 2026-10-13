@@ -26,6 +26,9 @@ pub(crate) struct SqlServerType {
     /// the server, or an alias typed by name. It is read as the server's
     /// text.
     opaque: bool,
+    /// A character type whose collation has another code page than the
+    /// database's.
+    foreign_code_page: bool,
 }
 
 /// What the app makes of a type.
@@ -100,6 +103,7 @@ impl SqlServerType {
             scale: u32::try_from(facts.scale).ok(),
             alias,
             opaque: facts.user_clr,
+            foreign_code_page: facts.foreign_code_page,
         }
     }
 
@@ -131,6 +135,7 @@ impl SqlServerType {
                 scale: None,
                 alias: Some(text.to_owned()),
                 opaque: true,
+                foreign_code_page: false,
             };
         }
         let arguments: Vec<&str> = arguments
@@ -155,14 +160,20 @@ impl SqlServerType {
             scale,
             alias: None,
             opaque: false,
+            foreign_code_page: false,
         }
     }
 
     /// The type as DDL spells it, modifiers included.
     pub(crate) fn declaration(&self) -> String {
-        if let Some(alias) = &self.alias {
-            return alias.clone();
+        match &self.alias {
+            Some(alias) => alias.clone(),
+            None => self.system_declaration(),
         }
+    }
+
+    /// The system type values are stored as, modifiers included.
+    fn system_declaration(&self) -> String {
         let base = &self.base;
         match base.as_str() {
             "char" | "varchar" | "nchar" | "nvarchar" | "binary" | "varbinary" => match self.length {
@@ -189,15 +200,21 @@ impl SqlServerType {
     /// The type a bound text parameter is cast to. A length would
     /// truncate silently, so text casts to its max form, while a decimal
     /// keeps its digits because a bare `decimal` means `decimal(18,0)`.
+    /// An alias casts to the system type under it, which the server
+    /// converts to the alias on the way in. A varchar in another code
+    /// page than the database's stays nvarchar: a cast would go through
+    /// the database's code page and could turn one character into
+    /// another.
     pub(crate) fn cast_target(&self) -> String {
-        if self.alias.is_some() {
+        if self.opaque {
             return self.declaration();
         }
         match self.base.as_str() {
+            "char" | "varchar" | "text" if self.foreign_code_page => "nvarchar(max)".to_owned(),
             "char" | "varchar" | "text" => "varchar(max)".to_owned(),
             "nchar" | "nvarchar" | "ntext" | "sysname" => "nvarchar(max)".to_owned(),
             "binary" | "varbinary" | "image" => "varbinary(max)".to_owned(),
-            _ => self.declaration(),
+            _ => self.system_declaration(),
         }
     }
 
@@ -333,6 +350,7 @@ pub(crate) struct CatalogFacts<'a> {
     pub(crate) max_length: i64,
     pub(crate) precision: i64,
     pub(crate) scale: i64,
+    pub(crate) foreign_code_page: bool,
 }
 
 fn bracket(name: &str) -> String {
@@ -342,6 +360,21 @@ fn bracket(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn facts(base: &str, max_length: i64) -> CatalogFacts<'_> {
+        CatalogFacts {
+            type_name: base,
+            base_type: base,
+            type_schema: Some("sys"),
+            user_defined: false,
+            alias: false,
+            user_clr: false,
+            max_length,
+            precision: 0,
+            scale: 0,
+            foreign_code_page: false,
+        }
+    }
 
     fn system(base: &str, max_length: i64, precision: i64, scale: i64) -> SqlServerType {
         SqlServerType::from_catalog(CatalogFacts {
@@ -354,6 +387,7 @@ mod tests {
             max_length,
             precision,
             scale,
+            foreign_code_page: false,
         })
     }
 
@@ -397,6 +431,7 @@ mod tests {
             max_length: 40,
             precision: 0,
             scale: 0,
+            foreign_code_page: false,
         });
         assert_eq!(phone.declaration(), "[dbo].[Phone]");
         assert_eq!(
@@ -415,6 +450,7 @@ mod tests {
             max_length: 256,
             precision: 0,
             scale: 0,
+            foreign_code_page: false,
         });
         assert_eq!(sysname.declaration(), "sysname");
         assert_eq!(
@@ -437,6 +473,7 @@ mod tests {
             max_length: 64,
             precision: 0,
             scale: 0,
+            foreign_code_page: false,
         });
 
         assert_eq!(clr.declaration(), "[geo].[Point]");
@@ -489,5 +526,32 @@ mod tests {
         assert_eq!(system("nchar", 20, 0, 0).cast_target(), "nvarchar(max)");
         assert_eq!(system("decimal", 9, 10, 2).cast_target(), "decimal(10,2)");
         assert_eq!(system("hierarchyid", 892, 0, 0).cast_target(), "hierarchyid");
+    }
+
+    #[test]
+    fn a_varchar_in_another_code_page_and_an_alias_cast_to_what_holds_them() {
+        let greek = SqlServerType::from_catalog(CatalogFacts {
+            foreign_code_page: true,
+            ..facts("varchar", 10)
+        });
+        let code = SqlServerType::from_catalog(CatalogFacts {
+            type_name: "Code",
+            type_schema: Some("dbo"),
+            user_defined: true,
+            alias: true,
+            ..facts("varchar", 10)
+        });
+        let stamp = SqlServerType::from_catalog(CatalogFacts {
+            type_name: "Stamp",
+            type_schema: Some("dbo"),
+            user_defined: true,
+            alias: true,
+            ..facts("datetime", 8)
+        });
+
+        assert_eq!(greek.cast_target(), "nvarchar(max)");
+        assert_eq!(code.declaration(), "[dbo].[Code]");
+        assert_eq!(code.cast_target(), "varchar(max)");
+        assert_eq!(stamp.cast_target(), "datetime");
     }
 }
