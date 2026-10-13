@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use relm4::adw::prelude::*;
-use relm4::{ComponentController, ComponentSender, adw};
+use relm4::{ComponentSender, adw};
 use uuid::Uuid;
 
 use tablepro_core::ddl::TableDefinition;
@@ -35,18 +35,6 @@ impl App {
             return;
         }
         self.append_new_structure_tab(schema, sender);
-        // A draft has no table to read the dialect back with, so the
-        // session's current one is handed over for its SQL preview.
-        let dialect = self.context.active.get().and_then(|session| session.current_dialect());
-        if let (Some(tab_id), Some(dialect)) = (self.selected_workspace_tab_id(), dialect)
-            && let Some(controller) = self
-                .workspace_tabs
-                .borrow()
-                .get(&tab_id)
-                .and_then(|tab| tab.structure_controller())
-        {
-            let _ = controller.sender().send(StructureTabInput::DialectReady(dialect));
-        }
     }
 
     /// Sidebar right-click → "Edit Structure". Opens a dedicated
@@ -385,16 +373,7 @@ impl App {
                 });
             }
             SaveKind::UpdateInPlace(schema, table) => {
-                if let Some(controller) = self
-                    .workspace_tabs
-                    .borrow()
-                    .get(&tab_id)
-                    .and_then(|t| t.structure_controller())
-                {
-                    let _ = controller
-                        .sender()
-                        .send(StructureTabInput::SaveCompleted { new_table_name });
-                }
+                self.send_to_structure_tab(tab_id, StructureTabInput::SaveCompleted { new_table_name });
                 sender.input(AppMsg::SchemaChanged {
                     schema,
                     table: Some(table),
@@ -431,14 +410,7 @@ impl App {
         // tab will spuriously close the window.
         self.close_after_save.borrow_mut().remove(&tab_id);
         self.close_window_after_save.set(false);
-        if let Some(controller) = self
-            .workspace_tabs
-            .borrow()
-            .get(&tab_id)
-            .and_then(|t| t.structure_controller())
-        {
-            let _ = controller.sender().send(StructureTabInput::SaveFailed(message));
-        }
+        self.send_to_structure_tab(tab_id, StructureTabInput::SaveFailed(message));
     }
 
     /// Sidebar "Show CREATE TABLE": synthesise the canonical CREATE
@@ -473,95 +445,47 @@ impl App {
         });
     }
 
-    /// Edit-mode init asks for introspection. The definition comes back
-    /// in one read, so the tab rebuilds its UI once with columns,
-    /// indexes and foreign keys from the same moment.
-    pub(super) fn on_fetch_structure_data(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        let table = {
-            let tabs = self.workspace_tabs.borrow();
-            let Some(slot) = tabs.get(&tab_id) else {
-                return;
-            };
-            let Some((schema, table)) = slot.schema_table() else {
-                return;
-            };
-            TableRef::new(schema.map(str::to_owned), table)
-        };
-        let Some(session) = self.context.active.get() else {
-            sender.input(AppMsg::StructureLoadFailed {
-                tab_id,
-                message: crate::i18n::gettext("No active connection."),
-            });
-            return;
-        };
-        crate::runtime::spawn_and_deliver(&self.context.tasks, read_definition(session, table), move |result| {
-            match settled(result) {
-                Ok((definition, dialect)) => sender.input(AppMsg::StructureDataLoaded {
-                    tab_id,
-                    definition: Box::new(definition),
-                    dialect,
-                }),
-                Err(error) => sender.input(AppMsg::StructureLoadFailed {
-                    tab_id,
-                    message: error_text::operation_error_message(&error),
-                }),
-            }
-        });
-    }
-
-    pub(super) fn on_structure_data_loaded(
-        &self,
-        tab_id: Uuid,
-        definition: TableDefinition,
-        dialect: Arc<dyn SqlDialect>,
-    ) {
-        if let Some(controller) = self
+    fn send_to_structure_tab(&self, tab_id: Uuid, msg: StructureTabInput) {
+        let structure = self
             .workspace_tabs
             .borrow()
             .get(&tab_id)
-            .and_then(|t| t.structure_controller())
-        {
-            let _ = controller.sender().send(StructureTabInput::StructureLoaded {
-                definition: Box::new(definition),
-                dialect,
-            });
-        }
-    }
-
-    pub(super) fn on_structure_load_failed(&self, tab_id: Uuid, message: String) {
-        if let Some(controller) = self
-            .workspace_tabs
-            .borrow()
-            .get(&tab_id)
-            .and_then(|t| t.structure_controller())
-        {
-            let _ = controller.sender().send(StructureTabInput::LoadFailed(message));
+            .and_then(|tab| tab.structure_tab())
+            .cloned();
+        if let Some(structure) = structure {
+            structure.send(msg);
         }
     }
 
     /// The schema changed under the window. The catalog forgets the
-    /// table's columns and reads the sidebar's list again, and every
-    /// Browse tab open on the table reads it again through its own
-    /// requests, which share the catalog's one column fetch.
+    /// table's columns and reads the sidebar's list again, and every tab
+    /// open on the table reads it again through its own requests, which
+    /// share the catalog's one column fetch.
     pub(super) fn on_schema_changed(&self, schema: Option<String>, table: Option<String>) {
         let Some(session) = self.context.active.get() else {
             return;
         };
         if let Some(table) = table {
             session.invalidate_table(&TableRef::new(schema.clone(), table.clone()));
-            let affected: Vec<crate::ui::browse_tab::BrowseTab> = self
+            let (browse_tabs, structure_tabs): (Vec<_>, Vec<_>) = self
                 .workspace_tabs
                 .borrow()
                 .values()
                 .filter_map(|tab| match tab {
                     WorkspaceTab::Table(slot) if slot.schema == schema && slot.table == table => {
-                        Some(slot.browse.clone())
+                        Some((Some(slot.browse.clone()), None))
+                    }
+                    WorkspaceTab::Structure(slot) if slot.schema == schema && slot.table == table => {
+                        Some((None, Some(slot.structure.clone())))
                     }
                     _ => None,
                 })
-                .collect();
-            for browse in affected {
+                .unzip();
+            for browse in browse_tabs.into_iter().flatten() {
                 browse.send(crate::ui::browse_tab::BrowseTabInput::SchemaChanged);
+            }
+            for structure in structure_tabs.into_iter().flatten() {
+                structure.send(StructureTabInput::SchemaChanged);
             }
         }
         // The new list reaches the sidebar through the catalog watch.
@@ -698,13 +622,10 @@ fn create_table_sql(
 /// panic as the bug it is, an abort as the app stopping the work.
 fn settled<T>(result: Result<Result<T, OperationError>, TaskFailure>) -> Result<T, OperationError> {
     result.unwrap_or_else(|failure| {
-        Err(match failure {
-            TaskFailure::Panicked(panic) => {
-                tracing::error!(%panic, "a structure task panicked");
-                OperationError::Panicked(panic)
-            }
-            TaskFailure::Aborted => OperationError::Cancelled,
-        })
+        if failure.is_panic() {
+            tracing::error!(%failure, "a structure task panicked");
+        }
+        Err(failure.into())
     })
 }
 

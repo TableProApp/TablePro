@@ -134,8 +134,11 @@ crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
 crates/app/src/ui/structure_tab/columns.rs
 crates/app/src/ui/structure_tab/fks.rs
+crates/app/src/ui/structure_tab/imp.rs
 crates/app/src/ui/structure_tab/indexes.rs
 crates/app/src/ui/structure_tab/mod.rs
+crates/app/src/ui/structure_tab/structure_command.rs
+crates/app/src/ui/structure_tab/tests.rs
 crates/app/src/ui/structure_tab_dialogs.rs
 crates/app/src/ui/style_scheme_grid.rs
 crates/app/src/ui/style_scheme_resolver.rs
@@ -155,4 +158,5 @@ data/resources/ui/results-pane.ui
 data/resources/ui/sql-editor.ui
 data/resources/ui/sqlite-file-row.ui
 data/resources/ui/ssh-section.ui
+data/resources/ui/structure-tab.ui
 data/resources/ui/tls-section.ui

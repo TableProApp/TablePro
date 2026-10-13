@@ -1,13 +1,14 @@
 //! Index-row builder + tag widgets used by the Indexes page of the
 //! Structure tab.
 
-use relm4::adw::prelude::*;
-use relm4::{ComponentSender, adw, gtk};
+use gtk4 as gtk;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_core::IndexInfo;
 use tablepro_core::meta::IndexKey;
 
-use super::{StructureTab, StructureTabInput};
+use super::{StructureTabInput, StructureTabSender};
 
 /// Tiny inline pill rendered as an AdwActionRow suffix — used by the
 /// indexes list to show UNIQUE / PRIMARY tags. `accent_class` is the
@@ -23,7 +24,7 @@ fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
 /// subtitle is the comma-separated column list. UNIQUE / PRIMARY are
 /// small caption suffixes, the trash button is an end-suffix. The row
 /// participates in `boxed-list` styling for free; no manual margins.
-pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSender<StructureTab>) -> adw::ActionRow {
+pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: StructureTabSender) -> adw::ActionRow {
     let subtitle = index_key_summary(idx);
     let row = adw::ActionRow::builder()
         .title(glib::markup_escape_text(&idx.name))

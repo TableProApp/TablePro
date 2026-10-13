@@ -1,13 +1,14 @@
 //! Foreign-key row builder used by the Foreign Keys page of the
 //! Structure tab.
 
-use relm4::adw::prelude::*;
-use relm4::{ComponentSender, adw, gtk};
+use gtk4 as gtk;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_core::ForeignKeyInfo;
 use tablepro_core::ddl::ReferentialAction;
 
-use super::{StructureTab, StructureTabInput};
+use super::{StructureTabInput, StructureTabSender};
 
 fn driver_can_drop_foreign_key(driver_id: &str) -> bool {
     !matches!(driver_id, "sqlite")
@@ -20,7 +21,7 @@ pub(super) fn build_fk_row(
     index: usize,
     fk: &ForeignKeyInfo,
     driver_id: &str,
-    sender: ComponentSender<StructureTab>,
+    sender: StructureTabSender,
 ) -> adw::ActionRow {
     let qualified_ref = match &fk.ref_schema {
         Some(s) if !s.is_empty() => format!("{s}.{}", fk.ref_table),

@@ -8,8 +8,6 @@ mod structure;
 mod teardown_guard;
 mod workspace_tabs;
 
-use std::sync::Arc;
-
 use relm4::adw::prelude::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::gtk::{gio, glib};
@@ -227,7 +225,7 @@ pub struct EditorTabSlot {
 
 pub struct StructureTabSlot {
     pub id: Uuid,
-    pub controller: Controller<crate::ui::structure_tab::StructureTab>,
+    pub structure: crate::ui::structure_tab::StructureTab,
     pub page: adw::TabPage,
     pub schema: Option<String>,
     /// Empty in `New` mode until SaveCompleted carries the canonical
@@ -278,9 +276,9 @@ impl WorkspaceTab {
 
     /// The Structure-side controller. Only `Structure` slots carry
     /// one (Table slots no longer fuse the DDL editor in).
-    pub fn structure_controller(&self) -> Option<&Controller<crate::ui::structure_tab::StructureTab>> {
+    pub fn structure_tab(&self) -> Option<&crate::ui::structure_tab::StructureTab> {
         match self {
-            WorkspaceTab::Structure(s) => Some(&s.controller),
+            WorkspaceTab::Structure(s) => Some(&s.structure),
             _ => None,
         }
     }
@@ -567,21 +565,6 @@ pub enum AppMsg {
     },
     /// Structure tab Save failed; tracker is intact for retry.
     StructureSaveFailed(Uuid, String),
-    /// Structure tab Edit-mode init triggers introspection.
-    FetchStructureData {
-        tab_id: Uuid,
-    },
-    /// The table as one definition, read in one call, with the dialect
-    /// of the connection that read it, which the tab spells its DDL in.
-    StructureDataLoaded {
-        tab_id: Uuid,
-        definition: Box<tablepro_core::ddl::TableDefinition>,
-        dialect: Arc<dyn tablepro_core::dialect::SqlDialect>,
-    },
-    StructureLoadFailed {
-        tab_id: Uuid,
-        message: String,
-    },
     /// Tracker for a Structure tab crossed empty / non-empty boundary.
     /// Mirrors `BrowseTabDirtyChanged` for the title prefix and the
     /// AdwTabPage::set_needs_attention background-tab indicator.
@@ -1491,13 +1474,6 @@ impl SimpleComponent for App {
                 self.on_structure_save_completed(tab_id, new_table_name, sender)
             }
             AppMsg::StructureSaveFailed(tab_id, message) => self.on_structure_save_failed(tab_id, message),
-            AppMsg::FetchStructureData { tab_id } => self.on_fetch_structure_data(tab_id, sender),
-            AppMsg::StructureDataLoaded {
-                tab_id,
-                definition,
-                dialect,
-            } => self.on_structure_data_loaded(tab_id, *definition, dialect),
-            AppMsg::StructureLoadFailed { tab_id, message } => self.on_structure_load_failed(tab_id, message),
             AppMsg::StructureTabDirtyChanged(tab_id, dirty) => self.refresh_structure_tab_dirty(tab_id, dirty),
             AppMsg::SchemaChanged { schema, table } => self.on_schema_changed(schema, table),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),

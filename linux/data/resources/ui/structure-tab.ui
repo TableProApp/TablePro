@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <requires lib="gtksourceview" version="5.18"/>
+  <template class="TableProStructureTab" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToolbarView">
+        <property name="content">
+          <object class="GtkStack" id="inner_stack">
+            <property name="transition-type">crossfade</property>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">loading</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">12</property>
+                    <property name="halign">center</property>
+                    <property name="valign">center</property>
+                    <property name="vexpand">true</property>
+                    <child>
+                      <object class="AdwSpinner">
+                        <property name="width-request">48</property>
+                        <property name="height-request">48</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">Loading structure…</property>
+                        <style>
+                          <class name="title-2"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">Reading columns, indexes, and foreign keys…</property>
+                        <style>
+                          <class name="dim-label"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">editor</property>
+                <property name="child">
+                  <!-- Each page scrolls on its own, so the clamp holds no
+                       scroller of its own. -->
+                  <object class="AdwClamp">
+                    <property name="maximum-size">900</property>
+                    <property name="tightening-threshold">700</property>
+                    <property name="child">
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="AdwPreferencesGroup" id="name_row">
+                            <property name="description" translatable="yes">Add a name and at least one column to save.</property>
+                            <property name="margin-top">12</property>
+                            <property name="margin-bottom">6</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
+                            <child>
+                              <object class="AdwEntryRow" id="name_entry">
+                                <property name="title" translatable="yes">Name</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwViewSwitcher">
+                            <property name="stack">view_stack</property>
+                            <property name="policy">wide</property>
+                            <property name="halign">center</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwViewStack" id="view_stack">
+                            <child>
+                              <object class="AdwViewStackPage">
+                                <property name="name">columns</property>
+                                <property name="title" translatable="yes">Columns</property>
+                                <property name="icon-name">view-list-symbolic</property>
+                                <property name="child">
+                                  <object class="GtkScrolledWindow">
+                                    <property name="vexpand">true</property>
+                                    <property name="child">
+                                      <object class="GtkBox" id="columns_box">
+                                        <property name="orientation">vertical</property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwViewStackPage">
+                                <property name="name">indexes</property>
+                                <property name="title" translatable="yes">Indexes</property>
+                                <property name="icon-name">view-sort-ascending-symbolic</property>
+                                <property name="child">
+                                  <object class="GtkScrolledWindow">
+                                    <property name="vexpand">true</property>
+                                    <property name="child">
+                                      <object class="GtkBox" id="indexes_box">
+                                        <property name="orientation">vertical</property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwViewStackPage">
+                                <property name="name">fks</property>
+                                <property name="title" translatable="yes">Foreign Keys</property>
+                                <property name="icon-name">table-relation-symbolic</property>
+                                <property name="child">
+                                  <object class="GtkScrolledWindow">
+                                    <property name="vexpand">true</property>
+                                    <property name="child">
+                                      <object class="GtkBox" id="fks_box">
+                                        <property name="orientation">vertical</property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwViewStackPage">
+                                <property name="name">sql</property>
+                                <property name="title" translatable="yes">SQL Preview</property>
+                                <property name="icon-name">text-x-generic-symbolic</property>
+                                <property name="child">
+                                  <object class="GtkBox">
+                                    <property name="orientation">vertical</property>
+                                    <child>
+                                      <object class="GtkCenterBox">
+                                        <property name="margin-top">6</property>
+                                        <property name="margin-start">6</property>
+                                        <property name="margin-end">6</property>
+                                        <property name="end-widget">
+                                          <object class="GtkButton" id="copy_sql_button">
+                                            <property name="icon-name">edit-copy-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Copy SQL to clipboard</property>
+                                            <property name="valign">center</property>
+                                            <style>
+                                              <class name="flat"/>
+                                            </style>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkScrolledWindow">
+                                        <property name="vexpand">true</property>
+                                        <property name="child">
+                                          <object class="GtkSourceView" id="sql_view">
+                                            <property name="editable">false</property>
+                                            <property name="monospace">true</property>
+                                            <property name="wrap-mode">word</property>
+                                            <property name="top-margin">6</property>
+                                            <property name="left-margin">6</property>
+                                            <property name="right-margin">6</property>
+                                            <property name="bottom-margin">6</property>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">error</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="error_status">
+                    <property name="icon-name">dialog-error-symbolic</property>
+                    <property name="title" translatable="yes">Couldn't load structure</property>
+                    <property name="child">
+                      <object class="GtkButton" id="retry_button">
+                        <property name="label" translatable="yes">Try Again</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="suggested-action"/>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+        <child type="bottom">
+          <object class="GtkActionBar">
+            <child type="start">
+              <object class="GtkLabel" id="pending_label">
+                <property name="visible">false</property>
+                <style>
+                  <class name="dim-label"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <!-- Away from Discard and Save, so a destructive action
+                   never sits beside the primary one. -->
+              <object class="GtkButton" id="drop_button">
+                <property name="label" translatable="yes">Drop Table…</property>
+                <style>
+                  <class name="destructive-action"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="save_button">
+                <property name="label" translatable="yes">Save</property>
+                <property name="sensitive">false</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="discard_button">
+                <property name="label" translatable="yes">Discard</property>
+                <property name="sensitive">false</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

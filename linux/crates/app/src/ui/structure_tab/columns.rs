@@ -4,13 +4,14 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use relm4::adw::prelude::*;
-use relm4::gtk::gio;
-use relm4::{ComponentSender, adw, gtk};
+use gtk4 as gtk;
+use gtk4::gio;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_core::sql_ddl::DraftColumn;
 
-use super::{ColumnField, StructureTab, StructureTabInput};
+use super::{ColumnField, StructureTabInput, StructureTabSender};
 
 /// Curated type lists per driver. Free-text input still allowed via
 /// the combo box's editable entry; this list seeds the dropdown so
@@ -158,7 +159,7 @@ pub(super) fn build_column_expander_row(
     index: usize,
     col: &DraftColumn,
     driver_id: &str,
-    sender: ComponentSender<StructureTab>,
+    sender: StructureTabSender,
     suppress_emit: Rc<Cell<bool>>,
     popover_registry: Rc<RefCell<Vec<gtk::Popover>>>,
 ) -> adw::ExpanderRow {

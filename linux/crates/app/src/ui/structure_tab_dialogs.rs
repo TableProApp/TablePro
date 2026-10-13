@@ -18,15 +18,16 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use relm4::adw::prelude::*;
-use relm4::{ComponentSender, adw, gtk};
+use gtk4 as gtk;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_core::ddl::ReferentialAction;
 use tablepro_core::meta::IndexKey;
 use tablepro_core::sql_ddl::DraftColumn;
 use tablepro_core::{ForeignKeyInfo, IndexInfo};
 
-use super::structure_tab::{StructureTab, StructureTabInput, StructureTabOutput};
+use super::structure_tab::{StructureTabInput, StructureTabOutput, StructureTabSender};
 
 /// `(column name, checkbox)` pairs, shared between the dialog body
 /// and the submit handler so the latter can collect which columns the
@@ -124,11 +125,7 @@ fn build_column_checklist(columns: &[DraftColumn]) -> (gtk::ListBox, ColumnCheck
     (list, checks)
 }
 
-pub(super) fn present_index_dialog(
-    parent: &gtk::Widget,
-    columns: &[DraftColumn],
-    sender: ComponentSender<StructureTab>,
-) {
+pub(super) fn present_index_dialog(parent: &gtk::Widget, columns: &[DraftColumn], sender: StructureTabSender) {
     let (dialog, body, submit_btn) =
         build_form_dialog(&crate::i18n::gettext("Add Index"), &crate::i18n::gettext("Add"));
 
@@ -162,7 +159,7 @@ pub(super) fn present_index_dialog(
         if name.trim().is_empty() {
             // Toast instead of silent no-op so the user knows why
             // their click didn't land.
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Index name is required.",
             )));
             return;
@@ -173,7 +170,7 @@ pub(super) fn present_index_dialog(
             .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
             .collect();
         if cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Select at least one column.",
             )));
             return;
@@ -201,7 +198,7 @@ pub(super) fn present_fk_dialog(
     parent: &gtk::Widget,
     columns: &[DraftColumn],
     driver_id: &str,
-    sender: ComponentSender<StructureTab>,
+    sender: StructureTabSender,
 ) {
     let fk_actions = tablepro_core::sql_ddl::supported_fk_actions(driver_id);
     let action_labels = action_labels(fk_actions);
@@ -257,13 +254,13 @@ pub(super) fn present_fk_dialog(
         let name = name_row.text().to_string();
         let ref_table = ref_table_row.text().to_string();
         if name.trim().is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Foreign key name is required.",
             )));
             return;
         }
         if ref_table.trim().is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Reference table is required.",
             )));
             return;
@@ -274,7 +271,7 @@ pub(super) fn present_fk_dialog(
             .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
             .collect();
         if cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Select at least one source column.",
             )));
             return;
@@ -286,7 +283,7 @@ pub(super) fn present_fk_dialog(
             .filter(|s| !s.is_empty())
             .collect();
         if ref_cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Reference columns are required.",
             )));
             return;
@@ -295,7 +292,7 @@ pub(super) fn present_fk_dialog(
         // is structurally invalid SQL. Drivers reject it, but with an
         // opaque error after Save instead of an inline guard.
         if ref_cols.len() != cols.len() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Source and reference column counts must match.",
             )));
             return;

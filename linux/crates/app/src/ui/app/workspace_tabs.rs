@@ -4,13 +4,14 @@ use std::rc::Rc;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
-use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
+use relm4::{ComponentSender, adw, gtk};
 
 use uuid::Uuid;
 
 use crate::services::workspace_state::{self, ConnectionWorkspaceState, WorkspaceTabRecord};
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest, SaveRequest};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
+use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
 
 use super::{
     App, AppMsg, CLOSED_TABS_CAPACITY, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceTab,
@@ -182,48 +183,31 @@ impl App {
         };
         let tab_id = Uuid::new_v4();
         let driver_id = self.driver_id().to_string();
-        let init = crate::ui::structure_tab::StructureTabInit {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let structure = StructureTab::new(StructureTabInit {
             tracker: self.structure_trackers.register(tab_id),
             schema: schema.clone(),
             table: String::new(),
-            mode: crate::ui::structure_tab::StructureMode::New,
+            mode: StructureMode::New,
             driver_id,
-            // New mode has nothing to introspect (no real table yet).
-            defer_initial_fetch: false,
-        };
-        let controller =
-            crate::ui::structure_tab::StructureTab::builder()
-                .launch(init)
-                .forward(sender.input_sender(), move |out| match out {
-                    crate::ui::structure_tab::StructureTabOutput::DirtyChanged(dirty) => {
-                        AppMsg::StructureTabDirtyChanged(tab_id, dirty)
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::FetchStructure => {
-                        AppMsg::FetchStructureData { tab_id }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::ExecuteTransaction { statements } => {
-                        AppMsg::ExecuteStructureTransaction { tab_id, statements }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::DropTableRequested { schema, table } => {
-                        AppMsg::DropTablePrompt { schema, table }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
-                    crate::ui::structure_tab::StructureTabOutput::ShowAlert { title, body } => {
-                        AppMsg::ShowAlert { title, body }
-                    }
-                });
+            session,
+            tasks: self.context.tasks.clone(),
+        });
+        connect_structure(&structure, tab_id, sender.input_sender());
 
-        let page = tab_view.append(controller.widget());
+        let page = tab_view.append(&structure);
         page.set_title(&crate::i18n::gettext("New Table"));
         write_workspace_tab_id(&page, tab_id);
 
         let slot = super::StructureTabSlot {
             id: tab_id,
-            controller,
+            structure,
             page: page.clone(),
             schema,
             table: String::new(),
-            mode: crate::ui::structure_tab::StructureMode::New,
+            mode: StructureMode::New,
         };
         self.workspace_tabs
             .borrow_mut()
@@ -320,38 +304,22 @@ impl App {
         };
         let tab_id = Uuid::new_v4();
         let driver_id = self.driver_id().to_string();
-        let mode = crate::ui::structure_tab::StructureMode::Edit;
-        let init = crate::ui::structure_tab::StructureTabInit {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        let mode = StructureMode::Edit;
+        let structure = StructureTab::new(StructureTabInit {
             tracker: self.structure_trackers.register(tab_id),
             schema: schema.clone(),
             table: table.clone(),
             mode,
             driver_id,
-            defer_initial_fetch: false,
-        };
-        let controller =
-            crate::ui::structure_tab::StructureTab::builder()
-                .launch(init)
-                .forward(sender.input_sender(), move |out| match out {
-                    crate::ui::structure_tab::StructureTabOutput::DirtyChanged(dirty) => {
-                        AppMsg::StructureTabDirtyChanged(tab_id, dirty)
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::FetchStructure => {
-                        AppMsg::FetchStructureData { tab_id }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::ExecuteTransaction { statements } => {
-                        AppMsg::ExecuteStructureTransaction { tab_id, statements }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::DropTableRequested { schema, table } => {
-                        AppMsg::DropTablePrompt { schema, table }
-                    }
-                    crate::ui::structure_tab::StructureTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
-                    crate::ui::structure_tab::StructureTabOutput::ShowAlert { title, body } => {
-                        AppMsg::ShowAlert { title, body }
-                    }
-                });
+            session,
+            tasks: self.context.tasks.clone(),
+        });
+        connect_structure(&structure, tab_id, sender.input_sender());
 
-        let page = tab_view.append(controller.widget());
+        let page = tab_view.append(&structure);
         let title = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
         // Disambiguate from the Data-side tab with the same base name
         // by suffixing the structure tab title — "products · Structure".
@@ -362,7 +330,7 @@ impl App {
 
         let slot = super::StructureTabSlot {
             id: tab_id,
-            controller,
+            structure,
             page: page.clone(),
             schema,
             table,
@@ -616,6 +584,7 @@ impl App {
                     .discard(&tablepro_storage::DraftScope::default(), slot.draft);
             }
             WorkspaceTab::Structure(slot) => {
+                slot.structure.shutdown();
                 self.structure_trackers.unregister(slot.id);
                 self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
@@ -1046,7 +1015,10 @@ impl App {
         // they cannot be saved after it.
         for tab in self.workspace_tabs.borrow().values() {
             match tab {
-                WorkspaceTab::Structure(slot) => self.structure_trackers.unregister(slot.id),
+                WorkspaceTab::Structure(slot) => {
+                    slot.structure.shutdown();
+                    self.structure_trackers.unregister(slot.id);
+                }
                 WorkspaceTab::Table(slot) => {
                     slot.browse.shutdown();
                     self.change_trackers.unregister(slot.id);
@@ -1360,8 +1332,8 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
         WorkspaceTab::Structure(s) => match s.mode {
             // New-Table drafts have no entity to point at and lose
             // their in-progress DDL on close — nothing to reopen.
-            crate::ui::structure_tab::StructureMode::New => None,
-            crate::ui::structure_tab::StructureMode::Edit => Some(ClosedTabDescriptor::Structure {
+            StructureMode::New => None,
+            StructureMode::Edit => Some(ClosedTabDescriptor::Structure {
                 schema: s.schema.clone(),
                 table: s.table.clone(),
             }),
@@ -1448,6 +1420,24 @@ fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
 
 /// Forward an editor tab's signals into the window. The toast overlay
 /// is the window's, so a replaced query's Undo button lives there.
+/// The structure tab's signals, as this window's inputs for the tab.
+fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
+    let dirty = input.clone();
+    structure.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::StructureTabDirtyChanged(tab_id, is_dirty)));
+    let execute = input.clone();
+    structure.connect_execute(move |_, statements| {
+        execute.emit(AppMsg::ExecuteStructureTransaction { tab_id, statements });
+    });
+    let drop_table = input.clone();
+    structure.connect_drop_table_requested(move |_, schema, table| {
+        drop_table.emit(AppMsg::DropTablePrompt { schema, table });
+    });
+    let toast = input.clone();
+    structure.connect_toast(move |_, text| toast.emit(AppMsg::ShowToast(text)));
+    let alert = input.clone();
+    structure.connect_alert(move |_, title, body| alert.emit(AppMsg::ShowAlert { title, body }));
+}
+
 /// The browse tab's signals, as this window's inputs for the tab.
 fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
     let state = input.clone();
