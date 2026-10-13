@@ -145,6 +145,35 @@ pub async fn ddl_plans_apply_and_read_back<E: ConformanceDdlEngine>(engine: E) -
     })
     .await?;
 
+    let renamed = TableRef::new(parent.schema.clone(), unique("ddl_renamed"));
+    let new_name = renamed.name.clone();
+    let moved = step
+        .apply(
+            &mut table,
+            "rename table",
+            table_permission(capabilities.rename_table),
+            |draft| draft.table.name = new_name,
+        )
+        .await?;
+    // A name the server resolved against the session's default schema
+    // would have moved the table out of its own.
+    let parent = if moved {
+        let scope = renamed
+            .schema
+            .clone()
+            .map_or(ObjectScope::DefaultSchema, ObjectScope::Schema);
+        let objects = connection.list_objects(&scope, within(CALL_DEADLINE)).await?;
+        let listed = objects
+            .iter()
+            .any(|object| object.kind == ObjectKind::Table && object.name == renamed.name);
+        expect(case, listed, || {
+            format!("{} is not listed in {scope:?} after the rename", renamed.name)
+        })?;
+        renamed
+    } else {
+        parent
+    };
+
     let drop = DropTableOptions {
         if_exists: false,
         cascade: capabilities.drop_table_cascade,
