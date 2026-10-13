@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use testcontainers::core::wait::HttpWaitStrategy;
 use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
@@ -9,6 +11,10 @@ use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, Fixture
 const HTTP_PORT: u16 = ClickHouseFixture::HTTP_PORT;
 const HTTPS_PORT: u16 = ClickHouseFixture::HTTPS_PORT;
 const PASSWORD_USER: &str = "tablepro";
+/// The image starts the server once to create CLICKHOUSE_DB, stops it and
+/// starts it again before /ping answers; on a busy CI runner that has
+/// taken longer than testcontainers' default of one minute.
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub struct ClickHouseFixture {
     container: ContainerAsync<GenericImage>,
@@ -45,6 +51,7 @@ impl ClickHouseFixture {
             .with_exposed_port(HTTP_PORT.tcp())
             .with_exposed_port(HTTPS_PORT.tcp())
             .with_wait_for(WaitFor::http(ready))
+            .with_startup_timeout(STARTUP_TIMEOUT)
             .with_env_var("CLICKHOUSE_DB", "tablepro");
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
         if let (Some(network), Some(alias)) = (network, &network_alias) {
