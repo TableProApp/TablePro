@@ -32,3 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new row removed with Delete stayed in the grid while the save left it out.
 - A save that failed on a new row did not flash that row.
 - The window title showed no unsaved-changes bullet for pending structure changes.
+- `real` values showed extra digits in the grid, copies and exports, such as 0.10000000149011612 for 0.1.
+- Excel export rounded integers past 2^53 and wrote decimals as text when their column padded the scale.
+- Exported arrays wrote each row of a multi-dimensional array as a quoted string.
+- Markdown export broke its table when a column name held a pipe.
+
+### Security
+
+- CSV export did not neutralise formulas in values of a type TablePro does not recognise.

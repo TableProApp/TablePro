@@ -36,9 +36,10 @@ pub fn csv_writer_builder(opts: &CsvOptions) -> csv::WriterBuilder {
 /// Only free text can smuggle a formula into a spreadsheet. A typed
 /// number, date or UUID, and text that is itself a plain number, is data
 /// the spreadsheet already reads correctly, and prefixing it would turn
-/// `-5` into the string `'-5`.
+/// `-5` into the string `'-5`. A type the driver could not place is the
+/// server's own text, which is as free as any.
 pub fn neutralise_formula(value: &Value, text: String, is_header: bool) -> String {
-    if is_header || matches!(value, Value::Text(_) | Value::Json(_)) {
+    if is_header || matches!(value, Value::Text(_) | Value::Json(_) | Value::Other(_)) {
         neutralise_text(text)
     } else {
         text
@@ -392,6 +393,37 @@ mod tests {
             let rows = vec![vec![Value::Text(text.into())]];
             let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
             assert_eq!(out, format!("\"a\"\n\"'{text}\"\n"), "{text} must be neutralised");
+        }
+    }
+
+    #[test]
+    fn csv_formula_rule_unchanged_after_split() {
+        let columns = cols(&["a"]);
+        let other = |text: &str| {
+            Value::Other(Box::new(crate::value::OtherValue {
+                type_name: "citext".to_owned(),
+                text: text.to_owned(),
+            }))
+        };
+        let neutralised = [
+            Value::Text("=cmd".into()),
+            Value::Json(crate::value::JsonText::parse("\t{}".to_owned()).expect("valid json")),
+            other("-2+cmd"),
+        ];
+        for value in neutralised {
+            let out = render_csv(&columns, &[vec![value.clone()]], &CsvOptions::default()).unwrap();
+            assert!(out.contains("\"'"), "{value:?} reached the sheet as a formula: {out}");
+        }
+        let kept = [
+            (Value::Int(-5), "-5"),
+            (Value::Float64(-1.5), "-1.5"),
+            (Value::Decimal("-12.30".parse().expect("a decimal")), "-12.30"),
+            (Value::Text("-12".into()), "-12"),
+            (other("+1.5e3"), "+1.5e3"),
+        ];
+        for (value, text) in kept {
+            let out = render_csv(&columns, &[vec![value]], &CsvOptions::default()).unwrap();
+            assert_eq!(out, format!("\"a\"\n\"{text}\"\n"), "{text} is data, not a formula");
         }
     }
 

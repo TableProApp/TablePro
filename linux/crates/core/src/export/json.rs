@@ -1,12 +1,12 @@
 use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 use serde_json::value::RawValue;
 
-use crate::column::{ColumnType, ResultColumn};
+use crate::column::{ColumnKind, ResultColumn};
 use crate::value::Value;
 
 use super::column_type;
 use super::json_field_names::json_field_names;
-use super::value_text::{value_text, value_to_text};
+use super::value_text::{element_kind, kind_text};
 
 /// One row as a JSON object, keyed by the names the columns resolve to.
 struct JsonRow<'a> {
@@ -24,7 +24,7 @@ impl Serialize for JsonRow<'_> {
                     name,
                     &JsonCell {
                         value,
-                        column: column_type(self.columns, index),
+                        kind: &column_type(self.columns, index).kind,
                     },
                 )?,
                 // A row shorter than its header: the cell is missing,
@@ -43,7 +43,7 @@ impl Serialize for JsonRow<'_> {
 /// value on the way through one.
 struct JsonCell<'a> {
     value: &'a Value,
-    column: &'a ColumnType,
+    kind: &'a ColumnKind,
 }
 
 impl Serialize for JsonCell<'_> {
@@ -54,10 +54,12 @@ impl Serialize for JsonCell<'_> {
             Value::Int(number) => serializer.serialize_i64(*number),
             Value::UInt(number) => serializer.serialize_u64(*number),
             Value::WideInt(number) => number_token(serializer, &number.to_string()),
-            Value::Float32(number) => finite_number(serializer, f64::from(*number)),
-            Value::Float64(number) => finite_number(serializer, *number),
+            // Each width at its own shortest digits: a `real` widened
+            // to a double prints `0.10000000149011612` for 0.1.
+            Value::Float32(number) if number.is_finite() => serializer.serialize_f32(*number),
+            Value::Float64(number) if number.is_finite() => serializer.serialize_f64(*number),
             Value::Decimal(decimal) if decimal.is_finite() => {
-                number_token(serializer, &value_text(self.value, self.column).unwrap_or_default())
+                number_token(serializer, &kind_text(self.value, self.kind).unwrap_or_default())
             }
             // A JSON column already holds a document, so it goes in as
             // one rather than as a string of one.
@@ -66,20 +68,21 @@ impl Serialize for JsonCell<'_> {
                 Err(_) => serializer.serialize_str(json.as_str()),
             },
             Value::Array(values) => {
+                let element = element_kind(self.kind);
                 let mut seq = serializer.serialize_seq(Some(values.len()))?;
                 for value in values {
-                    seq.serialize_element(&JsonCell {
-                        value,
-                        column: self.column,
-                    })?;
+                    seq.serialize_element(&JsonCell { value, kind: element })?;
                 }
                 seq.end()
             }
             Value::Timestamp(_) | Value::TimestampTz(_) => {
-                let text = value_text(self.value, self.column).unwrap_or_default();
+                let text = kind_text(self.value, self.kind).unwrap_or_default();
                 serializer.serialize_str(&text.replacen(' ', "T", 1))
             }
-            other => match value_text(other, self.column).or_else(|| value_to_text(other)) {
+            // JSON has no NaN or Infinity, so a non-finite number goes
+            // out as its name rather than as a null that reads like a
+            // missing value.
+            other => match kind_text(other, self.kind) {
                 Some(text) => serializer.serialize_str(&text),
                 None => serializer.serialize_none(),
             },
@@ -96,22 +99,6 @@ fn number_token<S: Serializer>(serializer: S, digits: &str) -> Result<S::Ok, S::
         // than as a token that would not parse back.
         Err(_) => serializer.serialize_str(digits),
     }
-}
-
-/// JSON has no NaN or Infinity, so those go out as strings rather than
-/// as a null that reads like a missing value.
-fn finite_number<S: Serializer>(serializer: S, number: f64) -> Result<S::Ok, S::Error> {
-    if number.is_finite() {
-        return serializer.serialize_f64(number);
-    }
-    let text = if number.is_nan() {
-        "NaN"
-    } else if number.is_sign_negative() {
-        "-Infinity"
-    } else {
-        "Infinity"
-    };
-    serializer.serialize_str(text)
 }
 
 /// One row as a document a person reads, which is the only place a
@@ -169,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn a_number_wider_than_a_double_keeps_its_digits() {
+    fn json_emits_raw_number_tokens_for_u64_max_and_decimal_40_20() {
         let columns = vec![
             typed(
                 "bigint unsigned",
@@ -224,25 +211,73 @@ mod tests {
     }
 
     #[test]
-    fn a_json_column_embeds_its_document_rather_than_a_string_of_one() {
+    fn json_embeds_json_column_verbatim() {
+        let document = r#"{"b": 1, "a": [1, 2]}"#;
         let columns = vec![typed("payload", "jsonb", ColumnKind::Json { binary: true })];
         let row = vec![Value::Json(
-            crate::value::JsonText::parse(r#"{"a": [1, 2]}"#.to_owned()).expect("valid json"),
+            crate::value::JsonText::parse(document.to_owned()).expect("valid json"),
         )];
 
-        let json = parsed(&columns, &row);
+        let text = row_to_json(&columns, &row);
 
-        assert_eq!(json["payload"], serde_json::json!({"a": [1, 2]}));
+        assert!(
+            text.contains(&format!("\"payload\": {document}")),
+            "the document was rewritten or quoted: {text}"
+        );
     }
 
     #[test]
-    fn json_non_finite_float_is_string() {
-        let columns = cols(&["v"]);
-        let rows = vec![vec![Value::Float64(f64::INFINITY)]];
+    fn json_non_finite_is_string() {
+        let columns = cols(&["double", "real", "nan", "negative"]);
+        let row = vec![
+            Value::Float64(f64::INFINITY),
+            Value::Float32(f32::NAN),
+            Value::Decimal("NaN".parse().expect("a decimal")),
+            Value::Decimal("-Infinity".parse().expect("a decimal")),
+        ];
 
-        let out = render_json(&columns, &rows);
+        let json = parsed(&columns, &row);
 
-        assert!(out.contains("\"Infinity\""), "{out}");
+        assert_eq!(json["double"], serde_json::json!("Infinity"));
+        assert_eq!(json["real"], serde_json::json!("NaN"));
+        assert_eq!(json["nan"], serde_json::json!("NaN"));
+        assert_eq!(json["negative"], serde_json::json!("-Infinity"));
+    }
+
+    #[test]
+    fn a_real_goes_out_at_its_own_digits() {
+        let columns = cols(&["r"]);
+        let row = vec![Value::Float32(0.1)];
+
+        let text = row_to_json(&columns, &row);
+
+        assert!(
+            text.contains("\"r\": 0.1\n"),
+            "the real was widened to a double: {text}"
+        );
+    }
+
+    #[test]
+    fn array_items_go_out_at_their_element_scale() {
+        let columns = vec![typed(
+            "amounts",
+            "numeric(5,2)[]",
+            ColumnKind::Array {
+                element: Box::new(ColumnKind::Decimal {
+                    precision: Some(5),
+                    scale: Some(2),
+                }),
+            },
+        )];
+        let row = vec![Value::Array(vec![
+            Value::Decimal("1.5".parse().expect("a decimal")),
+            Value::Null,
+        ])];
+
+        let text = row_to_json(&columns, &row);
+
+        assert!(text.contains("1.50,"), "the item lost its column's scale: {text}");
+        assert_eq!(parsed(&columns, &row)["amounts"], serde_json::json!([1.5, null]));
     }
 
     #[test]

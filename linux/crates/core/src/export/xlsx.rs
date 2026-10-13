@@ -72,10 +72,6 @@ fn write_cell(
         // read the two differently, and NULL is the absent one.
         Value::Null => Ok(()),
         Value::Bool(flag) => sheet.write_boolean(row, column, *flag).map(drop),
-        Value::Int(number) => sheet.write_number(row, column, *number as f64).map(drop),
-        Value::UInt(number) => sheet.write_number(row, column, *number as f64).map(drop),
-        Value::Float32(number) => sheet.write_number(row, column, f64::from(*number)).map(drop),
-        Value::Float64(number) => sheet.write_number(row, column, *number).map(drop),
         Value::Date(Temporal::Finite(day)) => sheet.write_datetime_with_format(row, column, day, date).map(drop),
         Value::Timestamp(Temporal::Finite(at)) => {
             sheet.write_datetime_with_format(row, column, at, timestamp).map(drop)
@@ -85,18 +81,28 @@ fn write_cell(
         Value::TimestampTz(Temporal::Finite(at)) => sheet
             .write_datetime_with_format(row, column, at.utc(), timestamp)
             .map(drop),
-        // A decimal is written as a number only when Excel can hold it:
-        // a sheet stores every number as an f64, so one that does not
-        // round-trip would be silently changed. The rest keep their
-        // digits as text, which is what the user asked the database
-        // for.
-        Value::Decimal(_) | Value::WideInt(_) => match exact_number(columns, column, value) {
+        _ => match sheet_number(columns, column, value) {
             Some(number) => sheet.write_number(row, column, number).map(drop),
             None => write_text(sheet, row, column, columns, value),
         },
-        _ => write_text(sheet, row, column, columns, value),
     }
     .map_err(xlsx_error)
+}
+
+/// The number a cell goes in as, or `None` for one that goes in as
+/// text.
+///
+/// An integer or decimal is a number only when Excel can hold it: a
+/// sheet stores every number as an f64, so a `bigint` past 2^53 or a
+/// long decimal would be silently changed. The rest keep their digits
+/// as text, which is what the user asked the database for.
+fn sheet_number(columns: &[ResultColumn], column: u16, value: &Value) -> Option<f64> {
+    match value {
+        Value::Float32(number) => Some(real_number(*number)),
+        Value::Float64(number) => Some(*number),
+        Value::Int(_) | Value::UInt(_) | Value::Decimal(_) | Value::WideInt(_) => exact_number(columns, column, value),
+        _ => None,
+    }
 }
 
 /// Everything else goes in as the same text the other exports write,
@@ -114,17 +120,31 @@ fn write_text(
     }
 }
 
-/// The value as an f64, when that f64 prints back as the same digits.
+/// The value as an f64, when that f64 prints back as the same number.
 /// `None` when it does not, which is the case this exists to catch.
 fn exact_number(columns: &[ResultColumn], column: u16, value: &Value) -> Option<f64> {
     let text = cell_text(columns, column as usize, value)?;
     let parsed: f64 = text.parse().ok()?;
     // `{}` on an f64 prints the shortest form that round-trips, so
     // comparing against it is comparing the value, not the spelling.
-    match format!("{parsed}") == text {
+    // The zeros a `numeric(10,2)` pads `1.50` with are spelling.
+    match without_scale_padding(&format!("{parsed}")) == without_scale_padding(&text) {
         true => Some(parsed),
         false => None,
     }
+}
+
+fn without_scale_padding(text: &str) -> &str {
+    match text.contains('.') {
+        true => text.trim_end_matches('0').trim_end_matches('.'),
+        false => text,
+    }
+}
+
+/// The double a `real`'s own shortest digits name. Widening its bits
+/// instead hands the sheet `0.100000001490116` for a `real` holding 0.1.
+fn real_number(number: f32) -> f64 {
+    number.to_string().parse().unwrap_or(f64::from(number))
 }
 
 /// A sheet name Excel accepts: at most 31 characters, none of
@@ -152,7 +172,8 @@ fn xlsx_error(error: rust_xlsxwriter::XlsxError) -> EncodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::export::test_columns::{col, cols};
+    use crate::column::ColumnKind;
+    use crate::export::test_columns::{col, cols, typed};
 
     fn workbook_bytes(columns: &[ResultColumn], rows: &[Vec<Value>]) -> Vec<u8> {
         render_xlsx(columns, rows, "Results").expect("render")
@@ -207,6 +228,46 @@ mod tests {
         let value = Value::WideInt("170141183460469231731687303715884105727".parse().expect("wide"));
 
         assert_eq!(exact_number(&columns, 0, &value), None);
+    }
+
+    #[test]
+    fn a_decimal_padded_to_its_scale_is_still_a_number() {
+        let columns = vec![typed(
+            "amount",
+            "numeric(10,2)",
+            ColumnKind::Decimal {
+                precision: Some(10),
+                scale: Some(2),
+            },
+        )];
+
+        for (digits, number) in [("1.5", 1.5), ("2", 2.0), ("-0.10", -0.1), ("100", 100.0)] {
+            let value = Value::Decimal(digits.parse().expect("decimal"));
+            assert_eq!(sheet_number(&columns, 0, &value), Some(number), "{digits}");
+        }
+    }
+
+    #[test]
+    fn an_integer_past_an_f64_stays_text() {
+        let columns = cols(&["id"]);
+
+        assert_eq!(sheet_number(&columns, 0, &Value::Int(42)), Some(42.0));
+        assert_eq!(
+            sheet_number(&columns, 0, &Value::Int(-(1 << 53))),
+            Some(-9_007_199_254_740_992.0)
+        );
+        assert_eq!(sheet_number(&columns, 0, &Value::Int((1 << 53) + 1)), None);
+        assert_eq!(sheet_number(&columns, 0, &Value::UInt(u64::MAX)), None);
+    }
+
+    #[test]
+    fn a_real_is_written_as_the_number_it_prints_as() {
+        let columns = cols(&["r"]);
+
+        assert_eq!(sheet_number(&columns, 0, &Value::Float32(0.1)), Some(0.1));
+        assert_eq!(sheet_number(&columns, 0, &Value::Float32(-3.3)), Some(-3.3));
+        assert!(sheet_number(&columns, 0, &Value::Float32(f32::NAN)).is_some_and(f64::is_nan));
+        assert_eq!(sheet_number(&columns, 0, &Value::Text("1".to_owned())), None);
     }
 
     #[test]
