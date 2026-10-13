@@ -295,13 +295,15 @@ async fn closing_a_session_with_an_open_transaction_rolls_it_back_on_real_postgr
 
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn a_read_only_repeatable_read_session_keeps_one_snapshot_across_queries() {
+async fn a_read_only_repeatable_read_session_keeps_one_snapshot_across_offset_pages() {
     let (_container, opts) = start_pg().await;
     let raw = connect(opts.clone()).await;
-    raw.execute("CREATE TABLE snapshot_probe (id INT PRIMARY KEY)")
+    raw.execute("CREATE TABLE snapshot_probe (id INT PRIMARY KEY, payload TEXT NOT NULL)")
         .await
         .unwrap();
-    raw.execute("INSERT INTO snapshot_probe VALUES (1)").await.unwrap();
+    raw.execute("INSERT INTO snapshot_probe VALUES (1, 'one'), (2, 'two'), (3, 'three')")
+        .await
+        .unwrap();
 
     let audit = Arc::new(CapturingAudit::new());
     let audit_state = Arc::new(AuditState::new());
@@ -312,20 +314,53 @@ async fn a_read_only_repeatable_read_session_keeps_one_snapshot_across_queries()
     run(&mut session, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
         .await
         .expect("begin read snapshot");
-    let before = run(&mut session, "SELECT count(*)::bigint FROM snapshot_probe")
-        .await
-        .expect("first snapshot read");
-    assert_eq!(before.rows, vec![vec![Value::Int(1)]]);
+    let first_page = run(
+        &mut session,
+        "SELECT id::bigint, payload FROM snapshot_probe ORDER BY id LIMIT 2 OFFSET 0",
+    )
+    .await
+    .expect("first snapshot read");
+    assert_eq!(
+        first_page.rows,
+        vec![
+            vec![Value::Int(1), Value::Text("one".into())],
+            vec![Value::Int(2), Value::Text("two".into())]
+        ]
+    );
 
     let writer = connect(opts).await;
-    writer.execute("INSERT INTO snapshot_probe VALUES (2)").await.unwrap();
-
-    let after = run(&mut session, "SELECT count(*)::bigint FROM snapshot_probe")
+    writer
+        .execute("UPDATE snapshot_probe SET payload = 'two-updated' WHERE id = 2")
         .await
-        .expect("second snapshot read");
-    assert_eq!(after.rows, vec![vec![Value::Int(1)]]);
+        .unwrap();
+    writer.execute("DELETE FROM snapshot_probe WHERE id = 3").await.unwrap();
+    writer
+        .execute("INSERT INTO snapshot_probe VALUES (4, 'four')")
+        .await
+        .unwrap();
+
+    let second_page = run(
+        &mut session,
+        "SELECT id::bigint, payload FROM snapshot_probe ORDER BY id LIMIT 2 OFFSET 2",
+    )
+    .await
+    .expect("second snapshot read");
+    assert_eq!(second_page.rows, vec![vec![Value::Int(3), Value::Text("three".into())]]);
     run(&mut session, "ROLLBACK").await.expect("close snapshot");
     session.close().await.expect("close session");
+
+    let current = writer
+        .query("SELECT id::bigint, payload FROM snapshot_probe ORDER BY id")
+        .await
+        .expect("verify writer state");
+    assert_eq!(
+        current.rows,
+        vec![
+            vec![Value::Int(1), Value::Text("one".into())],
+            vec![Value::Int(2), Value::Text("two-updated".into())],
+            vec![Value::Int(4), Value::Text("four".into())]
+        ]
+    );
 
     let reads = outcomes_of(&audit, AuditOperationClass::Read);
     assert_eq!(reads.len(), 3);
