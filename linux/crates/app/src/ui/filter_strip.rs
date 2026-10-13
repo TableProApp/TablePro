@@ -806,6 +806,52 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_between_rule_frees_its_entries() {
+        let mut amount = placeholder_column("amount");
+        amount.column_type.kind = tablepro_core::column::ColumnKind::Integer(tablepro_core::column::IntegerKind {
+            width: tablepro_core::column::IntegerWidth::W32,
+            signed: true,
+        });
+        let strip = build(
+            vec![amount],
+            FilterSet {
+                rules: vec![FilterRule {
+                    column: "amount".to_owned(),
+                    op: FilterOp::Between,
+                    value: Some(FilterValue::Pair("1".to_owned(), "2".to_owned())),
+                }],
+                ..FilterSet::default()
+            },
+            Rc::new(|_| {}),
+        );
+        let entry = |text: &str| {
+            crate::test_support::descendants(&strip.widget)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk::Entry>().ok())
+                .find(|entry| entry.text() == text)
+        };
+        let from = entry("1").expect("the From entry");
+        let to = entry("2").expect("the To entry");
+        from.set_text("5");
+        assert_eq!(
+            strip.state.borrow().rules[0].value,
+            Some(FilterValue::Pair("5".to_owned(), "2".to_owned()))
+        );
+        to.set_text("9");
+        assert_eq!(
+            strip.state.borrow().rules[0].value,
+            Some(FilterValue::Pair("5".to_owned(), "9".to_owned()))
+        );
+        let freed = [from.downgrade(), to.downgrade()];
+
+        drop((strip, from, to));
+        drain_main_context();
+
+        let alive = freed.iter().filter(|entry| entry.upgrade().is_some()).count();
+        assert_eq!(alive, 0, "the From and To entries outlived the strip");
+    }
+
+    #[gtk4::test]
     fn an_applied_filter_rebuilds_the_rule_list() {
         let strip = strip_with(vec![rule("a"), rule("b")]);
         let rules = first_descendant_of_type::<gtk::ListBox>(&strip.widget).expect("the rule list");
