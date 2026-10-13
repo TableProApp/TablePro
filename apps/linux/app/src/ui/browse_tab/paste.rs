@@ -64,7 +64,7 @@ fn is_spreadsheet_quoted_cell(after_open: &[char]) -> bool {
                 let ends_cell = matches!(after_open.get(index), None | Some('\t' | '\n' | '\r'));
                 return ends_cell && needs_quoting;
             }
-            '\t' | '\n' => needs_quoting = true,
+            '\t' | '\n' | '\r' => needs_quoting = true,
             _ => {}
         }
     }
@@ -370,5 +370,92 @@ mod tests {
             replaced_draft[position as usize].clone()
         }));
         assert!(!snapshot.matches(Some(generation), &[0, 1], |position| missing[position as usize].clone()));
+    }
+}
+
+#[cfg(test)]
+mod roundtrip_tests {
+    use super::parse_clipboard_grid;
+
+    fn spreadsheet_encode(rows: &[Vec<String>]) -> String {
+        rows.iter()
+            .map(|row| {
+                row.iter()
+                    .map(|cell| {
+                        if cell.contains(['\t', '\n', '\r', '"']) {
+                            format!("\"{}\"", cell.replace('"', "\"\""))
+                        } else {
+                            cell.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\t")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn strings(alphabet: &[char], max_len: usize) -> Vec<String> {
+        let mut all = vec![String::new()];
+        let mut frontier = vec![String::new()];
+        for _ in 0..max_len {
+            frontier = frontier
+                .iter()
+                .flat_map(|prefix| alphabet.iter().map(move |c| format!("{prefix}{c}")))
+                .collect();
+            all.extend(frontier.iter().cloned());
+        }
+        all
+    }
+
+    #[test]
+    fn whatever_a_spreadsheet_copies_is_pasted_back_unchanged() {
+        let cells = strings(&['a', '"', '\t', '\n', ' '], 3);
+        let mut failures = Vec::new();
+        for first in &cells {
+            for second in &cells {
+                let grid = vec![vec![first.clone(), second.clone()]];
+                let text = spreadsheet_encode(&grid);
+                if text.is_empty() {
+                    continue;
+                }
+                let parsed = parse_clipboard_grid(&text);
+                if parsed != grid {
+                    failures.push((grid, text, parsed));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} of {} copies changed; first: {:?}",
+            failures.len(),
+            cells.len() * cells.len(),
+            failures.first()
+        );
+    }
+    #[test]
+    fn carriage_returns_and_several_rows_survive_the_same_round_trip() {
+        let with_returns = strings(&['a', '"', '\t', '\n', '\r', ' '], 2);
+        for first in &with_returns {
+            for second in &with_returns {
+                let grid = vec![vec![first.clone(), second.clone()]];
+                let text = spreadsheet_encode(&grid);
+                if !text.is_empty() {
+                    assert_eq!(parse_clipboard_grid(&text), grid, "{text:?}");
+                }
+            }
+        }
+        let small = strings(&['a', '"', '\t', '\n', '\r', ' '], 1);
+        for a in &small {
+            for b in &small {
+                for c in &small {
+                    for d in &small {
+                        let grid = vec![vec![a.clone(), b.clone()], vec![c.clone(), d.clone()]];
+                        let text = spreadsheet_encode(&grid);
+                        assert_eq!(parse_clipboard_grid(&text), grid, "{text:?}");
+                    }
+                }
+            }
+        }
     }
 }
