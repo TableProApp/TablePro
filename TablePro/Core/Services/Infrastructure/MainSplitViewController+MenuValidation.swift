@@ -153,8 +153,6 @@ struct MenuValidationContext: Equatable {
     var hasDatabaseFilter = false
     var canFilterSchemas = false
     var hasSchemaFilter = false
-    var canZoomIn = false
-    var canZoomOut = false
 }
 
 extension MainSplitViewController: NSMenuItemValidation {
@@ -418,11 +416,6 @@ extension MainSplitViewController: NSMenuItemValidation {
         /// connection and something that can hold a selection, not merely a window.
         case #selector(clearSelection(_:)): return context.isConnected
 
-        /// The window's zoom changes the editor font, an app setting that needs no session. A focused
-        /// diagram claims these first.
-        case #selector(zoomIn(_:)): return context.canZoomIn
-        case #selector(zoomOut(_:)): return context.canZoomOut
-
         default: return isAgentSessionCommandEnabled(selector, context: context)
         }
     }
@@ -604,7 +597,6 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// command actions, so read from them, the one command that reaches its composer was dimmed.
     var menuValidationContext: MenuValidationContext {
         let conversations = assistantConversationModel
-        let typography = AppSettingsManager.shared.typography
         guard let actions = commandActions else {
             return MenuValidationContext(
                 hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
@@ -615,9 +607,7 @@ extension MainSplitViewController: NSMenuItemValidation {
                 canFocusAssistant: canFocusAssistant,
                 canMoveTabToConnection: canMoveSelectedTabToConnection,
                 hasOtherWindowTabs: hasOtherWindowTabs,
-                canToggleWorkspaceRail: canToggleWorkspaceRail,
-                canZoomIn: typography.editorFontSize(zoomedBy: 1) != nil,
-                canZoomOut: typography.editorFontSize(zoomedBy: -1) != nil
+                canToggleWorkspaceRail: canToggleWorkspaceRail
             )
         }
         return MenuValidationContext(
@@ -705,9 +695,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canFavoriteActiveDatabase: actions.canFavoriteActiveDatabase,
             hasDatabaseFilter: actions.hasDatabaseFilter,
             canFilterSchemas: actions.canFilterSchemas,
-            hasSchemaFilter: actions.hasSchemaFilter,
-            canZoomIn: typography.editorFontSize(zoomedBy: 1) != nil,
-            canZoomOut: typography.editorFontSize(zoomedBy: -1) != nil
+            hasSchemaFilter: actions.hasSchemaFilter
         )
     }
 
@@ -725,6 +713,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
+        if let zoom = Self.zoomEnablement(action, typography: AppSettingsManager.shared.typography) {
+            return zoom
+        }
         return Self.isEnabled(action, context: menuValidationContext(naming: menuItem))
     }
 

@@ -33,14 +33,18 @@ struct EditorZoomTests {
         let zoomIn = #selector(MainSplitViewController.zoomIn(_:))
         let zoomOut = #selector(MainSplitViewController.zoomOut(_:))
 
-        var context = MenuValidationContext()
-        context.canZoomOut = true
-        #expect(MainSplitViewController.resolvedEnablement(zoomIn, context: context) == false)
-        #expect(MainSplitViewController.resolvedEnablement(zoomOut, context: context) == true)
+        let middle = TypographySettings(editorFontSize: 13)
+        let largest = TypographySettings(editorFontSize: TypographySettings.sizeRange.upperBound)
+        let smallest = TypographySettings(editorFontSize: TypographySettings.sizeRange.lowerBound)
 
-        context.canZoomIn = true
-        context.canZoomOut = false
-        #expect(MainSplitViewController.resolvedEnablement(zoomIn, context: context) == true)
-        #expect(MainSplitViewController.resolvedEnablement(zoomOut, context: context) == false)
+        #expect(MainSplitViewController.zoomEnablement(zoomIn, typography: middle) == true)
+        #expect(MainSplitViewController.zoomEnablement(zoomOut, typography: middle) == true)
+        #expect(MainSplitViewController.zoomEnablement(zoomIn, typography: largest) == false)
+        #expect(MainSplitViewController.zoomEnablement(zoomOut, typography: largest) == true)
+        #expect(MainSplitViewController.zoomEnablement(zoomIn, typography: smallest) == true)
+        #expect(MainSplitViewController.zoomEnablement(zoomOut, typography: smallest) == false)
+
+        let other = #selector(MainSplitViewController.clearSelection(_:))
+        #expect(MainSplitViewController.zoomEnablement(other, typography: middle) == nil)
     }
 }
