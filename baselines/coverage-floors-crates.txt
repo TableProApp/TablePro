@@ -1,0 +1,12 @@
+# Line coverage floors per crate, checked nightly by scripts/check-crate-coverage-floors.py.
+# Driver crates are measured with their Docker suites included (--include-ignored);
+# core and policy by their own tests. Each floor is about 3 points under the value measured
+# on 2026-10-13, so churn does not trip it but a real loss of tests does.
+crates/drivers/postgres 92
+crates/drivers/mysql 88
+crates/drivers/sqlite 88
+crates/drivers/mongodb 84
+crates/drivers/redis 82
+crates/drivers/clickhouse 80
+crates/core 92
+crates/policy 92
