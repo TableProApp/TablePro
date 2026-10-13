@@ -8,7 +8,7 @@
 //! entry forms belong on AdwDialog with explicit headerbar buttons.
 //!
 //! Form fields use AdwEntryRow / AdwSwitchRow / AdwComboRow inside an
-//! AdwPreferencesGroup — the same pattern GNOME Settings uses for
+//! AdwPreferencesGroup, the same pattern GNOME Settings uses for
 //! every "Add account / Add network / Add printer" dialog. Raw
 //! GtkEntry + sibling labels was the quick-MVP layout but it doesn't
 //! pick up the rounded-corner / row-separator styling and breaks
@@ -93,7 +93,7 @@ fn build_form_dialog(title: &str, submit_label: &str) -> (adw::Dialog, gtk::Box,
     (dialog, content, submit_btn)
 }
 
-/// Build a section header label sized as a small caption — used
+/// Build a section header label sized as a small caption, used
 /// above sub-groupings inside form dialogs. AdwPreferencesGroup
 /// already handles its own header, so this is for the "Columns"
 /// label that sits above the column checklist (which is itself a
@@ -104,8 +104,8 @@ fn section_label(title: &str) -> gtk::Label {
     label
 }
 
-/// Build a boxed-list `ListBox` of `AdwActionRow` + `CheckButton` —
-/// one per draft column — for picking columns inside a form dialog.
+/// Build a boxed-list `ListBox` of `AdwActionRow` + `CheckButton`,
+/// one per draft column, for picking columns inside a form dialog.
 /// Returns the list (so the caller can `body.append` it) plus the
 /// shared `Rc` of name/check pairs so the submit handler can extract
 /// which columns the user ticked.
@@ -205,7 +205,7 @@ pub(super) fn present_fk_dialog(
     let (dialog, body, submit_btn) =
         build_form_dialog(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("Add"));
 
-    // Name in its own AdwPreferencesGroup at the top — matches the
+    // Name in its own AdwPreferencesGroup at the top, which matches the
     // shape of the column-edit drawer + every other GNOME form.
     let name_group = adw::PreferencesGroup::builder().build();
     let name_row = adw::EntryRow::builder()
@@ -220,7 +220,7 @@ pub(super) fn present_fk_dialog(
     body.append(&columns_list);
 
     // Reference target + ON DELETE / ON UPDATE in a second group.
-    // Reference columns stay free-text — wiring up an async fetch of
+    // Reference columns stay free-text: wiring up an async fetch of
     // the referenced table's columns is out of scope for an MVP.
     let ref_group = adw::PreferencesGroup::builder()
         .title(crate::i18n::gettext("References"))
@@ -288,7 +288,7 @@ pub(super) fn present_fk_dialog(
             )));
             return;
         }
-        // Source and reference column counts must match — `(a, b) → (x)`
+        // Source and reference column counts must match: `(a, b) → (x)`
         // is structurally invalid SQL. Drivers reject it, but with an
         // opaque error after Save instead of an inline guard.
         if ref_cols.len() != cols.len() {

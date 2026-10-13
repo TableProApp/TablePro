@@ -42,7 +42,7 @@ impl App {
     /// this `(schema, table)` it's just re-selected; otherwise a new
     /// `WorkspaceTab::Structure` is appended via
     /// `append_existing_structure_tab`. The Data-side Browse tab (if
-    /// any) is independent — both can stay open side by side.
+    /// any) is independent: both can stay open side by side.
     pub(super) fn on_edit_structure_tab(
         &mut self,
         schema: Option<String>,
@@ -144,10 +144,10 @@ impl App {
 
     /// Targeted save: commit a specific Structure tab's pending DDL
     /// without requiring it to be the active tab. Used by the
-    /// close-with-pending dialog's "Save" branch — the user might be
+    /// close-with-pending dialog's "Save" branch: the user might be
     /// closing a background tab via its X button.
     pub(super) fn save_structure_tab_by_id(&mut self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        // If a save is already in flight for this tab, do nothing —
+        // If a save is already in flight for this tab, do nothing:
         // calling `on_execute_structure_transaction` would silently
         // early-return on the duplicate insert, never firing a
         // completion. The in-flight save's `on_structure_save_completed`
@@ -184,7 +184,7 @@ impl App {
         }
     }
 
-    /// Drop succeeded on the driver — now close any open tabs for
+    /// Drop succeeded on the driver: now close any open tabs for
     /// the dropped table and refresh sidebar. Run synchronously on
     /// the GTK main thread so the close + sidebar refresh appear
     /// atomic to the user.
@@ -320,8 +320,8 @@ impl App {
         }
         self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
 
-        // Inspect slot kind first so we can branch — promote-and-close
-        // vs. in-place clear — without borrowing across mutation.
+        // Inspect slot kind first so we can branch (promote-and-close
+        // vs. in-place clear) without borrowing across mutation.
         enum SaveKind {
             PromoteNewToTable(Option<String>, String),
             UpdateInPlace(Option<String>, String),
@@ -353,7 +353,7 @@ impl App {
                     self.finish_close_workspace_tab(tab_id, &tab_view);
                 }
                 // After the CREATE TABLE lands, drop the user into a
-                // Browse tab on the freshly-created table — they just
+                // Browse tab on the freshly-created table: they just
                 // designed it, so showing Data (empty grid) is the
                 // natural next step. If they want to keep editing the
                 // schema, sidebar right-click → "Edit Structure"
@@ -511,7 +511,7 @@ impl App {
         let (page, schema, table_name, combined_dirty) = match slot {
             WorkspaceTab::Structure(s) => (&s.page, s.schema.as_deref(), s.table.clone(), dirty),
             WorkspaceTab::Table(s) => {
-                // Combine with the data-side dirty state — either
+                // Combine with the data-side dirty state: either
                 // mode contributing pending changes prefixes the tab
                 // with the "•" GNOME convention.
                 let data = self

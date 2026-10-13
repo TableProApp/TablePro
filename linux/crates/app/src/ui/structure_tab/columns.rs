@@ -15,7 +15,7 @@ use super::{ColumnField, StructureTabInput, StructureTabSender};
 
 /// Curated type lists per driver. Free-text input still allowed via
 /// the combo box's editable entry; this list seeds the dropdown so
-/// common types are one click away. Order matters — most-common at
+/// common types are one click away. Order matters: most-common at
 /// the top.
 pub(super) fn driver_types(driver_id: &str) -> &'static [&'static str] {
     match driver_id {
@@ -119,7 +119,7 @@ pub(super) fn default_type_for(driver_id: &str) -> String {
 }
 
 /// Render a draft column's summary line for the collapsed expander
-/// header — `varchar(255) · NOT NULL · Primary key`. Order: type,
+/// header: `varchar(255) · NOT NULL · Primary key`. Order: type,
 /// nullability, primary key, auto-increment. Empty parts are skipped
 /// so a freshly-added column with default state shows the minimum
 /// useful information.
@@ -147,7 +147,7 @@ fn format_column_subtitle(col: &DraftColumn) -> String {
 /// reveals one `AdwEntryRow` / `AdwSwitchRow` per editable attribute.
 /// SQLite-restricted fields render as `set_sensitive(false)` with
 /// explanatory tooltips so the user understands why they can't edit.
-/// Non-original (newly-added) columns always allow full editing —
+/// Non-original (newly-added) columns always allow full editing:
 /// those become `AddColumn` ops which SQLite accepts at execution.
 ///
 /// `suppress_emit` lets the caller mark a window during which signal
@@ -172,7 +172,7 @@ pub(super) fn build_column_expander_row(
         .build();
     row.set_widget_name(&format!("col-row-{index}"));
 
-    // Trash button as a header-suffix on the expander row itself —
+    // Trash button as a header-suffix on the expander row itself, which
     // remains visible whether the row is expanded or collapsed.
     let remove_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
@@ -211,7 +211,7 @@ pub(super) fn build_column_expander_row(
     });
     row.add_row(&name_row);
 
-    // Type (AdwEntryRow — free text). A suffix MenuButton offers the
+    // Type (AdwEntryRow, free text). A suffix MenuButton offers the
     // curated `driver_types()` suggestions; free-text input remains the
     // primary path so custom types like `decimal(10,2)` or Postgres
     // `enum` literals work without enumeration.
@@ -363,7 +363,7 @@ pub(super) fn build_column_expander_row(
 /// Build a suffix MenuButton for the type AdwEntryRow that opens a
 /// native `gtk::PopoverMenu` listing curated `driver_types()` for
 /// `driver_id`. Selecting an entry rewrites the target row's text
-/// (which fires the row's `changed` signal — the existing handler
+/// (which fires the row's `changed` signal; the existing handler
 /// picks up the new value). Free-text input via the entry stays as
 /// the primary path.
 ///
@@ -371,7 +371,7 @@ pub(super) fn build_column_expander_row(
 /// causes GTK to render a `gtk::PopoverMenu` automatically. That is
 /// the same widget powering app menus, right-click menus, and
 /// gnome-menus across the desktop, so the rendering is identical to
-/// every other GNOME menu the user has ever seen — proper menu-item
+/// every other GNOME menu the user has ever seen: proper menu-item
 /// padding, hover/active states, separators, focus ring, all native.
 ///
 /// Each type-name menu item activates a single SimpleAction
