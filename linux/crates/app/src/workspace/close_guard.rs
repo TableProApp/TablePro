@@ -302,6 +302,7 @@ mod tests {
 
         assert_eq!(decided(&decision), CloseDecision::Cancelled);
         let observed = workspace.fake.connection.observed_cancels("write_batch");
+        assert!(!observed.is_empty(), "the write never ran");
         assert!(
             observed.iter().all(|cancel| cancel.is_cancelled()),
             "the write never saw the stop"
