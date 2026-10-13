@@ -89,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structure tab edits made while its save ran were lost when the table was read again.
 - Ctrl+S did nothing in a Structure tab.
 - Structure tab could not save two columns swapping names, or a column taking the name of one being removed.
+- Changing the type of a SQL Server column with a default failed.
 
 ### Security
 
