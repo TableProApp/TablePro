@@ -92,7 +92,7 @@ struct JSONNodeRowView: View {
                     .lineLimit(1)
                 Text(": ")
                     .font(valueFont)
-                    .foregroundStyle(JSONRowColors.punctuation)
+                    .themeForeground(.editorText, native: JSONRowColors.punctuation)
             }
             token
             status
@@ -163,7 +163,7 @@ struct JSONNodeRowView: View {
     private func punctuation(_ text: String) -> some View {
         Text(text)
             .font(valueFont)
-            .foregroundStyle(JSONRowColors.punctuation)
+            .themeForeground(.editorText, native: JSONRowColors.punctuation)
     }
 
     private func collapsed(open: String, close: String, count: Int) -> some View {

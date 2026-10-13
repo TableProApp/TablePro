@@ -16,20 +16,13 @@ struct SQLPreviewSheet: View {
                 .font(.body.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            ScrollView {
-                Text(sql.isEmpty ? "(no conditions)" : sql)
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-            }
-            .frame(maxHeight: 180)
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
+            HighlightedSQLTextView(sql: sql.isEmpty ? "(no conditions)" : sql, lineLayout: .wrapped)
+                .frame(maxHeight: 180)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                )
 
             HStack {
                 Button(action: copyToClipboard) {

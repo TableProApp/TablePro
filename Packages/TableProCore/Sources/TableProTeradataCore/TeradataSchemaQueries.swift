@@ -50,6 +50,13 @@ public enum TeradataSchemaQueries {
         "SHOW TABLE \(qualifiedName(database: database, table: table))"
     }
 
+    public static func tableKind(database: String, table: String) -> String {
+        """
+        SELECT TableKind FROM DBC.TablesV \
+        WHERE DatabaseName = \(quoteLiteral(database)) AND TableName = \(quoteLiteral(table))
+        """
+    }
+
     public static func viewDefinition(database: String, view: String) -> String {
         """
         SELECT RequestText FROM DBC.TablesV \

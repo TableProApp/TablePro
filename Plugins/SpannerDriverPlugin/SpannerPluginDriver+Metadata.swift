@@ -68,10 +68,13 @@ extension SpannerPluginDriver {
         nil
     }
 
+    /// The DDL catalog keeps views apart from tables, so a view answers with its own `CREATE VIEW`
+    /// rather than being reported missing.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let sqlSchema = sqlSchema(schema)
         let catalog = try await ddlCatalog()
-        guard let ddl = catalog.tableDDL(schema: sqlSchema, name: table) else {
+        guard let ddl = catalog.tableDDL(schema: sqlSchema, name: table) ?? catalog.viewDDL(schema: sqlSchema, name: table)
+        else {
             throw SpannerDriverError.objectNotFound(table)
         }
         return ddl

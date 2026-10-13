@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import SwiftUI
 
 struct AIChatToolUseBlockView: View {
@@ -13,6 +12,8 @@ struct AIChatToolUseBlockView: View {
     @State private var isExpanded: Bool = false
 
     @Environment(\.chatApprovalConnectionName) private var connectionName
+
+    internal static let inputFont = Font.system(.caption, design: .monospaced)
 
     private var isPending: Bool {
         if case .pending = block.approvalState { return true }
@@ -59,23 +60,9 @@ struct AIChatToolUseBlockView: View {
             .buttonStyle(.borderless)
 
             if isPending, let proposedStatement {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(proposedStatement)
-                        .font(themeEngine.valueFontSwiftUI)
-                        .textSelection(.enabled)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                )
-                .accessibilityLabel(String(localized: "Proposed statement"))
-                .accessibilityValue(proposedStatement)
+                CodeWell(proposedStatement, font: themeEngine.valueFontSwiftUI)
+                    .accessibilityLabel(String(localized: "Proposed statement"))
+                    .accessibilityValue(proposedStatement)
             }
 
             if isPending {
@@ -88,22 +75,7 @@ struct AIChatToolUseBlockView: View {
             }
 
             if shouldShowInput {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(prettyInput)
-                        .font(.caption)
-                        .fontDesign(.monospaced)
-                        .textSelection(.enabled)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                )
+                CodeWell(prettyInput, font: Self.inputFont)
             }
 
             if case .pending = block.approvalState {

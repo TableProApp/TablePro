@@ -19,6 +19,7 @@ struct MaintenanceSheet: View {
     let operation: PluginMaintenanceOperation
     let tableName: String?
     let databaseName: String?
+    let databaseType: DatabaseType
     /// Statements for the given option values. Synchronous and pure, so calling it for every toggle
     /// while `body` runs costs an array of strings.
     let preview: ([String: String]) -> [String]
@@ -30,12 +31,14 @@ struct MaintenanceSheet: View {
         operation: PluginMaintenanceOperation,
         tableName: String?,
         databaseName: String?,
+        databaseType: DatabaseType,
         preview: @escaping ([String: String]) -> [String],
         onExecute: @escaping ([String: String]) -> Void
     ) {
         self.operation = operation
         self.tableName = tableName
         self.databaseName = databaseName
+        self.databaseType = databaseType
         self.preview = preview
         self.onExecute = onExecute
         _values = State(initialValue: operation.defaultOptionValues)
@@ -59,13 +62,12 @@ struct MaintenanceSheet: View {
                 Text(String(localized: "SQL Preview"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(sqlPreview)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                HighlightedSQLTextView(
+                    sql: sqlPreview,
+                    databaseType: databaseType,
+                    lineLayout: .fitted(maxLines: Self.previewMaxLines)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
             Divider()
@@ -143,4 +145,6 @@ struct MaintenanceSheet: View {
     private var sqlPreview: String {
         preview(values).joined(separator: ";\n")
     }
+
+    internal static let previewMaxLines = 8
 }

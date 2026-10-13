@@ -119,4 +119,11 @@ final class TeradataSchemaQueriesTests: XCTestCase {
         XCTAssertEqual(TeradataSchemaQueries.quoteLiteral("a'\u{0301}b"), "'a''\u{0301}b'")
         XCTAssertEqual(TeradataSchemaQueries.quoteIdentifier("a\"\u{0301}b"), "\"a\"\"\u{0301}b\"")
     }
+
+    func testTableKindReadsOneObject() {
+        let sql = TeradataSchemaQueries.tableKind(database: "Retail", table: "o'v")
+        XCTAssertTrue(sql.hasPrefix("SELECT TableKind FROM DBC.TablesV"))
+        XCTAssertTrue(sql.contains("DatabaseName = 'Retail'"))
+        XCTAssertTrue(sql.contains("TableName = 'o''v'"))
+    }
 }

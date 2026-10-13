@@ -22,6 +22,8 @@ struct ResultChartCanvas: View {
     @State private var selectedCategory: String?
     @State private var selectedNumber: Double?
     @State private var selectedDate: Date?
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @Environment(\.colorSchemeContrast) private var contrast
 
     init(projection: ResultChartProjection, chartType: ResultChartType) {
         self.projection = projection
@@ -41,9 +43,9 @@ struct ResultChartCanvas: View {
         .chartYAxis {
             AxisMarks(position: .leading) {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color(nsColor: .separatorColor).opacity(0.55))
+                    .foregroundStyle(gridLineStyle)
                 AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color(nsColor: .separatorColor))
+                    .foregroundStyle(tickStyle)
                 AxisValueLabel()
                     .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             }
@@ -51,23 +53,38 @@ struct ResultChartCanvas: View {
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 7)) {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color(nsColor: .separatorColor).opacity(0.55))
+                    .foregroundStyle(gridLineStyle)
                 AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color(nsColor: .separatorColor))
+                    .foregroundStyle(tickStyle)
                 AxisValueLabel(collisionResolution: .greedy(minimumSpacing: 8))
                     .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             }
         }
         .chartPlotStyle { plotArea in
             plotArea
-                .background(
-                    Color(nsColor: .controlBackgroundColor).opacity(0.45),
+                .themeBackground(
+                    .gridBackground,
+                    native: Color(nsColor: .controlBackgroundColor).opacity(0.45),
                     in: .rect(cornerRadius: 8)
                 )
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityIdentifier("result-chart")
+    }
+
+    /// The chart stands where the grid would, so its plot takes the grid's background and lines.
+    private var gridLineStyle: AnyShapeStyle {
+        ThemeShapeStyle.style(
+            .gridLine,
+            native: Color(nsColor: .separatorColor).opacity(0.55),
+            engine: themeEngine,
+            contrast: contrast
+        )
+    }
+
+    private var tickStyle: AnyShapeStyle {
+        ThemeShapeStyle.style(.gridLine, native: Color(nsColor: .separatorColor), engine: themeEngine, contrast: contrast)
     }
 
     private var categoricalChart: some View {

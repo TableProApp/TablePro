@@ -3,7 +3,10 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
+import SwiftUI
+@testable import TablePro
 import Testing
 
 /// `NSHostingView.sizingOptions` defaults to `.standardBounds`, which measures a minimum, an
@@ -19,8 +22,6 @@ struct HostingViewSizingOptionsTests {
         "TablePro/Views/Sidebar/SourceList/SidebarHostingCellView.swift",
         "TablePro/Views/Shared/FieldDrivenList.swift",
         "TablePro/Views/DataFiles/DataFileSplitViewController.swift",
-        "TablePro/Views/QueryPlan/QueryPlanOutlineCoordinator.swift",
-        "TablePro/Views/UsersRoles/PrivilegeScopeOutlineCoordinator.swift",
         "TablePro/Views/Components/CheckboxOutlineView.swift",
         "TablePro/Views/QueryPlan/QueryPlanDiagramCanvasView.swift",
     ]
@@ -39,6 +40,29 @@ struct HostingViewSizingOptionsTests {
                 layout pass and can pin the enclosing split view's dividers.
                 """
             )
+        }
+    }
+
+    private static let chromeHostedOutlines = [
+        "TablePro/Views/QueryPlan/QueryPlanOutlineCoordinator.swift",
+        "TablePro/Views/UsersRoles/PrivilegeScopeOutlineView.swift",
+    ]
+
+    @Test("The records outlines host every cell through the theme chrome's cell, which states its sizing options")
+    @MainActor
+    func chromeHostedCellsDeclareSizingOptions() throws {
+        let cell = ThemeTableChrome.HostingCell.make(
+            NSUserInterfaceItemIdentifier("cell"),
+            in: NSTableView(),
+            showing: Text(verbatim: "value")
+        )
+        #expect(cell.sizingOptions.isEmpty)
+
+        let root = try repositoryRoot()
+        for source in Self.chromeHostedOutlines {
+            let text = try String(contentsOf: root.appendingPathComponent(source), encoding: .utf8)
+            #expect(text.contains("ThemeTableChrome.HostingCell.make("), "\(source) no longer hosts its cells through ThemeTableChrome.HostingCell")
+            #expect(!text.contains("NSHostingView("), "\(source) builds an NSHostingView of its own; set `sizingOptions = []` on it")
         }
     }
 

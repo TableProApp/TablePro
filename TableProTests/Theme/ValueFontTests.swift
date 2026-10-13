@@ -104,10 +104,9 @@ struct ValueFontTests {
             "TablePro/Views/RowInspector/FieldEditors/SetPickerView.swift",
             "TablePro/Views/Results/CellOverlayEditor.swift",
             "TablePro/Views/Results/CellOverlayViewer.swift",
-            "TablePro/Views/Results/TextViewerWindowController.swift",
+            /// The text viewer, SVG source and cell image markup draw through this editor.
+            "TablePro/Views/Results/ValueSourceEditor.swift",
             "TablePro/Views/Results/HexEditorContentView.swift",
-            "TablePro/Views/Results/SvgViewerContentView.swift",
-            "TablePro/Views/Results/CellImageWindowController.swift",
             "TablePro/Views/RowInspector/FieldEditors/ImageFieldView.swift",
             /// Reached from `.blobHex`, which inherits the value font from the row, and from
             /// `.image`, which does not, so it has to name the font itself or the same dump renders
@@ -135,6 +134,24 @@ struct ValueFontTests {
             }
         }
 
+        #expect(offenders.isEmpty, "These render a stored value and must resolve its font: \(offenders)")
+    }
+
+    @Test("The value source viewers draw their text through the value source editor")
+    func sourceViewersUseTheValueSourceEditor() throws {
+        let paths = [
+            "TablePro/Views/Results/TextViewerWindowController.swift",
+            "TablePro/Views/Results/SvgViewerContentView.swift",
+            "TablePro/Views/Results/CellImageWindowController.swift",
+        ]
+        var offenders: [String] = []
+        for path in paths {
+            let text = try source(of: path)
+            if !text.contains("ValueSourceEditor("), !text.contains("ThemeEngine.shared.valueFont"),
+               !text.contains("themeEngine.valueFont") {
+                offenders.append(path)
+            }
+        }
         #expect(offenders.isEmpty, "These render a stored value and must resolve its font: \(offenders)")
     }
 

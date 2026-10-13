@@ -8,7 +8,6 @@ import SwiftUI
 /// The popover a text cell holding SVG markup opens: the drawing, with the markup one segment away
 /// and still editable where the cell is.
 internal struct SvgViewerContentView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     let initialValue: String
     let isEditable: Bool
     let onDismiss: () -> Void
@@ -40,11 +39,7 @@ internal struct SvgViewerContentView: View {
                 sourceKind: .markup,
                 onPopOut: onPopOut.map { popOut in { popOut(text) } }
             ) {
-                TextValueEditor(
-                    text: $text,
-                    isEditable: isEditable,
-                    font: themeEngine.valueFont
-                )
+                ValueSourceEditor(text: $text, isEditable: isEditable)
             }
 
             if isEditable, onCommit != nil {

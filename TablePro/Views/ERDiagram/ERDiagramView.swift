@@ -4,7 +4,6 @@ import SwiftUI
 struct ERDiagramView: View {
     @ObservedObject var viewModel: ERDiagramViewModel
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
-    @Environment(\.colorScheme) private var colorScheme
 
     private var viewport: DiagramViewportController { viewModel.viewport }
 
@@ -116,7 +115,7 @@ struct ERDiagramView: View {
     private func exportImage() -> NSImage? {
         ERDiagramSceneRenderer.image(
             scene,
-            appearance: NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua) ?? NSApp.effectiveAppearance,
+            appearance: viewport.effectiveAppearance,
             scale: DiagramImageExporter.renderScale
         )
     }

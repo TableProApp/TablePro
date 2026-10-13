@@ -69,13 +69,28 @@ struct JSONNodeRowViewTests {
         #expect(JSONRowColors.tone(for: .null) == .literal)
     }
 
-    @Test("Punctuation is primary text and every tone is a system color under any theme")
-    func colorsIgnoreTheTheme() throws {
-        try PaneThemeFixture.withEverySlotOverridden {
+    @Test("Under the default pair punctuation stays primary and the count keeps the secondary label color")
+    func defaultPairColors() throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let lineNumber = ThemeEngine.shared.palette[.editorLineNumber]
             #expect(JSONRowColors.punctuation == .primary)
-            #expect(JSONRowColors.key == Color(nsColor: .systemBlue))
-            #expect(JSONRowColors.placeholder == Color(nsColor: .secondaryLabelColor))
-            #expect(JSONRowColors.color(for: .number("1")) == Color(nsColor: .systemPurple))
+            #expect(JSONRowColors.placeholder == Color(nsColor: lineNumber))
+            #expect(ThemeTestFixture.hex(lineNumber) == ThemeTestFixture.hex(.secondaryLabelColor))
+            #expect(JSONRowColors.key != Color(nsColor: .systemBlue))
+        }
+    }
+
+    @Test("Every value takes the color the JSON tree gives the same token, which follows the theme")
+    func colorsFollowTheTheme() throws {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
+            let palette = ThemeEngine.shared.palette
+            #expect(JSONRowColors.key == Color(nsColor: palette[.syntaxString]))
+            #expect(JSONRowColors.placeholder == Color(nsColor: palette[.editorLineNumber]))
+            #expect(JSONRowColors.color(for: .string("a")) == Color(nsColor: palette[.syntaxString]))
+            #expect(JSONRowColors.color(for: .number("1")) == Color(nsColor: palette[.syntaxNumber]))
+            #expect(JSONRowColors.color(for: .bool(true)) == Color(nsColor: palette[.syntaxNull]))
+            #expect(JSONRowColors.color(for: .null) == Color(nsColor: palette[.syntaxNull]))
+            #expect(ThemeTestFixture.hex(palette[.syntaxNumber]) == TreeOutlineFixture.tones[.syntaxNumber])
         }
     }
 }

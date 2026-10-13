@@ -82,7 +82,7 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
     // MARK: - Expansion
 
     func outlineViewItemWillExpand(_ notification: Notification) {
-        guard !isRestoringExpansion,
+        guard !isRestoringExpansion, !isRebuildingRows,
               let node = notification.userInfo?["NSObject"] as? PrivilegeNode,
               !node.hasLoadedChildren,
               !node.isLoading else { return }
@@ -100,13 +100,13 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
-        guard !isRestoringExpansion,
+        guard !isRestoringExpansion, !isRebuildingRows,
               let node = notification.userInfo?["NSObject"] as? PrivilegeNode else { return }
         viewModel.expansionStore.insert(node.persistentKey)
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
-        guard !isRestoringExpansion,
+        guard !isRestoringExpansion, !isRebuildingRows,
               let node = notification.userInfo?["NSObject"] as? PrivilegeNode else { return }
         pendingExpansions.remove(node.persistentKey)
         viewModel.expansionStore.remove(node.persistentKey)
@@ -141,7 +141,7 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
     // MARK: - Selection
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard let outlineView else { return }
+        guard let outlineView, !isRebuildingRows else { return }
 
         let scopes = outlineView.selectedRowIndexes.compactMap {
             (outlineView.item(atRow: $0) as? PrivilegeNode)?.scope
@@ -159,26 +159,20 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
         guard let tableColumn, let node = item as? PrivilegeNode else { return nil }
 
         if tableColumn.identifier == Self.scopeColumn {
-            return hostingCell(
-                identifier: Self.scopeColumn,
-                outlineView: outlineView,
-                content: AnyView(
-                    PrivilegeScopeRowView(
-                        title: node.title,
-                        symbolName: node.symbolName,
-                        isLoading: node.isLoading,
-                        loadError: node.loadError,
-                        isRestricted: node.childrenAvailability == .restrictedToCurrentDatabase
-                    )
+            return cell(
+                Self.scopeColumn,
+                in: outlineView,
+                showing: PrivilegeScopeRowView(
+                    title: node.title,
+                    symbolName: node.symbolName,
+                    isLoading: node.isLoading,
+                    loadError: node.loadError,
+                    isRestricted: node.childrenAvailability == .restrictedToCurrentDatabase
                 )
             )
         }
 
-        return hostingCell(
-            identifier: Self.summaryColumn,
-            outlineView: outlineView,
-            content: AnyView(ScopeSummaryView(summary: summary(for: node)))
-        )
+        return cell(Self.summaryColumn, in: outlineView, showing: ScopeSummaryView(summary: summary(for: node)))
     }
 
     private func summary(for node: PrivilegeNode) -> ScopeSummary {
@@ -190,19 +184,8 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
         )
     }
 
-    private func hostingCell(
-        identifier: NSUserInterfaceItemIdentifier,
-        outlineView: NSOutlineView,
-        content: AnyView
-    ) -> NSView {
-        if let reused = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSHostingView<AnyView> {
-            reused.rootView = content
-            return reused
-        }
-        let hosting = NSHostingView(rootView: content)
-        hosting.sizingOptions = []
-        hosting.identifier = identifier
-        return hosting
+    private var isRebuildingRows: Bool {
+        (outlineView as? PrivilegeScopeOutline)?.isRebuildingRows ?? false
     }
 
     func refreshVisibleSummaries() {

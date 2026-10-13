@@ -6,11 +6,12 @@
 import SwiftUI
 
 /// The JSON inspector draws a value in the same tone as the JSON tree viewer, so the two never
-/// disagree and neither follows the editor theme.
+/// disagree.
+@MainActor
 internal enum JSONRowColors {
-    static let key = Color(nsColor: TreeValueTone.key.color)
+    static var key: Color { Color(nsColor: TreeValueTone.key.color) }
     static let punctuation = Color.primary
-    static let placeholder = Color(nsColor: TreeValueTone.muted.color)
+    static var placeholder: Color { Color(nsColor: TreeValueTone.muted.color) }
 
     static func tone(for scalar: JSONScalar) -> TreeValueTone {
         switch scalar {

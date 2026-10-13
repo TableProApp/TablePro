@@ -3,13 +3,14 @@
 //  TablePro
 //
 
-import AppKit
 import SwiftUI
 
 struct AIChatToolResultBlockView: View {
     let block: ToolResultBlock
 
     @State private var isExpanded: Bool = false
+
+    internal static let contentFont = Font.system(.caption, design: .monospaced)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -37,22 +38,7 @@ struct AIChatToolResultBlockView: View {
             .buttonStyle(.borderless)
 
             if isExpanded {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(displayContent)
-                        .font(.caption)
-                        .fontDesign(.monospaced)
-                        .textSelection(.enabled)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                )
+                CodeWell(displayContent, font: Self.contentFont)
             }
         }
         .padding(.horizontal, 8)

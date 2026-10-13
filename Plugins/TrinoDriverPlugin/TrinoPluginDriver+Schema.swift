@@ -105,14 +105,44 @@ extension TrinoPluginDriver {
         []
     }
 
+    /// Trino refuses `SHOW CREATE TABLE` on a view ("is a view, not a table") and on a materialized
+    /// view, so a refusal is answered with the view's own statement. A table costs no extra lookup.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table: table, schema: schema))")
+        do {
+            let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table: table, schema: schema))")
+            return result.rows.compactMap { firstText($0) }.joined(separator: "\n")
+        } catch {
+            guard (try? await isView(table, schema: schema)) == true else { throw error }
+            return try await fetchViewDefinition(view: table, schema: schema)
+        }
+    }
+
+    /// `SHOW CREATE VIEW` refuses a materialized view ("is a materialized view, not a view").
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String {
+        let statement = await isMaterializedView(view, schema: schema)
+            ? TrinoIntrospectionSQL.showCreateMaterializedView(
+                catalog: currentCatalog, schema: resolveSchema(schema), view: view)
+            : TrinoIntrospectionSQL.showCreateView(catalog: currentCatalog, schema: resolveSchema(schema), view: view)
+        let result = try await execute(query: statement)
         return result.rows.compactMap { firstText($0) }.joined(separator: "\n")
     }
 
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let result = try await execute(query: "SHOW CREATE VIEW \(qualifiedName(table: view, schema: schema))")
-        return result.rows.compactMap { firstText($0) }.joined(separator: "\n")
+    private func isView(_ name: String, schema: String?) async throws -> Bool {
+        guard let catalog = currentCatalog, let targetSchema = resolveSchema(schema) else { return false }
+        if await isMaterializedView(name, schema: schema) { return true }
+        let result = try await execute(
+            query: TrinoIntrospectionSQL.relationType(catalog: catalog, schema: targetSchema, table: name)
+        )
+        return Self.tableType(result.rows.first.flatMap { firstText($0) }) == "VIEW"
+    }
+
+    /// A connector with no materialized views can refuse the metadata table, which the listing
+    /// reads the same forgiving way.
+    private func isMaterializedView(_ name: String, schema: String?) async -> Bool {
+        guard let catalog = currentCatalog, let targetSchema = resolveSchema(schema) else { return false }
+        let sql = TrinoIntrospectionSQL.materializedView(catalog: catalog, schema: targetSchema, name: name)
+        guard let result = try? await execute(query: sql) else { return false }
+        return !result.rows.isEmpty
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

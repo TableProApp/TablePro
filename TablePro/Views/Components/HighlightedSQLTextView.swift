@@ -2,9 +2,6 @@
 //  HighlightedSQLTextView.swift
 //  TablePro
 //
-//  Read-only NSTextView with regex-based SQL syntax highlighting.
-//  Used for query previews in the history panel.
-//
 
 import AppKit
 import Combine
@@ -14,11 +11,19 @@ import TableProPluginKit
 /// A code view, so it wears the editor theme: background, text and syntax. The colors are the palette's dynamic ones,
 /// which resolve per appearance when the text view draws.
 struct HighlightedSQLTextView: NSViewRepresentable {
+    internal enum LineLayout: Equatable {
+        case unwrapped
+        case wrapped
+        /// Wraps, and is as tall as its text up to `maxLines`; it scrolls vertically past that.
+        case fitted(maxLines: Int)
+    }
+
     let sql: String
     var databaseType: DatabaseType = .mysql
     /// A SwiftUI `.accessibilityIdentifier` lands on the representable's wrapper, not on the text
     /// view AppKit publishes, so the only way to name this element is to set it on the text view.
     var accessibilityIdentifier: String?
+    var lineLayout: LineLayout = .unwrapped
 
     @ObservedObject private var themeEngine = ThemeEngine.shared
 
@@ -37,17 +42,49 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 12, height: 12)
         textView.textColor = themeEngine.palette[.editorText]
         applyBackground(to: scrollView, textView: textView)
-
-        // Disable line wrapping
-        textView.textContainer?.widthTracksTextView = false
-        textView.textContainer?.containerSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-        textView.isHorizontallyResizable = true
+        applyLineLayout(to: scrollView, textView: textView)
 
         context.coordinator.redisplayOnThemeChange(scrollView)
         return scrollView
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView scrollView: NSScrollView, context: Context) -> CGSize? {
+        guard case .fitted(let maxLines) = lineLayout,
+              let width = proposal.width, width.isFinite,
+              let textView = scrollView.documentView as? NSTextView else { return nil }
+        let height = Self.fittedHeight(
+            of: sql,
+            font: themeEngine.editorFonts.font,
+            width: width,
+            inset: textView.textContainerInset,
+            lineFragmentPadding: textView.textContainer?.lineFragmentPadding ?? 0,
+            maxLines: maxLines
+        )
+        return CGSize(width: width, height: height)
+    }
+
+    internal static func fittedHeight(
+        of text: String,
+        font: NSFont,
+        width: CGFloat,
+        inset: NSSize,
+        lineFragmentPadding: CGFloat,
+        maxLines: Int
+    ) -> CGFloat {
+        let lineHeight = NSLayoutManager().defaultLineHeight(for: font)
+        let container = NSTextContainer(size: NSSize(
+            width: max(width - inset.width * 2, 1),
+            height: CGFloat.greatestFiniteMagnitude
+        ))
+        container.lineFragmentPadding = lineFragmentPadding
+        let layoutManager = NSLayoutManager()
+        layoutManager.addTextContainer(container)
+        let storage = NSTextStorage(string: text, attributes: [.font: font])
+        storage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: container)
+
+        let textHeight = max(layoutManager.usedRect(for: container).height, lineHeight)
+        return min(textHeight, CGFloat(max(maxLines, 1)) * lineHeight) + inset.height * 2
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -83,6 +120,23 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         scrollView.backgroundColor = background
     }
 
+    private func applyLineLayout(to scrollView: NSScrollView, textView: NSTextView) {
+        guard let container = textView.textContainer else { return }
+        switch lineLayout {
+        case .unwrapped:
+            container.widthTracksTextView = false
+            container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            textView.isHorizontallyResizable = true
+        case .wrapped, .fitted:
+            container.widthTracksTextView = true
+            textView.isHorizontallyResizable = false
+            textView.autoresizingMask = [.width]
+            scrollView.hasHorizontalScroller = false
+            // A legacy scroller that stays up while the text fits narrows it below the fitted width.
+            scrollView.autohidesScrollers = true
+        }
+    }
+
     private var themeRevision: Int {
         themeEngine.revision
     }
@@ -110,12 +164,9 @@ struct HighlightedSQLTextView: NSViewRepresentable {
 
     // MARK: - Syntax Highlighting
 
-    // MARK: - Pre-compiled Syntax Patterns
-
     private static let syntaxPatterns: [(regex: NSRegularExpression, slot: ThemeSlot)] = {
         var patterns: [(NSRegularExpression, ThemeSlot)] = []
 
-        // SQL Keywords (blue) — single alternation regex for all keywords
         let keywords = [
             "CREATE", "TABLE", "PRIMARY", "KEY", "FOREIGN", "REFERENCES",
             "NOT", "NULL", "DEFAULT", "UNIQUE", "INDEX", "AUTO_INCREMENT",
@@ -133,17 +184,14 @@ struct HighlightedSQLTextView: NSViewRepresentable {
             patterns.append((regex, .syntaxKeyword))
         }
 
-        // Strings (red)
         if let regex = try? NSRegularExpression(pattern: "'[^']*'", options: .caseInsensitive) {
             patterns.append((regex, .syntaxString))
         }
 
-        // Backticks (orange)
         if let regex = try? NSRegularExpression(pattern: "`[^`]*`", options: .caseInsensitive) {
             patterns.append((regex, .syntaxNull))
         }
 
-        // Numbers (purple)
         if let regex = try? NSRegularExpression(pattern: "\\b\\d+\\b", options: .caseInsensitive) {
             patterns.append((regex, .syntaxNumber))
         }
@@ -151,12 +199,9 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         return patterns
     }()
 
-    // MARK: - Pre-compiled MQL Syntax Patterns
-
     private static let mqlPatterns: [(regex: NSRegularExpression, slot: ThemeSlot)] = {
         var patterns: [(NSRegularExpression, ThemeSlot)] = []
 
-        // MongoDB methods (blue) — single alternation regex for all methods
         let methods = [
             "find", "findOne", "insertOne", "insertMany", "updateOne", "updateMany",
             "deleteOne", "deleteMany", "aggregate", "countDocuments", "estimatedDocumentCount",
@@ -168,12 +213,10 @@ struct HighlightedSQLTextView: NSViewRepresentable {
             patterns.append((regex, .syntaxKeyword))
         }
 
-        // db. prefix (blue)
         if let regex = try? NSRegularExpression(pattern: "\\bdb\\.", options: []) {
             patterns.append((regex, .syntaxKeyword))
         }
 
-        // MongoDB operators $gt, $lt, $in, etc. (teal)
         if let regex = try? NSRegularExpression(
             pattern: "\"\\$(gt|gte|lt|lte|eq|ne|in|nin|and|or|not|nor|exists|type|regex|options|"
                 + "set|unset|inc|push|pull|addToSet|each|match|group|project|sort|limit|skip|"
@@ -184,17 +227,14 @@ struct HighlightedSQLTextView: NSViewRepresentable {
             patterns.append((regex, .syntaxType))
         }
 
-        // Strings (red)
         if let regex = try? NSRegularExpression(pattern: "\"[^\"]*\"", options: []) {
             patterns.append((regex, .syntaxString))
         }
 
-        // Numbers (purple)
         if let regex = try? NSRegularExpression(pattern: "\\b\\d+\\.?\\d*\\b", options: []) {
             patterns.append((regex, .syntaxNumber))
         }
 
-        // Booleans and null (orange)
         if let regex = try? NSRegularExpression(pattern: "\\b(true|false|null)\\b", options: []) {
             patterns.append((regex, .syntaxNull))
         }
@@ -210,12 +250,10 @@ struct HighlightedSQLTextView: NSViewRepresentable {
 
         textStorage.beginEditing()
 
-        // Reset to base style
         let font = ThemeEngine.shared.editorFonts.font
         textStorage.addAttribute(.font, value: font, range: fullRange)
         textStorage.addAttribute(.foregroundColor, value: ThemeEngine.shared.palette[.editorText], range: fullRange)
 
-        // Apply pre-compiled patterns
         let activePatterns: [(regex: NSRegularExpression, slot: ThemeSlot)]
         switch PluginManager.shared.editorLanguage(for: databaseType) {
         case .javascript:

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Header, grid line, selection and focus colors in the theme editor.
 - Light theme and Dark theme pickers, and New Theme Based On, Rename and Show in Finder for custom themes in Settings > Appearance.
 - Reason shown in Settings > Appearance for a theme file that could not be loaded.
+- Window background color in themes. On macOS 26 and later the sidebar, inspector and toolbar take it on.
 - Setting in Settings > General to hide the version and Check for Updates on the Welcome window.
 - Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
 - Cloud Firestore and Firebase Realtime Database as a registry plugin over their REST APIs. (#2504)
@@ -19,8 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Default Light and Default Dark draw the editor and data grid in the system colors and use Xcode's default syntax colors.
-- Themes color only the SQL editor, other code views and the data grid. Every other pane keeps the system colors.
+- Themes color every content view, including trees, diffs, diagrams and charts. Controls and Settings keep the system look.
+- JSON and PHP tree values use the editor's syntax colors, matching the same value shown as text.
 - Theme file format 3, where every color is optional. Themes written for earlier versions are not read and need to be recreated.
+- Triggers and ClickHouse Parts in table structure shown as data grids, with multiple selection and Copy.
+- Filter and maintenance SQL previews highlighted as SQL in the editor font.
+- Result bar items separated by space instead of a dot.
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
@@ -70,6 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zoom In and Zoom Out staying enabled at the largest and smallest font size.
 - JSON and PHP tree values colored differently from the same values in the row inspector.
 - Theme color wells and the theme preview unreadable to VoiceOver.
+- Query plan image export coming out light in Dark mode.
+- Favorite query field turning straight quotes into curly quotes.
 - Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
 - GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
 - Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
@@ -84,6 +91,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB result on iPhone and iPad cut at 10,000 rows without the notice that more rows exist. (#3399)
 - MySQL connection failing every query after calling a procedure that returns rows, and a procedure that failed after its first rows reported as a success. (#3399)
 - Redis command on iPhone and iPad reading a line break as part of a value, and dropping an empty quoted value. (#3399)
+- View DDL shown as a made-up CREATE TABLE on SQL Server, Oracle, Dameng, DuckDB, Redshift and Cassandra. (#3402)
+- Show DDL and Copy DDL failing on every view on SQLite, libSQL, Cloudflare D1, SAP HANA, Spanner, Trino and Teradata.
+- SQL Server view definitions naming the view's old name after a rename, and blank for an encrypted view or a name with a period.
+- SQL Server Edit View Definition template creating the view in the default schema instead of the view's own.
+- Oracle view DDL losing the view's column names, and cut off after 4000 bytes without saying so.
+- Trino materialized views left out of SQL exports.
 
 ### Security
 

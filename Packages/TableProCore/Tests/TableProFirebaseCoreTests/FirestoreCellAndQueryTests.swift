@@ -148,6 +148,19 @@ struct FirestoreQueryBuilderTests {
         }
     }
 
+    @Test("A raw filter that is not a Filter object is refused with an example the raw filter row accepts")
+    func rawFilterExample() throws {
+        let raw = FirestoreQueryBuilder.rawFilterColumn
+        let example = FirestoreQueryBuilder.rawFilterExample
+        #expect(try filterJSON(FirebaseFilterSpec(column: raw, op: "", value: example)).contains("IS_NULL"))
+        do {
+            _ = try filterJSON(FirebaseFilterSpec(column: raw, op: "", value: #"{"age": 3}"#))
+            Issue.record("A JSON object that is not a Filter was accepted")
+        } catch let FirebaseError.configuration(message) {
+            #expect(message.contains(example))
+        }
+    }
+
     @Test("Counting drops the page but keeps the order, which leaves out documents without the field")
     func count() throws {
         let spec = FirebaseBrowseSpec(table: "*/orders", sorts: [FirebaseSortSpec(column: "a", ascending: true)], limit: 10, offset: 5)

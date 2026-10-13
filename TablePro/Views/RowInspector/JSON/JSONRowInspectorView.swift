@@ -20,6 +20,7 @@ struct JSONRowInspectorView: View {
                 toolbar
                 Divider()
                 tree
+                    .themeBackground(.editorBackground, native: Color.clear, ignoresSafeAreaEdges: [])
             } else {
                 emptyState
             }

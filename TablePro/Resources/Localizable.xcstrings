@@ -15929,7 +15929,7 @@
         }
       }
     },
-    "A raw Firestore filter is a JSON Filter object, such as {\"fieldFilter\": {...}}." : {
+    "A raw Firestore filter is a JSON Filter object, such as %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -70003,7 +70003,7 @@
         }
       }
     },
-    "Enter a request such as GET users/alice, QUERY {\"structuredQuery\": {...}}, PATCH users/alice {\"age\": 31} or DELETE users/alice." : {
+    "Enter a request such as %@, %@, %@ or %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -126293,6 +126293,10 @@
         }
       }
     },
+    "Oracle returns only the first 4000 bytes of this view's definition, so the full text cannot be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database." : {
       "localizations" : {
         "fr" : {
@@ -171522,16 +171526,6 @@
     "Sum %@" : {
 
     },
-    "Sum %@ · Average %@ · Count %lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Sum %1$@ · Average %2$@ · Count %3$lld"
-          }
-        }
-      }
-    },
     "Sum %@, Average %@, Count %lld" : {
       "localizations" : {
         "en" : {
@@ -189087,7 +189081,7 @@
         }
       }
     },
-    "Themes color the SQL editor and the data grid. Everything else follows the system appearance." : {
+    "Themes color the editor, the data grid, other content views and the window background. Controls, sidebars and Settings follow the system appearance." : {
 
     },
     "There are no connections to publish." : {

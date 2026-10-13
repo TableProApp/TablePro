@@ -4,10 +4,11 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
-/// Joins a table's `CREATE TABLE` to the statements that stand outside it.
+/// Joins a relation's `CREATE` statement to the statements that stand outside it.
 ///
-/// A driver answers `fetchTableDDL` with the table alone, `fetchCommentDDL` with its comments and
+/// A driver answers `fetchTableDDL` with the relation alone, `fetchCommentDDL` with its comments and
 /// `fetchIndexDDL` with the indexes that statement does not declare, because a dump replays them in
 /// different phases: the table and its comments before its rows, the indexes after. Anything showing
 /// one table's whole definition at once, Copy DDL and the MCP schema tools among them, puts the
@@ -15,18 +16,33 @@ import Foundation
 internal enum TableDDLComposer {
     /// The comments keep the dump's own placement, between the table and its indexes, so the text
     /// Show DDL and Copy DDL hand over is the text a restore runs.
+    ///
+    /// An engine whose client ends a batch at a `GO` line gets one after every statement once more
+    /// than one is written. SQL Server reads everything after a `CREATE VIEW` in its batch as part of
+    /// the view, so an indexed view's `CREATE INDEX` written after a `;` failed with Msg 156.
     internal static func compose(
         tableDDL: String,
         indexDDL: [String],
         commentDDL: [String] = [],
-        preamble: String = ""
+        preamble: String = "",
+        databaseType: DatabaseType? = nil
     ) -> String {
         let comments = terminated(commentDDL)
         let indexes = terminated(indexDDL)
 
+        if let databaseType, databaseType.lexicalGrammar.contains(.batchSeparatorLines),
+           !comments.isEmpty || !indexes.isEmpty {
+            let script = SQLScriptText(databaseType: databaseType)
+            let blocks = [[tableDDL], comments, indexes].filter { !$0.isEmpty }.map(script.script)
+            let composed = blocks.joined(separator: "\n\n")
+            return preamble.isEmpty ? composed : "\(preamble)\n\(composed)"
+        }
+
         var composed = preamble.isEmpty ? tableDDL : "\(preamble)\n\(tableDDL)"
         guard !comments.isEmpty || !indexes.isEmpty else { return composed }
-        if !composed.hasSuffix(";") {
+        if let databaseType {
+            composed = SQLScriptText(databaseType: databaseType).endedBySemicolon(composed)
+        } else if !composed.hasSuffix(";") {
             composed += ";"
         }
         for block in [comments, indexes] where !block.isEmpty {
@@ -44,7 +60,8 @@ internal enum TableDDLComposer {
 
     /// One object's whole definition, read on a driver already pinned to its scope. The Structure
     /// tab's DDL, Show DDL and Copy DDL all come through here, so the three can never disagree about
-    /// the same object. `includesDependencies` adds the sequences and enum types the table's columns
+    /// the same object. A view comes through here too: `fetchTableDDL` answers it with its own
+    /// definition. `includesDependencies` adds the sequences and enum types the table's columns
     /// use, which the Structure tab writes first so its text runs on its own.
     /// `schema` names the container the caller means, for the callers that know it. All three reads
     /// take it together: a DDL composed from one container's CREATE TABLE and another's indexes and
@@ -63,7 +80,8 @@ internal enum TableDDLComposer {
             tableDDL: baseDDL,
             indexDDL: indexDDL,
             commentDDL: commentDDL,
-            preamble: preamble
+            preamble: preamble,
+            databaseType: driver.connection.type
         )
     }
 

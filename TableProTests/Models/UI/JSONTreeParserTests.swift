@@ -316,29 +316,49 @@ struct JSONTreeParserTests {
         #expect(marker.decoration == .none)
     }
 
-    @Test("each tone keeps the color its values were drawn in")
-    func tonesKeepTheirColors() {
-        expectSystemTones()
-    }
-
     @MainActor
-    @Test("A theme that overrides every slot leaves each tone on its system color")
-    func tonesIgnoreTheTheme() throws {
-        try PaneThemeFixture.withEverySlotOverridden {
-            #expect(ThemeEngine.shared.resolved.isOverridden(.syntaxKeyword))
-            expectSystemTones()
+    @Test("Under the default pair each tone draws the default syntax color of its token", arguments: [
+        NSAppearance.Name.aqua, .darkAqua
+    ])
+    func tonesUseTheDefaultSyntaxColors(appearance: NSAppearance.Name) throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let theme = appearance == .aqua ? BuiltInThemes.light : BuiltInThemes.dark
+            @MainActor func drawn(_ tone: TreeValueTone) -> String? { ThemeTestFixture.hex(tone.color, in: appearance) }
+
+            #expect(drawn(.key) == theme.overrides[.syntaxString]?.hex)
+            #expect(drawn(.string) == theme.overrides[.syntaxString]?.hex)
+            #expect(drawn(.number) == theme.overrides[.syntaxNumber]?.hex)
+            #expect(drawn(.literal) == theme.overrides[.syntaxNull]?.hex)
+            #expect(drawn(.serialized) == theme.overrides[.syntaxType]?.hex)
+            #expect(drawn(.reference) == theme.overrides[.syntaxComment]?.hex)
+            #expect(drawn(.container) == ThemeTestFixture.hex(.textColor, in: appearance))
         }
     }
 
-    private func expectSystemTones() {
-        #expect(TreeValueTone.key.color == .systemBlue)
-        #expect(TreeValueTone.container.color == .systemBlue)
-        #expect(TreeValueTone.string.color == .systemRed)
-        #expect(TreeValueTone.number.color == .systemPurple)
-        #expect(TreeValueTone.literal.color == .systemOrange)
-        #expect(TreeValueTone.serialized.color == .systemTeal)
-        #expect(TreeValueTone.reference.color == .systemGray)
-        #expect(TreeValueTone.muted.color == .secondaryLabelColor)
+    @MainActor
+    @Test("Under the default pair muted text keeps the secondary label color it was drawn in", arguments: [
+        NSAppearance.Name.aqua, .darkAqua
+    ])
+    func mutedToneStaysNative(appearance: NSAppearance.Name) throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let muted = ThemeTestFixture.hex(TreeValueTone.muted.color, in: appearance)
+            #expect(muted == ThemeTestFixture.hex(.secondaryLabelColor, in: appearance))
+        }
+    }
+
+    @MainActor
+    @Test("A theme's syntax colors reach every tone")
+    func tonesFollowTheTheme() throws {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
+            let expected: [(TreeValueTone, ThemeSlot)] = [
+                (.key, .syntaxString), (.string, .syntaxString), (.number, .syntaxNumber),
+                (.literal, .syntaxNull), (.serialized, .syntaxType), (.reference, .syntaxComment),
+                (.container, .editorText), (.muted, .editorLineNumber)
+            ]
+            for (tone, slot) in expected {
+                #expect(ThemeTestFixture.hex(tone.color) == TreeOutlineFixture.tones[slot], "\(tone)")
+            }
+        }
     }
 
     // MARK: - Search
