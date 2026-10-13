@@ -160,9 +160,10 @@ public enum MSSQLObjectQueries {
         normalizedObjectType(type) == "V"
     }
 
-    /// A view's source from its ``moduleDefinition(schema:name:)`` row, `nil` when no such view
-    /// exists. The stored text gets its header naming the view as it is named now, since `sp_rename`
-    /// leaves the old name in it. A missing definition is an encrypted view or one this login may not
+    /// A view's source from its ``moduleDefinition(schema:name:)`` row. The stored text gets its
+    /// header naming the view as it is named now, since `sp_rename` leaves the old name in it. Its
+    /// verb needs nothing: measured on Azure SQL Edge, `ALTER VIEW` and `CREATE OR ALTER VIEW` are
+    /// both stored as `CREATE`. A missing definition is an encrypted view or one this login may not
     /// read, and either is said rather than handed back as an empty definition.
     public static func viewSource(row: [String?]?, schema: String, name: String) throws -> String {
         guard let row, isView(objectType: row[safe: 2].flatMap { $0 } ?? "") else {
