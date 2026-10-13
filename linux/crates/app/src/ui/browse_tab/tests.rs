@@ -843,6 +843,47 @@ fn copy_row_as_insert_uses_row_below_draft() {
     );
 }
 
+/// The cell showing `column` of the saved row keyed `id`.
+fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> Option<crate::ui::grid::GridCell> {
+    let key = RowKey::from_pk_values(&[Value::Int(id)])?;
+    crate::test_support::descendants(tab)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<crate::ui::grid::GridCell>().ok())
+        .find(|cell| cell.column() == column && cell.row().is_some_and(|row| row.key() == Some(&key)))
+}
+
+#[gtk4::test]
+fn a_commit_leaves_its_cell_in_the_window_for_the_tab_that_follows() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let window = gtk4::Window::new();
+    window.set_default_size(600, 400);
+    window.set_child(Some(harness.tab()));
+    window.present();
+    let mut found = None;
+    wait_until(WAIT, || {
+        found = grid_cell_of(harness.tab(), 0, 1);
+        found.is_some()
+    })
+    .expect("Ada's name cell is drawn");
+    let cell = found.expect("a cell");
+    crate::ui::grid::enter_edit_mode(&cell);
+    let editor = cell.editor().expect("a text cell");
+    editor.entry().set_text("Ada Lovelace");
+
+    editor.stop_editing(true);
+
+    assert!(
+        cell.root().is_some(),
+        "the commit took its own cell out of the window before Tab could move on"
+    );
+    wait_until(WAIT, || harness.tracker.pending_count() == 1).expect("the edit reaches the tracker");
+    window.set_child(None::<&gtk4::Widget>);
+    window.destroy();
+}
+
 #[gtk4::test]
 fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
     let mut id = col("integer", false);
