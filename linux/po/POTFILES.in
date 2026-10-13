@@ -148,6 +148,7 @@ crates/app/src/ui/window_geometry.rs
 crates/app/src/workspace/draft_writer.rs
 crates/app/src/workspace/mod.rs
 crates/app/src/workspace/persist_debouncer.rs
+crates/app/src/workspace/restored_drafts.rs
 crates/app/src/workspace/sort_record.rs
 crates/app/src/workspace/tab_record.rs
 crates/app/src/workspace/workspace_file_name.rs

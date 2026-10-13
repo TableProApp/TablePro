@@ -49,9 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A refresh that failed replaced the rows in a table tab with an error page.
 - Switching connections could show the previous connection's tables in the sidebar, or its reconnect banner.
 - Switching connections during a table drop could close the new connection's tabs on a table of the same name.
-- Saved tabs were lost on a disconnect or window close right after a tab change, and for every connection when their file could not be read.
+- Saved tabs and editor text were lost on a disconnect or window close right after a change.
+- Every connection's saved tabs were lost when their file could not be read.
 - Opening a connection emptied the editor tabs saved for other connections.
 - Structure tabs did not reopen with their connection.
+- Reopening a connection's tabs stopped at 32 tabs and cut table names longer than 256 bytes.
+- Editor tabs reopened after a reconnect in the same window stopped saving their text.
+- An editor tab whose saved text could not be read opened empty with no notice, and typing in it overwrote that text.
 - Typing in a long SQL script copied the whole script on every keystroke.
 
 ### Security

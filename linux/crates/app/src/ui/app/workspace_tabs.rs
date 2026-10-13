@@ -15,7 +15,9 @@ use crate::services::from_session::FromSession;
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest, SaveRequest};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
-use crate::workspace::{TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError};
+use crate::workspace::{
+    RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
+};
 
 use super::workspace_persistence::reopen;
 use super::{
@@ -87,18 +89,7 @@ impl App {
                 WorkspaceLoad::Restored(record) => saved_drafts(record).collect(),
                 WorkspaceLoad::Empty | WorkspaceLoad::Blocked(_) => Vec::new(),
             };
-            let reading = tasks.spawn_blocking_task(move || {
-                referenced
-                    .into_iter()
-                    .filter_map(|draft| match store.read_blocking(&scope, draft) {
-                        Ok(text) => text.map(|text| (draft, text)),
-                        Err(error) => {
-                            tracing::warn!(%error, "could not read an editor draft");
-                            None
-                        }
-                    })
-                    .collect::<HashMap<_, _>>()
-            });
+            let reading = tasks.spawn_blocking_task(move || RestoredDrafts::read_blocking(&store, &scope, referenced));
             let drafts = reading.await.unwrap_or_default();
             sender.input(AppMsg::WorkspaceLoaded(FromSession::new(
                 origin,
@@ -112,18 +103,27 @@ impl App {
     /// Nothing is written for the session before this: a write would
     /// replace the saved tabs before they were read.
     pub(super) fn on_workspace_loaded(&mut self, loaded: LoadedWorkspace, sender: ComponentSender<Self>) {
-        let LoadedWorkspace { key, load, mut drafts } = loaded;
-        let scope = WorkspaceFileName::for_key(&key).draft_scope();
+        let LoadedWorkspace { key, load, drafts } = loaded;
+        let RestoredDrafts { mut texts, unreadable } = drafts;
         match load {
             WorkspaceLoad::Restored(record) => {
-                self.retain_drafts(&scope, saved_drafts(&record));
+                self.retain_drafts(&key, saved_drafts(&record));
                 if let Some(view) = self.workspace_tab_view.clone() {
-                    reopen(&view, record, |tab| self.reopen_tab(tab, &mut drafts, sender.clone()));
+                    reopen(&view, record, |tab| self.reopen_tab(tab, &mut texts, sender.clone()));
                 }
             }
-            WorkspaceLoad::Empty => self.retain_drafts(&scope, std::iter::empty()),
+            WorkspaceLoad::Empty => self.retain_drafts(&key, std::iter::empty()),
             // Which drafts the file names is unknown, so none is deleted.
             WorkspaceLoad::Blocked(_) => self.show_unreadable_workspace_toast(),
+        }
+        if unreadable > 0 {
+            let count = u32::try_from(unreadable).unwrap_or(u32::MAX);
+            self.show_toast(&crate::i18n::ngettext_f(
+                "Saved text of {n} query tab could not be read. The file was kept.",
+                "Saved text of {n} query tabs could not be read. The files were kept.",
+                count,
+                &[("n", &unreadable.to_string())],
+            ));
         }
         if let Some(view) = self.workspace_tab_view.as_ref() {
             self.workspace.attach(key, view, self.workspace_tabs.clone());
@@ -131,16 +131,22 @@ impl App {
         }
     }
 
-    /// Delete the drafts in `scope` that neither the saved tabs nor an
+    /// Delete the session's drafts that neither the saved tabs nor an
     /// open tab name: those of tabs closed in a session that did not
     /// shut down cleanly.
-    fn retain_drafts(&self, scope: &DraftScope, saved: impl Iterator<Item = DraftId>) {
+    fn retain_drafts(&self, key: &SessionKey, saved: impl Iterator<Item = DraftId>) {
+        // A copy that Reset moved aside may name drafts the saved tabs
+        // do not, and it leads back to them only while they are kept.
+        if self.storage.workspaces().has_moved_aside_copy(key) {
+            return;
+        }
+        let scope = WorkspaceFileName::for_key(key).draft_scope();
         let mut keep: HashSet<DraftId> = saved.collect();
         keep.extend(self.workspace_tabs.borrow().values().filter_map(|tab| match tab {
             WorkspaceTab::Editor(slot) => Some(slot.draft),
             _ => None,
         }));
-        self.drafts.retain(scope, keep);
+        self.drafts.retain(&scope, keep);
     }
 
     fn reopen_tab(
@@ -165,9 +171,8 @@ impl App {
                 sender,
             ),
             TabRecord::Structure { schema, table } => self.append_existing_structure_tab(schema, table, sender),
-            // A draft that is missing or could not be read opens empty,
-            // and is not written back until the user types, so its bytes
-            // stay on disk.
+            // Its text is on disk already, or there is none to keep, so
+            // nothing is written until the user types.
             TabRecord::Editor { draft } => self.append_editor_tab_with_draft(
                 Some(drafts.remove(&draft).unwrap_or_default()),
                 draft,
@@ -955,16 +960,22 @@ impl App {
         self.workspace_tabs.borrow_mut().clear();
     }
 
-    /// Write the tabs as they are now, before the teardown empties them.
-    /// The process is held until the write lands, so quitting right
-    /// after a disconnect does not lose it.
+    /// Write the tabs and the editor text as they are now, before the
+    /// teardown frees them. The process is held until the writes land,
+    /// so quitting right after a disconnect does not lose them.
     fn flush_workspace_state(&self) {
-        let Some(flushing) = self.workspace.detach() else {
-            return;
-        };
+        let tabs = self.workspace.detach();
+        let drafts = self.drafts.flush_all();
+        let writer = self.drafts.clone();
         let hold = self.context.hold.acquire();
         glib::spawn_future_local(async move {
-            if let Err(error) = flushing.await {
+            for failure in drafts.await {
+                tracing::warn!(failure, "an editor draft was not saved");
+            }
+            writer.release_closed();
+            if let Some(tabs) = tabs
+                && let Err(error) = tabs.await
+            {
                 tracing::debug!(%error, "the open tabs were not saved");
             }
             drop(hold);
@@ -1357,20 +1368,11 @@ enum DraftWrite {
     OnChange,
 }
 
+#[derive(Debug)]
 pub(crate) struct LoadedWorkspace {
     key: SessionKey,
     load: WorkspaceLoad,
-    drafts: HashMap<DraftId, String>,
-}
-
-impl std::fmt::Debug for LoadedWorkspace {
-    // The drafts are the user's SQL, which stays out of the journal.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LoadedWorkspace")
-            .field("key", &self.key)
-            .field("drafts", &self.drafts.len())
-            .finish_non_exhaustive()
-    }
+    drafts: RestoredDrafts,
 }
 
 fn saved_drafts(record: &WorkspaceRecord) -> impl Iterator<Item = DraftId> + '_ {
