@@ -1,3 +1,4 @@
+use relm4::adw;
 use relm4::gtk::prelude::*;
 use tablepro_core::TableInfo;
 
@@ -5,6 +6,31 @@ use super::App;
 use super::init_sidebar::refresh_visible;
 use crate::services::sidebar_tree::{CollapseState, NodeKind, build_nodes};
 use crate::ui::sidebar_row::{GroupInit, SidebarObjectKind, SidebarRowInit, SidebarRowMsg};
+
+pub(super) fn reveal_sidebar(split_view: &adw::OverlaySplitView, generation: &std::rc::Rc<std::cell::Cell<u32>>) {
+    let wanted = generation.get().wrapping_add(1);
+    generation.set(wanted);
+    if split_view.width() > 0 {
+        split_view.set_show_sidebar(true);
+        return;
+    }
+    let generation = generation.clone();
+    split_view.add_tick_callback(move |split_view, _| {
+        if generation.get() != wanted {
+            return relm4::gtk::glib::ControlFlow::Break;
+        }
+        if split_view.width() == 0 {
+            return relm4::gtk::glib::ControlFlow::Continue;
+        }
+        split_view.set_show_sidebar(true);
+        relm4::gtk::glib::ControlFlow::Break
+    });
+}
+
+pub(super) fn hide_sidebar(split_view: &adw::OverlaySplitView, generation: &std::rc::Rc<std::cell::Cell<u32>>) {
+    generation.set(generation.get().wrapping_add(1));
+    split_view.set_show_sidebar(false);
+}
 
 impl App {
     pub(super) fn repopulate_sidebar(&mut self, tables: &[TableInfo]) {

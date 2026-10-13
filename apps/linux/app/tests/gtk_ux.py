@@ -1414,6 +1414,11 @@ GLib.MainLoop().run()
     window_controls_follow_the_desktop_button_layout.needs_restart = True
     window_controls_follow_the_desktop_button_layout.requires_editor = False
 
+    def restart_with_an_untouched_editor_restores_without_layout_criticals(_database, _base, restart):
+        restart()
+
+    restart_with_an_untouched_editor_restores_without_layout_criticals.needs_restart = True
+
     result = [
         sqlite_grid_context_menu_columns_action_is_reachable_via_atspi,
         editing_a_saved_connection_prefills_it_and_saves_the_new_name,
@@ -1441,6 +1446,7 @@ GLib.MainLoop().run()
         selection_statistics_summarise_the_selected_rows,
         paste_past_the_loaded_rows_changes_nothing,
         window_controls_follow_the_desktop_button_layout,
+        restart_with_an_untouched_editor_restores_without_layout_criticals,
     ]
     if os.environ.get("TABLEPRO_PROFILE_ROWS"):
         result.append(profile_large_result_in_the_grid)
