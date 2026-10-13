@@ -5,9 +5,9 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use sourceview5::CompletionColumn;
 use sourceview5::prelude::*;
-use tablepro_core::meta::{ObjectInfo, ObjectKind};
+use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope, SchemaInfo};
 use tablepro_core::{ColumnInfo, TableRef};
-use tablepro_test_support::{ConnectionScript, FakeReply};
+use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
 use super::proposal_kind::ProposalKind;
 use super::sql_completion_provider::{SqlCompletionProvider, column_text, replace_word};
@@ -20,8 +20,22 @@ const WAIT: Duration = Duration::from_secs(10);
 
 struct Harness {
     provider: SqlCompletionProvider,
-    _session: Option<FakeSession>,
+    session: Option<FakeSession>,
     _runtime: crate::runtime::AppRuntime,
+}
+
+impl Harness {
+    fn fetched_columns(&self) -> usize {
+        self.session
+            .as_ref()
+            .map_or(0, |fake| CallCounters::get(&fake.connection.counters().fetch_columns))
+    }
+
+    fn listed_objects(&self) -> usize {
+        self.session
+            .as_ref()
+            .map_or(0, |fake| CallCounters::get(&fake.connection.counters().list_objects))
+    }
 }
 
 fn object(name: &str, kind: ObjectKind) -> ObjectInfo {
@@ -45,16 +59,30 @@ fn column(name: &str, data_type: &str) -> ColumnInfo {
     }
 }
 
+fn schema(name: &str, is_default: bool) -> SchemaInfo {
+    SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system: false,
+    }
+}
+
 /// A provider on a session whose default schema holds `objects`.
 fn connected(script: ConnectionScript, objects: Vec<ObjectInfo>) -> Harness {
+    connected_with(script, Vec::new(), objects)
+}
+
+/// A provider on a session that has `schemas`, and whose default
+/// schema holds `objects`.
+fn connected_with(script: ConnectionScript, schemas: Vec<SchemaInfo>, objects: Vec<ObjectInfo>) -> Harness {
     let runtime = test_runtime();
     let fake = FakeSession::start(script, [], runtime.tasks());
-    fake.session.catalog().commit(Vec::new(), objects);
+    fake.session.catalog().commit(schemas, objects);
     let active = ActiveSession::new();
     active.replace(fake.session.clone());
     Harness {
         provider: SqlCompletionProvider::new(active, runtime.tasks()),
-        _session: Some(fake),
+        session: Some(fake),
         _runtime: runtime,
     }
 }
@@ -63,7 +91,7 @@ fn unconnected() -> Harness {
     let runtime = test_runtime();
     Harness {
         provider: SqlCompletionProvider::new(ActiveSession::new(), runtime.tasks()),
-        _session: None,
+        session: None,
         _runtime: runtime,
     }
 }
@@ -235,6 +263,7 @@ fn identifier_needing_quotes_is_quoted_by_dialect() {
         vec![
             object("Order Items", ObjectKind::Table),
             object("users", ObjectKind::Table),
+            object("to", ObjectKind::Table),
         ],
     );
 
@@ -242,41 +271,125 @@ fn identifier_needing_quotes_is_quoted_by_dialect() {
 
     assert_eq!(find(&found, "Order Items").insert_text(""), "\"Order Items\"");
     assert_eq!(find(&found, "users").insert_text(""), "users");
+    assert_eq!(
+        find(&found, "to").insert_text(""),
+        "\"to\"",
+        "a reserved word the editor does not complete went in bare"
+    );
 }
 
 #[gtk4::test]
-fn nothing_is_proposed_inside_a_string() {
+fn a_dot_in_a_number_proposes_nothing() {
     let harness = connected(ConnectionScript::default(), vec![object("users", ObjectKind::Table)]);
 
-    assert!(proposals(&harness, "SELECT 'us|").is_empty());
+    assert!(proposals(&harness, "SELECT * FROM users WHERE price > 0.|").is_empty());
 }
 
 #[gtk4::test]
-fn refilter_narrows_the_list_without_reading_again() {
-    let harness = connected(
-        ConnectionScript::default(),
-        vec![object("users", ObjectKind::Table), object("orders", ObjectKind::Table)],
+fn a_schema_prefix_is_matched_without_case() {
+    let mut script = ConnectionScript::default();
+    script.list_objects.always(FakeReply::ok(vec![ObjectInfo {
+        schema: Some("sales".to_owned()),
+        name: "orders".to_owned(),
+        kind: ObjectKind::Table,
+    }]));
+    let harness = connected_with(
+        script,
+        vec![schema("public", true), schema("sales", false)],
+        vec![object("users", ObjectKind::Table)],
     );
-    let (text, start, word) = word_before("SELECT * FROM |");
-    let buffer = gtk4::TextBuffer::new(None);
-    buffer.set_text(&text);
-    let provider = harness.provider.clone();
-    let model =
-        finish_on_main(WAIT, async move { provider.proposals(&buffer, start, &word).await }).expect("the proposals");
-    assert_eq!(model.n_items(), 2);
 
-    harness.provider.refilter("ord", &model);
+    let found = proposals(&harness, "SELECT * FROM Sales.|");
 
-    assert_eq!(model.n_items(), 1);
+    assert_eq!(labels(&found), ["orders"]);
+    let session = &harness.session.as_ref().expect("a session").session;
+    let listed = session.subscribe_objects(ObjectScope::Schema("sales".to_owned()));
     assert_eq!(
-        model
-            .item(0)
-            .and_downcast::<SqlProposal>()
-            .map(|proposal| proposal.label().to_owned()),
-        Some("orders".to_owned())
+        listed.borrow().objects.len(),
+        1,
+        "the schema was read under the name as typed"
     );
-    harness.provider.refilter("", &model);
-    assert_eq!(model.n_items(), 2);
+}
+
+#[gtk4::test]
+fn a_prefix_that_names_no_schema_reads_nothing() {
+    let harness = connected_with(
+        ConnectionScript::default(),
+        vec![schema("public", true)],
+        vec![object("users", ObjectKind::Table)],
+    );
+
+    let listed = harness.listed_objects();
+
+    let found = proposals(&harness, "SELECT * FROM hr.|");
+
+    assert!(found.is_empty());
+    assert_eq!(harness.listed_objects(), listed);
+}
+
+#[gtk4::test]
+fn names_the_catalog_does_not_hold_are_not_read() {
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_columns
+        .always(FakeReply::ok(vec![column("id", "integer")]));
+    let harness = connected(script, vec![object("users", ObjectKind::Table)]);
+    let fetched = harness.fetched_columns();
+
+    let found = proposals(
+        &harness,
+        "WITH recent AS (SELECT * FROM users) SELECT | FROM recent r, (SELECT 1) s WHERE EXTRACT(YEAR FROM r.at) > 0",
+    );
+
+    assert!(labels(&found).contains(&"id"));
+    assert_eq!(
+        harness.fetched_columns() - fetched,
+        1,
+        "a name the catalog does not hold was read"
+    );
+}
+
+#[gtk4::test]
+fn a_database_prefix_lists_the_schemas_objects() {
+    let mut script = ConnectionScript::default();
+    script.list_objects.always(FakeReply::ok(vec![ObjectInfo {
+        schema: Some("sales".to_owned()),
+        name: "invoices".to_owned(),
+        kind: ObjectKind::Table,
+    }]));
+    let harness = connected_with(
+        script,
+        vec![schema("dbo", true), schema("sales", false)],
+        vec![object("users", ObjectKind::Table)],
+    );
+    let fetched = harness.fetched_columns();
+
+    let found = proposals(&harness, "SELECT * FROM shop.sales.|");
+
+    assert_eq!(labels(&found), ["invoices"]);
+    assert_eq!(harness.fetched_columns(), fetched, "the schema was read as a table");
+}
+
+#[gtk4::test]
+fn a_schema_and_table_prefix_lists_the_tables_columns() {
+    let mut script = ConnectionScript::default();
+    script.list_objects.always(FakeReply::ok(vec![ObjectInfo {
+        schema: Some("sales".to_owned()),
+        name: "invoices".to_owned(),
+        kind: ObjectKind::Table,
+    }]));
+    script
+        .fetch_columns
+        .when_sql_contains("invoices", FakeReply::ok(vec![column("total", "numeric")]));
+    let harness = connected_with(
+        script,
+        vec![schema("public", true), schema("sales", false)],
+        vec![object("users", ObjectKind::Table)],
+    );
+
+    let found = proposals(&harness, "SELECT sales.invoices.| FROM x");
+
+    assert_eq!(labels(&found), ["total"]);
 }
 
 /// The texts of the completion list GtkSourceView shows for `view`.

@@ -11,6 +11,10 @@ pub enum CompletionScope {
     Objects { schema: Option<String> },
     /// A column of one of these tables.
     Columns { tables: Vec<TableRef> },
+    /// After `a.b.`: the columns of table `b` in schema `a`, or the
+    /// objects of schema `b` when `a` names the database, as SQL
+    /// Server's `db.dbo.` does.
+    Qualified { qualifier: String, name: String },
     /// Anything: keywords, objects, and the columns of the tables the
     /// statement already names.
     General { tables_in_statement: Vec<TableRef> },
@@ -18,6 +22,10 @@ pub enum CompletionScope {
 
 /// The words after which a table name comes.
 const RELATION_WORDS: [&str; 5] = ["FROM", "JOIN", "INTO", "UPDATE", "TABLE"];
+
+/// The first word of a parenthesised query, inside which a FROM names
+/// tables again.
+const QUERY_WORDS: [&str; 5] = ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"];
 
 /// Words that are never an alias, beyond the completed keywords.
 const CLAUSE_WORDS: [&str; 12] = [
@@ -38,13 +46,15 @@ const CLAUSE_WORDS: [&str; 12] = [
 /// What to complete at byte `cursor` of `text`.
 ///
 /// `None` inside a string, a comment, a quoted name or a dollar-quoted
-/// body: what is typed there is not SQL the editor can read.
+/// body, where what is typed is not SQL the editor can read, and inside
+/// a number or after a dot that follows no name, where nothing has a
+/// name to complete.
 pub fn analyze(text: &str, cursor: usize, grammar: SqlGrammar, settings: LexicalSettings) -> Option<CompletionScope> {
     let cursor = floor_char_boundary(text, cursor);
     let plan = ScriptPlan::build(text, grammar, settings);
     if plan
         .tokens(cursor.saturating_sub(1)..cursor + 1)
-        .any(|token| encloses(&token, cursor))
+        .any(|token| encloses(&token, text, cursor))
     {
         return None;
     }
@@ -59,58 +69,108 @@ pub fn analyze(text: &str, cursor: usize, grammar: SqlGrammar, settings: Lexical
         .filter_map(|token| Lexeme::new(text, token))
         .collect();
     let tables = TableMap::collect(&lexemes, grammar);
-    let mut before: Vec<&Lexeme<'_>> = lexemes.iter().take_while(|lexeme| lexeme.end <= cursor).collect();
+    let mut before = lexemes.iter().take_while(|lexeme| lexeme.end <= cursor).count();
     if before
-        .last()
+        .checked_sub(1)
+        .and_then(|last| lexemes.get(last))
         .is_some_and(|last| last.kind == ScriptTokenKind::Word && last.end == cursor)
     {
-        before.pop();
+        before -= 1;
     }
-    Some(scope_after(&before, &tables, grammar))
+    scope_after(lexemes.get(..before).unwrap_or_default(), &tables, grammar)
 }
 
-fn scope_after(before: &[&Lexeme<'_>], tables: &TableMap, grammar: SqlGrammar) -> CompletionScope {
-    let general = || CompletionScope::General {
-        tables_in_statement: tables.in_order(),
-    };
+fn scope_after(before: &[Lexeme<'_>], tables: &TableMap, grammar: SqlGrammar) -> Option<CompletionScope> {
     let Some((last, rest)) = before.split_last() else {
-        return general();
+        return Some(tables.general());
     };
     if last.is_punct(".") {
-        return after_dot(rest, tables).unwrap_or_else(general);
+        return after_dot(rest, tables);
     }
-    if RELATION_WORDS.iter().any(|word| last.is_word(word)) || (last.is_punct(",") && in_from_list(rest, grammar)) {
-        return CompletionScope::Objects { schema: None };
+    let relation = relation_word(before, rest.len()).is_some();
+    if relation || (last.is_punct(",") && in_from_list(rest, grammar)) {
+        return Some(CompletionScope::Objects { schema: None });
     }
-    general()
+    Some(tables.general())
 }
 
 /// `name.` names a table's columns when the statement knows the name,
-/// and a schema's objects otherwise; `schema.table.` is always columns.
-fn after_dot(rest: &[&Lexeme<'_>], tables: &TableMap) -> Option<CompletionScope> {
+/// and a schema's objects otherwise; `a.b.` may be either, and `a.b.c.`
+/// is table `b.c`. `None` when no name comes before the dot, as after a
+/// string or a bracket.
+fn after_dot(rest: &[Lexeme<'_>], tables: &TableMap) -> Option<CompletionScope> {
     let (name, rest) = rest.split_last()?;
     let name = name.identifier()?;
-    if let [.., schema, dot] = rest
-        && dot.is_punct(".")
-        && let Some(schema) = schema.identifier()
-    {
-        return Some(CompletionScope::Columns {
+    Some(match name_before_dot(rest) {
+        Some((schema, rest)) if name_before_dot(rest).is_some() => CompletionScope::Columns {
             tables: vec![TableRef::new(Some(schema), name)],
-        });
-    }
-    Some(match tables.lookup(&name) {
-        Some(table) => CompletionScope::Columns {
-            tables: vec![table.clone()],
         },
-        None => CompletionScope::Objects { schema: Some(name) },
+        Some((qualifier, _)) => CompletionScope::Qualified { qualifier, name },
+        None => match tables.lookup(&name) {
+            Some(table) => CompletionScope::Columns {
+                tables: vec![table.clone()],
+            },
+            None => CompletionScope::Objects { schema: Some(name) },
+        },
     })
 }
 
+/// The name before the dot that ends `lexemes`, and what precedes it.
+fn name_before_dot<'s, 'a>(lexemes: &'s [Lexeme<'a>]) -> Option<(String, &'s [Lexeme<'a>])> {
+    let [rest @ .., name, dot] = lexemes else {
+        return None;
+    };
+    if !dot.is_punct(".") {
+        return None;
+    }
+    Some((name.identifier()?, rest))
+}
+
+/// The relation word at `index`, when a table name follows it.
+fn relation_word(lexemes: &[Lexeme<'_>], index: usize) -> Option<&'static str> {
+    let lexeme = lexemes.get(index)?;
+    let word = RELATION_WORDS.into_iter().find(|word| lexeme.is_word(word))?;
+    (word != "FROM" || from_names_tables(lexemes, index)).then_some(word)
+}
+
+/// Whether the FROM at `index` starts a table list, rather than ending
+/// `IS DISTINCT FROM` or sitting in a call such as
+/// `EXTRACT(YEAR FROM created_at)`.
+fn from_names_tables(lexemes: &[Lexeme<'_>], index: usize) -> bool {
+    let follows_distinct = index
+        .checked_sub(1)
+        .and_then(|before| lexemes.get(before))
+        .is_some_and(|before| before.is_word("DISTINCT"));
+    if follows_distinct {
+        return false;
+    }
+    match enclosing_group(lexemes, index) {
+        None => true,
+        Some(open) => lexemes
+            .get(open + 1)
+            .is_some_and(|first| QUERY_WORDS.iter().any(|word| first.is_word(word))),
+    }
+}
+
+/// The index of the `(` that opens the innermost group around `index`.
+fn enclosing_group(lexemes: &[Lexeme<'_>], index: usize) -> Option<usize> {
+    let mut depth = 0_usize;
+    for (at, lexeme) in lexemes.get(..index)?.iter().enumerate().rev() {
+        match lexeme.kind {
+            ScriptTokenKind::CloseParen => depth += 1,
+            ScriptTokenKind::OpenParen if depth == 0 => return Some(at),
+            ScriptTokenKind::OpenParen => depth -= 1,
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Whether a comma continues the table list of a FROM clause.
-fn in_from_list(rest: &[&Lexeme<'_>], grammar: SqlGrammar) -> bool {
-    for lexeme in rest.iter().rev() {
+fn in_from_list(rest: &[Lexeme<'_>], grammar: SqlGrammar) -> bool {
+    for (index, lexeme) in rest.iter().enumerate().rev() {
         if lexeme.is_word("FROM") {
-            return true;
+            return from_names_tables(rest, index);
         }
         let part_of_list = lexeme.is_punct(",")
             || lexeme.is_punct(".")
@@ -135,8 +195,8 @@ impl TableMap {
     /// subquery, so a cursor in the subquery sees its tables too.
     fn collect(lexemes: &[Lexeme<'_>], grammar: SqlGrammar) -> Self {
         let mut map = Self::default();
-        for (index, lexeme) in lexemes.iter().enumerate() {
-            let Some(keyword) = RELATION_WORDS.iter().find(|word| lexeme.is_word(word)) else {
+        for index in 0..lexemes.len() {
+            let Some(keyword) = relation_word(lexemes, index) else {
                 continue;
             };
             let mut at = index + 1;
@@ -155,7 +215,7 @@ impl TableMap {
                     // A set-returning call in FROM is not a table, and
                     // its arguments are no alias.
                     let called = lexemes.get(at).is_some_and(Lexeme::opens_group);
-                    if called && matches!(*keyword, "FROM" | "JOIN") {
+                    if called && matches!(keyword, "FROM" | "JOIN") {
                         at = after_group(lexemes, at);
                         None
                     } else {
@@ -167,7 +227,7 @@ impl TableMap {
                 if let Some(table) = table {
                     map.insert(table, alias);
                 }
-                if *keyword == "FROM" && lexemes.get(at).is_some_and(|next| next.is_punct(",")) {
+                if keyword == "FROM" && lexemes.get(at).is_some_and(|next| next.is_punct(",")) {
                     at += 1;
                     continue;
                 }
@@ -193,6 +253,12 @@ impl TableMap {
             .find(|(key, _)| key == name)
             .or_else(|| self.entries.iter().find(|(key, _)| key.to_lowercase() == folded))
             .map(|(_, table)| table)
+    }
+
+    fn general(&self) -> CompletionScope {
+        CompletionScope::General {
+            tables_in_statement: self.in_order(),
+        }
     }
 
     fn in_order(&self) -> Vec<TableRef> {
@@ -272,15 +338,23 @@ fn statement_around(plan: &ScriptPlan, cursor: usize) -> Option<Range<usize>> {
     (!ended).then_some(statement.range.start..cursor)
 }
 
-/// Whether the cursor sits inside a token whose text is not SQL. A
-/// line comment and an unclosed construct run to their end, so the end
-/// counts as inside; a closed quote ends before its last character.
-fn encloses(token: &ScriptToken, cursor: usize) -> bool {
+/// Whether the cursor sits inside a token nothing completes in. A line
+/// comment and an unclosed construct run to their end, so the end
+/// counts as inside; a closed quote ends before its last character; a
+/// number holds the cursor up to and just after its decimal point.
+fn encloses(token: &ScriptToken, text: &str, cursor: usize) -> bool {
     let inside = token.range.start < cursor && cursor < token.range.end;
     let at_open_end = token.range.start < cursor && cursor == token.range.end;
     match token.kind {
         ScriptTokenKind::LineComment | ScriptTokenKind::Unterminated | ScriptTokenKind::Directive => {
             inside || at_open_end
+        }
+        ScriptTokenKind::Number => {
+            inside
+                || (at_open_end
+                    && text
+                        .get(token.range.clone())
+                        .is_some_and(|number| number.ends_with('.')))
         }
         ScriptTokenKind::StringLiteral
         | ScriptTokenKind::QuotedIdentifier
@@ -404,10 +478,38 @@ mod tests {
             columns(vec![table(Some("public"), "users")])
         );
         assert_eq!(scope("SELECT users.| FROM users"), columns(vec![table(None, "users")]));
+        assert_eq!(scope("SELECT t1.| FROM t1"), columns(vec![table(None, "t1")]));
+        assert_eq!(
+            scope_in(SqlGrammar::MsSql, "SELECT shop.dbo.users.| FROM x"),
+            columns(vec![table(Some("dbo"), "users")])
+        );
+    }
+
+    #[test]
+    fn a_two_part_prefix_is_a_table_or_a_databases_schema() {
         assert_eq!(
             scope("SELECT public.users.| FROM x"),
-            columns(vec![table(Some("public"), "users")])
+            Some(CompletionScope::Qualified {
+                qualifier: "public".to_owned(),
+                name: "users".to_owned()
+            })
         );
+        assert_eq!(
+            scope_in(SqlGrammar::MsSql, "SELECT * FROM shop.dbo.|"),
+            Some(CompletionScope::Qualified {
+                qualifier: "shop".to_owned(),
+                name: "dbo".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn a_dot_after_no_name_proposes_nothing() {
+        assert_eq!(scope("SELECT * FROM items WHERE price > 0.|"), None);
+        assert_eq!(scope("SELECT * FROM items WHERE price > 0.|5"), None);
+        assert_eq!(scope("SELECT * FROM items WHERE price > .|"), None);
+        assert_eq!(scope("SELECT 'a'.|"), None);
+        assert_eq!(scope("SELECT (1).|"), None);
     }
 
     #[test]
@@ -501,6 +603,25 @@ mod tests {
             scope("SELECT * FROM users WHERE a IN (1, |)"),
             general(vec![table(None, "users")])
         );
+    }
+
+    #[test]
+    fn a_from_after_distinct_or_inside_a_call_names_no_table() {
+        let orders = || general(vec![table(None, "orders")]);
+        assert_eq!(scope("SELECT * FROM orders WHERE a IS DISTINCT FROM |"), orders());
+        assert_eq!(scope("SELECT * FROM orders WHERE a IS NOT DISTINCT FROM |"), orders());
+        assert_eq!(scope("SELECT EXTRACT(YEAR FROM |) FROM orders"), orders());
+        assert_eq!(scope("SELECT SUBSTRING(name FROM |) FROM orders"), orders());
+        assert_eq!(scope("SELECT TRIM(BOTH ' ' FROM |) FROM orders"), orders());
+        assert_eq!(scope("SELECT TRIM(FROM |) FROM orders"), orders());
+        assert_eq!(
+            scope("SELECT EXTRACT(YEAR FROM created_at) FROM orders WHERE |"),
+            orders(),
+            "a call's argument was taken for a table"
+        );
+        assert_eq!(scope("SELECT * FROM orders WHERE id IN (SELECT id FROM |"), OBJECTS);
+        assert_eq!(scope("SELECT EXISTS(SELECT 1 FROM |"), OBJECTS);
+        assert_eq!(scope("WITH gone AS (DELETE FROM |"), OBJECTS);
     }
 
     #[test]

@@ -30,18 +30,30 @@ pub async fn read(session: Arc<Session>, scope: CompletionScope) -> CatalogAnswe
             let table = relation_named(&defaults, &name);
             CatalogAnswer {
                 schemas: None,
-                objects: Some(listed(session.objects(ObjectScope::Schema(name)).await)),
+                objects: schema_objects(&session, &name).await,
                 columns: columns_of(&session, table.into_iter().collect()).await,
             }
         }
+        CompletionScope::Qualified { qualifier, name } => {
+            let table = TableRef::new(Some(qualifier), name.clone());
+            match known_table(&session, &defaults, &table).await {
+                Some(table) => CatalogAnswer {
+                    columns: columns_of(&session, vec![table]).await,
+                    ..CatalogAnswer::default()
+                },
+                None => CatalogAnswer {
+                    objects: schema_objects(&session, &name).await,
+                    ..CatalogAnswer::default()
+                },
+            }
+        }
         CompletionScope::Columns { tables } => CatalogAnswer {
-            schemas: None,
-            objects: None,
-            columns: columns_of(&session, resolved(&tables, &defaults)).await,
+            columns: columns_of(&session, known_tables(&session, &defaults, &tables).await).await,
+            ..CatalogAnswer::default()
         },
         CompletionScope::General { tables_in_statement } => CatalogAnswer {
             schemas: None,
-            columns: columns_of(&session, resolved(&tables_in_statement, &defaults)).await,
+            columns: columns_of(&session, known_tables(&session, &defaults, &tables_in_statement).await).await,
             objects: Some(defaults),
         },
     }
@@ -62,28 +74,65 @@ fn listed<T>(read: Result<Arc<[T]>, Arc<OperationError>>) -> Arc<[T]> {
     })
 }
 
-fn resolved(tables: &[TableRef], defaults: &[ObjectInfo]) -> Vec<TableRef> {
-    tables.iter().map(|table| resolve(table, defaults)).collect()
+/// The objects of the schema called `name`, or `None` when the catalog
+/// has no such schema.
+async fn schema_objects(session: &Session, name: &str) -> Option<Arc<[ObjectInfo]>> {
+    let schemas = listed(session.schemas().await);
+    let schema = schema_named(&schemas, name)?;
+    Some(listed(session.objects(ObjectScope::Schema(schema.name.clone())).await))
 }
 
-/// The catalog's own name for a table the statement names without a
-/// schema, so the read is the one the table's other views share.
-fn resolve(table: &TableRef, defaults: &[ObjectInfo]) -> TableRef {
-    if table.schema.is_some() {
-        return table.clone();
+/// The catalog's own names for the tables among `tables` it holds. A
+/// name it does not hold, such as a CTE's, is left out: reading it
+/// could only fail, and a failed read is asked again every time.
+async fn known_tables(session: &Session, defaults: &[ObjectInfo], tables: &[TableRef]) -> Vec<TableRef> {
+    let mut known = Vec::new();
+    for table in tables {
+        if let Some(table) = known_table(session, defaults, table).await
+            && !known.contains(&table)
+        {
+            known.push(table);
+        }
     }
-    relation_named(defaults, &table.name).unwrap_or_else(|| table.clone())
+    known
 }
 
-/// The default schema's relation called `name`, as written or, failing
-/// that, ignoring case the way an unquoted name is read.
-fn relation_named(defaults: &[ObjectInfo], name: &str) -> Option<TableRef> {
-    let relations = || defaults.iter().filter(|object| object.kind.is_browsable());
+/// The catalog's own name for `table`, so the read is the one the
+/// table's other views share.
+async fn known_table(session: &Session, defaults: &[ObjectInfo], table: &TableRef) -> Option<TableRef> {
+    let Some(schema) = &table.schema else {
+        return relation_named(defaults, &table.name);
+    };
+    let schemas = listed(session.schemas().await);
+    let schema = schema_named(&schemas, schema)?;
+    if schema.is_default {
+        return relation_named(defaults, &table.name);
+    }
+    let objects = listed(session.objects(ObjectScope::Schema(schema.name.clone())).await);
+    relation_named(&objects, &table.name)
+}
+
+fn schema_named<'a>(schemas: &'a [SchemaInfo], name: &str) -> Option<&'a SchemaInfo> {
+    named(schemas, name, |schema| Some(schema.name.as_str()))
+}
+
+fn relation_named(objects: &[ObjectInfo], name: &str) -> Option<TableRef> {
+    named(objects, name, |object| {
+        object.kind.is_browsable().then_some(object.name.as_str())
+    })
+    .map(|object| TableRef::new(object.schema.clone(), object.name.clone()))
+}
+
+/// The item called `name`, as written or, failing that, ignoring case
+/// the way an unquoted name is read. `name_of` gives `None` for an item
+/// that does not count.
+fn named<'a, T>(items: &'a [T], name: &str, name_of: impl Fn(&T) -> Option<&str>) -> Option<&'a T> {
     let folded = name.to_lowercase();
-    relations()
-        .find(|object| object.name == name)
-        .or_else(|| relations().find(|object| object.name.to_lowercase() == folded))
-        .map(|object| TableRef::new(object.schema.clone(), object.name.clone()))
+    items.iter().find(|item| name_of(item) == Some(name)).or_else(|| {
+        items
+            .iter()
+            .find(|item| name_of(item).is_some_and(|own| own.to_lowercase() == folded))
+    })
 }
 
 #[cfg(test)]
@@ -105,19 +154,14 @@ mod tests {
         let defaults = [object("users", ObjectKind::Table), object("Orders", ObjectKind::Table)];
 
         assert_eq!(
-            resolve(&TableRef::unqualified("users"), &defaults),
-            TableRef::new(Some("public".to_owned()), "users")
+            relation_named(&defaults, "users"),
+            Some(TableRef::new(Some("public".to_owned()), "users"))
         );
         assert_eq!(
-            resolve(&TableRef::unqualified("orders"), &defaults),
-            TableRef::new(Some("public".to_owned()), "Orders")
+            relation_named(&defaults, "orders"),
+            Some(TableRef::new(Some("public".to_owned()), "Orders"))
         );
-        assert_eq!(
-            resolve(&TableRef::unqualified("missing"), &defaults),
-            TableRef::unqualified("missing")
-        );
-        let qualified = TableRef::new(Some("sales".to_owned()), "users");
-        assert_eq!(resolve(&qualified, &defaults), qualified);
+        assert_eq!(relation_named(&defaults, "missing"), None);
     }
 
     #[test]
@@ -125,5 +169,29 @@ mod tests {
         let defaults = [object("refresh", ObjectKind::Function)];
 
         assert_eq!(relation_named(&defaults, "refresh"), None);
+    }
+
+    #[test]
+    fn a_schema_is_matched_as_written_then_ignoring_case() {
+        let schema = |name: &str| SchemaInfo {
+            name: name.to_owned(),
+            is_default: false,
+            is_system: false,
+        };
+        let schemas = [schema("sales"), schema("Audit"), schema("audit")];
+
+        assert_eq!(
+            schema_named(&schemas, "SALES").map(|schema| schema.name.as_str()),
+            Some("sales")
+        );
+        assert_eq!(
+            schema_named(&schemas, "Audit").map(|schema| schema.name.as_str()),
+            Some("Audit")
+        );
+        assert_eq!(
+            schema_named(&schemas, "audit").map(|schema| schema.name.as_str()),
+            Some("audit")
+        );
+        assert!(schema_named(&schemas, "hr").is_none());
     }
 }
