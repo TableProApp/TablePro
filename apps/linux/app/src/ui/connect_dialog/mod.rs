@@ -86,6 +86,7 @@ fn selected_path(row: &adw::EntryRow) -> Option<std::path::PathBuf> {
 }
 
 mod browse;
+mod entry_activation;
 mod form;
 mod identity;
 mod prefill;
@@ -361,6 +362,10 @@ impl Component for ConnectDialog {
         page.add(&auth_group);
         page.add(&options_group);
         page.add(&ssh.group);
+        entry_activation::connect_entry_activations(&page, {
+            let sender = sender.clone();
+            move || sender.input(ConnectDialogInput::Submit)
+        });
         let test_banner = adw::Banner::new("");
         let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
         page.set_vexpand(true);
@@ -415,13 +420,6 @@ impl Component for ConnectDialog {
         if let Some(prefill) = &init.prefill {
             model.apply_prefill(prefill, &root);
         }
-
-        // Make Connect the dialog's default widget so pressing Enter
-        // from any AdwEntryRow submits the form. Per HIG, every
-        // dialog with a primary action should respond to Enter — the
-        // suggested-action class alone only handles styling, not the
-        // keybind.
-        root.set_default_widget(Some(&model.submit));
 
         ComponentParts { model, widgets }
     }

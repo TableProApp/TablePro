@@ -60,7 +60,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] Connect through a real local MySQL/MariaDB socket, save the connection, reopen it, and confirm the socket path and endpoint mode remain selected. Export and re-import a bundle and confirm the same endpoint is retained.
 - [ ] Confirm a missing or invalid socket path fails without attempting a TCP connection. Local sockets refuse TLS and SSH; existing PostgreSQL socket-directory and SSH-forwarded MySQL socket connections still work.
 - [ ] The current header title and grouped Test/Connect actions fit at narrow width in light and dark; the title does not overlap the actions.
-- [ ] Enter submits the form and Escape dismisses without changing saved data. **2026-10-12 Hyprland dark:** Escape passed; Enter does not submit, [#652](https://github.com/cozyGarage/BookiE/issues/652).
+- [ ] Enter submits the form and Escape dismisses without changing saved data. **2026-10-12 Hyprland dark:** Enter failed, [#652](https://github.com/cozyGarage/BookiE/issues/652). The GTK regression now covers nested entry activation; rerun the keyboard flow on installed Wayland.
 - [ ] Browse shortcuts show the actual Left, Right, Space and pointer modifiers; keyboard and click actions match their labels. **2026-10-12 Hyprland dark:** failed. The window is one column taller than the screen, pointer gestures have no key caps and rows repeat, [#662](https://github.com/cozyGarage/BookiE/issues/662).
 
 ## Connection list

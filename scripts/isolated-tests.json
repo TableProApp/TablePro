@@ -185,6 +185,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::connect_dialog::entry_activation::tests::activating_a_nested_entry_row_invokes_submit"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::split_view::tests::split_editor_views_share_buffer_and_retain_text_across_toggles"
     ],
     [
