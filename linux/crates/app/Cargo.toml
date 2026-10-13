@@ -64,12 +64,12 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 sqlformat = "0.5"
 
 [dev-dependencies]
+proptest.workspace = true
 tablepro-session = { path = "../session", features = ["fakes"] }
 tablepro-test-fixtures = { path = "../test-fixtures" }
 tablepro-test-support = { path = "../test-support" }
-tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
-proptest.workspace = true
 tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 # tokio-postgres logs through `log`, so the logging tests drive that
 # bridge the way it does.
 log = "0.4"
