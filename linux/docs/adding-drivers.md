@@ -314,12 +314,12 @@ A run streams `ResultEvent`s into a `ResultSink`:
 | Method | What it does |
 |---|---|
 | `capabilities` | The table-level `DdlCapabilities`. The tab offers only what is on. |
-| `column_capabilities` | A `Permission` per change to one column. Start from `ColumnCapabilities::standard`, which refuses a restatement that would drop a generated expression or an unmodeled attribute, a default on a numbered column, a drop of a column another table's foreign key points at, and any primary-key change while a foreign key points at the key. Add the engine's own refusals on top, each with its `RefusalReason`. |
+| `column_capabilities` | A `Permission` per change to one column. Start from `ColumnCapabilities::standard`, which refuses a restatement that would drop a generated expression or an unmodeled attribute, a default on a numbered column, a drop of a column another table's foreign key points at, and any primary-key change while a foreign key points at the key. Add the engine's own refusals on top, each with its `RefusalReason`. An engine that writes the whole column again to set its comment, as MySQL does, refuses `alter_comment` where `ColumnCapabilities::restatement` does. |
 | `type_suggestions`, `default_column_type`, `referential_actions` | What the tab's type menu, new columns and foreign-key dialog offer. Every suggestion has to parse through `parse_type`. |
 | `plan_create_table(&TableDraft)` | Starts with `draft.check_create(self)?`. Foreign keys go inside CREATE TABLE. |
 | `plan_alter_table(&TableDefinition, &TableChanges)` | Starts with `changes.check(self, original)?`, then writes the changes in the order the engine needs: one combined ALTER TABLE where the engine takes one, renames first, and every statement after a table rename against the new name. A table rename keeps the table in its schema. |
 | `plan_drop_table` | The default writes `DROP TABLE [IF EXISTS] <table> [CASCADE]`. |
-| `create_table_script` | The server's own CREATE statement where the engine keeps one; the default writes it from the definition. |
+| `create_table_script` | The server's own CREATE statement where the engine keeps one, and `NoTableSource` when the definition carries none; the default writes it from the definition. |
 
 Plans quote every name through the dialect, splice a catalogue type unchanged and a typed one only after `parse_type` accepts it, and write a literal default through `SqlDialect::literal`. `tablepro_core::ddl::ddl_sql` has the pieces most engines share. The golden tests for each plan sit in `src/ddl.rs`, and the driver's integration target runs `ddl_conformance_suite!` (see [testing.md](testing.md#ddl-conformance)).
 

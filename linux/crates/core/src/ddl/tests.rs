@@ -431,6 +431,7 @@ fn generated_numbered_and_unmodeled_columns_refuse_a_restatement() {
         Permission::Refused(RefusalReason::GeneratedColumn)
     );
     assert_eq!(generated.rename, Permission::Allowed);
+    assert_eq!(generated.alter_comment, Permission::Allowed);
     assert_eq!(
         numbered.alter_default,
         Permission::Refused(RefusalReason::IdentityColumn)

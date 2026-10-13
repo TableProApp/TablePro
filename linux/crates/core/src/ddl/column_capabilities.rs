@@ -11,6 +11,7 @@ pub struct ColumnCapabilities {
     pub alter_default: Permission,
     pub alter_primary_key: Permission,
     pub alter_auto_increment: Permission,
+    pub alter_comment: Permission,
 }
 
 impl ColumnCapabilities {
@@ -18,22 +19,15 @@ impl ColumnCapabilities {
     /// restatement that would drop a generated expression or an
     /// attribute this build cannot restate, a default on a numbered
     /// column, and anything foreign keys elsewhere depend on.
+    ///
+    /// A comment is set apart from the definition on most engines, so
+    /// only an engine that restates the column for it refuses it here.
     pub fn standard(capabilities: &DdlCapabilities, table: &TableDefinition, column: &ColumnDefinition) -> Self {
-        let attributes = &column.attributes;
         let engine = |allowed: bool| Permission::unless(allowed, RefusalReason::EngineUnsupported);
-        let not_generated = || {
-            Permission::unless(
-                !column.info.is_generated && attributes.generated.is_none(),
-                RefusalReason::GeneratedColumn,
-            )
-        };
-        let modeled = || match attributes.unmodeled.first() {
-            Some(attribute) => Permission::Refused(RefusalReason::UnmodeledAttribute(attribute.name.clone())),
-            None => Permission::Allowed,
-        };
+        let restatement = || Self::restatement(column);
         let not_numbered = || {
             Permission::unless(
-                attributes.identity == IdentityStyle::None && !column.info.is_auto_increment,
+                column.attributes.identity == IdentityStyle::None && !column.info.is_auto_increment,
                 RefusalReason::IdentityColumn,
             )
         };
@@ -51,19 +45,37 @@ impl ColumnCapabilities {
                     RefusalReason::ReferencedByForeignKeys(referencing),
                 )
             }),
-            alter_type: engine(capabilities.alter_column_type).and(not_generated).and(modeled),
-            alter_nullability: engine(capabilities.alter_column_nullability)
-                .and(not_generated)
-                .and(modeled),
+            alter_type: engine(capabilities.alter_column_type).and(restatement),
+            alter_nullability: engine(capabilities.alter_column_nullability).and(restatement),
             alter_default: engine(capabilities.alter_column_default)
-                .and(not_generated)
+                .and(|| not_generated(column))
                 .and(not_numbered)
-                .and(modeled),
+                .and(|| modeled(column)),
             alter_primary_key: primary_key_permission(capabilities, table),
-            alter_auto_increment: engine(capabilities.alter_auto_increment)
-                .and(not_generated)
-                .and(modeled),
+            alter_auto_increment: engine(capabilities.alter_auto_increment).and(restatement),
+            alter_comment: engine(capabilities.column_comments),
         }
+    }
+
+    /// Whether the column can be written out again whole: a generated
+    /// one would lose its expression, and one with an attribute this
+    /// build does not model would lose that.
+    pub fn restatement(column: &ColumnDefinition) -> Permission {
+        not_generated(column).and(|| modeled(column))
+    }
+}
+
+fn not_generated(column: &ColumnDefinition) -> Permission {
+    Permission::unless(
+        !column.info.is_generated && column.attributes.generated.is_none(),
+        RefusalReason::GeneratedColumn,
+    )
+}
+
+fn modeled(column: &ColumnDefinition) -> Permission {
+    match column.attributes.unmodeled.first() {
+        Some(attribute) => Permission::Refused(RefusalReason::UnmodeledAttribute(attribute.name.clone())),
+        None => Permission::Allowed,
     }
 }
 

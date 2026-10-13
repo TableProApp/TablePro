@@ -27,7 +27,9 @@ Each engine plans structure changes through its own `DdlDialect`, reached from `
 
 - An engine's DDL is one file in its driver crate, and core has no branch on a driver id.
 - The structure tab's controls follow the capabilities, so a change the engine cannot make is never offered.
-- Primary-key identity on PostgreSQL, SQLite table rebuilds and the full restatement of MySQL and SQL Server column attributes are plans of their own, added to the same dialects later. Until then their capabilities are off.
+- MySQL writes a column again whole for any change to it, its comment included, so it restates every attribute the definition models: the character set and collation, ON UPDATE, INVISIBLE and SRID where the new type still holds them. It refuses the change on a generated column or one with an attribute this build does not model.
+- Primary-key identity on PostgreSQL and SQLite table rebuilds are plans of their own, added to the same dialects later, and their capabilities are off until then.
+- The rest of the attribute restatement is not written yet and its changes stay on: a SQL Server ALTER COLUMN does not restate COLLATE or SPARSE, and a PostgreSQL type change does not restate a column's collation, so either change resets them.
 
 ## Alternatives considered
 

@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Turning a column's primary key on or off in the Structure tab saved nothing.
 - Dropping a SQL Server column that has a default failed.
 - Creating a SQLite table with a foreign key failed.
+- Changing a MySQL column in the Structure tab dropped its collation, ON UPDATE, INVISIBLE and SRID, and a comment turned a generated column into a plain one.
 - The Structure tab refused every save on a SQLite table keyed by INTEGER PRIMARY KEY.
 
 ### Security

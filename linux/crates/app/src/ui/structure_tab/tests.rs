@@ -431,6 +431,40 @@ fn referenced_primary_key_switch_is_insensitive_with_foreign_key_names() {
 }
 
 #[gtk4::test]
+fn a_computed_column_takes_no_comment_where_the_comment_restates_it() {
+    let mysql: Arc<dyn SqlDialect> = Arc::new(drivers_mysql::MySqlDialect::new(
+        drivers_mysql::MySqlFlavour::MySql,
+        &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+    ));
+    let mut table = definition("total");
+    table.columns[0].info.column_type = mysql.parse_type("int").expect("a MySQL type");
+    table.columns[0].info.is_generated = true;
+    let mut plain = definition("base").columns.remove(0);
+    plain.info.column_type = mysql.parse_type("int").expect("a MySQL type");
+    table.columns.push(plain);
+    let mut script = ConnectionScript {
+        dialect: mysql,
+        ..ConnectionScript::default()
+    };
+    script.fetch_table_definition.always(FakeReply::ok(table));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    drain_main_context();
+
+    let computed = named_widget(harness.tab(), "col-comment-0");
+
+    assert!(!computed.is_sensitive(), "a generated column's comment could be set");
+    assert!(
+        computed
+            .tooltip_text()
+            .is_some_and(|tip| tip.contains("computes this column")),
+        "{:?}",
+        computed.tooltip_text()
+    );
+    assert!(named_widget(harness.tab(), "col-comment-1").is_sensitive());
+}
+
+#[gtk4::test]
 fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
     let mut script = postgres_script();
     script.fetch_table_definition.always(FakeReply::ok(TableDefinition {

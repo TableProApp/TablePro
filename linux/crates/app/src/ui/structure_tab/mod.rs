@@ -601,6 +601,7 @@ impl StructureModel {
                 alter_default: Permission::Allowed,
                 alter_primary_key: primary_key,
                 alter_auto_increment: Permission::Allowed,
+                alter_comment: Permission::unless(capabilities.column_comments, RefusalReason::EngineUnsupported),
             };
         };
         ddl.column_capabilities(definition, original)
@@ -638,7 +639,6 @@ impl StructureModel {
             let context = ColumnRowContext {
                 permissions: self.column_permissions(col),
                 type_suggestions,
-                column_comments: capabilities.column_comments,
                 dialect: self.dialect.clone(),
                 default_text,
                 default_error,

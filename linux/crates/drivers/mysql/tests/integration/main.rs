@@ -7,6 +7,7 @@
 )]
 
 mod conformance_engine;
+mod ddl;
 mod decode;
 mod editor_session;
 mod flavour_suite;

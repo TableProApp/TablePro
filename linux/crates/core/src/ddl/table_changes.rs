@@ -98,14 +98,16 @@ impl TableChanges {
                     permissions.alter_auto_increment,
                     DdlOperation::AlterAutoIncrement,
                 ),
+                (
+                    changed.comment,
+                    permissions.alter_comment,
+                    DdlOperation::SetColumnComment,
+                ),
             ];
             for (changed, permission, operation) in checks {
                 if changed {
                     permit(permission, name, operation)?;
                 }
-            }
-            if changed.comment {
-                require(capabilities.column_comments, DdlOperation::SetColumnComment)?;
             }
         }
         for column in &self.added_columns {

@@ -19,7 +19,6 @@ use super::{ColumnField, StructureTabInput, StructureTabSender};
 pub(super) struct ColumnRowContext {
     pub permissions: ColumnCapabilities,
     pub type_suggestions: &'static [&'static str],
-    pub column_comments: bool,
     pub dialect: Option<Arc<dyn SqlDialect>>,
     /// The default as SQL the user could type back in, or the text they
     /// typed that did not parse.
@@ -277,13 +276,7 @@ pub(super) fn build_column_expander_row(
     let comment_row = adw::EntryRow::builder().title(crate::i18n::gettext("Comment")).build();
     comment_row.set_text(col.comment.as_deref().unwrap_or(""));
     comment_row.set_widget_name(&format!("col-comment-{index}"));
-    gate(
-        &comment_row,
-        &Permission::unless(
-            context.column_comments,
-            tablepro_core::ddl::RefusalReason::EngineUnsupported,
-        ),
-    );
+    gate(&comment_row, &permissions.alter_comment);
     let sender_for_comment = sender;
     let suppress_for_comment = suppress_emit;
     comment_row.connect_changed(move |e| {

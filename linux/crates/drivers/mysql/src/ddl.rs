@@ -1,10 +1,11 @@
-use tablepro_core::column::ColumnDefault;
+use tablepro_core::column::{ColumnDefault, ColumnKind};
 use tablepro_core::ddl::ddl_sql::{
     column_list, create_index_sql, default_sql, foreign_key_sql, index_keys_sql, parenthesized,
 };
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlPlan, DraftColumn, Permission,
-    ReferentialAction, RefusalReason, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, ColumnAttributes, ColumnCapabilities, ColumnDefinition, ColumnVisibility, DdlCapabilities,
+    DdlDialect, DdlPlan, DraftColumn, DraftType, Permission, ReferentialAction, RefusalReason, TableChanges,
+    TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -84,15 +85,20 @@ impl DdlDialect for MySqlDialect {
         self
     }
 
-    /// A MODIFY restates the type, so a column whose type the catalogue
-    /// did not spell cannot take one.
+    /// A comment is part of the definition MODIFY restates, so it takes
+    /// what a restatement takes. A MODIFY restates the type too, so a
+    /// column whose type the catalogue did not spell cannot take one.
     fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
         let mut permissions = ColumnCapabilities::standard(DdlDialect::capabilities(self), table, column);
+        permissions.alter_comment = permissions
+            .alter_comment
+            .and(|| ColumnCapabilities::restatement(column));
         if column.info.column_type.catalog.is_none() {
             let unreadable = || Permission::Refused(RefusalReason::UnreadableDefinition);
             permissions.alter_nullability = permissions.alter_nullability.and(unreadable);
             permissions.alter_default = permissions.alter_default.and(unreadable);
             permissions.alter_auto_increment = permissions.alter_auto_increment.and(unreadable);
+            permissions.alter_comment = permissions.alter_comment.and(unreadable);
         }
         permissions
     }
@@ -228,12 +234,14 @@ impl DdlDialect for MySqlDialect {
     }
 
     /// The server's own SHOW CREATE TABLE, which carries the engine,
-    /// charset and every option the definition does not model.
+    /// charset and every option the definition does not model, and
+    /// spells a comment for whatever sql_mode runs it.
     fn create_table_script(&self, definition: &TableDefinition) -> Result<DdlPlan, BuildDdlError> {
-        match &definition.source {
-            Some(source) => Ok(DdlPlan::from_sql([source.create_statement.clone()])),
-            None => self.plan_create_table(&TableDraft::from_definition(definition)),
-        }
+        definition
+            .source
+            .as_ref()
+            .map(|source| DdlPlan::from_sql([source.create_statement.clone()]))
+            .ok_or(BuildDdlError::NoTableSource)
     }
 }
 
@@ -244,11 +252,27 @@ fn restates(changed: tablepro_core::ddl::ChangedAttributes) -> bool {
 }
 
 impl MySqlDialect {
-    /// `name type NULL|NOT NULL [DEFAULT ..] [AUTO_INCREMENT] [COMMENT ..]`,
-    /// the whole definition MODIFY replaces the old one with.
+    /// The whole definition MODIFY or CHANGE replaces the old one with:
+    /// an attribute it leaves out is gone, so every one the column had
+    /// that still fits its type is written again.
     fn column_definition(&self, column: &DraftColumn) -> Result<String, BuildDdlError> {
         let resolved = column.column_type.resolve(self, &column.name)?;
+        let kind = &resolved.column_type.kind;
+        let added = ColumnAttributes::default();
+        let kept = column.original.as_ref().map_or(&added, |original| &original.attributes);
         let mut parts = vec![self.quote_identifier(&column.name), resolved.sql.clone()];
+        // The catalogue names a character set only for a column that
+        // holds text, and a type the user typed may not.
+        let textual = matches!(column.column_type, DraftType::Catalog(_))
+            || matches!(kind, ColumnKind::Text { .. } | ColumnKind::Enum { .. });
+        if textual {
+            if let Some(character_set) = &kept.character_set {
+                parts.push(format!("CHARACTER SET {}", self.quote_identifier(character_set)));
+            }
+            if let Some(collation) = &kept.collation {
+                parts.push(format!("COLLATE {}", self.quote_identifier(&collation.name)));
+            }
+        }
         parts.push(if column.nullable { "NULL" } else { "NOT NULL" }.to_owned());
         if !column.auto_increment
             && let Some(default) = default_sql(self, &column.name, &column.default, &resolved.column_type)?
@@ -258,8 +282,21 @@ impl MySqlDialect {
                 default_clause(&column.default, &default, &resolved.sql)
             ));
         }
+        if let Some(expression) = kept
+            .on_update
+            .as_ref()
+            .filter(|_| matches!(kind, ColumnKind::Timestamp { .. }))
+        {
+            parts.push(format!("ON UPDATE {}", expression.as_sql()));
+        }
         if column.auto_increment {
             parts.push("AUTO_INCREMENT".to_owned());
+        }
+        if kept.visibility == ColumnVisibility::Invisible {
+            parts.push("INVISIBLE".to_owned());
+        }
+        if let Some(srid) = kept.spatial_reference.filter(|_| matches!(kind, ColumnKind::Spatial)) {
+            parts.push(format!("SRID {srid}"));
         }
         if let Some(comment) = column.comment_text() {
             parts.push(format!("COMMENT {}", comment_literal(comment)));
@@ -339,8 +376,8 @@ mod tests {
     use tablepro_core::ServerInfo;
     use tablepro_core::column::{ColumnInfo, SqlExpression};
     use tablepro_core::ddl::{
-        ColumnAttributes, DdlOperation, DraftType, DropTableOptions, InboundForeignKey, PrimaryKeyConstraint,
-        diff_table,
+        CollationName, DdlOperation, DropTableOptions, GeneratedColumn, GeneratedStorage, InboundForeignKey,
+        PrimaryKeyConstraint, UnmodeledAttribute, diff_table,
     };
     use tablepro_core::meta::{IndexInfo, IndexKey};
     use tablepro_core::value::Value;
@@ -631,6 +668,144 @@ mod tests {
         assert_eq!(
             sql(dialect().plan_drop_table(&table.table, DropTableOptions::default())),
             ["DROP TABLE `app`.`users`"]
+        );
+        assert_eq!(
+            dialect().create_table_script(&users()),
+            Err(BuildDdlError::NoTableSource)
+        );
+    }
+
+    fn with_attributes(name: &str, declaration: &str, edit: impl FnOnce(&mut ColumnAttributes)) -> ColumnDefinition {
+        let mut column = column(name, declaration, false);
+        edit(&mut column.attributes);
+        column
+    }
+
+    fn attributed() -> TableDefinition {
+        let mut table = users();
+        table.columns.extend([
+            with_attributes("code", "varchar(20)", |attributes| {
+                attributes.character_set = Some("utf8mb4".to_owned());
+                attributes.collation = Some(CollationName::new(None, "utf8mb4_bin"));
+            }),
+            with_attributes("stamp", "timestamp", |attributes| {
+                attributes.on_update = Some(SqlExpression::from_catalog_text("CURRENT_TIMESTAMP"));
+                attributes.visibility = ColumnVisibility::Invisible;
+            }),
+            with_attributes("shape", "point", |attributes| attributes.spatial_reference = Some(4326)),
+        ]);
+        table
+    }
+
+    fn edit_column(draft: &mut TableDraft, name: &str, edit: impl FnOnce(&mut DraftColumn)) {
+        edit(
+            draft
+                .columns
+                .iter_mut()
+                .find(|column| column.name == name)
+                .expect("the column"),
+        );
+    }
+
+    #[test]
+    fn a_restatement_keeps_charset_collation_on_update_invisible_and_srid() {
+        let plan = alter(&attributed(), |draft| {
+            edit_column(draft, "code", |column| column.nullable = false);
+            edit_column(draft, "stamp", |column| column.comment = Some("touched".to_owned()));
+            edit_column(draft, "shape", |column| column.nullable = false);
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE `app`.`users` MODIFY COLUMN `code` varchar(20) CHARACTER SET `utf8mb4` COLLATE \
+                 `utf8mb4_bin` NOT NULL, MODIFY COLUMN `stamp` timestamp NULL ON UPDATE CURRENT_TIMESTAMP INVISIBLE \
+                 COMMENT 'touched', MODIFY COLUMN `shape` point NOT NULL SRID 4326"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_new_type_drops_the_attributes_it_cannot_hold() {
+        let plan = alter(&attributed(), |draft| {
+            edit_column(draft, "code", |column| {
+                column.column_type = DraftType::Typed("int".to_owned())
+            });
+            edit_column(draft, "stamp", |column| {
+                column.column_type = DraftType::Typed("date".to_owned())
+            });
+        });
+
+        assert_eq!(
+            sql(plan),
+            ["ALTER TABLE `app`.`users` MODIFY COLUMN `code` int NULL, MODIFY COLUMN `stamp` date NULL INVISIBLE"]
+        );
+        // A character set typed with the type would clash with the one
+        // kept from the catalogue, so the type parser has to refuse it.
+        assert!(dialect().parse_type("varchar(20) character set latin1").is_err());
+        assert!(dialect().parse_type("varchar(20) collate latin1_bin").is_err());
+    }
+
+    #[test]
+    fn a_comment_is_refused_where_a_restatement_is() {
+        let mut table = users();
+        table.columns.extend([
+            with_attributes("total", "int", |attributes| {
+                attributes.generated = Some(GeneratedColumn {
+                    expression: SqlExpression::from_catalog_text("`id` * 2"),
+                    storage: GeneratedStorage::Stored,
+                });
+            }),
+            with_attributes("note", "varchar(20)", |attributes| {
+                attributes.unmodeled = vec![UnmodeledAttribute::new("WITHOUT SYSTEM VERSIONING")];
+            }),
+        ]);
+        table.columns[3].info.is_generated = true;
+
+        let generated = dialect().column_capabilities(&table, &table.columns[3]);
+        let unmodeled = dialect().column_capabilities(&table, &table.columns[4]);
+        let commented = alter(&table, |draft| {
+            edit_column(draft, "total", |column| column.comment = Some("x".to_owned()));
+        });
+        let renamed_and_commented = alter(&table, |draft| {
+            edit_column(draft, "note", |column| {
+                column.name = "remark".to_owned();
+                column.comment = Some("x".to_owned());
+            });
+        });
+
+        assert_eq!(
+            generated.alter_comment,
+            Permission::Refused(RefusalReason::GeneratedColumn)
+        );
+        assert_eq!(
+            unmodeled.alter_comment,
+            Permission::Refused(RefusalReason::UnmodeledAttribute(
+                "WITHOUT SYSTEM VERSIONING".to_owned()
+            ))
+        );
+        assert_eq!(generated.rename, Permission::Allowed);
+        assert!(
+            matches!(
+                commented,
+                Err(BuildDdlError::Refused {
+                    operation: DdlOperation::SetColumnComment,
+                    reason: RefusalReason::GeneratedColumn,
+                    ..
+                })
+            ),
+            "{commented:?}"
+        );
+        assert!(
+            matches!(
+                renamed_and_commented,
+                Err(BuildDdlError::Refused {
+                    operation: DdlOperation::SetColumnComment,
+                    reason: RefusalReason::UnmodeledAttribute(_),
+                    ..
+                })
+            ),
+            "{renamed_and_commented:?}"
         );
     }
 
