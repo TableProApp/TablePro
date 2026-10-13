@@ -122,6 +122,11 @@ mod tests {
                 }
             })
         }
+
+        fn remove(&self, id: Uuid) -> BoxFuture<'_, Result<(), StorageError>> {
+            self.writes.lock().unwrap().retain(|(_, written)| written.id != id);
+            Box::pin(async { Ok(()) })
+        }
     }
 
     fn connection(id: Uuid) -> SavedConnection {
