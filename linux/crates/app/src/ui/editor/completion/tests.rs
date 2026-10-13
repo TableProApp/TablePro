@@ -10,7 +10,9 @@ use tablepro_core::{ColumnInfo, TableRef};
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
 use super::proposal_kind::ProposalKind;
-use super::sql_completion_provider::{SqlCompletionProvider, column_text, replace_word};
+use super::sql_completion_provider::{
+    CONTEXT_AFTER, CONTEXT_BEFORE, SqlCompletionProvider, column_text, context_bounds, replace_word,
+};
 use super::sql_proposal::SqlProposal;
 use crate::services::active_session::ActiveSession;
 use crate::test_support::{FakeSession, MemorySettings, descendants, finish_on_main, test_runtime, wait_until};
@@ -390,6 +392,71 @@ fn a_schema_and_table_prefix_lists_the_tables_columns() {
     let found = proposals(&harness, "SELECT sales.invoices.| FROM x");
 
     assert_eq!(labels(&found), ["total"]);
+}
+
+#[gtk4::test]
+fn a_large_buffer_is_read_only_near_the_cursor() {
+    let buffer = gtk4::TextBuffer::new(None);
+    buffer.set_text(&format!("{}SELECT * FROM us", "SELECT 1;\n".repeat(30_000)));
+    let word_start = buffer.char_count() - 2;
+
+    let (start, end) = context_bounds(&buffer, word_start);
+
+    assert!(start.starts_line(), "the window opened mid-line");
+    assert!(word_start - start.offset() <= CONTEXT_BEFORE);
+    assert!(end.is_end());
+    let (start, end) = context_bounds(&buffer, 5);
+    assert!(start.is_start());
+    assert_eq!(end.offset(), 5 + CONTEXT_AFTER);
+    let small = gtk4::TextBuffer::new(None);
+    small.set_text("SELECT * FROM us");
+    let (start, end) = context_bounds(&small, 14);
+    assert!(start.is_start() && end.is_end(), "a small buffer was not read whole");
+}
+
+#[gtk4::test]
+fn a_completion_at_the_end_of_a_large_buffer_still_finds_tables() {
+    let harness = connected(ConnectionScript::default(), vec![object("users", ObjectKind::Table)]);
+    let marked = format!("{}SELECT * FROM us|", "SELECT 1;\n".repeat(30_000));
+
+    let found = proposals(&harness, &marked);
+
+    assert_eq!(labels(&found), ["users"]);
+}
+
+#[gtk4::test]
+fn nothing_is_proposed_inside_a_string() {
+    let harness = connected(ConnectionScript::default(), vec![object("users", ObjectKind::Table)]);
+
+    assert!(proposals(&harness, "SELECT 'us|").is_empty());
+}
+
+#[gtk4::test]
+fn refilter_narrows_the_list_without_reading_again() {
+    let harness = connected(
+        ConnectionScript::default(),
+        vec![object("users", ObjectKind::Table), object("orders", ObjectKind::Table)],
+    );
+    let (text, start, word) = word_before("SELECT * FROM |");
+    let buffer = gtk4::TextBuffer::new(None);
+    buffer.set_text(&text);
+    let provider = harness.provider.clone();
+    let model =
+        finish_on_main(WAIT, async move { provider.proposals(&buffer, start, &word).await }).expect("the proposals");
+    assert_eq!(model.n_items(), 2);
+
+    harness.provider.refilter("ord", &model);
+
+    assert_eq!(model.n_items(), 1);
+    assert_eq!(
+        model
+            .item(0)
+            .and_downcast::<SqlProposal>()
+            .map(|proposal| proposal.label().to_owned()),
+        Some("orders".to_owned())
+    );
+    harness.provider.refilter("", &model);
+    assert_eq!(model.n_items(), 2);
 }
 
 /// The texts of the completion list GtkSourceView shows for `view`.

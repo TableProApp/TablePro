@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use gtk4::glib;
@@ -25,6 +26,12 @@ glib::wrapper! {
     pub struct SqlCompletionProvider(ObjectSubclass<imp::SqlCompletionProvider>)
         @implements sourceview5::CompletionProvider;
 }
+
+/// How far before and after the cursor a completion reads the buffer, in
+/// characters. A file of megabytes would otherwise be copied and lexed
+/// on the GTK thread every time a word starts.
+pub const CONTEXT_BEFORE: i32 = 128 * 1024;
+pub const CONTEXT_AFTER: i32 = 32 * 1024;
 
 pub struct ProviderDeps {
     session: ActiveSession,
@@ -130,9 +137,10 @@ impl SqlCompletionProvider {
         let grammar = dialect
             .as_ref()
             .map_or(SqlGrammar::PostgreSql, |dialect| dialect.grammar());
-        let (start, end) = buffer.bounds();
+        let (start, end) = context_bounds(buffer, word_start);
         let text = buffer.text(&start, &end, false);
-        let cursor = text_offsets::char_to_byte(&text, usize::try_from(word_start).unwrap_or_default());
+        let cursor = usize::try_from(word_start - start.offset()).unwrap_or_default();
+        let cursor = text_offsets::char_to_byte(&text, cursor);
         let scope = completion_scope::analyze(&text, cursor, grammar, LexicalSettings::default_for(grammar))?;
         Some(Request {
             scope,
@@ -154,14 +162,13 @@ struct Request {
 impl Request {
     fn proposals(&self, answer: &CatalogAnswer) -> Vec<SqlProposal> {
         let mut proposals = Vec::new();
-        let mut columns: Vec<&str> = Vec::new();
+        let mut columns: HashSet<&str> = HashSet::new();
         for (table, list) in &answer.columns {
             for column in list.iter() {
                 // The same name in two joined tables is one thing to type.
-                if columns.contains(&column.name.as_str()) {
+                if !columns.insert(&column.name) {
                     continue;
                 }
-                columns.push(&column.name);
                 let kind = ProposalKind::Column {
                     data_type: column.column_type.name.clone(),
                     table: table.clone(),
@@ -210,6 +217,20 @@ impl Request {
             _ => name.to_owned(),
         }
     }
+}
+
+/// The part of `buffer` a completion at `word_start` reads: all of an
+/// ordinary buffer, and the lines around the cursor in a large one.
+pub fn context_bounds(buffer: &gtk4::TextBuffer, word_start: i32) -> (gtk4::TextIter, gtk4::TextIter) {
+    let from = word_start.saturating_sub(CONTEXT_BEFORE).max(0);
+    let mut start = buffer.iter_at_offset(from);
+    let mut line = buffer.iter_at_offset(from);
+    // A window that opens mid-line would cut a word in two.
+    if from > 0 && line.forward_line() && line.offset() <= word_start {
+        start = line;
+    }
+    let end = buffer.iter_at_offset(word_start.saturating_add(CONTEXT_AFTER));
+    (start, end)
 }
 
 /// What a column of the list shows for `proposal`, beside its icon and
