@@ -55,7 +55,9 @@ impl ClickHouseEditorSession {
         }
         Ok(Arc::new(Self {
             id: EditorSessionId::new(),
-            session,
+            // Without the check, a run on a session the server let expire
+            // quietly starts a new, empty one under the same id.
+            session: session.with_setting("session_check", "1"),
             control: endpoint.control().clone(),
             statement_timeout: options.statement_timeout,
             grace: liveness.cancel_grace,
@@ -126,5 +128,76 @@ impl EditorSession for ClickHouseEditorSession {
     async fn close(&self) {
         self.shutdown.cancel();
         self.status.lose();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use async_trait::async_trait;
+    use secrecy::SecretString;
+    use tablepro_core::{
+        ConnectEnvironment, Credentials, NetworkEndpoint, NetworkTarget, ResultEvent, RunEnd, SinkFlow, TlsConfig,
+    };
+    use tablepro_net::DirectTcpTransport;
+    use tablepro_test_fixtures::ClickHouseFixture;
+    use tablepro_test_support::conformance::test_liveness;
+
+    use super::*;
+
+    struct Discard;
+
+    #[async_trait]
+    impl ResultSink for Discard {
+        async fn accept(&mut self, _event: ResultEvent) -> SinkFlow {
+            SinkFlow::Continue
+        }
+    }
+
+    async fn run(session: &ClickHouseEditorSession, sql: &str) -> Result<RunSummary, DriverError> {
+        session
+            .run(
+                UserSql::new(sql),
+                RunOptions::new(CancellationToken::new()),
+                Box::new(Discard),
+            )
+            .await
+    }
+
+    #[tokio::test]
+    #[ignore = "requires docker"]
+    async fn a_session_the_server_let_expire_is_lost_not_replaced() {
+        let fixture = ClickHouseFixture::start().await.expect("a ClickHouse container");
+        let liveness = test_liveness();
+        let address = NetworkEndpoint::new(fixture.host(), fixture.http_port()).expect("an endpoint");
+        let credentials = fixture.password_credentials();
+        let target = NetworkTarget {
+            transport: Arc::new(DirectTcpTransport::new(address, &liveness)),
+            credentials: Credentials::Password {
+                username: credentials.username.clone(),
+                password: SecretString::from(credentials.password.clone()),
+            },
+            database: Some("tablepro".to_owned()),
+            tls: TlsConfig::disabled(),
+        };
+        let endpoint = ClickHouseEndpoint::new(&target, liveness, &ConnectEnvironment::new("test"), false)
+            .expect("an endpoint")
+            .with_session_timeout(Duration::from_secs(1));
+        let session =
+            ClickHouseEditorSession::open(&endpoint, EditorSessionOptions::default(), CancellationToken::new())
+                .await
+                .expect("an editor session");
+
+        let created = run(&session, "CREATE TEMPORARY TABLE scratch (x UInt8)").await;
+        assert_eq!(created.map(|summary| summary.end), Ok(RunEnd::Completed));
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        let outcome = run(&session, "SELECT count() FROM scratch").await;
+
+        assert_eq!(
+            outcome.map(|summary| summary.end),
+            Err(DriverError::ConnectionLost {
+                during: LossPhase::Idle
+            })
+        );
+        assert_eq!(session.state(), EditorSessionState::Lost);
     }
 }

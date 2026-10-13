@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::call_client::whole_seconds;
 use crate::cancel::{acknowledges_stop, kill_query};
+use crate::errors::{code, server_code};
 use crate::result_reader::{ReadEvent, ResultReader};
 
 /// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
@@ -102,6 +103,14 @@ impl EditorRun {
                 Err(error) if lost(&error) => {
                     return Err(DriverError::ConnectionLost {
                         during: LossPhase::Statement,
+                    });
+                }
+                // The server let the session expire, and with it what the
+                // tab built up there; carrying on in a new one would hide
+                // that.
+                Err(error) if server_code(&error) == Some(code::SESSION_NOT_FOUND) => {
+                    return Err(DriverError::ConnectionLost {
+                        during: LossPhase::Idle,
                     });
                 }
                 Err(DriverError::Timeout {
