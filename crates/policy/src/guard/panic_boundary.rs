@@ -15,7 +15,7 @@ impl PolicyGuard {
         match AssertUnwindSafe(execute).catch_unwind().await {
             Ok(result) => {
                 self.report_if_disconnected(operation, &result);
-                result
+                result.map_err(|error| self.sanitize_agent_error(error))
             }
             Err(payload) => Err(DriverError::Internal(self.report(operation, &payload))),
         }
@@ -28,7 +28,7 @@ impl PolicyGuard {
         match AssertUnwindSafe(execute).catch_unwind().await {
             Ok(result) => {
                 self.report_if_disconnected(operation, &result);
-                result
+                result.map_err(|error| self.sanitize_agent_error(error))
             }
             Err(payload) => Err(DriverError::OperationOutcomeUnknown {
                 source: Box::new(DriverError::Internal(self.report(operation, &payload))),
@@ -60,5 +60,38 @@ impl PolicyGuard {
             fault.connection_became_unusable(operation);
         }
         format!("the driver stopped unexpectedly during {operation}")
+    }
+
+    fn sanitize_agent_error(&self, error: DriverError) -> DriverError {
+        if !self.should_mask() {
+            return error;
+        }
+        match error {
+            DriverError::Query { sqlstate, position, .. } => DriverError::Query {
+                message: "query failed; details withheld for masked agent".into(),
+                sqlstate,
+                position,
+            },
+            DriverError::Transaction {
+                statement_index,
+                source,
+            } => DriverError::Transaction {
+                statement_index,
+                source: Box::new(self.sanitize_agent_error(*source)),
+            },
+            DriverError::TransactionRollbackFailed {
+                statement_index,
+                source,
+                rollback_error,
+            } => DriverError::TransactionRollbackFailed {
+                statement_index,
+                source: Box::new(self.sanitize_agent_error(*source)),
+                rollback_error: Box::new(self.sanitize_agent_error(*rollback_error)),
+            },
+            DriverError::OperationOutcomeUnknown { source } => DriverError::OperationOutcomeUnknown {
+                source: Box::new(self.sanitize_agent_error(*source)),
+            },
+            error => error,
+        }
     }
 }

@@ -26,6 +26,43 @@ fn gui_guard(connection: Arc<dyn Connection>, audit: Arc<SequenceAuditSink>, sta
     )
 }
 
+#[tokio::test]
+async fn agent_query_errors_do_not_expose_driver_message_details() {
+    let guard = PolicyGuard::new(
+        Arc::new(super::TransactionQueryErrorConn),
+        super::context(
+            Principal::Agent {
+                token: "test-token".into(),
+                client: None,
+                model: None,
+            },
+            Environment::Prod,
+            PolicyConfig::default(),
+            Arc::new(AutoApproveSink),
+            Arc::new(SequenceAuditSink::new(vec![])),
+            Arc::new(AuditState::new()),
+        ),
+    );
+
+    let error = guard.query("SELECT pan::int FROM cards").await.unwrap_err();
+
+    assert!(!error.to_string().contains("4111111111111111"));
+    assert!(matches!(&error, DriverError::Query { sqlstate: Some(state), .. } if state == "42000"));
+}
+
+#[tokio::test]
+async fn human_query_errors_preserve_driver_message_details() {
+    let guard = gui_guard(
+        Arc::new(super::TransactionQueryErrorConn),
+        Arc::new(SequenceAuditSink::new(vec![])),
+        Arc::new(AuditState::new()),
+    );
+
+    let error = guard.query("SELECT pan::int FROM cards").await.unwrap_err();
+
+    assert!(error.to_string().contains("4111111111111111"));
+}
+
 #[test]
 fn rollback_failure_is_audited_as_an_unknown_transaction_outcome() {
     let error = DriverError::TransactionRollbackFailed {

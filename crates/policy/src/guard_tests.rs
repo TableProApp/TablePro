@@ -467,7 +467,7 @@ impl ApprovalSink for CountingApprovalSink {
 
 fn query_error() -> DriverError {
     DriverError::Query {
-        message: "injected query error".into(),
+        message: "invalid input value: 4111111111111111".into(),
         sqlstate: Some("42000".into()),
         position: None,
     }
