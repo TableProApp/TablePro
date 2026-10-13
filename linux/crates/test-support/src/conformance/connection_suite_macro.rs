@@ -208,6 +208,12 @@ macro_rules! connection_conformance_suite {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
+            commit_with_no_record_is_unresolvable,
+            $crate::conformance::cases::commit_resolution::commit_with_no_record_is_unresolvable::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
             stream_read_streams_every_row_in_bounded_batches,
             $crate::conformance::cases::streaming::stream_read_streams_every_row_in_bounded_batches::<$engine>
         }

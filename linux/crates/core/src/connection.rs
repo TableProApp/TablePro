@@ -108,7 +108,9 @@ pub trait Connection: Send + Sync {
     async fn write_batch(&self, batch: &WriteBatch, options: CallOptions) -> Result<WriteReport, DriverError>;
 
     /// Ask the server what became of a write whose commit was sent and
-    /// never answered.
+    /// never answered. A commit the engine keeps no record of is
+    /// `Unresolvable`, and an engine whose `commit_resolution` is
+    /// `Unavailable` keeps a record of none: neither is an error.
     async fn resolve_commit(&self, token: &CommitToken, options: CallOptions) -> Result<CommitResolution, DriverError>;
 
     /// Open an editor tab's own connection. It outlives this one: the

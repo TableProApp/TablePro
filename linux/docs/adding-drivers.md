@@ -264,7 +264,7 @@ Where the engine can answer later, the ledger carries a `CommitToken`:
 - `PostgresXid { xid, legacy_txid }`: `pg_current_xact_id()` (or `txid_current()` before PostgreSQL 13), read inside the transaction before COMMIT, and asked back with `pg_xact_status` (or `txid_status`).
 - `ClickHouseQuery { query_ids, first_unconfirmed }`: the query id of every statement, looked up in `system.query_log`.
 
-`resolve_commit` answers with a `CommitResolution`: `Applied`, `NotApplied`, `PartiallyApplied`, `StillRunning` or `Unresolvable`. Where `commit_resolution` is `Unavailable`, SQL Server and SQLite answer `Unresolvable` and MySQL returns `Unsupported`. The app reports `CommitOutcomeUnknown` as unknown and asks the user to reload; it does not call `resolve_commit` yet.
+`resolve_commit` answers with a `CommitResolution`: `Applied`, `NotApplied`, `PartiallyApplied`, `StillRunning` or `Unresolvable`. A commit the engine keeps no record of is `Unresolvable`, never an error, so where `commit_resolution` is `Unavailable` (MySQL, SQL Server, SQLite) every answer is `Unresolvable`. The app reports `CommitOutcomeUnknown` as unknown and asks the user to reload; it does not call `resolve_commit` yet.
 
 ## 6. `EditorSession`
 
@@ -356,7 +356,7 @@ tablepro_test_support::tls_conformance_suite! {
 }
 ```
 
-The cases cover listing and identity, deadlines within the cancel grace, a cancelled editor run, a dropped `query_bound` caller or editor run stopping the server's statement, a lost transport, a busy pool's probe, read-only refusal, write atomicity, row guards, the row limit, unbounded schema changes, streaming in bounded batches, type fallback and every TLS mode. [testing.md](testing.md#conformance) lists them with their flags. `suite_flags_match_driver_capabilities` runs without Docker and fails when a flag disagrees with the driver's capabilities, so a case cannot be skipped by declaring less.
+The cases cover listing and identity, deadlines within the cancel grace, a cancelled editor run, a dropped `query_bound` caller or editor run stopping the server's statement, a lost transport, a busy pool's probe, read-only refusal, write atomicity, row guards, the row limit, unbounded schema changes, streaming in bounded batches, a commit with no record resolving as `Unresolvable`, type fallback and every TLS mode. [testing.md](testing.md#conformance) lists them with their flags. `suite_flags_match_driver_capabilities` runs without Docker and fails when a flag disagrees with the driver's capabilities, so a case cannot be skipped by declaring less.
 
 Behaviour the suites do not cover gets a test of its own against the real engine: the engine's stop, its error mapping, what a pooler does to it, each write outcome the ledger can produce.
 
