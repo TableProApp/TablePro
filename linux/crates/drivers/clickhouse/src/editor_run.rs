@@ -90,8 +90,7 @@ impl EditorRun {
                         emitter.limit_reached().await;
                         // The rest of the result is not wanted, so the read
                         // stops on the server before its body is dropped.
-                        let killing = kill_query(&self.control, query_id);
-                        let _ = tokio::time::timeout(self.grace, killing).await;
+                        kill_within(&self.control, query_id, self.grace).await;
                         break stop.fired.map_or(RunEnd::Completed, |_| stop.end(None));
                     }
                 }
@@ -109,6 +108,13 @@ impl EditorRun {
                     phase: TimeoutPhase::Statement,
                     server_cancelled,
                 }) => break RunEnd::TimedOut { server_cancelled },
+                Err(error) if unreadable(&error) => {
+                    // The server is still sending what the driver could not
+                    // read, so the query is stopped there before its body
+                    // is dropped.
+                    kill_within(&self.control, query_id, self.grace).await;
+                    break RunEnd::Failed(error);
+                }
                 Err(error) => break RunEnd::Failed(error),
             }
             if emitter.consumer_gone && stop.fired.is_none() {
@@ -135,6 +141,22 @@ fn lost(error: &DriverError) -> bool {
         error.category(),
         ErrorCategory::Network | ErrorCategory::ConnectionLost | ErrorCategory::Tls
     )
+}
+
+/// A body the driver gave up reading, while the server may still be
+/// producing it.
+fn unreadable(error: &DriverError) -> bool {
+    matches!(error, DriverError::Protocol(_) | DriverError::Decode { .. })
+}
+
+/// A KILL that gives up after `grace`: on a route that stopped
+/// answering, it would otherwise wait, and hold its connection, for good.
+async fn kill_within(control: &clickhouse::Client, query_id: Uuid, grace: Duration) {
+    match tokio::time::timeout(grace, kill_query(control, query_id)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => tracing::debug!(%error, "the KILL QUERY for an editor run failed"),
+        Err(_) => tracing::debug!("the KILL QUERY for an editor run got no answer"),
+    }
 }
 
 /// What stops a run, and when the stop was sent.
@@ -306,6 +328,21 @@ mod tests {
     use tablepro_core::{ServerCode, ServerDiagnostics};
 
     use super::*;
+
+    #[test]
+    fn only_a_body_the_driver_could_not_read_is_killed_after_it_fails() {
+        let refused = DriverError::reported(ServerDiagnostics::new(
+            Some(ServerCode::ClickHouse { code: 62 }),
+            "Code: 62. DB::Exception: Syntax error",
+        ));
+
+        assert!(unreadable(&DriverError::Protocol("a row ran past 256 MiB".to_owned())));
+        assert!(unreadable(&DriverError::Decode {
+            column: "c".to_owned(),
+            detail: "not a number".to_owned(),
+        }));
+        assert!(!unreadable(&refused));
+    }
 
     fn stopped(interrupt: Interrupt) -> Stop {
         let mut stop = Stop::new(

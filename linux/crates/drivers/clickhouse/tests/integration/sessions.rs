@@ -3,10 +3,44 @@
 
 use std::time::Duration;
 
-use tablepro_core::{ResultEvent, RowLimit, RunEnd, RunOptions, Truncation, Value};
+use async_trait::async_trait;
+use tablepro_core::{
+    Connection, DriverError, ReadStatement, ResultEvent, ResultSink, RowLimit, RunEnd, RunOptions, SinkFlow,
+    Truncation, UserSql, Value,
+};
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{connect, count, flush_logs, run, run_ok, run_with, scalar, session, start, text, unique};
+use crate::support::{
+    CALL, connect, count, flush_logs, run, run_ok, run_with, scalar, session, start, text, unique, within,
+};
+
+/// A result that holds no line break, so one read as lines is one line
+/// that never ends.
+fn row_binary(marker: &str) -> String {
+    format!("SELECT '{marker}' FROM numbers(10000000000) FORMAT RowBinary")
+}
+
+async fn wait_until_gone(connection: &dyn Connection, marker: &str) {
+    let running = format!(
+        "SELECT count() FROM system.processes WHERE query LIKE '%{marker}%' \
+         AND query NOT LIKE '%system.processes%'"
+    );
+    let give_up = Instant::now() + Duration::from_secs(10);
+    while count(connection, &running).await > 0 {
+        assert!(Instant::now() < give_up, "the statement is still running");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+struct Discard;
+
+#[async_trait]
+impl ResultSink for Discard {
+    async fn accept(&mut self, _event: ResultEvent) -> SinkFlow {
+        SinkFlow::Continue
+    }
+}
 
 #[tokio::test]
 #[ignore = "requires docker"]
@@ -153,5 +187,51 @@ async fn a_question_mark_in_editor_sql_is_data() {
         ]]
     );
     editor.close().await;
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_format_clause_fails_the_run_instead_of_filling_memory() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let editor = session(connection.as_ref()).await;
+    let marker = unique("format");
+
+    let (summary, _) = tokio::time::timeout(Duration::from_secs(60), run(editor.as_ref(), &row_binary(&marker)))
+        .await
+        .expect("the run ended");
+
+    assert!(
+        matches!(&summary.end, RunEnd::Failed(DriverError::Protocol(message)) if message.contains("FORMAT")),
+        "{:?}",
+        summary.end
+    );
+    wait_until_gone(connection.as_ref(), &marker).await;
+    run_ok(editor.as_ref(), "SELECT 1").await;
+    editor.close().await;
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_format_clause_fails_an_export_instead_of_filling_memory() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let marker = unique("export");
+    let read = ReadStatement::User(UserSql::new(row_binary(&marker)));
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(60),
+        connection.stream_read(&read, Box::new(Discard), within(CALL)),
+    )
+    .await
+    .expect("the export ended");
+
+    assert!(
+        matches!(&outcome, Err(DriverError::Protocol(message)) if message.contains("FORMAT")),
+        "{outcome:?}"
+    );
+    wait_until_gone(connection.as_ref(), &marker).await;
     connection.close().await.expect("a close");
 }
