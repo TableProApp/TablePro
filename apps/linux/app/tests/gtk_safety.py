@@ -1114,7 +1114,7 @@ def mcp_client_disconnect_cancels_pending_approval(database, base):
     outcome = new_events[0]
     assert outcome["phase"] == "outcome"
     assert outcome["terminal_status"] == "cancelled", outcome
-    assert outcome["approval_outcome"] == "denied", outcome
+    assert outcome["approval_outcome"] == "cancelled", outcome
     assert outcome["error_category"] == "cancelled", outcome
     assert MCP_DISCONNECT_TEST_TOKEN not in json.dumps(new_events), "the audit must not contain the MCP token"
 

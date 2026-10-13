@@ -1,3 +1,4 @@
+use std::future::pending;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -271,32 +272,43 @@ impl PolicyGuard {
                 let outcome = match control {
                     Some(control) => tokio::select! {
                         biased;
-                        _ = control.cancellation_token().cancelled() => None,
-                        outcome = &mut approval => Some(outcome),
+                        _ = control.cancellation_token().cancelled() => Err(DriverError::Cancelled),
+                        _ = wait_for_control_deadline(control) => {
+                            control.cancellation_token().cancel();
+                            Err(DriverError::TimedOut)
+                        },
+                        outcome = &mut approval => Ok(outcome),
                     },
-                    None => Some(approval.await),
+                    None => Ok(approval.await),
                 };
                 let preview_state = match preview {
                     Some(value) => AuditPreviewState::Available(value.clone()),
                     None => AuditPreviewState::Unavailable,
                 };
-                let Some(outcome) = outcome else {
-                    let operation =
-                        self.operation(sql, None, facts, &decision, AuditApprovalOutcome::Denied, preview_state);
-                    let audit_result = self
-                        .record_outcome(
-                            &operation,
-                            AuditOutcome {
-                                terminal_status: AuditTerminalStatus::Cancelled,
-                                transaction_outcome: AuditTransactionOutcome::NotApplicable,
-                                rows_affected: None,
-                                error_category: Some(AuditErrorCategory::Cancelled),
-                                duration_ms: 0,
-                            },
-                        )
-                        .await;
-                    self.handle_non_execution_audit_failure(audit_result)?;
-                    return Err(DriverError::Cancelled);
+                let outcome = match outcome {
+                    Ok(outcome) => outcome,
+                    Err(error) => {
+                        let approval_outcome = match error {
+                            DriverError::Cancelled => AuditApprovalOutcome::Cancelled,
+                            DriverError::TimedOut => AuditApprovalOutcome::TimedOut,
+                            _ => AuditApprovalOutcome::Denied,
+                        };
+                        let operation = self.operation(sql, None, facts, &decision, approval_outcome, preview_state);
+                        let audit_result = self
+                            .record_outcome(
+                                &operation,
+                                AuditOutcome {
+                                    terminal_status: controlled_error_terminal_status(&error),
+                                    transaction_outcome: AuditTransactionOutcome::NotApplicable,
+                                    rows_affected: None,
+                                    error_category: Some(error_category(&error)),
+                                    duration_ms: 0,
+                                },
+                            )
+                            .await;
+                        self.handle_non_execution_audit_failure(audit_result)?;
+                        return Err(error);
+                    }
                 };
                 match outcome {
                     ApprovalOutcome::AllowOnce => Ok(Authorization {
@@ -885,6 +897,13 @@ fn controlled_error_terminal_status(error: &DriverError) -> AuditTerminalStatus 
         DriverError::TimedOut => AuditTerminalStatus::TimedOut,
         DriverError::OperationOutcomeUnknown { .. } => AuditTerminalStatus::Unknown,
         _ => AuditTerminalStatus::Failed,
+    }
+}
+
+async fn wait_for_control_deadline(control: &OperationControl) {
+    match control.deadline() {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => pending::<()>().await,
     }
 }
 

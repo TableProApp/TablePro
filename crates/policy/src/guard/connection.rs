@@ -410,6 +410,44 @@ impl Connection for PolicyGuard {
         result
     }
 
+    async fn execute_in_transaction_controlled(
+        &self,
+        statements: &[(String, Vec<Value>)],
+        control: &OperationControl,
+    ) -> Result<Vec<u64>, DriverError> {
+        check_pre_dispatch(control)?;
+        let combined = statements
+            .iter()
+            .map(|(sql, _)| sql.trim().trim_end_matches(';'))
+            .collect::<Vec<_>>()
+            .join(";\n");
+        let authorization = self.authorize(&combined, true, Some(control)).await?;
+        self.require_governed_write_available()?;
+        let batch_id = Uuid::new_v4();
+        let operation = self.operation(
+            &combined,
+            Some(batch_id),
+            &authorization.analysis.facts,
+            &authorization.decision,
+            authorization.approval_outcome,
+            authorization.preview_state,
+        );
+        self.handle_intent_failure(self.record_intent(&operation).await)?;
+        let mut pending_write = self.ctx.audit_state.pending_write();
+        let start = Instant::now();
+        let result = self
+            .caught_write(
+                "EXECUTE IN TRANSACTION",
+                self.inner.execute_in_transaction_controlled(statements, control),
+            )
+            .await;
+        let rows = result.as_ref().ok().map(|values| values.iter().sum());
+        self.audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::AtomicBatch)
+            .await?;
+        pending_write.disarm();
+        result
+    }
+
     async fn execute_in_transaction_checked(
         &self,
         statements: &[(String, Vec<Value>)],
@@ -444,6 +482,52 @@ impl Connection for PolicyGuard {
             .caught_write(
                 "EXECUTE CHECKED TRANSACTION",
                 self.inner.execute_in_transaction_checked(statements, expect_one),
+            )
+            .await;
+        let rows = result.as_ref().ok().map(|values| values.iter().sum());
+        self.audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::AtomicBatch)
+            .await?;
+        pending_write.disarm();
+        result
+    }
+
+    async fn execute_in_transaction_checked_controlled(
+        &self,
+        statements: &[(String, Vec<Value>)],
+        expect_one: &[usize],
+        control: &OperationControl,
+    ) -> Result<Vec<u64>, DriverError> {
+        if expect_one.is_empty() {
+            return self.execute_in_transaction_controlled(statements, control).await;
+        }
+        check_pre_dispatch(control)?;
+        let combined = statements
+            .iter()
+            .map(|(sql, _)| sql.trim().trim_end_matches(';'))
+            .collect::<Vec<_>>()
+            .join(";\n");
+        let analysis = self.analyze_statement(&combined);
+        let enforced_rows = self.enforced_batch_rows(&analysis, expect_one);
+        let authorization = self
+            .authorize_analysis(&combined, analysis, enforced_rows, Some(control))
+            .await?;
+        self.require_governed_write_available()?;
+        let operation = self.operation(
+            &combined,
+            Some(Uuid::new_v4()),
+            &authorization.analysis.facts,
+            &authorization.decision,
+            authorization.approval_outcome,
+            authorization.preview_state,
+        );
+        self.handle_intent_failure(self.record_intent(&operation).await)?;
+        let mut pending_write = self.ctx.audit_state.pending_write();
+        let start = Instant::now();
+        let result = self
+            .caught_write(
+                "EXECUTE CHECKED TRANSACTION",
+                self.inner
+                    .execute_in_transaction_checked_controlled(statements, expect_one, control),
             )
             .await;
         let rows = result.as_ref().ok().map(|values| values.iter().sum());

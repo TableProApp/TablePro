@@ -190,7 +190,7 @@ async fn cancelling_a_pending_approval_records_a_terminal_cancelled_outcome() {
     assert_eq!(events.len(), 1, "cancellation must have exactly one terminal event");
     assert_eq!(events[0].phase, AuditRecordPhase::Outcome);
     assert_eq!(events[0].terminal_status, AuditTerminalStatus::Cancelled);
-    assert_eq!(events[0].approval_outcome, AuditApprovalOutcome::Denied);
+    assert_eq!(events[0].approval_outcome, AuditApprovalOutcome::Cancelled);
     assert_eq!(events[0].error_category, Some(AuditErrorCategory::Cancelled));
 }
 

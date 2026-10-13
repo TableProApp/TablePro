@@ -65,6 +65,8 @@ pub enum AuditApprovalOutcome {
     NotRequired,
     Approved,
     Denied,
+    Cancelled,
+    TimedOut,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
