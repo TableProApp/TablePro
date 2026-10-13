@@ -18,7 +18,7 @@ use super::{
 use crate::services::change_tracker::RowKey;
 use crate::services::tracker_delta::VisualChange;
 use crate::test_support::{FakeSession, drain_main_context, wait_until};
-use crate::ui::row_object::RowObject;
+use crate::ui::grid::RowObject;
 
 const WAIT: Duration = Duration::from_secs(10);
 

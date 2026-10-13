@@ -1,6 +1,5 @@
 mod app;
 mod browse_tab;
-mod cell_editor;
 mod connect_dialog;
 mod connection_list;
 mod connection_list_banner;
@@ -18,7 +17,6 @@ mod history_dialog;
 pub(crate) mod icons;
 mod import_dialog;
 mod preferences_dialog;
-mod row_object;
 mod saved_queries_dialog;
 mod sidebar_row;
 mod ssh_inputs;
