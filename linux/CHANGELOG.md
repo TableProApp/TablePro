@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
+- Format could split `+=`, `b'01'` or `@@version`, or detach a MySQL function from its parenthesis, and change the statement.
+- Opening a SQL, CSV or connections file from a pipe or a device never finished, or read past its size limit.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.
 - MySQL and MariaDB connections that verify the certificate did not trust certificate authorities installed on the system.
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
@@ -87,8 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disconnecting or switching connections offered no way to save pending changes first.
 - Edits made while a switch to another connection was connecting were closed without asking.
 - A save whose answer was lost with the connection showed as failed, and saving again could apply it twice.
-- Edits made in a table tab while its save ran were dropped when the save finished.
-- Structure tab edits made while its save ran were lost when the table was read again.
+- Edits made in a table or Structure tab while its save ran were lost when the save finished.
 - Ctrl+S did nothing in a Structure tab.
 - Structure tab could not save two columns swapping names, or a column taking the name of one being removed.
 - Changing the type of a SQL Server column with a default failed.
@@ -96,9 +97,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - CSV export did not neutralise formulas in values of a type TablePro does not recognise.
-- Format could put a space inside `+=`, `b'01'` or `@@version`, or between a MySQL function such as `GROUP_CONCAT` and its parenthesis, and change what the statement does.
-- Opening a pipe or a device as a SQL file never finished, or read past the 8 MB limit.
-- Importing a CSV or a connections file from a pipe or a device never finished, a CSV could read past its size limit, and a connections file had none.
 - SQL run in the editor, a typed filter or a column default, and the values in them, reached the journal at debug level.
 - Column types and defaults typed in the Structure tab reached the SQL after a text filter instead of the database's own parser.
 - Changing a SQL Server column's type or nullability in the Structure tab removed its data mask.
