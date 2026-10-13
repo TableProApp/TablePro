@@ -15929,7 +15929,7 @@
         }
       }
     },
-    "A raw Firestore filter is a JSON Filter object, such as {\"fieldFilter\": {...}}." : {
+    "A raw Firestore filter is a JSON Filter object, such as %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -70003,7 +70003,7 @@
         }
       }
     },
-    "Enter a request such as GET users/alice, QUERY {\"structuredQuery\": {...}}, PATCH users/alice {\"age\": 31} or DELETE users/alice." : {
+    "Enter a request such as %@, %@, %@ or %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

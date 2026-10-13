@@ -112,9 +112,15 @@ public struct FirebaseRequest: Sendable, Equatable {
         return line
     }
 
-    static let usage = String(
-        localized: "Enter a request such as GET users/alice, QUERY {\"structuredQuery\": {...}}, PATCH users/alice {\"age\": 31} or DELETE users/alice."
-    )
+    /// Kept out of the localized key, so a translator never edits a request and a test can run each one.
+    static let usageExamples = [
+        "GET users/alice",
+        #"QUERY {"structuredQuery": {"from": [{"collectionId": "users"}]}}"#,
+        #"PATCH users/alice {"age": 31}"#,
+        "DELETE users/alice"
+    ]
+
+    static let usage = String(format: String(localized: "Enter a request such as %@, %@, %@ or %@."), arguments: usageExamples)
 
     private static let escapedScalars = CharacterSet.whitespacesAndNewlines
         .union(.controlCharacters)

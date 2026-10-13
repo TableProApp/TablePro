@@ -89,6 +89,17 @@ struct FirebaseStatementTests {
         #expect(throws: FirebaseError.self) { try FirebaseRequest.parse("QUERY users") }
     }
 
+    @Test("Every request the syntax message suggests parses, and its QUERY carries a structuredQuery")
+    func usageExamples() throws {
+        for example in FirebaseRequest.usageExamples {
+            #expect(FirebaseRequest.usage.contains(example))
+            let request = try FirebaseRequest.parse(example)
+            if request.method == .query {
+                #expect(try FirebaseJSON.parse(request.body ?? "")["structuredQuery"] != nil)
+            }
+        }
+    }
+
     @Test("The request text reads back as the same request")
     func text() throws {
         let request = FirebaseRequest(method: .patch, path: "users/alice", query: [URLQueryItem(name: "updateMask", value: "age")], body: #"{"age":31}"#)
