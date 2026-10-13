@@ -27,6 +27,10 @@ impl StructureTrackerHandle {
         self.0.borrow().pending_state()
     }
 
+    pub fn is_saving(&self) -> bool {
+        self.0.borrow().is_saving()
+    }
+
     pub fn has_pending(&self) -> bool {
         self.0.borrow().has_pending()
     }

@@ -489,6 +489,22 @@ pub(crate) enum StructureTabInput {
     TableNameEdited(String),
 }
 
+impl StructureTabInput {
+    fn edits_draft(&self) -> bool {
+        matches!(
+            self,
+            Self::TableNameEdited(_)
+                | Self::ColumnEdited { .. }
+                | Self::AddColumn
+                | Self::RemoveColumn(_)
+                | Self::AddIndex(_)
+                | Self::RemoveIndex(_)
+                | Self::AddForeignKey(_)
+                | Self::RemoveForeignKey(_)
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ColumnField {
     Name(String),
@@ -830,9 +846,9 @@ impl StructureModel {
         self.invalid_defaults.clear();
         self.inner_stack.set_visible_child_name("editor");
         self.definition_shown = true;
-        // The definition is current again, so the diff counts; it is
-        // empty now, which also clears anything typed during the read.
+        // The definition is current again, so the diff counts.
         self.refetching = false;
+        self.sync_editable();
         self.recompute_dirty_state(fx);
         fx.input(StructureTabInput::Refresh);
     }
@@ -853,6 +869,7 @@ impl StructureModel {
         // A retry from the error page must not find dirty tracking still
         // frozen.
         self.refetching = false;
+        self.sync_editable();
     }
 
     fn on_command(&mut self, command: StructureCommand, fx: &mut StructureEffects) {
@@ -898,6 +915,10 @@ impl StructureModel {
     }
 
     fn update(&mut self, msg: StructureTabInput, fx: &mut StructureEffects) {
+        if msg.edits_draft() && self.edits_locked() {
+            self.refuse_edit(fx);
+            return;
+        }
         match msg {
             StructureTabInput::Start => {
                 if self.mode == StructureMode::Edit {
@@ -1167,6 +1188,41 @@ impl StructureModel {
             self.save_button.set_sensitive(false);
             self.discard_button.set_sensitive(false);
         }
+        self.sync_editable();
+    }
+
+    /// The draft holds still from the moment a save takes it until the
+    /// table is read again after a commit. That read replaces the draft,
+    /// so an edit made before it would be lost without a prompt.
+    fn edits_locked(&self) -> bool {
+        self.saving || self.refetching || self.tracker.is_saving()
+    }
+
+    fn sync_editable(&self) {
+        let editable = !self.saving && !self.refetching;
+        for widget in [
+            self.name_row.upcast_ref::<gtk::Widget>(),
+            self.columns_box.upcast_ref(),
+            self.indexes_box.upcast_ref(),
+            self.fks_box.upcast_ref(),
+        ] {
+            widget.set_sensitive(editable);
+        }
+    }
+
+    /// An edit that reached the tab while its draft was locked, from a
+    /// dialog opened before the save: the widgets go back to the draft.
+    fn refuse_edit(&self, fx: &mut StructureEffects) {
+        let name = self.draft.borrow().table.name.clone();
+        if self.name_entry.text() != name {
+            self.suppress_emit.set(true);
+            self.name_entry.set_text(&name);
+            self.suppress_emit.set(false);
+        }
+        fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+            "Wait for the save to finish, then make the change again.",
+        )));
+        fx.input(StructureTabInput::Refresh);
     }
 
     fn save_completed(&mut self, new_table_name: Option<String>, fx: &mut StructureEffects) {
@@ -1195,6 +1251,7 @@ impl StructureModel {
             fx.output(StructureTabOutput::DirtyChanged(false));
         }
         self.refetching = true;
+        self.sync_editable();
         self.definition_shown = false;
         self.fetch_definition();
     }

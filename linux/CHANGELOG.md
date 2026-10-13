@@ -77,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disconnecting or switching connections offered no way to save pending changes first.
 - A save whose answer was lost with the connection showed as failed, and saving again could apply it twice.
 - Edits made in a table tab while its save ran were dropped when the save finished.
+- Structure tab edits made while its save ran were lost when the table was read again.
 - Ctrl+S did nothing in a Structure tab.
 
 ### Security

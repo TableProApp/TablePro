@@ -24,6 +24,10 @@ impl StructureChangeTracker {
         self.pending = pending;
     }
 
+    pub fn is_saving(&self) -> bool {
+        self.saving
+    }
+
     pub fn pending_state(&self) -> PendingState {
         if let Some(cause) = &self.outcome_unknown {
             return PendingState::OutcomeUnknown(cause.clone());
