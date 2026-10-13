@@ -117,7 +117,7 @@ Each flag adds cases and needs its engine trait:
 
 | Flag | Adds | Needs |
 |---|---|---|
-| `endpoint: network` | a dropped caller stops the server's statement; a lost transport reports `ConnectionLost` | `NetworkConformanceEngine` |
+| `endpoint: network` | a dropped `query_bound` caller stops the server's statement; a lost transport reports `ConnectionLost` | `NetworkConformanceEngine` |
 | `pool: pooled` | a probe succeeds while every pool slot is busy | `PooledConformanceEngine` |
 | `editor_transactions: true` | the row limit keeps the transaction and the statements after it | `EditorTransactionEngine` |
 | `unsupported_types: true` | an unsupported type never decodes as NULL | `TypedConformanceEngine` |

@@ -101,7 +101,7 @@ Whether a write can be undone depends on the table's storage engine, not on the 
 ## Editor sessions
 
 - The editor sends one statement per run. Text with several statements runs as the server's own multi-statement batch over the text protocol, except that mysql-client `DELIMITER` lines split it where the client would, because the server does not know the directive.
-- The row limit is `SET SESSION sql_select_limit = <limit + 1>`, sent when the limit changes. The server stops a plain `SELECT` there. A `SELECT` with a `LIMIT` of its own, or one inside a routine, is read to its end, and the rows past the limit are counted, never decoded.
+- The row limit is `SET SESSION sql_select_limit = <limit + 1>`, sent when the limit changes. The server stops a plain `SELECT` there, and the set ends with `Truncation::ServerStopped` and no total. A `SELECT` with a `LIMIT` of its own, or one inside a routine, is read to its end: the rows past the limit are counted, never decoded, and the set ends with `Truncation::ReadPastLimit` and its total.
 - A stop sends `KILL QUERY` on the session's own control connection and gives the statement the cancel grace to end. A statement that has not ended by then ends the session, because its answer is still on the way.
 - When the grid stops reading, the run ends as cancelled with no `KILL`, and sqlx reads the rest of the result off the wire before the next statement.
 - The transaction state after each run comes from `@@in_transaction` on MariaDB and from `performance_schema.events_transactions_current` on MySQL. On MySQL before 8.0.16, with `performance_schema` off, or for a login that cannot read it, the state is `Unknown`, and the tab's close guard warns instead of guessing.

@@ -129,7 +129,7 @@ The buttons are `TlsRemedy` in `crates/app/src/ui/error_text/tls_remedy.rs`, sho
 
 - Map by the engine's code, not by message text. Where the client library keeps nothing but the text, say so in a comment and pin the text with a test.
 - Keep the server's diagnostics: `DriverError::reported(ServerDiagnostics)`, and `DriverError::auth(Some(diagnostics))` for a refused login.
-- An error the engine raised to acknowledge our stop is the stop: `Cancelled`, or `Timeout { server_cancelled: true }`. `EngineStop::acknowledged` is where `OwnedCalls` learns which errors those are.
+- An error the engine raised to acknowledge our stop is the stop: `Cancelled`, or `Timeout { server_cancelled: true }`. `EngineStop::acknowledged` is where `OwnedCalls::run_read` learns which errors those are; `run_write` passes the result through, so a write maps its own.
 - A `ConnectionLost` goes through `Transport::explain_closed_stream`, so an SSH master that exited is reported as that.
 - A dead route is reported only once a check outside the pool confirms it ([adding-drivers.md](adding-drivers.md#deciding-that-the-link-is-lost)).
 

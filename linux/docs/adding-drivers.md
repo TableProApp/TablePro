@@ -185,7 +185,7 @@ self.calls
 - The supervisor races the work against the caller's cancel, the deadline and `close`. The first one to fire sets the `StopReason` (`Cancelled`, `DeadlineElapsed`, `Shutdown`) on the request.
 - Dropping the caller's future is a cancel: the call keeps running on its task until the stop has settled.
 - After a stop the work has `LivenessPolicy::cancel_grace` (5 s) to finish. Past it the call is abandoned: the resource's abandon flag is set, a read returns `ConnectionLost`, and a write returns what its `WriteLedger` saw.
-- An error the engine raised to acknowledge the stop reads as what asked for it: `Cancelled`, or `Timeout { phase: Statement, server_cancelled: true }`.
+- In `run_read`, an error the engine raised to acknowledge the stop reads as what asked for it: `Cancelled`, or `Timeout { phase: Statement, server_cancelled: true }`. `run_write` passes the work's result through, so a write maps an acknowledged stop itself, as `acknowledged_stop` does in the PostgreSQL driver's `write_batch.rs` and the SQL Server driver's `cancel.rs`.
 
 Start the resource empty and fill it inside the work, as `PgCall::acquire` and `MysqlCall::acquire` do, so the deadline and the cancel cover the wait for a pool slot. Arm the engine stop once a connection is held, then check `StopRequest::is_requested` again: a stop asked for in between sent nothing.
 
@@ -272,7 +272,8 @@ An editor tab holds one session for as long as it is open, because the state a u
 
 - It is never pooled and never reopened behind the user's back. A lost connection is `EditorSessionState::Lost`, and the tab opens a new session on its next run.
 - One run at a time: a second `run` fails with `EditorSessionBusy`.
-- `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `deadline` and `cancel`. Dropping the caller is a cancel.
+- `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `deadline` and `cancel`. A caller stops a run through `RunOptions::cancel`.
+- Only PostgreSQL and ClickHouse arm a drop guard on that token, so a dropped caller is a cancel there. MySQL, SQL Server and SQLite await the run inline: a dropped caller sends no `KILL`, attention or interrupt, and the session reports `Running` from then on. A new driver arms the guard, as `PgEditorSession::run` does.
 - The app's editor splits a script with the engine's grammar and sends one statement per run, or one `GO` batch on SQL Server. A driver still runs whatever text it is given, a whole script included.
 - A statement the server refused ends the run with `RunEnd::Failed` in the `RunSummary`; an `Err` from `run` means the session itself failed.
 - `RunSummary` carries `elapsed`, the `RunEnd` (`Completed`, `Failed`, `Cancelled`, `TimedOut { server_cancelled }`) and the `TransactionState` after the run. `Unknown` is an answer of its own: the tab's close guard warns instead of guessing.
@@ -285,19 +286,19 @@ A run streams `ResultEvent`s into a `ResultSink`:
 - `ResultSetStarted { columns }` opens a result set.
 - `ColumnsResolved { set_index, columns }` replaces the columns of a set whose types the driver could only learn from its rows (SQLite).
 - `Rows` carries a batch of rows, 256 in the shipped drivers.
-- `RowLimitReached { retained }` comes once per set, when the limit is passed.
+- `RowLimitReached { retained }` comes once per set, before `ResultSetFinished`.
 - `ResultSetFinished { retained, total_rows, truncation }` closes the set. `Truncation` is `Complete`, `ServerStopped` or `ReadPastLimit`, and `total_rows` is `None` when the driver did not read the rest.
 - `CommandCompleted { rows_affected }` reports a statement that returned no rows; `None` is "not reported", not zero.
 - `Notice` passes on a server notice or warning.
 
-`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`, and the driver stops the statement on the server where the engine has a stop for it. `stream_read` uses the same sink and events, without a row limit.
+`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, SQL Server and ClickHouse then stop the statement on the server, and SQLite stops stepping it. MySQL sends no `KILL`: sqlx reads the rest of the result off the wire before the next statement. `stream_read` uses the same sink and events, without a row limit.
 
 ## The row-limit rule
 
 `RowLimit` wraps a `NonZeroU64`; `RowLimit::EDITOR_DEFAULT` is 10,000.
 
 - `query_bound` keeps at most the limit and reads one more row to mark the result truncated.
-- An editor run keeps at most the limit in each result set, sends `RowLimitReached` once, and ends the set with `Truncation::ReadPastLimit`. Where the engine allows, the rest of the set is stopped on the server rather than read: a `FETCH` of one row past the limit (PostgreSQL), `sql_select_limit` (MySQL), `KILL QUERY` (ClickHouse). SQLite stops stepping, so the rest is never produced. Otherwise the rows past the limit are counted without being decoded (SQL Server, and MySQL where `sql_select_limit` does not apply).
+- An editor run keeps at most the limit in each result set and sends `RowLimitReached` once. A set the server cut at one row past the limit ends with `Truncation::ServerStopped` and no `total_rows`; only MySQL reports it, when `sql_select_limit` stopped the set. A set read past the limit ends with `Truncation::ReadPastLimit`, on every engine. Where the engine allows, the rest of the set is stopped on the server rather than read: a `FETCH` of one row past the limit (PostgreSQL), `sql_select_limit` (MySQL), `KILL QUERY` (ClickHouse). SQLite stops stepping, so the rest is never produced. Otherwise the rows past the limit are counted without being decoded (SQL Server, and MySQL where `sql_select_limit` does not apply).
 - The limit never ends the script, the user's transaction or the statements after the limited one. The conformance case `row_limit_keeps_transaction_and_later_statements` checks this on every engine with editor transactions.
 - The driver never rewrites the user's SQL to add a `LIMIT`.
 - `stream_read` has no limit.
@@ -344,14 +345,18 @@ tablepro_test_support::connection_conformance_suite! {
     unsupported_types: true,
     bounded_ddl: true,
 }
+```
 
+A network engine's `tls.rs` implements the TLS engine and invokes the TLS suite:
+
+```rust
 tablepro_test_support::tls_conformance_suite! {
     engine: PgTlsEngine,
     client_identity: true,
 }
 ```
 
-The cases cover listing and identity, deadlines within the cancel grace, a cancelled editor run, a dropped caller stopping the server's statement, a lost transport, a busy pool's probe, read-only refusal, write atomicity, row guards, the row limit, unbounded schema changes, streaming in bounded batches, type fallback and every TLS mode. [testing.md](testing.md#conformance) lists them with their flags. `suite_flags_match_driver_capabilities` runs without Docker and fails when a flag disagrees with the driver's capabilities, so a case cannot be skipped by declaring less.
+The cases cover listing and identity, deadlines within the cancel grace, a cancelled editor run, a dropped `query_bound` caller stopping the server's statement, a lost transport, a busy pool's probe, read-only refusal, write atomicity, row guards, the row limit, unbounded schema changes, streaming in bounded batches, type fallback and every TLS mode. [testing.md](testing.md#conformance) lists them with their flags. `suite_flags_match_driver_capabilities` runs without Docker and fails when a flag disagrees with the driver's capabilities, so a case cannot be skipped by declaring less.
 
 Behaviour the suites do not cover gets a test of its own against the real engine: the engine's stop, its error mapping, what a pooler does to it, each write outcome the ledger can produce.
 
