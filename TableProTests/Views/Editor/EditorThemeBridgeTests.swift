@@ -106,7 +106,7 @@ struct EditorThemeBridgeTests {
         #expect(theme.lineNumber == .secondaryLabelColor)
         #expect(theme.invisibles.color == .tertiaryLabelColor)
         #expect(theme.lineHighlight == (settings.highlightCurrentLine ? NativeThemeColors.currentLine : .clear))
-        #expect(theme.statementHighlight == (settings.highlightCurrentStatement ? .quinaryLabelColor : .clear))
+        #expect(theme.statementHighlight == (settings.highlightCurrentStatement ? .quinaryLabel : .clear))
         #expect(theme.insertionPoint == nil)
     }
 
