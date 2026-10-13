@@ -115,6 +115,7 @@ impl EditorRun {
                     }
                 }
                 Ok(ReadEvent::End) => {
+                    self.lingering.ended(query_id);
                     emitter.finish(reader.has_result_set(), reader.written_rows()).await;
                     break stop.fired.map_or(RunEnd::Completed, |_| stop.end(None));
                 }
@@ -127,7 +128,12 @@ impl EditorRun {
                     }
                     return Err(DriverError::EditorSessionBusy);
                 }
-                Err(error) if stop.fired.is_some() => break stop.end(Some(&error)),
+                Err(error) if stop.fired.is_some() => {
+                    if ended_on_server(&error) {
+                        self.lingering.ended(query_id);
+                    }
+                    break stop.end(Some(&error));
+                }
                 Err(error) if lost(&error) => {
                     return Err(DriverError::ConnectionLost {
                         during: LossPhase::Statement,
@@ -162,7 +168,8 @@ impl EditorRun {
     }
 
     /// The server may still be ending a query told to stop when the run
-    /// is done with it, so the next run waits for it.
+    /// gives up its response, so the next run waits for it unless the
+    /// response reached its end.
     fn fire(&self, stop: &mut Stop, interrupt: Interrupt, query_id: Uuid) {
         self.lingering.left(query_id);
         stop.fire(interrupt, &self.control, query_id);
@@ -200,6 +207,19 @@ fn lost(error: &DriverError) -> bool {
         error.category(),
         ErrorCategory::Network | ErrorCategory::ConnectionLost | ErrorCategory::Tls
     )
+}
+
+/// An error the server answered with, which ends the query along with
+/// the response.
+fn ended_on_server(error: &DriverError) -> bool {
+    server_code(error).is_some()
+        || matches!(
+            error,
+            DriverError::Timeout {
+                server_cancelled: true,
+                ..
+            }
+        )
 }
 
 /// A body the driver gave up reading, while the server may still be
@@ -419,6 +439,27 @@ mod tests {
             detail: "not a number".to_owned(),
         }));
         assert!(!unreadable(&refused));
+    }
+
+    #[test]
+    fn only_an_answer_from_the_server_frees_the_session_of_a_stopped_query() {
+        let killed = DriverError::reported(ServerDiagnostics::new(
+            Some(ServerCode::ClickHouse { code: 394 }),
+            "Code: 394. DB::Exception: Query was cancelled",
+        ));
+
+        assert!(ended_on_server(&killed));
+        assert!(ended_on_server(&DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled: true,
+        }));
+        assert!(!ended_on_server(&DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled: false,
+        }));
+        assert!(!ended_on_server(&DriverError::Protocol(
+            "a row ran past 256 MiB".to_owned()
+        )));
     }
 
     fn stopped(interrupt: Interrupt) -> Stop {

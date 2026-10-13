@@ -15,6 +15,15 @@ impl LingeringQuery {
         *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(query_id);
     }
 
+    /// The server ended the response, and with it the query, so the
+    /// session is free.
+    pub(crate) fn ended(&self, query_id: Uuid) {
+        let mut lingering = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if *lingering == Some(query_id) {
+            *lingering = None;
+        }
+    }
+
     pub(crate) fn take(&self) -> Option<Uuid> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner).take()
     }

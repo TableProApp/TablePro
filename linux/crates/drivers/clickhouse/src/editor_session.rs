@@ -246,4 +246,36 @@ mod tests {
         assert_eq!(next.map(|summary| summary.end), Ok(RunEnd::Completed));
         assert_eq!(session.state(), EditorSessionState::Ready);
     }
+
+    #[tokio::test]
+    #[ignore = "requires docker"]
+    async fn a_stop_the_server_answered_leaves_nothing_for_the_next_run_to_wait_for() {
+        let fixture = ClickHouseFixture::start().await.expect("a ClickHouse container");
+        let liveness = LivenessPolicy {
+            cancel_grace: Duration::from_secs(10),
+            ..test_liveness()
+        };
+        let endpoint = endpoint(&fixture, liveness);
+        let session =
+            ClickHouseEditorSession::open(&endpoint, EditorSessionOptions::default(), CancellationToken::new())
+                .await
+                .expect("an editor session");
+        let cancel = CancellationToken::new();
+        let stopping = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            stopping.cancel();
+        });
+
+        let stopped = session
+            .run(
+                UserSql::new("SELECT sleep(3)"),
+                RunOptions::new(cancel),
+                Box::new(Discard),
+            )
+            .await;
+
+        assert_eq!(stopped.map(|summary| summary.end), Ok(RunEnd::Cancelled));
+        assert_eq!(session.lingering.take(), None);
+    }
 }
