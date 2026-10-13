@@ -5,6 +5,8 @@ mod disconnection;
 mod hostile_scram;
 #[path = "../../shared/server_restart.rs"]
 mod server_restart;
+#[path = "support/value_refetch_and_server_info.rs"]
+mod value_refetch_and_server_info;
 
 use drivers_mongodb::MongodbDriver;
 use tablepro_core::{ConnectOptions, DatabaseDriver, DriverError, TlsConfig, Value};
