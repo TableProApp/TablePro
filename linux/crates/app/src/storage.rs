@@ -5,6 +5,7 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::{ConnectionStore, StoragePaths};
 
 use crate::persistence::{ColumnWidthStore, FilterSettingsStore};
+use crate::workspace::WorkspaceStore;
 
 /// Everything the app persists, resolved once at startup and handed to
 /// the root component. Nothing reaches for a global, so a test can point
@@ -16,6 +17,7 @@ pub struct AppStorage {
     secrets: std::sync::Arc<dyn SecretVault>,
     column_widths: ColumnWidthStore,
     filter_settings: FilterSettingsStore,
+    workspaces: WorkspaceStore,
 }
 
 impl AppStorage {
@@ -25,12 +27,14 @@ impl AppStorage {
         let connections = ConnectionStore::new(&paths);
         let column_widths = ColumnWidthStore::load(paths.column_widths_file(), tasks);
         let filter_settings = FilterSettingsStore::load(paths.filter_settings_file(), tasks);
+        let workspaces = WorkspaceStore::start(paths.workspaces_dir(), tasks);
         Self {
             paths,
             connections,
             secrets,
             column_widths,
             filter_settings,
+            workspaces,
         }
     }
 
@@ -52,6 +56,10 @@ impl AppStorage {
 
     pub fn filter_settings(&self) -> &FilterSettingsStore {
         &self.filter_settings
+    }
+
+    pub fn workspaces(&self) -> &WorkspaceStore {
+        &self.workspaces
     }
 }
 
