@@ -607,5 +607,7 @@ mod bulk;
 mod checked;
 #[path = "guard_tests_gating.rs"]
 mod gating;
+#[path = "guard_tests_passthrough.rs"]
+mod guard_tests_passthrough;
 #[path = "guard_tests_session.rs"]
 mod session;
