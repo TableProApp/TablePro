@@ -1,6 +1,6 @@
 # Proposal: close the loop from development to bug trace
 
-Status: proposal, 2026-10-12. Nothing here is accepted until the owner picks it up.
+Status: proposal, 2026-10-12. Nothing here is accepted until the owner picks it up. See [Done since the proposal](#done-since-the-proposal) for what has shipped.
 
 ## Why
 
@@ -20,6 +20,15 @@ One month into the 0.2.0 work, most elapsed time goes into waiting on and rerunn
 Failures fall into three kinds: real defects the gate was right to catch, infrastructure (image pull and fixture start timeouts, compiler crashes, a runner starting before it could reach Docker), and GUI timing under load (TEST-31). The unit tier is not the slow part; the Docker suites, the GUI scenarios and the queue are.
 
 A pilot of `cargo-nextest` (0.9.148) on the unit tier measured 28 to 30 seconds against 26 to 27 for `cargo test`, so it is not a speed-up. Its value here is different: one process per test, per-test retries and timeouts, and sharding across executors. That could replace `scripts/run-isolated-tests.py` and `scripts/isolated-tests.json`, which are also a frequent merge-conflict file.
+
+## Done since the proposal
+
+Updated 2026-10-13.
+
+- Failure classifier: `scripts/classify-ci-failure.py` (#678). It tags a failed job `infra`, `gui-timing`, `gui`, `code` or `unknown`; a job log with no result line (a runner or Forgejo connection lost) is also `infra`.
+- Gate queue: gates are serialised on one host lock and a run takes 10 to 20 minutes, so a queue of N pull requests costs N runs. `scripts/forgejo-train.sh` gates several branches as one run (#718), and `.gitattributes` merges `CHANGELOG.md` and the PostgreSQL `connection_paths.rs` registry by union. The gate script retries its API calls and push after a Forgejo outage crashed two gates on 2026-10-13.
+- Still open from stage 1: `scripts/isolated-tests.json` cannot merge by union, and on 2026-10-13 two registrations merged into one list entry without a comma and broke Preflight for every pull request until it was repaired. That is the strongest case for moving registration into test attributes or nextest groups. Branch protection that requires a branch to be up to date would also have caught it.
+- Coverage gap found on 2026-10-13: the coverage run measures the unit and sandbox tiers only, so the driver query paths (PostgreSQL `query.rs` 3 percent, `session.rs` and `transaction.rs` 0 percent) show as uncovered although the Docker suites exercise them. A per-file coverage run over the Docker suites would show the real gaps.
 
 ## The loop, stage by stage
 
