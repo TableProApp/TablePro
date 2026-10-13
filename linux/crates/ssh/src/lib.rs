@@ -6,6 +6,7 @@ mod config;
 mod destination;
 mod first_hop;
 mod forward;
+mod host_key_checking;
 mod known_hosts;
 mod password_owner;
 mod prompt;

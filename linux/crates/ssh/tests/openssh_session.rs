@@ -34,7 +34,6 @@ struct Fixture {
     services: SshServices,
 }
 
-/// The user's ssh config, with the host-key policy they chose.
 fn write_config(config: &Path, known_hosts: &Path, strict_host_key_checking: &str) -> std::io::Result<()> {
     std::fs::write(
         config,
@@ -242,6 +241,29 @@ async fn a_user_config_that_skips_the_host_key_check_still_asks() {
             "{strict}: {purposes:?}"
         );
     }
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_user_config_that_requires_a_known_key_refuses_without_asking() {
+    let fixture = start().await.unwrap();
+    write_config(&fixture.config, &fixture.known_hosts, "yes").unwrap();
+
+    let (session, prompter) = connect(&fixture, password_auth(), Vec::new()).await;
+
+    assert!(
+        matches!(
+            session,
+            Err(TransportError::Ssh(SshFailure::HostKeyUnknown {
+                trust_allowed: false,
+                declined: false,
+                ..
+            }))
+        ),
+        "{session:?}"
+    );
+    assert!(prompter.requests().is_empty(), "{:?}", prompter.requests());
+    assert!(!fixture.known_hosts.exists(), "the key was trusted");
 }
 
 #[tokio::test]

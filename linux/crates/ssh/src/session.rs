@@ -18,9 +18,10 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::argv::{ControlOp, master_args};
 use crate::askpass_bridge::AskpassBridge;
-use crate::first_hop::resolve_first_hop;
+use crate::first_hop::{lookup, resolve_first_hop};
+use crate::host_key_checking::HostKeyChecking;
 use crate::known_hosts::spawn_failure;
-use crate::password_owner::resolve_password_owner;
+use crate::password_owner::password_owner;
 use crate::stderr_classify::{ClassifyContext, classify};
 use crate::supervisor::{ForwardCancel, Supervisor, TASKS, run_control};
 use crate::{SshAuth, SshConfig, SshServices, lock};
@@ -72,12 +73,14 @@ impl SshSession {
                 return Err(error);
             }
         };
+        let resolved = lookup(&services.ssh_program, &config.destination, &config.jump_hosts).await;
         let password_owner = match config.auth {
-            SshAuth::Password { .. } => resolve_password_owner(&services.ssh_program, config).await,
+            SshAuth::Password { .. } => resolved.as_deref().and_then(password_owner),
             SshAuth::Agent | SshAuth::PrivateKey { .. } | SshAuth::KeyboardInteractive => None,
         };
+        let host_keys = resolved.as_deref().and_then(HostKeyChecking::from_ssh_g);
         let spawned = Command::new(&services.ssh_program)
-            .args(master_args(config, &control, liveness))
+            .args(master_args(config, &control, liveness, host_keys))
             .env("SSH_ASKPASS", &services.askpass_program)
             .env("SSH_ASKPASS_REQUIRE", "force")
             .env_remove("SSH_ASKPASS_PROMPT")
@@ -117,7 +120,7 @@ impl SshSession {
                 liveness,
                 &cancel,
             ),
-            resolve_first_hop(&services.ssh_program, config),
+            resolve_first_hop(&services.ssh_program, resolved.as_deref()),
         );
         drop(listener);
         if let Err(error) = tokio::fs::remove_file(master_dir.join("askpass")).await {
