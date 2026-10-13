@@ -128,6 +128,25 @@ A flag that is off emits no test. `suite_flags_match_driver_capabilities` is alw
 
 Each case starts its own engine, then has two minutes (`CASE_LIMIT`) to finish. A driver that ignores a deadline or a cancel fails the case with its name instead of holding the test run.
 
+### DDL conformance
+
+`ddl_conformance_suite!` runs the structure tab's own plans against the server. The adapter implements `ConformanceDdlEngine` on top of `ConformanceEngine`: the engine's integer, text and timestamp types, its current-timestamp expression, and, for an engine whose `DdlDialect` creates no tables (ClickHouse), a CREATE TABLE of its own.
+
+```rust
+tablepro_test_support::ddl_conformance_suite! {
+    engine: PgEngine,
+    docker: true,
+}
+```
+
+Every case plans through `connection.dialect().ddl()` and runs the plan with `write_batch`:
+
+- `ddl_plans_apply_and_read_back` creates a table with a quoted literal default and an expression default, then adds, renames and drops a column, changes its nullability and default, adds an index and a foreign key, renames the table, which has to stay listed in its own schema, and drops the tables. After each step `fetch_table_definition` has to match the draft. A step the dialect refuses has to be refused by its plan as well, with a reason, so no step is skipped without a check. Once the foreign key exists, the referenced primary key has to read as held by it.
+- `failed_ddl_batch_outcome_matches_ddl_atomicity` sends two plans whose second statement the server rejects, and checks the outcome against `ddl_writes`: `RolledBack` and nothing applied, or `PartiallyApplied` and the first plan applied.
+- `create_table_script_recreates_the_table` drops a table and runs its `create_table_script`, which has to bring back the same column definitions and index keys.
+
+The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the MySQL target runs it on MariaDB as well. SQLite passes `docker: false`, so its cases run in the unit suite.
+
 ### TLS conformance
 
 Every network driver also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:

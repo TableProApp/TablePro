@@ -14,25 +14,38 @@ use relm4::adw::prelude::*;
 use relm4::{ComponentSender, adw};
 use uuid::Uuid;
 
-use tablepro_core::ddl::TableDefinition;
+use tablepro_core::ddl::{BuildDdlError, DdlDialect, DdlOperation, DdlPlan, DropTableOptions, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectScope, TableRef};
-use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn, StructureOp, materialize_ops};
-use tablepro_core::statement::{GuardedStatement, StatementBuilder};
-use tablepro_core::{ForeignKeyMode, WriteBatch, WriteKind, WriteReport};
+use tablepro_core::statement::SqlBuildError;
+use tablepro_core::{WriteKind, WriteReport};
 use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
 
 use crate::services::from_session::FromSession;
+use crate::services::pending_structure::PendingStructure;
 use crate::ui::app::{App, AppMsg, WorkspaceTab};
 use crate::ui::error_text;
-use crate::ui::structure_tab::{StructureMode, StructureTabInput};
+use crate::ui::structure_tab::{StructureMode, StructureTabInput, save_blocker_text};
 
 impl App {
     /// Sidebar right-click → "New Table…" or schema-header "+" button.
     pub(super) fn on_new_table_tab(&mut self, schema: Option<String>, sender: ComponentSender<Self>) {
         if !self.connected {
             self.show_toast(&crate::i18n::gettext("Connect to a database first."));
+            return;
+        }
+        let creates_tables = self
+            .context
+            .active
+            .get()
+            .and_then(|session| session.current_dialect())
+            .and_then(|dialect| dialect.ddl().map(|ddl| ddl.capabilities().create_table))
+            .unwrap_or(false);
+        if !creates_tables {
+            self.show_toast(&crate::i18n::gettext(
+                "Tables on this database are created in the SQL editor.",
+            ));
             return;
         }
         self.append_new_structure_tab(schema, sender);
@@ -110,16 +123,6 @@ impl App {
         table: String,
         sender: ComponentSender<Self>,
     ) {
-        let Some(driver_id) = self.current_driver_id.clone() else {
-            return;
-        };
-        let sql = match tablepro_core::sql_ddl::build_drop_table(&driver_id, schema.as_deref(), &table, true, false) {
-            Ok(s) => s,
-            Err(e) => {
-                self.show_error_alert(&crate::i18n::gettext("Cannot drop table"), &format!("{e}"));
-                return;
-            }
-        };
         let Some(session) = self.context.active.get() else {
             self.show_error_alert(
                 &crate::i18n::gettext("Cannot drop table"),
@@ -128,10 +131,16 @@ impl App {
             return;
         };
         let dropped = TableRef::new(schema, table);
-        let batch = schema_write(dropped.clone(), &[sql]);
+        let options = DropTableOptions {
+            if_exists: true,
+            cascade: false,
+        };
         let origin = Arc::downgrade(&session);
-        crate::runtime::spawn_and_deliver(&self.context.tasks, run_schema_write(session, batch), move |result| {
-            match settled(result) {
+        let work = run_schema_plan(session, dropped.clone(), DdlOperation::DropTable, move |ddl, table| {
+            ddl.plan_drop_table(table, options)
+        });
+        crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
+            match settled(result).and_then(|(_, written)| written) {
                 Ok(_) => sender.input(AppMsg::DropTableSucceeded(FromSession::new(origin, dropped))),
                 Err(error) => sender.input(AppMsg::ShowAlert {
                     title: crate::i18n::gettext("Drop failed"),
@@ -141,8 +150,8 @@ impl App {
         });
     }
 
-    /// Save one Structure tab's DDL, whether or not it is the active
-    /// tab.
+    /// Save one Structure tab, whether or not it is the active tab: what
+    /// its tracker holds, planned with the connection that runs it.
     pub(super) fn save_structure_tab_by_id(&mut self, tab_id: Uuid, sender: ComponentSender<Self>) {
         // The save in flight settles `close_after_save` for this tab;
         // a second one would return without ever completing.
@@ -153,27 +162,18 @@ impl App {
             );
             return;
         }
-        let Some(dialect) = self.context.active.get().and_then(|session| session.current_dialect()) else {
-            sender.input(AppMsg::StructureSaveFailed(
-                tab_id,
-                crate::i18n::gettext("No active connection."),
-            ));
-            return;
-        };
         let Some(tracker) = self.structure_trackers.get(tab_id) else {
             return;
         };
-        match materialize_ops(&tracker.ops(), self.driver_id(), &*dialect) {
-            Ok(statements) if !statements.is_empty() => {
-                self.on_execute_structure_transaction(tab_id, statements, sender);
-            }
+        match tracker.begin_save().map(|pending| (pending.check(), pending)) {
+            Some((Ok(()), pending)) => self.run_structure_save(tab_id, pending, sender),
+            Some((Err(blocker), _)) => self.refuse_structure_save(tab_id, save_blocker_text(&blocker)),
             // Nothing to save, so a close waiting on this save can go
             // ahead.
-            Ok(_) => sender.input(AppMsg::StructureSaveCompleted {
+            None => sender.input(AppMsg::StructureSaveCompleted {
                 tab_id,
                 new_table_name: None,
             }),
-            Err(e) => sender.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}"))),
         }
     }
 
@@ -205,76 +205,52 @@ impl App {
         }
     }
 
-    /// Structure tab Save → run the ordered DDL as one schema write.
-    /// The driver decides how it is wrapped: a transaction where the
-    /// engine's DDL is transactional, statement by statement where it
-    /// is not, and the error says which of the two the user got.
-    pub(super) fn on_execute_structure_transaction(
-        &mut self,
-        tab_id: Uuid,
-        statements: Vec<String>,
-        sender: ComponentSender<Self>,
-    ) {
-        // Reject re-entry: a second Ctrl+S (or rapid double-click on
-        // Save) while the first DDL write is still mid-flight would
-        // dispatch a parallel write and potentially commit the same
-        // statements twice. Mark the tab and bail.
+    /// Run a structure save as one schema write. The driver decides how
+    /// it is wrapped: a transaction where the engine's DDL is
+    /// transactional, statement by statement where it is not, and the
+    /// error says which of the two the user got.
+    fn run_structure_save(&mut self, tab_id: Uuid, pending: PendingStructure, sender: ComponentSender<Self>) {
+        // A second Ctrl+S, or a quick double-click on Save, while the
+        // first write is still running would commit the same statements
+        // twice.
         if !self.structure_saves_in_flight.borrow_mut().insert(tab_id) {
             tracing::debug!(?tab_id, "structure save already in flight; ignoring duplicate");
             return;
         }
         let Some(session) = self.context.active.get() else {
-            self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-            sender.input(AppMsg::StructureSaveFailed(
-                tab_id,
-                crate::i18n::gettext("No active connection."),
-            ));
+            self.refuse_structure_save(tab_id, crate::i18n::gettext("No active connection."));
             return;
         };
-        let (mode, schema, slot_table) = {
-            let tabs = self.workspace_tabs.borrow();
-            match tabs.get(&tab_id) {
-                Some(WorkspaceTab::Structure(s)) => (s.mode, s.schema.clone(), s.table.clone()),
-                // Only a Structure tab hosts the DDL editor, so a save
-                // for any other id is a stale queued message.
-                _ => {
-                    self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-                    return;
-                }
-            }
-        };
-        let ops = self
-            .structure_trackers
-            .get(tab_id)
-            .map(|tracker| tracker.ops())
-            .unwrap_or_default();
-        let new_table_name = saved_table_name(mode, &ops);
-        // The batch names the table as it is before the write: a new
-        // table by the name it is being created under.
-        let batch_table = match mode {
-            StructureMode::New => new_table_name.clone().unwrap_or_default(),
-            StructureMode::Edit => slot_table,
-        };
-        let batch = schema_write(TableRef::new(schema, batch_table), &statements);
+        // Only a Structure tab hosts the DDL editor, so a save for any
+        // other id is a stale queued message.
+        if !matches!(
+            self.workspace_tabs.borrow().get(&tab_id),
+            Some(WorkspaceTab::Structure(_))
+        ) {
+            self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
+            return;
+        }
+        let new_table_name = pending.saved_table_name();
 
         self.in_flight_saves.set(self.in_flight_saves.get() + 1);
-        // Structure edits change the database too, so the history
-        // shows the DDL that did it and not only editor statements.
-        let ran = super::ran_statements::RanStatements::starting(
-            self.history.store(),
-            self.context.active.metadata(),
-            statements,
-        );
+        let history = self.history.store();
+        let metadata = self.context.active.metadata();
         let work = async move {
-            let result = run_schema_write(session, batch).await;
-            let outcome = match &result {
+            let table = pending.table();
+            let operation = pending.operation();
+            let (statements, written) =
+                run_schema_plan(session, table, operation, move |ddl, _| pending.plan(ddl)).await?;
+            // Structure edits change the database too, so the history
+            // shows the DDL that did it and not only editor statements.
+            let ran = super::ran_statements::RanStatements::starting(history, metadata, statements);
+            let outcome = match &written {
                 Ok(_) => tablepro_storage::query_history::Outcome::Success,
                 Err(error) => {
                     tablepro_storage::query_history::Outcome::Error(error_text::operation_error_message(error))
                 }
             };
             ran.finished(None, outcome).await;
-            result
+            written
         };
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| match settled(result) {
             Ok(_) => sender.input(AppMsg::StructureSaveCompleted { tab_id, new_table_name }),
@@ -379,6 +355,13 @@ impl App {
         if self.in_flight_saves.get() > 0 {
             self.in_flight_saves.set(self.in_flight_saves.get() - 1);
         }
+        self.refuse_structure_save(tab_id, message);
+    }
+
+    /// End a save with `message`. A save refused before it ran never
+    /// counted itself in `in_flight_saves`, so only a failed run gives
+    /// one back, in `on_structure_save_failed`.
+    fn refuse_structure_save(&mut self, tab_id: Uuid, message: String) {
         self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
         // Match the Browse-side `SaveFailedForTab` handler: a save
         // that started from the close-with-pending dialog left this
@@ -391,29 +374,29 @@ impl App {
         self.send_to_structure_tab(tab_id, StructureTabInput::SaveFailed(message));
     }
 
-    /// Sidebar "Show CREATE TABLE": synthesise the canonical CREATE
-    /// statement for an existing table from its definition, through the
-    /// same `materialize_ops` the Structure tab saves with. The result
-    /// lands in a fresh editor tab; no Structure tab is touched.
+    /// Sidebar "Show CREATE TABLE": the statements that recreate the
+    /// table as it is defined now, from the dialect's
+    /// `create_table_script`. The result lands in a fresh editor tab; no
+    /// Structure tab is touched.
     pub(super) fn on_show_create_table(&self, schema: Option<String>, table: String, sender: ComponentSender<Self>) {
         let Some(session) = self.context.active.get() else {
             self.show_toast(&crate::i18n::gettext("No active connection."));
             return;
         };
-        let driver_id = self.driver_id().to_string();
         let origin = Arc::downgrade(&session);
         let work = read_definition(session, TableRef::new(schema, table.clone()));
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
             let message = match settled(result) {
-                Ok((definition, dialect)) => match create_table_sql(&definition, &driver_id, &*dialect) {
+                Ok((definition, dialect)) => match create_table_sql(&definition, &*dialect) {
                     Ok(Some(sql)) => {
                         sender.input(AppMsg::ShowCreateTableLoaded(FromSession::new(origin, sql)));
                         return;
                     }
                     Ok(None) => crate::i18n::gettext_f("Table {table} has no columns.", &[("table", &table)]),
-                    Err(error) => {
-                        crate::i18n::gettext_f("Couldn't build SQL: {error}", &[("error", &error.to_string())])
-                    }
+                    Err(error) => crate::i18n::gettext_f(
+                        "Couldn't build SQL: {error}",
+                        &[("error", &crate::ui::structure_tab::build_error_text(&error))],
+                    ),
                 },
                 Err(error) => crate::i18n::gettext_f(
                     "Couldn't read the table: {error}",
@@ -515,36 +498,33 @@ impl App {
     }
 }
 
-/// The table name a save leaves the tab on, when it is not the one the
-/// tab already shows: the created table for a draft, the new name for
-/// a rename.
-fn saved_table_name(mode: StructureMode, ops: &[StructureOp]) -> Option<String> {
-    ops.iter().find_map(|op| match (mode, op) {
-        (StructureMode::New, StructureOp::CreateTable { table, .. }) => Some(table.clone()),
-        (StructureMode::Edit, StructureOp::RenameTable { new_name, .. }) => Some(new_name.clone()),
-        _ => None,
-    })
-}
-
-/// DDL as one schema write. Each statement is the builder's own text
-/// with nothing bound, and none of them has a row count to prove.
-fn schema_write(table: TableRef, statements: &[String]) -> WriteBatch {
-    let steps = statements
-        .iter()
-        .map(|sql| {
-            let mut builder = StatementBuilder::new();
-            builder.push_sql(sql);
-            GuardedStatement::unguarded(builder.finish())
-        })
-        .collect();
-    WriteBatch::new(WriteKind::SchemaChanges, table, steps, ForeignKeyMode::Enforced)
-}
-
-async fn run_schema_write(session: Arc<Session>, batch: WriteBatch) -> Result<WriteReport, OperationError> {
+/// Plan a schema change with the dialect of the connection that runs
+/// it, and run the plan as one write. The statements come back whether
+/// or not the write went through, for the history. `operation` is what
+/// a connection with no DDL dialect refuses.
+async fn run_schema_plan<P>(
+    session: Arc<Session>,
+    table: TableRef,
+    operation: DdlOperation,
+    plan: P,
+) -> Result<(Vec<String>, Result<WriteReport, OperationError>), OperationError>
+where
+    P: Fn(&dyn DdlDialect, &TableRef) -> Result<DdlPlan, BuildDdlError> + Send + Sync,
+{
     session
         .run(OperationKind::Save(WriteKind::SchemaChanges), move |lease, options| {
-            let batch = batch.clone();
-            async move { Ok(lease.write_batch(&batch, options).await?) }
+            let table = table.clone();
+            let dialect = lease.dialect();
+            let planned = match dialect.ddl() {
+                Some(ddl) => plan(ddl, &table).map_err(SqlBuildError::from),
+                None => Err(SqlBuildError::from(BuildDdlError::Unsupported(operation))),
+            };
+            async move {
+                let plan = planned?;
+                let statements: Vec<String> = plan.sql().into_iter().map(str::to_owned).collect();
+                let written = lease.write_batch(&plan.into_write_batch(table), options).await;
+                Ok((statements, written.map_err(OperationError::from)))
+            }
         })
         .await
 }
@@ -569,28 +549,15 @@ async fn read_definition(
 /// The CREATE statements for a table as it is defined now, joined so
 /// the editor shows each on its own. `None` for a table with no
 /// columns, which has nothing to create.
-fn create_table_sql(
-    definition: &TableDefinition,
-    driver_id: &str,
-    dialect: &dyn SqlDialect,
-) -> Result<Option<String>, BuildDdlError> {
+fn create_table_sql(definition: &TableDefinition, dialect: &dyn SqlDialect) -> Result<Option<String>, BuildDdlError> {
     if definition.columns.is_empty() {
         return Ok(None);
     }
-    let op = StructureOp::CreateTable {
-        schema: definition.table.schema.clone(),
-        table: definition.table.name.clone(),
-        columns: definition
-            .columns
-            .iter()
-            .cloned()
-            .map(DraftColumn::from_definition)
-            .collect(),
-        indexes: definition.indexes.clone(),
-        fks: definition.foreign_keys.clone(),
-    };
-    let statements = materialize_ops(&[op], driver_id, dialect)?;
-    Ok((!statements.is_empty()).then(|| statements.join(";\n\n") + ";"))
+    let ddl = dialect
+        .ddl()
+        .ok_or(BuildDdlError::Unsupported(DdlOperation::CreateTable))?;
+    let script = ddl.create_table_script(definition)?;
+    Ok((!script.is_empty()).then(|| script.preview()))
 }
 
 /// A task that never answered is reported like the operation it ran: a
@@ -609,23 +576,10 @@ mod tests {
     use tablepro_core::column::{
         CatalogType, ColumnDefault, ColumnKind, ColumnType, ReadForm, SqlTypeExpr, TextLength,
     };
-    use tablepro_core::ddl::{ColumnAttributes, ColumnDefinition};
+    use tablepro_core::ddl::{ColumnAttributes, ColumnDefinition, TableSource};
     use tablepro_core::{ColumnInfo, ForeignKeyInfo};
 
     use super::*;
-
-    fn draft(name: &str) -> DraftColumn {
-        DraftColumn {
-            original: None,
-            name: name.to_owned(),
-            data_type: "text".to_owned(),
-            nullable: true,
-            primary_key: false,
-            auto_increment: false,
-            default_value: None,
-            comment: None,
-        }
-    }
 
     #[expect(
         clippy::disallowed_methods,
@@ -670,57 +624,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_draft_saves_under_the_name_it_creates() {
-        let ops = [StructureOp::CreateTable {
-            schema: None,
-            table: "orders".to_owned(),
-            columns: vec![draft("id")],
-            indexes: Vec::new(),
-            fks: Vec::new(),
-        }];
-
-        assert_eq!(saved_table_name(StructureMode::New, &ops).as_deref(), Some("orders"));
-        assert_eq!(saved_table_name(StructureMode::Edit, &ops), None);
-    }
-
-    #[test]
-    fn an_edit_that_renames_the_table_moves_the_tab_to_the_new_name() {
-        let ops = [
-            StructureOp::RenameTable {
-                schema: None,
-                old_name: "users".to_owned(),
-                new_name: "accounts".to_owned(),
-            },
-            StructureOp::AddColumn {
-                schema: None,
-                table: "accounts".to_owned(),
-                column: draft("email"),
-            },
-        ];
-
-        assert_eq!(saved_table_name(StructureMode::Edit, &ops).as_deref(), Some("accounts"));
-        assert_eq!(saved_table_name(StructureMode::Edit, &ops[1..]), None);
-    }
-
-    #[test]
-    fn a_schema_write_carries_each_statement_unguarded_and_unbound() {
-        let table = TableRef::new(None, "users");
-        let statements = [
-            "ALTER TABLE users ADD COLUMN a text".to_owned(),
-            "DROP INDEX i".to_owned(),
-        ];
-
-        let batch = schema_write(table.clone(), &statements);
-
-        assert_eq!(batch.kind, WriteKind::SchemaChanges);
-        assert_eq!(batch.table, table);
-        assert!(batch.foreign_keys.is_enforced());
-        let sql: Vec<&str> = batch.steps.iter().map(|step| step.statement.sql()).collect();
-        assert_eq!(sql, ["ALTER TABLE users ADD COLUMN a text", "DROP INDEX i"]);
-        assert!(batch.steps.iter().all(|step| step.statement.params().is_empty()));
-    }
-
     fn postgres_dialect() -> drivers_postgres::PgDialect {
         drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
     }
@@ -729,23 +632,37 @@ mod tests {
     fn create_table_sql_restates_the_definition() {
         let dialect = postgres_dialect();
 
-        let sql = create_table_sql(&definition(vec![text_column("id")]), "postgres", &dialect)
+        let sql = create_table_sql(&definition(vec![text_column("id")]), &dialect)
             .expect("the SQL builds")
             .expect("a table with columns");
 
-        assert!(sql.starts_with("CREATE TABLE"), "{sql}");
-        assert!(sql.contains("\"users\""), "{sql}");
+        assert!(sql.starts_with("CREATE TABLE \"public\".\"users\""), "{sql}");
         assert!(sql.ends_with(';'), "{sql}");
+    }
+
+    #[test]
+    fn create_table_sql_is_the_servers_own_text_where_it_keeps_one() {
+        let dialect = drivers_mysql::MySqlDialect::new(
+            drivers_mysql::MySqlFlavour::MySql,
+            &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+        );
+        let mut table = definition(vec![text_column("id")]);
+        table.source = Some(TableSource {
+            create_statement: "CREATE TABLE `users` (`id` text) ENGINE=InnoDB".to_owned(),
+            dependents: Vec::new(),
+        });
+
+        assert_eq!(
+            create_table_sql(&table, &dialect),
+            Ok(Some("CREATE TABLE `users` (`id` text) ENGINE=InnoDB;".to_owned()))
+        );
     }
 
     #[test]
     fn a_table_without_columns_has_nothing_to_create() {
         let dialect = postgres_dialect();
 
-        assert!(matches!(
-            create_table_sql(&definition(Vec::new()), "postgres", &dialect),
-            Ok(None)
-        ));
+        assert!(matches!(create_table_sql(&definition(Vec::new()), &dialect), Ok(None)));
     }
 
     #[test]

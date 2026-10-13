@@ -176,7 +176,6 @@ impl App {
             return;
         };
         let tab_id = Uuid::new_v4();
-        let driver_id = self.driver_id().to_string();
         let Some(session) = self.context.active.get() else {
             return;
         };
@@ -185,7 +184,6 @@ impl App {
             schema: schema.clone(),
             table: String::new(),
             mode: StructureMode::New,
-            driver_id,
             session,
             tasks: self.context.tasks.clone(),
         });
@@ -297,7 +295,6 @@ impl App {
             return;
         };
         let tab_id = Uuid::new_v4();
-        let driver_id = self.driver_id().to_string();
         let Some(session) = self.context.active.get() else {
             return;
         };
@@ -307,7 +304,6 @@ impl App {
             schema: schema.clone(),
             table: table.clone(),
             mode,
-            driver_id,
             session,
             tasks: self.context.tasks.clone(),
         });
@@ -1349,10 +1345,8 @@ fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
 fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
     let dirty = input.clone();
     structure.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::StructureTabDirtyChanged(tab_id, is_dirty)));
-    let execute = input.clone();
-    structure.connect_execute(move |_, statements| {
-        execute.emit(AppMsg::ExecuteStructureTransaction { tab_id, statements });
-    });
+    let save = input.clone();
+    structure.connect_save_requested(move |_| save.emit(AppMsg::SaveActiveStructureTabById(tab_id)));
     let drop_table = input.clone();
     structure.connect_drop_table_requested(move |_, schema, table| {
         drop_table.emit(AppMsg::DropTablePrompt { schema, table });

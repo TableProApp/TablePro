@@ -2,7 +2,7 @@ use tablepro_core::ServerInfo;
 use tablepro_core::column::{
     BoolStorage, ColumnInfo, ColumnKind, ColumnType, FloatWidth, IntegerWidth, SqlExpression, TemporalZone, TextLength,
 };
-use tablepro_core::ddl::{DdlCapabilities, DdlDialect};
+use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, KeysetDirection, LikeCase, LikeForm, LiteralError, Placeholder,
     SqlDialect,
@@ -47,40 +47,6 @@ impl ClickHouseDialect {
     /// between releases.
     pub fn version(&self) -> (u32, u32) {
         (self.major, self.minor)
-    }
-}
-
-static CLICKHOUSE_DDL: ClickHouseDdl = ClickHouseDdl {
-    capabilities: DdlCapabilities {
-        create_table: true,
-        rename_table: true,
-        add_column: true,
-        drop_column: true,
-        rename_column: true,
-        alter_column_type: true,
-        alter_column_nullability: true,
-        nullability_switch: false,
-        alter_column_default: true,
-        alter_primary_key: false,
-        alter_auto_increment: false,
-        create_index: true,
-        drop_index: true,
-        expression_index_keys: true,
-        partial_indexes: false,
-        add_foreign_key: false,
-        drop_foreign_key: false,
-        drop_table_cascade: false,
-    },
-};
-
-#[derive(Debug)]
-struct ClickHouseDdl {
-    capabilities: DdlCapabilities,
-}
-
-impl DdlDialect for ClickHouseDdl {
-    fn capabilities(&self) -> &DdlCapabilities {
-        &self.capabilities
     }
 }
 
@@ -190,7 +156,7 @@ impl SqlDialect for ClickHouseDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
-        Some(&CLICKHOUSE_DDL)
+        Some(self)
     }
 
     /// The column alone: the FROM names the table as `db.table`, which a
@@ -519,7 +485,7 @@ mod tests {
     fn writes_are_mutations_and_counts_are_not_exact() {
         let dialect = dialect();
 
-        assert!(!dialect.capabilities().exact_row_counts);
+        assert!(!SqlDialect::capabilities(&dialect).exact_row_counts);
         assert_eq!(
             dialect.update_statement("t", "a = 1", "id = 2"),
             "ALTER TABLE t UPDATE a = 1 WHERE id = 2"

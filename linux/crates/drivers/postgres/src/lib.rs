@@ -12,6 +12,7 @@ mod catalog;
 mod codec;
 mod commit_resolution;
 mod connection;
+mod ddl;
 mod dialect;
 mod driver;
 mod editor;

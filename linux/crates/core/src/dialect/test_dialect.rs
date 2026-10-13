@@ -1,7 +1,6 @@
 use std::sync::Mutex;
 
 use crate::column::{ColumnInfo, ColumnType, SqlExpression, SqlTypeExpr};
-use crate::ddl::{DdlCapabilities, DdlDialect};
 use crate::meta::{EngineRowId, EngineRowIdPart};
 use crate::sql_syntax::{ExpressionSyntaxError, SqlGrammar, TypeSyntaxError, parse_expression, parse_type};
 use crate::statement::{BoundParam, ParamType};
@@ -24,20 +23,6 @@ pub struct TestDialect {
     count_all: &'static str,
     grammar: SqlGrammar,
     binds: Mutex<Vec<RecordedBind>>,
-    ddl: Option<TestDdl>,
-}
-
-/// The standard DDL spelling, for the builders that render through
-/// `ddl()`. No core test reads its capabilities.
-#[derive(Debug, Default)]
-struct TestDdl {
-    capabilities: DdlCapabilities,
-}
-
-impl DdlDialect for TestDdl {
-    fn capabilities(&self) -> &DdlCapabilities {
-        &self.capabilities
-    }
 }
 
 /// How the test dialect spells a marker.
@@ -75,7 +60,6 @@ impl Default for TestDialect {
             count_all: "COUNT(*)",
             grammar: SqlGrammar::PostgreSql,
             binds: Mutex::new(Vec::new()),
-            ddl: Some(TestDdl::default()),
         }
     }
 }
@@ -105,11 +89,6 @@ impl TestDialect {
             default_row: false,
             ..self
         }
-    }
-
-    /// An engine whose structure the app does not edit.
-    pub fn without_ddl(self) -> Self {
-        Self { ddl: None, ..self }
     }
 
     pub fn counting_with(self, count_all: &'static str) -> Self {
@@ -270,10 +249,6 @@ impl SqlDialect for TestDialect {
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
         let parsed = parse_expression(self.grammar, text, crate::sql_syntax::MAX_EXPRESSION_LEN)?;
         Ok(SqlExpression::from_catalog_text(parsed.text))
-    }
-
-    fn ddl(&self) -> Option<&dyn DdlDialect> {
-        self.ddl.as_ref().map(|ddl| ddl as &dyn DdlDialect)
     }
 }
 

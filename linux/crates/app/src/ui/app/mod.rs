@@ -3,6 +3,7 @@ mod connection;
 mod import;
 mod ran_statements;
 mod row_ops;
+mod sidebar_section_header;
 mod status_pages;
 mod structure;
 mod teardown_guard;
@@ -481,10 +482,9 @@ pub enum AppMsg {
         schema: Option<String>,
         table: String,
     },
-    /// Sidebar right-click → "Show CREATE TABLE". App fetches
-    /// columns, indexes, and FKs, synthesises a CreateTable op,
-    /// materialises through `sql_ddl::materialize_ops`, and opens
-    /// the resulting SQL in a fresh editor tab.
+    /// Sidebar right-click → "Show CREATE TABLE". The table's
+    /// definition goes through the dialect's `create_table_script`, and
+    /// the SQL opens in a fresh editor tab.
     ShowCreateTableForExisting {
         schema: Option<String>,
         table: String,
@@ -506,13 +506,6 @@ pub enum AppMsg {
     },
     /// The table is gone, so its tabs close without asking.
     DropTableSucceeded(FromSession<tablepro_core::TableRef>),
-    /// Structure tab Save: run the materialised DDL statements
-    /// sequentially. Postgres wraps in BEGIN / COMMIT for atomicity;
-    /// MySQL / SQLite execute per-statement (DDL implicitly commits).
-    ExecuteStructureTransaction {
-        tab_id: Uuid,
-        statements: Vec<String>,
-    },
     /// Save one Structure tab, which need not be the active one.
     SaveActiveStructureTabById(Uuid),
     /// Structure tab Save resolved successfully. `new_table_name` is
@@ -558,19 +551,6 @@ fn dirty_tabs(changes: &ChangeTrackerRegistry, structures: &StructureTrackerRegi
 impl App {
     pub(super) fn dirty_tabs(&self) -> Vec<Uuid> {
         dirty_tabs(&self.change_trackers, &self.structure_trackers)
-    }
-
-    /// The active driver id, or "postgres" if no connection is active.
-    /// The fallback would quote SQL wrongly for another engine, so it is
-    /// logged.
-    pub(super) fn driver_id(&self) -> &str {
-        match self.current_driver_id.as_deref() {
-            Some(id) => id,
-            None => {
-                tracing::warn!("driver_id called without active connection; falling back to postgres");
-                "postgres"
-            }
-        }
     }
 }
 
@@ -841,11 +821,8 @@ impl SimpleComponent for App {
                             window_for_resp.close();
                         }
                         "save" => {
-                            // Commit each dirty tab. Browse tabs go through
-                            // SaveActiveBrowseTabById; Structure tabs need
-                            // ExecuteStructureTransaction with materialized
-                            // statements. close_after_save tracks both kinds;
-                            // the SaveCompletedForTab / StructureSaveCompleted
+                            // close_after_save tracks both kinds of save; the
+                            // SaveCompletedForTab / StructureSaveCompleted
                             // handlers in App::update close the window once
                             // the set drains. Any SaveFailed aborts.
                             let browse_tabs = change_trackers_for_resp.dirty();
@@ -1016,6 +993,7 @@ impl SimpleComponent for App {
 
         let schemas_for_header = sidebar_schemas.clone();
         let sender_for_header = sender.clone();
+        let context_for_header = context.clone();
         sidebar_listbox.set_header_func(move |row, before| {
             let schemas = schemas_for_header.borrow();
             let total_distinct: std::collections::BTreeSet<&str> =
@@ -1037,49 +1015,20 @@ impl SimpleComponent for App {
                 row.set_header(gtk::Widget::NONE);
                 return;
             }
-            let header_box = gtk::Box::builder()
-                .orientation(gtk::Orientation::Horizontal)
-                .spacing(6)
-                .margin_top(12)
-                .margin_bottom(6)
-                .margin_start(12)
-                // Lines the "+" up with the end of the row content.
-                .margin_end(12)
-                .build();
-            let label_text = current
-                .as_deref()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| crate::i18n::gettext("Tables"));
-            let label = gtk::Label::builder()
-                .label(&label_text)
-                .xalign(0.0)
-                .hexpand(true)
-                .build();
-            // GtkPlacesSidebar's section header: small, bold and dim.
-            label.add_css_class("caption-heading");
-            label.add_css_class("dim-label");
-            header_box.append(&label);
-            // "+" button: emit NewTableTab carrying this schema. Flat
-            // styling matches GNOME Files' inline-add buttons; the
-            // tooltip clarifies the destination ("New Table in …")
-            // so the user understands what the schema scoping means.
-            let new_table_button = gtk::Button::builder()
-                .icon_name(crate::ui::icons::LIST_ADD)
-                .tooltip_text(match current.as_deref() {
-                    Some(s) => crate::i18n::gettext_f("New Table in {schema}…", &[("schema", s)]),
-                    None => crate::i18n::gettext("New Table…"),
-                })
-                .valign(gtk::Align::Center)
-                .build();
-            new_table_button.add_css_class("flat");
+            let can_create_table = context_for_header
+                .active
+                .get()
+                .and_then(|session| session.current_dialect())
+                .and_then(|dialect| dialect.ddl().map(|ddl| ddl.capabilities().create_table))
+                .unwrap_or(false);
             let sender_for_button = sender_for_header.clone();
             let schema_for_button = current.clone();
-            new_table_button.connect_clicked(move |_| {
-                sender_for_button.input(AppMsg::NewTableTab {
-                    schema: schema_for_button.clone(),
+            let header_box =
+                sidebar_section_header::sidebar_section_header(current.as_deref(), can_create_table, move || {
+                    sender_for_button.input(AppMsg::NewTableTab {
+                        schema: schema_for_button.clone(),
+                    });
                 });
-            });
-            header_box.append(&new_table_button);
             row.set_header(Some(&header_box));
         });
 
@@ -1390,9 +1339,6 @@ impl SimpleComponent for App {
                 if let Some(table) = update.if_current(&self.context.active) {
                     self.on_drop_table_succeeded(table, sender);
                 }
-            }
-            AppMsg::ExecuteStructureTransaction { tab_id, statements } => {
-                self.on_execute_structure_transaction(tab_id, statements, sender)
             }
             AppMsg::SaveActiveStructureTabById(id) => self.save_structure_tab_by_id(id, sender),
             AppMsg::StructureSaveCompleted { tab_id, new_table_name } => {

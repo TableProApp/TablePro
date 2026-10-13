@@ -15,7 +15,6 @@ use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
 
 use crate::catalog::SqlServerType;
-use crate::ddl::MSSQL_DDL;
 
 /// A string literal in the national character set. Without the `N`, the
 /// server reads the text in the database's code page and loses every
@@ -210,7 +209,7 @@ impl SqlDialect for MssqlDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
-        Some(&MSSQL_DDL)
+        Some(self)
     }
 
     /// A type the driver cannot decode is read as the server's text, and

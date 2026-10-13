@@ -4,7 +4,7 @@ use tablepro_core::column::{
     BoolStorage, CatalogType, ColumnInfo, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm,
     SqlExpression, SqlTypeExpr, TemporalZone, TextLength, classify_type_name, has_dynamic_storage,
 };
-use tablepro_core::ddl::{DdlCapabilities, DdlDialect};
+use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, KeysetDirection, LiteralError, Placeholder, SqlDialect,
 };
@@ -36,40 +36,6 @@ impl PgDialect {
 
     pub fn server_version_num(&self) -> u32 {
         self.server_version_num
-    }
-}
-
-static PG_DDL: PgDdl = PgDdl {
-    capabilities: DdlCapabilities {
-        create_table: true,
-        rename_table: true,
-        add_column: true,
-        drop_column: true,
-        rename_column: true,
-        alter_column_type: true,
-        alter_column_nullability: true,
-        nullability_switch: true,
-        alter_column_default: true,
-        alter_primary_key: true,
-        alter_auto_increment: true,
-        create_index: true,
-        drop_index: true,
-        expression_index_keys: true,
-        partial_indexes: true,
-        add_foreign_key: true,
-        drop_foreign_key: true,
-        drop_table_cascade: true,
-    },
-};
-
-#[derive(Debug)]
-struct PgDdl {
-    capabilities: DdlCapabilities,
-}
-
-impl DdlDialect for PgDdl {
-    fn capabilities(&self) -> &DdlCapabilities {
-        &self.capabilities
     }
 }
 
@@ -181,7 +147,7 @@ impl SqlDialect for PgDialect {
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
-        Some(&PG_DDL)
+        Some(self)
     }
 
     /// A column without a binary decoder is read as the server's text,

@@ -12,8 +12,8 @@ use tablepro_core::{
 use tablepro_test_fixtures::{MysqlFixture, MysqlFlavour, MysqlOptions};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
-    BoundedDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine, NetworkConformanceEngine,
-    PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
+    NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
 };
 
 use crate::support::{direct, options_over, password};
@@ -179,6 +179,24 @@ impl<S: Server> TypedConformanceEngine for MySqlEngine<S> {
     }
 }
 
+impl<S: Server> ConformanceDdlEngine for MySqlEngine<S> {
+    fn integer_type(&self) -> &'static str {
+        "int"
+    }
+
+    fn text_type(&self) -> &'static str {
+        "varchar(255)"
+    }
+
+    fn timestamp_type(&self) -> &'static str {
+        "datetime"
+    }
+
+    fn current_timestamp_expression(&self) -> &'static str {
+        "CURRENT_TIMESTAMP"
+    }
+}
+
 /// MariaDB's `max_statement_time` stops a CREATE ... SELECT as it stops a
 /// SELECT. MySQL's `max_execution_time` bounds only read-only SELECTs, so
 /// it has no bounded DDL to lift and runs without this case.
@@ -204,6 +222,11 @@ mod mysql_suite {
         unsupported_types: true,
         bounded_ddl: false,
     }
+
+    tablepro_test_support::ddl_conformance_suite! {
+        engine: MySqlEngine<Mysql84>,
+        docker: true,
+    }
 }
 
 mod mariadb_suite {
@@ -217,5 +240,10 @@ mod mariadb_suite {
         editor_transactions: true,
         unsupported_types: true,
         bounded_ddl: true,
+    }
+
+    tablepro_test_support::ddl_conformance_suite! {
+        engine: MySqlEngine<Mariadb114>,
+        docker: true,
     }
 }

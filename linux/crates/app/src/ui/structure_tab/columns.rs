@@ -1,127 +1,38 @@
-//! Column-row builder + per-driver type helpers used by the Columns
-//! page of the Structure tab.
+//! The column rows of the Structure tab's Columns page.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::gio;
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use tablepro_core::ddl::{ColumnCapabilities, DraftColumn, DraftType, Permission};
+use tablepro_core::dialect::SqlDialect;
 
-use tablepro_core::sql_ddl::DraftColumn;
-
+use super::ddl_text::refusal_text;
 use super::{ColumnField, StructureTabInput, StructureTabSender};
 
-/// The type suggestions per driver, most common first. Any other type
-/// can still be typed.
-pub(super) fn driver_types(driver_id: &str) -> &'static [&'static str] {
-    match driver_id {
-        "postgres" => &[
-            "integer",
-            "bigint",
-            "smallint",
-            "text",
-            "varchar(255)",
-            "boolean",
-            "timestamp",
-            "timestamp with time zone",
-            "date",
-            "time",
-            "numeric(10, 2)",
-            "real",
-            "double precision",
-            "uuid",
-            "jsonb",
-            "json",
-            "bytea",
-            "serial",
-            "bigserial",
-        ],
-        "mysql" => &[
-            "INT",
-            "BIGINT",
-            "SMALLINT",
-            "TINYINT",
-            "VARCHAR(255)",
-            "TEXT",
-            "BOOLEAN",
-            "DATETIME",
-            "TIMESTAMP",
-            "DATE",
-            "TIME",
-            "DECIMAL(10, 2)",
-            "FLOAT",
-            "DOUBLE",
-            "JSON",
-            "BLOB",
-            "CHAR(36)",
-        ],
-        "sqlite" => &[
-            "INTEGER", "TEXT", "REAL", "BLOB", "NUMERIC", "BOOLEAN", "DATETIME", "DATE",
-        ],
-        "mssql" => &[
-            "int",
-            "bigint",
-            "smallint",
-            "tinyint",
-            "bit",
-            "nvarchar(255)",
-            "nvarchar(max)",
-            "varchar(255)",
-            "decimal(18, 2)",
-            "float",
-            "real",
-            "money",
-            "date",
-            "time",
-            "datetime2",
-            "datetimeoffset",
-            "uniqueidentifier",
-            "varbinary(max)",
-        ],
-        _ => &["TEXT"],
-    }
-}
-
-/// Whether the driver supports column-level ALTER on an existing
-/// column (type / nullable / default). SQLite blocks all three; the
-/// UI uses this to grey out non-supported cells with explanatory
-/// tooltips.
-fn driver_can_alter_existing_column(driver_id: &str) -> bool {
-    !matches!(driver_id, "sqlite")
-}
-
-/// Whether the engine has somewhere to keep a column description.
-/// SQLite does not: a comment in the CREATE TABLE text is thrown away
-/// by the parser, so the field is shown but cannot be edited.
-fn driver_stores_column_comments(driver_id: &str) -> bool {
-    !matches!(driver_id, "sqlite")
-}
-
-fn driver_can_drop_column(_driver_id: &str) -> bool {
-    // SQLite ≥ 3.35 supports DROP COLUMN; the builder doesn't probe
-    // the runtime version. Always enable; the driver surfaces the
-    // error if running against an older SQLite.
-    true
-}
-
-pub(super) fn default_type_for(driver_id: &str) -> String {
-    match driver_id {
-        "postgres" => "text".into(),
-        "mysql" => "VARCHAR(255)".into(),
-        "sqlite" => "TEXT".into(),
-        "mssql" => "nvarchar(255)".into(),
-        _ => "TEXT".into(),
-    }
+/// What a column row needs beyond the column: which changes the engine
+/// allows on it, and the dialect that checks what the user types.
+pub(super) struct ColumnRowContext {
+    pub permissions: ColumnCapabilities,
+    pub type_suggestions: &'static [&'static str],
+    pub dialect: Option<Arc<dyn SqlDialect>>,
+    /// The default as SQL the user could type back in, or the text they
+    /// typed that did not parse.
+    pub default_text: String,
+    pub default_error: Option<String>,
 }
 
 /// The collapsed row's summary, such as `varchar(255) · NOT NULL ·
 /// Primary key`.
 fn format_column_subtitle(col: &DraftColumn) -> String {
     let mut parts: Vec<String> = Vec::new();
-    if !col.data_type.trim().is_empty() {
-        parts.push(col.data_type.clone());
+    let type_text = col.column_type.text();
+    if !type_text.is_empty() {
+        parts.push(type_text.to_owned());
     }
     parts.push(if col.nullable {
         crate::i18n::gettext("nullable")
@@ -137,23 +48,59 @@ fn format_column_subtitle(col: &DraftColumn) -> String {
     parts.join(" · ")
 }
 
-/// A field SQLite cannot alter is insensitive, with a tooltip saying
-/// why; a new column is fully editable, since SQLite accepts it as an
-/// `ADD COLUMN`.
-///
+/// Turn a control off with the reason, in its tooltip and for screen
+/// readers, when the engine refuses the change it makes.
+pub(super) fn gate(widget: &impl IsA<gtk::Widget>, permission: &Permission) {
+    if let Permission::Refused(reason) = permission {
+        let text = refusal_text(reason);
+        widget.set_sensitive(false);
+        widget.set_tooltip_text(Some(&text));
+        widget
+            .upcast_ref::<gtk::Widget>()
+            .update_property(&[gtk::accessible::Property::Description(&text)]);
+    }
+}
+
+/// Mark a field whose text the engine's parser refused, or clear it.
+fn mark_invalid(row: &adw::EntryRow, error: Option<&str>) {
+    match error {
+        Some(message) => {
+            row.add_css_class("error");
+            row.set_tooltip_text(Some(message));
+            row.upcast_ref::<gtk::Widget>()
+                .update_property(&[gtk::accessible::Property::Description(message)]);
+        }
+        None => {
+            row.remove_css_class("error");
+            row.set_tooltip_text(None);
+            row.upcast_ref::<gtk::Widget>()
+                .reset_property(gtk::AccessibleProperty::Description);
+        }
+    }
+}
+
+/// Whether the engine's parser takes `text` as one type. A catalogue
+/// declaration left as it was is never parsed again.
+fn type_error(dialect: Option<&dyn SqlDialect>, column: &DraftColumn, text: &str) -> Option<String> {
+    let unchanged = matches!(&column.column_type, DraftType::Catalog(_)) && column.column_type.text() == text;
+    if unchanged {
+        return None;
+    }
+    let dialect = dialect?;
+    dialect.parse_type(text).err().map(|error| error.to_string())
+}
+
 /// While `suppress_emit` is set, the signals GTK fires as the initial
 /// values go in are not taken for edits.
 pub(super) fn build_column_expander_row(
     index: usize,
     col: &DraftColumn,
-    driver_id: &str,
+    context: ColumnRowContext,
     sender: StructureTabSender,
     suppress_emit: Rc<Cell<bool>>,
     popover_registry: Rc<RefCell<Vec<gtk::Popover>>>,
 ) -> adw::ExpanderRow {
-    let is_existing = col.original.is_some();
-    let limit_for_existing = is_existing && driver_id == "sqlite";
-
+    let permissions = &context.permissions;
     let row = adw::ExpanderRow::builder()
         .title(glib::markup_escape_text(&col.name))
         .subtitle(glib::markup_escape_text(&format_column_subtitle(col)))
@@ -167,18 +114,18 @@ pub(super) fn build_column_expander_row(
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
-    if is_existing && !driver_can_drop_column(driver_id) {
-        remove_button.set_sensitive(false);
-    }
+    remove_button.set_widget_name(&format!("col-remove-{index}"));
+    gate(&remove_button, &permissions.drop);
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveColumn(index)));
     row.add_suffix(&remove_button);
 
-    // Name (AdwEntryRow). The expander's title mirrors this entry
-    // live so the collapsed header always reflects the user's input.
+    // The expander's title mirrors this entry live, so the collapsed
+    // header always shows what the user typed.
     let name_row = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
     name_row.set_text(&col.name);
     name_row.set_widget_name(&format!("col-name-{index}"));
+    gate(&name_row, &permissions.rename);
     let sender_for_name = sender.clone();
     let suppress_for_name = suppress_emit.clone();
     // The row owns this entry, so the entry holds the row weakly.
@@ -201,38 +148,45 @@ pub(super) fn build_column_expander_row(
     // Free text, so `decimal(10,2)` or an enum type need no list; the
     // menu only suggests.
     let type_row = adw::EntryRow::builder().title(crate::i18n::gettext("Type")).build();
-    type_row.set_text(&col.data_type);
-    if limit_for_existing && !driver_can_alter_existing_column(driver_id) {
-        type_row.set_sensitive(false);
-        type_row.set_tooltip_text(Some(&crate::i18n::gettext("Type changes aren't supported by SQLite.")));
-    }
+    type_row.set_text(col.column_type.text());
+    type_row.set_widget_name(&format!("col-type-{index}"));
+    gate(&type_row, &permissions.alter_type);
+    mark_invalid(
+        &type_row,
+        type_error(context.dialect.as_deref(), col, col.column_type.text()).as_deref(),
+    );
     let sender_for_type = sender.clone();
     let suppress_for_type = suppress_emit.clone();
+    let dialect_for_type = context.dialect.clone();
+    let column_for_type = col.clone();
     type_row.connect_changed(move |e| {
         if suppress_for_type.get() {
             return;
         }
+        let text = e.text().to_string();
+        mark_invalid(
+            e,
+            type_error(dialect_for_type.as_deref(), &column_for_type, &text).as_deref(),
+        );
         sender_for_type.input(StructureTabInput::ColumnEdited {
             index,
-            field: ColumnField::Type(e.text().to_string()),
+            field: ColumnField::Type(text),
         });
     });
-    let (suggestions_button, suggestions_popover) = build_type_suggestions_button(driver_id, &type_row);
-    type_row.add_suffix(&suggestions_button);
-    popover_registry.borrow_mut().push(suggestions_popover);
+    if type_row.is_sensitive() {
+        let (suggestions_button, suggestions_popover) =
+            build_type_suggestions_button(context.type_suggestions, &type_row);
+        type_row.add_suffix(&suggestions_button);
+        popover_registry.borrow_mut().push(suggestions_popover);
+    }
     row.add_row(&type_row);
 
-    // Nullable (AdwSwitchRow).
     let nullable_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Nullable"))
         .active(col.nullable)
         .build();
-    if limit_for_existing && !driver_can_alter_existing_column(driver_id) {
-        nullable_row.set_sensitive(false);
-        nullable_row.set_tooltip_text(Some(&crate::i18n::gettext(
-            "Nullability changes aren't supported by SQLite.",
-        )));
-    }
+    nullable_row.set_widget_name(&format!("col-nullable-{index}"));
+    gate(&nullable_row, &permissions.alter_nullability);
     let sender_for_null = sender.clone();
     let suppress_for_null = suppress_emit.clone();
     nullable_row.connect_active_notify(move |s| {
@@ -246,37 +200,34 @@ pub(super) fn build_column_expander_row(
     });
     row.add_row(&nullable_row);
 
-    // Default value (AdwEntryRow). Empty input means no DEFAULT clause.
+    // SQL, as the engine's parser reads it: a quoted literal or an
+    // expression. Empty means no DEFAULT clause.
     let default_row = adw::EntryRow::builder()
         .title(crate::i18n::gettext("Default value"))
         .build();
-    default_row.set_text(col.default_value.as_deref().unwrap_or(""));
-    if limit_for_existing && !driver_can_alter_existing_column(driver_id) {
-        default_row.set_sensitive(false);
-        default_row.set_tooltip_text(Some(&crate::i18n::gettext(
-            "Default changes aren't supported by SQLite.",
-        )));
-    }
+    default_row.set_text(&context.default_text);
+    default_row.set_widget_name(&format!("col-default-{index}"));
+    gate(&default_row, &permissions.alter_default);
+    mark_invalid(&default_row, context.default_error.as_deref());
     let sender_for_default = sender.clone();
     let suppress_for_default = suppress_emit.clone();
     default_row.connect_changed(move |e| {
         if suppress_for_default.get() {
             return;
         }
-        let text = e.text().to_string();
-        let value = if text.is_empty() { None } else { Some(text) };
         sender_for_default.input(StructureTabInput::ColumnEdited {
             index,
-            field: ColumnField::Default(value),
+            field: ColumnField::Default(e.text().to_string()),
         });
     });
     row.add_row(&default_row);
 
-    // Primary key (AdwSwitchRow).
     let pk_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Primary key"))
         .active(col.primary_key)
         .build();
+    pk_row.set_widget_name(&format!("col-pk-{index}"));
+    gate(&pk_row, &permissions.alter_primary_key);
     let sender_for_pk = sender.clone();
     let suppress_for_pk = suppress_emit.clone();
     pk_row.connect_active_notify(move |s| {
@@ -290,23 +241,25 @@ pub(super) fn build_column_expander_row(
     });
     row.add_row(&pk_row);
 
-    // Auto-increment (AdwSwitchRow). Bound `sensitive` to PK's
-    // `active` so the affordance reflects the driver-level constraint
-    // (MySQL rejects AUTO_INCREMENT on non-PK; Postgres SERIAL
-    // implies PK).
+    // A numbered column has to be a key on every engine, so the switch
+    // follows the primary key's where the engine allows the change.
     let auto_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Auto increment"))
-        .subtitle(crate::i18n::gettext("MySQL AUTO_INCREMENT / Postgres SERIAL"))
         .active(col.auto_increment)
         .build();
-    auto_row.set_sensitive(col.primary_key);
-    pk_row
-        .bind_property("active", &auto_row, "sensitive")
-        .sync_create()
-        .build();
+    auto_row.set_widget_name(&format!("col-auto-{index}"));
+    match &permissions.alter_auto_increment {
+        Permission::Allowed => {
+            auto_row.set_sensitive(col.primary_key);
+            pk_row
+                .bind_property("active", &auto_row, "sensitive")
+                .sync_create()
+                .build();
+        }
+        refused => gate(&auto_row, refused),
+    }
     let sender_for_auto = sender.clone();
     let suppress_for_auto = suppress_emit.clone();
-    let suppress_emit_for_comment = suppress_emit;
     auto_row.connect_active_notify(move |s| {
         if suppress_for_auto.get() {
             return;
@@ -318,17 +271,14 @@ pub(super) fn build_column_expander_row(
     });
     row.add_row(&auto_row);
 
-    // Comment (AdwEntryRow). Empty means the column carries no
-    // description; clearing a description the server had drops it.
+    // Empty means the column carries no description; clearing one the
+    // server had drops it.
     let comment_row = adw::EntryRow::builder().title(crate::i18n::gettext("Comment")).build();
     comment_row.set_text(col.comment.as_deref().unwrap_or(""));
     comment_row.set_widget_name(&format!("col-comment-{index}"));
-    if !driver_stores_column_comments(driver_id) {
-        comment_row.set_sensitive(false);
-        comment_row.set_tooltip_text(Some(&crate::i18n::gettext("SQLite doesn't store column comments.")));
-    }
+    gate(&comment_row, &permissions.alter_comment);
     let sender_for_comment = sender;
-    let suppress_for_comment = suppress_emit_for_comment;
+    let suppress_for_comment = suppress_emit;
     comment_row.connect_changed(move |e| {
         if suppress_for_comment.get() {
             return;
@@ -350,9 +300,10 @@ pub(super) fn build_column_expander_row(
 /// two columns' menus never share the `types.apply` action.
 ///
 /// The popover comes back too, to be popped down before its row goes.
-fn build_type_suggestions_button(driver_id: &str, target: &adw::EntryRow) -> (gtk::MenuButton, gtk::Popover) {
-    // Per-button action group: one action `apply` keyed by `String`
-    // parameter. Each menu item activates `types.apply::<typename>`.
+fn build_type_suggestions_button(
+    suggestions: &'static [&'static str],
+    target: &adw::EntryRow,
+) -> (gtk::MenuButton, gtk::Popover) {
     let action_group = gio::SimpleActionGroup::new();
     let apply_action = gio::SimpleAction::new("apply", Some(&String::static_variant_type()));
     // The entry owns this button and its actions.
@@ -364,12 +315,8 @@ fn build_type_suggestions_button(driver_id: &str, target: &adw::EntryRow) -> (gt
     });
     action_group.add_action(&apply_action);
 
-    // Build the menu model: every type becomes a labeled item that
-    // activates the apply action with the type string as parameter.
-    // gtk::PopoverMenu renders each gio::MenuItem as a native menu
-    // entry (no separator handling needed for a flat list).
     let menu = gio::Menu::new();
-    for ty in driver_types(driver_id) {
+    for ty in suggestions {
         let item = gio::MenuItem::new(Some(ty), None);
         item.set_action_and_target_value(Some("types.apply"), Some(&ty.to_variant()));
         menu.append_item(&item);
@@ -382,8 +329,6 @@ fn build_type_suggestions_button(driver_id: &str, target: &adw::EntryRow) -> (gt
         .build();
     button.add_css_class("flat");
     button.insert_action_group("types", Some(&action_group));
-    // The popover is handed back so the caller can `popdown` it before
-    // the owning column row is torn down on Refresh.
     let popover = gtk::PopoverMenu::from_model(Some(&menu));
     button.set_popover(Some(&popover));
     (button, popover.upcast())

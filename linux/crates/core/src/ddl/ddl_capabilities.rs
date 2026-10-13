@@ -9,9 +9,6 @@ pub struct DdlCapabilities {
     pub rename_column: bool,
     pub alter_column_type: bool,
     pub alter_column_nullability: bool,
-    /// Whether nullability can be switched in place. ClickHouse can
-    /// only do it by rewriting the column's type as Nullable.
-    pub nullability_switch: bool,
     pub alter_column_default: bool,
     pub alter_primary_key: bool,
     pub alter_auto_increment: bool,
@@ -21,5 +18,8 @@ pub struct DdlCapabilities {
     pub partial_indexes: bool,
     pub add_foreign_key: bool,
     pub drop_foreign_key: bool,
+    /// Whether a column can carry a comment. SQLite drops one from the
+    /// CREATE TABLE text, so it has nowhere to keep it.
+    pub column_comments: bool,
     pub drop_table_cascade: bool,
 }

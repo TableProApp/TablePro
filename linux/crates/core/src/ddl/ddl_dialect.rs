@@ -1,111 +1,64 @@
-use super::{ColumnDefinition, DdlCapabilities};
+use super::{
+    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlOperation, DdlPlan, DropTableOptions,
+    ReferentialAction, TableChanges, TableDefinition, TableDraft,
+};
 use crate::dialect::SqlDialect;
 use crate::meta::TableRef;
 
-/// How one engine spells structure changes.
+/// How one engine plans structure changes.
 ///
 /// Reached through `SqlDialect::ddl`, which is `None` for an engine
-/// whose structure the app does not edit. The planning methods land
-/// with the per-engine DDL plans; the capabilities are here first so
-/// the UI can gate on them through the same accessor.
+/// whose structure the app does not edit. A plan is built against the
+/// table's definition as one read returned it, so a statement that
+/// restates a column, renames a key or drops a default by name has
+/// everything it needs from the same moment.
 ///
-/// The statement methods take the `SqlDialect` this came from, which
-/// quotes the names. Their bodies are the standard spelling, and an
-/// engine overrides one only where its grammar differs.
+/// Every plan refuses what `capabilities` and `column_capabilities`
+/// refuse, with the same reasons the structure tab shows.
 pub trait DdlDialect: Send + Sync + std::fmt::Debug {
     fn capabilities(&self) -> &DdlCapabilities;
 
-    fn rename_table(&self, dialect: &dyn SqlDialect, table: &TableRef, new_name: &str) -> String {
-        format!(
-            "ALTER TABLE {} RENAME TO {}",
-            dialect.qualify(table),
-            dialect.quote_identifier(new_name)
-        )
+    /// The dialect that quotes, binds and parses for this engine.
+    fn sql_dialect(&self) -> &dyn SqlDialect;
+
+    fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
+        ColumnCapabilities::standard(self.capabilities(), table, column)
     }
 
-    fn rename_column(&self, dialect: &dyn SqlDialect, table: &TableRef, column: &str, new_name: &str) -> String {
-        format!(
-            "ALTER TABLE {} RENAME COLUMN {} TO {}",
-            dialect.qualify(table),
-            dialect.quote_identifier(column),
-            dialect.quote_identifier(new_name)
-        )
+    /// Types offered in the structure tab, most common first. Each one
+    /// parses through `SqlDialect::parse_type`, and any other type can
+    /// still be typed.
+    fn type_suggestions(&self) -> &'static [&'static str];
+
+    /// The type a column added in the structure tab starts with.
+    fn default_column_type(&self) -> &'static str;
+
+    /// The actions a foreign key may take, in the order the UI offers
+    /// them. The first is the SQL default.
+    fn referential_actions(&self) -> &'static [ReferentialAction] {
+        &ReferentialAction::ALL
     }
 
-    /// The statement that removes a column's default, or `None` where
-    /// there is nothing to remove. The standard spelling needs only the
-    /// column's name; an engine that keeps the default as a named object
-    /// finds that name in the catalogue's definition.
-    ///
-    /// `column` is the name the column has when the statement runs,
-    /// which a rename earlier in the same change makes differ from the
-    /// catalogue's.
-    fn drop_column_default(
-        &self,
-        dialect: &dyn SqlDialect,
-        table: &TableRef,
-        column: &str,
-        _original: &ColumnDefinition,
-    ) -> Option<String> {
-        Some(format!(
-            "ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT",
-            dialect.qualify(table),
-            dialect.quote_identifier(column)
-        ))
-    }
-}
+    fn plan_create_table(&self, draft: &TableDraft) -> Result<DdlPlan, BuildDdlError>;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::column::{ColumnDefault, ColumnInfo, ColumnKind, ColumnType, ReadForm, TextLength};
-    use crate::ddl::ColumnAttributes;
-    use crate::dialect::TestDialect;
+    fn plan_alter_table(&self, original: &TableDefinition, changes: &TableChanges) -> Result<DdlPlan, BuildDdlError>;
 
-    fn column(name: &str) -> ColumnDefinition {
-        ColumnDefinition::new(
-            ColumnInfo {
-                name: name.to_owned(),
-                column_type: ColumnType {
-                    name: "text".to_owned(),
-                    kind: ColumnKind::Text {
-                        length: TextLength::Unbounded,
-                    },
-                    catalog: None,
-                    dynamic_storage: false,
-                    read_form: ReadForm::Native,
-                },
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                is_generated: false,
-                default: ColumnDefault::None,
-                comment: None,
-            },
-            ColumnAttributes::default(),
-        )
+    fn plan_drop_table(&self, table: &TableRef, options: DropTableOptions) -> Result<DdlPlan, BuildDdlError> {
+        if options.cascade && !self.capabilities().drop_table_cascade {
+            return Err(BuildDdlError::Unsupported(DdlOperation::DropTableCascade));
+        }
+        let if_exists = if options.if_exists { "IF EXISTS " } else { "" };
+        let cascade = if options.cascade { " CASCADE" } else { "" };
+        Ok(DdlPlan::from_sql([format!(
+            "DROP TABLE {if_exists}{}{cascade}",
+            self.sql_dialect().qualify(table)
+        )]))
     }
 
-    #[test]
-    fn the_standard_spelling_quotes_through_the_dialect() {
-        let dialect = TestDialect::exact();
-        let Some(ddl) = dialect.ddl() else {
-            panic!("the test dialect has no DDL");
-        };
-        let table = TableRef::new(Some("app".to_owned()), "or\"ders");
-
-        assert_eq!(
-            ddl.rename_table(&dialect, &table, "new"),
-            "ALTER TABLE \"app\".\"or\"\"ders\" RENAME TO \"new\""
-        );
-        assert_eq!(
-            ddl.rename_column(&dialect, &table, "a", "b\"c"),
-            "ALTER TABLE \"app\".\"or\"\"ders\" RENAME COLUMN \"a\" TO \"b\"\"c\""
-        );
-        assert_eq!(
-            ddl.drop_column_default(&dialect, &table, "renamed", &column("original")),
-            Some("ALTER TABLE \"app\".\"or\"\"ders\" ALTER COLUMN \"renamed\" DROP DEFAULT".to_owned()),
-            "the drop names the column as it is now"
-        );
+    /// Statements that create the table as it is defined now: the
+    /// server's own text where the engine keeps one, otherwise written
+    /// from the definition.
+    fn create_table_script(&self, definition: &TableDefinition) -> Result<DdlPlan, BuildDdlError> {
+        self.plan_create_table(&TableDraft::from_definition(definition))
     }
 }

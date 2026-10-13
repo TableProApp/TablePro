@@ -47,6 +47,7 @@ ADRs are short on purpose. If yours is more than a page, you are probably arguin
 | [0006](0006-meson-cargo-build.md) | Meson drives Cargo | Accepted | Meson owns install, data files and the build-time config; Cargo stays the Rust compiler. |
 | [0007](0007-gsettings-preferences.md) | Preferences and window geometry in GSettings | Accepted | A schema with ranges and enums replaces preferences.json and window.json; keyed data stays in files. |
 | [0009](0009-crypto-provider-and-sources.md) | One crypto provider, upstream sources and dependency bans | Accepted | aws-lc-rs only; deny.toml enforces sources, licenses, bans and advisory ignores. |
+| [0010](0010-ddl-plans-and-table-definitions.md) | DDL plans against table definitions | Accepted | Each engine plans structure changes through its `DdlDialect` against the table's definition; the UI offers only what the plan accepts. |
 | [0013](0013-openssh-client-transport.md) | SSH through the system OpenSSH client | Accepted | ControlMaster per connection, Unix-socket forwards, prompts through an askpass helper. |
 | [0015](0015-gnome-50-platform-floor.md) | GNOME 50 platform floor | Accepted | GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88; AdwShortcutsDialog replaces the shortcuts window. |
 | [0016](0016-driver-contract-v2.md) | Driver contract v2 | Accepted | Owned calls with engine stops, phase-aware write outcomes, server-side row limits; PostgreSQL on tokio-postgres; no forks. |

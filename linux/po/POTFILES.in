@@ -26,6 +26,7 @@ crates/app/src/services/from_session.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_service.rs
 crates/app/src/services/mod.rs
+crates/app/src/services/pending_structure.rs
 crates/app/src/services/secret_labels.rs
 crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
@@ -57,6 +58,7 @@ crates/app/src/ui/app/import.rs
 crates/app/src/ui/app/mod.rs
 crates/app/src/ui/app/ran_statements.rs
 crates/app/src/ui/app/row_ops.rs
+crates/app/src/ui/app/sidebar_section_header.rs
 crates/app/src/ui/app/status_pages.rs
 crates/app/src/ui/app/structure.rs
 crates/app/src/ui/app/teardown_guard.rs
@@ -158,6 +160,7 @@ crates/app/src/ui/sidebar_row.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
 crates/app/src/ui/structure_tab/columns.rs
+crates/app/src/ui/structure_tab/ddl_text.rs
 crates/app/src/ui/structure_tab/fks.rs
 crates/app/src/ui/structure_tab/imp.rs
 crates/app/src/ui/structure_tab/indexes.rs

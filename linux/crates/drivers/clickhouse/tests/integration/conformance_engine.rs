@@ -5,13 +5,17 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use drivers_clickhouse::ClickhouseDriver;
+use tablepro_core::ddl::DraftColumn;
+use tablepro_core::ddl::ddl_sql::default_sql;
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::{
     ConnectOptions, DatabaseDriver, LivenessPolicy, NetworkEndpoint, TableRef, TlsConfig, WorkspaceSettings,
 };
 use tablepro_test_fixtures::ClickHouseFixture;
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
-    ConformanceEngine, ConformanceFailure, NetworkConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, NetworkConformanceEngine, TypedConformanceEngine,
+    UnsupportedTypeCase,
 };
 
 use crate::support::{DATABASE, direct, options_over, password, quoted};
@@ -119,6 +123,47 @@ impl TypedConformanceEngine for ClickHouseEngine {
     }
 }
 
+impl ConformanceDdlEngine for ClickHouseEngine {
+    fn integer_type(&self) -> &'static str {
+        "Int64"
+    }
+
+    fn text_type(&self) -> &'static str {
+        "String"
+    }
+
+    fn timestamp_type(&self) -> &'static str {
+        "DateTime"
+    }
+
+    fn current_timestamp_expression(&self) -> &'static str {
+        "now()"
+    }
+
+    /// The DDL dialect creates no ClickHouse tables, since a table needs
+    /// an engine and a sorting key.
+    fn create_table_sql(&self, dialect: &dyn SqlDialect, table: &TableRef, columns: &[DraftColumn]) -> Option<String> {
+        let mut definitions = Vec::with_capacity(columns.len());
+        for column in columns {
+            let declaration = column.column_type.text();
+            let declaration = match column.nullable {
+                true => format!("Nullable({declaration})"),
+                false => declaration.to_owned(),
+            };
+            let column_type = column.column_type.column_type(dialect, &column.name).ok()?;
+            let default = default_sql(dialect, &column.name, &column.default, &column_type).ok()?;
+            let default = default.map(|sql| format!(" DEFAULT {sql}")).unwrap_or_default();
+            definitions.push(format!("{} {declaration}{default}", quoted(&column.name)));
+        }
+        Some(format!(
+            "CREATE TABLE {}.{} ({}) ENGINE = MergeTree ORDER BY id",
+            quoted(DATABASE),
+            quoted(&table.name),
+            definitions.join(", ")
+        ))
+    }
+}
+
 mod suite {
     use super::ClickHouseEngine;
 
@@ -130,5 +175,10 @@ mod suite {
         editor_transactions: false,
         unsupported_types: true,
         bounded_ddl: false,
+    }
+
+    tablepro_test_support::ddl_conformance_suite! {
+        engine: ClickHouseEngine,
+        docker: true,
     }
 }

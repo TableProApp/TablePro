@@ -6,6 +6,7 @@ mod capabilities;
 mod catalog;
 mod connection;
 mod create_file;
+mod ddl;
 mod deadline;
 mod decode;
 mod dialect;

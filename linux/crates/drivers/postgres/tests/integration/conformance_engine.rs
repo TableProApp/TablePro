@@ -11,8 +11,8 @@ use tablepro_core::{
 use tablepro_test_fixtures::{HbaMode, PostgresFixture};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
-    BoundedDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine, NetworkConformanceEngine,
-    PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
+    NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
 };
 
 use crate::support::{direct, options_over, password};
@@ -156,6 +156,24 @@ impl BoundedDdlEngine for PgEngine {
     }
 }
 
+impl ConformanceDdlEngine for PgEngine {
+    fn integer_type(&self) -> &'static str {
+        "integer"
+    }
+
+    fn text_type(&self) -> &'static str {
+        "text"
+    }
+
+    fn timestamp_type(&self) -> &'static str {
+        "timestamp"
+    }
+
+    fn current_timestamp_expression(&self) -> &'static str {
+        "CURRENT_TIMESTAMP"
+    }
+}
+
 mod suite {
     use super::PgEngine;
 
@@ -167,5 +185,10 @@ mod suite {
         editor_transactions: true,
         unsupported_types: true,
         bounded_ddl: true,
+    }
+
+    tablepro_test_support::ddl_conformance_suite! {
+        engine: PgEngine,
+        docker: true,
     }
 }

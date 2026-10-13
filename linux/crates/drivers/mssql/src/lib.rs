@@ -36,7 +36,6 @@ mod transport_io;
 mod workspace_call;
 mod write_batch;
 
-pub use ddl::MssqlDdl;
 pub use dialect::MssqlDialect;
 pub use driver::MssqlDriver;
 pub use mssql_manager::WORKSPACE_POOL_MAX_SIZE;

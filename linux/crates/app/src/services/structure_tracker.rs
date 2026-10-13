@@ -1,69 +1,77 @@
-//! The DDL a Structure tab would run, cached so the close prompt and
-//! the save dispatcher can read it without reaching into the tab. The
-//! tab recomputes the ops from its snapshot diff on every edit; DDL has
-//! no per-op undo, only Discard back to the snapshot.
+//! What a Structure tab would save, kept so the close prompt and the
+//! save dispatcher can read it without reaching into the tab. The tab
+//! replaces it on every edit; DDL has no per-change undo, only Discard
+//! back to the table as it was read.
 
-use tablepro_core::sql_ddl::StructureOp;
+use super::pending_structure::PendingStructure;
 
 #[derive(Debug, Default)]
 pub struct StructureChangeTracker {
-    ops: Vec<StructureOp>,
+    pending: Option<PendingStructure>,
 }
 
 impl StructureChangeTracker {
     pub fn has_pending(&self) -> bool {
-        !self.ops.is_empty()
+        self.pending.as_ref().is_some_and(PendingStructure::has_changes)
     }
 
-    pub fn ops(&self) -> &[StructureOp] {
-        &self.ops
+    pub fn set_pending(&mut self, pending: Option<PendingStructure>) {
+        self.pending = pending;
     }
 
-    pub fn set_ops(&mut self, ops: Vec<StructureOp>) {
-        self.ops = ops;
+    /// What Save writes, or `None` when there is nothing to.
+    pub fn begin_save(&self) -> Option<PendingStructure> {
+        self.pending.clone().filter(PendingStructure::has_changes)
     }
 
     pub fn clear(&mut self) {
-        self.ops.clear();
+        self.pending = None;
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use tablepro_core::sql_ddl::DraftColumn;
+    use tablepro_core::ddl::{DraftColumn, DraftType, TableChanges, TableDraft};
+    use tablepro_core::meta::TableRef;
 
-    fn dc(name: &str, ty: &str) -> DraftColumn {
-        DraftColumn {
+    use super::*;
+
+    fn new_table(columns: usize) -> PendingStructure {
+        let mut draft = TableDraft::new(TableRef::unqualified("t"));
+        for index in 0..columns {
+            draft.columns.push(DraftColumn::new(
+                format!("c{index}"),
+                DraftType::Typed("int".to_owned()),
+            ));
+        }
+        PendingStructure {
             original: None,
-            name: name.into(),
-            data_type: ty.into(),
-            nullable: true,
-            primary_key: false,
-            auto_increment: false,
-            default_value: None,
-            comment: None,
+            draft,
+            changes: TableChanges::default(),
+            unparsed_defaults: Vec::new(),
         }
     }
 
     #[test]
     fn empty_tracker_has_no_pending() {
-        let t = StructureChangeTracker::default();
-        assert!(!t.has_pending());
-        assert_eq!(t.ops().len(), 0);
+        let tracker = StructureChangeTracker::default();
+
+        assert!(!tracker.has_pending());
+        assert_eq!(tracker.begin_save(), None);
     }
 
     #[test]
-    fn set_ops_replaces_cache() {
-        let mut t = StructureChangeTracker::default();
-        t.set_ops(vec![StructureOp::AddColumn {
-            schema: None,
-            table: "t".into(),
-            column: dc("a", "int"),
-        }]);
-        assert!(t.has_pending());
-        assert_eq!(t.ops().len(), 1);
-        t.set_ops(vec![]);
-        assert!(!t.has_pending());
+    fn only_a_structure_with_changes_is_saved() {
+        let mut tracker = StructureChangeTracker::default();
+        tracker.set_pending(Some(new_table(0)));
+        assert!(!tracker.has_pending());
+        assert_eq!(tracker.begin_save(), None);
+
+        tracker.set_pending(Some(new_table(1)));
+        assert!(tracker.has_pending());
+        assert_eq!(tracker.begin_save(), Some(new_table(1)));
+
+        tracker.clear();
+        assert!(!tracker.has_pending());
     }
 }

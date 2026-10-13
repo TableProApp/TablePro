@@ -2,10 +2,9 @@
 
 use drivers_mssql::MssqlDialect;
 use tablepro_core::column::{ColumnDefault, ColumnKind, ReadForm, TextLength};
-use tablepro_core::ddl::IdentityStyle;
+use tablepro_core::ddl::{DdlDialect, IdentityStyle, TableDraft, diff_table};
 use tablepro_core::dialect::{BindTarget, LikeForm};
 use tablepro_core::meta::{ObjectKind, ObjectScope, RowIdentity, TableRef};
-use tablepro_core::sql_ddl::{DraftColumn, build_alter_column};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{RowLimit, Value};
 
@@ -234,13 +233,15 @@ async fn alter_default_on_column_with_named_constraint() {
         .await
         .expect("the definition");
     let dialect = MssqlDialect::new(connection.server_info().major);
-    let mut draft = DraftColumn::from_definition(definition.column("state").expect("state").clone());
-    draft.default_value = Some("1".to_owned());
+    let mut draft = TableDraft::from_definition(&definition);
+    if let Some(state) = draft.columns.iter_mut().find(|column| column.name == "state") {
+        state.default = ColumnDefault::Literal(Value::Int(1));
+    }
 
-    let statements =
-        build_alter_column("mssql", &dialect, Some("dbo"), "jobs", &draft).expect("the default change builds");
-    let statements: Vec<&str> = statements.iter().map(String::as_str).collect();
-    setup(connection.as_ref(), &statements).await;
+    let plan = dialect
+        .plan_alter_table(&definition, &diff_table(&definition, &draft))
+        .expect("the default change plans");
+    setup(connection.as_ref(), &plan.sql()).await;
 
     let state = connection
         .fetch_table_definition(&table, within(CALL))

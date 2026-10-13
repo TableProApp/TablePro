@@ -6,8 +6,10 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use tablepro_core::IndexInfo;
+use tablepro_core::ddl::Permission;
 use tablepro_core::meta::IndexKey;
 
+use super::columns::gate;
 use super::{StructureTabInput, StructureTabSender};
 
 fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
@@ -17,7 +19,12 @@ fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
     badge
 }
 
-pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: StructureTabSender) -> adw::ActionRow {
+pub(super) fn build_index_row(
+    index: usize,
+    idx: &IndexInfo,
+    removable: &Permission,
+    sender: StructureTabSender,
+) -> adw::ActionRow {
     let subtitle = index_key_summary(idx);
     let row = adw::ActionRow::builder()
         .title(glib::markup_escape_text(&idx.name))
@@ -37,12 +44,15 @@ pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: StructureTa
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
+    remove_button.set_widget_name(&format!("index-remove-{index}"));
     // The primary key's constraint owns its index.
     if idx.primary {
         remove_button.set_sensitive(false);
         remove_button.set_tooltip_text(Some(&crate::i18n::gettext(
             "Primary-key index can't be dropped here; clear the PK on the column.",
         )));
+    } else {
+        gate(&remove_button, removable);
     }
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveIndex(index)));
