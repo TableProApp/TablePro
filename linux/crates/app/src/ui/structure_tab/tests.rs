@@ -240,3 +240,20 @@ fn a_schema_change_leaves_a_tab_with_edits_alone() {
     assert_eq!(CallCounters::get(&counters.fetch_table_definition), 1);
     assert_eq!(harness.column_names(), ["id", "column_1"]);
 }
+
+#[gtk4::test]
+fn drop_asks_the_window_with_the_table_it_shows() {
+    let mut script = ConnectionScript::default();
+    script.fetch_table_definition.always(FakeReply::ok(definition("id")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let asked = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = asked.clone();
+    harness
+        .tab()
+        .connect_drop_table_requested(move |_, schema, table| sink.borrow_mut().push((schema, table)));
+
+    harness.tab().imp().drop_button.emit_clicked();
+
+    assert_eq!(*asked.borrow(), [(None, "users".to_owned())]);
+}

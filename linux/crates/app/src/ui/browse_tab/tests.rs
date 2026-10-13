@@ -569,6 +569,33 @@ fn a_renamed_column_builds_the_grid_again() {
 }
 
 #[gtk4::test]
+fn export_and_save_reach_the_window_as_signals() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let exported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let saved = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let export_sink = exported.clone();
+    harness.tab().connect_export_results(move |_, request| {
+        export_sink.borrow_mut().push((request.name, request.result.rows.len()));
+    });
+    let save_sink = saved.clone();
+    harness.tab().connect_save_requested(move |_, request| {
+        save_sink
+            .borrow_mut()
+            .push((request.table, request.changes.changes.changes.len()));
+    });
+
+    harness.tab().send(BrowseTabInput::ExportCurrentPage);
+    harness.tab().send(BrowseTabInput::InsertRow);
+    harness.tab().send(BrowseTabInput::CommitSave);
+
+    assert_eq!(*exported.borrow(), [("users".to_owned(), 2)]);
+    assert_eq!(*saved.borrow(), [(tablepro_core::TableRef::unqualified("users"), 1)]);
+}
+
+#[gtk4::test]
 fn browse_tab_and_filter_strip_freed_after_drop() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["row"])));
