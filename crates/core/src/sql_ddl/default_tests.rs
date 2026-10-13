@@ -194,3 +194,29 @@ fn a_postgres_primary_key_or_identity_toggle_on_an_existing_column_is_refused_no
         ));
     }
 }
+
+#[test]
+fn a_new_column_marked_primary_key_is_added_with_its_primary_key() {
+    let mut key = loaded(None);
+    key.original = None;
+    key.primary_key = true;
+    key.nullable = false;
+    let postgres = super::build_add_column("postgres", None, "t", &key).unwrap();
+    assert!(postgres[0].contains("PRIMARY KEY"), "{postgres:?}");
+    key.auto_increment = true;
+    let serial = super::build_add_column("postgres", None, "t", &key).unwrap();
+    assert!(serial[0].contains("SERIAL PRIMARY KEY"), "{serial:?}");
+    let mysql = super::build_add_column("mysql", None, "t", &key).unwrap();
+    assert!(mysql[0].contains("AUTO_INCREMENT PRIMARY KEY"), "{mysql:?}");
+}
+
+#[test]
+fn sqlite_refuses_a_new_primary_key_column_instead_of_dropping_the_key() {
+    let mut key = loaded(None);
+    key.original = None;
+    key.primary_key = true;
+    assert!(matches!(
+        super::build_add_column("sqlite", None, "t", &key),
+        Err(super::BuildDdlError::SqliteNotSupported(_))
+    ));
+}

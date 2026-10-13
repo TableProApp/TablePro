@@ -15,7 +15,10 @@ pub fn build_add_column(
     column: &DraftColumn,
 ) -> Result<Vec<String>, BuildDdlError> {
     validate_table(table)?;
-    let column_def = render_column_definition(driver_id, column, false)?;
+    if driver_id == "sqlite" && column.primary_key {
+        return Err(BuildDdlError::SqliteNotSupported("ADD COLUMN PRIMARY KEY"));
+    }
+    let column_def = render_column_definition(driver_id, column, column.primary_key)?;
     if driver_id == "sqlite" && !column.nullable && column.default_value.as_deref().unwrap_or("").is_empty() {
         // SQLite refuses ADD COLUMN NOT NULL unless the column has a
         // DEFAULT (or is a generated column we don't yet handle).

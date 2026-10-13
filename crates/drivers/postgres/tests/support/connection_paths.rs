@@ -1,3 +1,5 @@
+#[path = "add_column_primary_key.rs"]
+mod add_column_primary_key;
 #[path = "auth_errors.rs"]
 mod auth_errors;
 #[path = "drop_constraint_index.rs"]
