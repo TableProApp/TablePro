@@ -20,6 +20,7 @@ use tablepro_session::connect::StoreConnectionWrites;
 use crate::services::active_session::ActiveSession;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill, ConnectSubmission, FormField};
 use crate::ui::error_text::TlsRemedy;
+use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::ssh_inputs::SshEnvironment;
 
 use super::connect_flow::{self, SubmitError};
@@ -698,18 +699,10 @@ impl App {
             let input = input.clone();
             glib::spawn_future_local(async move {
                 let path = file.path().unwrap_or_default();
-                match file.load_contents_future().await {
-                    Ok((bytes, _etag)) => {
-                        let _ = input.send(AppMsg::ConnectionsFileRead {
-                            path,
-                            bytes: bytes.to_vec(),
-                        });
-                    }
-                    Err(error) => {
-                        tracing::warn!(%error, path = %path.display(), "could not read the file to import");
-                        let _ = input.send(AppMsg::ShowToast(crate::i18n::gettext("That file could not be read.")));
-                    }
-                }
+                let _ = input.send(match read_connections_file(&file).await {
+                    Ok(bytes) => AppMsg::ConnectionsFileRead { path, bytes },
+                    Err(message) => AppMsg::ShowToast(message),
+                });
             });
         });
     }
@@ -1081,6 +1074,24 @@ impl App {
 
 /// The filter both file dialogs open with. Built fresh each time
 /// because a GtkFileFilter belongs to the dialog it is given to.
+/// An export holds names, hosts and options, never secrets, so even
+/// thousands of connections come to well under this.
+const MAX_CONNECTIONS_FILE_BYTES: usize = 8 * 1024 * 1024;
+
+/// The chosen export, whole, or what to tell the user instead.
+async fn read_connections_file(file: &gio::File) -> Result<Vec<u8>, String> {
+    read_capped_file(file, MAX_CONNECTIONS_FILE_BYTES)
+        .await
+        .map_err(|error| match error {
+            FileReadError::NotRegular => crate::i18n::gettext("Only regular files can be imported."),
+            FileReadError::TooLarge => crate::i18n::gettext("That file is too large to be a connection export."),
+            FileReadError::Io(error) => {
+                tracing::warn!(%error, "could not read the file to import");
+                crate::i18n::gettext("That file could not be read.")
+            }
+        })
+}
+
 fn json_filter() -> gtk::FileFilter {
     let filter = gtk::FileFilter::new();
     filter.set_name(Some(&crate::i18n::gettext("JSON files")));
@@ -1151,6 +1162,50 @@ mod tests {
     use tablepro_test_support::ConnectionScript;
 
     use super::*;
+
+    fn read(path: &std::path::Path) -> Result<Vec<u8>, String> {
+        let file = gio::File::for_path(path);
+        crate::test_support::finish_on_main(
+            Duration::from_secs(10),
+            async move { read_connections_file(&file).await },
+        )
+        .expect("the read to end")
+    }
+
+    #[gtk4::test]
+    fn an_import_from_a_pipe_is_refused_without_waiting_for_a_writer() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("connections.json");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .expect("mkfifo");
+        assert!(made.success());
+
+        let refused = read(&path).expect_err("a refusal");
+
+        assert!(refused.contains("regular files"), "{refused}");
+    }
+
+    #[gtk4::test]
+    fn an_import_past_the_limit_is_refused() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("connections.json");
+        std::fs::write(&path, vec![b' '; MAX_CONNECTIONS_FILE_BYTES + 1]).expect("write");
+
+        let refused = read(&path).expect_err("a refusal");
+
+        assert!(refused.contains("too large"), "{refused}");
+    }
+
+    #[gtk4::test]
+    fn an_export_is_read_whole() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("connections.json");
+        std::fs::write(&path, br#"{"connections":[]}"#).expect("write");
+
+        assert_eq!(read(&path).as_deref(), Ok(&br#"{"connections":[]}"#[..]));
+    }
 
     #[gtk4::test]
     fn a_closing_window_closes_its_session_and_stops_its_connect() {

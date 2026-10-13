@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::future::Future;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gtk4::glib;
@@ -24,4 +27,22 @@ pub(crate) fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool)
     };
     wake.remove();
     outcome
+}
+
+/// Run `future` on the main context until it ends, or give it up once
+/// `timeout` passes.
+pub(crate) fn finish_on_main<T: 'static>(
+    timeout: Duration,
+    future: impl Future<Output = T> + 'static,
+) -> Result<T, WaitTimedOut> {
+    let outcome = Rc::new(RefCell::new(None));
+    let slot = outcome.clone();
+    let running = glib::spawn_future_local(async move {
+        slot.replace(Some(future.await));
+    });
+    if let Err(timed_out) = wait_until(timeout, || outcome.borrow().is_some()) {
+        running.abort();
+        return Err(timed_out);
+    }
+    outcome.take().ok_or(WaitTimedOut { timeout })
 }

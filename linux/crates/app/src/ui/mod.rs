@@ -10,6 +10,7 @@ mod editor;
 mod editor_font_provider;
 pub(crate) mod error_text;
 mod export_dialog;
+mod file_read;
 mod filter_strip;
 mod grid;
 mod history_dialog;
