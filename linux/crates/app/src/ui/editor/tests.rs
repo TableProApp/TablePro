@@ -111,6 +111,28 @@ fn run_at_cursor_selects_executed_statement() {
 }
 
 #[gtk4::test]
+fn run_at_cursor_during_a_run_leaves_the_buffer_alone() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::until_stopped());
+    let harness = editor_with(runs, "SELECT pg_sleep(60);\nSELECT 2;");
+    let buffer = harness.editor.buffer();
+    harness.editor.run();
+    wait_until(WAIT, || !harness.fake.texts().is_empty()).expect("the first statement to start");
+    let sent_before = sent(&harness.fake);
+    buffer.place_cursor(&buffer.iter_at_offset(23));
+
+    harness.editor.run_at_cursor();
+
+    assert!(
+        buffer.selection_bounds().is_none(),
+        "a statement that did not run was selected"
+    );
+    assert_eq!(sent(&harness.fake), sent_before);
+    harness.editor.stop();
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+}
+
+#[gtk4::test]
 fn a_script_fills_the_results_list_one_line_per_statement() {
     let mut runs = Replies::default();
     runs.when_sql_contains(
