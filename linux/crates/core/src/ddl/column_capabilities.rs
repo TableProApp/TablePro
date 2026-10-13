@@ -50,7 +50,7 @@ impl ColumnCapabilities {
             alter_default: engine(capabilities.alter_column_default)
                 .and(|| not_generated(column))
                 .and(not_numbered)
-                .and(|| modeled(column)),
+                .and(|| Self::modeled(column)),
             alter_primary_key: primary_key_permission(capabilities, table),
             alter_auto_increment: engine(capabilities.alter_auto_increment).and(restatement),
             alter_comment: engine(capabilities.column_comments),
@@ -61,7 +61,17 @@ impl ColumnCapabilities {
     /// one would lose its expression, and one with an attribute this
     /// build does not model would lose that.
     pub fn restatement(column: &ColumnDefinition) -> Permission {
-        not_generated(column).and(|| modeled(column))
+        not_generated(column).and(|| Self::modeled(column))
+    }
+
+    /// Whether the catalogue reported only attributes this build can
+    /// write again. An engine that restates a generated column's
+    /// expression checks this rather than `restatement`.
+    pub fn modeled(column: &ColumnDefinition) -> Permission {
+        match column.attributes.unmodeled.first() {
+            Some(attribute) => Permission::Refused(RefusalReason::UnmodeledAttribute(attribute.name.clone())),
+            None => Permission::Allowed,
+        }
     }
 }
 
@@ -70,13 +80,6 @@ fn not_generated(column: &ColumnDefinition) -> Permission {
         !column.info.is_generated && column.attributes.generated.is_none(),
         RefusalReason::GeneratedColumn,
     )
-}
-
-fn modeled(column: &ColumnDefinition) -> Permission {
-    match column.attributes.unmodeled.first() {
-        Some(attribute) => Permission::Refused(RefusalReason::UnmodeledAttribute(attribute.name.clone())),
-        None => Permission::Allowed,
-    }
 }
 
 /// Whether the table's primary key can move. A foreign key elsewhere

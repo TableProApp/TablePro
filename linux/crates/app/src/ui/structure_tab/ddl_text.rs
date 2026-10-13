@@ -29,6 +29,14 @@ pub(crate) fn refusal_text(reason: &RefusalReason) -> String {
         RefusalReason::UnreadableDefinition => {
             crate::i18n::gettext("The database didn't report this column's full definition.")
         }
+        RefusalReason::ConflictingAttribute(attribute) => crate::i18n::gettext_f(
+            "This column's {attribute} doesn't allow this change.",
+            &[("attribute", attribute)],
+        ),
+        RefusalReason::NamesRenamedColumn(column) => crate::i18n::gettext_f(
+            "Its definition names column {column}, which this save renames. Save the rename on its own first.",
+            &[("column", column)],
+        ),
     }
 }
 

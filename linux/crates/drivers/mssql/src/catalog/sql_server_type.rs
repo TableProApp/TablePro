@@ -164,6 +164,15 @@ impl SqlServerType {
         }
     }
 
+    /// SQL Server refuses SPARSE on these system types (error 1731). An
+    /// alias or CLR type is left to the server, which takes an alias.
+    pub(crate) fn takes_sparse(&self) -> bool {
+        !matches!(
+            self.base.as_str(),
+            "text" | "ntext" | "image" | "timestamp" | "rowversion" | "geometry" | "geography"
+        )
+    }
+
     /// The type as DDL spells it, modifiers included.
     pub(crate) fn declaration(&self) -> String {
         match &self.alias {

@@ -3,6 +3,7 @@
 
 mod catalog_cells;
 mod column_type_scan_error;
+mod escaped_expression;
 mod mysql_column_row;
 mod mysql_column_type;
 mod mysql_extra;
@@ -11,7 +12,11 @@ mod table_definition;
 pub(crate) use catalog_cells::CatalogCells;
 pub(crate) use mysql_column_row::{MySqlColumnRow, columns_sql};
 pub(crate) use mysql_extra::{ExtraGenerated, MySqlExtra};
-pub(crate) use table_definition::{COLUMN_ENGINE_ATTRIBUTES_SQL, INBOUND_FOREIGN_KEYS_SQL, inbound_foreign_keys};
+pub(crate) use table_definition::{
+    COLUMN_ENGINE_ATTRIBUTES_SQL, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL, ListedSrid, MARIADB_COLUMN_CHECKS_SQL,
+    MARIADB_GEOMETRY_SRIDS_SQL, column_checks, geometry_srids, inbound_foreign_keys, place_column_checks,
+    printed_names,
+};
 
 use sqlx::mysql::{MySql, MySqlColumn};
 use sqlx::{Column as _, Type, TypeInfo as _};
@@ -31,6 +36,7 @@ use tablepro_core::value::Value;
 
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
+use escaped_expression::unescape_expression;
 use mysql_column_type::scan;
 
 /// The catalogue's facts that decide a kind, apart from the rest of the
@@ -229,8 +235,8 @@ pub(crate) fn column_definition(
             .as_ref()
             .map(|expression| SqlExpression::from_catalog_text(expression.as_str())),
         generated: generated.and_then(|storage| {
-            row.generation_expression.as_ref().map(|expression| GeneratedColumn {
-                expression: SqlExpression::from_catalog_text(expression.as_str()),
+            row.generation_expression.as_deref().map(|expression| GeneratedColumn {
+                expression: catalog_expression(expression, flavour),
                 storage,
             })
         }),
@@ -247,6 +253,15 @@ pub(crate) fn column_definition(
         ..ColumnAttributes::default()
     };
     ColumnDefinition::new(column_info(row, flavour), attributes)
+}
+
+/// An expression from `information_schema.COLUMNS` as SQL a statement
+/// can splice.
+fn catalog_expression(listed: &str, flavour: MySqlFlavour) -> SqlExpression {
+    match flavour {
+        MySqlFlavour::MySql => SqlExpression::from_catalog_text(unescape_expression(listed)),
+        MySqlFlavour::MariaDb => SqlExpression::from_catalog_text(listed),
+    }
 }
 
 /// A DEFAULT as a value the insert path can bind where it is a literal,
@@ -266,7 +281,7 @@ pub(crate) fn classify_default(
     };
     let expression = || ColumnDefault::Expression(SqlExpression::from_catalog_text(text));
     match flavour {
-        MySqlFlavour::MySql if extra.default_generated => expression(),
+        MySqlFlavour::MySql if extra.default_generated => ColumnDefault::Expression(catalog_expression(text, flavour)),
         MySqlFlavour::MySql => match &column_type.kind {
             // The text is the value, spaces and all, and an empty one is
             // the empty string rather than no default.
@@ -534,6 +549,10 @@ mod tests {
             classify_default(Some("CURRENT_TIMESTAMP"), &stamp, &generated, mysql),
             ColumnDefault::Expression(expression) if expression.as_sql() == "CURRENT_TIMESTAMP"
         ));
+        assert!(matches!(
+            classify_default(Some(r"concat(_utf8mb4\'it\\\'s\')"), &text, &generated, mysql),
+            ColumnDefault::Expression(expression) if expression.as_sql() == r"concat(_utf8mb4'it\'s')"
+        ));
         assert_eq!(classify_default(None, &integer, &plain, mysql), ColumnDefault::None);
 
         assert_eq!(
@@ -552,5 +571,48 @@ mod tests {
             classify_default(Some("current_timestamp()"), &stamp, &plain, mariadb),
             ColumnDefault::Expression(expression) if expression.as_sql() == "current_timestamp()"
         ));
+    }
+
+    #[test]
+    fn a_generation_expression_reads_as_the_sql_each_server_runs() {
+        let row = |extra: &str, expression: &str| MySqlColumnRow {
+            name: "label".to_owned(),
+            data_type: "varchar".to_owned(),
+            column_type: "varchar(30)".to_owned(),
+            nullable: true,
+            extra: extra.to_owned(),
+            character_maximum_length: Some(30),
+            character_set: Some("utf8mb4".to_owned()),
+            generation_expression: Some(expression.to_owned()),
+            ..MySqlColumnRow::default()
+        };
+        let generated = |definition: ColumnDefinition| {
+            definition
+                .attributes
+                .generated
+                .map(|generated| (generated.expression.as_sql().to_owned(), generated.storage))
+        };
+
+        let mysql = column_definition(
+            &row("VIRTUAL GENERATED", r"concat(`a`,_utf8mb4\'x\')"),
+            MySqlFlavour::MySql,
+            Vec::new(),
+        );
+        let mariadb = column_definition(
+            &row("STORED GENERATED, INVISIBLE", "concat(`a`,'x')"),
+            MySqlFlavour::MariaDb,
+            Vec::new(),
+        );
+
+        assert_eq!(
+            generated(mysql),
+            Some(("concat(`a`,_utf8mb4'x')".to_owned(), GeneratedStorage::Virtual))
+        );
+        assert_eq!(mariadb.attributes.visibility, ColumnVisibility::Invisible);
+        assert!(mariadb.attributes.unmodeled.is_empty());
+        assert_eq!(
+            generated(mariadb),
+            Some(("concat(`a`,'x')".to_owned(), GeneratedStorage::Stored))
+        );
     }
 }

@@ -9,6 +9,7 @@
 
 mod cancellation;
 mod conformance_engine;
+mod ddl;
 mod decode;
 mod filter;
 mod metadata;

@@ -1,13 +1,14 @@
-use tablepro_core::column::ColumnDefault;
+use tablepro_core::column::{ColumnDefault, ColumnKind};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql, parenthesized};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlPlan, DraftColumn,
-    GeneratedStorage, IdentityStyle, Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition,
-    TableDraft,
+    BuildDdlError, ColumnAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation,
+    DdlPlan, DraftColumn, DraftType, GeneratedStorage, IdentityStyle, Permission, ReferentialAction, RefusalReason,
+    ResolvedType, TableChanges, TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
 
+use crate::catalog::SqlServerType;
 use crate::dialect::{MssqlDialect, national_literal};
 
 static CAPABILITIES: DdlCapabilities = DdlCapabilities {
@@ -75,14 +76,25 @@ impl DdlDialect for MssqlDialect {
         self
     }
 
-    /// ALTER COLUMN restates the type with the nullability, so a column
-    /// whose type the catalogue did not spell cannot take one.
+    /// ALTER COLUMN restates the type with the collation and the
+    /// nullability, so a column whose type the catalogue did not spell, or
+    /// whose collation is not a name T-SQL takes bare, cannot take one. A
+    /// SPARSE column is always nullable and takes no default (errors 1731
+    /// and 1791), so either change can only be one the server refuses.
     fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
         let mut permissions = ColumnCapabilities::standard(&CAPABILITIES, table, column);
+        let collation = || collation_permission(&column.attributes);
+        permissions.alter_type = permissions.alter_type.and(collation);
+        permissions.alter_nullability = permissions.alter_nullability.and(collation);
         if column.info.column_type.catalog.is_none() {
             permissions.alter_nullability = permissions
                 .alter_nullability
                 .and(|| Permission::Refused(RefusalReason::UnreadableDefinition));
+        }
+        if column.attributes.sparse {
+            let sparse = || Permission::Refused(RefusalReason::ConflictingAttribute("SPARSE".to_owned()));
+            permissions.alter_nullability = permissions.alter_nullability.and(sparse);
+            permissions.alter_default = permissions.alter_default.and(sparse);
         }
         permissions
     }
@@ -180,12 +192,34 @@ impl DdlDialect for MssqlDialect {
             if changed.default {
                 statements.extend(self.drop_default(&table, &alteration.original));
             }
-            // T-SQL reads an omitted NULL or NOT NULL as NULL, so a type
-            // change restates the nullability.
+            // ALTER COLUMN carries nothing forward: an omitted collation is
+            // the database's, an omitted SPARSE is gone, and an omitted
+            // NULL or NOT NULL is NULL. So every one is restated.
             if changed.column_type || changed.nullability {
                 let resolved = draft.column_type.resolve(self, &draft.name)?;
-                let nullability = if draft.nullable { "NULL" } else { "NOT NULL" };
-                statements.push(alter(format!("ALTER COLUMN {name} {} {nullability}", resolved.sql)));
+                let attributes = &alteration.original.attributes;
+                let operation = match changed.column_type {
+                    true => DdlOperation::AlterColumnType,
+                    false => DdlOperation::AlterColumnNullability,
+                };
+                if changed.column_type {
+                    kept_on_new_type(&resolved, attributes).map_err(|attribute| BuildDdlError::Refused {
+                        column: alteration.original.name().to_owned(),
+                        operation,
+                        reason: RefusalReason::ConflictingAttribute(attribute),
+                    })?;
+                }
+                let mut parts = vec![format!("ALTER COLUMN {name}"), resolved.sql.clone()];
+                parts.extend(collate_clause(draft, &resolved, attributes, operation)?);
+                if attributes.sparse {
+                    parts.push("SPARSE".to_owned());
+                }
+                parts.push(if draft.nullable { "NULL" } else { "NOT NULL" }.to_owned());
+                statements.push(alter(parts.join(" ")));
+                // ALTER COLUMN takes a mask only in a statement of its own.
+                if let Some(function) = &attributes.masking_function {
+                    statements.push(alter(format!("ALTER COLUMN {name} ADD {}", masked_with(function))));
+                }
             }
             if changed.default {
                 let column_type = draft.column_type.column_type(self, &draft.name)?;
@@ -236,8 +270,9 @@ impl DdlDialect for MssqlDialect {
 }
 
 impl MssqlDialect {
-    /// `name type [IDENTITY(1,1)] NULL|NOT NULL [DEFAULT (..)]`, or a
-    /// computed column read from the catalogue as `name AS (..)`.
+    /// `name type [COLLATE c] [SPARSE] [MASKED WITH (..)] [IDENTITY(1,1)]
+    /// NULL|NOT NULL [DEFAULT (..)]`, or a computed column read from the
+    /// catalogue as `name AS (..)`.
     fn column_definition(&self, column: &DraftColumn) -> Result<String, BuildDdlError> {
         let name = self.quote_identifier(&column.name);
         let attributes = column.original.as_ref().map(|original| &original.attributes);
@@ -253,6 +288,18 @@ impl MssqlDialect {
         }
         let resolved = column.column_type.resolve(self, &column.name)?;
         let mut parts = vec![name, resolved.sql.clone()];
+        if let Some(attributes) = attributes {
+            parts.extend(collate_clause(
+                column,
+                &resolved,
+                attributes,
+                DdlOperation::CreateTable,
+            )?);
+            if attributes.sparse {
+                parts.push("SPARSE".to_owned());
+            }
+            parts.extend(attributes.masking_function.as_deref().map(masked_with));
+        }
         let identity = column.auto_increment
             || attributes.is_some_and(|attributes| attributes.identity == IdentityStyle::MssqlIdentity);
         if identity {
@@ -278,6 +325,92 @@ impl MssqlDialect {
             self.quote_identifier(name)
         ))
     }
+}
+
+/// The column's own collation, kept where its type still holds text. The
+/// catalogue reports one only where it differs from the database's.
+fn collate_clause(
+    column: &DraftColumn,
+    resolved: &ResolvedType,
+    attributes: &ColumnAttributes,
+    operation: DdlOperation,
+) -> Result<Option<String>, BuildDdlError> {
+    let textual = matches!(column.column_type, DraftType::Catalog(_))
+        || matches!(resolved.column_type.kind, ColumnKind::Text { .. });
+    let Some(collation) = attributes.collation.as_ref().filter(|_| textual) else {
+        return Ok(None);
+    };
+    match collation_permission(attributes) {
+        Permission::Allowed => Ok(Some(format!("COLLATE {}", collation.name))),
+        Permission::Refused(reason) => Err(BuildDdlError::Refused {
+            column: column.name.clone(),
+            operation,
+            reason,
+        }),
+    }
+}
+
+/// T-SQL takes a collation name bare, never bracketed, so only a name of
+/// letters, digits and underscores, which every collation has, can be
+/// restated.
+fn collation_permission(attributes: &ColumnAttributes) -> Permission {
+    match &attributes.collation {
+        Some(collation) if !plain_name(&collation.name) => {
+            Permission::Refused(RefusalReason::UnmodeledAttribute(format!("COLLATE {}", collation.name)))
+        }
+        _ => Permission::Allowed,
+    }
+}
+
+fn masked_with(function: &str) -> String {
+    format!("MASKED WITH (FUNCTION = {})", national_literal(function))
+}
+
+/// SPARSE and a data mask go back on after a type change, so the new type
+/// has to take them. `Err` names the one it does not take.
+fn kept_on_new_type(resolved: &ResolvedType, attributes: &ColumnAttributes) -> Result<(), String> {
+    if attributes.sparse && !SqlServerType::parse(&resolved.sql).takes_sparse() {
+        return Err("SPARSE".to_owned());
+    }
+    match &attributes.masking_function {
+        Some(function) if !mask_takes(function, &resolved.column_type.kind) => Err(masked_with(function)),
+        _ => Ok(()),
+    }
+}
+
+/// The types each mask function takes; SQL Server refuses the others
+/// with error 16003. default() takes any.
+fn mask_takes(function: &str, kind: &ColumnKind) -> bool {
+    let name = function
+        .split('(')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    match name.as_str() {
+        "default" => true,
+        "email" | "partial" => matches!(kind, ColumnKind::Text { .. }),
+        "random" => matches!(
+            kind,
+            ColumnKind::Integer(_)
+                | ColumnKind::Decimal { .. }
+                | ColumnKind::Float(_)
+                | ColumnKind::Money { .. }
+                | ColumnKind::Bool(_)
+        ),
+        "datetime" => matches!(
+            kind,
+            ColumnKind::Date | ColumnKind::Time { .. } | ColumnKind::Timestamp { .. }
+        ),
+        _ => false,
+    }
+}
+
+fn plain_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 fn default_clause(default: &ColumnDefault, sql: &str) -> String {
@@ -323,10 +456,7 @@ fn column_comment(table: &TableRef, column: &str, had_comment: bool, comment: Op
 #[cfg(test)]
 mod tests {
     use tablepro_core::column::{ColumnInfo, SqlExpression};
-    use tablepro_core::ddl::{
-        ColumnAttributes, DdlOperation, DraftType, DropTableOptions, InboundForeignKey, PrimaryKeyConstraint,
-        diff_table,
-    };
+    use tablepro_core::ddl::{CollationName, DropTableOptions, InboundForeignKey, PrimaryKeyConstraint, diff_table};
     use tablepro_core::value::Value;
 
     use super::*;
@@ -485,6 +615,132 @@ mod tests {
                 "ALTER TABLE [dbo].[orders] ADD DEFAULT (1) FOR [status]",
             ]
         );
+    }
+
+    #[test]
+    fn mssql_nullability_change_restates_collation_and_sparse() {
+        let mut original = orders();
+        original.columns[2].attributes.collation = Some(CollationName::new(None, "Latin1_General_100_CS_AS"));
+        let mut weight = column("weight", "int", None);
+        weight.attributes.sparse = true;
+        original.columns.push(weight);
+        let mut code = column("code", "varchar(10)", None);
+        code.attributes.collation = Some(CollationName::new(None, "Latin1_General_BIN"));
+        code.attributes.masking_function = Some("partial(1,\"X's\",0)".to_owned());
+        original.columns.push(code);
+
+        let plan = alter(&original, |draft| {
+            draft.columns[2].nullable = false;
+            draft.columns[3].column_type = DraftType::Typed("bigint".to_owned());
+            draft.columns[4].column_type = DraftType::Typed("varchar(40)".to_owned());
+        });
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [note] nvarchar(20) COLLATE Latin1_General_100_CS_AS NOT NULL",
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [weight] bigint SPARSE NULL",
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [code] varchar(40) COLLATE Latin1_General_BIN NULL",
+                "ALTER TABLE [dbo].[orders] ALTER COLUMN [code] ADD MASKED WITH (FUNCTION = N'partial(1,\"X''s\",0)')",
+            ]
+        );
+        assert_eq!(
+            sql(dialect().create_table_script(&original))[0],
+            "CREATE TABLE [dbo].[orders] (\n  [id] int NOT NULL,\n  [status] int NULL DEFAULT ((0)),\n  [note] \
+             nvarchar(20) COLLATE Latin1_General_100_CS_AS NULL,\n  [weight] int SPARSE NULL,\n  [code] varchar(10) \
+             COLLATE Latin1_General_BIN MASKED WITH (FUNCTION = N'partial(1,\"X''s\",0)') NULL,\n  PRIMARY KEY \
+             ([id])\n)"
+        );
+    }
+
+    #[test]
+    fn a_type_that_cannot_keep_the_mask_or_sparse_is_refused() {
+        let mut original = orders();
+        let mut weight = column("weight", "int", None);
+        weight.attributes.sparse = true;
+        original.columns.push(weight);
+        let mut code = column("code", "varchar(10)", None);
+        code.attributes.masking_function = Some("partial(1,\"X\",0)".to_owned());
+        original.columns.push(code);
+        let mut amount = column("amount", "int", None);
+        amount.attributes.masking_function = Some("random(1, 9)".to_owned());
+        original.columns.push(amount);
+        let retyped = |column: usize, declared: &str| {
+            alter(&original, |draft| {
+                draft.columns[column].column_type = DraftType::Typed(declared.to_owned())
+            })
+        };
+        let conflict = |attribute: &str| {
+            Err(BuildDdlError::Refused {
+                column: original.columns[3].name().to_owned(),
+                operation: DdlOperation::AlterColumnType,
+                reason: RefusalReason::ConflictingAttribute(attribute.to_owned()),
+            })
+        };
+
+        assert_eq!(retyped(3, "text"), conflict("SPARSE"));
+        assert_eq!(retyped(3, "geometry"), conflict("SPARSE"));
+        assert!(retyped(3, "nvarchar(40)").is_ok());
+        assert!(matches!(
+            retyped(4, "int"),
+            Err(BuildDdlError::Refused { reason: RefusalReason::ConflictingAttribute(mask), .. })
+                if mask == "MASKED WITH (FUNCTION = N'partial(1,\"X\",0)')"
+        ));
+        assert!(retyped(4, "nchar(10)").is_ok());
+        assert!(matches!(
+            retyped(5, "varchar(10)"),
+            Err(BuildDdlError::Refused {
+                reason: RefusalReason::ConflictingAttribute(_),
+                ..
+            })
+        ));
+        assert!(retyped(5, "money").is_ok());
+        assert!(mask_takes("default()", &ColumnKind::Uuid));
+        assert!(mask_takes("datetime(\"Y\")", &ColumnKind::Date));
+        assert!(!mask_takes("email()", &ColumnKind::Date));
+    }
+
+    #[test]
+    fn a_sparse_column_takes_neither_not_null_nor_a_default() {
+        let mut original = orders();
+        let mut weight = column("weight", "int", None);
+        weight.attributes.sparse = true;
+        original.columns.push(weight);
+        let sparse = Permission::Refused(RefusalReason::ConflictingAttribute("SPARSE".to_owned()));
+
+        let permissions = dialect().column_capabilities(&original, &original.columns[3]);
+        let not_null = alter(&original, |draft| draft.columns[3].nullable = false);
+
+        assert_eq!(permissions.alter_nullability, sparse);
+        assert_eq!(permissions.alter_default, sparse);
+        assert_eq!(permissions.alter_type, Permission::Allowed);
+        assert!(matches!(
+            not_null,
+            Err(BuildDdlError::Refused {
+                operation: DdlOperation::AlterColumnNullability,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_collation_tsql_cannot_name_bare_refuses_a_restatement() {
+        let mut original = orders();
+        original.columns[2].attributes.collation = Some(CollationName::new(None, "odd]name"));
+
+        let permissions = dialect().column_capabilities(&original, &original.columns[2]);
+
+        let odd = Permission::Refused(RefusalReason::UnmodeledAttribute("COLLATE odd]name".to_owned()));
+        assert_eq!(permissions.alter_type, odd);
+        assert_eq!(permissions.alter_nullability, odd);
+        assert_eq!(permissions.alter_comment, Permission::Allowed);
+        assert!(matches!(
+            dialect().create_table_script(&original),
+            Err(BuildDdlError::Refused {
+                operation: DdlOperation::CreateTable,
+                ..
+            })
+        ));
     }
 
     #[test]

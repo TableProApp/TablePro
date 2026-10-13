@@ -59,6 +59,12 @@ pub(crate) fn column_definition(row: &MssqlColumnRow) -> ColumnDefinition {
         collation: row.collation.as_deref().map(|name| CollationName::new(None, name)),
         generated,
         sparse: row.sparse,
+        // The catalogue prints a quote in a padding string doubled, as it
+        // would sit inside a literal, so `"X's"` reads back as `"X''s"`.
+        masking_function: row
+            .masking_function
+            .as_deref()
+            .map(|function| function.replace("''", "'")),
         identity: match row.identity {
             true => IdentityStyle::MssqlIdentity,
             false => IdentityStyle::None,
@@ -231,6 +237,21 @@ mod tests {
         ));
         assert_eq!(classify_default(Some("(NULL)"), &text), ColumnDefault::None);
         assert_eq!(classify_default(None, &text), ColumnDefault::None);
+    }
+
+    #[test]
+    fn a_mask_reads_back_as_its_function_was_written() {
+        let mut values = vec![Value::Null; 23];
+        values[0] = Value::Text("email".to_owned());
+        values[1] = Value::Text("varchar".to_owned());
+        values[22] = Value::Text(r#"partial(1, "X''s", 2)"#.to_owned());
+
+        let row = MssqlColumnRow::from_values(&values).expect("a row");
+
+        assert_eq!(
+            column_definition(&row).attributes.masking_function.as_deref(),
+            Some(r#"partial(1, "X's", 2)"#)
+        );
     }
 
     #[test]

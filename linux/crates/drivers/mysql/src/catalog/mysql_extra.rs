@@ -1,5 +1,6 @@
 //! The EXTRA column of `information_schema.COLUMNS`, which packs several
-//! unrelated attributes into one space-separated string.
+//! unrelated attributes into one string. MySQL separates them with
+//! spaces and MariaDB with `, `, as in `VIRTUAL GENERATED, INVISIBLE`.
 
 /// How a generated column keeps its value. MariaDB spells STORED as
 /// PERSISTENT too.
@@ -28,7 +29,10 @@ pub(crate) struct MySqlExtra {
 
 impl MySqlExtra {
     pub(crate) fn parse(extra: &str) -> Self {
-        let words: Vec<&str> = extra.split_whitespace().collect();
+        let words: Vec<&str> = extra
+            .split(|character: char| character.is_whitespace() || character == ',')
+            .filter(|word| !word.is_empty())
+            .collect();
         let lower: Vec<String> = words.iter().map(|word| word.to_ascii_lowercase()).collect();
         let mut parsed = Self::default();
         let mut leftover: Vec<&str> = Vec::new();
@@ -97,6 +101,31 @@ mod tests {
         assert_eq!(
             MySqlExtra::parse("on update current_timestamp()").on_update.as_deref(),
             Some("current_timestamp()")
+        );
+
+        assert_eq!(
+            MySqlExtra::parse("on update current_timestamp(3), INVISIBLE"),
+            MySqlExtra {
+                on_update: Some("current_timestamp(3)".to_owned()),
+                invisible: true,
+                ..MySqlExtra::default()
+            }
+        );
+        assert_eq!(
+            MySqlExtra::parse("VIRTUAL GENERATED, INVISIBLE"),
+            MySqlExtra {
+                generated: Some(ExtraGenerated::Virtual),
+                invisible: true,
+                ..MySqlExtra::default()
+            }
+        );
+        assert_eq!(
+            MySqlExtra::parse("auto_increment, INVISIBLE"),
+            MySqlExtra {
+                auto_increment: true,
+                invisible: true,
+                ..MySqlExtra::default()
+            }
         );
 
         let versioned = MySqlExtra::parse("WITHOUT SYSTEM VERSIONING");

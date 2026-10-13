@@ -59,7 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Turning a column's primary key on or off in the Structure tab saved nothing.
 - Dropping a SQL Server column that has a default failed.
 - Creating a SQLite table with a foreign key failed.
-- Changing a MySQL column in the Structure tab dropped its collation, ON UPDATE, INVISIBLE and SRID, and a comment turned a generated column into a plain one.
+- Changing a column in the Structure tab lost its collation, SRID, SPARSE, CHECK or other attributes it had.
+- Saving a MySQL column whose default or generated expression held a quoted string failed.
 - Save in a Structure tab's close prompt skipped the tab's checks and dropped a default that did not parse.
 - The Structure tab refused every save on a SQLite table keyed by INTEGER PRIMARY KEY.
 - Saved tabs and editor text were lost on a disconnect or window close right after a change.
@@ -79,3 +80,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Importing a CSV or a connections file from a pipe or a device never finished, a CSV could read past its size limit, and a connections file had none.
 - SQL run in the editor, a typed filter or a column default, and the values in them, reached the journal at debug level.
 - Column types and defaults typed in the Structure tab reached the SQL after a text filter instead of the database's own parser.
+- Changing a SQL Server column's type or nullability in the Structure tab removed its data mask.

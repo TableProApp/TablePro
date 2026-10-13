@@ -26,6 +26,13 @@ pub enum RefusalReason {
     ReferencedByForeignKeys(Vec<String>),
     /// The catalogue gave no definition the change could restate.
     UnreadableDefinition,
+    /// The column has an attribute the change would break, such as
+    /// SPARSE on a SQL Server column made NOT NULL.
+    ConflictingAttribute(String),
+    /// The restated definition names a column the same change renames.
+    /// The server reads it against the new names, and the catalogue's
+    /// text still has the old one.
+    NamesRenamedColumn(String),
 }
 
 impl fmt::Display for RefusalReason {
@@ -39,6 +46,8 @@ impl fmt::Display for RefusalReason {
             Self::ColumnInUse(users) => write!(f, "still used by {}", users.join(", ")),
             Self::ReferencedByForeignKeys(keys) => write!(f, "referenced by foreign keys {}", keys.join(", ")),
             Self::UnreadableDefinition => f.write_str("the catalogue gave no definition to restate"),
+            Self::ConflictingAttribute(name) => write!(f, "the column's {name} does not allow it"),
+            Self::NamesRenamedColumn(name) => write!(f, "its definition names {name}, which the same change renames"),
         }
     }
 }

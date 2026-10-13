@@ -17,7 +17,7 @@ Each engine plans structure changes through its own `DdlDialect`, reached from `
 
 **Refused before Save.** `DdlCapabilities` and `ColumnCapabilities` answer which changes the engine takes, each refusal with a `RefusalReason` the tab shows beside the control it turns off. A primary key another table's foreign key points at cannot move on any engine, and a column such a key references cannot be dropped. Every plan runs the same checks first, so a caller that skips the UI gets `BuildDdlError::Refused` or `Unsupported` rather than SQL the server rejects.
 
-**Nothing spliced unchecked.** A catalogue type is spliced as the server gave it. A typed one is spliced only after `SqlDialect::parse_type` accepts it, a typed default only after `parse_expression` does, and a literal default goes through `SqlDialect::literal`. Every name goes through the dialect's quoting.
+**Nothing spliced unchecked.** A catalogue type, generated expression or CHECK clause is spliced as the server gave it. A typed one is spliced only after `SqlDialect::parse_type` accepts it, a typed default only after `parse_expression` does, and a literal default goes through `SqlDialect::literal`. Every name goes through the dialect's quoting, except a SQL Server collation, which T-SQL takes only bare and which is spliced only when it is letters, digits and underscores.
 
 **The connection that runs it.** The save plans again inside the session operation, with the dialect of the lease that writes it, so a reconnect to another server version between edit and Save cannot send SQL spelled for the old one.
 
@@ -27,9 +27,13 @@ Each engine plans structure changes through its own `DdlDialect`, reached from `
 
 - An engine's DDL is one file in its driver crate, and core has no branch on a driver id.
 - The structure tab's controls follow the capabilities, so a change the engine cannot make is never offered.
-- MySQL writes a column again whole for any change to it, its comment included, so it restates every attribute the definition models: the character set and collation, ON UPDATE, INVISIBLE and SRID where the new type still holds them. It refuses the change on a generated column or one with an attribute this build does not model.
+- MySQL writes a column again whole for any change to it, its comment included, and SQL Server's ALTER COLUMN carries nothing forward either, so both restate every attribute the definition models where the new type still holds it. On MySQL that is the character set and collation, a generated column's expression, ON UPDATE, INVISIBLE and the SRID; MariaDB adds its REF_SYSTEM_ID and the column's own CHECK, which it keeps apart from the table's. On SQL Server it is the collation, SPARSE, the nullability and a data mask, which goes back on in a statement of its own.
+- A PostgreSQL type change names the column's collation when the new type holds text, since SET DATA TYPE otherwise takes the type's default.
+- A column with an attribute this build does not model, or one whose name the restatement cannot write, refuses every change that would restate it.
+- MariaDB names a column's CHECK constraint after the column it was written on and keeps that name through a rename, so the check is placed by the column line of SHOW CREATE TABLE it ends. A check no line ends with refuses the restatement of every column without one.
+- The server reads a restated expression against the names the same ALTER gives, so a MySQL restatement whose CHECK, generated expression or default names a column renamed in the same change is refused, and the rename is saved on its own first.
+- On SQL Server, a type change whose new type cannot take the column's SPARSE or data mask is refused, as is any nullability or default change on a SPARSE column.
 - Primary-key identity on PostgreSQL and SQLite table rebuilds are plans of their own, added to the same dialects later, and their capabilities are off until then.
-- The rest of the attribute restatement is not written yet and its changes stay on: a SQL Server ALTER COLUMN does not restate COLLATE or SPARSE, and a PostgreSQL type change does not restate a column's collation, so either change resets them.
 
 ## Alternatives considered
 

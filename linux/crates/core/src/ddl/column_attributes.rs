@@ -24,6 +24,14 @@ pub struct ColumnAttributes {
     pub spatial_reference: Option<u32>,
     /// SQL Server `SPARSE`.
     pub sparse: bool,
+    /// The function a SQL Server dynamic data mask applies, as in
+    /// `email()`. ALTER COLUMN drops the mask, which shows the data to
+    /// every user without UNMASK.
+    pub masking_function: Option<String>,
+    /// A CHECK constraint MariaDB keeps on the column itself. MODIFY
+    /// drops it unless the definition restates it; every other engine
+    /// keeps a CHECK on the table, where a redefinition leaves it alone.
+    pub check: Option<SqlExpression>,
     pub identity: IdentityStyle,
     /// The SQL Server constraint that holds the default. A type change
     /// has to drop it by name first and add it back afterwards.
