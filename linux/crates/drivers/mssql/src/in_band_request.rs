@@ -184,7 +184,10 @@ impl Watch {
     }
 
     /// A request still waiting has consumed nothing if nothing arrived,
-    /// and may be inside a token if anything did.
+    /// and may be inside a token if anything did. Nothing new since the
+    /// last row proves less: the server fills each packet whatever token
+    /// that splits, and tiberius takes a token in pieces as packets
+    /// come, so the row after it may be half read already.
     fn halt_while_waiting(&self) -> Halt {
         match self.tally.bytes() == self.sent_at.load(Ordering::SeqCst) {
             true => Halt::Boundary,
@@ -309,8 +312,10 @@ mod tests {
     use std::time::Duration;
 
     use tablepro_core::StopReason;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;
+    use crate::transport_io::TransportIo;
 
     fn watch(tally: &ReadTally) -> Watch {
         Watch::new(
@@ -360,6 +365,28 @@ mod tests {
             .await;
 
         assert!(matches!(outcome, Err(Interrupt::Stopped(Halt::Boundary))));
+    }
+
+    /// The bytes stand for the first half of a row, split across two
+    /// packets, which the decoder has already taken.
+    #[tokio::test(start_paused = true)]
+    async fn a_request_that_went_quiet_after_any_answer_may_be_mid_token() {
+        let (client, mut server) = tokio::io::duplex(64);
+        let tally = ReadTally::new();
+        let mut io = TransportIo::new(Box::new(client), tally.clone());
+        let watch = watch(&tally);
+        let request = watch.request().clone();
+
+        let outcome = watch
+            .start(async move {
+                server.write_all(b"half a row").await.unwrap();
+                io.read_exact(&mut [0u8; 10]).await.unwrap();
+                request.request(StopReason::Cancelled);
+                std::future::pending::<Result<(), tiberius::error::Error>>().await
+            })
+            .await;
+
+        assert!(matches!(outcome, Err(Interrupt::Stopped(Halt::MidToken))));
     }
 
     #[tokio::test]
