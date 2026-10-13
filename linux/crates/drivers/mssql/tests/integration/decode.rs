@@ -5,7 +5,7 @@ use chrono::DateTime;
 use tablepro_core::value::{OffsetTimestamp, SqlDecimal, Temporal};
 use tablepro_core::{Connection, Value};
 
-use crate::support::{browse, columns, connect, dbo, insert_one, rows, scalar, setup, start, write};
+use crate::support::{browse, columns, connect, dbo, insert_one, rows, run_ok, scalar, session, setup, start, write};
 
 fn decimal(text: &str) -> Value {
     Value::Decimal(text.parse::<SqlDecimal>().expect("a decimal"))
@@ -99,6 +99,29 @@ async fn money_max_min_exact() {
         "-922337203685477.5808",
     )
     .await;
+}
+
+/// The editor and plain queries read MONEY without the decimal cast
+/// browse uses, through the float tiberius makes of it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn money_in_the_editor_and_queries_reads_exactly() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let session = session(connection.as_ref()).await;
+    let sql = "SELECT CAST(123456789.1234 AS money), CAST(-214748.3648 AS smallmoney), \
+               CAST(549755813887.9999 AS money), CAST(NULL AS money), CAST(922337203685477.5807 AS money)";
+
+    let edited = run_ok(session.as_ref(), sql).await.rows().remove(0);
+    let queried = rows(connection.as_ref(), sql).await.remove(0);
+
+    for row in [edited, queried] {
+        assert_eq!(row[0], decimal("123456789.1234"));
+        assert_eq!(row[1], decimal("-214748.3648"));
+        assert_eq!(row[2], decimal("549755813887.9999"));
+        assert_eq!(row[3], Value::Null);
+        assert!(matches!(&row[4], Value::Undecodable(_)), "{:?}", row[4]);
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
