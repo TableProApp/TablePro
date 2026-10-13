@@ -19,6 +19,8 @@ mod persistence;
 pub mod runtime;
 mod services;
 pub mod storage;
+// Public for the save tests that run a tracker against a real server.
+pub use services::{change_tracker, tab_tracker_handle, tracker_edit};
 #[cfg(test)]
 mod test_support;
 mod ui;

@@ -65,6 +65,7 @@ sqlformat = "0.5"
 
 [dev-dependencies]
 tablepro-session = { path = "../session", features = ["fakes"] }
+tablepro-test-fixtures = { path = "../test-fixtures" }
 tablepro-test-support = { path = "../test-support" }
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 tempfile.workspace = true

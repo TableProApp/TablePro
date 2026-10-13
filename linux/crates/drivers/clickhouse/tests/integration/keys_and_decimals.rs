@@ -1,7 +1,7 @@
 //! Values that only survive a round trip when every digit and byte is
 //! kept: wide numbers, sub-second keys and keys that are not UTF-8.
 
-use tablepro_core::save::{ChangeSet, RowUpdate};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::value::{SqlDecimal, Temporal};
 use tablepro_core::{Connection, Value};
 
@@ -9,11 +9,10 @@ use crate::support::{CALL, connect, count, planned, quoted, rows, setup, start, 
 
 async fn edit(connection: &dyn Connection, name: &str, key: Vec<Value>, column: usize, value: Value) {
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key,
             assignments: vec![(column, value)],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let batch = planned(connection, &table(name), &changes).await;
     connection

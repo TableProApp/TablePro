@@ -3,7 +3,7 @@
 
 use tablepro_core::column::{ColumnKind, FloatWidth, IntegerKind, IntegerWidth};
 use tablepro_core::meta::TableRef;
-use tablepro_core::save::{ChangeSet, RowUpdate, plan_save};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{RowLimit, Value};
 
 use crate::support::{TestFile, apply, call, query, statement};
@@ -104,7 +104,7 @@ async fn strict_table_round_trip() {
     let row = read.rows[0].clone();
 
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![row[0].clone()],
             assignments: vec![
                 (1, Value::Int(i64::MIN)),
@@ -112,8 +112,7 @@ async fn strict_table_round_trip() {
                 (3, Value::Text("ü'".to_owned())),
                 (4, Value::Bytes(vec![1, 2, 3])),
             ],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let dialect = connection.dialect();
     let plan = plan_save(dialect.as_ref(), &table, &columns, &identity, &changes).unwrap();
@@ -169,8 +168,9 @@ async fn a_date_column_keeps_the_spelling_it_was_written_with() {
     // The value names its own row, so a save keyed by it must match the
     // row as stored, T and Z included.
     let changes = ChangeSet {
-        deletes: vec![vec![Value::Int(1)]],
-        ..ChangeSet::default()
+        changes: vec![RowChange::Delete {
+            key: vec![Value::Int(1)],
+        }],
     };
     let identity = connection.row_identity(&table, call()).await.unwrap();
     let dialect = connection.dialect();

@@ -6,7 +6,7 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::{CollationName, GeneratedStorage, IdentityStyle};
 use tablepro_core::meta::{EngineRowId, IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef};
-use tablepro_core::save::{ChangeSet, RowUpdate, plan_save};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{DriverError, Value};
 use tablepro_test_fixtures::{HbaMode, PostgresFixture, PostgresVersion};
 
@@ -211,11 +211,10 @@ async fn stale_ctid_edit_after_vacuum_reuse_row_guard_failed() {
         .expect("the identity");
     let dialect = connection.dialect();
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: before[0].clone(),
             assignments: vec![(0, Value::Text("changed".to_owned()))],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let plan = plan_save(dialect.as_ref(), &target, &columns, &identity, &changes).expect("a plan");
 

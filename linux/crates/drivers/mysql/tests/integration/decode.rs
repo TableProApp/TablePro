@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use tablepro_core::column::{BoolStorage, ColumnKind, FloatWidth, TemporalZone};
-use tablepro_core::save::{ChangeSet, RowUpdate, plan_save};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::value::Temporal;
 use tablepro_core::{Connection, Value};
 
@@ -90,11 +90,10 @@ async fn edit_by_max_id(connection: &Arc<dyn Connection>, id_type: &str, id: Val
         .position(|column| column.name == "label")
         .expect("a label column");
     let changes = ChangeSet {
-        updates: vec![RowUpdate {
+        changes: vec![RowChange::Update(RowUpdate {
             key: vec![read[0][0].clone()],
             assignments: vec![(label, Value::Text("after".to_owned()))],
-        }],
-        ..ChangeSet::default()
+        })],
     };
     let dialect = connection.dialect();
     let plan = plan_save(dialect.as_ref(), &target, &columns, &identity, &changes).expect("a plan");

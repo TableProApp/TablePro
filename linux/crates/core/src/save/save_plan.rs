@@ -1,21 +1,21 @@
 use crate::write_batch::WriteBatch;
 
-use super::ChangeOrigin;
-
 /// The statements a save will run, each pointing back at the change it
 /// came from.
 ///
 /// `origins` is the same length as the batch's steps and in the same
-/// order, so a failure at step 3 names the row the user edited rather
-/// than a statement number.
+/// order, and each entry is a position in `ChangeSet::changes`, so a
+/// failure at step 3 names the row the user edited rather than a
+/// statement number.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavePlan {
     pub batch: WriteBatch,
-    pub origins: Vec<ChangeOrigin>,
+    pub origins: Vec<usize>,
 }
 
 impl SavePlan {
-    pub fn origin(&self, step: usize) -> Option<ChangeOrigin> {
+    /// The position in the change set behind one step.
+    pub fn origin(&self, step: usize) -> Option<usize> {
         self.origins.get(step).copied()
     }
 }
