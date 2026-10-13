@@ -18,7 +18,6 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     rename_column: true,
     alter_column_type: true,
     alter_column_nullability: true,
-    nullability_switch: true,
     alter_column_default: true,
     alter_primary_key: true,
     // IDENTITY cannot be added to or taken from an existing column.

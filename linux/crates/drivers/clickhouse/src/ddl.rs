@@ -18,10 +18,9 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     drop_column: true,
     rename_column: true,
     alter_column_type: true,
-    alter_column_nullability: true,
     // Nullability is part of the type, so it changes by rewriting the
     // column as Nullable(T) or T.
-    nullability_switch: false,
+    alter_column_nullability: true,
     alter_column_default: true,
     alter_primary_key: false,
     alter_auto_increment: false,
@@ -298,7 +297,6 @@ mod tests {
         assert_eq!(plain.rename, Permission::Allowed);
         assert_eq!(plain.alter_type, Permission::Allowed);
         assert!(!DdlDialect::capabilities(&dialect()).create_table);
-        assert!(!DdlDialect::capabilities(&dialect()).nullability_switch);
         assert!(matches!(
             alter(&table, |draft| draft.columns[0].name = "event_id".to_owned()),
             Err(BuildDdlError::Refused {

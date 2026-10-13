@@ -20,7 +20,6 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     rename_column: true,
     alter_column_type: false,
     alter_column_nullability: false,
-    nullability_switch: false,
     alter_column_default: false,
     alter_primary_key: false,
     alter_auto_increment: false,

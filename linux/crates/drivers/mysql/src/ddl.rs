@@ -20,7 +20,6 @@ const fn capabilities(expression_index_keys: bool) -> DdlCapabilities {
         rename_column: true,
         alter_column_type: true,
         alter_column_nullability: true,
-        nullability_switch: true,
         alter_column_default: true,
         alter_primary_key: true,
         alter_auto_increment: true,

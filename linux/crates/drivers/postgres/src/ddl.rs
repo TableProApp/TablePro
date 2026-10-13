@@ -18,7 +18,6 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     rename_column: true,
     alter_column_type: true,
     alter_column_nullability: true,
-    nullability_switch: true,
     alter_column_default: true,
     alter_primary_key: true,
     // An identity added to a column with rows has to start past them,
