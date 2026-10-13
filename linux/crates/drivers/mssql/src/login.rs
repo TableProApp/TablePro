@@ -210,7 +210,10 @@ async fn connect(integrated: bool, config: Config, io: MssqlStream) -> Result<Ms
     }
     #[cfg(not(feature = "kerberos"))]
     let _ = integrated;
-    Client::connect(config, io).await
+    // On the heap: the TLS handshake inside makes this future tens of
+    // kilobytes, and every caller up to the pool would hold a copy in its
+    // own state, which overflows a 2 MiB thread stack in a debug build.
+    Box::pin(Client::connect(config, io)).await
 }
 
 /// MIT Kerberos runs as blocking FFI inside the login, which would hold
