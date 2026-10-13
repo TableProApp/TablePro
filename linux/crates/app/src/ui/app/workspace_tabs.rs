@@ -12,7 +12,7 @@ use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
 use crate::services::from_session::FromSession;
-use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest, SaveRequest};
+use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
 use crate::workspace::{
@@ -66,6 +66,7 @@ impl App {
             self.toast_overlay.downgrade(),
         );
         let chrome = build_workspace_chrome(sender.input_sender(), create_tab);
+        self.window_tabs.set_view(Some(&chrome.view));
         self.workspace_root = Some(chrome.overview);
         self.workspace_tab_view = Some(chrome.view);
     }
@@ -447,149 +448,6 @@ impl App {
             .unwrap_or_default()
     }
 
-    pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid, sender: ComponentSender<Self>) {
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
-
-        let pending = self.dirty_tabs().contains(&id);
-        let open_transaction = matches!(
-            self.workspace_tabs.borrow().get(&id),
-            Some(WorkspaceTab::Editor(slot)) if slot.editor.has_open_transaction()
-        );
-        if open_transaction {
-            self.confirm_close_with_open_transaction(id, &tab_view, sender);
-            return;
-        }
-        if pending {
-            let page = self.workspace_tabs.borrow().get(&id).map(|t| match t {
-                WorkspaceTab::Editor(s) => s.page.clone(),
-                WorkspaceTab::Structure(s) => s.page.clone(),
-                WorkspaceTab::Table(s) => s.page.clone(),
-            });
-            let Some(page) = page else { return };
-            let raw_title = page.title().to_string();
-            let tab_label = raw_title.strip_prefix("• ").unwrap_or(&raw_title).to_string();
-            // Cancel | Discard(destructive) | Save(suggested), Save is
-            // default. Mirrors GNOME Text Editor's close-with-unsaved
-            // template (libadwaita AdwAlertDialog reference). Naming
-            // the tab in the heading + factual body copy follows the
-            // GNOME HIG pattern for destructive-confirmation dialogs.
-            let dialog = adw::AlertDialog::new(None, None);
-            dialog.set_heading(Some(&crate::i18n::gettext_f(
-                "Save changes to “{name}”?",
-                &[("name", &tab_label)],
-            )));
-            dialog.set_body(&crate::i18n::gettext(
-                "Unsaved changes will be permanently lost if you discard them.",
-            ));
-            dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
-            dialog.add_response("discard", &crate::i18n::gettext("Discard"));
-            dialog.add_response("save", &crate::i18n::gettext("Save"));
-            dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
-            dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
-            dialog.set_default_response(Some("save"));
-            dialog.set_close_response("cancel");
-            let tab_view_for_resp = tab_view.clone();
-            let page_for_resp = page.clone();
-            let sender_for_resp = sender.clone();
-            let close_after_save = self.close_after_save.clone();
-            // Snapshot which trackers actually have pending changes
-            // before the dialog opens. Drives the discard + save
-            // branches so a Table tab whose only dirt is on the
-            // Structure side doesn't try to save through the Browse
-            // path (and vice versa).
-            let data_tracker = self
-                .change_trackers
-                .get(id)
-                .filter(|tracker| tracker.pending_count() > 0);
-            let structure_tracker = self.structure_trackers.get(id).filter(|tracker| tracker.has_pending());
-            let (data_dirty, struct_dirty) = (data_tracker.is_some(), structure_tracker.is_some());
-            dialog.connect_response(None, move |dlg, response| {
-                dlg.close();
-                match response {
-                    "discard" => {
-                        // The tab closes next, so no grid is left to
-                        // show the discarded rows.
-                        if let Some(tracker) = &data_tracker {
-                            let _ = tracker.discard();
-                        }
-                        if let Some(tracker) = &structure_tracker {
-                            tracker.clear();
-                        }
-                        sender_for_resp.input(AppMsg::WorkspaceTabClosed(id));
-                    }
-                    "save" => {
-                        // Mark the tab so SaveCompletedForTab will close
-                        // it once the transaction commits. The counter
-                        // increments once per dispatched save: a Table
-                        // tab dirty on both sides bumps to 2, and the
-                        // close fires only after BOTH saves drain it.
-                        // SaveFailed removes the entry entirely and
-                        // aborts the close.
-                        let pending_saves: u32 = u32::from(data_dirty) + u32::from(struct_dirty);
-                        if pending_saves > 0 {
-                            *close_after_save.borrow_mut().entry(id).or_insert(0) += pending_saves;
-                        }
-                        // Revert AdwTabView's "closing" state for now
-                        // (the user might still cancel via SaveFailed).
-                        tab_view_for_resp.close_page_finish(&page_for_resp, false);
-                        // Dispatch the right save path per dirty side.
-                        if data_dirty {
-                            sender_for_resp.input(AppMsg::SaveActiveBrowseTabById(id));
-                        }
-                        if struct_dirty {
-                            sender_for_resp.input(AppMsg::SaveActiveStructureTabById(id));
-                        }
-                    }
-                    _ => {
-                        // Cancel: revert AdwTabView's "closing" state
-                        // so the page stays open. Without this the X
-                        // click would still dismiss the page.
-                        tab_view_for_resp.close_page_finish(&page_for_resp, false);
-                    }
-                }
-            });
-            dialog.present(Some(&self.window));
-            return;
-        }
-
-        self.finish_close_workspace_tab(id, &tab_view);
-    }
-
-    /// An editor tab's connection ends with the tab, and the server
-    /// rolls back whatever transaction it held, so closing one with a
-    /// transaction open asks first.
-    fn confirm_close_with_open_transaction(&self, id: Uuid, tab_view: &adw::TabView, sender: ComponentSender<Self>) {
-        let Some(page) = self.workspace_tabs.borrow().get(&id).map(|tab| match tab {
-            WorkspaceTab::Editor(s) => s.page.clone(),
-            WorkspaceTab::Structure(s) => s.page.clone(),
-            WorkspaceTab::Table(s) => s.page.clone(),
-        }) else {
-            return;
-        };
-        let dialog = adw::AlertDialog::new(
-            Some(&crate::i18n::gettext("Close Tab With an Open Transaction?")),
-            Some(&crate::i18n::gettext(
-                "Closing the tab ends its connection, and the server rolls back the changes the transaction has not committed.",
-            )),
-        );
-        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
-        dialog.add_response("close", &crate::i18n::gettext("Close Tab"));
-        dialog.set_response_appearance("close", adw::ResponseAppearance::Destructive);
-        dialog.set_default_response(Some("cancel"));
-        dialog.set_close_response("cancel");
-        let tab_view = tab_view.clone();
-        dialog.connect_response(None, move |_, response| {
-            if response == "close" {
-                sender.input(AppMsg::WorkspaceTabClosed(id));
-            } else {
-                tab_view.close_page_finish(&page, false);
-            }
-        });
-        dialog.present(Some(&self.window));
-    }
-
     /// Tear down a tab without prompting. Internal helper called once
     /// the close-with-pending dialog (if any) has resolved.
     pub(super) fn finish_close_workspace_tab(&mut self, id: Uuid, tab_view: &adw::TabView) {
@@ -602,13 +460,6 @@ impl App {
         if let Some(descriptor) = describe_closed_tab(&removed) {
             push_closed_tab(&self.closed_tabs_stack, descriptor);
         }
-        // Drop any close-after-save / window-close-after-save intent
-        // pinned to this tab. `close_tabs_for_table` (Drop Table)
-        // calls into here directly without going through the per-tab
-        // close prompt, so a stale entry would otherwise live on
-        // forever and cause a future unrelated SaveCompleted to
-        // spuriously close the window.
-        self.close_after_save.borrow_mut().remove(&id);
         match &removed {
             WorkspaceTab::Editor(slot) => {
                 slot.editor.shutdown();
@@ -619,12 +470,10 @@ impl App {
             WorkspaceTab::Structure(slot) => {
                 slot.structure.shutdown();
                 self.structure_trackers.unregister(slot.id);
-                self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
             WorkspaceTab::Table(slot) => {
                 slot.browse.shutdown();
                 self.change_trackers.unregister(slot.id);
-                self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
         }
         let page = match &removed {
@@ -639,6 +488,7 @@ impl App {
             self.workspace_outer_stack.set_visible_child_name("empty");
         }
         self.refresh_window_title();
+        self.refresh_inhibitor();
     }
 
     pub(super) fn close_active_workspace_tab(&mut self, sender: ComponentSender<Self>) {
@@ -934,8 +784,10 @@ impl App {
             self.workspace_root_added.set(false);
         }
         self.workspace_outer_stack.set_visible_child_name("empty");
+        self.window_tabs.set_view(None);
         self.workspace_tab_view = None;
         self.workspace_tabs.borrow_mut().clear();
+        self.refresh_inhibitor();
     }
 
     /// Write the tabs and the editor text as they are now, before the
@@ -1365,7 +1217,9 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &relm4::Send
     let dirty = input.clone();
     structure.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::StructureTabDirtyChanged(tab_id, is_dirty)));
     let save = input.clone();
-    structure.connect_save_requested(move |_| save.emit(AppMsg::SaveActiveStructureTabById(tab_id)));
+    structure.connect_save_requested(move |_| save.emit(AppMsg::SaveTab(tab_id)));
+    let stop = input.clone();
+    structure.connect_stop_save_requested(move |_| stop.emit(AppMsg::StopSaving(tab_id)));
     let drop_table = input.clone();
     structure.connect_drop_table_requested(move |_, schema, table| {
         drop_table.emit(AppMsg::DropTablePrompt { schema, table });
@@ -1393,21 +1247,9 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &relm4::Sender<AppMsg
     let dirty = input.clone();
     browse.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::BrowseTabDirtyChanged(tab_id, is_dirty)));
     let save = input.clone();
-    browse.connect_save_requested(
-        move |_,
-              SaveRequest {
-                  table,
-                  columns,
-                  changes,
-              }| {
-            save.emit(AppMsg::ExecuteBrowseTransaction {
-                tab_id,
-                table,
-                columns,
-                changes,
-            });
-        },
-    );
+    browse.connect_save_requested(move |_| save.emit(AppMsg::SaveTab(tab_id)));
+    let stop = input.clone();
+    browse.connect_stop_save_requested(move |_| stop.emit(AppMsg::StopSaving(tab_id)));
 }
 
 /// Forward an editor tab's signals into the window. The toast overlay
@@ -1424,6 +1266,8 @@ fn connect_editor(
     });
     let content = input.clone();
     editor.connect_content_changed(move |_| content.emit(AppMsg::EditorTabContentChanged(tab_id)));
+    let transaction = input.clone();
+    editor.connect_transaction_changed(move |_, _| transaction.emit(AppMsg::EditorTransactionChanged));
     let clipboard = input.clone();
     editor.connect_copy_to_clipboard(move |_, text| clipboard.emit(AppMsg::CopyToClipboard(text)));
     let toast = input.clone();

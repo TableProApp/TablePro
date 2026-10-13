@@ -202,6 +202,12 @@
                     </style>
                   </object>
                 </child>
+                <child type="start">
+                  <object class="AdwSpinner" id="saving_spinner">
+                    <property name="visible">false</property>
+                    <property name="tooltip-text" translatable="yes">Saving…</property>
+                  </object>
+                </child>
                 <child type="end">
                   <object class="GtkButton" id="save_button">
                     <property name="label" translatable="yes">Save</property>
@@ -215,6 +221,16 @@
                   <object class="GtkButton" id="discard_button">
                     <property name="label" translatable="yes">Discard</property>
                     <property name="tooltip-text" translatable="yes">Discard all pending edits</property>
+                  </object>
+                </child>
+                <child type="end">
+                  <object class="GtkButton" id="stop_button">
+                    <property name="label" translatable="yes">_Stop Saving</property>
+                    <property name="use-underline">true</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="destructive-action"/>
+                    </style>
                   </object>
                 </child>
               </object>

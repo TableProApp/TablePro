@@ -11,10 +11,12 @@ use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
+use super::save_batch::{SaveBatch, SaveTarget};
 use super::touch::Touch;
 use super::tracker_delta::{TrackerDelta, VisualChange};
 use super::tracker_edit::TrackerEdit;
 use super::undo_op::UndoOp;
+use crate::workspace::{PendingState, SaveOutcome, SaveRejection, SaveSnapshot, UnknownCause};
 
 const UNDO_LIMIT: usize = 50;
 
@@ -116,6 +118,14 @@ pub struct TabChangeTracker {
     // A flash that starts inside an older flash's timeout must not be
     // cleared by that older timer.
     error_row_gen: u64,
+    /// The table and columns the tab last read, which a save is planned
+    /// against.
+    target: Option<SaveTarget>,
+    /// Where the save in flight ends.
+    saving: Option<SaveSnapshot>,
+    /// A save that may have landed. Saving again could apply it twice,
+    /// so nothing saves until the tab is reloaded or discarded.
+    outcome_unknown: Option<UnknownCause>,
 }
 
 impl TabChangeTracker {
@@ -123,7 +133,12 @@ impl TabChangeTracker {
         self.drafts.len() + self.deletes.len() + self.updates.len()
     }
 
+    /// An edit the running save holds back comes back as a rebind of its
+    /// row, so the grid stops showing what was typed into it.
     pub fn apply(&mut self, edit: TrackerEdit) -> TrackerDelta {
+        if self.edit_is_in_flight(&edit) {
+            return self.delta(edit.row_key().into_iter().collect(), Vec::new());
+        }
         match edit {
             TrackerEdit::Cell {
                 row_key,
@@ -138,6 +153,36 @@ impl TabChangeTracker {
                 original_values,
             } => self.track_delete(row_key, original_values),
             TrackerEdit::DiscardDraft { draft_id } => self.discard_draft(draft_id),
+        }
+    }
+
+    /// An edit that would change what the running save already sent.
+    /// An insert or a delete cannot be sent twice, so a draft or a
+    /// delete in the save stays as it is until the save settles; a cell
+    /// edit is a new value, which the next save writes.
+    pub fn edit_is_in_flight(&self, edit: &TrackerEdit) -> bool {
+        let Some(snapshot) = self.saving else {
+            return false;
+        };
+        let draft_in_flight = |draft_id: u64| {
+            self.drafts
+                .iter()
+                .any(|draft| draft.draft_id == draft_id && snapshot.includes(draft.touched))
+        };
+        let delete_in_flight = |row_key: &RowKey| {
+            self.deletes
+                .get(row_key)
+                .is_some_and(|mark| snapshot.includes(mark.touched))
+        };
+        match edit {
+            TrackerEdit::DraftCell { draft_id, .. } | TrackerEdit::DiscardDraft { draft_id } => {
+                draft_in_flight(*draft_id)
+            }
+            TrackerEdit::Cell { row_key, .. } | TrackerEdit::Delete { row_key, .. } => match row_key {
+                RowKey::Draft(draft_id) => draft_in_flight(*draft_id),
+                RowKey::Persisted(_) => delete_in_flight(row_key),
+            },
+            TrackerEdit::Insert { .. } => false,
         }
     }
 
@@ -165,8 +210,13 @@ impl TabChangeTracker {
 
     fn track_cell_edit(&mut self, row_key: RowKey, col: usize, original: Value, value: Value) -> TrackerDelta {
         let before = self.updates.get(&(row_key.clone(), col)).cloned();
+        // The running save is writing `before`, so even a value equal to
+        // the fetched one is a change the next save has to write back.
+        let in_flight = before
+            .as_ref()
+            .is_some_and(|edit| self.saving.is_some_and(|snapshot| snapshot.includes(edit.touched)));
         let original = before.as_ref().map_or(original, |edit| edit.original.clone());
-        let after = (value != original).then(|| CellEdit {
+        let after = (in_flight || value != original).then(|| CellEdit {
             original,
             pending: value,
             touched: self.touch(),
@@ -291,7 +341,12 @@ impl TabChangeTracker {
         self.delta(vec![RowKey::Draft(draft_id)], Vec::new())
     }
 
+    /// Nothing while a save runs: stepping back through edits the save
+    /// already sent would show a state the database is not left in.
     pub fn undo(&mut self) -> Option<TrackerDelta> {
+        if self.saving.is_some() {
+            return None;
+        }
         let op = self.undo.pop_back()?;
         let delta = match &op {
             UndoOp::CellEdit {
@@ -312,6 +367,9 @@ impl TabChangeTracker {
     }
 
     pub fn redo(&mut self) -> Option<TrackerDelta> {
+        if self.saving.is_some() {
+            return None;
+        }
         let op = self.redo.pop_back()?;
         let delta = match &op {
             UndoOp::CellEdit {
@@ -341,8 +399,10 @@ impl TabChangeTracker {
         !self.redo.is_empty()
     }
 
-    /// Drop every pending change and the undo history.
+    /// Drop every pending change and the undo history. A save whose
+    /// outcome was unknown is resolved: the tab reads the table again.
     pub fn discard(&mut self) -> TrackerDelta {
+        self.outcome_unknown = None;
         let mut seen = HashSet::new();
         let rows: Vec<RowKey> = self
             .updates
@@ -533,6 +593,109 @@ impl TabChangeTracker {
             changes: ChangeSet { changes },
             sources,
         })
+    }
+
+    pub(crate) fn set_target(&mut self, target: SaveTarget) {
+        self.target = Some(target);
+    }
+
+    pub(crate) fn pending_state(&self) -> PendingState {
+        if let Some(cause) = &self.outcome_unknown {
+            return PendingState::OutcomeUnknown(cause.clone());
+        }
+        if self.saving.is_some() {
+            return PendingState::Saving;
+        }
+        match self.pending_count() {
+            0 => PendingState::Clean,
+            _ => PendingState::Unsaved,
+        }
+    }
+
+    /// Take what Save writes, and hold it as in flight until it settles.
+    /// `None` when there is nothing to save.
+    pub(crate) fn begin_save(&mut self) -> Result<Option<SaveBatch>, SaveRejection> {
+        if self.outcome_unknown.is_some() {
+            return Err(SaveRejection::OutcomeUnknown);
+        }
+        if self.saving.is_some() {
+            return Err(SaveRejection::AlreadySaving);
+        }
+        if self.pending_count() == 0 {
+            return Ok(None);
+        }
+        let Some(target) = self.target.clone() else {
+            return Err(SaveRejection::ColumnsNotRead);
+        };
+        let changes = self.change_set(&target.columns).map_err(SaveRejection::Build)?;
+        if changes.changes.is_empty() {
+            return Ok(None);
+        }
+        let snapshot = SaveSnapshot(self.next_touch);
+        self.saving = Some(snapshot);
+        Ok(Some(SaveBatch {
+            table: target.table,
+            columns: target.columns,
+            changes,
+            snapshot,
+        }))
+    }
+
+    /// End the save `snapshot` began. A commit drops what it wrote and
+    /// keeps every edit made while it ran; a rollback keeps everything;
+    /// an unknown outcome keeps everything and refuses the next save.
+    pub(crate) fn settle_save(&mut self, outcome: &SaveOutcome, snapshot: SaveSnapshot) -> TrackerDelta {
+        if self.saving == Some(snapshot) {
+            self.saving = None;
+        }
+        match outcome {
+            SaveOutcome::Committed { .. } => self.drop_saved(snapshot),
+            SaveOutcome::RolledBack(_) => self.delta(Vec::new(), Vec::new()),
+            SaveOutcome::Unknown(cause) => {
+                self.mark_outcome_unknown(cause.clone());
+                self.delta(Vec::new(), Vec::new())
+            }
+        }
+    }
+
+    pub(crate) fn mark_outcome_unknown(&mut self, cause: UnknownCause) {
+        self.outcome_unknown = Some(cause);
+    }
+
+    fn drop_saved(&mut self, snapshot: SaveSnapshot) -> TrackerDelta {
+        let mut rows = Vec::new();
+        let mut visual = Vec::new();
+        self.updates.retain(|(row_key, _), edit| {
+            let saved = snapshot.includes(edit.touched);
+            if saved {
+                rows.push(row_key.clone());
+            }
+            !saved
+        });
+        self.deletes.retain(|row_key, mark| {
+            let saved = snapshot.includes(mark.touched);
+            if saved {
+                rows.push(row_key.clone());
+            }
+            !saved
+        });
+        self.drafts.retain(|draft| {
+            let saved = snapshot.includes(draft.touched);
+            if saved {
+                rows.push(RowKey::Draft(draft.draft_id));
+                visual.push(VisualChange::RemoveDraft {
+                    draft_id: draft.draft_id,
+                });
+            }
+            !saved
+        });
+        // The history describes edits against rows as they were read,
+        // and the saved ones are now the rows themselves.
+        self.undo.clear();
+        self.redo.clear();
+        let mut seen = HashSet::new();
+        rows.retain(|row_key| seen.insert(row_key.clone()));
+        self.delta(rows, visual)
     }
 }
 

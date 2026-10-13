@@ -78,6 +78,34 @@ impl Harness {
             })
             .unwrap_or_default()
     }
+
+    fn comments(&self) -> Vec<Option<String>> {
+        self.tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .map(|model| {
+                model
+                    .draft
+                    .borrow()
+                    .columns
+                    .iter()
+                    .map(|column| column.comment.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn tracker(&self) -> StructureTrackerHandle {
+        self.tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .map(|model| model.tracker.clone())
+            .expect("the tab has a model")
+    }
 }
 
 impl Drop for Harness {
@@ -502,8 +530,11 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
 
     assert_eq!(preview, "ALTER TABLE \"users\" ALTER COLUMN \"id\" SET DEFAULT 42;");
     assert_eq!(saves.get(), 1);
-    let pending = tracker.begin_save().expect("the change is pending");
+    let pending = tracker.begin_save().expect("a save").expect("the change is pending");
     assert_eq!(pending.changes.altered_columns.len(), 1);
+    tracker.settle_save(&crate::workspace::SaveOutcome::RolledBack(
+        crate::workspace::RollbackCause::NotApplied,
+    ));
 
     tab.send(StructureTabInput::ColumnEdited {
         index: 0,
@@ -514,14 +545,106 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
         "a default that does not parse can be saved"
     );
     // What a close prompt's Save reads.
-    let typed = tracker.begin_save().expect("the change is still pending");
     assert_eq!(
-        typed.check(),
-        Err(crate::services::pending_structure::SaveBlocker::UnparsedDefault(
-            "id".to_owned()
+        tracker.begin_save(),
+        Err(crate::workspace::SaveRejection::Blocked(
+            crate::services::pending_structure::SaveBlocker::UnparsedDefault("id".to_owned())
         ))
     );
     drop(tab);
     drain_main_context();
     runtime.shutdown();
+}
+
+#[gtk4::test]
+fn stop_saving_shows_only_while_a_save_runs() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(definition("id")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let stops = std::rc::Rc::new(std::cell::Cell::new(0));
+    let stop_sink = stops.clone();
+    harness
+        .tab()
+        .connect_stop_save_requested(move |_| stop_sink.set(stop_sink.get() + 1));
+    harness.tab().send(StructureTabInput::ColumnEdited {
+        index: 0,
+        field: ColumnField::Comment(Some("key".to_owned())),
+    });
+    let imp = harness.tab().imp();
+    let (stop, save) = (imp.stop_button.get(), imp.save_button.get());
+    assert!(!stop.is_visible());
+    assert!(save.is_sensitive());
+
+    harness.tab().send(StructureTabInput::SaveStarted);
+    assert!(stop.is_visible() && imp.saving_spinner.is_visible());
+    assert!(
+        !imp.columns_box.is_sensitive(),
+        "the columns stayed editable during the save"
+    );
+    let toasts = toasts(harness.tab());
+    harness.tab().send(StructureTabInput::ColumnEdited {
+        index: 0,
+        field: ColumnField::Comment(Some("the key".to_owned())),
+    });
+    assert_eq!(
+        harness.comments(),
+        [Some("key".to_owned())],
+        "an edit got into a saving draft"
+    );
+    assert_eq!(toasts.borrow().len(), 1, "a refused edit said nothing");
+    assert!(!save.is_sensitive(), "an edit during the save turned Save back on");
+    stop.emit_clicked();
+    assert_eq!(stops.get(), 1);
+
+    harness
+        .tab()
+        .send(StructureTabInput::SaveFailed("rolled back".to_owned()));
+    assert!(!stop.is_visible() && !imp.saving_spinner.is_visible());
+    assert!(save.is_sensitive() && imp.columns_box.is_sensitive());
+}
+
+/// The read after a commit replaces the draft, so the draft takes no
+/// edit from the moment the save takes it until that read lands: one
+/// made in between would be lost, and a close waiting on the save would
+/// find nothing to ask about.
+#[gtk4::test]
+fn an_edit_waits_for_the_read_after_a_committed_save() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(TableDefinition {
+        columns: vec![integer_column("id", true)],
+        ..definition("id")
+    }));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let counters = harness.fake.connection.counters();
+    let tracker = harness.tracker();
+    let imp = harness.tab().imp();
+    harness.tab().send(StructureTabInput::ColumnEdited {
+        index: 0,
+        field: ColumnField::Comment(Some("key".to_owned())),
+    });
+
+    let _saving = tracker.begin_save().expect("a save").expect("the change is pending");
+    harness.tab().send(StructureTabInput::ColumnEdited {
+        index: 0,
+        field: ColumnField::Comment(Some("before the tab heard".to_owned())),
+    });
+    harness.tab().send(StructureTabInput::SaveStarted);
+    tracker.settle_save(&crate::workspace::SaveOutcome::Committed { rows: None });
+    harness.tab().send(StructureTabInput::AddColumn);
+    harness
+        .tab()
+        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+    harness.tab().send(StructureTabInput::AddColumn);
+
+    assert_eq!(harness.comments(), [Some("key".to_owned())]);
+    assert_eq!(harness.column_names(), ["id"]);
+    assert!(!imp.columns_box.is_sensitive());
+    wait_until(WAIT, || {
+        CallCounters::get(&counters.fetch_table_definition) == 2 && imp.columns_box.is_sensitive()
+    })
+    .expect("the read after the save");
+    harness.tab().send(StructureTabInput::AddColumn);
+    assert_eq!(harness.column_names(), ["id", "column_1"]);
 }

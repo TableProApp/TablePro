@@ -1,12 +1,6 @@
-//! App-side handlers for the Structure (DDL) workspace tab.
-//!
-//! Each `on_*` method mirrors the equivalent Browse-tab path in
-//! `browse.rs` / `row_ops.rs`: dispatch by tab id, take a slot
-//! reference, run the work through the session on the app runtime,
-//! route results back through `AppMsg::Structure*Loaded` /
-//! `Structure*Completed` variants. Window-close is gated by the shared
-//! `in_flight_saves` counter so a Structure DDL write can't commit
-//! after the window has been torn down.
+//! App-side handlers for the Structure (DDL) workspace tab: opening
+//! one, dropping a table, and following a save that landed. The save
+//! itself runs through the workspace handle, like a row save.
 
 use std::sync::Arc;
 
@@ -14,19 +8,18 @@ use relm4::adw::prelude::*;
 use relm4::{ComponentSender, adw};
 use uuid::Uuid;
 
-use tablepro_core::ddl::{BuildDdlError, DdlDialect, DdlOperation, DdlPlan, DropTableOptions, TableDefinition};
+use tablepro_core::ddl::{BuildDdlError, DdlOperation, DropTableOptions, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectScope, TableRef};
-use tablepro_core::statement::SqlBuildError;
-use tablepro_core::{WriteKind, WriteReport};
 use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
+use tokio_util::sync::CancellationToken;
 
 use crate::services::from_session::FromSession;
-use crate::services::pending_structure::PendingStructure;
 use crate::ui::app::{App, AppMsg, WorkspaceTab};
 use crate::ui::error_text;
-use crate::ui::structure_tab::{StructureMode, StructureTabInput, save_blocker_text};
+use crate::ui::structure_tab::{StructureMode, StructureTabInput};
+use crate::workspace::run_schema_plan;
 
 impl App {
     /// Sidebar right-click → "New Table…" or schema-header "+" button.
@@ -136,9 +129,17 @@ impl App {
             cascade: false,
         };
         let origin = Arc::downgrade(&session);
-        let work = run_schema_plan(session, dropped.clone(), DdlOperation::DropTable, move |ddl, table| {
-            ddl.plan_drop_table(table, options)
-        });
+        let table = dropped.clone();
+        let work = async move {
+            run_schema_plan(
+                session,
+                table,
+                DdlOperation::DropTable,
+                &CancellationToken::new(),
+                move |ddl, table| ddl.plan_drop_table(table, options),
+            )
+            .await
+        };
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
             match settled(result).and_then(|(_, written)| written) {
                 Ok(_) => sender.input(AppMsg::DropTableSucceeded(FromSession::new(origin, dropped))),
@@ -148,33 +149,6 @@ impl App {
                 }),
             }
         });
-    }
-
-    /// Save one Structure tab, whether or not it is the active tab: what
-    /// its tracker holds, planned with the connection that runs it.
-    pub(super) fn save_structure_tab_by_id(&mut self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        // The save in flight settles `close_after_save` for this tab;
-        // a second one would return without ever completing.
-        if self.structure_saves_in_flight.borrow().contains(&tab_id) {
-            tracing::debug!(
-                ?tab_id,
-                "save_structure_tab_by_id: save already in flight; deferring to first dispatch"
-            );
-            return;
-        }
-        let Some(tracker) = self.structure_trackers.get(tab_id) else {
-            return;
-        };
-        match tracker.begin_save().map(|pending| (pending.check(), pending)) {
-            Some((Ok(()), pending)) => self.run_structure_save(tab_id, pending, sender),
-            Some((Err(blocker), _)) => self.refuse_structure_save(tab_id, save_blocker_text(&blocker)),
-            // Nothing to save, so a close waiting on this save can go
-            // ahead.
-            None => sender.input(AppMsg::StructureSaveCompleted {
-                tab_id,
-                new_table_name: None,
-            }),
-        }
     }
 
     pub(super) fn on_drop_table_succeeded(&mut self, table: TableRef, sender: ComponentSender<Self>) {
@@ -205,62 +179,6 @@ impl App {
         }
     }
 
-    /// Run a structure save as one schema write. The driver decides how
-    /// it is wrapped: a transaction where the engine's DDL is
-    /// transactional, statement by statement where it is not, and the
-    /// error says which of the two the user got.
-    fn run_structure_save(&mut self, tab_id: Uuid, pending: PendingStructure, sender: ComponentSender<Self>) {
-        // A second Ctrl+S, or a quick double-click on Save, while the
-        // first write is still running would commit the same statements
-        // twice.
-        if !self.structure_saves_in_flight.borrow_mut().insert(tab_id) {
-            tracing::debug!(?tab_id, "structure save already in flight; ignoring duplicate");
-            return;
-        }
-        let Some(session) = self.context.active.get() else {
-            self.refuse_structure_save(tab_id, crate::i18n::gettext("No active connection."));
-            return;
-        };
-        // Only a Structure tab hosts the DDL editor, so a save for any
-        // other id is a stale queued message.
-        if !matches!(
-            self.workspace_tabs.borrow().get(&tab_id),
-            Some(WorkspaceTab::Structure(_))
-        ) {
-            self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-            return;
-        }
-        let new_table_name = pending.saved_table_name();
-
-        self.in_flight_saves.set(self.in_flight_saves.get() + 1);
-        let history = self.history.store();
-        let metadata = self.context.active.metadata();
-        let work = async move {
-            let table = pending.table();
-            let operation = pending.operation();
-            let (statements, written) =
-                run_schema_plan(session, table, operation, move |ddl, _| pending.plan(ddl)).await?;
-            // Structure edits change the database too, so the history
-            // shows the DDL that did it and not only editor statements.
-            let ran = super::ran_statements::RanStatements::starting(history, metadata, statements);
-            let outcome = match &written {
-                Ok(_) => tablepro_storage::query_history::Outcome::Success,
-                Err(error) => {
-                    tablepro_storage::query_history::Outcome::Error(error_text::operation_error_message(error))
-                }
-            };
-            ran.finished(None, outcome).await;
-            written
-        };
-        crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| match settled(result) {
-            Ok(_) => sender.input(AppMsg::StructureSaveCompleted { tab_id, new_table_name }),
-            Err(error) => sender.input(AppMsg::StructureSaveFailed(
-                tab_id,
-                error_text::operation_error_message(&error),
-            )),
-        });
-    }
-
     /// Save resolved successfully. Two cases:
     ///
     /// 1. **New-Table draft**: CreateTable succeeded so the table now
@@ -275,11 +193,6 @@ impl App {
         new_table_name: Option<String>,
         sender: ComponentSender<Self>,
     ) {
-        if self.in_flight_saves.get() > 0 {
-            self.in_flight_saves.set(self.in_flight_saves.get() - 1);
-        }
-        self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-
         // Decided first, so the tabs are not borrowed while they change.
         enum SaveKind {
             PromoteNewToTable(Option<String>, String),
@@ -305,7 +218,6 @@ impl App {
             }
         };
 
-        let kind_promoted = matches!(kind, SaveKind::PromoteNewToTable(..));
         match kind {
             SaveKind::PromoteNewToTable(schema, name) => {
                 if let Some(tab_view) = self.workspace_tab_view.clone() {
@@ -335,43 +247,6 @@ impl App {
             }
             SaveKind::Skip => {}
         }
-
-        // A close-with-pending dialog that picked "Save" put this tab
-        // in close_after_save and waits for the save to drain it. A
-        // promoted draft is already closed, so only a tab that is still
-        // open is closed here; the window-close check runs either way
-        // because the counter entry was consumed.
-        let drained = super::dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab_id);
-        if drained && !kind_promoted {
-            sender.input(AppMsg::WorkspaceTabClosed(tab_id));
-        }
-        if self.close_window_after_save.get() && self.close_after_save.borrow().is_empty() {
-            self.close_window_after_save.set(false);
-            self.window.close();
-        }
-    }
-
-    pub(super) fn on_structure_save_failed(&mut self, tab_id: Uuid, message: String) {
-        if self.in_flight_saves.get() > 0 {
-            self.in_flight_saves.set(self.in_flight_saves.get() - 1);
-        }
-        self.refuse_structure_save(tab_id, message);
-    }
-
-    /// End a save with `message`. A save refused before it ran never
-    /// counted itself in `in_flight_saves`, so only a failed run gives
-    /// one back, in `on_structure_save_failed`.
-    fn refuse_structure_save(&mut self, tab_id: Uuid, message: String) {
-        self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-        // Match the Browse-side `SaveFailedForTab` handler: a save
-        // that started from the close-with-pending dialog left this
-        // tab in `close_after_save`, and the window-close-after-save
-        // intent in `close_window_after_save`. Both must be cleared
-        // on failure or the next unrelated SaveCompleted on another
-        // tab will spuriously close the window.
-        self.close_after_save.borrow_mut().remove(&tab_id);
-        self.close_window_after_save.set(false);
-        self.send_to_structure_tab(tab_id, StructureTabInput::SaveFailed(message));
     }
 
     /// Sidebar "Show CREATE TABLE": the statements that recreate the
@@ -395,7 +270,7 @@ impl App {
                     Ok(None) => crate::i18n::gettext_f("Table {table} has no columns.", &[("table", &table)]),
                     Err(error) => crate::i18n::gettext_f(
                         "Couldn't build SQL: {error}",
-                        &[("error", &crate::ui::structure_tab::build_error_text(&error))],
+                        &[("error", &error_text::build_error_text(&error))],
                     ),
                 },
                 Err(error) => crate::i18n::gettext_f(
@@ -407,7 +282,7 @@ impl App {
         });
     }
 
-    fn send_to_structure_tab(&self, tab_id: Uuid, msg: StructureTabInput) {
+    pub(super) fn send_to_structure_tab(&self, tab_id: Uuid, msg: StructureTabInput) {
         let structure = self
             .workspace_tabs
             .borrow()
@@ -496,37 +371,6 @@ impl App {
         page.set_needs_attention(combined_dirty && !is_selected);
         self.refresh_window_title();
     }
-}
-
-/// Plan a schema change with the dialect of the connection that runs
-/// it, and run the plan as one write. The statements come back whether
-/// or not the write went through, for the history. `operation` is what
-/// a connection with no DDL dialect refuses.
-async fn run_schema_plan<P>(
-    session: Arc<Session>,
-    table: TableRef,
-    operation: DdlOperation,
-    plan: P,
-) -> Result<(Vec<String>, Result<WriteReport, OperationError>), OperationError>
-where
-    P: Fn(&dyn DdlDialect, &TableRef) -> Result<DdlPlan, BuildDdlError> + Send + Sync,
-{
-    session
-        .run(OperationKind::Save(WriteKind::SchemaChanges), move |lease, options| {
-            let table = table.clone();
-            let dialect = lease.dialect();
-            let planned = match dialect.ddl() {
-                Some(ddl) => plan(ddl, &table).map_err(SqlBuildError::from),
-                None => Err(SqlBuildError::from(BuildDdlError::Unsupported(operation))),
-            };
-            async move {
-                let plan = planned?;
-                let statements: Vec<String> = plan.sql().into_iter().map(str::to_owned).collect();
-                let written = lease.write_batch(&plan.into_write_batch(table), options).await;
-                Ok((statements, written.map_err(OperationError::from)))
-            }
-        })
-        .await
 }
 
 /// The table's definition and the dialect of the connection that read

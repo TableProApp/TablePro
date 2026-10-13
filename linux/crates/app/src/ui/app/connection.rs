@@ -23,9 +23,9 @@ use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill
 use crate::ui::error_text::TlsRemedy;
 use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::ssh_inputs::SshEnvironment;
+use crate::workspace::CloseDecision;
 
 use super::connect_flow::{self, SubmitError};
-use super::teardown_guard::Teardown;
 use super::{App, AppMsg, qualified_label};
 
 /// What a failed connect can be retried from: the connection as it was
@@ -153,7 +153,7 @@ impl App {
     pub(super) fn on_connect_submission(&mut self, submission: ConnectSubmission, sender: ComponentSender<Self>) {
         if self.context.active.is_connected() {
             let proceed = AppMsg::ConnectSubmissionConfirmed(Box::new(submission));
-            self.confirm_teardown(Teardown::Switch, proceed, sender);
+            self.close_workspace_then(proceed, sender);
             return;
         }
         self.connect_submission(submission, sender);
@@ -259,27 +259,42 @@ impl App {
     /// Adopt a session that connected: claim its key, start it, and
     /// build the workspace on its catalog.
     pub(super) fn on_session_ready(&mut self, ready: ReadySession, sender: ComponentSender<Self>) {
+        if ready
+            .generation
+            .is_some_and(|generation| !self.connect_attempts.accepts(generation))
+        {
+            self.discard_pending(ready.pending);
+            return;
+        }
+        self.dismiss_loading_page();
+        if self.session_links.as_ref().is_some_and(|links| links.key == ready.key) {
+            self.discard_pending(ready.pending);
+            self.show_toast(&crate::i18n::gettext("This connection is already open."));
+            return;
+        }
+        // One window shows one database, so the one open now goes first.
+        // The switch asked before it connected; this asks again about
+        // anything edited or begun while it connected.
+        if self.context.active.is_connected() {
+            if !self.close_guards.may_tear_down(&self.workspace_handle) {
+                self.close_guards
+                    .ask_tear_down(self.window.upcast_ref(), &self.workspace_handle, move |decision| {
+                        sender.input(match decision {
+                            CloseDecision::Approved => AppMsg::SessionReady(Box::new(ready)),
+                            CloseDecision::Cancelled => AppMsg::SessionDeclined(Box::new(ready)),
+                        });
+                    });
+                return;
+            }
+            self.release_session(sender.clone());
+        }
         let ReadySession {
             key,
             pending,
             credentials,
             warnings,
-            generation,
+            generation: _,
         } = ready;
-        if generation.is_some_and(|generation| !self.connect_attempts.accepts(generation)) {
-            self.discard_pending(pending);
-            return;
-        }
-        self.dismiss_loading_page();
-        if self.session_links.as_ref().is_some_and(|links| links.key == key) {
-            self.discard_pending(pending);
-            self.show_toast(&crate::i18n::gettext("This connection is already open."));
-            return;
-        }
-        // One window shows one database, so the one open now goes first.
-        if self.context.active.is_connected() {
-            self.release_session(sender.clone());
-        }
         let claim = match self.context.sessions.claim(key.clone(), self.window.id()) {
             Ok(claim) => claim,
             Err(ClaimError::AlreadyOpen { .. }) => {
@@ -361,6 +376,11 @@ impl App {
 
     /// Throw away a connection nobody adopted, closing it under the
     /// close deadline while the process stays alive for it.
+    /// The user kept the tabs a switch would have closed.
+    pub(super) fn on_session_declined(&self, ready: ReadySession) {
+        self.discard_pending(ready.pending);
+    }
+
     fn discard_pending(&self, pending: PendingSession) {
         let hold = self.context.hold.acquire();
         let closing = self.context.tasks.spawn_task(pending.discard());
@@ -425,7 +445,7 @@ impl App {
     }
 
     pub(super) fn on_disconnect(&mut self, sender: ComponentSender<Self>) {
-        self.confirm_teardown(Teardown::Disconnect, AppMsg::ForceDisconnect, sender);
+        self.close_workspace_then(AppMsg::ForceDisconnect, sender);
     }
 
     pub(super) fn do_disconnect(&mut self, sender: ComponentSender<Self>) {
@@ -752,7 +772,7 @@ impl App {
             return;
         }
         if self.context.active.is_connected() {
-            self.confirm_teardown(Teardown::Switch, AppMsg::OpenSavedConfirmed(saved), sender);
+            self.close_workspace_then(AppMsg::OpenSavedConfirmed(saved), sender);
             return;
         }
         self.connect_saved(saved, sender);

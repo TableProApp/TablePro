@@ -14,8 +14,8 @@ use tablepro_session::{OperationError, OperationKind, Session};
 use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::import_dialog::{CsvImport, MAX_CSV_FILE_BYTES};
 
-use super::ran_statements::RanStatements;
 use super::{App, AppMsg};
+use crate::workspace::RanStatements;
 
 /// How many of an import's statements go into the log line that
 /// announces it, so a failed import has something to read back.

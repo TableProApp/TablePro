@@ -13,7 +13,7 @@ use tablepro_storage::query_history::{NewEntry, Outcome};
 /// before the work starts, because the connection can be gone by the
 /// time the answer comes back.
 #[derive(Debug, Clone)]
-pub(super) struct RanStatements {
+pub(crate) struct RanStatements {
     history: Option<QueryHistory>,
     connection: Option<ConnectionMetadata>,
     sql: String,
@@ -23,7 +23,7 @@ pub(super) struct RanStatements {
 impl RanStatements {
     /// Capture the batch about to run. `sql` reads as one entry in the
     /// history list, which is how the user thinks of one save.
-    pub(super) fn starting(
+    pub(crate) fn starting(
         history: Option<QueryHistory>,
         connection: Option<ConnectionMetadata>,
         statements: impl IntoIterator<Item = String>,
@@ -40,7 +40,7 @@ impl RanStatements {
     /// the batch was empty, and never fails the save it describes: a
     /// history that cannot be written is worth a log line, not a lost
     /// edit.
-    pub(super) async fn finished(self, rows_affected: Option<i64>, outcome: Outcome) {
+    pub(crate) async fn finished(self, rows_affected: Option<i64>, outcome: Outcome) {
         let (Some(history), Some(connection)) = (self.history, self.connection) else {
             return;
         };
