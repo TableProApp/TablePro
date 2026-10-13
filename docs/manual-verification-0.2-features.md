@@ -68,6 +68,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] Connections are grouped, with one section per group and an ungrouped section.
 - [ ] A group that appears twice in the ordering still renders one section.
 - [ ] The colour swatch shows on a tagged row and the picker sets it. **2026-10-12 Hyprland dark:** the picker saved the colour; the swatch was not checked.
+- [ ] With Orca, open Group and tags, navigate to Colour, open the named button, choose a palette colour, and confirm the selected colour is announced and saved. Sidebar table search and the saved-filter name field announce their purpose. Native Wayland screen-reader check pending.
 - [ ] Duplicate produces a new row with a distinct name, and connecting to it asks for credentials rather than reusing the original's. **2026-10-12 Hyprland dark:** distinct name passed ("(copy)"); the copy did not reuse the password but did not ask for one either, it failed and offered Edit Connection, [#660](https://github.com/cozyGarage/BookiE/issues/660).
 - [ ] The Name field in the connect dialog is used when set, and the derived `user@host` label still appears when it is blank.
 - [ ] Two connections to the same endpoint stay separate after reconnecting to each. This is the regression the id-first identity change fixed.

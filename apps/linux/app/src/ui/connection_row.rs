@@ -19,6 +19,7 @@ pub struct ConnectionRowInit {
 pub struct ConnectionRow {
     saved: SavedConnection,
     organization: ConnectionOrganization,
+    group_tags_button: gtk::Button,
     /// AdwActionRow root widget. Cached so the trash button's
     /// confirmation dialog can `present()` against it (the dialog
     /// walks up to find the GtkWindow, but it needs *some* widget
@@ -99,13 +100,7 @@ impl FactoryComponent for ConnectionRow {
                 connect_clicked => ConnectionRowMsg::ToggleFavorite,
             },
 
-            add_suffix = &gtk::Button {
-                set_icon_name: "view-list-bullet-symbolic",
-                set_valign: gtk::Align::Center,
-                set_tooltip_text: Some(crate::tr!("Group and tags").as_str()),
-                add_css_class: "flat",
-                connect_clicked => ConnectionRowMsg::Organize,
-            },
+            add_suffix = &self.group_tags_button.clone(),
 
             add_suffix = &gtk::Button {
                 set_icon_name: "document-edit-symbolic",
@@ -143,9 +138,18 @@ impl FactoryComponent for ConnectionRow {
     }
 
     fn init_model(init: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
+        let group_tags_label = crate::tr!("Group and tags");
+        let group_tags_button = gtk::Button::builder()
+            .icon_name("view-list-bullet-symbolic")
+            .valign(gtk::Align::Center)
+            .tooltip_text(&group_tags_label)
+            .css_classes(["flat"])
+            .build();
+        group_tags_button.update_property(&[gtk::accessible::Property::Label(&group_tags_label)]);
         Self {
             saved: init.saved,
             organization: init.organization,
+            group_tags_button,
             root: None,
         }
     }
@@ -158,6 +162,9 @@ impl FactoryComponent for ConnectionRow {
         sender: FactorySender<Self>,
     ) -> Self::Widgets {
         let widgets = view_output!();
+        let sender_for_group_tags = sender.clone();
+        self.group_tags_button
+            .connect_clicked(move |_| sender_for_group_tags.input(ConnectionRowMsg::Organize));
         // Stash for the destructive-confirm dialog in update().
         self.root = Some(root.clone().upcast::<gtk::Widget>());
         widgets

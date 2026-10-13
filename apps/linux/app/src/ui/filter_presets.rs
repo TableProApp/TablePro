@@ -43,6 +43,7 @@ pub fn build(
         .max_length(48)
         .hexpand(true)
         .build();
+    name.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Filter name"))]);
     let save = gtk::Button::with_label(&crate::tr!("Save as"));
     let apply = gtk::Button::with_label(&crate::tr!("Apply saved"));
     let rename = gtk::Button::with_label(&crate::tr!("Rename"));

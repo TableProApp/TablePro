@@ -625,6 +625,23 @@ GLib.MainLoop().run()
         ]
         assert not unnamed, "controls without an accessible name:\n" + "\n".join(unnamed)
 
+    def connection_colour_chooser_has_an_accessible_button(database, base):
+        ui.invoke_accessible_action("win.disconnect")
+        ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON)
+        ui.invoke(ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON))
+        row = ui.wait_for_node(name=ui.CONNECTION_NAME, role=pyatspi.ROLE_LIST_ITEM)
+        ui.invoke(ui.wait_within(row, name="Group and tags", role=pyatspi.ROLE_PUSH_BUTTON))
+        chooser = ui.wait_for_node(name="No colour", role=pyatspi.ROLE_PUSH_BUTTON)
+        actions = chooser.queryAction()
+        assert any(actions.getName(index) == "click" for index in range(actions.nActions)), (
+            f"colour chooser has no accessible click action:\n{ui.accessible_snapshot()}"
+        )
+        ui.invoke(chooser)
+        option = ui.wait_for_node(name="blue", role=pyatspi.ROLE_PUSH_BUTTON)
+        ui.invoke(option)
+        ui.wait_for_node(name="No colour", role=pyatspi.ROLE_PUSH_BUTTON, present=False)
+        ui.wait_for_node(name="blue", role=pyatspi.ROLE_PUSH_BUTTON)
+
     def alt_arrows_jump_between_statements(database, base):
         sql = "select 1;\nselect 2;\nselect 3"
         editor = ui.set_editor_text(sql)
@@ -1414,6 +1431,7 @@ GLib.MainLoop().run()
         ctrl_tab_returns_to_the_most_recently_used_tab,
         holding_ctrl_while_pressing_tab_walks_deeper_into_the_history,
         interactive_controls_have_accessible_names,
+        connection_colour_chooser_has_an_accessible_button,
         alt_arrows_jump_between_statements,
         row_inspector_lists_every_column_of_the_selected_row,
         query_history_opens_as_a_docked_panel_and_closes_without_leaving_the_workspace,

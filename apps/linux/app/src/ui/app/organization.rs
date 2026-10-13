@@ -1,3 +1,6 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender, adw, gtk};
 
@@ -96,13 +99,7 @@ impl App {
             .build();
         tags_row.set_text(&current.tags.join(", "));
 
-        let color_labels: Vec<String> = color_choice_labels();
-        let color_refs: Vec<&str> = color_labels.iter().map(String::as_str).collect();
-        let color_row = adw::ComboRow::builder()
-            .title(crate::tr!("Colour"))
-            .model(&gtk::StringList::new(&color_refs))
-            .build();
-        color_row.set_selected(color_choice_index(current.color.as_deref()));
+        let (color_row, selected_color) = color_chooser(color_choice_index(current.color.as_deref()));
 
         let list = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::None)
@@ -127,7 +124,7 @@ impl App {
                 return;
             }
             let tags = split_tags(&tags_row.text());
-            let color = color_for_choice(color_row.selected());
+            let color = color_for_choice(selected_color.get());
             match ConnectionOrganization::new(Some(&group_row.text()), &tags, favorite)
                 .map(|organization| organization.with_color(color))
             {
@@ -231,6 +228,68 @@ impl App {
     pub(super) fn on_import_connection_url_failed(&self) {
         self.show_toast(&crate::tr!("The imported connection could not be saved."));
     }
+}
+
+fn color_chooser(initial: u32) -> (adw::ActionRow, Rc<Cell<u32>>) {
+    let labels = color_choice_labels();
+    let selected = Rc::new(Cell::new(initial));
+    let current_label = labels
+        .get(initial as usize)
+        .map_or_else(|| labels[0].clone(), Clone::clone);
+    let button = gtk::Button::with_label(&current_label);
+    button.update_property(&[gtk::accessible::Property::Label(&current_label)]);
+    let popover = gtk::Popover::new();
+    let choices = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .margin_top(6)
+        .margin_bottom(6)
+        .margin_start(6)
+        .margin_end(6)
+        .build();
+    for (index, label) in labels.iter().enumerate() {
+        append_color_choice(&choices, &popover, &button, &selected, index as u32, label);
+    }
+    popover.set_child(Some(&choices));
+    popover.set_parent(&button);
+    let popover_ref = popover.downgrade();
+    button.connect_clicked(move |_| {
+        if let Some(popover) = popover_ref.upgrade() {
+            popover.popup();
+        }
+    });
+
+    let row = adw::ActionRow::builder().title(crate::tr!("Colour")).build();
+    row.add_suffix(&button);
+    (row, selected)
+}
+
+fn append_color_choice(
+    choices: &gtk::Box,
+    popover: &gtk::Popover,
+    button: &gtk::Button,
+    selected: &Rc<Cell<u32>>,
+    index: u32,
+    label: &str,
+) {
+    let choice = gtk::Button::with_label(label);
+    choice.update_property(&[gtk::accessible::Property::Label(label)]);
+    choice.set_halign(gtk::Align::Fill);
+    let selected = Rc::clone(selected);
+    let button_ref = button.downgrade();
+    let popover_ref = popover.downgrade();
+    let label = label.to_owned();
+    choice.connect_clicked(move |_| {
+        selected.set(index);
+        if let Some(button) = button_ref.upgrade() {
+            button.set_label(&label);
+            button.update_property(&[gtk::accessible::Property::Label(&label)]);
+        }
+        if let Some(popover) = popover_ref.upgrade() {
+            popover.popdown();
+        }
+    });
+    choices.append(&choice);
 }
 
 enum OrganizationMutation {

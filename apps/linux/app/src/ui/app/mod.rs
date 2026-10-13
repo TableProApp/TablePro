@@ -470,6 +470,9 @@ impl SimpleComponent for App {
             mcp_bridge,
         } = init;
         let widgets = view_output!();
+        widgets
+            .table_search
+            .update_property(&[gtk::accessible::Property::Label(&crate::tr!("Search tables"))]);
 
         let schema_filter_list = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
