@@ -33,7 +33,10 @@ Each engine plans structure changes through its own `DdlDialect`, reached from `
 - MariaDB names a column's CHECK constraint after the column it was written on and keeps that name through a rename, so the check is placed by the column line of SHOW CREATE TABLE it ends. A check no line ends with refuses the restatement of every column without one.
 - The server reads a restated expression against the names the same ALTER gives, so a MySQL restatement whose CHECK, generated expression or default names a column renamed in the same change is refused, and the rename is saved on its own first.
 - On SQL Server, a type change whose new type cannot take the column's SPARSE or data mask is refused, as is any nullability or default change on a SPARSE column.
-- Primary-key identity on PostgreSQL and SQLite table rebuilds are plans of their own, added to the same dialects later, and their capabilities are off until then.
+- Engines that rename one column per statement (PostgreSQL, SQL Server, SQLite, ClickHouse) run the renames in an order where each new name is free, and a swap or longer cycle steps one column aside to `__tablepro_rename_<n>` first. MySQL reads every clause of its one ALTER against the table as it was, so its renames need no order. PostgreSQL runs the drops before the renames when a save has both, so a column can take the name of one the same save drops.
+- Turning numbering on for a PostgreSQL integer column adds a `BY DEFAULT` identity and moves its sequence past the largest key in the same transaction. Turning it off drops the identity, or the default of a serial column, whose sequence stays.
+- A plan for a non-empty change writes at least one statement or refuses it, so a save never reports success for a table it left as it was.
+- SQLite table rebuilds are a plan of their own, added to the same dialect later, and their capabilities are off until then.
 
 ## Alternatives considered
 
