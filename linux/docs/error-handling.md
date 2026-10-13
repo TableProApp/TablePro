@@ -106,7 +106,6 @@ The engine pages ([PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drive
 | `LockWait` | `WorkspaceSettings::lock_timeout`, 10 s | Another session holds a lock this statement needs. |
 | `Statement` | The call's deadline, or the workspace statement timeout of 60 s | The statement ran too long. `server_cancelled` says whether the server confirmed the stop. |
 | `Probe` | `probe_timeout`, 5 s | The server did not answer a liveness check. |
-| `CancelAcknowledgement` | `cancel_grace`, 5 s | The server did not confirm a stop. No shipped driver raises it: a stop the server never confirms ends as an abandoned call, `ConnectionLost`. |
 
 ## `TlsFailure` and its remedies
 
