@@ -13,12 +13,17 @@ internal struct StructureListRow<ID: Hashable>: Hashable {
     internal let values: [String]
 }
 
+/// Selected row ids held by reference: a read made during a SwiftUI update gets a `State` or `Binding` snapshot.
+@MainActor
+internal final class StructureListSelection<ID: Hashable>: ObservableObject {
+    @Published internal var ids: Set<ID> = []
+}
+
 /// A read-only Structure list drawn by `DataGridView`. Its configuration names only the database type,
 /// so `columnLayoutKey` stays nil and the list never writes into the table's saved column widths.
 @MainActor
 internal final class StructureListGridModel<ID: Hashable>: ObservableObject, DataGridViewDelegate {
     internal let changeManager = AnyChangeManager(DataChangeManager())
-    internal let restoresSelectionAfterReload: Bool
     internal var onSortStateChanged: ((SortState) -> Void)?
     private let accessibilityLabel: String?
 
@@ -27,9 +32,8 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
     private var loadedKey: Int?
     private weak var coordinator: TableViewCoordinator?
 
-    internal init(accessibilityLabel: String? = nil, restoresSelectionAfterReload: Bool = false) {
+    internal init(accessibilityLabel: String? = nil) {
         self.accessibilityLabel = accessibilityLabel
-        self.restoresSelectionAfterReload = restoresSelectionAfterReload
     }
 
     internal func ensureLoaded(key: Int, columns: [String], rows: () -> [StructureListRow<ID>]) -> TableRows {
@@ -74,15 +78,33 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
         })
     }
 
+    /// The grid's row selection kept by row identity, so a sort, a filter or a refresh moves it with its rows.
+    /// Build it after `ensureLoaded`: the grid reads the positions it held when the binding was built.
+    internal func selection(
+        get selectedIDs: @escaping () -> Set<ID>,
+        set select: @escaping (Set<ID>) -> Void
+    ) -> Binding<Set<Int>> {
+        Binding(
+            get: { self.displayRows(of: selectedIDs()) },
+            set: { rows in
+                // Until the grid puts the selection back after a reload, what it publishes names the rows it showed before.
+                guard self.coordinator?.hasRestoredSelection != false else { return }
+                let current = selectedIDs()
+                guard rows != self.displayRows(of: current) else { return }
+                let selected = self.ids(atDisplayRows: rows)
+                guard selected != current else { return }
+                select(selected)
+            }
+        )
+    }
+
     internal func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
         coordinator = tableViewCoordinator
         if let accessibilityLabel {
             tableViewCoordinator.tableView?.setAccessibilityLabel(accessibilityLabel)
         }
-        // A reload drops the table view's selection without a notification, so a selection kept by identity is put back after each one.
-        if restoresSelectionAfterReload {
-            tableViewCoordinator.hasRestoredSelection = false
-        }
+        // A reload drops the table view's selection without a notification, so the selection kept by identity is put back after each one.
+        tableViewCoordinator.hasRestoredSelection = false
     }
 
     internal func dataGridSortStateChanged(_ state: SortState) {
@@ -99,25 +121,44 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
     }
 }
 
-/// A nil `sortState` turns header sorting off.
+/// A nil `sortState` turns header sorting off. `defaultWidths` follows `columns` by index.
 internal struct StructureListGrid<ID: Hashable>: View {
     internal let model: StructureListGridModel<ID>
     internal let columns: [String]
+    internal var defaultWidths: [CGFloat] = []
     internal let contentKey: Int
     internal let rows: () -> [StructureListRow<ID>]
     internal let databaseType: DatabaseType
-    @Binding internal var selectedRows: Set<Int>
+    internal let selectedIDs: () -> Set<ID>
+    internal let select: (Set<ID>) -> Void
     internal var sortState: Binding<SortState>?
     @Binding internal var columnLayout: ColumnLayoutState
+
+    internal static func layout(
+        _ layout: ColumnLayoutState,
+        columns: [String],
+        defaultWidths: [CGFloat]
+    ) -> ColumnLayoutState {
+        var filled = layout
+        for (column, width) in zip(columns, defaultWidths) where filled.columnWidths[column] == nil {
+            filled.columnWidths[column] = width
+        }
+        return filled
+    }
 
     internal var body: some View {
         let model = model
         let columns = columns
-        let rows = rows
-        let key = contentKey
+        let defaultWidths = defaultWidths
         let sortState = sortState
+        let tableRows = model.ensureLoaded(key: contentKey, columns: columns, rows: rows)
+        let storedLayout = $columnLayout
+        let layout = Binding(
+            get: { Self.layout(storedLayout.wrappedValue, columns: columns, defaultWidths: defaultWidths) },
+            set: { storedLayout.wrappedValue = $0 }
+        )
         return DataGridView(
-            tableRowsProvider: { model.ensureLoaded(key: key, columns: columns, rows: rows) },
+            tableRowsProvider: { tableRows },
             changeManager: model.changeManager,
             isEditable: false,
             configuration: DataGridConfiguration(
@@ -127,10 +168,10 @@ internal struct StructureListGrid<ID: Hashable>: View {
                 supportsColumnSort: sortState != nil
             ),
             delegate: model,
-            selectedRowIndices: $selectedRows,
+            selectedRowIndices: model.selection(get: selectedIDs, set: select),
             sortState: sortState ?? .constant(SortState()),
-            columnLayout: $columnLayout,
-            contentRevision: key
+            columnLayout: layout,
+            contentRevision: contentKey
         )
         .onAppear {
             guard let sortState else { return }

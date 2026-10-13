@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import SwiftUI
 import TableProPluginKit
 
@@ -16,11 +15,11 @@ import TableProPluginKit
 /// on two engine names.
 struct MaintenanceSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var themeEngine = ThemeEngine.shared
 
     let operation: PluginMaintenanceOperation
     let tableName: String?
     let databaseName: String?
+    let databaseType: DatabaseType
     /// Statements for the given option values. Synchronous and pure, so calling it for every toggle
     /// while `body` runs costs an array of strings.
     let preview: ([String: String]) -> [String]
@@ -32,12 +31,14 @@ struct MaintenanceSheet: View {
         operation: PluginMaintenanceOperation,
         tableName: String?,
         databaseName: String?,
+        databaseType: DatabaseType,
         preview: @escaping ([String: String]) -> [String],
         onExecute: @escaping ([String: String]) -> Void
     ) {
         self.operation = operation
         self.tableName = tableName
         self.databaseName = databaseName
+        self.databaseType = databaseType
         self.preview = preview
         self.onExecute = onExecute
         _values = State(initialValue: operation.defaultOptionValues)
@@ -61,9 +62,12 @@ struct MaintenanceSheet: View {
                 Text(String(localized: "SQL Preview"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                HighlightedSQLTextView(sql: sqlPreview)
-                    .frame(height: Self.previewHeight(for: sqlPreview, font: themeEngine.editorFonts.font))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                HighlightedSQLTextView(
+                    sql: sqlPreview,
+                    databaseType: databaseType,
+                    lineLayout: .fitted(maxLines: Self.previewMaxLines)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
             Divider()
@@ -143,14 +147,4 @@ struct MaintenanceSheet: View {
     }
 
     internal static let previewMaxLines = 8
-
-    /// The text view does not wrap, so the box grows by line count up to a cap and scrolls past it.
-    /// 24 is the text view's 12 pt inset, top and bottom.
-    internal static func previewHeight(for sql: String, font: NSFont) -> CGFloat {
-        let lineCount = sql.reduce(into: 1) { count, character in
-            if character.isNewline { count += 1 }
-        }
-        let shownLines = min(lineCount, previewMaxLines)
-        return CGFloat(shownLines) * NSLayoutManager().defaultLineHeight(for: font) + 24
-    }
 }

@@ -321,9 +321,9 @@ struct JSONTreeParserTests {
         NSAppearance.Name.aqua, .darkAqua
     ])
     func tonesUseTheDefaultSyntaxColors(appearance: NSAppearance.Name) throws {
-        try TreeThemeFixture.with([:]) {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
             let theme = appearance == .aqua ? BuiltInThemes.light : BuiltInThemes.dark
-            @MainActor func drawn(_ tone: TreeValueTone) -> String? { TreeThemeFixture.hex(tone.color, in: appearance) }
+            @MainActor func drawn(_ tone: TreeValueTone) -> String? { ThemeTestFixture.hex(tone.color, in: appearance) }
 
             #expect(drawn(.key) == theme.overrides[.syntaxString]?.hex)
             #expect(drawn(.string) == theme.overrides[.syntaxString]?.hex)
@@ -331,7 +331,7 @@ struct JSONTreeParserTests {
             #expect(drawn(.literal) == theme.overrides[.syntaxNull]?.hex)
             #expect(drawn(.serialized) == theme.overrides[.syntaxType]?.hex)
             #expect(drawn(.reference) == theme.overrides[.syntaxComment]?.hex)
-            #expect(drawn(.container) == TreeThemeFixture.hex(.textColor, in: appearance))
+            #expect(drawn(.container) == ThemeTestFixture.hex(.textColor, in: appearance))
         }
     }
 
@@ -340,23 +340,23 @@ struct JSONTreeParserTests {
         NSAppearance.Name.aqua, .darkAqua
     ])
     func mutedToneStaysNative(appearance: NSAppearance.Name) throws {
-        try TreeThemeFixture.with([:]) {
-            let muted = TreeThemeFixture.hex(TreeValueTone.muted.color, in: appearance)
-            #expect(muted == TreeThemeFixture.hex(.secondaryLabelColor, in: appearance))
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let muted = ThemeTestFixture.hex(TreeValueTone.muted.color, in: appearance)
+            #expect(muted == ThemeTestFixture.hex(.secondaryLabelColor, in: appearance))
         }
     }
 
     @MainActor
     @Test("A theme's syntax colors reach every tone")
     func tonesFollowTheTheme() throws {
-        try TreeThemeFixture.with(TreeThemeFixture.tones) {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
             let expected: [(TreeValueTone, ThemeSlot)] = [
                 (.key, .syntaxString), (.string, .syntaxString), (.number, .syntaxNumber),
                 (.literal, .syntaxNull), (.serialized, .syntaxType), (.reference, .syntaxComment),
                 (.container, .editorText), (.muted, .editorLineNumber)
             ]
             for (tone, slot) in expected {
-                #expect(TreeThemeFixture.hex(tone.color) == TreeThemeFixture.tones[slot], "\(tone)")
+                #expect(ThemeTestFixture.hex(tone.color) == TreeOutlineFixture.tones[slot], "\(tone)")
             }
         }
     }

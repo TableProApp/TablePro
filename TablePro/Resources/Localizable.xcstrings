@@ -171522,16 +171522,6 @@
     "Sum %@" : {
 
     },
-    "Sum %@ · Average %@ · Count %lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Sum %1$@ · Average %2$@ · Count %3$lld"
-          }
-        }
-      }
-    },
     "Sum %@, Average %@, Count %lld" : {
       "localizations" : {
         "en" : {

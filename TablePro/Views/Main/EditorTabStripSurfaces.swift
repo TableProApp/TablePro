@@ -15,12 +15,21 @@ import SwiftUI
 internal enum EditorTabStripPalette {
     /// Measured at rgb(220) light and rgb(70) dark. The system's own tab track measures rgb(232)
     /// and rgb(71), so this is within a level of it in dark and slightly deeper in light.
-    /// A theme that colors the window takes the track with it, so the strip does not sit on it as a gray band.
     @MainActor internal static var trackFill: Color {
-        Color(nsColor: ThemeEngine.shared.palette.color(
-            .windowBackdrop,
-            otherwise: .unemphasizedSelectedContentBackgroundColor
-        ))
+        Color(nsColor: trackColor(followsWindowBackdrop: followsWindowBackdrop))
+    }
+
+    /// The track sits in the titlebar, which takes the theme's window color only where `ThemeWindowBackdrop` sets it.
+    internal static var followsWindowBackdrop: Bool {
+        if #available(macOS 26.0, *) { return true }
+        return false
+    }
+
+    @MainActor
+    internal static func trackColor(followsWindowBackdrop: Bool, engine: ThemeEngine = .shared) -> NSColor {
+        let native = NSColor.unemphasizedSelectedContentBackgroundColor
+        guard followsWindowBackdrop else { return native }
+        return engine.palette.color(.windowBackdrop, otherwise: native)
     }
 
     /// Opaque white in light, and white at alpha 0.247 in dark. That asymmetry is the whole reason

@@ -22,7 +22,7 @@ struct CompareStatusStyleTests {
 
     @Test("Object and row statuses use the system green, orange and red under any theme")
     func statusTintsAreSystemColors() throws {
-        try PaneThemeFixture.withEverySlotOverridden {
+        try ThemeTestFixture.withEverySlotOverridden {
             #expect(CompareStatusStyle.tint(for: TableDiffStatus.onlyInSource) == .green)
             #expect(CompareStatusStyle.tint(for: TableDiffStatus.onlyInTarget) == .red)
             #expect(CompareStatusStyle.tint(for: TableDiffStatus.differs) == .orange)
@@ -61,7 +61,7 @@ struct CompareStatusStyleTests {
 
     @Test("A changed line takes the theme's grid tint in the appearance whose theme sets it")
     func rowTintsFollowTheThemeWhenOverridden() throws {
-        let dark = try ThemedRenderFixture.theme(.dark, [
+        let dark = try ThemeTestFixture.theme(.dark, [
             .gridInserted: "#00FF0040",
             .gridModified: "#FFFF0040",
             .gridDeleted: "#FF000040",
@@ -85,7 +85,7 @@ struct CompareStatusStyleTests {
 
     @Test("The text diff reads the live theme through the shared engine")
     func rowTintsReadTheActiveTheme() throws {
-        try PaneThemeFixture.withEverySlotOverridden {
+        try ThemeTestFixture.withEverySlotOverridden {
             let palette = ThemeEngine.shared.palette
             for name in [NSAppearance.Name.aqua, .darkAqua] {
                 let appearance = try #require(NSAppearance(named: name))
@@ -128,7 +128,8 @@ struct CompareStatusStyleTests {
     @Test("A diff with its own tint keeps it under the default pair")
     func lineTintKeepsTheNativeUnderTheDefaultPair() {
         let native = Color.green.opacity(0.16)
-        ThemedRenderFixture.adopting(.builtIn) { engine in
+        ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let engine = ThemeEngine.shared
             for kind in [RowDiffKind.insert, .update, .delete, .identical, .conflict] {
                 #expect(CompareStatusStyle.lineTint(for: kind, native: native, engine: engine, contrast: .standard) == native)
             }
@@ -138,8 +139,9 @@ struct CompareStatusStyleTests {
     @Test("A diff with its own tint takes the grid's tint where the theme sets one")
     func lineTintFollowsTheTheme() throws {
         let native = Color.red.opacity(0.16)
-        let pair = try ThemedRenderFixture.pair([.gridDeleted: "#FF000040"])
-        ThemedRenderFixture.adopting(pair) { engine in
+        let pair = try ThemeTestFixture.pair([.gridDeleted: "#FF000040"])
+        ThemeTestFixture.adopting(pair, appearance: .dark) {
+            let engine = ThemeEngine.shared
             let themed = Color(nsColor: engine.palette[.gridDeleted])
             #expect(CompareStatusStyle.lineTint(for: .delete, native: native, engine: engine, contrast: .standard) == themed)
             #expect(CompareStatusStyle.lineTint(for: .delete, native: native, engine: engine, contrast: .increased) == themed)
@@ -152,7 +154,8 @@ struct CompareStatusStyleTests {
 
     @Test("Diff text stays the system's own under the default pair")
     func lineTextIsNativeUnderTheDefaultPair() {
-        ThemedRenderFixture.adopting(.builtIn) { engine in
+        ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let engine = ThemeEngine.shared
             for kind in [RowDiffKind?.none, .insert, .update, .delete] {
                 #expect(CompareStatusStyle.lineTextOverride(for: kind, engine: engine, contrast: .standard) == nil)
             }
@@ -161,8 +164,9 @@ struct CompareStatusStyleTests {
 
     @Test("A deleted line takes the grid's deleted text and every other line the editor's text")
     func lineTextFollowsTheTheme() throws {
-        let pair = try ThemedRenderFixture.pair([.editorText: "#E0E0E0", .gridDeletedText: "#FF555580"])
-        ThemedRenderFixture.adopting(pair) { engine in
+        let pair = try ThemeTestFixture.pair([.editorText: "#E0E0E0", .gridDeletedText: "#FF555580"])
+        ThemeTestFixture.adopting(pair, appearance: .dark) {
+            let engine = ThemeEngine.shared
             let editorText = Color(nsColor: engine.palette[.editorText])
             let deletedText = Color(nsColor: engine.palette[.gridDeletedText])
             #expect(CompareStatusStyle.lineTextOverride(for: .delete, engine: engine, contrast: .standard) == deletedText)
@@ -173,14 +177,16 @@ struct CompareStatusStyleTests {
 
     @Test("A deleted line falls back to the editor's text when the theme leaves deleted text out")
     func deletedLineFallsBackToEditorText() throws {
-        let pair = try ThemedRenderFixture.pair([.editorText: "#E0E0E0"])
-        ThemedRenderFixture.adopting(pair) { engine in
+        let pair = try ThemeTestFixture.pair([.editorText: "#E0E0E0"])
+        ThemeTestFixture.adopting(pair, appearance: .dark) {
+            let engine = ThemeEngine.shared
             let editorText = Color(nsColor: engine.palette[.editorText])
             #expect(CompareStatusStyle.lineTextOverride(for: .delete, engine: engine, contrast: .standard) == editorText)
         }
 
-        let deletedOnly = try ThemedRenderFixture.pair([.gridDeletedText: "#FF555580"])
-        ThemedRenderFixture.adopting(deletedOnly) { engine in
+        let deletedOnly = try ThemeTestFixture.pair([.gridDeletedText: "#FF555580"])
+        ThemeTestFixture.adopting(deletedOnly, appearance: .dark) {
+            let engine = ThemeEngine.shared
             #expect(CompareStatusStyle.lineTextOverride(for: .insert, engine: engine, contrast: .standard) == nil)
             #expect(
                 CompareStatusStyle.lineTextOverride(for: .delete, engine: engine, contrast: .standard)

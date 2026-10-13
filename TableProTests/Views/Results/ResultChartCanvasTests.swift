@@ -180,39 +180,39 @@ struct ResultChartCanvasTests {
 
     @Test("The plot stands in for the grid: its background under a theme, its own wash by default")
     func plotTakesTheGridBackground() throws {
-        try DiagramThemeFixture.preservingEngine {
+        try ThemeTestFixture.preservingEngine {
             let view = ResultChartCanvas(projection: singleSeriesProjection, chartType: .bar)
                 .frame(width: 640, height: 360)
                 .accentColor(.red)
             let total = 640 * 360
-            let theme = try #require(DiagramThemeFixture.reference(Color(nsColor: HexColor.color("#FFD0E0")), colorScheme: .light))
-            let wash = try #require(DiagramThemeFixture.reference(
+            let theme = try ThemeTestFixture.filled(hex: "#FFD0E0", colorScheme: .light)
+            let wash = try ThemeTestFixture.filled(
                 Color(nsColor: .controlBackgroundColor).opacity(0.45), colorScheme: .light
-            ))
+            )
 
-            try DiagramThemeFixture.adopt([:])
-            let native = try #require(DiagramThemeFixture.render(view, colorScheme: .light))
-            #expect(DiagramThemeFixture.count(in: native, matching: theme) == 0)
-            #expect(DiagramThemeFixture.count(in: native, matching: wash) > total / 5)
+            try ThemeTestFixture.adopt([:], appearance: .light)
+            let native = try #require(ThemeTestFixture.render(view, colorScheme: .light))
+            #expect(ThemeTestFixture.count(in: native, where: { ThemeTestFixture.matches($0, theme) }) == 0)
+            #expect(ThemeTestFixture.count(in: native, where: { ThemeTestFixture.matches($0, wash) }) > total / 5)
 
-            try DiagramThemeFixture.adopt([.gridBackground: "#FFD0E0"])
-            let themed = try #require(DiagramThemeFixture.render(view, colorScheme: .light))
-            #expect(DiagramThemeFixture.count(in: themed, matching: theme) > total / 5)
-            #expect(DiagramThemeFixture.count(in: themed, matching: wash) < total / 50)
+            try ThemeTestFixture.adopt([.gridBackground: "#FFD0E0"], appearance: .light)
+            let themed = try #require(ThemeTestFixture.render(view, colorScheme: .light))
+            #expect(ThemeTestFixture.count(in: themed, where: { ThemeTestFixture.matches($0, theme) }) > total / 5)
+            #expect(ThemeTestFixture.count(in: themed, where: { ThemeTestFixture.matches($0, wash) }) < total / 50)
         }
     }
 
     @Test("The plot's grid lines take the grid line color under a theme")
     func gridLinesTakeTheGridLineColor() throws {
-        try DiagramThemeFixture.preservingEngine {
+        try ThemeTestFixture.preservingEngine {
             let view = ResultChartCanvas(projection: singleSeriesProjection, chartType: .bar)
                 .frame(width: 640, height: 360)
                 .accentColor(.red)
 
-            try DiagramThemeFixture.adopt([.gridBackground: "#000000"])
-            let native = try #require(DiagramThemeFixture.render(view, colorScheme: .light))
-            try DiagramThemeFixture.adopt([.gridBackground: "#000000", .gridLine: "#0000FF"])
-            let themed = try #require(DiagramThemeFixture.render(view, colorScheme: .light))
+            try ThemeTestFixture.adopt([.gridBackground: "#000000"], appearance: .light)
+            let native = try #require(ThemeTestFixture.render(view, colorScheme: .light))
+            try ThemeTestFixture.adopt([.gridBackground: "#000000", .gridLine: "#0000FF"], appearance: .light)
+            let themed = try #require(ThemeTestFixture.render(view, colorScheme: .light))
 
             #expect(bluePixelCount(in: native) == 0)
             #expect(bluePixelCount(in: themed) > 200)
@@ -223,7 +223,7 @@ struct ResultChartCanvasTests {
         var count = 0
         for y in 0..<rep.pixelsHigh {
             for x in 0..<rep.pixelsWide {
-                guard let color = DiagramThemeFixture.pixel(rep, x: x, y: y) else { continue }
+                guard let color = ThemeTestFixture.pixel(rep, x: x, y: y) else { continue }
                 if color.blueComponent - max(color.redComponent, color.greenComponent) > 0.3 { count += 1 }
             }
         }

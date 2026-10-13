@@ -26,69 +26,108 @@ struct EditorTabStripTrackThemeTests {
 
     @Test("The default pair keeps the system track in both appearances")
     func defaultPairKeepsTheSystemTrack() throws {
-        try ThemeSurfaceProbe.adopting(dark: BuiltInThemes.dark) {
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
             for name in [NSAppearance.Name.aqua, .darkAqua] {
                 let track = try resolved(EditorTabStripPalette.trackFill, in: name)
                 let system = try native(in: name)
-                #expect(ThemeSurfaceProbe.matches(track, system), "\(name.rawValue) drew \(track)")
+                #expect(ThemeTestFixture.matches(track, system), "\(name.rawValue) drew \(track)")
             }
         }
     }
 
-    @Test("A theme that sets the window background takes the track in its own appearance only")
-    func windowThemeTakesTheTrack() throws {
-        let theme = try ThemeSurfaceProbe.darkTheme([.windowBackdrop: ThemeSurfaceProbe.windowHex])
-        try ThemeSurfaceProbe.adopting(dark: theme) {
-            let dark = try resolved(EditorTabStripPalette.trackFill, in: .darkAqua)
-            #expect(HexColor.string(from: dark) == ThemeSurfaceProbe.windowHex)
+    private func track(followsWindowBackdrop: Bool) -> Color {
+        Color(nsColor: EditorTabStripPalette.trackColor(followsWindowBackdrop: followsWindowBackdrop))
+    }
 
-            let light = try resolved(EditorTabStripPalette.trackFill, in: .aqua)
+    @Test("Where the window takes the theme, a theme that sets the window background takes the track in its own appearance only")
+    func windowThemeTakesTheTrack() throws {
+        try ThemeTestFixture.adopting([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark) {
+            let dark = try resolved(track(followsWindowBackdrop: true), in: .darkAqua)
+            #expect(HexColor.string(from: dark) == ThemeTestFixture.windowHex)
+
+            let light = try resolved(track(followsWindowBackdrop: true), in: .aqua)
             let system = try native(in: .aqua)
-            #expect(ThemeSurfaceProbe.matches(light, system), "light drew \(light)")
+            #expect(ThemeTestFixture.matches(light, system), "light drew \(light)")
+        }
+    }
+
+    @Test("Where the window keeps its system color, the track keeps the system fill under a window theme")
+    func systemWindowKeepsTheTrack() throws {
+        try ThemeTestFixture.adopting([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark) {
+            for name in [NSAppearance.Name.aqua, .darkAqua] {
+                let drawn = try resolved(track(followsWindowBackdrop: false), in: name)
+                let system = try native(in: name)
+                #expect(ThemeTestFixture.matches(drawn, system), "\(name.rawValue) drew \(drawn)")
+            }
+        }
+    }
+
+    @Test("The track follows the window backdrop on macOS 26 and later only")
+    func gateFollowsTheBackdropRelease() {
+        let backdropRelease = OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
+        let expected = ProcessInfo.processInfo.isOperatingSystemAtLeast(backdropRelease)
+        #expect(EditorTabStripPalette.followsWindowBackdrop == expected)
+    }
+
+    /// Never ordered front and never closed: `close()` on a test window over-releases it.
+    @Test("The track takes the theme exactly when a content window's backdrop does")
+    func trackMatchesTheWindowBackdrop() throws {
+        let windowTheme = try ThemeTestFixture.pair([.windowBackdrop: ThemeTestFixture.windowHex], on: .dark)
+        let editorTheme = try ThemeTestFixture.pair([.editorBackground: ThemeTestFixture.editorHex], on: .dark)
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            for theme in [ThemePair.builtIn, windowTheme, editorTheme] {
+                ThemeTestFixture.adopt(theme, appearance: .dark)
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 120, height: 40),
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: true
+                )
+                window.isReleasedWhenClosed = false
+                window.appearance = NSAppearance(named: .darkAqua)
+                let original = window.backgroundColor
+                let backdrop = ThemeWindowBackdrop(window: window)
+                let windowThemed = window.backgroundColor !== original
+
+                let drawn = try resolved(EditorTabStripPalette.trackFill, in: .darkAqua)
+                let trackThemed = !ThemeTestFixture.matches(drawn, try native(in: .darkAqua))
+                #expect(windowThemed == trackThemed, "\(theme.dark.id): window themed \(windowThemed), track drew \(drawn)")
+                withExtendedLifetime(backdrop) {}
+            }
         }
     }
 
     @Test("Editor and grid colors leave the track alone")
     func contentSlotsLeaveTheTrackAlone() throws {
-        let theme = try ThemeSurfaceProbe.darkTheme([
-            .editorBackground: ThemeSurfaceProbe.editorHex,
-            .gridBackground: ThemeSurfaceProbe.gridHex,
-        ])
-        try ThemeSurfaceProbe.adopting(dark: theme) {
+        try ThemeTestFixture.adopting([
+            .editorBackground: ThemeTestFixture.editorHex,
+            .gridBackground: ThemeTestFixture.gridHex,
+        ], appearance: .dark) {
             let track = try resolved(EditorTabStripPalette.trackFill, in: .darkAqua)
             let system = try native(in: .darkAqua)
-            #expect(ThemeSurfaceProbe.matches(track, system), "drew \(track)")
+            #expect(ThemeTestFixture.matches(track, system), "drew \(track)")
         }
     }
 
     @Test("A theme change repaints a track already on screen")
     func trackRepaintsOnThemeChange() throws {
         let track = Self.host(Color.clear.modifier(EditorTabStripTrackSurface(rowCount: 1)))
-        let reference = try Self.center(of: Self.host(Color(nsColor: HexColor.color(ThemeSurfaceProbe.windowHex))))
-        let theme = try ThemeSurfaceProbe.darkTheme([.windowBackdrop: ThemeSurfaceProbe.windowHex])
-        try ThemeSurfaceProbe.adopting(dark: BuiltInThemes.dark) {
+        let reference = try Self.center(of: Self.host(Color(nsColor: HexColor.color(ThemeTestFixture.windowHex))))
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
             let before = try Self.center(of: track)
-            #expect(!ThemeSurfaceProbe.matches(before, reference), "default drew \(before)")
-            ThemeSurfaceProbe.adopt(dark: theme)
+            #expect(!ThemeTestFixture.matches(before, reference), "default drew \(before)")
+            try ThemeTestFixture.adopt([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark)
             let after = try Self.center(of: track)
-            #expect(ThemeSurfaceProbe.matches(after, reference), "themed drew \(after), theme \(reference)")
+            if EditorTabStripPalette.followsWindowBackdrop {
+                #expect(ThemeTestFixture.matches(after, reference), "themed drew \(after), theme \(reference)")
+            } else {
+                #expect(ThemeTestFixture.matches(after, before), "themed drew \(after), system \(before)")
+            }
         }
     }
 
-    /// Never ordered front and never closed: `close()` on a test window over-releases it.
     private static func host(_ view: some View) -> NSHostingView<AnyView> {
-        let size = NSSize(width: 120, height: 40)
-        let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: .darkAqua)
-        let host = NSHostingView(rootView: AnyView(view.frame(width: size.width, height: size.height)))
-        window.contentView = host
-        return host
+        ThemeTestFixture.hostingView(view, size: NSSize(width: 120, height: 40))
     }
 
     private static func center(of host: NSHostingView<AnyView>) throws -> NSColor {
@@ -101,11 +140,10 @@ struct EditorTabStripTrackThemeTests {
 
     @Test("The selected tab stays the system's own fill under a theme")
     func selectedTabStaysSystem() throws {
-        let theme = try ThemeSurfaceProbe.darkTheme([.windowBackdrop: ThemeSurfaceProbe.windowHex])
-        try ThemeSurfaceProbe.adopting(dark: theme) {
+        try ThemeTestFixture.adopting([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark) {
             let selected = try resolved(EditorTabStripPalette.selectedFill, in: .darkAqua)
             let system = try resolved(Color(nsColor: .controlColor), in: .darkAqua)
-            #expect(ThemeSurfaceProbe.matches(selected, system))
+            #expect(ThemeTestFixture.matches(selected, system))
         }
     }
 }

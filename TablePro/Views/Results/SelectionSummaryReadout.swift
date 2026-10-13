@@ -124,14 +124,10 @@ struct SelectionSummaryReadout: View {
     @ObservedObject var state: SelectionSummaryState
     let scopeNote: String?
     @Binding var isPopoverPresented: Bool
-    var leadsWithSeparator = false
 
     var body: some View {
         if let summary = state.summary {
             let figures = SelectionSummaryFigures(summary)
-            if leadsWithSeparator {
-                StatusBarSeparator()
-            }
             Button {
                 isPopoverPresented.toggle()
             } label: {
@@ -156,7 +152,7 @@ struct SelectionSummaryReadout: View {
     private func label(_ figures: SelectionSummaryFigures) -> some View {
         ViewThatFits(in: .horizontal) {
             if let sum = figures.sum, let average = figures.average {
-                Text("Sum \(sum) · Average \(average) · Count \(figures.valueCount)")
+                Text("Sum \(sum), Average \(average), Count \(figures.valueCount)")
                     .fixedSize()
                 Text("Sum \(sum)")
                     .fixedSize()

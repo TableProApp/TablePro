@@ -15,7 +15,6 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
     weak var outlineView: NSOutlineView?
 
     private(set) var themeChrome: ThemeTableChrome?
-    private static let rowViewIdentifier = NSUserInterfaceItemIdentifier("query-plan-row")
 
     private(set) var root: QueryPlanOutlineNode?
     private(set) var metrics: QueryPlanMetricIndex?
@@ -104,7 +103,8 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
         outlineView.collapseItem(root, collapseChildren: true)
     }
 
-    /// Called once the outline sits in its scroll view, which the chrome needs to reach.
+    /// Called once the outline sits in its scroll view, which the chrome needs to reach, and before
+    /// it builds rows.
     func attachThemeChrome(to outlineView: NSOutlineView) {
         themeChrome = ThemeTableChrome(tableView: outlineView, family: .records)
     }
@@ -251,14 +251,11 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
     }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
-        let rowView = outlineView.makeView(withIdentifier: Self.rowViewIdentifier, owner: self) as? ThemeTableRowView
-            ?? ThemeTableRowView()
-        rowView.identifier = Self.rowViewIdentifier
-        rowView.chrome = themeChrome
-        return rowView
+        themeChrome?.makeRowView(in: outlineView)
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
+        guard themeChrome?.isRebuildingRows != true else { return }
         onSelect(selectedNodeId)
     }
 
@@ -317,13 +314,6 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
         outlineView: NSOutlineView,
         content: AnyView
     ) -> NSView {
-        if let reused = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSHostingView<AnyView> {
-            reused.rootView = content
-            return reused
-        }
-        let hosting = NSHostingView(rootView: content)
-        hosting.sizingOptions = []
-        hosting.identifier = identifier
-        return hosting
+        ThemeTableChrome.HostingCell.make(identifier, in: outlineView, showing: content)
     }
 }

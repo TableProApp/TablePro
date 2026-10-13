@@ -60,6 +60,10 @@ enum TriggerListColumns {
         return showsEnabled ? base + [String(localized: "Enabled")] : base
     }
 
+    internal static func widths(showsEnabled: Bool) -> [CGFloat] {
+        showsEnabled ? [220, 90, 150, 70] : [240, 90, 160]
+    }
+
     static func values(for trigger: TriggerInfo, showsEnabled: Bool) -> [String] {
         let base = [trigger.name, trigger.timing, trigger.event]
         guard showsEnabled else { return base }
@@ -265,20 +269,19 @@ private struct TriggerActionBar: View {
     }
 }
 
-private struct TriggerListPane: View {
-    let triggers: [TriggerInfo]
-    let databaseType: DatabaseType
-    @ObservedObject var state: TriggerInspectorState
+internal struct TriggerListPane: View {
+    internal let triggers: [TriggerInfo]
+    internal let databaseType: DatabaseType
+    @ObservedObject internal var state: TriggerInspectorState
 
     @StateObject private var grid = StructureListGridModel<TriggerInfo.ID>(
-        accessibilityLabel: StructureTab.triggers.displayName,
-        restoresSelectionAfterReload: true
+        accessibilityLabel: StructureTab.triggers.displayName
     )
     @State private var columnLayout = ColumnLayoutState()
 
     private var showsEnabled: Bool { triggers.contains { $0.enabled != nil } }
 
-    var body: some View {
+    internal var body: some View {
         VStack(spacing: 0) {
             NativeSearchField(text: $state.searchText, placeholder: String(localized: "Filter"))
                 .padding(.horizontal, 8)
@@ -290,7 +293,8 @@ private struct TriggerListPane: View {
 
     private var table: some View {
         let showsEnabled = showsEnabled
-        let rows = state.displayed(triggers).map { trigger in
+        let inspector = state
+        let rows = inspector.displayed(triggers).map { trigger in
             StructureListRow(id: trigger.id, values: TriggerListColumns.values(for: trigger, showsEnabled: showsEnabled))
         }
         var hasher = Hasher()
@@ -298,22 +302,14 @@ private struct TriggerListPane: View {
         return StructureListGrid(
             model: grid,
             columns: TriggerListColumns.titles(showsEnabled: showsEnabled),
+            defaultWidths: TriggerListColumns.widths(showsEnabled: showsEnabled),
             contentKey: hasher.finalize(),
             rows: { rows },
             databaseType: databaseType,
-            selectedRows: selection,
+            selectedIDs: { inspector.selectedIDs },
+            select: { inspector.select($0) },
             sortState: $state.sortState,
             columnLayout: $columnLayout
-        )
-    }
-
-    /// Kept by trigger rather than by row, so a sort or a filter moves the selection with its trigger.
-    private var selection: Binding<Set<Int>> {
-        let grid = grid
-        let state = state
-        return Binding(
-            get: { grid.displayRows(of: state.selectedIDs) },
-            set: { state.select(grid.ids(atDisplayRows: $0)) }
         )
     }
 }

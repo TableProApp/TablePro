@@ -16,7 +16,7 @@ struct SQLPreviewSheet: View {
                 .font(.body.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            HighlightedSQLTextView(sql: sql.isEmpty ? "(no conditions)" : sql)
+            HighlightedSQLTextView(sql: sql.isEmpty ? "(no conditions)" : sql, lineLayout: .wrapped)
                 .frame(maxHeight: 180)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(

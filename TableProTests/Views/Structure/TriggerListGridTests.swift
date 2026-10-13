@@ -78,10 +78,18 @@ struct TriggerListGridTests {
         #expect(TriggerListColumns.values(for: triggers[0], showsEnabled: false) == ["trg_b", "BEFORE", "UPDATE"])
     }
 
+    @Test("Each column opens at the width the list has always given it")
+    func defaultWidths() {
+        #expect(TriggerListColumns.widths(showsEnabled: true) == [220, 90, 150, 70])
+        #expect(TriggerListColumns.widths(showsEnabled: false) == [240, 90, 160])
+        #expect(TriggerListColumns.widths(showsEnabled: true).count == TriggerListColumns.titles(showsEnabled: true).count)
+        #expect(TriggerListColumns.widths(showsEnabled: false).count == TriggerListColumns.titles(showsEnabled: false).count)
+    }
+
     @Test("A selected trigger keeps its row through a sort")
     func selectionFollowsTheTriggerThroughASort() {
         let state = TriggerInspectorState()
-        let grid = StructureListGridModel<TriggerInfo.ID>(restoresSelectionAfterReload: true)
+        let grid = StructureListGridModel<TriggerInfo.ID>()
         load(grid, state, key: 1)
         state.select(grid.ids(atDisplayRows: [1]))
         #expect(state.selectedTrigger(triggers)?.name == "trg_b")

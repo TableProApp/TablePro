@@ -36,9 +36,8 @@ struct ThemeColorReadGuardTests {
         "TriggerEditorView",
         "RewindReviewSheet",
         "AgentProposedStatementsView",
-        "SQLCompletionItem",
         "VimCursorManager",
-        "GhostTextRenderer",
+        "FoldPreviewView",
         "CodeWell",
         "ValueWell",
         "TextValueEditor",
@@ -51,6 +50,9 @@ struct ThemeColorReadGuardTests {
         "PhpViewerView",
         "FavoriteEditDialog",
         "OptionsPaneView",
+        "SQLPreviewSheet",
+        "MaintenanceSheet",
+        "HistoryDetailPane",
     ]
 
     private static let contentWindowFiles = [
@@ -63,6 +65,7 @@ struct ThemeColorReadGuardTests {
     private static let contentSurfaceFiles = [
         "MainEditorContentView",
         "GridStandInBackground",
+        "EditorTabStrip",
         "EditorTabStripSurfaces",
         "VersionHistoryTabView",
         "ObjectSourceTabView",
@@ -74,9 +77,12 @@ struct ThemeColorReadGuardTests {
         "PrivilegeScopeOutlineView",
         "TreeOutlineView",
         "TreeOutlineCoordinator",
+        "TreeOutlineCellView",
+        "TreeValueStyle",
         "TreeValueTone+Theme",
         "JSONRowInspectorView",
         "JSONNodeRowView",
+        "JSONRowColors",
         "SingleLineEditorView",
         "FieldEditorContent",
         "MultiLineEditorView",
@@ -128,13 +134,34 @@ struct ThemeColorReadGuardTests {
             ),
             try ThemeSourceScan.Rule(
                 "theme chrome",
-                #"\bTheme(?:ShapeStyle|TextViewStyle|TableChrome|TableRowView|WindowBackdrop)\b"#
+                #"\bTheme(?:ShapeStyle|TextViewStyle|TableChrome|TableRowView|TableRowDrawing|WindowBackdrop)\b"#
             ),
-            try ThemeSourceScan.Rule(
-                "theme helper",
-                #"\b(?:gridStandInBackground|diffLineForeground)\(|\bCompareStatusStyle\.(?:lineTint|rowTint)|\b(?:ValueSourceEditor|ERDiagramPalette)\b"#
-            ),
+            try ThemeSourceScan.Rule("theme helper", Self.helperPattern),
         ]
+    }
+
+    private static let helpers = ["ValueSourceEditor", "ERDiagramPalette", "DiagramCanvasBackdrop", "HighlightedSQLTextView"]
+
+    private static var helperPattern: String {
+        #"\b(?:gridStandInBackground|diffLineForeground|makeEditorTheme)\(|\bCompareStatusStyle\.(?:lineTint|rowTint)"#
+            + #"|\bTableProEditorTheme\.make\(|\bEditorTabStripPalette\.trackFill\b"#
+            + #"|\b(?:TreeValueTone\.\w+|tone(?:\(for: \w+\))?)\.color\b"#
+            + #"|\b(?:"# + helpers.joined(separator: "|") + #")\b"#
+    }
+
+    /// The files whose code reads the theme, by name without the extension. Declaring a helper is
+    /// not reading the theme through it.
+    static func readers(in lines: [ThemeSourceScan.Line], rules: [ThemeSourceScan.Rule]) throws -> Set<String> {
+        let names = (helpers + ["makeEditorTheme"]).joined(separator: "|")
+        let declaration = try ThemeSourceScan.Rule(
+            "helper declaration",
+            #"\b(?:struct|enum|class|protocol|extension|typealias|func|var|let)\s+(?:"# + names + #")\b"#
+        )
+        var readers: Set<String> = []
+        for line in lines where rules.contains(where: { $0.matches(line.text) }) && !declaration.matches(line.text) {
+            readers.insert(((line.path as NSString).lastPathComponent as NSString).deletingPathExtension)
+        }
+        return readers
     }
 
     @Test("Only content surfaces and the window backdrop read the theme")
@@ -168,20 +195,30 @@ struct ThemeColorReadGuardTests {
         }
     }
 
-    @Test("A content surface that stops reading the theme leaves the list")
-    func contentEntriesStillReadTheTheme() throws {
+    @Test("A file that stops reading the theme leaves the list")
+    func entriesStillReadTheTheme() throws {
         let rules = try Self.rules()
-        let names = Set(Self.contentWindowFiles + Self.contentSurfaceFiles)
+        let names = Set(Self.allowedFiles)
         let tree = try ThemeSourceScan.scan(["TablePro"], rules: rules) { path in
             names.contains(((path as NSString).lastPathComponent as NSString).deletingPathExtension)
         }
-        let readers = Set(
-            tree.lines
-                .filter { line in rules.contains { $0.matches(line.text) } }
-                .map { (($0.path as NSString).lastPathComponent as NSString).deletingPathExtension }
-        )
+        let readers = try Self.readers(in: tree.lines, rules: rules)
 
         #expect(names.subtracting(readers).isEmpty, "Read no theme API: \(names.subtracting(readers).sorted())")
+    }
+
+    @Test("Declaring a helper does not count as reading the theme, and calling it does")
+    func helperDeclarationIsNotARead() throws {
+        let rules = try Self.rules()
+        let declares = ThemeSourceScan.codeLines(
+            of: "final class DiagramCanvasBackdrop {\nstruct HighlightedSQLTextView: NSViewRepresentable {",
+            path: "Helper.swift"
+        )
+        let calls = ThemeSourceScan.codeLines(of: "backdrop = DiagramCanvasBackdrop(scrollView: scrollView)", path: "Caller.swift")
+
+        #expect(ThemeSourceScan.violations(in: declares, rules: rules).count == 2)
+        #expect(try Self.readers(in: declares, rules: rules).isEmpty)
+        #expect(try Self.readers(in: calls, rules: rules) == ["Caller"])
     }
 
     @Test("The guard flags a theme read and passes plain code")
@@ -202,10 +239,19 @@ struct ThemeColorReadGuardTests {
         placeholder.gridStandInBackground()
         // CodeWell and .valueWell() named in a comment
         content.background(.background)
+        keyField.textColor = TreeValueTone.key.color
+        Color(nsColor: tone(for: scalar).color)
+        isEmphasized ? .alternateSelectedControlTextColor : tone.color
+        .fill(EditorTabStripPalette.trackFill)
+        backdrop = DiagramCanvasBackdrop(scrollView: scrollView)
+        HighlightedSQLTextView(sql: sql, lineLayout: .wrapped)
+        theme: TableProEditorTheme.make(),
+        final class ThemedRow: NSTableRowView, ThemeTableRowDrawing {}
+        swatch.color = decoration.color
         """
         let lines = ThemeSourceScan.flaggedLines(in: sample, rules: try Self.rules())
 
-        #expect(lines == [1, 3, 6, 7, 8, 9, 10, 11, 13])
+        #expect(lines == [1, 3, 6, 7, 8, 9, 10, 11, 13, 16, 17, 18, 19, 20, 21, 22, 23])
 
         let messages = ThemeSourceScan.violations(
             in: ThemeSourceScan.codeLines(of: sample, path: "Pane.swift"),
@@ -223,14 +269,17 @@ struct ThemeColorReadGuardTests {
         #expect(Self.isAllowed("TablePro/Views/Structure/DDLTextView.swift"))
         #expect(Self.isAllowed("TablePro/Views/Structure/TriggerDetailView.swift"))
         #expect(Self.isAllowed("TablePro/Views/Results/TreeOutline/TreeValueTone+Theme.swift"))
+        #expect(Self.isAllowed("TablePro/Views/Results/TreeOutline/TreeOutlineCellView.swift"))
+        #expect(Self.isAllowed("TablePro/Views/RowInspector/JSON/JSONRowColors.swift"))
+        #expect(Self.isAllowed("TablePro/Views/Editor/History/HistoryDetailPane.swift"))
         #expect(Self.isAllowed("TablePro/Core/Services/Infrastructure/TabWindowController.swift"))
         #expect(Self.isAllowed("TablePro/Theme/ThemeEngine+EditorTheme.swift"))
 
         #expect(!Self.isAllowed("TablePro/Views/Editor/QueryEditorBar.swift"))
-        #expect(!Self.isAllowed("TablePro/Views/Editor/History/HistoryDetailPane.swift"))
-        #expect(!Self.isAllowed("TablePro/Views/Results/TreeOutline/TreeOutlineCellView.swift"))
+        #expect(!Self.isAllowed("TablePro/Views/Editor/History/HistoryListPane.swift"))
+        #expect(!Self.isAllowed("TablePro/Views/Results/TreeOutline/TreeOutlineMenu.swift"))
         #expect(!Self.isAllowed("TablePro/Views/Results/InlineErrorBanner.swift"))
-        #expect(!Self.isAllowed("TablePro/Views/RowInspector/JSON/JSONRowColors.swift"))
+        #expect(!Self.isAllowed("TablePro/Views/RowInspector/InspectorFieldListView.swift"))
         #expect(!Self.isAllowed("TablePro/Views/UsersRoles/PrivilegeScopeRowView.swift"))
         #expect(!Self.isAllowed("TablePro/Views/Sidebar/DatabaseTreeOutlineView.swift"))
         #expect(!Self.isAllowed("TablePro/Views/Settings/GeneralSettingsView.swift"))

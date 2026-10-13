@@ -25,32 +25,65 @@ struct PaneBackgroundGuardTests {
     }
 
     struct WindowRules {
+        let write: ThemeSourceScan.Rule
         let named: ThemeSourceScan.Rule
         let own: ThemeSourceScan.Rule
         let subclass: ThemeSourceScan.Rule
+        let local: ThemeSourceScan.Rule
     }
 
     static func windowRules() throws -> WindowRules {
         WindowRules(
+            write: try ThemeSourceScan.Rule("background color write", #"\bbackgroundColor\s*=(?!=)"#),
             named: try ThemeSourceScan.Rule(
                 "window background color",
-                #"\b\w*(?:[Ww]indow|[Pp]anel)\??\.backgroundColor\s*=(?!=)"# + notClear
+                #"(?:\b\w*(?:[Ww]indow|[Pp]anel|[Ss]heet)\w*|\b(?:w|win|wnd))[?!]?\.backgroundColor\s*=(?!=)"# + notClear
             ),
             own: try ThemeSourceScan.Rule(
                 "window subclass background color",
                 #"(?:\bself\.|(?<![\w.?!)\]]))backgroundColor\s*=(?!=)"# + notClear
             ),
-            subclass: try ThemeSourceScan.Rule("window subclass", #"\bclass\s+\w+\s*:\s*(?:NSWindow|NSPanel)\b"#)
+            subclass: try ThemeSourceScan.Rule("window subclass", #"\bclass\s+\w+\s*:\s*\w*(?:Window|Panel)\b"#),
+            local: try ThemeSourceScan.Rule(
+                "window local",
+                #"\b(?:let|var)\s+(\w+)\s*=\s*[\w.?!]*\b\w*(?:[Ww]indow|[Pp]anel|[Ss]heet)\w*[?!]?"#
+                    + #"(?:\s+as[?!]?\s+\w+)?\s*(?:$|[,{;]|else\b)|\b(\w+)\s*:\s*(?:\w+\.)?\w*(?:Window|Panel)\b"#
+            )
         )
     }
 
-    /// A bare `backgroundColor =` is the window's own only in a file that subclasses `NSWindow`.
+    /// `let host = view.window` or `_ host: NSWindow` names a window without saying so.
+    private static func windowLocals(in lines: [ThemeSourceScan.Line], rule: ThemeSourceScan.Rule) -> Set<String> {
+        var names: Set<String> = []
+        for line in lines {
+            let text = line.text as NSString
+            for match in rule.expression.matches(in: line.text, range: NSRange(location: 0, length: text.length)) {
+                for group in 1 ..< match.numberOfRanges where match.range(at: group).location != NSNotFound {
+                    names.insert(text.substring(with: match.range(at: group)))
+                }
+            }
+        }
+        return names
+    }
+
+    /// A bare `backgroundColor =` is the window's own only in a file that subclasses a window or panel.
     static func windowBackgroundWrites(in lines: [ThemeSourceScan.Line]) throws -> [String] {
         let rules = try windowRules()
         let candidates = lines.filter { $0.path != windowBackdropOwner }
         let windowFiles = Set(candidates.filter { rules.subclass.matches($0.text) }.map(\.path))
-        return ThemeSourceScan.violations(in: candidates, rules: [rules.named])
+        var offenders = ThemeSourceScan.violations(in: candidates, rules: [rules.named])
             + ThemeSourceScan.violations(in: candidates.filter { windowFiles.contains($0.path) }, rules: [rules.own])
+
+        for (_, file) in Dictionary(grouping: candidates, by: \.path) {
+            let locals = windowLocals(in: file, rule: rules.local)
+            guard !locals.isEmpty else { continue }
+            let write = try ThemeSourceScan.Rule(
+                "window local background color",
+                #"(?<![\w.])(?:"# + locals.sorted().joined(separator: "|") + #")[?!]?\.backgroundColor\s*=(?!=)"# + notClear
+            )
+            offenders += ThemeSourceScan.violations(in: file.filter { !rules.named.matches($0.text) }, rules: [write])
+        }
+        return offenders
     }
 
     @Test("No pane hides its control's own background")
@@ -72,7 +105,7 @@ struct PaneBackgroundGuardTests {
     @Test("Only the window backdrop sets a window's background color")
     func windowColorComesFromTheBackdrop() throws {
         let rules = try Self.windowRules()
-        let tree = try ThemeSourceScan.scan(["TablePro"], rules: [rules.named, rules.subclass])
+        let tree = try ThemeSourceScan.scan(["TablePro"], rules: [rules.write])
         let offenders = try Self.windowBackgroundWrites(in: tree.lines)
 
         #expect(tree.fileCount > 1_000, "Scanned only \(tree.fileCount) files; the tree did not resolve")
@@ -127,14 +160,57 @@ struct PaneBackgroundGuardTests {
                 panel.backgroundColor = NSColor.clear
                 scrollView.backgroundColor = fill
                 textView.backgroundColor = fill
+                sheet.backgroundColor = fill
+                sheetController.window?.backgroundColor = fill
+                win.backgroundColor = .clear
+            }
+        }
+        """
+        let locals = """
+        func restyle(_ target: NSWindow, view: NSView) {
+            target.backgroundColor = fill
+            let w = view.window
+            w?.backgroundColor = fill
+            guard let host = view.window else { return }
+            host.backgroundColor = fill
+            let content = windowContent.scrollView
+            content.backgroundColor = fill
+            host.contentView?.backgroundColor = fill
+        }
+        """
+        let subclass = """
+        final class ToolWindow: EditorWindow {
+            func configure() {
+                backgroundColor = fill
+            }
+        }
+        """
+        let windowController = """
+        final class ToolController: NSWindowController {
+            func configure() {
+                backgroundColor = fill
             }
         }
         """
         let lines = ThemeSourceScan.codeLines(of: window, path: "SheetPanel.swift")
             + ThemeSourceScan.codeLines(of: controller, path: "PaneController.swift")
+            + ThemeSourceScan.codeLines(of: locals, path: "Restyle.swift")
+            + ThemeSourceScan.codeLines(of: subclass, path: "ToolWindow.swift")
+            + ThemeSourceScan.codeLines(of: windowController, path: "ToolController.swift")
             + ThemeSourceScan.codeLines(of: window, path: "TablePro/Theme/ThemeWindowBackdrop.swift")
         let flagged = try Self.windowBackgroundWrites(in: lines).map { $0.components(separatedBy: ": ")[0] }
 
-        #expect(flagged.sorted() == ["PaneController.swift:4", "PaneController.swift:5", "SheetPanel.swift:3", "SheetPanel.swift:4"])
+        #expect(flagged.sorted() == [
+            "PaneController.swift:10",
+            "PaneController.swift:4",
+            "PaneController.swift:5",
+            "PaneController.swift:9",
+            "Restyle.swift:2",
+            "Restyle.swift:4",
+            "Restyle.swift:6",
+            "SheetPanel.swift:3",
+            "SheetPanel.swift:4",
+            "ToolWindow.swift:3",
+        ])
     }
 }

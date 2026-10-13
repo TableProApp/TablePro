@@ -71,18 +71,18 @@ struct JSONNodeRowViewTests {
 
     @Test("Under the default pair punctuation stays primary and the count keeps the secondary label color")
     func defaultPairColors() throws {
-        try TreeThemeFixture.with([:]) {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
             let lineNumber = ThemeEngine.shared.palette[.editorLineNumber]
             #expect(JSONRowColors.punctuation == .primary)
             #expect(JSONRowColors.placeholder == Color(nsColor: lineNumber))
-            #expect(TreeThemeFixture.hex(lineNumber) == TreeThemeFixture.hex(.secondaryLabelColor))
+            #expect(ThemeTestFixture.hex(lineNumber) == ThemeTestFixture.hex(.secondaryLabelColor))
             #expect(JSONRowColors.key != Color(nsColor: .systemBlue))
         }
     }
 
     @Test("Every value takes the color the JSON tree gives the same token, which follows the theme")
     func colorsFollowTheTheme() throws {
-        try TreeThemeFixture.with(TreeThemeFixture.tones) {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
             let palette = ThemeEngine.shared.palette
             #expect(JSONRowColors.key == Color(nsColor: palette[.syntaxString]))
             #expect(JSONRowColors.placeholder == Color(nsColor: palette[.editorLineNumber]))
@@ -90,7 +90,7 @@ struct JSONNodeRowViewTests {
             #expect(JSONRowColors.color(for: .number("1")) == Color(nsColor: palette[.syntaxNumber]))
             #expect(JSONRowColors.color(for: .bool(true)) == Color(nsColor: palette[.syntaxNull]))
             #expect(JSONRowColors.color(for: .null) == Color(nsColor: palette[.syntaxNull]))
-            #expect(TreeThemeFixture.hex(palette[.syntaxNumber]) == TreeThemeFixture.tones[.syntaxNumber])
+            #expect(ThemeTestFixture.hex(palette[.syntaxNumber]) == TreeOutlineFixture.tones[.syntaxNumber])
         }
     }
 }

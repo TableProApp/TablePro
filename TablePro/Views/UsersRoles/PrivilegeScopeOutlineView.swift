@@ -74,16 +74,18 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
 
 internal final class PrivilegeScopeOutline: NSOutlineView {
     internal var themeChrome: ThemeTableChrome?
+
+    internal var isRebuildingRows: Bool {
+        themeChrome?.isRebuildingRows ?? false
+    }
 }
 
 internal extension PrivilegeScopeOutlineCoordinator {
-    static let themedRowView = NSUserInterfaceItemIdentifier("PrivilegeScopeThemedRow")
-
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
-        let rowView = outlineView.makeView(withIdentifier: Self.themedRowView, owner: self) as? ThemeTableRowView
-            ?? ThemeTableRowView()
-        rowView.identifier = Self.themedRowView
-        rowView.chrome = (outlineView as? PrivilegeScopeOutline)?.themeChrome
-        return rowView
+        (outlineView as? PrivilegeScopeOutline)?.themeChrome?.makeRowView(in: outlineView)
+    }
+
+    func cell(_ identifier: NSUserInterfaceItemIdentifier, in outlineView: NSOutlineView, showing content: some View) -> NSView {
+        ThemeTableChrome.HostingCell.make(identifier, in: outlineView, showing: content)
     }
 }

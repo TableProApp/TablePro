@@ -24,10 +24,10 @@ struct ClickHousePartsView: View {
     @State private var parts: [ClickHousePartInfo] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var selection: Set<Int> = []
     @State private var columnLayout = ColumnLayoutState()
     @State private var loadedToken: Int?
     @StateObject private var grid = StructureListGridModel<UUID>(accessibilityLabel: StructureTab.parts.displayName)
+    @StateObject private var selection = StructureListSelection<UUID>()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,13 +75,13 @@ struct ClickHousePartsView: View {
             Button(action: dropSelectedPartition) {
                 Label(String(localized: "Drop Partition"), systemImage: "trash")
             }
-            .disabled(selection.count != 1)
+            .disabled(selection.ids.count != 1)
             .help(String(localized: "Drop selected partition"))
 
             Button(action: detachSelectedPartition) {
                 Label(String(localized: "Detach Partition"), systemImage: "arrow.down.doc")
             }
-            .disabled(selection.count != 1)
+            .disabled(selection.ids.count != 1)
             .help(String(localized: "Detach selected partition"))
 
             Spacer()
@@ -92,6 +92,7 @@ struct ClickHousePartsView: View {
 
     private var partsTable: some View {
         let parts = parts
+        let selection = selection
         var hasher = Hasher()
         for part in parts {
             hasher.combine(part.id)
@@ -99,14 +100,18 @@ struct ClickHousePartsView: View {
         return StructureListGrid(
             model: grid,
             columns: Self.columnTitles,
+            defaultWidths: Self.columnWidths,
             contentKey: hasher.finalize(),
             rows: { parts.map(Self.gridRow(for:)) },
             databaseType: connection.type,
-            selectedRows: $selection,
+            selectedIDs: { selection.ids },
+            select: { selection.ids = $0 },
             sortState: nil,
             columnLayout: $columnLayout
         )
     }
+
+    internal static let columnWidths: [CGFloat] = [120, 200, 100, 100, 160, 60]
 
     static var columnTitles: [String] {
         [
@@ -172,7 +177,7 @@ struct ClickHousePartsView: View {
             )
             guard await run(sql, description: String(localized: "Drop Partition"), kind: .destructiveQuery)
             else { return }
-            selection.removeAll()
+            selection.ids.removeAll()
         }
     }
 
@@ -200,7 +205,7 @@ struct ClickHousePartsView: View {
             )
             guard await run(sql, description: String(localized: "Detach Partition"), kind: .destructiveQuery)
             else { return }
-            selection.removeAll()
+            selection.ids.removeAll()
         }
     }
 
@@ -252,9 +257,12 @@ struct ClickHousePartsView: View {
     }
 
     private func selectedPartitionValue() -> String? {
-        guard selection.count == 1,
-              let row = selection.first,
-              let selectedId = grid.id(atDisplayRow: row),
+        Self.partition(of: selection.ids, in: parts)
+    }
+
+    internal static func partition(of selectedIDs: Set<UUID>, in parts: [ClickHousePartInfo]) -> String? {
+        guard selectedIDs.count == 1,
+              let selectedId = selectedIDs.first,
               let part = parts.first(where: { $0.id == selectedId })
         else { return nil }
         return part.partition
@@ -284,7 +292,7 @@ struct ClickHousePartsView: View {
                 ))
             }
             guard !Task.isCancelled else { return }
-            selection = []
+            selection.ids = []
             parts = result.rows.compactMap { row -> ClickHousePartInfo? in
                 guard let name = row[safe: 1]?.asText else { return nil }
                 let partition = row[safe: 0]?.asText ?? ""

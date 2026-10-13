@@ -18,9 +18,9 @@ struct DetailSurfaceThemeTests {
     private static let size = CGSize(width: 320, height: 240)
 
     private static let slotColors: [ThemeSlot: String] = [
-        .windowBackdrop: ThemeSurfaceProbe.windowHex,
-        .editorBackground: ThemeSurfaceProbe.editorHex,
-        .gridBackground: ThemeSurfaceProbe.gridHex,
+        .windowBackdrop: ThemeTestFixture.windowHex,
+        .editorBackground: ThemeTestFixture.editorHex,
+        .gridBackground: ThemeTestFixture.gridHex,
     ]
 
     /// Under the default pair the surface draws `native`; under its own slot it draws the theme; under every other slot it still draws `native`.
@@ -28,19 +28,19 @@ struct DetailSurfaceThemeTests {
         let hex = try #require(Self.slotColors[slot])
         let others = Self.slotColors.filter { $0.key != slot }
 
-        try ThemeSurfaceProbe.adopting(dark: BuiltInThemes.dark) {
-            let expected = try ThemeSurfaceProbe.filled(native)
-            let drawn = try ThemeSurfaceProbe.color(of: view, at: point)
-            #expect(ThemeSurfaceProbe.matches(drawn, expected), "default pair drew \(drawn), native \(expected)")
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let expected = try ThemeTestFixture.filled(native, colorScheme: .dark)
+            let drawn = try ThemeTestFixture.color(of: view, at: point, colorScheme: .dark)
+            #expect(ThemeTestFixture.matches(drawn, expected), "default pair drew \(drawn), native \(expected)")
 
-            ThemeSurfaceProbe.adopt(dark: try ThemeSurfaceProbe.darkTheme([slot: hex]))
-            let themed = try ThemeSurfaceProbe.color(of: view, at: point)
-            let theme = try ThemeSurfaceProbe.filled(hex: hex)
-            #expect(ThemeSurfaceProbe.matches(themed, theme), "\(slot.rawValue) drew \(themed), theme \(theme)")
+            try ThemeTestFixture.adopt([slot: hex], appearance: .dark)
+            let themed = try ThemeTestFixture.color(of: view, at: point, colorScheme: .dark)
+            let theme = try ThemeTestFixture.filled(hex: hex, colorScheme: .dark)
+            #expect(ThemeTestFixture.matches(themed, theme), "\(slot.rawValue) drew \(themed), theme \(theme)")
 
-            ThemeSurfaceProbe.adopt(dark: try ThemeSurfaceProbe.darkTheme(others))
-            let unrelated = try ThemeSurfaceProbe.color(of: view, at: point)
-            #expect(ThemeSurfaceProbe.matches(unrelated, expected), "another slot drew \(unrelated), native \(expected)")
+            try ThemeTestFixture.adopt(others, appearance: .dark)
+            let unrelated = try ThemeTestFixture.color(of: view, at: point, colorScheme: .dark)
+            #expect(ThemeTestFixture.matches(unrelated, expected), "another slot drew \(unrelated), native \(expected)")
         }
     }
 

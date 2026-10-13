@@ -18,16 +18,16 @@ struct ValueTextThemeTests {
 
     @Test("Server output draws label text on the text background until a theme sets the editor colors")
     func serverOutput() throws {
-        try CodeSurfaceFixture.withBuiltInThemes {
-            let window = CodeSurfaceFixture.host(ServerOutputTextView(text: "NOTICE: done"), size: Self.size)
-            let textView = try #require(CodeSurfaceFixture.textViews(in: window).first)
+        try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            let window = ThemeTestFixture.host(ServerOutputTextView(text: "NOTICE: done"), size: Self.size)
+            let textView = try #require(ThemeTestFixture.textViews(in: window).first)
             #expect(textView.backgroundColor === NSColor.textBackgroundColor)
             #expect(textView.textColor == NSColor.labelColor)
 
-            try PaneThemeFixture.withEverySlotOverridden {
-                #expect(CodeSurfaceFixture.hex(textView.backgroundColor) == "#FF00FF")
-                #expect(CodeSurfaceFixture.hex(textView.textColor) == "#FF00FF")
-                #expect(CodeSurfaceFixture.hex(textView.insertionPointColor) == "#FF00FF")
+            try ThemeTestFixture.withEverySlotOverridden {
+                #expect(ThemeTestFixture.hex(textView.backgroundColor) == "#FF00FF")
+                #expect(ThemeTestFixture.hex(textView.textColor) == "#FF00FF")
+                #expect(ThemeTestFixture.hex(textView.insertionPointColor) == "#FF00FF")
             }
 
             #expect(textView.backgroundColor == NSColor.textBackgroundColor)
@@ -39,8 +39,8 @@ struct ValueTextThemeTests {
 
     @Test("The hex dump keeps its secondary text and the hex field its label text under a default theme")
     func hexDefaults() throws {
-        try CodeSurfaceFixture.withBuiltInThemes {
-            let window = CodeSurfaceFixture.host(
+        try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            let window = ThemeTestFixture.host(
                 HexEditorBody(initialValue: "Hello", isEditable: true, onDismiss: {}),
                 size: Self.size
             )
@@ -55,17 +55,17 @@ struct ValueTextThemeTests {
 
     @Test("Both hex text views take the editor colors from a theme and hand them back after")
     func hexFollowsTheTheme() throws {
-        try CodeSurfaceFixture.withBuiltInThemes {
-            let window = CodeSurfaceFixture.host(
+        try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            let window = ThemeTestFixture.host(
                 HexEditorBody(initialValue: "Hello", isEditable: true, onDismiss: {}),
                 size: Self.size
             )
             let (dump, input) = try hexTextViews(in: window)
 
-            try PaneThemeFixture.withEverySlotOverridden {
+            try ThemeTestFixture.withEverySlotOverridden {
                 for textView in [dump, input] {
-                    #expect(CodeSurfaceFixture.hex(textView.backgroundColor) == "#FF00FF")
-                    #expect(CodeSurfaceFixture.hex(textView.textColor) == "#FF00FF")
+                    #expect(ThemeTestFixture.hex(textView.backgroundColor) == "#FF00FF")
+                    #expect(ThemeTestFixture.hex(textView.textColor) == "#FF00FF")
                 }
             }
 
@@ -78,18 +78,18 @@ struct ValueTextThemeTests {
 
     @Test("The text viewer and image source editor follow the editor theme")
     func valueSourceEditorFollowsTheTheme() throws {
-        try CodeSurfaceFixture.withBuiltInThemes {
-            let window = CodeSurfaceFixture.host(
+        try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            let window = ThemeTestFixture.host(
                 ValueSourceEditor(text: .constant("<svg/>"), isEditable: false),
                 size: Self.size
             )
-            let textView = try #require(CodeSurfaceFixture.textViews(in: window).first)
+            let textView = try #require(ThemeTestFixture.textViews(in: window).first)
             #expect(textView.backgroundColor === NSColor.textBackgroundColor)
             #expect(textView.font == ThemeEngine.shared.valueFont)
 
-            try PaneThemeFixture.withEverySlotOverridden {
-                #expect(CodeSurfaceFixture.hex(textView.backgroundColor) == "#FF00FF")
-                #expect(CodeSurfaceFixture.hex(textView.textColor) == "#FF00FF")
+            try ThemeTestFixture.withEverySlotOverridden {
+                #expect(ThemeTestFixture.hex(textView.backgroundColor) == "#FF00FF")
+                #expect(ThemeTestFixture.hex(textView.textColor) == "#FF00FF")
             }
 
             #expect(textView.backgroundColor == NSColor.textBackgroundColor)
@@ -111,43 +111,53 @@ struct ValueTextThemeTests {
 
     @Test("PHP raw text draws no background of its own and system text under a default theme")
     func phpRawDefault() throws {
-        try CodeSurfaceFixture.withBuiltInThemes {
-            let bitmap = try #require(CodeSurfaceFixture.render(phpRaw(), size: Self.size))
-            let corner = try #require(CodeSurfaceFixture.color(in: bitmap, x: bitmap.pixelsWide - 4, y: bitmap.pixelsHigh - 4))
+        try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            let bitmap = try ThemeTestFixture.bitmap(
+                of: phpRaw().frame(width: Self.size.width, height: Self.size.height),
+                colorScheme: .light
+            )
+            let corner = try #require(ThemeTestFixture.pixel(bitmap, x: bitmap.pixelsWide - 4, y: bitmap.pixelsHigh - 4))
             #expect(corner.alphaComponent < 0.01)
 
-            let window = CodeSurfaceFixture.host(phpRaw(), size: Self.size)
-            let snapshot = try #require(CodeSurfaceFixture.snapshot(window))
-            let rows = CodeSurfaceFixture.rows(of: snapshot, below: Self.pickerFraction)
-            #expect(CodeSurfaceFixture.magentaPixels(in: snapshot, rows: rows) == 0)
+            let window = ThemeTestFixture.host(phpRaw(), size: Self.size)
+            let snapshot = try #require(ThemeTestFixture.snapshot(window))
+            let rows = Self.rows(of: snapshot, below: Self.pickerFraction)
+            #expect(ThemeTestFixture.count(in: snapshot, rows: rows, where: ThemeTestFixture.isMagenta) == 0)
             withExtendedLifetime(window) {}
         }
     }
 
     @Test("PHP raw text sits on the editor background a theme sets")
     func phpRawBackground() throws {
-        try CodeSurfaceFixture.withOverrides([.editorBackground: "#FF00FF"]) {
-            let bitmap = try #require(CodeSurfaceFixture.render(phpRaw(), size: Self.size))
-            let corner = try #require(CodeSurfaceFixture.color(in: bitmap, x: bitmap.pixelsWide - 4, y: bitmap.pixelsHigh - 4))
-            #expect(CodeSurfaceFixture.isMagenta(corner), "drew \(corner)")
+        try ThemeTestFixture.adopting(ThemeTestFixture.pair([.editorBackground: "#FF00FF"]), appearance: .light) {
+            let bitmap = try ThemeTestFixture.bitmap(
+                of: phpRaw().frame(width: Self.size.width, height: Self.size.height),
+                colorScheme: .light
+            )
+            let corner = try #require(ThemeTestFixture.pixel(bitmap, x: bitmap.pixelsWide - 4, y: bitmap.pixelsHigh - 4))
+            #expect(ThemeTestFixture.isMagenta(corner), "drew \(corner)")
         }
     }
 
     @Test("PHP raw text takes the editor text color a theme sets")
     func phpRawText() throws {
-        try CodeSurfaceFixture.withOverrides([.editorText: "#FF00FF"]) {
-            let window = CodeSurfaceFixture.host(phpRaw(), size: Self.size)
-            let snapshot = try #require(CodeSurfaceFixture.snapshot(window))
-            let rows = CodeSurfaceFixture.rows(of: snapshot, below: Self.pickerFraction)
-            #expect(CodeSurfaceFixture.magentaPixels(in: snapshot, rows: rows) > 20)
+        try ThemeTestFixture.adopting(ThemeTestFixture.pair([.editorText: "#FF00FF"]), appearance: .light) {
+            let window = ThemeTestFixture.host(phpRaw(), size: Self.size)
+            let snapshot = try #require(ThemeTestFixture.snapshot(window))
+            let rows = Self.rows(of: snapshot, below: Self.pickerFraction)
+            #expect(ThemeTestFixture.count(in: snapshot, rows: rows, where: ThemeTestFixture.isMagenta) > 20)
             withExtendedLifetime(window) {}
         }
     }
 
     // MARK: - Helpers
 
+    private static func rows(of bitmap: NSBitmapImageRep, below fraction: Double) -> Range<Int> {
+        Int(Double(bitmap.pixelsHigh) * fraction) ..< bitmap.pixelsHigh
+    }
+
     private func hexTextViews(in window: NSWindow) throws -> (dump: NSTextView, input: NSTextView) {
-        let textViews = CodeSurfaceFixture.textViews(in: window)
+        let textViews = ThemeTestFixture.textViews(in: window)
         #expect(textViews.count == 2)
         let dump = try #require(textViews.first { !$0.isEditable })
         let input = try #require(textViews.first { $0.isEditable })

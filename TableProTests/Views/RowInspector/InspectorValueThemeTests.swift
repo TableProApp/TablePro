@@ -34,9 +34,9 @@ struct InspectorValueThemeTests {
     }
 
     private func pixel(of view: some View, size: CGSize, x: Int, fromBottom: Int? = nil) throws -> NSColor {
-        let rep = try #require(OffscreenRender.bitmap(of: view.frame(width: size.width, height: size.height), colorScheme: .light))
+        let rep = try ThemeTestFixture.bitmap(of: view.frame(width: size.width, height: size.height), colorScheme: .light)
         let y = fromBottom.map { rep.pixelsHigh - 1 - $0 } ?? rep.pixelsHigh / 2
-        return try #require(rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+        return try #require(ThemeTestFixture.pixel(rep, x: x, y: y))
     }
 
     /// Near the trailing edge of a well, clear of its text and inside its border.
@@ -44,73 +44,42 @@ struct InspectorValueThemeTests {
         try pixel(of: view, size: Self.wellSize, x: Int(Self.wellSize.width) - 12)
     }
 
-    /// A plain fill rendered the same way, so the renderer's color management cancels out.
-    private func filled(_ color: NSColor) throws -> NSColor {
-        try wellPixel(Color(nsColor: color))
-    }
-
-    private func matches(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
-        abs(lhs.redComponent - rhs.redComponent) <= 0.02
-            && abs(lhs.greenComponent - rhs.greenComponent) <= 0.02
-            && abs(lhs.blueComponent - rhs.blueComponent) <= 0.02
-            && abs(lhs.alphaComponent - rhs.alphaComponent) <= 0.02
-    }
-
     // MARK: - Wells
 
     @Test("Under the default pair a read-only value and a pending NULL draw the text background they always did")
     func defaultWellsAreNative() throws {
-        try TreeThemeFixture.with([:]) {
-            let native = try filled(.textBackgroundColor)
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let native = try ThemeTestFixture.filled(.textBackgroundColor, colorScheme: .light)
             let value = try wellPixel(field("a", kind: .singleLine))
             let pending = try wellPixel(field("", kind: .singleLine, state: .pendingNull))
 
-            #expect(matches(value, native), "\(value) against \(native)")
-            #expect(matches(pending, native), "\(pending) against \(native)")
+            #expect(ThemeTestFixture.matches(value, native), "\(value) against \(native)")
+            #expect(ThemeTestFixture.matches(pending, native), "\(pending) against \(native)")
         }
     }
 
     @Test("Under a theme a read-only value and a pending NULL sit on the editor background")
     func themedWellsTakeTheEditorBackground() throws {
-        try TreeThemeFixture.with([.editorBackground: Self.editorBackground]) {
-            let themed = try filled(HexColor.color(Self.editorBackground))
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground], appearance: .light) {
+            let themed = try ThemeTestFixture.filled(hex: Self.editorBackground, colorScheme: .light)
             let value = try wellPixel(field("a", kind: .singleLine))
             let pending = try wellPixel(field("", kind: .singleLine, state: .pendingNull))
 
-            #expect(matches(value, themed), "\(value) against \(themed)")
-            #expect(matches(pending, themed), "\(pending) against \(themed)")
+            #expect(ThemeTestFixture.matches(value, themed), "\(value) against \(themed)")
+            #expect(ThemeTestFixture.matches(pending, themed), "\(pending) against \(themed)")
         }
     }
 
     // MARK: - Multi-line
 
-    /// Never ordered front and never closed: `close()` on a test window over-releases it.
     private func hostedTextView(_ view: some View) throws -> (NSWindow, NSTextView) {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 240, height: 160),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: .aqua)
-        window.contentView = NSHostingView(rootView: view.frame(width: 240, height: 160))
-        window.contentView?.layoutSubtreeIfNeeded()
-        return (window, try #require(firstTextView(in: window.contentView)))
-    }
-
-    private func firstTextView(in view: NSView?) -> NSTextView? {
-        guard let view else { return nil }
-        if let textView = view as? NSTextView { return textView }
-        for subview in view.subviews {
-            if let textView = firstTextView(in: subview) { return textView }
-        }
-        return nil
+        let window = ThemeTestFixture.host(view, size: NSSize(width: 240, height: 160))
+        return (window, try #require(ThemeTestFixture.textViews(in: window).first))
     }
 
     @Test("A multi-line value keeps the system text colors under the default pair")
     func multiLineDefaultIsNative() throws {
-        try TreeThemeFixture.with([:]) {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
             let (window, textView) = try hostedTextView(field("line one\nline two", kind: .multiLine))
             #expect(textView.backgroundColor === NSColor.textBackgroundColor)
             #expect(textView.textColor === NSColor.textColor)
@@ -120,10 +89,10 @@ struct InspectorValueThemeTests {
 
     @Test("A multi-line value takes the editor's background and text while the theme sets them")
     func multiLineFollowsTheTheme() throws {
-        try TreeThemeFixture.with([.editorBackground: Self.editorBackground, .editorText: "#657B83"]) {
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground, .editorText: "#657B83"], appearance: .light) {
             let (window, textView) = try hostedTextView(field("line one\nline two", kind: .multiLine))
-            #expect(TreeThemeFixture.hex(textView.backgroundColor) == Self.editorBackground)
-            #expect(TreeThemeFixture.hex(textView.textColor) == "#657B83")
+            #expect(ThemeTestFixture.hex(textView.backgroundColor) == Self.editorBackground)
+            #expect(ThemeTestFixture.hex(textView.textColor) == "#657B83")
             withExtendedLifetime(window) {}
         }
     }
@@ -148,7 +117,7 @@ struct InspectorValueThemeTests {
 
     @Test("Under the default pair the JSON tab draws no background of its own, so the inspector shows through")
     func jsonTabDefaultIsClear() throws {
-        try TreeThemeFixture.with([:]) {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
             let corner = try pixel(of: jsonTab(), size: Self.paneSize, x: 4, fromBottom: 4)
             #expect(corner.alphaComponent < 0.02, "\(corner)")
         }
@@ -156,10 +125,10 @@ struct InspectorValueThemeTests {
 
     @Test("Under a theme the JSON tab's tree sits on the editor background")
     func jsonTabTakesTheEditorBackground() throws {
-        try TreeThemeFixture.with([.editorBackground: Self.editorBackground]) {
-            let themed = try filled(HexColor.color(Self.editorBackground))
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground], appearance: .light) {
+            let themed = try ThemeTestFixture.filled(hex: Self.editorBackground, colorScheme: .light)
             let corner = try pixel(of: jsonTab(), size: Self.paneSize, x: 4, fromBottom: 4)
-            #expect(matches(corner, themed), "\(corner) against \(themed)")
+            #expect(ThemeTestFixture.matches(corner, themed), "\(corner) against \(themed)")
         }
     }
 }

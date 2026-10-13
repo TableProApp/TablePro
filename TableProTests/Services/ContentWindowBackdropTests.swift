@@ -31,23 +31,23 @@ struct ContentWindowBackdropTests {
         let original = window.backgroundColor
         #expect(original == NSColor.windowBackgroundColor, "the default pair touched the window")
 
-        ThemeSurfaceProbe.adopt(dark: try ThemeSurfaceProbe.darkTheme([.windowBackdrop: ThemeSurfaceProbe.windowHex]))
+        try ThemeTestFixture.adopt([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark)
         if drawsBackdrop {
-            #expect(hex(of: window) == ThemeSurfaceProbe.windowHex)
+            #expect(hex(of: window) == ThemeTestFixture.windowHex)
         } else {
             #expect(window.backgroundColor === original)
         }
 
-        ThemeSurfaceProbe.adopt(dark: try ThemeSurfaceProbe.darkTheme([.editorBackground: ThemeSurfaceProbe.editorHex]))
+        try ThemeTestFixture.adopt([.editorBackground: ThemeTestFixture.editorHex], appearance: .dark)
         #expect(window.backgroundColor === original, "a content color reached the window")
 
-        ThemeSurfaceProbe.adopt(dark: BuiltInThemes.dark)
+        ThemeTestFixture.adopt(.builtIn, appearance: .dark)
         #expect(window.backgroundColor === original)
     }
 
     @Test("The main window takes a theme's window color and hands its own back")
     func mainWindowFollowsTheTheme() throws {
-        try ThemeSurfaceProbe.adopting(dark: BuiltInThemes.dark) {
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
             let fixture = try OffscreenConnectionWindow(size: CGSize(width: 1_200, height: 800))
             defer { fixture.tearDown() }
             try expectFollowsTheTheme(fixture.window)
@@ -56,7 +56,7 @@ struct ContentWindowBackdropTests {
 
     @Test("A data file window takes a theme's window color and hands its own back")
     func dataFileWindowFollowsTheTheme() throws {
-        try ThemeSurfaceProbe.adopting(dark: BuiltInThemes.dark) {
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
             let controller = DataFileWindowController(document: DataFileDocument())
             let window = try #require(controller.window)
             defer { window.delegate = nil }

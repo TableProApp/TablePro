@@ -40,6 +40,25 @@ struct ClickHousePartsGridTests {
         #expect(ClickHousePartsView.gridRow(for: inactive).values.last == "NO")
     }
 
+    @Test("Each column opens at the width the parts list has always given it")
+    func defaultWidths() {
+        #expect(ClickHousePartsView.columnWidths == [120, 200, 100, 100, 160, 60])
+        #expect(ClickHousePartsView.columnWidths.count == ClickHousePartsView.columnTitles.count)
+    }
+
+    @Test("Drop and Detach name the one selected part's partition, and none while several are selected")
+    func selectedPartition() {
+        let other = ClickHousePartInfo(
+            partition: "202602", name: "202602_1_1_0", rows: 1, bytesOnDisk: 1, modificationTime: "", active: true
+        )
+        let parts = [part, other]
+
+        #expect(ClickHousePartsView.partition(of: [other.id], in: parts) == "202602")
+        #expect(ClickHousePartsView.partition(of: [part.id, other.id], in: parts) == nil)
+        #expect(ClickHousePartsView.partition(of: [], in: parts) == nil)
+        #expect(ClickHousePartsView.partition(of: [UUID()], in: parts) == nil)
+    }
+
     @Test("A selected grid row names its own part")
     func selectedRowResolvesToItsPart() {
         let other = ClickHousePartInfo(

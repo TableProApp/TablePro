@@ -40,14 +40,8 @@ struct StructureListGridModelTests {
         StructureListRow(id: "c", values: ["gamma", "AFTER"]),
     ]
 
-    private func loadedModel(
-        accessibilityLabel: String? = nil,
-        restoresSelectionAfterReload: Bool = false
-    ) -> StructureListGridModel<String> {
-        let model = StructureListGridModel<String>(
-            accessibilityLabel: accessibilityLabel,
-            restoresSelectionAfterReload: restoresSelectionAfterReload
-        )
+    private func loadedModel(accessibilityLabel: String? = nil) -> StructureListGridModel<String> {
+        let model = StructureListGridModel<String>(accessibilityLabel: accessibilityLabel)
         _ = model.ensureLoaded(key: 1, columns: columns) { rows }
         return model
     }
@@ -135,16 +129,60 @@ struct StructureListGridModelTests {
         #expect(received == state)
     }
 
-    @Test("A list that keeps its selection by identity has it put back after every reload")
+    @Test("Every reload has the selection put back by identity")
     func rearmsSelectionRestoreOnAttach() {
         let coordinator = makeCoordinator()
         coordinator.hasRestoredSelection = true
-        loadedModel(restoresSelectionAfterReload: true).dataGridAttach(tableViewCoordinator: coordinator)
+        loadedModel().dataGridAttach(tableViewCoordinator: coordinator)
         #expect(!coordinator.hasRestoredSelection)
+    }
+
+    @Test("The selection binding maps rows to ids and back")
+    func selectionBindingMapsBothWays() {
+        let model = loadedModel()
+        var ids: Set<String> = ["b"]
+        let selection = model.selection(get: { ids }, set: { ids = $0 })
+
+        #expect(selection.wrappedValue == [1])
+        selection.wrappedValue = [0, 2]
+        #expect(ids == ["a", "c"])
+    }
+
+    @Test("Rows published before the grid puts the selection back after a reload leave the ids alone")
+    func dropsPublicationsDuringReload() {
+        let model = loadedModel()
+        let coordinator = makeCoordinator()
+        model.dataGridAttach(tableViewCoordinator: coordinator)
+        var ids: Set<String> = ["a", "b"]
+        let selection = model.selection(get: { ids }, set: { ids = $0 })
+
+        selection.wrappedValue = [2]
+        #expect(ids == ["a", "b"])
 
         coordinator.hasRestoredSelection = true
-        loadedModel().dataGridAttach(tableViewCoordinator: coordinator)
-        #expect(coordinator.hasRestoredSelection)
+        selection.wrappedValue = [2]
+        #expect(ids == ["c"])
+    }
+
+    @Test("Republishing the rows the selection already shows keeps the ids a filter hides")
+    func echoKeepsHiddenIDs() {
+        let model = loadedModel()
+        var ids: Set<String> = ["a", "hidden"]
+        let selection = model.selection(get: { ids }, set: { ids = $0 })
+
+        selection.wrappedValue = [0]
+        #expect(ids == ["a", "hidden"])
+    }
+
+    @Test("Default widths fill only the columns the layout has no width for")
+    func defaultWidthsFillMissingColumns() {
+        var stored = ColumnLayoutState()
+        stored.columnWidths["Timing"] = 300
+
+        let layout = StructureListGrid<String>.layout(stored, columns: columns, defaultWidths: [220, 90])
+
+        #expect(layout.columnWidths == ["Name": 220, "Timing": 300])
+        #expect(StructureListGrid<String>.layout(stored, columns: columns, defaultWidths: []) == stored)
     }
 
     @Test("The grid is named for the list it shows")

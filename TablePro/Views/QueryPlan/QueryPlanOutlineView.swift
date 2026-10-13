@@ -51,11 +51,6 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         outlineView.coordinator = context.coordinator
         outlineView.menu = makeMenu(coordinator: context.coordinator)
 
-        context.coordinator.onSelect = { selectedNodeId = $0 }
-        context.coordinator.update(
-            plan: plan, metric: metric, differentiateWithoutColor: differentiateWithoutColor
-        )
-
         let scrollView = NSScrollView()
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
@@ -63,6 +58,11 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         context.coordinator.attachThemeChrome(to: outlineView)
+
+        context.coordinator.onSelect = { selectedNodeId = $0 }
+        context.coordinator.update(
+            plan: plan, metric: metric, differentiateWithoutColor: differentiateWithoutColor
+        )
         return scrollView
     }
 

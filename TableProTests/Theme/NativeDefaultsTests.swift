@@ -317,32 +317,8 @@ struct NativeDefaultsTests {
 
     // MARK: - SwiftUI surfaces
 
-    private static func adopting(dark: ThemeDefinition, _ body: () throws -> Void) rethrows {
-        let engine = ThemeEngine.shared
-        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
-        defer { engine.adopt(restore) }
-        engine.adopt(ThemeSelection(pair: ThemePair(light: BuiltInThemes.light, dark: dark), effectiveAppearance: .dark))
-        try body()
-    }
-
-    /// The swatch is held to a plain fill rendered the same way, so the renderer's own color
-    /// management cancels out.
     private static func centerColor(of view: some View) throws -> NSColor {
-        let renderer = ImageRenderer(content: view.environment(\.colorScheme, .dark))
-        let image = try #require(renderer.cgImage)
-        let rep = NSBitmapImageRep(cgImage: image)
-        let color = try #require(rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2))
-        return try #require(color.usingColorSpace(.sRGB))
-    }
-
-    private static func filled(_ color: NSColor) throws -> NSColor {
-        try centerColor(of: Color(nsColor: color).frame(width: 24, height: 24))
-    }
-
-    private static func matches(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
-        abs(lhs.redComponent - rhs.redComponent) <= 0.02
-            && abs(lhs.greenComponent - rhs.greenComponent) <= 0.02
-            && abs(lhs.blueComponent - rhs.blueComponent) <= 0.02
+        try ThemeTestFixture.color(of: view, at: CGPoint(x: 0.5, y: 0.5), colorScheme: .dark)
     }
 
     @Test("themeBackground draws the native style as passed until the active theme sets the slot")
@@ -351,23 +327,24 @@ struct NativeDefaultsTests {
             .frame(width: 24, height: 24)
             .themeBackground(.windowBackdrop, native: Color(nsColor: .systemRed))
 
-        try Self.adopting(dark: BuiltInThemes.dark) {
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
             #expect(ThemeShapeStyle.override(.windowBackdrop, contrast: .standard) == nil)
             #expect(ThemeShapeStyle.override(.editorBackground, contrast: .standard) == nil)
             let drawn = try Self.centerColor(of: swatch)
-            let native = try Self.filled(.systemRed)
-            #expect(Self.matches(drawn, native), "drew \(drawn), native \(native)")
+            let native = try ThemeTestFixture.filled(.systemRed, colorScheme: .dark)
+            #expect(ThemeTestFixture.matches(drawn, native), "drew \(drawn), native \(native)")
         }
 
-        try Self.adopting(dark: try Self.bundledTheme("tablepro.dracula")) {
+        let dracula = ThemePair(light: BuiltInThemes.light, dark: try Self.bundledTheme("tablepro.dracula"))
+        try ThemeTestFixture.adopting(dracula, appearance: .dark) {
             #expect(ThemeShapeStyle.override(.windowBackdrop, contrast: .standard) != nil)
             #expect(ThemeShapeStyle.override(.windowBackdrop, contrast: .increased) == nil)
             #expect(ThemeShapeStyle.override(.editorBackground, contrast: .increased) != nil)
             let drawn = try Self.centerColor(of: swatch)
-            let themed = try Self.filled(HexColor.color("#282A36"))
-            let native = try Self.filled(.systemRed)
-            #expect(Self.matches(drawn, themed), "drew \(drawn), theme \(themed)")
-            #expect(!Self.matches(drawn, native))
+            let themed = try ThemeTestFixture.filled(hex: "#282A36", colorScheme: .dark)
+            let native = try ThemeTestFixture.filled(.systemRed, colorScheme: .dark)
+            #expect(ThemeTestFixture.matches(drawn, themed), "drew \(drawn), theme \(themed)")
+            #expect(!ThemeTestFixture.matches(drawn, native))
         }
     }
 }

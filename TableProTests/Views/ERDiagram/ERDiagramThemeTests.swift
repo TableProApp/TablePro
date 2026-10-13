@@ -34,7 +34,7 @@ private final class ThemeFillView: NSView {
 @Suite("The ER diagram follows the theme", .serialized)
 @MainActor
 struct ERDiagramThemeTests {
-    private typealias Fixture = DiagramThemeFixture
+    private typealias Fixture = ThemeTestFixture
 
     private static let themed: [ThemeSlot: String] = [
         .windowBackdrop: "#1E2030",
@@ -76,7 +76,7 @@ struct ERDiagramThemeTests {
     ])
     func defaultPairDrawsSystemColors(_ name: NSAppearance.Name) throws {
         try Fixture.preservingEngine {
-            try Fixture.adopt([:])
+            try Fixture.adopt([:], appearance: .light)
             let appearance = try appearance(name)
             let palette = ERDiagramPalette(appearance: appearance)
 
@@ -97,7 +97,7 @@ struct ERDiagramThemeTests {
     @Test("A theme colors the tables from the grid's slots and keeps meaning hues and connectors system")
     func themeColorsTablesFromGridSlots() throws {
         try Fixture.preservingEngine {
-            try Fixture.adopt(Self.themed)
+            try Fixture.adopt(Self.themed, appearance: .light)
             let appearance = try appearance(.aqua)
             let palette = ERDiagramPalette(appearance: appearance)
 
@@ -147,7 +147,7 @@ struct ERDiagramThemeTests {
     @Test("The canvas re-bakes its colors when the theme changes")
     func sceneViewRebakesOnThemeChange() throws {
         try Fixture.preservingEngine {
-            try Fixture.adopt([:])
+            try Fixture.adopt([:], appearance: .light)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
                 styleMask: [.borderless],
@@ -161,7 +161,7 @@ struct ERDiagramThemeTests {
             let before = view.palette.nodeFill
             view.needsDisplay = false
 
-            try Fixture.adopt(Self.themed)
+            try Fixture.adopt(Self.themed, appearance: .light)
 
             #expect(view.needsDisplay)
             #expect(Fixture.hex(view.palette.nodeFill) == "#2A6F4E")
@@ -173,7 +173,7 @@ struct ERDiagramThemeTests {
     @Test("The canvas draws a table in the theme's grid background")
     func sceneViewDrawsThemedTable() throws {
         try Fixture.preservingEngine {
-            try Fixture.adopt(Self.themed)
+            try Fixture.adopt(Self.themed, appearance: .light)
             let (scene, rect) = scene()
             let view = ERDiagramSceneView(frame: NSRect(origin: .zero, size: scene.size))
             view.appearance = try appearance(.aqua)
@@ -198,7 +198,7 @@ struct ERDiagramThemeTests {
     @Test("A theme's window background fills the canvas, and only while the theme sets it")
     func canvasBackdropFollowsTheTheme() throws {
         try Fixture.preservingEngine {
-            try Fixture.adopt([:])
+            try Fixture.adopt([:], appearance: .light)
             let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
             scrollView.appearance = try appearance(.aqua)
             scrollView.drawsBackground = false
@@ -208,12 +208,12 @@ struct ERDiagramThemeTests {
             #expect(!scrollView.drawsBackground)
             #expect(!backdrop.isThemed)
 
-            try Fixture.adopt(Self.themed)
+            try Fixture.adopt(Self.themed, appearance: .light)
             #expect(scrollView.drawsBackground)
             #expect(Fixture.hex(Fixture.baked(scrollView.backgroundColor, in: try appearance(.aqua))) == "#1E2030")
             #expect(backdrop.isThemed)
 
-            try Fixture.adopt([:])
+            try Fixture.adopt([:], appearance: .light)
             #expect(!scrollView.drawsBackground)
             #expect(scrollView.backgroundColor == original)
             withExtendedLifetime(backdrop) {}
@@ -242,7 +242,7 @@ struct ERDiagramThemeTests {
     ])
     func exportRendersWhatTheCanvasShows(themed: Bool) throws {
         try Fixture.preservingEngine {
-            try Fixture.adopt(themed ? Self.themed : [:])
+            try Fixture.adopt(themed ? Self.themed : [:], appearance: .light)
             let appearance = try appearance(.aqua)
             let palette = ERDiagramPalette(appearance: appearance)
             let (scene, rect) = scene()

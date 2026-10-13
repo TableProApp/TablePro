@@ -333,9 +333,16 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
     }
 
     internal func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
-        let reused = outlineView.makeView(withIdentifier: TreeOutlineRowView.reuseIdentifier, owner: nil)
-        let rowView = reused as? TreeOutlineRowView ?? TreeOutlineRowView()
-        rowView.identifier = TreeOutlineRowView.reuseIdentifier
+        guard let chrome, chrome.themesRows else {
+            let reused = outlineView.makeView(withIdentifier: TreeOutlineRowView.reuseIdentifier, owner: nil)
+            if let rowView = reused as? TreeOutlineRowView { return rowView }
+            let rowView = TreeOutlineRowView()
+            rowView.identifier = TreeOutlineRowView.reuseIdentifier
+            return rowView
+        }
+        let reused = outlineView.makeView(withIdentifier: ThemedTreeOutlineRowView.reuseIdentifier, owner: nil)
+        let rowView = reused as? ThemedTreeOutlineRowView ?? ThemedTreeOutlineRowView()
+        rowView.identifier = ThemedTreeOutlineRowView.reuseIdentifier
         rowView.chrome = chrome
         return rowView
     }
@@ -359,7 +366,8 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
 
     /// The outline posts these for the expansion applied here too, which is not the user's choice.
     private func recordDisclosure(_ notification: Notification, isExpanded: Bool) {
-        guard !isApplyingExpansion, let item = notification.userInfo?["NSObject"] as? Item else { return }
+        guard !isApplyingExpansion, chrome?.isRebuildingRows != true,
+              let item = notification.userInfo?["NSObject"] as? Item else { return }
         if isExpanded {
             appliedExpansion?.insert(item.path)
         } else {

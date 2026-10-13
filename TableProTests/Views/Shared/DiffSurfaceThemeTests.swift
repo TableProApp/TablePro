@@ -28,8 +28,8 @@ struct DiffSurfaceThemeTests {
 
     private static func rowSamples(_ bitmap: NSBitmapImageRep) throws -> (context: NSColor, added: NSColor) {
         let x = bitmap.pixelsWide - 12
-        let context = try ThemedRenderFixture.color(in: bitmap, x: x, y: bitmap.pixelsHigh / 4)
-        let added = try ThemedRenderFixture.color(in: bitmap, x: x, y: bitmap.pixelsHigh * 3 / 4)
+        let context = try #require(ThemeTestFixture.pixel(bitmap, x: x, y: bitmap.pixelsHigh / 4))
+        let added = try #require(ThemeTestFixture.pixel(bitmap, x: x, y: bitmap.pixelsHigh * 3 / 4))
         return (context, added)
     }
 
@@ -37,33 +37,33 @@ struct DiffSurfaceThemeTests {
 
     @Test("Under the default pair the text diff draws no fill of its own and the native grid tint")
     func textDiffDrawsNativelyUnderTheDefaultPair() throws {
-        try ThemedRenderFixture.adopting(.builtIn) { _ in
-            let bitmap = try ThemedRenderFixture.bitmap(of: Self.unifiedDiff())
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let bitmap = try ThemeTestFixture.bitmap(of: Self.unifiedDiff(), colorScheme: .dark)
             let samples = try Self.rowSamples(bitmap)
-            let inserted = try ThemedRenderFixture.filled(NativeThemeColors.insertedRow)
+            let inserted = try ThemeTestFixture.filled(NativeThemeColors.insertedRow, colorScheme: .dark)
 
             #expect(samples.context.alphaComponent < 0.01, "context line drew \(samples.context)")
-            #expect(ThemedRenderFixture.matches(samples.added, inserted), "drew \(samples.added), native \(inserted)")
-            #expect(ThemedRenderFixture.pixelCount(in: bitmap, where: ThemedRenderFixture.isMagenta) == 0)
+            #expect(ThemeTestFixture.matches(samples.added, inserted), "drew \(samples.added), native \(inserted)")
+            #expect(ThemeTestFixture.count(in: bitmap, where: ThemeTestFixture.isMagenta) == 0)
         }
     }
 
     @Test("A theme's editor background, editor text and grid tint reach the text diff")
     func textDiffFollowsTheTheme() throws {
-        let pair = try ThemedRenderFixture.pair([
+        let pair = try ThemeTestFixture.pair([
             .editorBackground: "#102030",
             .editorText: "#FF00FF",
             .gridInserted: "#00FF00",
         ])
-        try ThemedRenderFixture.adopting(pair) { _ in
-            let bitmap = try ThemedRenderFixture.bitmap(of: Self.unifiedDiff())
+        try ThemeTestFixture.adopting(pair, appearance: .dark) {
+            let bitmap = try ThemeTestFixture.bitmap(of: Self.unifiedDiff(), colorScheme: .dark)
             let samples = try Self.rowSamples(bitmap)
-            let background = try ThemedRenderFixture.filled(HexColor.color("#102030"))
-            let inserted = try ThemedRenderFixture.filled(HexColor.color("#00FF00"))
+            let background = try ThemeTestFixture.filled(hex: "#102030", colorScheme: .dark)
+            let inserted = try ThemeTestFixture.filled(hex: "#00FF00", colorScheme: .dark)
 
-            #expect(ThemedRenderFixture.matches(samples.context, background), "drew \(samples.context)")
-            #expect(ThemedRenderFixture.matches(samples.added, inserted), "drew \(samples.added)")
-            #expect(ThemedRenderFixture.pixelCount(in: bitmap, where: ThemedRenderFixture.isMagenta) > 0)
+            #expect(ThemeTestFixture.matches(samples.context, background), "drew \(samples.context)")
+            #expect(ThemeTestFixture.matches(samples.added, inserted), "drew \(samples.added)")
+            #expect(ThemeTestFixture.count(in: bitmap, where: ThemeTestFixture.isMagenta) > 0)
         }
     }
 
@@ -86,7 +86,8 @@ struct DiffSurfaceThemeTests {
 
     @Test("The file conflict diff keeps its own tints under the default pair")
     func fileConflictTintsAreNativeUnderTheDefaultPair() {
-        ThemedRenderFixture.adopting(.builtIn) { engine in
+        ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let engine = ThemeEngine.shared
             #expect(FileConflictRowHighlight.removed.tint(engine: engine, contrast: .standard) == .red.opacity(0.18))
             #expect(FileConflictRowHighlight.added.tint(engine: engine, contrast: .standard) == .green.opacity(0.18))
             #expect(FileConflictRowHighlight.filler.tint(engine: engine, contrast: .standard) == .gray.opacity(0.06))
@@ -96,8 +97,9 @@ struct DiffSurfaceThemeTests {
 
     @Test("The file conflict diff takes the grid's inserted and deleted tints from a theme")
     func fileConflictTintsFollowTheTheme() throws {
-        let pair = try ThemedRenderFixture.pair([.gridInserted: "#00FF0040", .gridDeleted: "#FF000040"])
-        ThemedRenderFixture.adopting(pair) { engine in
+        let pair = try ThemeTestFixture.pair([.gridInserted: "#00FF0040", .gridDeleted: "#FF000040"])
+        ThemeTestFixture.adopting(pair, appearance: .dark) {
+            let engine = ThemeEngine.shared
             #expect(
                 FileConflictRowHighlight.removed.tint(engine: engine, contrast: .standard)
                     == Color(nsColor: engine.palette[.gridDeleted])

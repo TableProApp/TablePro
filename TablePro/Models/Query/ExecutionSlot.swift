@@ -13,12 +13,9 @@ internal struct ExecutionSlot: Equatable {
     }
 
     internal let report: Report?
-    internal let leadsWithSeparator: Bool
 
-    internal init(isOffered: Bool, followsReadout: Bool, isRevealed: Bool, lastTiming: PluginQueryTiming?) {
-        let report = isOffered ? Self.report(isRevealed: isRevealed, lastTiming: lastTiming) : nil
-        self.report = report
-        leadsWithSeparator = followsReadout && report != nil
+    internal init(isOffered: Bool, isRevealed: Bool, lastTiming: PluginQueryTiming?) {
+        report = isOffered ? Self.report(isRevealed: isRevealed, lastTiming: lastTiming) : nil
     }
 
     private static func report(isRevealed: Bool, lastTiming: PluginQueryTiming?) -> Report? {

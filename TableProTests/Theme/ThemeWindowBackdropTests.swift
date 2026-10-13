@@ -40,14 +40,7 @@ struct ThemeWindowBackdropTests {
     }
 
     private func adopt(light: ThemeDefinition = BuiltInThemes.light, dark: ThemeDefinition, effective: ThemeAppearance = .dark) {
-        ThemeEngine.shared.adopt(ThemeSelection(pair: ThemePair(light: light, dark: dark), effectiveAppearance: effective))
-    }
-
-    private func preservingEngine(_ body: () throws -> Void) rethrows {
-        let engine = ThemeEngine.shared
-        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
-        defer { engine.adopt(restore) }
-        try body()
+        ThemeTestFixture.adopt(ThemePair(light: light, dark: dark), appearance: effective)
     }
 
     private func hex(of color: NSColor?, in window: NSWindow) throws -> String {
@@ -66,7 +59,7 @@ struct ThemeWindowBackdropTests {
 
     @Test("The default pair leaves the window's own background untouched")
     func defaultPairLeavesTheWindowAlone() throws {
-        try preservingEngine {
+        try ThemeTestFixture.preservingEngine {
             adopt(dark: BuiltInThemes.dark)
             let window = makeWindow()
             let original = window.backgroundColor
@@ -83,7 +76,7 @@ struct ThemeWindowBackdropTests {
 
     @Test("A theme that sets the window background fills the window, and switching back restores the original")
     func overrideFillsAndRestores() throws {
-        try preservingEngine {
+        try ThemeTestFixture.preservingEngine {
             adopt(dark: BuiltInThemes.dark)
             let window = makeWindow()
             let original = window.backgroundColor
@@ -105,7 +98,7 @@ struct ThemeWindowBackdropTests {
 
     @Test("A light-only window background leaves a dark window alone, and the flip to light fills it")
     func onlyTheActiveThemeCounts() throws {
-        try preservingEngine {
+        try ThemeTestFixture.preservingEngine {
             let light = try theme(.light, window: "#F0E8D8")
             adopt(light: light, dark: BuiltInThemes.dark, effective: .dark)
             let window = makeWindow(.darkAqua)

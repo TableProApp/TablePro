@@ -413,33 +413,33 @@ struct TreeOutlineCoordinatorTests {
 
     @Test("Rows built under a theme take its syntax colors")
     func rowsFollowTheTheme() throws {
-        try TreeThemeFixture.with(TreeThemeFixture.tones) {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
             let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
             let cell = try harness.cell("count")
 
-            #expect(TreeThemeFixture.hex(cell.keyField.textColor) == TreeThemeFixture.tones[.syntaxString])
-            #expect(TreeThemeFixture.hex(cell.valueField.textColor) == TreeThemeFixture.tones[.syntaxNumber])
+            #expect(ThemeTestFixture.hex(cell.keyField.textColor) == TreeOutlineFixture.tones[.syntaxString])
+            #expect(ThemeTestFixture.hex(cell.valueField.textColor) == TreeOutlineFixture.tones[.syntaxNumber])
         }
     }
 
     @Test("A theme change recolors the rows on screen without reloading them")
     func themeChangeRecolorsVisibleRows() throws {
-        try TreeThemeFixture.with([:]) {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
             let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
             let cell = try harness.cell("count")
 
-            try TreeThemeFixture.adopt(TreeThemeFixture.tones)
+            try ThemeTestFixture.adopt(TreeOutlineFixture.tones, appearance: .light)
 
             #expect(cell.valueField.textColor == TreeValueTone.number.color)
             #expect(cell.keyField.textColor == TreeValueTone.key.color)
-            #expect(TreeThemeFixture.hex(cell.valueField.textColor) == TreeThemeFixture.tones[.syntaxNumber])
+            #expect(ThemeTestFixture.hex(cell.valueField.textColor) == TreeOutlineFixture.tones[.syntaxNumber])
             #expect(harness.coordinator.reloadCount == 1)
         }
     }
 
     @Test("Under the default pair the outline keeps AppKit's background, stripes, scroll view and selection")
     func defaultPairKeepsTheNativeTable() throws {
-        try TreeThemeFixture.with([:]) {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
             let native = TreeOutlineView.make()
             let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
             let chrome = try #require(harness.coordinator.chrome)
@@ -455,31 +455,90 @@ struct TreeOutlineCoordinatorTests {
 
     @Test("A theme's editor background replaces the outline's material and stripes, and leaving it brings them back")
     func editorBackgroundThemesTheOutline() throws {
-        try TreeThemeFixture.with([.editorBackground: "#FDF6E3"]) {
+        try ThemeTestFixture.adopting([.editorBackground: "#FDF6E3"], appearance: .light) {
             let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
             let chrome = try #require(harness.coordinator.chrome)
 
             #expect(chrome.family == .code)
-            #expect(TreeThemeFixture.hex(harness.outline.backgroundColor) == "#FDF6E3")
+            #expect(ThemeTestFixture.hex(harness.outline.backgroundColor) == "#FDF6E3")
             #expect(!harness.outline.usesAlternatingRowBackgroundColors)
             #expect(!harness.scrollView.drawsBackground)
-            #expect(TreeThemeFixture.hex(chrome.rowBackgroundColor(forRow: 1)) == "#FDF6E3")
+            #expect(ThemeTestFixture.hex(chrome.rowBackgroundColor(forRow: 1)) == "#FDF6E3")
 
-            try TreeThemeFixture.adopt([:])
+            try ThemeTestFixture.adopt([:], appearance: .light)
             #expect(harness.outline.usesAlternatingRowBackgroundColors)
             #expect(harness.scrollView.drawsBackground)
         }
     }
 
-    @Test("Every row view draws through the outline's theme chrome")
-    func rowViewsCarryTheChrome() throws {
-        let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
-        let chrome = try #require(harness.coordinator.chrome)
+    /// A row class that overrides a drawing method loses AppKit's layer-backed selection, the vibrant
+    /// material in a popover among them.
+    private func drawsLikeNSTableRowView(_ rowClass: AnyClass) -> Bool {
+        let selectors = [
+            #selector(NSTableRowView.drawSelection(in:)),
+            #selector(NSTableRowView.drawBackground(in:)),
+            #selector(getter: NSTableRowView.interiorBackgroundStyle),
+        ]
+        return selectors.allSatisfy {
+            class_getMethodImplementation(rowClass, $0) == class_getMethodImplementation(NSTableRowView.self, $0)
+        }
+    }
 
-        #expect(harness.outline.numberOfRows > 0)
-        for row in 0 ..< harness.outline.numberOfRows {
-            let rowView = try #require(harness.outline.rowView(atRow: row, makeIfNecessary: true) as? TreeOutlineRowView)
-            #expect(rowView.chrome === chrome)
+    @Test("Under the default pair every row is the plain tree row, which keeps AppKit's own drawing")
+    func defaultRowsAreThePlainTreeRow() throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
+
+            #expect(harness.outline.numberOfRows > 0)
+            for row in 0 ..< harness.outline.numberOfRows {
+                let rowView = try #require(harness.outline.rowView(atRow: row, makeIfNecessary: true))
+                #expect(type(of: rowView) == TreeOutlineRowView.self)
+                #expect(drawsLikeNSTableRowView(type(of: rowView)))
+            }
+        }
+    }
+
+    @Test("A theme that draws the rows swaps in the themed row, and the default pair swaps the plain one back")
+    func rowClassFollowsTheTheme() throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
+            let chrome = try #require(harness.coordinator.chrome)
+            try harness.select("count")
+            let keys = harness.keys
+            for row in 0 ..< harness.outline.numberOfRows {
+                _ = harness.outline.rowView(atRow: row, makeIfNecessary: true)
+            }
+
+            for overrides in [[ThemeSlot.editorSelection: "#EEE8D5"], [.editorBackground: "#FDF6E3"]] {
+                try ThemeTestFixture.adopt(overrides, appearance: .light)
+                for row in 0 ..< harness.outline.numberOfRows {
+                    let rowView = try #require(
+                        harness.outline.rowView(atRow: row, makeIfNecessary: true) as? ThemedTreeOutlineRowView
+                    )
+                    #expect(rowView.chrome === chrome)
+                }
+                #expect(harness.keys == keys)
+                #expect(harness.selectedKeys == ["count"])
+
+                try ThemeTestFixture.adopt([:], appearance: .light)
+                for row in 0 ..< harness.outline.numberOfRows {
+                    let rowView = try #require(harness.outline.rowView(atRow: row, makeIfNecessary: true))
+                    #expect(type(of: rowView) == TreeOutlineRowView.self)
+                }
+                #expect(harness.keys == keys)
+                #expect(harness.selectedKeys == ["count"])
+            }
+            #expect(harness.reported.isEmpty)
+            #expect(harness.coordinator.reloadCount == 1)
+        }
+    }
+
+    @Test("A theme that colors only the tree's text keeps the plain tree row")
+    func syntaxOnlyThemeKeepsThePlainRow() throws {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
+            let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
+            let rowView = try #require(harness.outline.rowView(atRow: 0, makeIfNecessary: true))
+            #expect(type(of: rowView) == TreeOutlineRowView.self)
         }
     }
 
@@ -496,7 +555,7 @@ struct TreeOutlineCoordinatorTests {
     /// AppKit's selection is the accent color, which a tone is not chosen to sit on.
     @Test("On AppKit's emphasized selection the key and value turn white, as the grid's text does")
     func nativeSelectionTurnsTheTextWhite() throws {
-        try TreeThemeFixture.with(TreeThemeFixture.tones.merging([.editorBackground: "#FDF6E3"]) { $1 }) {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones.merging([.editorBackground: "#FDF6E3"]) { $1 }, appearance: .light) {
             let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
             let (rowView, cell) = try emphasizedRow("count", in: harness)
 
@@ -511,17 +570,18 @@ struct TreeOutlineCoordinatorTests {
     /// The theme picks its selection to sit behind its own syntax colors, as the JSON text view draws it.
     @Test("On a theme's own selection the key and value keep their tones")
     func themedSelectionKeepsTheTones() throws {
-        let overrides = TreeThemeFixture.tones.merging([.editorBackground: "#FDF6E3", .editorSelection: "#EEE8D5"]) { $1 }
-        try TreeThemeFixture.with(overrides) {
+        let overrides = TreeOutlineFixture.tones.merging([.editorBackground: "#FDF6E3", .editorSelection: "#EEE8D5"]) { $1 }
+        try ThemeTestFixture.adopting(overrides, appearance: .light) {
             let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
             let (rowView, cell) = try emphasizedRow("count", in: harness)
 
+            let themedRow = try #require(rowView as? ThemedTreeOutlineRowView)
             #expect(rowView.isSelected)
-            #expect(TreeThemeFixture.hex(rowView.chrome?.selectionColor(emphasized: true)) == "#EEE8D5")
+            #expect(ThemeTestFixture.hex(themedRow.chrome?.selectionColor(emphasized: true)) == "#EEE8D5")
             #expect(rowView.interiorBackgroundStyle == .normal)
             #expect(cell.backgroundStyle == .normal)
-            #expect(TreeThemeFixture.hex(cell.keyField.textColor) == TreeThemeFixture.tones[.syntaxString])
-            #expect(TreeThemeFixture.hex(cell.valueField.textColor) == TreeThemeFixture.tones[.syntaxNumber])
+            #expect(ThemeTestFixture.hex(cell.keyField.textColor) == TreeOutlineFixture.tones[.syntaxString])
+            #expect(ThemeTestFixture.hex(cell.valueField.textColor) == TreeOutlineFixture.tones[.syntaxNumber])
         }
     }
 

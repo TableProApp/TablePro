@@ -55,7 +55,7 @@ struct TreeValueToneThemeTests {
 
     @Test("Each tone is the color the JSON text view draws the same token in", arguments: [false, true])
     func tonesMatchTheTextView(themed: Bool) throws {
-        try TreeThemeFixture.with(themed ? TreeThemeFixture.tones : [:]) {
+        try ThemeTestFixture.adopting(themed ? TreeOutlineFixture.tones : [:], appearance: .light) {
             let tokens: [(TreeValueTone, String?)] = [
                 (.key, "string.special.key"),
                 (.string, "string"),
@@ -64,8 +64,8 @@ struct TreeValueToneThemeTests {
                 (.container, nil)
             ]
             for (tone, capture) in tokens {
-                let text = TreeThemeFixture.hex(try textViewColor(capture))
-                #expect(TreeThemeFixture.hex(tone.color) == text, "\(tone) against \(capture ?? "uncaptured")")
+                let text = ThemeTestFixture.hex(try textViewColor(capture))
+                #expect(ThemeTestFixture.hex(tone.color) == text, "\(tone) against \(capture ?? "uncaptured")")
             }
         }
     }
@@ -74,19 +74,19 @@ struct TreeValueToneThemeTests {
     /// and muted text as the editor's line numbers.
     @Test("PHP kinds take the text view's colors for the closest token", arguments: [false, true])
     func phpKindsFollowTheirAnalogues(themed: Bool) throws {
-        try TreeThemeFixture.with(themed ? TreeThemeFixture.tones : [:]) {
-            #expect(TreeThemeFixture.hex(TreeValueTone.serialized.color) == TreeThemeFixture.hex(try textViewColor("type")))
-            #expect(TreeThemeFixture.hex(TreeValueTone.reference.color) == TreeThemeFixture.hex(try textViewColor("comment")))
+        try ThemeTestFixture.adopting(themed ? TreeOutlineFixture.tones : [:], appearance: .light) {
+            #expect(ThemeTestFixture.hex(TreeValueTone.serialized.color) == ThemeTestFixture.hex(try textViewColor("type")))
+            #expect(ThemeTestFixture.hex(TreeValueTone.reference.color) == ThemeTestFixture.hex(try textViewColor("comment")))
             let lineNumber = try #require(TableProEditorTheme.make().lineNumber)
-            #expect(TreeThemeFixture.hex(TreeValueTone.muted.color) == TreeThemeFixture.hex(lineNumber))
+            #expect(ThemeTestFixture.hex(TreeValueTone.muted.color) == ThemeTestFixture.hex(lineNumber))
         }
     }
 
     @Test("The tones are distinct under a theme, so a key never reads as a number")
     func tonesStayApart() throws {
-        try TreeThemeFixture.with(TreeThemeFixture.tones) {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
             let tones: [TreeValueTone] = [.string, .number, .literal, .serialized, .reference, .container, .muted]
-            let colors = Set(tones.compactMap { TreeThemeFixture.hex($0.color) })
+            let colors = Set(tones.compactMap { ThemeTestFixture.hex($0.color) })
             #expect(colors.count == tones.count)
         }
     }

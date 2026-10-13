@@ -173,7 +173,7 @@ struct TreeOutlineCellViewTests {
 
     @Test("Under a theme the key, value, colon and visibility take its colors, and an emphasized row turns them white")
     func themedColors() throws {
-        try TreeThemeFixture.with(TreeThemeFixture.tones) {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
             let node = PhpTreeNode(
                 key: "secret",
                 keyPath: "$.secret",
@@ -184,9 +184,9 @@ struct TreeOutlineCellViewTests {
             )
             let cell = configured(node.rowContent)
 
-            #expect(TreeThemeFixture.hex(cell.keyField.textColor) == TreeThemeFixture.tones[.syntaxString])
-            #expect(TreeThemeFixture.hex(cell.valueField.textColor) == TreeThemeFixture.tones[.syntaxNumber])
-            #expect(TreeThemeFixture.hex(cell.visibilityField.textColor) == TreeThemeFixture.tones[.editorLineNumber])
+            #expect(ThemeTestFixture.hex(cell.keyField.textColor) == TreeOutlineFixture.tones[.syntaxString])
+            #expect(ThemeTestFixture.hex(cell.valueField.textColor) == TreeOutlineFixture.tones[.syntaxNumber])
+            #expect(ThemeTestFixture.hex(cell.visibilityField.textColor) == TreeOutlineFixture.tones[.editorLineNumber])
 
             cell.backgroundStyle = .emphasized
             #expect(cell.keyField.textColor == .alternateSelectedControlTextColor)
@@ -196,12 +196,12 @@ struct TreeOutlineCellViewTests {
 
     @Test("Under the default pair the colon and visibility keep the secondary label color")
     func defaultSecondaryText() throws {
-        try TreeThemeFixture.with([:]) {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
             let cell = try cell("count")
-            #expect(TreeThemeFixture.hex(cell.visibilityField.textColor) == TreeThemeFixture.hex(.secondaryLabelColor))
+            #expect(ThemeTestFixture.hex(cell.visibilityField.textColor) == ThemeTestFixture.hex(.secondaryLabelColor))
             #expect(
-                TreeThemeFixture.hex(cell.visibilityField.textColor, in: .darkAqua)
-                    == TreeThemeFixture.hex(.secondaryLabelColor, in: .darkAqua)
+                ThemeTestFixture.hex(cell.visibilityField.textColor, in: .darkAqua)
+                    == ThemeTestFixture.hex(.secondaryLabelColor, in: .darkAqua)
             )
         }
     }

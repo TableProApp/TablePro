@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme file format 3, where every color is optional. Themes written for earlier versions are not read and need to be recreated.
 - Triggers and ClickHouse Parts in table structure shown as data grids, with multiple selection and Copy.
 - Filter and maintenance SQL previews highlighted as SQL in the editor font.
+- Result bar items separated by space instead of a dot.
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.

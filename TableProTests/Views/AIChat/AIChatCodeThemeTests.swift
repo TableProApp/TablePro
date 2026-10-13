@@ -43,48 +43,48 @@ struct AIChatCodeThemeTests {
 
     @Test("The tool-use input and tool-result wells keep the font they drew before", arguments: [ColorScheme.light, .dark])
     func toolWellFontsMatchTheirFormerText(colorScheme: ColorScheme) throws {
-        let former = try ThemedRenderFixture.bitmap(
+        let former = try ThemeTestFixture.bitmap(
             of: Text(Self.json).font(.caption).fontDesign(.monospaced),
             colorScheme: colorScheme
         )
-        let input = try ThemedRenderFixture.bitmap(
+        let input = try ThemeTestFixture.bitmap(
             of: Text(Self.json).font(AIChatToolUseBlockView.inputFont),
             colorScheme: colorScheme
         )
-        let result = try ThemedRenderFixture.bitmap(
+        let result = try ThemeTestFixture.bitmap(
             of: Text(Self.json).font(AIChatToolResultBlockView.contentFont),
             colorScheme: colorScheme
         )
 
-        #expect(ThemedRenderFixture.sameBytes(former, input))
-        #expect(ThemedRenderFixture.sameBytes(former, result))
+        #expect(ThemeTestFixture.sameBytes(former, input))
+        #expect(ThemeTestFixture.sameBytes(former, result))
     }
 
     @Test("Under the default pair a proposed statement draws exactly what it drew before", arguments: [ColorScheme.light, .dark])
     func proposedStatementIsNativeUnderTheDefaultPair(colorScheme: ColorScheme) throws {
-        try ThemedRenderFixture.adopting(.builtIn) { _ in
-            let themed = try ThemedRenderFixture.bitmap(
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let themed = try ThemeTestFixture.bitmap(
                 of: AgentProposedStatementRow(statement: Self.statement).frame(width: 320),
                 colorScheme: colorScheme
             )
-            let system = try ThemedRenderFixture.bitmap(
+            let system = try ThemeTestFixture.bitmap(
                 of: Self.systemRow(Self.statement).frame(width: 320),
                 colorScheme: colorScheme
             )
-            #expect(ThemedRenderFixture.sameBytes(themed, system))
+            #expect(ThemeTestFixture.sameBytes(themed, system))
         }
     }
 
     @Test("A proposed statement wears the editor's text while the theme sets it")
     func proposedStatementFollowsTheEditorText() throws {
-        let pair = try ThemedRenderFixture.pair([.editorText: "#FF00FF"])
-        try ThemedRenderFixture.adopting(pair) { _ in
-            let row = try ThemedRenderFixture.bitmap(of: AgentProposedStatementRow(statement: Self.statement).frame(width: 320))
-            #expect(ThemedRenderFixture.pixelCount(in: row, where: ThemedRenderFixture.isMagenta) > 0)
+        let pair = try ThemeTestFixture.pair([.editorText: "#FF00FF"])
+        try ThemeTestFixture.adopting(pair, appearance: .dark) {
+            let row = try ThemeTestFixture.bitmap(of: AgentProposedStatementRow(statement: Self.statement).frame(width: 320), colorScheme: .dark)
+            #expect(ThemeTestFixture.count(in: row, where: ThemeTestFixture.isMagenta) > 0)
         }
-        try ThemedRenderFixture.adopting(.builtIn) { _ in
-            let row = try ThemedRenderFixture.bitmap(of: AgentProposedStatementRow(statement: Self.statement).frame(width: 320))
-            #expect(ThemedRenderFixture.pixelCount(in: row, where: ThemedRenderFixture.isMagenta) == 0)
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let row = try ThemeTestFixture.bitmap(of: AgentProposedStatementRow(statement: Self.statement).frame(width: 320), colorScheme: .dark)
+            #expect(ThemeTestFixture.count(in: row, where: ThemeTestFixture.isMagenta) == 0)
         }
     }
 }

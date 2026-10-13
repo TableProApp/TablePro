@@ -16,27 +16,6 @@ import Testing
 @Suite("Text views follow the editor theme", .serialized)
 @MainActor
 struct ThemeTextViewStyleTests {
-    private func preservingEngine(_ body: () throws -> Void) rethrows {
-        let engine = ThemeEngine.shared
-        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
-        defer { engine.adopt(restore) }
-        try body()
-    }
-
-    private func adopt(_ overrides: [ThemeSlot: String]) throws {
-        var theme = BuiltInThemes.light
-        if !overrides.isEmpty {
-            theme.id = "user.test.text-view-style"
-            for (slot, hex) in overrides {
-                theme.overrides[slot] = try ThemeColor(validating: hex)
-            }
-        }
-        ThemeEngine.shared.adopt(ThemeSelection(
-            pair: ThemePair(light: theme, dark: BuiltInThemes.dark),
-            effectiveAppearance: .light
-        ))
-    }
-
     private func makeTextView() throws -> NSTextView {
         let textView = try #require(NSTextView.scrollableTextView().documentView as? NSTextView)
         textView.appearance = NSAppearance(named: .aqua)
@@ -65,8 +44,8 @@ struct ThemeTextViewStyleTests {
 
     @Test("Under the default theme nothing is written and the system color objects stay")
     func defaultThemeWritesNothing() throws {
-        try preservingEngine {
-            try adopt([:])
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt([:], appearance: .light)
             let textView = try makeTextView()
             let style = ThemeTextViewStyle(textView: textView)
 
@@ -80,20 +59,20 @@ struct ThemeTextViewStyleTests {
 
     @Test("A theme that sets the editor slots colors the text view, and switching back restores each object")
     func themeColorsAndRestores() throws {
-        try preservingEngine {
-            try adopt([:])
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt([:], appearance: .light)
             let textView = try makeTextView()
             let selectedForeground = textView.selectedTextAttributes[.foregroundColor] as? NSColor
             let style = ThemeTextViewStyle(textView: textView)
 
-            try adopt(Self.everyEditorSlot)
+            try ThemeTestFixture.adopt(Self.everyEditorSlot, appearance: .light)
             #expect(try hex(textView.backgroundColor) == "#FDF6E3")
             #expect(try hex(textView.textColor) == "#586E75")
             #expect(try hex(textView.insertionPointColor) == "#D33682")
             #expect(try hex(selectionBackground(of: textView)) == "#EEE8D5")
             #expect(textView.selectedTextAttributes[.foregroundColor] as? NSColor === selectedForeground)
 
-            try adopt([:])
+            try ThemeTestFixture.adopt([:], appearance: .light)
             #expect(textView.backgroundColor == NSColor.textBackgroundColor)
             #expect(textView.textColor == NSColor.textColor)
             #expect(textView.insertionPointColor == ThemeSlot.editorCursor.nativeColor)
@@ -104,8 +83,8 @@ struct ThemeTextViewStyleTests {
 
     @Test("A theme that sets only the background leaves the other properties native")
     func partialThemeKeepsTheRestNative() throws {
-        try preservingEngine {
-            try adopt([.editorBackground: "#FDF6E3"])
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt([.editorBackground: "#FDF6E3"], appearance: .light)
             let textView = try makeTextView()
             let style = ThemeTextViewStyle(textView: textView)
 
@@ -118,8 +97,8 @@ struct ThemeTextViewStyleTests {
 
     @Test("The natives a caller passes are what a property returns to")
     func givenNativesAreRestored() throws {
-        try preservingEngine {
-            try adopt([:])
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt([:], appearance: .light)
             let textView = try makeTextView()
             textView.textColor = .labelColor
             let natives = ThemeTextViewStyle.Natives(
@@ -131,8 +110,8 @@ struct ThemeTextViewStyleTests {
             let style = ThemeTextViewStyle(textView: textView, natives: natives)
             #expect(textView.backgroundColor === NSColor.textBackgroundColor)
 
-            try adopt(Self.everyEditorSlot)
-            try adopt([:])
+            try ThemeTestFixture.adopt(Self.everyEditorSlot, appearance: .light)
+            try ThemeTestFixture.adopt([:], appearance: .light)
             #expect(textView.backgroundColor == NSColor.controlBackgroundColor)
             #expect(textView.textColor == NSColor.labelColor)
             #expect(textView.insertionPointColor == NSColor.labelColor)
@@ -142,8 +121,8 @@ struct ThemeTextViewStyleTests {
 
     @Test("Text set after the theme keeps the theme's text color")
     func replacedTextKeepsTheColor() throws {
-        try preservingEngine {
-            try adopt(Self.everyEditorSlot)
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt(Self.everyEditorSlot, appearance: .light)
             let textView = try makeTextView()
             let style = ThemeTextViewStyle(textView: textView)
 
@@ -157,8 +136,8 @@ struct ThemeTextViewStyleTests {
 
     @Test("Detaching hands every property back and stops following the theme")
     func detachRestores() throws {
-        try preservingEngine {
-            try adopt(Self.everyEditorSlot)
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt(Self.everyEditorSlot, appearance: .light)
             let textView = try makeTextView()
             let style = ThemeTextViewStyle(textView: textView)
             #expect(try hex(textView.backgroundColor) == "#FDF6E3")
@@ -167,7 +146,7 @@ struct ThemeTextViewStyleTests {
             #expect(textView.backgroundColor == NSColor.textBackgroundColor)
             #expect(textView.textColor == NSColor.textColor)
 
-            try adopt([.editorBackground: "#002B36"])
+            try ThemeTestFixture.adopt([.editorBackground: "#002B36"], appearance: .light)
             #expect(textView.backgroundColor == NSColor.textBackgroundColor)
         }
     }

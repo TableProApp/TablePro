@@ -45,28 +45,9 @@ struct TextValueEditorDefaultsTests {
 
     // MARK: - Style
 
-    /// Never ordered front and never closed: `close()` on a test window over-releases it.
     private func hostedTextView(_ editor: TextValueEditor) throws -> (NSWindow, NSTextView) {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 240, height: 120),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: .aqua)
-        window.contentView = NSHostingView(rootView: editor.frame(width: 240, height: 120))
-        window.contentView?.layoutSubtreeIfNeeded()
-        return (window, try #require(firstTextView(in: window.contentView)))
-    }
-
-    private func firstTextView(in view: NSView?) -> NSTextView? {
-        guard let view else { return nil }
-        if let textView = view as? NSTextView { return textView }
-        for subview in view.subviews {
-            if let textView = firstTextView(in: subview) { return textView }
-        }
-        return nil
+        let window = ThemeTestFixture.host(editor, size: NSSize(width: 240, height: 120))
+        return (window, try #require(ThemeTestFixture.textViews(in: window).first))
     }
 
     private func editor(_ style: TextValueEditor.Style? = nil) -> TextValueEditor {
@@ -82,7 +63,7 @@ struct TextValueEditorDefaultsTests {
 
     @Test("a plain editor keeps the system colors under a theme that sets every slot")
     func plainIgnoresTheTheme() throws {
-        try PaneThemeFixture.withEverySlotOverridden {
+        try ThemeTestFixture.withEverySlotOverridden {
             let (window, textView) = try hostedTextView(editor())
             #expect(textView.backgroundColor === NSColor.textBackgroundColor)
             #expect(textView.textColor === NSColor.textColor)
@@ -90,18 +71,28 @@ struct TextValueEditorDefaultsTests {
         }
     }
 
-    @Test("a code editor takes the editor's colors while the theme sets them, and the system's after")
-    func codeFollowsTheTheme() throws {
-        var hosted: (NSWindow, NSTextView)?
-        try PaneThemeFixture.withEverySlotOverridden {
-            let pair = try hostedTextView(editor(.code))
-            hosted = pair
-            #expect(HexColor.string(from: pair.1.backgroundColor) == "#FF00FF")
-            #expect(pair.1.textColor.map(HexColor.string(from:)) == "#FF00FF")
+    /// A user theme already active must not change what the editor hands back.
+    @Test("a code editor takes the editor's colors while the theme sets them, and the system's after", arguments: [false, true])
+    func codeFollowsTheTheme(incomingIsThemed: Bool) throws {
+        let incoming = try incomingIsThemed ? ThemeTestFixture.pair([.editorBackground: "#102030", .editorText: "#E0E0E0"]) : .builtIn
+        try ThemeTestFixture.adopting(incoming, appearance: .light) {
+            try expectCodeFollowsTheTheme()
         }
-        let textView = try #require(hosted?.1)
-        #expect(textView.backgroundColor == NSColor.textBackgroundColor)
-        #expect(textView.textColor == NSColor.textColor)
-        withExtendedLifetime(hosted) {}
+    }
+
+    private func expectCodeFollowsTheTheme() throws {
+        try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            var hosted: (NSWindow, NSTextView)?
+            try ThemeTestFixture.withEverySlotOverridden {
+                let pair = try hostedTextView(editor(.code))
+                hosted = pair
+                #expect(HexColor.string(from: pair.1.backgroundColor) == "#FF00FF")
+                #expect(pair.1.textColor.map(HexColor.string(from:)) == "#FF00FF")
+            }
+            let textView = try #require(hosted?.1)
+            #expect(textView.backgroundColor == NSColor.textBackgroundColor)
+            #expect(textView.textColor == NSColor.textColor)
+            withExtendedLifetime(hosted) {}
+        }
     }
 }
