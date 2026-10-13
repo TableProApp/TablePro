@@ -161,7 +161,7 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
         .build();
     let section = gtk::ShortcutsSection::builder()
         .section_name("shortcuts")
-        .max_height(14)
+        .max_height(10)
         .build();
     add_shortcut_group(
         &section,
@@ -175,9 +175,6 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
             ("<Primary>p", crate::tr!("Open Quickly: favorites and open tabs")),
             ("<Primary>d", crate::tr!("Save the editor query as a favorite")),
             ("<Primary><Shift>d", crate::tr!("Manage saved queries")),
-            ("<Primary>s", crate::tr!("Save pending changes")),
-            ("<Primary>z", crate::tr!("Undo pending change")),
-            ("<Primary>y", crate::tr!("Redo pending change")),
             ("<Primary>question", crate::tr!("Show keyboard shortcuts")),
             ("<Primary>q", crate::tr!("Quit")),
         ],
@@ -186,13 +183,13 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
         &section,
         &crate::tr!("Browse table"),
         &[
-            ("F2", crate::tr!("Edit focused cell")),
-            ("Return", crate::tr!("Edit focused cell")),
-            ("Escape", crate::tr!("Cancel edit")),
+            ("F2", crate::tr!("Edit focused cell (or press Return)")),
             ("Tab", crate::tr!("Move to next cell (commits if editing)")),
             ("<Shift>Tab", crate::tr!("Move to previous cell (commits if editing)")),
             ("Left", crate::tr!("Move to previous cell")),
             ("Right", crate::tr!("Move to next cell")),
+            ("Up", crate::tr!("Move to cell above")),
+            ("Down", crate::tr!("Move to cell below")),
             ("space", crate::tr!("Toggle boolean cell")),
             ("<Primary>n", crate::tr!("Insert row")),
             ("Delete", crate::tr!("Delete selected row")),
@@ -201,17 +198,19 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
             ("<Primary><Shift>j", crate::tr!("Jump to Column (focused grid)")),
             ("<Primary><Alt>f", crate::tr!("Find in loaded rows (focused grid)")),
             ("<Primary>a", crate::tr!("Select all rows")),
-            ("Shift-click", crate::tr!("Extend row selection to clicked row")),
-            ("Ctrl-click", crate::tr!("Toggle clicked row in selection")),
-            ("Escape", crate::tr!("Clear multi-row selection")),
             ("<Primary>c", crate::tr!("Copy selected rows as TSV")),
             ("Page_Up", crate::tr!("Previous page")),
             ("Page_Down", crate::tr!("Next page")),
             ("<Primary>Home", crate::tr!("Jump to first row of page")),
             ("<Primary>End", crate::tr!("Jump to last row of page")),
-            ("<Primary>s", crate::tr!("Save pending edits")),
-            ("<Primary>z", crate::tr!("Undo last change")),
-            ("<Primary><Shift>z", crate::tr!("Redo last change")),
+        ],
+    );
+    add_shortcut_group(
+        &section,
+        &crate::tr!("Row selection"),
+        &[
+            ("Shift-click", crate::tr!("Extend selection to the clicked row")),
+            ("Ctrl-click", crate::tr!("Toggle the clicked row in selection")),
         ],
     );
     add_shortcut_group(
@@ -220,9 +219,7 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
         &[
             ("<Primary>Return", crate::tr!("Run query")),
             ("<Primary><Shift>Return", crate::tr!("Run statement at cursor")),
-            ("<Primary>s", crate::tr!("Save the SQL file")),
             ("<Primary><Shift>s", crate::tr!("Save the SQL file as")),
-            ("Escape", crate::tr!("Cancel running query")),
             ("<Primary>slash", crate::tr!("Toggle line comment")),
             ("<Primary>t", crate::tr!("New editor tab")),
             ("<Primary>w", crate::tr!("Close current tab or window")),
@@ -236,17 +233,25 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
     );
     add_shortcut_group(
         &section,
-        &crate::tr!("Table structure"),
+        &crate::tr!("Context-sensitive actions"),
         &[
-            ("<Primary>s", crate::tr!("Save pending DDL")),
-            ("<Primary>z", crate::tr!("Undo DDL change")),
-            ("<Primary><Shift>z", crate::tr!("Redo DDL change")),
+            (
+                "<Primary>s",
+                crate::tr!("Save grid edits, the SQL file, or table structure changes"),
+            ),
+            (
+                "<Primary>z",
+                crate::tr!("Undo a grid, SQL editor, or table structure change"),
+            ),
+            (
+                "<Primary>y",
+                crate::tr!("Redo the current change (or press Ctrl+Shift+Z)"),
+            ),
+            (
+                "Escape",
+                crate::tr!("Cancel editing or a query, clear selection, or close a dialog"),
+            ),
         ],
-    );
-    add_shortcut_group(
-        &section,
-        &crate::tr!("Dialogs"),
-        &[("Escape", crate::tr!("Close dialog"))],
     );
     dialog.add_section(&section);
     dialog
@@ -325,8 +330,13 @@ mod window_shortcut_tests {
             .unwrap_or_default();
         let dialog = dialog.split("fn add_shortcut_group").next().unwrap_or_default();
         for (trigger, action) in WINDOW_SHORTCUTS {
+            let documented = if *trigger == "<Primary><Shift>z" {
+                dialog.contains("Ctrl+Shift+Z")
+            } else {
+                dialog.contains(&format!("\"{trigger}\""))
+            };
             assert!(
-                dialog.contains(&format!("\"{trigger}\"")),
+                documented,
                 "{trigger} ({action}) is not documented in the shortcuts window"
             );
         }
@@ -348,13 +358,20 @@ mod dialog_tests {
     use super::build_shortcuts_dialog;
     use relm4::gtk::{self, prelude::*};
 
-    fn shortcuts_under(widget: &gtk::Widget, found: &mut Vec<gtk::ShortcutsShortcut>) {
+    fn shortcuts_under(
+        widget: &gtk::Widget,
+        found: &mut Vec<gtk::ShortcutsShortcut>,
+        visited: &mut std::collections::HashSet<usize>,
+    ) {
+        if !visited.insert(widget.as_ptr() as usize) {
+            return;
+        }
         if let Some(shortcut) = widget.downcast_ref::<gtk::ShortcutsShortcut>() {
             found.push(shortcut.clone());
         }
         let mut next = widget.first_child();
         while let Some(child) = next {
-            shortcuts_under(&child, found);
+            shortcuts_under(&child, found, visited);
             next = child.next_sibling();
         }
     }
@@ -365,8 +382,22 @@ mod dialog_tests {
         relm4::adw::init().unwrap();
         let dialog = build_shortcuts_dialog();
         let mut found = Vec::new();
-        shortcuts_under(dialog.upcast_ref::<gtk::Widget>(), &mut found);
-        assert!(found.len() > 50, "only {} entries", found.len());
+        shortcuts_under(
+            dialog.upcast_ref::<gtk::Widget>(),
+            &mut found,
+            &mut std::collections::HashSet::new(),
+        );
+        let entries = found
+            .iter()
+            .map(|item| {
+                (
+                    item.title().unwrap_or_default().to_string(),
+                    item.accelerator().unwrap_or_default().to_string(),
+                    item.subtitle().unwrap_or_default().to_string(),
+                )
+            })
+            .collect::<std::collections::HashSet<_>>();
+        assert!(entries.len() > 40, "only {} distinct entries", entries.len());
         let accelerator = |title: &str| {
             found
                 .iter()
@@ -376,9 +407,17 @@ mod dialog_tests {
         assert_eq!(accelerator("Quit").flatten().as_deref(), Some("<Primary>q"));
         let gesture = found
             .iter()
-            .find(|s| s.title().as_deref() == Some("Toggle clicked row in selection"))
+            .find(|s| s.subtitle().as_deref() == Some("Ctrl-click"))
             .unwrap();
-        assert_eq!(gesture.subtitle().as_deref(), Some("Ctrl-click"));
+        assert_eq!(gesture.title().as_deref(), Some("Toggle the clicked row in selection"));
         assert!(gesture.accelerator().is_none());
+        let title_count = |title: &str| entries.iter().filter(|item| item.0 == title).count();
+        assert_eq!(
+            title_count("Save grid edits, the SQL file, or table structure changes"),
+            1
+        );
+        assert_eq!(title_count("Edit focused cell (or press Return)"), 1);
+        assert!(entries.iter().any(|item| item.1 == "Up"));
+        assert!(entries.iter().any(|item| item.1 == "Down"));
     }
 }
