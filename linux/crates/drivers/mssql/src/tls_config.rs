@@ -25,6 +25,11 @@ const RUSTLS_TEXT: &[(&str, TlsFailure)] = &[
     ("received fatal alert", TlsFailure::HandshakeRejected),
     ("AlertReceived", TlsFailure::HandshakeRejected),
     ("peer is incompatible", TlsFailure::HandshakeRejected),
+    // tokio-rustls, when the server closes the socket mid-handshake. With
+    // Disable, tiberius starts that handshake only because the server
+    // demanded encryption, and the server then hangs up on a client that
+    // said it has none.
+    ("tls handshake eof", TlsFailure::HandshakeRejected),
     ("invalid peer certificate", TlsFailure::Other),
     ("CA certificates", TlsFailure::Other),
     ("platform certificates", TlsFailure::Other),
@@ -202,6 +207,29 @@ mod tests {
             }
         ));
         assert_eq!(error.category(), ErrorCategory::Tls);
+    }
+
+    #[test]
+    fn disable_against_a_server_that_hangs_up_mid_handshake_requires_tls() {
+        let eof = || Error::Io {
+            kind: IoErrorKind::UnexpectedEof,
+            message: "tls handshake eof".to_owned(),
+        };
+
+        assert!(matches!(
+            plan(TlsMode::Disable).login_error(eof()),
+            DriverError::Tls {
+                failure: TlsFailure::ServerRequiresTls,
+                ..
+            }
+        ));
+        assert!(matches!(
+            plan(TlsMode::Require).login_error(eof()),
+            DriverError::Tls {
+                failure: TlsFailure::HandshakeRejected,
+                ..
+            }
+        ));
     }
 
     #[test]
