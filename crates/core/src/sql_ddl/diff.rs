@@ -18,9 +18,9 @@ use super::types::{BuildDdlError, DraftColumn, StructureOp};
 ///   columns (`original = None`) emit `AddColumn`. Originals with no
 ///   matching draft emit `DropColumn`. Drafts whose attributes
 ///   differ from `original` emit `AlterColumn`.
-/// - Indexes / FKs matched by name. Pure rename without other
-///   changes ⇒ `Drop` + `Add` (no native ALTER INDEX in the
-///   supported drivers).
+/// - Indexes / FKs matched by name and definition. A rename, or a
+///   same-name replacement with a different definition, ⇒ `Drop` +
+///   `Add` (no native ALTER INDEX in the supported drivers).
 #[allow(clippy::too_many_arguments)]
 pub fn diff_to_ops(
     schema: Option<&str>,
@@ -53,7 +53,7 @@ pub fn diff_to_ops(
 
     // Drop FKs not in current
     for fk in original_fks {
-        if !current_fks.iter().any(|f| f.name == fk.name) {
+        if !current_fks.contains(fk) {
             ops.push(StructureOp::DropForeignKey {
                 schema: schema_owned.clone(),
                 table: table.clone(),
@@ -69,7 +69,7 @@ pub fn diff_to_ops(
         if idx.primary {
             continue;
         }
-        if !current_indexes.iter().any(|i| i.name == idx.name) {
+        if !current_indexes.iter().any(|i| same_index(i, idx)) {
             ops.push(StructureOp::DropIndex {
                 schema: schema_owned.clone(),
                 table: table.clone(),
@@ -136,7 +136,7 @@ pub fn diff_to_ops(
         if idx.primary {
             continue;
         }
-        if !original_indexes.iter().any(|i| i.name == idx.name) {
+        if !original_indexes.iter().any(|i| same_index(i, idx)) {
             ops.push(StructureOp::AddIndex {
                 schema: schema_owned.clone(),
                 table: table.clone(),
@@ -147,7 +147,7 @@ pub fn diff_to_ops(
 
     // Add FKs not in original.
     for fk in current_fks {
-        if !original_fks.iter().any(|f| f.name == fk.name) {
+        if !original_fks.contains(fk) {
             ops.push(StructureOp::AddForeignKey {
                 schema: schema_owned.clone(),
                 table: table.clone(),
@@ -157,6 +157,13 @@ pub fn diff_to_ops(
     }
 
     ops
+}
+
+fn same_index(left: &IndexInfo, right: &IndexInfo) -> bool {
+    left.name == right.name
+        && left.columns == right.columns
+        && left.unique == right.unique
+        && left.predicate == right.predicate
 }
 
 /// Walk a `StructureOp` list and emit the SQL statements in the
