@@ -15,6 +15,7 @@ use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
 use tablepro_core::{DriverError, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation, Value};
+use tokio_util::sync::CancellationToken;
 
 use crate::catalog::result_column;
 use crate::decode::decode_row;
@@ -47,12 +48,17 @@ pub(crate) fn batches(sql: &str) -> Vec<&str> {
     plan.statements().iter().map(|statement| statement.text(sql)).collect()
 }
 
+/// Run the script. When the sink stops reading, `consumer_gone` is
+/// cancelled so the caller can stop the server. The batch already sent
+/// is still read to its end, unshown, since only that frees the
+/// connection, and no later batch is sent.
 pub(crate) async fn run_script(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,
     sql: &str,
     limit: RowLimit,
     sink: &mut dyn ResultSink,
+    consumer_gone: &CancellationToken,
 ) -> Result<RunOutcome, DriverError> {
     let mut emitter = Emitter {
         sink,
@@ -62,6 +68,9 @@ pub(crate) async fn run_script(
         gone: false,
     };
     for text in batches(sql) {
+        if emitter.gone {
+            break;
+        }
         let results = connection.fetch_many(sqlx::raw_sql(AssertSqlSafe(text.to_owned())));
         let mut results = std::pin::pin!(results);
         while let Some(item) = results.try_next().await.map_err(|error| map_error(&error, flavour))? {
@@ -70,11 +79,13 @@ pub(crate) async fn run_script(
                 Either::Left(done) => emitter.done(done.rows_affected()).await,
             }
             if emitter.gone {
-                return Ok(RunOutcome { consumer_gone: true });
+                consumer_gone.cancel();
             }
         }
     }
-    Ok(RunOutcome::default())
+    Ok(RunOutcome {
+        consumer_gone: emitter.gone,
+    })
 }
 
 struct OpenSet {
@@ -93,6 +104,9 @@ struct Emitter<'a> {
 
 impl Emitter<'_> {
     async fn row(&mut self, row: &MySqlRow) {
+        if self.gone {
+            return;
+        }
         if self.open.is_none() {
             let columns: Arc<[ResultColumn]> = row
                 .columns()
@@ -125,6 +139,9 @@ impl Emitter<'_> {
     }
 
     async fn done(&mut self, rows_affected: u64) {
+        if self.gone {
+            return;
+        }
         let Some(set) = self.open.take() else {
             self.send(ResultEvent::CommandCompleted {
                 rows_affected: Some(rows_affected),

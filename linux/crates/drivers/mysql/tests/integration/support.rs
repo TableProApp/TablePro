@@ -258,19 +258,38 @@ impl Events {
 
 pub struct EventSink {
     events: Events,
+    gone_after_rows: Option<usize>,
+    seen_rows: usize,
 }
 
 impl EventSink {
     pub fn new(events: &Events) -> Self {
-        Self { events: events.clone() }
+        Self {
+            events: events.clone(),
+            gone_after_rows: None,
+            seen_rows: 0,
+        }
+    }
+
+    /// Stop reading once this many rows have arrived, as a closed tab
+    /// does.
+    pub fn gone_after(mut self, rows: usize) -> Self {
+        self.gone_after_rows = Some(rows);
+        self
     }
 }
 
 #[async_trait]
 impl ResultSink for EventSink {
     async fn accept(&mut self, event: ResultEvent) -> SinkFlow {
+        if let ResultEvent::Rows(rows) = &event {
+            self.seen_rows += rows.len();
+        }
         self.events.0.lock().unwrap_or_else(PoisonError::into_inner).push(event);
-        SinkFlow::Continue
+        match self.gone_after_rows {
+            Some(limit) if self.seen_rows >= limit => SinkFlow::ConsumerGone,
+            _ => SinkFlow::Continue,
+        }
     }
 }
 
