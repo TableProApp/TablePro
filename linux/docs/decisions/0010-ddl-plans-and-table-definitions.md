@@ -30,6 +30,9 @@ Each engine plans structure changes through its own `DdlDialect`, reached from `
 - MySQL writes a column again whole for any change to it, its comment included, and SQL Server's ALTER COLUMN carries nothing forward either, so both restate every attribute the definition models where the new type still holds it. On MySQL that is the character set and collation, a generated column's expression, ON UPDATE, INVISIBLE and the SRID; MariaDB adds its REF_SYSTEM_ID and the column's own CHECK, which it keeps apart from the table's. On SQL Server it is the collation, SPARSE, the nullability and a data mask, which goes back on in a statement of its own.
 - A PostgreSQL type change names the column's collation when the new type holds text, since SET DATA TYPE otherwise takes the type's default.
 - A column with an attribute this build does not model, or one whose name the restatement cannot write, refuses every change that would restate it.
+- MariaDB names a column's CHECK constraint after the column it was written on and keeps that name through a rename, so the check is placed by the column line of SHOW CREATE TABLE it ends. A check no line ends with refuses the restatement of every column without one.
+- The server reads a restated expression against the names the same ALTER gives, so a MySQL restatement whose CHECK, generated expression or default names a column renamed in the same change is refused, and the rename is saved on its own first.
+- On SQL Server, a type change whose new type cannot take the column's SPARSE or data mask is refused, as is any nullability or default change on a SPARSE column.
 - Primary-key identity on PostgreSQL and SQLite table rebuilds are plans of their own, added to the same dialects later, and their capabilities are off until then.
 
 ## Alternatives considered
