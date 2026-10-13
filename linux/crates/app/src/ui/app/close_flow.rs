@@ -177,7 +177,7 @@ mod tests {
 
     use tablepro_core::{EditorSession, TransactionState};
     use tablepro_session::ConnectAttempts;
-    use tablepro_session::runtime::CountingHold;
+    use tablepro_session::runtime::{CountingHold, HoldToken};
     use tablepro_storage::DraftId;
     use tablepro_test_support::{ConnectionScript, FakeEditorSession, FakeReply, FakeRun, Replies};
 
@@ -189,6 +189,21 @@ mod tests {
     use crate::workspace::{TabDirectory, TabEntry};
 
     const WAIT: Duration = Duration::from_secs(10);
+
+    /// Names each hold it gives out, so a test reads which close began
+    /// first: every close holds the process from the moment it starts.
+    struct NamedHold {
+        name: &'static str,
+        log: Rc<RefCell<Vec<&'static str>>>,
+        counting: Rc<CountingHold>,
+    }
+
+    impl ProcessHold for NamedHold {
+        fn acquire(&self) -> HoldToken {
+            self.log.borrow_mut().push(self.name);
+            self.counting.acquire()
+        }
+    }
 
     #[gtk4::test]
     fn closing_the_window_names_open_transactions_and_closes_every_connection() {
@@ -207,13 +222,19 @@ mod tests {
         let active = ActiveSession::new();
         active.replace(fake.session.clone());
         let hold = Rc::new(CountingHold::new());
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let named = |name| NamedHold {
+            name,
+            log: log.clone(),
+            counting: hold.clone(),
+        };
         let editor = SqlEditor::new(SqlEditorInit {
             initial_query: Some("BEGIN; UPDATE t SET a = 1".to_owned()),
             settings: settings.get().clone(),
             history: None,
             tasks: runtime.tasks(),
             session: active.clone(),
-            hold: hold.clone(),
+            hold: Rc::new(named("editor tab")),
             close_timeout: Duration::from_secs(5),
         });
         editor.run();
@@ -243,8 +264,10 @@ mod tests {
             }]
         );
 
-        close_connections(&tabs, &active, &*hold, &ConnectAttempts::new());
+        log.borrow_mut().clear();
+        close_connections(&tabs, &active, &named("window session"), &ConnectAttempts::new());
 
+        assert_eq!(*log.borrow(), ["editor tab", "window session"]);
         assert!(!active.is_connected());
         wait_until(WAIT, || {
             editor_session.close_count() == 1 && fake.connection.is_closed() && hold.live() == 0
