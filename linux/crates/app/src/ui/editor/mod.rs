@@ -186,18 +186,22 @@ impl SqlEditor {
     /// Run the statement the cursor is in, selecting it so the user sees
     /// which of the buffer's queries ran.
     pub fn run_at_cursor(&self) {
+        if self.is_running() {
+            return;
+        }
         let buffer = self.buffer();
         let text = buffer_text(&buffer);
         let plan = statement_cursor::plan_for(&text, self.grammar());
         let cursor = usize::try_from(buffer.iter_at_mark(&buffer.get_insert()).offset()).unwrap_or_default();
-        let Some((scoped, range)) = run_scope::at_cursor(&text, &plan, cursor) else {
+        let Some((start, end)) = statement_cursor::statement_bounds_at(&buffer, &plan, &text, cursor) else {
             self.say(&crate::i18n::gettext("No statement at the cursor."));
             return;
         };
-        let start = buffer.iter_at_offset(i32::try_from(range.start).unwrap_or(i32::MAX));
-        let end = buffer.iter_at_offset(i32::try_from(range.end).unwrap_or(i32::MAX));
         buffer.select_range(&start, &end);
-        self.execute(scoped);
+        self.execute(ScopedText {
+            text: buffer.text(&start, &end, false).to_string(),
+            base_char: usize::try_from(start.offset()).unwrap_or_default(),
+        });
     }
 
     /// Reformat the buffer per statement, as one undo step, keeping the

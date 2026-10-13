@@ -96,6 +96,21 @@ fn selected_text_is_the_only_sql_sent() {
 }
 
 #[gtk4::test]
+fn run_at_cursor_selects_executed_statement() {
+    let harness = editor_with(answering(), "SELECT 'tên';\nSELECT 2 FROM t;\nSELECT 3;");
+    let buffer = harness.editor.buffer();
+    buffer.place_cursor(&buffer.iter_at_offset(20));
+
+    harness.editor.run_at_cursor();
+    assert!(harness.editor.is_running(), "the run did not start");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+
+    assert_eq!(sent(&harness.fake), ["SELECT 2 FROM t"]);
+    let (start, end) = buffer.selection_bounds().expect("the statement is selected");
+    assert_eq!((start.offset(), end.offset()), (14, 29));
+}
+
+#[gtk4::test]
 fn a_script_fills_the_results_list_one_line_per_statement() {
     let mut runs = Replies::default();
     runs.when_sql_contains(
