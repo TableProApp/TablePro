@@ -154,6 +154,8 @@ Levels: `error!` for what the user must see or a broken contract, `warn!` for re
 
 Never log a password, a secret, a key or a bound value. sqlx's own statement logging is turned off in the MySQL and SQLite drivers, and a test in each crate (`tests/statement_logging.rs`) proves no statement text reaches the subscriber.
 
+tokio-postgres is not filtered yet. It logs the text of every simple query, which is all editor SQL, through `log` at `debug`, and `tracing-subscriber` forwards `log` records to the same output. A development build logs at `debug` by default, so an `ALTER ROLE ... PASSWORD '...'` run in the editor reaches the journal. Until the default filter covers it, run with `RUST_LOG=debug,tokio_postgres=info`.
+
 ## `unwrap`, `expect` and `panic!`
 
 The workspace lints deny `unwrap_used`, `expect_used`, `panic`, `todo` and `unimplemented`; `clippy.toml` allows them in tests only. Return a real error instead. The one accepted use outside tests is in a `const`, where the compiler proves the value, as `RowLimit::EDITOR_DEFAULT` does.
