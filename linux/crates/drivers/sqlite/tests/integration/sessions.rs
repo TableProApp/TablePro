@@ -243,6 +243,49 @@ async fn write_interrupt_before_commit_rolls_back() {
     connection.close().await.unwrap();
 }
 
+/// ON CONFLICT ROLLBACK ends the transaction inside SQLite before the
+/// batch gets to roll back itself; the workspace connection, and the
+/// temporary table on it, must survive that.
+#[tokio::test]
+async fn a_batch_sqlite_already_rolled_back_keeps_its_connection() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE t (a INTEGER UNIQUE ON CONFLICT ROLLBACK)",
+            "INSERT INTO t VALUES (1)",
+            "CREATE TEMP TABLE kept (a)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let written = connection
+        .write_batch(
+            &batch(
+                WriteKind::RowChanges,
+                &["INSERT INTO t VALUES (2)", "INSERT INTO t VALUES (1)"],
+            ),
+            call(),
+        )
+        .await;
+
+    assert!(
+        matches!(&written, Err(DriverError::RolledBack { statement_index: 1, .. })),
+        "{written:?}"
+    );
+    let rows = query(connection.as_ref(), "SELECT count(*) FROM t").await;
+    assert_eq!(rows.rows[0][0], Value::Int(1));
+    let kept = query(connection.as_ref(), "SELECT count(*) FROM temp.kept").await;
+    assert_eq!(kept.rows[0][0], Value::Int(0), "the workspace connection was replaced");
+    let after = connection
+        .write_batch(&batch(WriteKind::RowChanges, &["INSERT INTO t VALUES (3)"]), call())
+        .await;
+    assert!(after.is_ok(), "{after:?}");
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn a_second_run_while_one_is_going_is_refused() {
     let file = TestFile::new().await;
