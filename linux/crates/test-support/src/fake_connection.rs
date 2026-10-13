@@ -32,6 +32,8 @@ pub struct FakeConnection {
     link: LinkWatch,
     closed: CancellationToken,
     counters: CallCounters,
+    /// The cancel token each call was handed, by method, in call order.
+    cancels: Mutex<Vec<(&'static str, CancellationToken)>>,
 }
 
 impl FakeConnection {
@@ -46,6 +48,7 @@ impl FakeConnection {
             link: LinkWatch::new(),
             closed: CancellationToken::new(),
             counters: CallCounters::default(),
+            cancels: Mutex::new(Vec::new()),
         }
     }
 
@@ -63,6 +66,16 @@ impl FakeConnection {
         self.closed.is_cancelled()
     }
 
+    /// The cancel token every call to `method` was handed, oldest first,
+    /// so a test can tell its own stop reached the call.
+    pub fn observed_cancels(&self, method: &str) -> Vec<CancellationToken> {
+        lock(&self.cancels)
+            .iter()
+            .filter(|(called, _)| *called == method)
+            .map(|(_, cancel)| cancel.clone())
+            .collect()
+    }
+
     async fn answer<T>(
         &self,
         method: &'static str,
@@ -76,6 +89,7 @@ impl FakeConnection {
         T: Clone,
     {
         CallCounters::record(counter);
+        lock(&self.cancels).push((method, options.cancel().clone()));
         if self.closed.is_cancelled() {
             CallCounters::record(&self.counters.stopped);
             return Err(DriverError::Cancelled);
@@ -585,5 +599,36 @@ mod tests {
 
         assert_eq!(result.row_count(), 3);
         assert!(result.truncated);
+    }
+
+    #[tokio::test]
+    async fn a_stopped_with_reply_answers_its_outcome_only_once_cancelled() {
+        let mut script = ConnectionScript::default();
+        script
+            .query_bound
+            .always(FakeReply::StoppedWith(Err(DriverError::Busy)));
+        let connection = Arc::new(FakeConnection::new(script));
+        let cancel = CancellationToken::new();
+
+        let waiting = {
+            let connection = connection.clone();
+            let options = CallOptions::new(None, cancel.clone());
+            tokio::spawn(async move {
+                connection
+                    .query_bound(&select("SELECT 1"), RowLimit::EDITOR_DEFAULT, options)
+                    .await
+            })
+        };
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished(), "the call answered before it was stopped");
+        let observed = connection.observed_cancels("query_bound");
+        assert_eq!(observed.len(), 1);
+        assert!(!observed[0].is_cancelled());
+
+        cancel.cancel();
+
+        assert!(matches!(waiting.await.unwrap(), Err(DriverError::Busy)));
+        assert!(observed[0].is_cancelled(), "the call was handed another token");
+        assert!(connection.observed_cancels("write_batch").is_empty());
     }
 }

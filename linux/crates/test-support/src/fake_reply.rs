@@ -28,6 +28,10 @@ pub enum FakeReply<T> {
     /// Never answer on its own: only the call's deadline or cancel ends
     /// it, the way a statement the server never finishes behaves.
     UntilStopped,
+    /// Never answer on its own, then answer `outcome` once the call's
+    /// deadline or cancel ends it, the way a driver that rolls a write
+    /// back on cancel reports it.
+    StoppedWith(Result<T, DriverError>),
     /// Never answer at all.
     Hang,
 }
@@ -55,6 +59,12 @@ impl<T> FakeReply<T> {
             Self::UntilStopped => {
                 stop.wait(None).await?;
                 Err(DriverError::Protocol("an unbounded fake call finished".to_owned()))
+            }
+            Self::StoppedWith(outcome) => {
+                // Only a stop ends the wait, so its error is replaced by
+                // the answer the call was scripted to give.
+                let _ = stop.wait(None).await;
+                outcome
             }
             Self::Hang => std::future::pending().await,
         }
