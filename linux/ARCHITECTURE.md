@@ -46,7 +46,7 @@ Rules, enforced by review:
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver: it reaches drivers through `DriverRegistry`.
 - `app` depends on all of them. It is the only crate that names every driver.
-- `test-support` and `test-fixtures` are dev-dependencies only.
+- `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only `app`'s dev-dependencies turn on.
 
 Consequences:
 
@@ -81,8 +81,8 @@ Two runtimes coexist:
 
 Bridging uses Relm4's built-in primitives instead of hand-rolled channels:
 
-- `sender.command(move |out, shutdown| shutdown.register(async move { ... out.send(...) }).drop_on_shutdown())` — a component-scoped tokio task that cancels when the component drops. The `out` sender feeds `CmdOutput` back into the component's update loop on the GTK thread. Used for every per-tab fetch (browse rows, schema introspection, save transaction).
-- `relm4::spawn(async move { ... })` — fire-and-forget tokio task with no component lifetime tie. Used for storage writes (`touch_last_opened`, `query_history::record`, column-width persistence) and other side-effect work.
+- `sender.command(move |out, shutdown| shutdown.register(async move { ... out.send(...) }).drop_on_shutdown())`: a component-scoped tokio task that cancels when the component drops. The `out` sender feeds `CmdOutput` back into the component's update loop on the GTK thread. Used for every per-tab fetch (browse rows, schema introspection, save transaction).
+- `relm4::spawn(async move { ... })`: a fire-and-forget tokio task with no component lifetime tie. Used for storage writes (`touch_last_opened`, `query_history::record`, column-width persistence) and other side-effect work.
 - `sender.input(AppMsg::...)` from inside an async block routes back into the component's `update` on the GTK thread. Combined with `sender.command`, this is how a "fetch-then-render" round trip lands its result on the right widget.
 
 `main.rs` builds a tiny `tokio::runtime::Builder::new_multi_thread().worker_threads(1)` runtime exclusively to `block_on` the history-DB init / prune at startup, then `shutdown_timeout`s it before `RelmApp::run` takes over. The query-history sqlx pool is stored in a `OnceLock` and reused from Relm4's runtime afterward.
@@ -225,7 +225,7 @@ Both registries live in `thread_local!` `RefCell<HashMap<Uuid, _>>` because relm
 
 A `Table` tab owns BOTH a row tracker and a DDL tracker against the same UUID. `close_workspace_tab_by_id` closes both registries; the close-with-pending dialog ORs both `has_pending()` flags and may dispatch up to two save transactions, gated through a `close_after_save: HashMap<Uuid, u32>` counter.
 
-The Structure tab is **snapshot + diff**, not per-op log. `original_*` snapshots capture the load-time schema; the diff against the live model produces ops via `sql_ddl::diff_to_ops`. Discard restores the snapshot. There is no per-op undo — Discard is the only restore point. The tracker just caches the most recent diff so out-of-band callers (close prompt, save dispatcher) read the same op list without re-deriving.
+The Structure tab is **snapshot + diff**, not per-op log. `original_*` snapshots capture the load-time schema; the diff against the live model produces ops via `sql_ddl::diff_to_ops`. Discard restores the snapshot. There is no per-op undo: Discard is the only restore point. The tracker just caches the most recent diff so out-of-band callers (close prompt, save dispatcher) read the same op list without re-deriving.
 
 ## Persistence
 
