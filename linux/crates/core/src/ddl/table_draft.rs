@@ -73,7 +73,7 @@ impl TableDraft {
             if column.column_type.text().is_empty() {
                 return Err(DraftProblem::EmptyColumnType(column.name.clone()));
             }
-            if column.primary_key && column.nullable {
+            if column.primary_key && column.nullable && key_or_nullability_edited(column) {
                 return Err(DraftProblem::NullablePrimaryKey(column.name.clone()));
             }
         }
@@ -146,4 +146,12 @@ impl TableDraft {
             None => Ok(()),
         }
     }
+}
+
+/// A key read back as it is stays the server's business: SQLite reports
+/// an `INTEGER PRIMARY KEY` as taking NULL.
+fn key_or_nullability_edited(column: &DraftColumn) -> bool {
+    column.original.as_ref().is_none_or(|original| {
+        original.info.primary_key != column.primary_key || original.info.nullable != column.nullable
+    })
 }

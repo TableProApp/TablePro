@@ -319,6 +319,22 @@ fn table_draft_validate_reports_the_first_problem() {
     assert_eq!(draft.validate(), Ok(()));
 }
 
+#[test]
+fn a_nullable_key_read_back_as_it_is_saves() {
+    let mut table = users();
+    // How SQLite reports an INTEGER PRIMARY KEY.
+    table.columns[0].info.nullable = true;
+    let mut draft = TableDraft::from_definition(&table);
+
+    assert_eq!(draft.validate(), Ok(()));
+
+    draft_column(&mut draft, "email").primary_key = true;
+    assert_eq!(
+        draft.validate(),
+        Err(DraftProblem::NullablePrimaryKey("email".to_owned()))
+    );
+}
+
 fn inbound(name: &str, referenced: &str) -> InboundForeignKey {
     InboundForeignKey {
         name: name.to_owned(),
