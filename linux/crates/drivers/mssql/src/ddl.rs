@@ -317,7 +317,15 @@ impl MssqlDialect {
         if identity {
             parts.push("IDENTITY(1,1)".to_owned());
         }
-        parts.push(if column.nullable { "NULL" } else { "NOT NULL" }.to_owned());
+        // SQL Server refuses an identity on a nullable column (error 8147).
+        parts.push(
+            if column.nullable && !identity {
+                "NULL"
+            } else {
+                "NOT NULL"
+            }
+            .to_owned(),
+        );
         // An identity column cannot carry a default.
         if !identity && let Some(default) = default_sql(self, &column.name, &column.default, &resolved.column_type)? {
             parts.push(format!("DEFAULT {}", default_clause(&column.default, &default)));
@@ -560,6 +568,25 @@ mod tests {
             [
                 "CREATE TABLE [dbo].[notes] (\n  [id] bigint IDENTITY(1,1) NOT NULL,\n  [body] nvarchar(255) NOT NULL \
               DEFAULT (N'it''s'),\n  [created_at] datetime2 NULL DEFAULT (getdate()),\n  PRIMARY KEY ([id])\n)"
+            ]
+        );
+    }
+
+    #[test]
+    fn an_identity_outside_the_key_is_not_null() {
+        let mut draft = TableDraft::new(TableRef::new(Some("dbo".to_owned()), "events"));
+        let mut id = typed("id", "uniqueidentifier");
+        id.primary_key = true;
+        id.nullable = false;
+        let mut seq = typed("seq", "int");
+        seq.auto_increment = true;
+        draft.columns = vec![id, seq];
+
+        assert_eq!(
+            sql(dialect().plan_create_table(&draft)),
+            [
+                "CREATE TABLE [dbo].[events] (\n  [id] uniqueidentifier NOT NULL,\n  [seq] int IDENTITY(1,1) NOT NULL,\n  \
+                 PRIMARY KEY ([id])\n)"
             ]
         );
     }
