@@ -1,5 +1,4 @@
 use relm4::adw::prelude::*;
-use uuid::Uuid;
 
 use super::App;
 
