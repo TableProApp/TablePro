@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme file format 3, where every color is optional. Themes written for earlier versions are not read and need to be recreated.
 - Triggers and ClickHouse Parts in table structure shown as data grids, with multiple selection and Copy.
 - Filter and maintenance SQL previews highlighted as SQL in the editor font.
-- Result bar items separated by space instead of a dot.
+- Details in Quick Switcher, autocomplete, Settings, query plans, tooltips and the result bar separated by commas or space instead of a dot.
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
@@ -79,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
 - GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
 - Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
+- Database type icon and checkmark hard to see on the selected row in Choose a Database.
 
 ### Security
 

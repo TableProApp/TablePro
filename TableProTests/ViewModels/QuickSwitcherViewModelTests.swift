@@ -1137,7 +1137,7 @@ struct QuickSwitcherViewModelTests {
             frecencyKey: "favorite_keyworded",
             name: "Daily totals",
             kind: .savedQuery,
-            subtitle: "prod · Analytics / warehouse",
+            subtitle: "prod, Analytics / warehouse",
             keyword: "prod",
             payload: "SELECT 1"
         )
@@ -1153,6 +1153,39 @@ struct QuickSwitcherViewModelTests {
         await vm.flushPendingFilter()
 
         #expect(vm.flatItems.first?.id == "favorite_keyworded")
+    }
+
+    @Test("Saved query and history subtitles separate their facts with a comma")
+    func crossConnectionQuerySubtitlesUseCommas() {
+        let connection = UUID()
+        let target = QuickSwitcherTarget(
+            connectionId: connection,
+            connectionName: "Production",
+            databaseName: "app",
+            schemaName: nil
+        )
+        let favorite = SQLFavorite(name: "Daily totals", query: "SELECT 1", keyword: "daily", connectionId: connection)
+        let entry = QueryHistoryEntry(
+            query: "SELECT 2",
+            connectionId: connection,
+            databaseName: "app",
+            databaseType: .postgresql,
+            source: .editor,
+            executedAt: Date(timeIntervalSince1970: 0),
+            executionTime: 0.25,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+
+        let items = QuickSwitcherViewModel.makeCrossConnectionQueryItems(
+            favorites: [favorite],
+            historyEntries: [entry],
+            targets: [connection: target],
+            currentConnectionId: connection
+        )
+
+        #expect(items.first { $0.kind == .savedQuery }?.subtitle == "daily, Production / app")
+        #expect(items.first { $0.kind == .queryHistory }?.subtitle == "Production / app, \(entry.formattedExecutionTime)")
     }
 
     @Test("Selecting another connection's result records it against that connection")

@@ -105,7 +105,8 @@ enum TypesenseApiKeys {
         } else {
             parts.append(key.collections.joined(separator: ", "))
         }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        // The collection list is itself comma separated.
+        return parts.isEmpty ? nil : parts.joined(separator: "; ")
     }
 
     /// A Typesense key carries actions and a collection list, and the pair is the grant: every

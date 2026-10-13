@@ -161,8 +161,13 @@ private struct QueryPlanNodeChangeRow: View {
                     Text(style.label)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(differentiateWithoutColor ? Color.secondary : style.tint)
-                    Text(change.title)
+                    Text(change.operation)
                         .font(.callout.weight(.medium))
+                    if let relationName = change.relationName {
+                        Text(relationName)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 ForEach(change.fieldChanges) { field in

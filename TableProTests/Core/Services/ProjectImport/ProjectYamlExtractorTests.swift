@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 struct RailsDatabaseYamlExtractorTests {
     private let root = URL(fileURLWithPath: "/tmp/rails-project")
@@ -80,6 +80,18 @@ struct RailsDatabaseYamlExtractorTests {
         #expect(candidate?.warnings.isEmpty == false)
     }
 
+    @Test("Several unresolvable ERB values are reported once")
+    func testUnresolvedErbWarnsOnce() {
+        let contents = """
+        development:
+          adapter: postgresql
+          database: myapp
+          username: <%= Rails.application.credentials.db_user %>
+          password: <%= Rails.application.credentials.db_password %>
+        """
+        #expect(extract(contents).first?.warnings.count == 1)
+    }
+
     @Test("A multi database development section picks the nested entry")
     func testMultiDatabaseSection() {
         let contents = """
@@ -106,7 +118,6 @@ struct RailsDatabaseYamlExtractorTests {
 }
 
 struct DockerComposeExtractorTests {
-
     private func extract(_ contents: String, environment: DotenvDocument? = nil) -> [ScannedConnectionCandidate] {
         DockerComposeExtractor.extract(
             contents: contents,
@@ -131,7 +142,7 @@ struct DockerComposeExtractorTests {
         let candidate = extract(contents).first
         #expect(candidate?.parsedURL.type == .postgresql)
         #expect(candidate?.parsedURL.host == "127.0.0.1")
-        #expect(candidate?.parsedURL.port == 8001)
+        #expect(candidate?.parsedURL.port == 8_001)
         #expect(candidate?.parsedURL.database == "appdb")
     }
 
@@ -145,7 +156,7 @@ struct DockerComposeExtractorTests {
               POSTGRES_PASSWORD: apppass
         """
         let candidate = extract(contents).first
-        #expect(candidate?.parsedURL.port == 5432)
+        #expect(candidate?.parsedURL.port == 5_432)
         #expect(candidate?.warnings.isEmpty == false)
     }
 
@@ -165,7 +176,7 @@ struct DockerComposeExtractorTests {
         let candidate = extract(contents).first
         #expect(candidate?.parsedURL.type == .mysql)
         #expect(candidate?.parsedURL.database == "appdb")
-        #expect(candidate?.parsedURL.port == 3307)
+        #expect(candidate?.parsedURL.port == 3_307)
     }
 
     @Test("TiDB and Databend images map to their own types and ports")
@@ -412,7 +423,7 @@ struct DockerComposeExtractorTests {
         """
         let environment = DotenvParser.parse("DB_PASSWORD=frompass\nDB_PORT=15432", processEnvironment: [:])
         let candidate = extract(contents, environment: environment).first
-        #expect(candidate?.parsedURL.port == 15432)
+        #expect(candidate?.parsedURL.port == 15_432)
         #expect(candidate?.hasPassword == true)
     }
 
@@ -494,12 +505,11 @@ struct DockerComposeExtractorTests {
         """
         let candidate = extract(contents).first
         #expect(candidate?.parsedURL.type == .mariadb)
-        #expect(candidate?.parsedURL.port == 3399)
+        #expect(candidate?.parsedURL.port == 3_399)
     }
 }
 
 struct SpringYamlExtractorTests {
-
     @Test("A nested datasource block is read")
     func testNestedDatasource() {
         let contents = """

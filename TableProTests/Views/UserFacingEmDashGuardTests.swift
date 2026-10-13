@@ -20,8 +20,9 @@ struct UserFacingEmDashGuardTests {
 
     @Test("No em dash reaches a string literal in the app target")
     func appTargetStringLiteralsAreClean() throws {
-        let offenders = try Self.offenders()
+        let (scanned, offenders) = try UserFacingSourceScan.scanAppTarget(offends: Self.carriesProseEmDash)
 
+        #expect(scanned > 500, "Expected to scan the app target, scanned \(scanned) files")
         #expect(
             offenders.isEmpty,
             """
@@ -32,41 +33,9 @@ struct UserFacingEmDashGuardTests {
         )
     }
 
-    private static func offenders() throws -> [String] {
-        let root = try repoRoot().appendingPathComponent("TablePro", isDirectory: true)
-        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else {
-            throw GuardError.sourceTreeNotFound
-        }
-
-        var found: [String] = []
-        for case let url as URL in enumerator where url.pathExtension == "swift" {
-            let text = try String(contentsOf: url, encoding: .utf8)
-            let lines = text.components(separatedBy: .newlines)
-            var previous = ""
-            for (index, line) in lines.enumerated() {
-                defer { if !line.trimmingCharacters(in: .whitespaces).isEmpty { previous = line } }
-                guard carriesProseEmDash(line: line, previous: previous) else { continue }
-                found.append("\(url.lastPathComponent):\(index + 1): \(line.trimmingCharacters(in: .whitespaces))")
-            }
-        }
-        return found.sorted()
-    }
-
-    /// A line offends when an em dash survives inside a double-quoted span after the placeholder
-    /// glyph is removed, and neither it nor the call it continues is a comment or a log message.
     static func carriesProseEmDash(line: String, previous: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.hasPrefix("//") else { return false }
-        guard !isLogging(trimmed), !isLogging(previous.trimmingCharacters(in: .whitespaces)) else { return false }
-
-        let withoutPlaceholders = trimmed.replacingOccurrences(of: placeholderGlyph, with: "")
-        guard withoutPlaceholders.contains(emDash) else { return false }
-        return quotedSpansContainEmDash(withoutPlaceholders)
-    }
-
-    private static func isLogging(_ line: String) -> Bool {
-        let markers = ["logger.", "Logger(", "os_log", ".debug(", ".info(", ".notice(", ".warning(", ".fault("]
-        return markers.contains { line.contains($0) }
+        guard let code = UserFacingSourceScan.userFacingCode(line: line, previous: previous) else { return false }
+        return quotedSpansContainEmDash(code.replacingOccurrences(of: placeholderGlyph, with: ""))
     }
 
     private static func quotedSpansContainEmDash(_ line: String) -> Bool {
@@ -90,22 +59,6 @@ struct UserFacingEmDashGuardTests {
             }
         }
         return false
-    }
-
-    private static func repoRoot() throws -> URL {
-        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        for _ in 0 ..< 12 {
-            if FileManager.default.fileExists(atPath: directory.appendingPathComponent("TablePro.xcodeproj").path) {
-                return directory
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw GuardError.repoRootNotFound
-    }
-
-    private enum GuardError: Error {
-        case repoRootNotFound
-        case sourceTreeNotFound
     }
 }
 
@@ -132,6 +85,22 @@ struct UserFacingEmDashClassifierTests {
         #expect(!offends("/// Returns nil when absent \u{2014} the caller retries"))
         #expect(!offends("logger.warning(\"failed \u{2014} \\(error)\")"))
         #expect(!offends("\"Startup failed: \\(statement) \u{2014} \\(error)\"", previous: "Self.startupLogger.warning("))
+        #expect(!offends("lifecycleLogger.error(\"failed \u{2014} \\(error)\")"))
+        #expect(!offends(".error(\"a \u{2014} b\")", previous: "Logger(subsystem: \"com.TablePro\", category: \"Driver\")"))
+        #expect(!offends("let detail = parts.joined(separator: \", \") // was \"a \u{2014} b\""))
+    }
+
+    @Test("A finished log call does not cover the line after it")
+    func lineAfterLogCallOffends() {
+        #expect(offends("return \"A \u{2014} B\"", previous: "Self.logger.info(\"Loaded\")"))
+        #expect(offends("Text(\"A \u{2014} B\")", previous: "let info = ConnectionFailureClassifier.info(for: error)"))
+    }
+
+    @Test("A call named like a log level is user-facing")
+    func logLevelLookalikesOffend() {
+        #expect(offends("let info = ConnectionFailureClassifier.info(for: error, hint: \"A \u{2014} B\")"))
+        #expect(offends("banners.append(.notice(String(localized: \"A \u{2014} B\")))"))
+        #expect(offends("return .warning(String(localized: \"A \u{2014} B\"))"))
     }
 
     @Test("An em dash outside any quoted span is not a string literal")

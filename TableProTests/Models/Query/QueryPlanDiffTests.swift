@@ -226,6 +226,24 @@ struct QueryPlanDiffTests {
         #expect(diff.summary.count == QueryPlanSummaryMetric.allCases.count)
         #expect(diff.summary.allSatisfy { !$0.hasChange })
     }
+
+    // MARK: - Node titles
+
+    @Test("A changed node names its relation after a comma, and drops an empty one")
+    func nodeTitleSeparatesRelationWithComma() {
+        func change(relation: String?) -> QueryPlanNodeChange {
+            QueryPlanNodeChange(
+                kind: .changed, path: "0", operation: "Seq Scan", relation: relation,
+                schema: nil, alias: nil, fieldChanges: []
+            )
+        }
+
+        #expect(change(relation: "users").title == "Seq Scan, users")
+        #expect(change(relation: "users").relationName == "users")
+        #expect(change(relation: "").title == "Seq Scan")
+        #expect(change(relation: "").relationName == nil)
+        #expect(change(relation: nil).title == "Seq Scan")
+    }
 }
 
 enum QueryPlanFixture {

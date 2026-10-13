@@ -234,6 +234,45 @@ struct DynamoDBTableManagementTests {
         ) == nil)
     }
 
+    // MARK: - Summaries
+
+    @Test("The table summary keeps the capacity's own comma inside its part")
+    func tableSummarySeparatesParts() throws {
+        let schema = try DynamoDBTableSchema(describeTableResponse: DynamoDBJSON.parse(#"""
+        {"Table": {"TableName": "Orders", "TableStatus": "ACTIVE",
+          "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+          "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+          "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 2},
+          "TableClassSummary": {"TableClass": "STANDARD"}, "DeletionProtectionEnabled": true}}
+        """#))
+        let expected = [
+            String(format: String(localized: "Provisioned: %1$lld read, %2$lld write"), Int64(5), Int64(2)),
+            String(localized: "Standard"),
+            String(localized: "Deletion protection on"),
+            String(localized: "Item count is approximate, updated about every six hours"),
+        ].joined(separator: "; ")
+
+        #expect(DynamoDBTableDefinition.summary(schema) == expected)
+    }
+
+    @Test("The read status lists its counts with commas and gives a note its own sentence")
+    func readStatusSeparatesCountsFromNotes() {
+        let stats = DynamoDBReadStats(returned: 5, scanned: 12, readUnits: 3, reportedReadUnits: true)
+        let note = String(localized: "This SELECT reads the whole table")
+        let counts = [
+            String(localized: "Scan"),
+            String(format: String(localized: "%@ returned"), "5"),
+            String(format: String(localized: "%@ read"), "12"),
+            String(format: String(localized: "%@ RCU"), "3"),
+        ].joined(separator: ", ")
+
+        #expect(DynamoDBPluginDriver.statusMessage(access: String(localized: "Scan"), stats: stats) == counts)
+        #expect(
+            DynamoDBPluginDriver.statusMessage(access: String(localized: "Scan"), stats: stats, extra: [note])
+                == "\(counts). \(note)"
+        )
+    }
+
     // MARK: - Indexes and drop
 
     @Test("An index edited in place is refused, and so is dropping the primary key or a local index")

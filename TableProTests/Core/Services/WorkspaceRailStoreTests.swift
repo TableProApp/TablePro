@@ -593,13 +593,13 @@ struct WorkspaceRailCellTextTests {
     @Test("The tooltip spells out what the truncated labels cannot")
     func tooltipCarriesFullIdentity() {
         let text = WorkspaceRailCellView.tooltipText(for: makeEntry())
-        #expect(text == "staging · MySQL · db.internal · app")
+        #expect(text == "staging, MySQL, db.internal, app")
     }
 
     @Test("The tooltip omits parts the connection does not have")
     func tooltipOmitsMissingParts() {
         let text = WorkspaceRailCellView.tooltipText(for: makeEntry(host: "", container: ""))
-        #expect(text == "staging · MySQL")
+        #expect(text == "staging, MySQL")
     }
 
     @Test("VoiceOver hears the name, the engine, the container, and the connection state")

@@ -31,7 +31,7 @@ internal enum VersionHistoryFormatting {
         if let revision = entry.reference.shortRevision {
             parts.append(revision)
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 
     static func rowSubtitle(for entry: VersionHistoryEntry) -> String {
@@ -46,7 +46,7 @@ internal enum VersionHistoryFormatting {
         if !showsDateInTitle, let date = entry.date {
             parts.append(date.formatted(date: .abbreviated, time: .omitted))
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 
     static func shortLabel(for entry: VersionHistoryEntry) -> String {

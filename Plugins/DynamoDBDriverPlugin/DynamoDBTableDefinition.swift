@@ -81,7 +81,8 @@ enum DynamoDBTableDefinition {
             parts.append(String(format: String(localized: "Status: %@"), status))
         }
         parts.append(String(localized: "Item count is approximate, updated about every six hours"))
-        return parts.joined(separator: " · ")
+        // Capacity and the item count note carry commas, so a comma cannot separate the parts.
+        return parts.joined(separator: "; ")
     }
 
     private static func keySchema(_ keys: DynamoDBKeySchema) -> DynamoDBJSON {

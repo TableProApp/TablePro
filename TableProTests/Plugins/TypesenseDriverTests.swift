@@ -714,6 +714,18 @@ struct TypesenseApiKeysTests {
         #expect(wildcard.map(\.scope) == [.server])
     }
 
+    @Test("A key's comment keeps its prefix apart from a comma separated collection list")
+    func commentSeparatesPrefixFromCollections() throws {
+        let prefix = String(format: String(localized: "Starts with %@"), "JrJX")
+        let scoped = TypesenseApiKey(
+            id: 1, description: "", actions: [], collections: ["books", "authors"], valuePrefix: "JrJX", expiresAt: nil
+        )
+        #expect(TypesenseApiKeys.comment(for: scoped) == "\(prefix); books, authors")
+
+        let keys = TypesenseApiKeys.keys(from: payload)
+        #expect(TypesenseApiKeys.comment(for: keys[1]) == String(localized: "All collections"))
+    }
+
     @Test("A create request carries the description, actions and collections")
     func buildsACreateRequest() throws {
         let request = try #require(TypesenseApiKeys.createRequest(

@@ -14,7 +14,7 @@ struct ConnectionEntity: AppEntity {
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(name)",
-            subtitle: "\(databaseType) · \(host)"
+            subtitle: "\(databaseType), \(host)"
         )
     }
 

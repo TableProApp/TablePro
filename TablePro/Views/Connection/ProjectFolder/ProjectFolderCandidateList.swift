@@ -110,7 +110,7 @@ struct ProjectFolderCandidateRow: View {
     }
 
     private var provenance: String {
-        [typeName, candidate.sourceRelativePath, candidate.sourceKey].joined(separator: " · ")
+        [typeName, candidate.sourceRelativePath, candidate.sourceKey].joined(separator: ", ")
     }
 
     private var helpText: String {

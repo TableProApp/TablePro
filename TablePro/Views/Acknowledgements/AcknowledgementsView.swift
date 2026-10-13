@@ -38,7 +38,7 @@ struct AcknowledgementsSidebar: View {
     private func row(for component: ThirdPartyComponent) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(component.name)
-            Text(component.isUnverified ? component.version : "\(component.version) · \(component.spdx)")
+            Text(component.isUnverified ? component.version : "\(component.version), \(component.spdx)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

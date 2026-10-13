@@ -56,12 +56,11 @@ struct SlowQueryListView: View {
                     .font(.system(.caption, design: .monospaced))
                     .lineLimit(2)
                     .truncationMode(.tail)
-                HStack(spacing: 4) {
+                HStack(spacing: 8) {
                     if !query.user.isEmpty {
                         Text(query.user)
                     }
                     if !query.database.isEmpty {
-                        Text("·")
                         Text(query.database)
                     }
                 }

@@ -2,10 +2,6 @@
 //  QueryContainerPicker.swift
 //  TablePro
 //
-//  Per-tab container (database/schema) selector shown in the query editor
-//  toolbar. Binds a query tab to the container its SQL runs in, so each tab
-//  can target a different database without clearing the others.
-//
 
 import SwiftUI
 
@@ -36,11 +32,11 @@ struct QueryContainerPicker: View {
         containers.first(where: { $0.name == selectedName })?.icon ?? "cylinder"
     }
 
-    /// What the tab is bound to, spelled the way the sidebar spells a qualified object.
+    /// Dot-qualified, the way the sidebar and SQL spell a qualified object.
     private var scopeLabel: String {
         let base = selectedName.isEmpty ? entityName : selectedName
         guard let schemaName, !schemaName.isEmpty, !selectedName.isEmpty else { return base }
-        return "\(base) · \(schemaName)"
+        return "\(base).\(schemaName)"
     }
 
     private var scopeAccessibilityLabel: String {

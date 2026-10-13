@@ -56,4 +56,13 @@ struct MongoResultRebuildTests {
         #expect(result().withRowLocators(nil).rowLocators == nil)
         #expect(result().withRowLocators(["a", nil, "c"]).rowLocators == ["a", nil, "c"])
     }
+
+    @Test("Printed lines in a status are told apart even when a line holds a comma")
+    func printedSummarySeparatesLines() {
+        #expect(MongoScriptText.printedSummary(["inserted 2, skipped 1", "done"]) == "inserted 2, skipped 1; done")
+        #expect(MongoScriptText.printedSummary(["only"]) == "only")
+        let long = MongoScriptText.printedSummary([String(repeating: "a", count: 300), String(repeating: "b", count: 300)])
+        #expect(long.count == 401)
+        #expect(long.hasSuffix("…"))
+    }
 }

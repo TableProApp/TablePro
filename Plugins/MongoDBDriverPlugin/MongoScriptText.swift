@@ -81,6 +81,13 @@ enum MongoScriptText {
         String(format: String(localized: "%d line(s) printed"), count)
     }
 
+    /// Printed lines can hold commas of their own, so a comma would not tell one line from the next.
+    static func printedSummary(_ lines: [String]) -> String {
+        let joined = lines.joined(separator: "; ")
+        guard joined.count > 400 else { return joined }
+        return String(joined.prefix(400)) + "…"
+    }
+
     static var outputColumn: String {
         String(localized: "output")
     }

@@ -158,9 +158,7 @@ struct LicenseDevicesSection: View {
 
     // MARK: - Helpers
 
-    /// Which Mac you are on, when it last checked in, and what it is running. Last use is the fact
-    /// somebody actually decides on when choosing a seat to release, so it earns its place over the
-    /// app version, which is carried only for this Mac where the OS line is already short.
+    /// Last use is what decides which seat to release, so another Mac shows it where this one says "This Mac".
     private func secondaryLine(for device: LicenseActivationInfo, isThisMac: Bool) -> String {
         var parts: [String] = []
 
@@ -171,7 +169,7 @@ struct LicenseDevicesSection: View {
         }
 
         parts.append(device.osVersion)
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 
     private static let lastValidatedFormatter: ISO8601DateFormatter = {

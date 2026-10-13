@@ -778,7 +778,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             let otherSchema = SchemaQualifiedName.explicitSchema(table.schema, implicitSchemaName: browseSchema)
             let subtitle = [otherSchema, presentation.subtitle]
                 .compactMap { $0?.isEmpty == false ? $0 : nil }
-                .joined(separator: " · ")
+                .joined(separator: ", ")
             return QuickSwitcherItem(
                 frecencyKey: frecencyKey,
                 name: table.name,

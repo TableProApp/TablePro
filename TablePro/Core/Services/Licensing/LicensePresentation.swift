@@ -198,10 +198,7 @@ internal enum LicensePresentation {
         String(format: String(localized: "%1$lld of %2$lld members"), used, limit)
     }
 
-    /// What a licence is, in one line under the licensee's email.
-    ///
-    /// A one-time licence has no expiry and says so once. Its billing cycle is the server's word for
-    /// the same thing, "lifetime", so taking both spelled the plan "Team · Lifetime · Lifetime".
+    /// A one-time licence's "lifetime" cycle repeats "One-time", so it is dropped.
     static func planDescription(tier: String, billingCycle: String?, expiry: String?) -> String {
         var parts = [LicenseTier(rawValue: tier).displayName]
 
@@ -214,7 +211,7 @@ internal enum LicensePresentation {
             parts.append(String(localized: "One-time"))
         }
 
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 
     /// The first group of a license key, with the rest withheld.

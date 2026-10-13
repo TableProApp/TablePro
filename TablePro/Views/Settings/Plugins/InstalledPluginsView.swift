@@ -328,10 +328,9 @@ struct InstalledPluginsView: View {
                 Text(plugin.name)
                     .lineLimit(1)
 
-                HStack(spacing: 4) {
+                HStack(spacing: 8) {
                     Text("v\(plugin.version)")
                     if let capability = plugin.capabilities.first {
-                        Text("·")
                         Text(capability.displayName)
                     }
                 }
@@ -369,7 +368,7 @@ struct InstalledPluginsView: View {
                     Text(selected.name)
                         .font(.title3.weight(.semibold))
 
-                    Text("v\(selected.version) · \(selected.source == .builtIn ? String(localized: "Built-in") : String(localized: "User-installed"))")
+                    Text("v\(selected.version), \(selected.source == .builtIn ? String(localized: "Built-in") : String(localized: "User-installed"))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
