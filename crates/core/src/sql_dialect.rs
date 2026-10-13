@@ -49,11 +49,6 @@ pub fn validate_ident(name: &str) -> Result<(), IdentError> {
 }
 
 pub fn quote_ident(driver_id: &str, name: &str) -> String {
-    let name: std::borrow::Cow<'_, str> = if validate_ident(name).is_err() {
-        name.chars().filter(|c| !c.is_control()).collect::<String>().into()
-    } else {
-        name.into()
-    };
     match driver_id {
         // ClickHouse backtick-quoted identifiers treat a backslash as an
         // escape character, exactly like its string literals (sql_literal.rs);
@@ -567,8 +562,8 @@ mod tests {
     }
 
     #[test]
-    fn quote_ident_strips_control_characters_from_an_invalid_identifier() {
-        assert_eq!(quote_ident("postgres", "a\nb"), "\"ab\"");
+    fn quote_ident_keeps_a_control_character_so_the_statement_names_the_same_object() {
+        assert_eq!(quote_ident("postgres", "a\nb"), "\"a\nb\"");
     }
 
     #[test]

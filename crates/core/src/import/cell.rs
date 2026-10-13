@@ -142,11 +142,6 @@ pub fn column_kind(data_type: &str) -> ColumnKind {
     ColumnKind::Text
 }
 
-fn is_mysql_timestamp_type(data_type: &str) -> bool {
-    let data_type = data_type.trim().to_ascii_lowercase();
-    data_type == "timestamp" || data_type.starts_with("timestamp(")
-}
-
 fn temporal_kind(base: &str, lowered: &str) -> Option<ColumnKind> {
     // SQL Server datetimeoffset stores the original UTC offset as part of the
     // value. Value::TimestampTz normalizes offsets to UTC, so CSV import must
@@ -301,11 +296,7 @@ pub(crate) fn row_to_values_for_driver(
 }
 
 fn value_for(text: &str, column: &ColumnInfo, options: &CsvImportOptions, driver_id: &str) -> Result<Value, CellError> {
-    let kind = if driver_id == "mysql" && is_mysql_timestamp_type(&column.data_type) {
-        ColumnKind::TimestampTz
-    } else {
-        column_kind(&column.data_type)
-    };
+    let kind = crate::import::text_kind::column_kind_for(column, driver_id);
     if driver_id == "sqlite" {
         let is_any = crate::sqlite_any_csv::is_any_type(&column.data_type);
         let is_unknown = crate::sqlite_any_csv::is_unknown_type(&column.data_type);

@@ -9,6 +9,7 @@ mod csv_import;
 mod extended_temporal;
 mod infer;
 mod plan;
+mod text_kind;
 
 pub use cell::{CellError, ColumnKind, CsvRowError, column_kind, parse_cell, row_to_values};
 pub use csv_import::{

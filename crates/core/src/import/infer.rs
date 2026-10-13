@@ -74,7 +74,16 @@ fn fits(text: &str, kind: ColumnKind) -> bool {
             "true" | "false" | "t" | "f" | "yes" | "no" | "y" | "n"
         );
     }
+    if matches!(kind, ColumnKind::Int | ColumnKind::Decimal) && is_formatted_identifier(text.trim()) {
+        return false;
+    }
     parse_cell(text, kind).is_ok()
+}
+
+fn is_formatted_identifier(text: &str) -> bool {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    let mut bytes = digits.bytes();
+    digits.starts_with('+') || (bytes.next() == Some(b'0') && bytes.next().is_some_and(|next| next.is_ascii_digit()))
 }
 
 /// A header is untrusted text. Strip what no identifier may carry, fall
@@ -383,5 +392,28 @@ mod tests {
         assert_eq!(type_name("duckdb", ColumnKind::Json), "JSON");
         assert_eq!(type_name("postgres", ColumnKind::Json), "JSONB");
         assert_eq!(type_name("duckdb", ColumnKind::Int), "BIGINT");
+    }
+
+    #[test]
+    fn identifiers_that_look_like_numbers_but_carry_leading_zeros_or_a_plus_stay_text() {
+        for values in [
+            ["01234", "90210", "00501"],
+            ["+15551234567", "+442071234567", "+8613800138000"],
+            ["007", "42", "100"],
+            ["-01", "5", "6"],
+            ["01.5", "2.5", "3.5"],
+        ] {
+            let rows: Vec<Vec<&str>> = values.iter().map(|value| vec![*value]).collect();
+            let rows: Vec<&[&str]> = rows.iter().map(Vec::as_slice).collect();
+            assert_eq!(inferred(&["code"], &rows)[0].data_type, "TEXT", "{values:?}");
+        }
+    }
+
+    #[test]
+    fn ordinary_numbers_with_a_single_zero_or_a_leading_minus_stay_numbers() {
+        let integers = inferred(&["n"], &[&["0"], &["-5"], &["10"], &["100"]]);
+        assert_eq!(integers[0].data_type, "BIGINT");
+        let decimals = inferred(&["n"], &[&["0.5"], &["-0.25"], &["10.0"]]);
+        assert_ne!(decimals[0].data_type, "TEXT");
     }
 }
