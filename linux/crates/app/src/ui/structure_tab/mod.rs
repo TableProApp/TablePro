@@ -1096,9 +1096,11 @@ impl StructureModel {
             ColumnField::Nullable(nullable) => column.nullable = nullable,
             ColumnField::PrimaryKey(primary_key) => {
                 column.primary_key = primary_key;
-                // Every engine numbers only a key column, and the switch
-                // only greys out, so the model drops it here.
-                if !primary_key {
+                if primary_key {
+                    column.nullable = false;
+                } else {
+                    // Every engine numbers only a key column, and the
+                    // switch only greys out, so the model drops it here.
                     column.auto_increment = false;
                 }
             }

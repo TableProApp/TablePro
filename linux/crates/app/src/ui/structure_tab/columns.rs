@@ -61,6 +61,21 @@ pub(super) fn gate(widget: &impl IsA<gtk::Widget>, permission: &Permission) {
     }
 }
 
+/// A key column takes no NULL on any engine, so while the column is in
+/// the key its Nullable switch is off and stays off.
+fn hold_not_null(row: &adw::SwitchRow, key: bool) {
+    row.set_sensitive(!key);
+    let widget = row.upcast_ref::<gtk::Widget>();
+    if key {
+        let text = crate::i18n::gettext("A primary key column can't take NULL.");
+        row.set_tooltip_text(Some(&text));
+        widget.update_property(&[gtk::accessible::Property::Description(&text)]);
+    } else {
+        row.set_tooltip_text(None);
+        widget.reset_property(gtk::AccessibleProperty::Description);
+    }
+}
+
 /// Mark a field whose text the engine's parser refused, or clear it.
 fn mark_invalid(row: &adw::EntryRow, error: Option<&str>) {
     match error {
@@ -228,15 +243,33 @@ pub(super) fn build_column_expander_row(
         .build();
     pk_row.set_widget_name(&format!("col-pk-{index}"));
     gate(&pk_row, &permissions.alter_primary_key);
+    // A refused nullability change keeps the reason it already shows.
+    let hold = permissions.alter_nullability.is_allowed();
+    if hold {
+        hold_not_null(&nullable_row, col.primary_key);
+    }
     let sender_for_pk = sender.clone();
     let suppress_for_pk = suppress_emit.clone();
+    // The row owns the Nullable switch, so this holds it weakly.
+    let nullable_for_pk = nullable_row.downgrade();
     pk_row.connect_active_notify(move |s| {
         if suppress_for_pk.get() {
             return;
         }
+        let key = s.is_active();
+        if hold && let Some(nullable) = nullable_for_pk.upgrade() {
+            // The model sets NOT NULL with the key, so the switch only
+            // shows it.
+            if key {
+                suppress_for_pk.set(true);
+                nullable.set_active(false);
+                suppress_for_pk.set(false);
+            }
+            hold_not_null(&nullable, key);
+        }
         sender_for_pk.input(StructureTabInput::ColumnEdited {
             index,
-            field: ColumnField::PrimaryKey(s.is_active()),
+            field: ColumnField::PrimaryKey(key),
         });
     });
     row.add_row(&pk_row);

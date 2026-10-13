@@ -648,3 +648,91 @@ fn an_edit_waits_for_the_read_after_a_committed_save() {
     harness.tab().send(StructureTabInput::AddColumn);
     assert_eq!(harness.column_names(), ["id", "column_1"]);
 }
+
+/// `id` keyed by `users_pkey`, and a nullable `score`.
+fn keyed_users() -> TableDefinition {
+    TableDefinition {
+        columns: vec![integer_column("id", true), integer_column("score", false)],
+        primary_key: Some(PrimaryKeyConstraint {
+            name: Some("users_pkey".to_owned()),
+            columns: vec!["id".to_owned()],
+        }),
+        ..definition("id")
+    }
+}
+
+fn preview(tab: &StructureTab) -> String {
+    let buffer = sql_buffer(tab);
+    buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
+}
+
+#[gtk4::test]
+fn renaming_existing_column_enables_save_and_previews_rename() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(keyed_users()));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    drain_main_context();
+    let imp = harness.tab().imp();
+    assert!(!imp.save_button.is_sensitive());
+
+    let name = named_widget(harness.tab(), "col-name-1")
+        .downcast::<adw::EntryRow>()
+        .expect("the Name entry");
+    assert!(name.is_sensitive(), "an existing column's name could not be edited");
+    name.set_text("points");
+    drain_main_context();
+
+    assert_eq!(harness.column_names(), ["id", "points"]);
+    assert!(imp.save_button.is_sensitive(), "a rename left Save off");
+    assert_eq!(imp.pending_label.label(), "1 pending change");
+    assert_eq!(
+        preview(harness.tab()),
+        "ALTER TABLE \"users\" RENAME COLUMN \"score\" TO \"points\";"
+    );
+}
+
+#[gtk4::test]
+fn turning_the_primary_key_on_makes_the_column_not_null() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(keyed_users()));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    drain_main_context();
+    let switch = |name: &str| {
+        named_widget(harness.tab(), name)
+            .downcast::<adw::SwitchRow>()
+            .expect("a switch row")
+    };
+    let (key, nullable) = (switch("col-pk-1"), switch("col-nullable-1"));
+    assert!(!switch("col-nullable-0").is_sensitive(), "a key column could take NULL");
+    assert!(nullable.is_sensitive() && nullable.is_active());
+
+    key.set_active(true);
+    drain_main_context();
+
+    assert!(!nullable.is_active() && !nullable.is_sensitive());
+    assert!(nullable.tooltip_text().is_some_and(|tip| tip.contains("NULL")));
+    let draft = |column: usize| {
+        harness
+            .tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .map(|model| model.draft.borrow().columns[column].clone())
+            .expect("the tab has a model")
+    };
+    assert!(draft(1).primary_key && !draft(1).nullable);
+    assert_eq!(
+        preview(harness.tab()),
+        "ALTER TABLE \"users\" DROP CONSTRAINT \"users_pkey\", ALTER COLUMN \"score\" SET NOT NULL, ADD PRIMARY KEY \
+         (\"id\", \"score\");"
+    );
+
+    key.set_active(false);
+    drain_main_context();
+
+    assert!(nullable.is_sensitive() && !nullable.is_active());
+    assert!(!draft(1).primary_key);
+}
