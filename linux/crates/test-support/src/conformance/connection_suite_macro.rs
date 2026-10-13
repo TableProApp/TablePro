@@ -5,8 +5,9 @@
 /// that passes without checking anything, and a flag that is on requires
 /// the matching engine trait:
 ///
-/// - `endpoint: network` adds the dropped-caller and lost-transport
-///   cases and needs `NetworkConformanceEngine`; `file` adds neither.
+/// - `endpoint: network` adds the dropped-caller, dropped-editor-run and
+///   lost-transport cases and needs `NetworkConformanceEngine`; `file`
+///   adds a dropped-editor-run case that checks the session instead.
 /// - `pool: pooled` adds the busy-pool probe and needs
 ///   `PooledConformanceEngine`; `unbounded` is an engine with no slot
 ///   limit.
@@ -292,11 +293,24 @@ macro_rules! __conformance_endpoint_cases {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
+            dropped_editor_run_stops_server_statement,
+            $crate::conformance::cases::cancellation::dropped_editor_run_stops_server_statement::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
             lost_transport_reports_connection_lost,
             $crate::conformance::cases::liveness::lost_transport_reports_connection_lost::<$engine>
         }
     };
-    (file, $docker:tt, $engine:ty) => {};
+    (file, $docker:tt, $engine:ty) => {
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            dropped_editor_run_frees_the_session,
+            $crate::conformance::cases::cancellation::dropped_editor_run_frees_the_session::<$engine>
+        }
+    };
 }
 
 #[doc(hidden)]

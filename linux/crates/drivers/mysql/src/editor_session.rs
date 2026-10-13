@@ -9,6 +9,7 @@ use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LivenessPolicy,
     LossPhase, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql,
 };
+use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -33,7 +34,15 @@ struct Held {
 /// read-only default, the lock bounds and the row limit are its own.
 pub(crate) struct MysqlEditorSession {
     id: EditorSessionId,
-    held: tokio::sync::Mutex<Option<Held>>,
+    shared: Arc<Shared>,
+}
+
+/// What a run needs once its caller is gone. A run goes on a task of
+/// its own, so a dropped caller is a cancel that still sends the KILL
+/// and settles the session, rather than a statement left running for
+/// nobody.
+struct Shared {
+    held: Arc<tokio::sync::Mutex<Option<Held>>>,
     connection_id: u64,
     flavour: MySqlFlavour,
     control: ControlLink,
@@ -67,19 +76,82 @@ impl MysqlEditorSession {
         let liveness = *endpoint.liveness();
         Ok(Arc::new(Self {
             id: EditorSessionId::new(),
-            held: tokio::sync::Mutex::new(Some(Held {
-                connection: physical.connection,
-                select_limit: None,
-            })),
-            connection_id: physical.connection_id,
-            flavour: physical.flavour,
-            control: ControlLink::new(endpoint),
-            probe: TransactionProbe::new(physical.flavour),
-            running: AtomicBool::new(false),
-            lost: AtomicBool::new(false),
-            closing: CancellationToken::new(),
-            liveness,
+            shared: Arc::new(Shared {
+                held: Arc::new(tokio::sync::Mutex::new(Some(Held {
+                    connection: physical.connection,
+                    select_limit: None,
+                }))),
+                connection_id: physical.connection_id,
+                flavour: physical.flavour,
+                control: ControlLink::new(endpoint),
+                probe: TransactionProbe::new(physical.flavour),
+                running: AtomicBool::new(false),
+                lost: AtomicBool::new(false),
+                closing: CancellationToken::new(),
+                liveness,
+            }),
         }))
+    }
+}
+
+impl Shared {
+    fn state(&self) -> EditorSessionState {
+        if self.lost.load(Ordering::SeqCst) {
+            EditorSessionState::Lost
+        } else if self.running.load(Ordering::SeqCst) {
+            EditorSessionState::Running
+        } else {
+            EditorSessionState::Ready
+        }
+    }
+
+    /// One run on the connection `guard` holds, which it gives up when
+    /// the connection cannot take another.
+    async fn run_held(
+        &self,
+        mut guard: OwnedMutexGuard<Option<Held>>,
+        sql: UserSql,
+        options: RunOptions,
+        mut sink: Box<dyn ResultSink>,
+    ) -> Result<RunSummary, DriverError> {
+        // A run whose task died leaves its connection behind, in a state
+        // nothing knows.
+        let Some(held) = guard.as_mut().filter(|_| !self.lost.load(Ordering::SeqCst)) else {
+            return Err(DriverError::ConnectionLost {
+                during: LossPhase::Idle,
+            });
+        };
+        let started = Instant::now();
+        self.running.store(true, Ordering::SeqCst);
+        let supervised = self.supervise(held, &sql, &options, sink.as_mut()).await;
+        let transaction_state = match &supervised {
+            Ok((_, true)) => {
+                let asking = self.probe.state(&mut held.connection);
+                tokio::time::timeout(self.liveness.cancel_grace, asking)
+                    .await
+                    .unwrap_or(TransactionState::Unknown)
+            }
+            _ => TransactionState::Unknown,
+        };
+        self.running.store(false, Ordering::SeqCst);
+        let end = match supervised {
+            Ok((end, true)) => end,
+            Ok((end, false)) => {
+                self.lost.store(true, Ordering::SeqCst);
+                *guard = None;
+                end
+            }
+            Err(error) => {
+                self.lost.store(true, Ordering::SeqCst);
+                *guard = None;
+                return Err(error);
+            }
+        };
+        Ok(RunSummary {
+            elapsed: started.elapsed(),
+            end,
+            transaction_state,
+        })
     }
 
     /// Run the script, stopping it on a cancel, at the deadline, when
@@ -179,67 +251,40 @@ impl EditorSession for MysqlEditorSession {
     }
 
     fn state(&self) -> EditorSessionState {
-        if self.lost.load(Ordering::SeqCst) {
-            EditorSessionState::Lost
-        } else if self.running.load(Ordering::SeqCst) {
-            EditorSessionState::Running
-        } else {
-            EditorSessionState::Ready
-        }
+        self.shared.state()
     }
 
     async fn run(
         &self,
         sql: UserSql,
         options: RunOptions,
-        mut sink: Box<dyn ResultSink>,
+        sink: Box<dyn ResultSink>,
     ) -> Result<RunSummary, DriverError> {
-        let Ok(mut guard) = self.held.try_lock() else {
+        let Ok(guard) = self.shared.held.clone().try_lock_owned() else {
             return Err(DriverError::EditorSessionBusy);
         };
-        let Some(held) = guard.as_mut() else {
-            return Err(DriverError::ConnectionLost {
-                during: LossPhase::Idle,
-            });
-        };
-        let started = Instant::now();
-        self.running.store(true, Ordering::SeqCst);
-        let supervised = self.supervise(held, &sql, &options, sink.as_mut()).await;
-        let transaction_state = match &supervised {
-            Ok((_, true)) => {
-                let asking = self.probe.state(&mut held.connection);
-                tokio::time::timeout(self.liveness.cancel_grace, asking)
-                    .await
-                    .unwrap_or(TransactionState::Unknown)
-            }
-            _ => TransactionState::Unknown,
-        };
-        self.running.store(false, Ordering::SeqCst);
-        let end = match supervised {
-            Ok((end, true)) => end,
-            Ok((end, false)) => {
-                self.lost.store(true, Ordering::SeqCst);
-                *guard = None;
-                end
-            }
-            Err(error) => {
-                self.lost.store(true, Ordering::SeqCst);
-                *guard = None;
-                return Err(error);
-            }
-        };
-        Ok(RunSummary {
-            elapsed: started.elapsed(),
-            end,
-            transaction_state,
-        })
+        // Dropping the caller is itself a cancel: the statement is
+        // already running on the server and has to be stopped.
+        let cancel_on_drop = options.cancel.clone().drop_guard();
+        let shared = self.shared.clone();
+        let running = tokio::spawn(async move { shared.run_held(guard, sql, options, sink).await });
+        let outcome = running.await.unwrap_or_else(|_| {
+            self.shared.running.store(false, Ordering::SeqCst);
+            self.shared.lost.store(true, Ordering::SeqCst);
+            Err(DriverError::ConnectionLost {
+                during: LossPhase::Statement,
+            })
+        });
+        drop(cancel_on_drop.disarm());
+        outcome
     }
 
     async fn transaction_state(&self, options: CallOptions) -> Result<TransactionState, DriverError> {
+        let shared = &self.shared;
         let asking = async {
-            let mut guard = self.held.lock().await;
+            let mut guard = shared.held.lock().await;
             match guard.as_mut() {
-                Some(held) => Ok(self.probe.state(&mut held.connection).await),
+                Some(held) => Ok(shared.probe.state(&mut held.connection).await),
                 None => Err(DriverError::ConnectionLost {
                     during: LossPhase::Idle,
                 }),
@@ -257,16 +302,17 @@ impl EditorSession for MysqlEditorSession {
     }
 
     async fn close(&self) {
-        self.lost.store(true, Ordering::SeqCst);
-        self.closing.cancel();
-        // A statement that will not stop keeps the connection, which
-        // closes when the session itself is dropped.
-        let grace = self.liveness.cancel_grace + Duration::from_millis(100);
-        if let Ok(mut guard) = tokio::time::timeout(grace, self.held.lock()).await
+        let shared = &self.shared;
+        shared.lost.store(true, Ordering::SeqCst);
+        shared.closing.cancel();
+        // A statement that will not stop keeps the connection until its
+        // run gives it up at the end of the cancel grace.
+        let grace = shared.liveness.cancel_grace + Duration::from_millis(100);
+        if let Ok(mut guard) = tokio::time::timeout(grace, shared.held.lock()).await
             && let Some(held) = guard.take()
         {
-            let _ = tokio::time::timeout(self.liveness.close_timeout, held.connection.close()).await;
+            let _ = tokio::time::timeout(shared.liveness.close_timeout, held.connection.close()).await;
         }
-        self.control.close().await;
+        shared.control.close().await;
     }
 }
