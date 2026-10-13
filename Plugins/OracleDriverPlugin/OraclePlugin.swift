@@ -458,6 +458,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                             )))
                         case .rows(let batch):
                             continuation.yield(.rows(batch.map { $0.map(\.asPluginCell) }))
+                        case .affectedRows:
+                            // The plugin stream carries rows only. The app sends writes and DDL through
+                            // `execute`, which reports the count, and bounds only reads through this stream.
+                            break
                         }
                     }
                     continuation.finish()

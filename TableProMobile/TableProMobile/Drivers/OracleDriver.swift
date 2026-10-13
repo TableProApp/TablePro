@@ -152,6 +152,10 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                                 continuation.yield(.row(Row(cells: cells)))
                                 emitted += 1
                             }
+                        case .affectedRows(let count):
+                            if count != 0 {
+                                continuation.yield(.rowsAffected(count))
+                            }
                         }
                     }
                     continuation.finish()

@@ -71,28 +71,28 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// Runs off the actor: the actor is busy inside `sqlite3_step` for as long as the statement runs.
     func cancelCurrentQuery() async throws {
-        await actor.interrupt()
+        actor.interruptHandle.interrupt()
     }
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         let actor = self.actor
+        let interruptHandle = actor.interruptHandle
         return AsyncThrowingStream { continuation in
+            let stream = SQLiteStreamToken()
             let task = Task {
                 do {
-                    let beginResult = try await actor.beginStream(query: query)
-                    switch beginResult {
+                    switch try await actor.beginStream(query: query, stream: stream) {
                     case .commandOk(let affectedRows):
                         if affectedRows != 0 {
                             continuation.yield(.rowsAffected(affectedRows))
                         }
-                        continuation.finish()
-                        return
                     case .rowSet(let columns):
                         continuation.yield(.columns(columns))
                         var emitted = 0
                         while !Task.isCancelled, emitted < options.maxRows {
-                            guard let cells = await actor.fetchNextRow(options: options, columns: columns) else {
+                            guard let cells = try await actor.fetchNextRow(stream: stream, options: options, columns: columns) else {
                                 break
                             }
                             continuation.yield(.row(Row(cells: cells)))
@@ -103,25 +103,31 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
                         } else if emitted >= options.maxRows {
                             continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                         }
-                        await actor.endStream()
-                        continuation.finish()
+                        await actor.endStream(stream)
                     }
-                } catch is CancellationError {
-                    await actor.endStream()
-                    continuation.yield(.truncated(reason: .cancelled))
                     continuation.finish()
                 } catch {
-                    await actor.endStream()
-                    continuation.finish(throwing: error)
+                    await actor.endStream(stream)
+                    // A cancelled consumer interrupts the step, so the interrupt error is the cancel itself.
+                    if error is CancellationError || Task.isCancelled {
+                        continuation.yield(.truncated(reason: .cancelled))
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: error)
+                    }
                 }
             }
             continuation.onTermination = { reason in
                 task.cancel()
                 if case .cancelled = reason {
-                    Task { await actor.interrupt() }
+                    interruptHandle.interrupt(stream)
                 }
             }
         }
+    }
+
+    func sessionTransactionState() async -> DriverTransactionState {
+        await actor.transactionState()
     }
 
     // MARK: - Schema
@@ -263,9 +269,75 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     }
 }
 
+// MARK: - Interrupt Handle
+
+/// Identifies one `executeStreaming` call, so the actor and the interrupt handle act only on the
+/// statement that call began.
+nonisolated final class SQLiteStreamToken: Sendable {}
+
+/// The open connection, reachable without the actor so Stop can interrupt a statement the actor is
+/// stepping. SQLite forbids `sqlite3_interrupt` on a connection that is closed or might close before
+/// the call returns, so every interrupt and the detach that precedes `sqlite3_close` share one lock.
+///
+/// An interrupt stops every statement on the connection, and while any statement is active it also
+/// stops the next one to start. The data browser and the query editor share a driver, so a stream's
+/// consumer interrupts only while its own statement is stepping.
+nonisolated final class SQLiteInterruptHandle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var db: OpaquePointer?
+    private var steppingStream: SQLiteStreamToken?
+    private var interruptedDuringStep = false
+
+    func attach(_ db: OpaquePointer) {
+        lock.withLock { self.db = db }
+    }
+
+    func detach() {
+        lock.withLock { db = nil }
+    }
+
+    /// The user's Stop, which ends whatever is running.
+    func interrupt() {
+        lock.withLock {
+            guard let db else { return }
+            if steppingStream != nil { interruptedDuringStep = true }
+            sqlite3_interrupt(db)
+        }
+    }
+
+    /// Between steps the cancelled producer stops by itself, and an interrupt then would reach the
+    /// next statement on the connection instead.
+    func interrupt(_ stream: SQLiteStreamToken) {
+        lock.withLock {
+            guard let db, steppingStream === stream else { return }
+            interruptedDuringStep = true
+            sqlite3_interrupt(db)
+        }
+    }
+
+    func beginStep(of stream: SQLiteStreamToken) {
+        lock.withLock {
+            steppingStream = stream
+            interruptedDuringStep = false
+        }
+    }
+
+    /// Returns whether an interrupt arrived while the step ran.
+    func endStep() -> Bool {
+        lock.withLock {
+            defer {
+                steppingStream = nil
+                interruptedDuringStep = false
+            }
+            return interruptedDuringStep
+        }
+    }
+}
+
 // MARK: - SQLite Actor (thread-safe C API access)
 
 private actor SQLiteActor {
+    nonisolated let interruptHandle = SQLiteInterruptHandle()
     private var db: OpaquePointer?
 
     func open(path: String, flags: Int32) throws {
@@ -276,17 +348,25 @@ private actor SQLiteActor {
             throw SQLiteError.connectionFailed(msg)
         }
         sqlite3_busy_timeout(db, 5_000)
+        if let db { interruptHandle.attach(db) }
     }
 
+    /// `sqlite3_close` refuses a connection with an unfinalized statement and leaves it open, so a
+    /// stream still in progress is finalized first.
     func close() {
+        interruptHandle.detach()
+        finalizeStreamingStatement()
         if let db {
             sqlite3_close(db)
             self.db = nil
         }
     }
 
-    func interrupt() {
-        if let db { sqlite3_interrupt(db) }
+    /// SQLite has no implicit transaction to report: autocommit is off from a `BEGIN` or a bare
+    /// `SAVEPOINT` until the matching `COMMIT` or `ROLLBACK`.
+    func transactionState() -> DriverTransactionState {
+        guard let db else { return .unknown }
+        return sqlite3_get_autocommit(db) == 0 ? .explicitTransaction : .idle
     }
 
     func execute(_ query: String) throws -> RawResult {
@@ -299,6 +379,11 @@ private actor SQLiteActor {
             throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
         defer { sqlite3_finalize(stmt) }
+        // Text with only whitespace or comments prepares to no statement, and stepping nothing is a misuse.
+        guard stmt != nil else {
+            return RawResult(columns: [], columnTypes: [], rows: [],
+                             rowsAffected: 0, executionTime: Date().timeIntervalSince(start), isTruncated: false)
+        }
 
         let colCount = sqlite3_column_count(stmt)
         var columns: [String] = []
@@ -312,7 +397,9 @@ private actor SQLiteActor {
         var rows: [[String?]] = []
         let maxRows = 100_000
 
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        let totalChangesBefore = sqlite3_total_changes64(db)
+        var stepResult = sqlite3_step(stmt)
+        while stepResult == SQLITE_ROW {
             if rows.count >= maxRows {
                 return RawResult(columns: columns, columnTypes: columnTypes, rows: rows,
                                  rowsAffected: 0, executionTime: Date().timeIntervalSince(start), isTruncated: true)
@@ -336,23 +423,36 @@ private actor SQLiteActor {
                 }
             }
             rows.append(row)
+            stepResult = sqlite3_step(stmt)
+        }
+        guard stepResult == SQLITE_DONE else {
+            throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 
-        let affected = columns.isEmpty ? Int(sqlite3_changes(db)) : 0
+        let affected = columns.isEmpty ? changes(of: db, sinceTotal: totalChangesBefore) : 0
         return RawResult(columns: columns, columnTypes: columnTypes, rows: rows,
                          rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: false)
     }
 
+    /// `sqlite3_changes64` keeps the count of the last INSERT, UPDATE or DELETE, so a statement that
+    /// wrote nothing, DDL included, would report it again. The total moves only when this one wrote.
+    private func changes(of db: OpaquePointer, sinceTotal totalBefore: Int64) -> Int {
+        guard sqlite3_total_changes64(db) != totalBefore else { return 0 }
+        return Int(sqlite3_changes64(db))
+    }
+
     // MARK: - Streaming
 
+    /// One statement streams at a time, held with the token of the stream that began it, so the
+    /// producer of a stream that a later `beginStream` replaced cannot step or finalize the later one.
     private var streamingStmt: OpaquePointer?
-    private var streamingColumns: [ColumnInfo] = []
+    private var streamingToken: SQLiteStreamToken?
 
-    func beginStream(query: String) throws -> SQLiteBeginStreamResult {
+    func beginStream(query: String, stream: SQLiteStreamToken) throws -> SQLiteBeginStreamResult {
         guard let db else { throw SQLiteError.notConnected }
-        if streamingStmt != nil {
-            endStream()
-        }
+        // Stop can land while the stream waits for the actor, and an interrupt then reaches nothing.
+        try Task.checkCancellation()
+        finalizeStreamingStatement()
 
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else {
@@ -364,14 +464,13 @@ private actor SQLiteActor {
 
         let colCount = Int(sqlite3_column_count(stmt))
         if colCount == 0 {
-            let stepResult = sqlite3_step(stmt)
-            sqlite3_finalize(stmt)
-            if stepResult == SQLITE_DONE || stepResult == SQLITE_ROW {
-                let affected = Int(sqlite3_changes(db))
-                return .commandOk(affectedRows: affected)
-            } else {
+            defer { sqlite3_finalize(stmt) }
+            let totalChangesBefore = sqlite3_total_changes64(db)
+            let stepResult = try step(stmt, of: stream).result
+            guard stepResult == SQLITE_DONE || stepResult == SQLITE_ROW else {
                 throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
             }
+            return .commandOk(affectedRows: changes(of: db, sinceTotal: totalChangesBefore))
         }
 
         var columns: [ColumnInfo] = []
@@ -390,14 +489,29 @@ private actor SQLiteActor {
             ))
         }
         streamingStmt = stmt
-        streamingColumns = columns
+        streamingToken = stream
         return .rowSet(columns)
     }
 
-    func fetchNextRow(options: StreamOptions, columns: [ColumnInfo]) -> [Cell]? {
-        guard let stmt = streamingStmt else { return nil }
-        let stepResult = sqlite3_step(stmt)
-        guard stepResult == SQLITE_ROW else { return nil }
+    /// A stream whose statement is gone, replaced by a later `beginStream` or finalized by a close,
+    /// ends as cancelled rather than reading rows that belong to another statement.
+    func fetchNextRow(stream: SQLiteStreamToken, options: StreamOptions, columns: [ColumnInfo]) throws -> [Cell]? {
+        guard stream === streamingToken, let stmt = streamingStmt else { throw CancellationError() }
+        let outcome = try step(stmt, of: stream)
+        if outcome.interrupted, outcome.result == SQLITE_ROW {
+            // The row was ready before the interrupt took effect, so the interrupt is still pending
+            // and would stop the next statement on the connection unless this one ends now.
+            finalizeStreamingStatement()
+            throw CancellationError()
+        }
+        switch outcome.result {
+        case SQLITE_ROW:
+            break
+        case SQLITE_DONE:
+            return nil
+        default:
+            throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(sqlite3_db_handle(stmt))))
+        }
 
         var cells: [Cell] = []
         cells.reserveCapacity(columns.count)
@@ -429,12 +543,28 @@ private actor SQLiteActor {
         return cells
     }
 
-    func endStream() {
-        if let stmt = streamingStmt {
-            sqlite3_finalize(stmt)
-            streamingStmt = nil
-            streamingColumns = []
+    func endStream(_ stream: SQLiteStreamToken) {
+        guard stream === streamingToken else { return }
+        finalizeStreamingStatement()
+    }
+
+    private func finalizeStreamingStatement() {
+        guard let stmt = streamingStmt else { return }
+        sqlite3_finalize(stmt)
+        streamingStmt = nil
+        streamingToken = nil
+    }
+
+    /// Marks the step before reading the cancel, so a consumer that leaves at any moment is either
+    /// seen here or finds its stream stepping and interrupts it.
+    private func step(_ stmt: OpaquePointer, of stream: SQLiteStreamToken) throws -> (result: Int32, interrupted: Bool) {
+        interruptHandle.beginStep(of: stream)
+        guard !Task.isCancelled else {
+            _ = interruptHandle.endStep()
+            throw CancellationError()
         }
+        let result = sqlite3_step(stmt)
+        return (result, interruptHandle.endStep())
     }
 
     private func makeCellRef(column: String, columns: [ColumnInfo], statement: OpaquePointer, options: StreamOptions) -> CellRef? {

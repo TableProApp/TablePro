@@ -894,6 +894,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
             continuation.yield(.rows([decoder.decode(row)]))
         }
         await warnOnce(about: decoder.unsupportedTypeNames)
+
+        guard columns.isEmpty else { return }
+        continuation.yield(.affectedRows(try await stream.affectedRows))
     }
 
     // MARK: - Session Time Zones

@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP server runs only while Enable MCP Server is on in Settings > MCP. Clients and pairing no longer start it while it is off.
 - Edit > Data shown only in data file windows.
 - Smaller updates: about 6 MB from any of the last five releases and 21 MB from older ones, down from 34 MB.
+- Several statements run together on PostgreSQL from iPhone and iPad commit one at a time, and a failure keeps the ones before it. (#3399)
 
 ### Removed
 
@@ -72,6 +73,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
 - GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
 - Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
+- Only the first statement running on iPhone and iPad when the query holds several. (#3399)
+- Query on iPhone and iPad appearing to do nothing after CREATE, DROP or a write that changed no rows, including every Oracle write. (#3399)
+- SQLite on iPhone and iPad reporting a CHECK or UNIQUE violation as a saved row in Add Row, the row editor and Shortcuts. (#3399)
+- Previous write's row count shown after a SQLite CREATE, DROP or ALTER. (#3399)
+- SQLite, PostgreSQL, MySQL and DuckDB query on iPhone and iPad hiding an error raised after the first rows. (#3399)
+- Stop on iPhone and iPad letting a running SQLite or PostgreSQL statement finish and commit, and running a DuckDB query again from the start. (#3399)
+- Query run right after Stop on iPhone and iPad showing no rows. (#3399)
+- PostgreSQL query on iPhone and iPad downloading the whole table before showing the first 10,000 rows. (#3399)
+- DuckDB result on iPhone and iPad cut at 10,000 rows without the notice that more rows exist. (#3399)
+- MySQL connection failing every query after calling a procedure that returns rows, and a procedure that failed after its first rows reported as a success. (#3399)
+- Redis command on iPhone and iPad reading a line break as part of a value, and dropping an empty quoted value. (#3399)
 
 ### Security
 

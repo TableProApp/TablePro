@@ -1995,6 +1995,9 @@
         }
       }
     },
+    "Any statement in the batch that ran stays applied." : {
+
+    },
     "App" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -2354,6 +2357,9 @@
           }
         }
       }
+    },
+    "Batch %1$d/%2$d failed: %3$@" : {
+
     },
     "Bell" : {
       "extractionState" : "manual",
@@ -10828,6 +10834,9 @@
         }
       }
     },
+    "Nothing to Run" : {
+
+    },
     "Nullable" : {
       "localizations" : {
         "ko" : {
@@ -12505,6 +12514,9 @@
         }
       }
     },
+    "Query executed successfully" : {
+
+    },
     "Query execution failed" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -12683,6 +12695,12 @@
     "Raised Hand" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Ran %d batches" : {
+
+    },
+    "Ran %d statements" : {
+
     },
     "Read-Only" : {
       "extractionState" : "stale",
@@ -13772,6 +13790,9 @@
         }
       }
     },
+    "Running batch %1$d of %2$d" : {
+
+    },
     "Running query" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13800,6 +13821,9 @@
           }
         }
       }
+    },
+    "Running statement %1$d of %2$d" : {
+
     },
     "Search Icons" : {
 
@@ -15365,6 +15389,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Statement %1$d/%2$d failed: %3$@" : {
+
+    },
     "Stats" : {
       "localizations" : {
         "ko" : {
@@ -15538,6 +15565,18 @@
           }
         }
       }
+    },
+    "Stopped at batch %1$d of %2$d to stay within memory limits." : {
+
+    },
+    "Stopped at batch %1$d of %2$d." : {
+
+    },
+    "Stopped at statement %1$d of %2$d to stay within memory limits." : {
+
+    },
+    "Stopped at statement %1$d of %2$d." : {
+
     },
     "Stopped before the query finished." : {
       "localizations" : {
@@ -15960,9 +15999,27 @@
     "System Table" : {
 
     },
+    "The %d batches before it stay applied." : {
+
+    },
+    "The %d statements before it stay applied." : {
+
+    },
+    "The batch before it stays applied." : {
+
+    },
+    "The statement before it stays applied." : {
+
+    },
+    "The transaction on this connection is still open. Commit or roll it back." : {
+
+    },
     "Theater Masks" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "There is no statement to run." : {
+
     },
     "Ticket" : {
       "extractionState" : "manual",
