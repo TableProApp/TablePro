@@ -53,6 +53,11 @@ async fn nullability_change_keeps_column_collation() {
         .expect("the change runs");
     let after = read(connection.as_ref()).await;
 
+    assert_eq!(before.columns.len(), after.columns.len());
+    for old in &before.columns {
+        let new = after.column(old.name()).expect("the column");
+        assert_eq!(new.attributes, old.attributes, "{}", old.name());
+    }
     let column = |name: &str| after.column(name).expect("the column");
     let collation = |name: &str| {
         column(name)
@@ -76,4 +81,5 @@ async fn nullability_change_keeps_column_collation() {
     assert!(mask(&before).is_some_and(|function| function.starts_with("partial(")));
     assert_eq!(mask(&after), mask(&before));
     assert_eq!(column("email").info.column_type.name, "varchar(80)");
+    connection.close().await.expect("a close");
 }

@@ -58,6 +58,16 @@ async fn type_change_keeps_c_collation() {
         .expect("the change runs");
     let after = read(connection.as_ref()).await;
 
+    assert_eq!(before.columns.len(), after.columns.len());
+    for old in &before.columns {
+        let mut expected = old.attributes.clone();
+        // An integer holds no text, so it has no collation to keep.
+        if old.name() == "amount" {
+            expected.collation = None;
+        }
+        let new = after.column(old.name()).expect("the column");
+        assert_eq!(new.attributes, expected, "{}", old.name());
+    }
     let c = Some(CollationName::new(Some("pg_catalog".to_owned()), "C"));
     let column = |name: &str| after.column(name).expect("the column");
     assert_eq!(column("code").attributes.collation, c);
