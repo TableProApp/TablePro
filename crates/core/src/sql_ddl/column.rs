@@ -171,11 +171,19 @@ fn alter_column_postgres(
     let name = quote_ident(driver_id, &column.name);
     let changed = ChangedAttributes::of(column);
     let mut stmts: Vec<String> = Vec::new();
+    let default_set_before = column
+        .original
+        .as_ref()
+        .is_some_and(|original| original.default_value.is_some());
+    let reapply_default = changed.data_type && default_set_before;
     if changed.data_type {
         validate_safe_type(&column.data_type)?;
         let collation = collation_clause(driver_id, column)?
             .map(|clause| format!(" {clause}"))
             .unwrap_or_default();
+        if reapply_default {
+            stmts.push(format!("ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT", qualified, name));
+        }
         stmts.push(format!(
             "ALTER TABLE {} ALTER COLUMN {} TYPE {}{} USING {}::{}",
             qualified, name, column.data_type, collation, name, column.data_type,
@@ -189,14 +197,11 @@ fn alter_column_postgres(
         };
         stmts.push(format!("ALTER TABLE {} ALTER COLUMN {} {}", qualified, name, action));
     }
-    if changed.default_value {
-        stmts.push(match validated_default(column.default_value.as_deref())? {
-            Some(default) => format!(
-                "ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {}",
-                qualified, name, default
-            ),
-            None => format!("ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT", qualified, name),
-        });
+    if (changed.default_value || reapply_default)
+        && let Some(statement) =
+            postgres_default_statement(&qualified, &name, column, changed.default_value, reapply_default)?
+    {
+        stmts.push(statement);
     }
     if comment_changed(column)
         && let Some(comment_stmt) = column_comment_statement(driver_id, schema, table, column)?
@@ -207,6 +212,33 @@ fn alter_column_postgres(
         return Err(BuildDdlError::NoChange);
     }
     Ok(stmts)
+}
+
+fn postgres_default_statement(
+    qualified: &str,
+    name: &str,
+    column: &DraftColumn,
+    default_changed: bool,
+    reapply_default: bool,
+) -> Result<Option<String>, BuildDdlError> {
+    match validated_default(column.default_value.as_deref())? {
+        Some(default) => {
+            let value = if default_changed {
+                default.to_string()
+            } else {
+                format!("({default})::{}", column.data_type)
+            };
+            Ok(Some(format!(
+                "ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {}",
+                qualified, name, value
+            )))
+        }
+        None if !reapply_default => Ok(Some(format!(
+            "ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT",
+            qualified, name
+        ))),
+        None => Ok(None),
+    }
 }
 
 fn alter_column_mssql(

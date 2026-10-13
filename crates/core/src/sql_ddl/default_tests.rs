@@ -92,6 +92,59 @@ fn an_unchanged_empty_string_default_is_not_an_edit() {
 }
 
 #[test]
+fn a_postgres_type_change_drops_the_default_first_and_sets_it_again_afterwards() {
+    let mut column = loaded(Some("0"));
+    column.data_type = "integer".into();
+    assert_eq!(
+        build_alter_column("postgres", None, "t", &column).unwrap(),
+        vec![
+            r#"ALTER TABLE "t" ALTER COLUMN "status" DROP DEFAULT"#,
+            r#"ALTER TABLE "t" ALTER COLUMN "status" TYPE integer USING "status"::integer"#,
+            r#"ALTER TABLE "t" ALTER COLUMN "status" SET DEFAULT (0)::integer"#,
+        ]
+    );
+}
+
+#[test]
+fn a_postgres_type_change_that_also_clears_the_default_drops_it_once() {
+    let mut column = loaded(Some("0"));
+    column.data_type = "integer".into();
+    column.default_value = None;
+    assert_eq!(
+        build_alter_column("postgres", None, "t", &column).unwrap(),
+        vec![
+            r#"ALTER TABLE "t" ALTER COLUMN "status" DROP DEFAULT"#,
+            r#"ALTER TABLE "t" ALTER COLUMN "status" TYPE integer USING "status"::integer"#,
+        ]
+    );
+}
+
+#[test]
+fn a_postgres_type_change_without_a_default_adds_no_default_statements() {
+    let mut column = loaded(None);
+    column.data_type = "integer".into();
+    assert_eq!(
+        build_alter_column("postgres", None, "t", &column).unwrap(),
+        vec![r#"ALTER TABLE "t" ALTER COLUMN "status" TYPE integer USING "status"::integer"#]
+    );
+}
+
+#[test]
+fn a_postgres_type_change_that_also_edits_the_default_uses_the_edited_default() {
+    let mut column = loaded(Some("'x'"));
+    column.data_type = "integer".into();
+    column.default_value = Some("5".into());
+    assert_eq!(
+        build_alter_column("postgres", None, "t", &column).unwrap(),
+        vec![
+            r#"ALTER TABLE "t" ALTER COLUMN "status" DROP DEFAULT"#,
+            r#"ALTER TABLE "t" ALTER COLUMN "status" TYPE integer USING "status"::integer"#,
+            r#"ALTER TABLE "t" ALTER COLUMN "status" SET DEFAULT 5"#,
+        ]
+    );
+}
+
+#[test]
 fn a_postgres_primary_key_or_identity_toggle_on_an_existing_column_is_refused_not_ignored() {
     let mut key = loaded(None);
     key.primary_key = true;
