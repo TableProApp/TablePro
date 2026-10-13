@@ -22,6 +22,7 @@ use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill
 use crate::ui::error_text::TlsRemedy;
 use crate::ui::ssh_inputs::SshEnvironment;
 
+use super::teardown_guard::Teardown;
 use super::{App, AppMsg, qualified_label};
 
 /// What a failed connect can be retried from: the connection as it was
@@ -127,6 +128,15 @@ impl App {
     /// entry is only written once the connect works, so a typo never
     /// lands in the connection list.
     pub(super) fn on_connect_submission(&mut self, submission: ConnectSubmission, sender: ComponentSender<Self>) {
+        if self.context.active.is_connected() {
+            let proceed = AppMsg::ConnectSubmissionConfirmed(Box::new(submission));
+            self.confirm_teardown(Teardown::Switch, proceed, sender);
+            return;
+        }
+        self.connect_submission(submission, sender);
+    }
+
+    pub(super) fn connect_submission(&mut self, submission: ConnectSubmission, sender: ComponentSender<Self>) {
         let ConnectSubmission { request, pending_save } = submission;
         self.set_loading_page(
             &crate::i18n::gettext("Connecting…"),
@@ -403,42 +413,9 @@ impl App {
     }
 
     pub(super) fn on_disconnect(&mut self, sender: ComponentSender<Self>) {
-        // Block disconnect when any tab has pending changes. The
-        // teardown below clears all tracker registries, so dropping
-        // the connection mid-edit silently destroys the user's work.
-        // Confirm via an AlertDialog mirroring the window-close-with-
-        // pending and F5-with-pending paths.
-        let has_pending = crate::services::change_tracker::any_pending_globally()
-            || crate::services::structure_tracker::any_pending_globally();
-        if has_pending {
-            let dialog = adw::AlertDialog::new(
-                Some(&crate::i18n::gettext("Discard pending changes?")),
-                Some(&crate::i18n::gettext(
-                    "Disconnecting will close every tab and drop every unsaved row edit and DDL change.",
-                )),
-            );
-            dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
-            dialog.add_response("discard", &crate::i18n::gettext("Discard and disconnect"));
-            dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
-            dialog.set_default_response(Some("cancel"));
-            dialog.set_close_response("cancel");
-            let sender_for_resp = sender.clone();
-            dialog.connect_response(None, move |dlg, response| {
-                dlg.close();
-                if response == "discard" {
-                    sender_for_resp.input(AppMsg::ForceDisconnect);
-                }
-            });
-            dialog.present(Some(&self.window));
-            return;
-        }
-        self.do_disconnect(sender);
+        self.confirm_teardown(Teardown::Disconnect, AppMsg::ForceDisconnect, sender);
     }
 
-    /// Skip the dirty check and tear the connection down. Reachable
-    /// either from the AlertDialog "Discard and disconnect" branch
-    /// or from a clean `Disconnect` when no tracker has pending
-    /// changes.
     pub(super) fn do_disconnect(&mut self, sender: ComponentSender<Self>) {
         self.release_session(sender.clone());
         self.split_view.set_show_sidebar(false);
@@ -801,6 +778,15 @@ impl App {
             self.show_toast(&crate::i18n::gettext("This connection is already open."));
             return;
         }
+        if self.context.active.is_connected() {
+            self.confirm_teardown(Teardown::Switch, AppMsg::OpenSavedConfirmed(saved), sender);
+            return;
+        }
+        self.connect_saved(saved, sender);
+    }
+
+    pub(super) fn connect_saved(&mut self, saved: SavedConnection, sender: ComponentSender<Self>) {
+        let key = SessionKey::Saved(saved.id);
         self.set_loading_page(
             &crate::i18n::gettext("Connecting…"),
             &crate::i18n::gettext_f("Opening {name}", &[("name", &saved.name)]),

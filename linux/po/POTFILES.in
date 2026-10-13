@@ -42,6 +42,7 @@ crates/app/src/ui/app/ran_statements.rs
 crates/app/src/ui/app/row_ops.rs
 crates/app/src/ui/app/status_pages.rs
 crates/app/src/ui/app/structure.rs
+crates/app/src/ui/app/teardown_guard.rs
 crates/app/src/ui/app/workspace_tabs.rs
 crates/app/src/ui/browse_tab.rs
 crates/app/src/ui/cell_editor.rs

@@ -5,6 +5,7 @@ mod ran_statements;
 mod row_ops;
 mod status_pages;
 mod structure;
+mod teardown_guard;
 mod workspace_tabs;
 
 use std::sync::Arc;
@@ -325,6 +326,8 @@ pub enum AppMsg {
     SessionReady(Box<ReadySession>),
     /// The connect dialog's Connect: connect, then save the entry.
     ConnectSubmitted(Box<super::connect_dialog::ConnectSubmission>),
+    /// The same, once the user agreed to close the open workspace.
+    ConnectSubmissionConfirmed(Box<super::connect_dialog::ConnectSubmission>),
     /// A connect failed. `None` when the user cancelled it, which needs
     /// no error. `edit` reopens the dialog on what was submitted.
     ConnectFailed {
@@ -360,6 +363,9 @@ pub enum AppMsg {
     ResetConnectionList,
     SecretDeleteFailed(Uuid),
     OpenSaved(SavedConnection),
+    /// Open a saved connection once the user agreed to close the open
+    /// workspace.
+    OpenSavedConfirmed(SavedConnection),
     DeleteConnection(Uuid),
     DuplicateConnection(SavedConnection),
     /// "+ New query" button or Ctrl+T → append a new editor tab.
@@ -413,9 +419,8 @@ pub enum AppMsg {
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     Disconnect,
-    /// Skip the dirty-state confirmation and tear the connection
-    /// down immediately. Fired from the disconnect-with-pending
-    /// AlertDialog's "Discard and disconnect" response.
+    /// Tear the connection down, once nothing would be lost or the user
+    /// agreed to lose it.
     ForceDisconnect,
     RefreshPage,
     ShowAbout,
@@ -1365,6 +1370,7 @@ impl SimpleComponent for App {
             AppMsg::OpenConnect => self.on_open_connect(sender),
             AppMsg::SessionReady(ready) => self.on_session_ready(*ready, sender),
             AppMsg::ConnectSubmitted(submission) => self.on_connect_submission(*submission, sender),
+            AppMsg::ConnectSubmissionConfirmed(submission) => self.connect_submission(*submission, sender),
             AppMsg::ConnectFailed {
                 generation,
                 message,
@@ -1564,6 +1570,7 @@ impl SimpleComponent for App {
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
             AppMsg::DuplicateConnection(saved) => self.on_duplicate_connection(saved, sender),
             AppMsg::OpenSaved(saved) => self.on_open_saved(saved, sender),
+            AppMsg::OpenSavedConfirmed(saved) => self.connect_saved(saved, sender),
             AppMsg::ReopenClosedTab => self.on_reopen_closed_tab(sender),
             AppMsg::ShowFilterDialog => self.on_show_filter_dialog(),
         }
