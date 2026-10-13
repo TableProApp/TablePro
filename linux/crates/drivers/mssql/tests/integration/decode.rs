@@ -50,8 +50,8 @@ async fn sql_variant_int_nvarchar_datetime2() {
         panic!("not a timestamp: {:?}", row[2]);
     };
     assert_eq!(
-        stamp.format("%Y-%m-%dT%H:%M:%S%.7f").to_string(),
-        "2024-06-15T10:00:00.1234567"
+        stamp.format("%Y-%m-%dT%H:%M:%S%.9f").to_string(),
+        "2024-06-15T10:00:00.123456700"
     );
 }
 
