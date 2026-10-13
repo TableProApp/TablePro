@@ -11,7 +11,7 @@ use crate::errors::{ErrorContext, map_error_in};
 use crate::result_reader::drain;
 
 /// How long the server keeps an editor session's state between runs.
-const SESSION_TIMEOUT_SECONDS: &str = "3600";
+const SESSION_TIMEOUT: Duration = Duration::from_secs(3600);
 
 /// Everything needed to reach one server: the workspace's client, the
 /// sessionless control client that KILLs and resolves, and the
@@ -22,6 +22,7 @@ pub(crate) struct ClickHouseEndpoint {
     transport: Arc<dyn Transport>,
     liveness: LivenessPolicy,
     tls_requested: bool,
+    session_timeout: Duration,
 }
 
 impl ClickHouseEndpoint {
@@ -44,7 +45,14 @@ impl ClickHouseEndpoint {
             transport: target.transport.clone(),
             liveness,
             tls_requested: target.tls.mode != TlsMode::Disable,
+            session_timeout: SESSION_TIMEOUT,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_session_timeout(mut self, timeout: Duration) -> Self {
+        self.session_timeout = timeout;
+        self
     }
 
     /// The client of the workspace's own requests, read-only when the
@@ -63,13 +71,14 @@ impl ClickHouseEndpoint {
         &self.liveness
     }
 
-    /// The client of one editor session: the server keeps a session's
-    /// settings and temporary tables under its id.
+    /// The client that creates one editor session: the server keeps a
+    /// session's settings and temporary tables under its id, for as long
+    /// as the request that created it asked.
     pub(crate) fn session(&self, id: Uuid) -> clickhouse::Client {
         self.workspace
             .clone()
             .with_setting("session_id", id.to_string())
-            .with_setting("session_timeout", SESSION_TIMEOUT_SECONDS)
+            .with_setting("session_timeout", self.session_timeout.as_secs().max(1).to_string())
     }
 
     /// What the server says it is, and the database unqualified names

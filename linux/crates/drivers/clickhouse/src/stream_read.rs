@@ -14,8 +14,8 @@ pub(crate) async fn stream(
     sink: &mut dyn ResultSink,
 ) -> Result<StreamSummary, DriverError> {
     let query = match read {
-        ReadStatement::Generated(statement) => calls.statement(statement),
-        ReadStatement::User(sql) => calls.raw(sql.as_str()),
+        ReadStatement::Generated(statement) => calls.statement(statement)?,
+        ReadStatement::User(sql) => calls.raw(sql.as_str())?,
     };
     let mut reader = ResultReader::open(query)?;
     let mut emitter = Emitter {

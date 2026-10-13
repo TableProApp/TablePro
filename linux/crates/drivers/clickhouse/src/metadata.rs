@@ -10,7 +10,7 @@ const SYSTEM_DATABASES: [&str; 3] = ["system", "INFORMATION_SCHEMA", "informatio
 /// Every database, with the session's own as the default.
 pub(crate) async fn list_schemas(calls: &CallClient) -> Result<Vec<SchemaInfo>, DriverError> {
     let sql = "SELECT name, name = currentDatabase() FROM system.databases ORDER BY name";
-    let result = read_table(calls.raw(sql), None).await?;
+    let result = read_table(calls.raw(sql)?, None).await?;
     result
         .rows
         .iter()
@@ -38,15 +38,15 @@ pub(crate) async fn list_objects(
     let base = "SELECT database, name, engine FROM system.tables WHERE is_temporary = 0";
     let query = match scope {
         ObjectScope::DefaultSchema => calls
-            .raw(&format!("{base} AND database = {{db:String}} ORDER BY name"))
+            .raw(&format!("{base} AND database = {{db:String}} ORDER BY name"))?
             .param("db", default_database),
         ObjectScope::Schema(database) => calls
-            .raw(&format!("{base} AND database = {{db:String}} ORDER BY name"))
+            .raw(&format!("{base} AND database = {{db:String}} ORDER BY name"))?
             .param("db", database.as_str()),
         ObjectScope::AllSchemas => calls
             .raw(&format!(
                 "{base} AND database NOT IN {{system:Array(String)}} ORDER BY database, name"
-            ))
+            ))?
             .param("system", SYSTEM_DATABASES),
     };
     let mut objects = Vec::new();
@@ -60,7 +60,7 @@ pub(crate) async fn list_objects(
     }
     if !matches!(scope, ObjectScope::Schema(_)) {
         let sql = "SELECT name FROM system.functions WHERE origin = 'SQLUserDefined' ORDER BY name";
-        for row in &read_table(calls.raw(sql), None).await?.rows {
+        for row in &read_table(calls.raw(sql)?, None).await?.rows {
             objects.push(ObjectInfo {
                 schema: None,
                 name: CatalogRow(row).text(0)?,

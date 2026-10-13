@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::call_client::whole_seconds;
 use crate::cancel::{acknowledges_stop, kill_query};
+use crate::errors::{code, server_code};
 use crate::result_reader::{ReadEvent, ResultReader};
 
 /// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
@@ -90,8 +91,7 @@ impl EditorRun {
                         emitter.limit_reached().await;
                         // The rest of the result is not wanted, so the read
                         // stops on the server before its body is dropped.
-                        let killing = kill_query(&self.control, query_id);
-                        let _ = tokio::time::timeout(self.grace, killing).await;
+                        kill_within(&self.control, query_id, self.grace).await;
                         break stop.fired.map_or(RunEnd::Completed, |_| stop.end(None));
                     }
                 }
@@ -105,10 +105,25 @@ impl EditorRun {
                         during: LossPhase::Statement,
                     });
                 }
+                // The server let the session expire, and with it what the
+                // tab built up there; carrying on in a new one would hide
+                // that.
+                Err(error) if server_code(&error) == Some(code::SESSION_NOT_FOUND) => {
+                    return Err(DriverError::ConnectionLost {
+                        during: LossPhase::Idle,
+                    });
+                }
                 Err(DriverError::Timeout {
                     phase: TimeoutPhase::Statement,
                     server_cancelled,
                 }) => break RunEnd::TimedOut { server_cancelled },
+                Err(error) if unreadable(&error) => {
+                    // The server is still sending what the driver could not
+                    // read, so the query is stopped there before its body
+                    // is dropped.
+                    kill_within(&self.control, query_id, self.grace).await;
+                    break RunEnd::Failed(error);
+                }
                 Err(error) => break RunEnd::Failed(error),
             }
             if emitter.consumer_gone && stop.fired.is_none() {
@@ -135,6 +150,22 @@ fn lost(error: &DriverError) -> bool {
         error.category(),
         ErrorCategory::Network | ErrorCategory::ConnectionLost | ErrorCategory::Tls
     )
+}
+
+/// A body the driver gave up reading, while the server may still be
+/// producing it.
+fn unreadable(error: &DriverError) -> bool {
+    matches!(error, DriverError::Protocol(_) | DriverError::Decode { .. })
+}
+
+/// A KILL that gives up after `grace`: on a route that stopped
+/// answering, it would otherwise wait, and hold its connection, for good.
+async fn kill_within(control: &clickhouse::Client, query_id: Uuid, grace: Duration) {
+    match tokio::time::timeout(grace, kill_query(control, query_id)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => tracing::debug!(%error, "the KILL QUERY for an editor run failed"),
+        Err(_) => tracing::debug!("the KILL QUERY for an editor run got no answer"),
+    }
 }
 
 /// What stops a run, and when the stop was sent.
@@ -179,11 +210,8 @@ impl Stop {
         self.fired = Some(interrupt);
         self.give_up = Some(Instant::now() + self.grace);
         let control = control.clone();
-        tokio::spawn(async move {
-            if let Err(error) = kill_query(&control, query_id).await {
-                tracing::debug!(%error, "the KILL QUERY for an editor run failed");
-            }
-        });
+        let grace = self.grace;
+        tokio::spawn(async move { kill_within(&control, query_id, grace).await });
     }
 
     async fn gave_up(&self) {
@@ -306,6 +334,42 @@ mod tests {
     use tablepro_core::{ServerCode, ServerDiagnostics};
 
     use super::*;
+
+    #[tokio::test]
+    async fn a_kill_the_server_never_answers_gives_up_at_the_grace() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("a listener");
+        let address = listener.local_addr().expect("an address");
+        let silent = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((socket, _)) = listener.accept().await {
+                held.push(socket);
+            }
+        });
+        let control = clickhouse::Client::default().with_url(format!("http://{address}"));
+
+        let killing = kill_within(&control, Uuid::new_v4(), Duration::from_millis(200));
+
+        assert!(
+            tokio::time::timeout(Duration::from_secs(10), killing).await.is_ok(),
+            "the KILL waited on a server that never answered"
+        );
+        silent.abort();
+    }
+
+    #[test]
+    fn only_a_body_the_driver_could_not_read_is_killed_after_it_fails() {
+        let refused = DriverError::reported(ServerDiagnostics::new(
+            Some(ServerCode::ClickHouse { code: 62 }),
+            "Code: 62. DB::Exception: Syntax error",
+        ));
+
+        assert!(unreadable(&DriverError::Protocol("a row ran past 256 MiB".to_owned())));
+        assert!(unreadable(&DriverError::Decode {
+            column: "c".to_owned(),
+            detail: "not a number".to_owned(),
+        }));
+        assert!(!unreadable(&refused));
+    }
 
     fn stopped(interrupt: Interrupt) -> Stop {
         let mut stop = Stop::new(

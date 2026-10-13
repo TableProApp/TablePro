@@ -11,7 +11,7 @@ use tablepro_core::{
 use tokio::time::Instant;
 
 use crate::support::{
-    CALL, DATABASE, admin, apply, batch, connect, count, flush_logs, planned, quoted, run, scalar, session, setup,
+    CALL, DATABASE, admin, apply, batch_on, connect, count, flush_logs, planned, quoted, run, scalar, session, setup,
     start, table, text, unique, within,
 };
 
@@ -197,10 +197,14 @@ async fn write_statements_never_carry_max_execution_time() {
 async fn alter_update_deadline_commit_outcome_unknown_resolves_still_running_then_applied() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;
-    let qualified = slow_table(connection.as_ref(), &unique("deadline")).await;
+    let name = unique("deadline");
+    let qualified = slow_table(connection.as_ref(), &name).await;
 
     let outcome = connection
-        .write_batch(&batch(&[&slow_update(&qualified)]), within(Duration::from_secs(1)))
+        .write_batch(
+            &batch_on(&name, &[&slow_update(&qualified)]),
+            within(Duration::from_secs(1)),
+        )
         .await;
 
     let Err(DriverError::CommitOutcomeUnknown { token: Some(token), .. }) = outcome else {
@@ -233,8 +237,8 @@ async fn alter_update_killed_by_other_session_is_unknown_not_cancelled() {
 
     let writing = {
         let connection = connection.clone();
-        let update = slow_update(&qualified);
-        tokio::spawn(async move { connection.write_batch(&batch(&[&update]), within(CALL)).await })
+        let update = batch_on(&name, &[&slow_update(&qualified)]);
+        tokio::spawn(async move { connection.write_batch(&update, within(CALL)).await })
     };
     let monitor = session(connection.as_ref()).await;
     let find = format!(
@@ -288,12 +292,15 @@ async fn failing_mutation_unfinished_is_unknown_and_still_running() {
     )
     .await;
 
-    let outcome = apply(
-        connection.as_ref(),
-        WriteKind::RowChanges,
-        &[&format!("ALTER TABLE {qualified} UPDATE n = toUInt8(s) WHERE 1")],
-    )
-    .await;
+    let outcome = connection
+        .write_batch(
+            &batch_on(
+                &name,
+                &[&format!("ALTER TABLE {qualified} UPDATE n = toUInt8(s) WHERE 1")],
+            ),
+            within(CALL),
+        )
+        .await;
 
     let Err(DriverError::CommitOutcomeUnknown { token: Some(token), .. }) = outcome else {
         panic!("a failing mutation gave {outcome:?}");
@@ -307,6 +314,77 @@ async fn failing_mutation_unfinished_is_unknown_and_still_running() {
         &format!("KILL MUTATION WHERE database = '{DATABASE}' AND table = '{name}' SYNC"),
     )
     .await;
+    connection.close().await.expect("a close");
+}
+
+/// The ALTER's mutation never runs and is killed, while another table's
+/// mutation lands inside the ALTER's window. Its log names no table, so
+/// only the table the write was for can keep the other one out.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn killed_mutation_unresolvable_despite_another_tables_mutation_in_its_window() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let held = unique("held");
+    let other = unique("other");
+    let (held_table, other_table) = (quoted(&held), quoted(&other));
+    setup(
+        connection.as_ref(),
+        &[
+            &format!("CREATE TABLE {held_table} (id Int32, n Int32) ENGINE = MergeTree ORDER BY id"),
+            &format!("INSERT INTO {held_table} VALUES (1, 0)"),
+            &format!("CREATE TABLE {other_table} (id Int32, n Int32) ENGINE = MergeTree ORDER BY id"),
+            &format!("INSERT INTO {other_table} VALUES (1, 0)"),
+        ],
+    )
+    .await;
+    admin(connection.as_ref(), &format!("SYSTEM STOP MERGES {held_table}")).await;
+
+    let writing = {
+        let connection = connection.clone();
+        let update = batch_on(&held, &[&format!("ALTER TABLE {held_table} UPDATE n = 1 WHERE 1")]);
+        tokio::spawn(async move { connection.write_batch(&update, within(CALL)).await })
+    };
+    let waiting = format!(
+        "SELECT count() FROM system.processes WHERE query LIKE 'ALTER TABLE%{held}%' \
+         AND query NOT LIKE '%system.processes%'"
+    );
+    let give_up = Instant::now() + Duration::from_secs(10);
+    while count(connection.as_ref(), &waiting).await == 0 {
+        assert!(
+            Instant::now() < give_up,
+            "the ALTER never showed up in system.processes"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    admin(
+        connection.as_ref(),
+        &format!("ALTER TABLE {other_table} UPDATE n = 1 WHERE 1"),
+    )
+    .await;
+    admin(
+        connection.as_ref(),
+        &format!("KILL MUTATION WHERE database = '{DATABASE}' AND table = '{held}' SYNC"),
+    )
+    .await;
+
+    let outcome = writing.await.expect("the write task");
+    let Err(DriverError::CommitOutcomeUnknown { token: Some(token), .. }) = outcome else {
+        panic!("a mutation killed under its ALTER gave {outcome:?}");
+    };
+    assert_eq!(
+        count(
+            connection.as_ref(),
+            &format!("SELECT count() FROM system.mutations WHERE table = '{other}' AND is_done")
+        )
+        .await,
+        1,
+        "the other table's mutation did not land"
+    );
+    assert_eq!(
+        resolution(connection.as_ref(), &token).await,
+        CommitResolution::Unresolvable
+    );
     connection.close().await.expect("a close");
 }
 
@@ -334,6 +412,7 @@ async fn resolve_finished_insert_applied() {
     let token = CommitToken::ClickHouseQuery {
         query_ids: vec![query_id],
         first_unconfirmed: 0,
+        table: table(&name),
     };
 
     assert_eq!(resolution(connection.as_ref(), &token).await, CommitResolution::Applied);
@@ -348,6 +427,7 @@ async fn resolve_random_id_unresolvable() {
     let token = CommitToken::ClickHouseQuery {
         query_ids: vec![uuid::Uuid::new_v4()],
         first_unconfirmed: 0,
+        table: table("t"),
     };
 
     assert_eq!(
@@ -390,6 +470,7 @@ async fn resolve_syntax_error_insert_not_applied() {
     let token = CommitToken::ClickHouseQuery {
         query_ids: vec![query_id],
         first_unconfirmed: 0,
+        table: table(&name),
     };
 
     assert_eq!(

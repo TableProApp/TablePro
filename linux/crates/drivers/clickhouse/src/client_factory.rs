@@ -23,10 +23,14 @@ const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 const CERTIFICATE_AUTH_HEADER: &str = "X-ClickHouse-SSL-Certificate-Auth";
 
 /// The settings every request carries.
-const COMMON_SETTINGS: [(&str, &str); 6] = [
+const COMMON_SETTINGS: [(&str, &str); 7] = [
     // A Decimal is written at its column's scale, so a value read back
     // keeps the scale it was stored with and compares equal to it.
     ("output_format_decimal_trailing_zeros", "1"),
+    // A DateTime is read as `YYYY-MM-DD hh:mm:ss` in its own time zone.
+    // A profile or session that set `iso` would send it in UTC instead,
+    // and a save keyed on it would miss its row.
+    ("date_time_output_format", "simple"),
     // An error after the first rows is written as plain exception text,
     // which the clickhouse crate detects, rather than as one more row in
     // the output format, which would read as data.

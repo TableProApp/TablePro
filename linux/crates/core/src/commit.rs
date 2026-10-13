@@ -1,3 +1,5 @@
+use crate::meta::TableRef;
+
 /// What the app needs to ask the server whether a commit landed.
 ///
 /// A connection lost between COMMIT and its acknowledgement leaves the
@@ -12,9 +14,13 @@ pub enum CommitToken {
     PostgresXid { xid: u64, legacy_txid: bool },
     /// ClickHouse has no transactions, so the token is the query ids
     /// that were sent, and how many of them are known to have finished.
+    /// `table` is the table they write, qualified: a mutation is looked
+    /// up by table, and the log of an ALTER that failed while waiting on
+    /// its mutation names none.
     ClickHouseQuery {
         query_ids: Vec<uuid::Uuid>,
         first_unconfirmed: usize,
+        table: TableRef,
     },
 }
 

@@ -25,3 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A SQLite save that failed in a way SQLite rolls back itself closed the connection and its temporary tables.
 - A SQLite script ending in an unclosed comment showed later results under the first statement's columns.
 - SQLite text containing a NUL character exported as SQL that SQLite cannot read.
+- ClickHouse query or export with a FORMAT clause filled memory instead of failing.
+- ClickHouse editor tab silently lost its temporary tables and settings when the server expired its session.
+- ClickHouse DateTime values showed as UTC text when the server profile or session set ISO output.
+- ClickHouse save with an unknown outcome could read as applied because of another table's mutation.

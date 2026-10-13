@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clickhouse::error::Error as ClickHouseError;
+use tablepro_core::meta::TableRef;
 use tablepro_core::statement::{RowGuard, Statement};
 use tablepro_core::{
     CommitToken, DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport,
@@ -35,9 +36,11 @@ pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), Driver
 /// Everything one write needs once its task runs.
 pub(crate) struct WritePlan {
     pub(crate) batch: WriteBatch,
+    /// The batch's table, qualified, for the commit token.
+    pub(crate) table: TableRef,
     pub(crate) ledger: Arc<WriteLedger>,
     /// Reads that may be stopped, for the probes.
-    pub(crate) probes: CallClient,
+    pub(crate) probes: clickhouse::Client,
     /// Waits for each statement to finish, and never bounds it: a
     /// mutation the server gives up waiting on keeps running anyway.
     pub(crate) writes: clickhouse::Client,
@@ -54,9 +57,10 @@ pub(crate) struct WritePlan {
 pub(crate) async fn perform(
     plan: &WritePlan,
     request: &StopRequest,
-    stop: &ClickHouseStop,
+    stop: &Arc<ClickHouseStop>,
 ) -> Result<WriteReport, DriverError> {
     let ledger = &plan.ledger;
+    let probes = CallClient::new(plan.probes.clone(), stop.clone(), request.clone());
     for (index, step) in plan.batch.steps.iter().enumerate() {
         let Some((probe, expected)) = step.guard.probe() else {
             continue;
@@ -64,7 +68,7 @@ pub(crate) async fn perform(
         if request.is_requested() {
             return Err(ledger.interrupted(stop.interrupted(request), SessionFate::RolledBack));
         }
-        match count(&plan.probes, probe).await {
+        match count(&probes, probe).await {
             Ok(actual) if actual == expected => {}
             Ok(actual) => return Err(ledger.guard_failed(index, expected, actual, SessionFate::RolledBack)),
             Err(error) if request.is_requested() && acknowledges_stop(&error) => {
@@ -83,6 +87,7 @@ pub(crate) async fn perform(
         ledger.attach_token(CommitToken::ClickHouseQuery {
             query_ids: query_ids.clone(),
             first_unconfirmed: index,
+            table: plan.table.clone(),
         });
         ledger.statement_sending(index);
         match execute(&plan.writes, &step.statement, *query_id).await {
@@ -131,7 +136,7 @@ async fn execute(
 }
 
 async fn count(calls: &CallClient, probe: &Statement) -> Result<u64, DriverError> {
-    let result = read_table(calls.statement(probe), None).await?;
+    let result = read_table(calls.statement(probe)?, None).await?;
     let value = result
         .rows
         .first()

@@ -50,7 +50,7 @@ pub(crate) async fn fetch_table_definition(
 /// identifier by the client rather than quoted here.
 async fn create_statement(calls: &CallClient, catalog: &CatalogTable) -> Result<Option<String>, DriverError> {
     let query = calls
-        .template("SHOW CREATE TABLE ?.?")
+        .template("SHOW CREATE TABLE ?.?")?
         .bind(Identifier(&catalog.database))
         .bind(Identifier(&catalog.name));
     let result = read_table(query, None).await?;
