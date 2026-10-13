@@ -75,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typing in a long SQL script copied the whole script on every keystroke.
 - Closing the window never asked about open editor transactions, and never closed the editor tabs' connections.
 - Disconnecting or switching connections offered no way to save pending changes first.
+- Edits made while a switch to another connection was connecting were closed without asking.
 - A save whose answer was lost with the connection showed as failed, and saving again could apply it twice.
 - Edits made in a table tab while its save ran were dropped when the save finished.
 - Structure tab edits made while its save ran were lost when the table was read again.
