@@ -22,6 +22,7 @@ crates/app/src/services/active_session.rs
 crates/app/src/services/cell_overlay.rs
 crates/app/src/services/change_tracker.rs
 crates/app/src/services/change_tracker_registry.rs
+crates/app/src/services/column_relayout.rs
 crates/app/src/services/from_session.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_service.rs

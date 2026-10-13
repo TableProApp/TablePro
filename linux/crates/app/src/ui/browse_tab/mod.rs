@@ -757,6 +757,9 @@ impl BrowseModel {
     /// Checked again here because a keyboard shortcut or a late event
     /// can reach a locked cell.
     fn refuses_edit(&self, row: &RowObject, column: usize) -> bool {
+        if self.grid_is_stale() {
+            return true;
+        }
         let Some(info) = self.current_columns.get(column) else {
             return true;
         };
@@ -1135,6 +1138,30 @@ impl BrowseModel {
         self.current_column_view.is_some() && self.rendered_columns == self.current_columns
     }
 
+    /// A row event from a grid built for other columns names its cells
+    /// by positions that now hold other columns.
+    fn grid_is_stale(&self) -> bool {
+        let stale = !self.column_view_matches_current_columns();
+        if stale {
+            tracing::debug!("dropped a row event from a grid built for other columns");
+        }
+        stale
+    }
+
+    /// The grid was built for columns the table no longer has, so it
+    /// goes before a click or a key in it lands on a moved column.
+    fn drop_grid(&mut self) {
+        if self.current_column_view.take().is_none() {
+            return;
+        }
+        clear_box(&self.grid_holder);
+        self.current_selection = None;
+        self.rendered_columns.clear();
+        self.row_index = GridRowIndex::default();
+        update_selection_chrome(&self.selection_label, 0);
+        self.show_loading();
+    }
+
     /// New rows under the same columns. The drafts go back on top so
     /// they survive the swap.
     fn refresh_grid_data(&mut self, result: &QueryResult, store: &gtk::gio::ListStore) {
@@ -1339,12 +1366,14 @@ impl BrowseModel {
         if self.current_columns != columns {
             self.current_result = None;
             self.shown_view = None;
+            self.drop_grid();
         }
         self.current_columns = columns.clone();
-        self.tracker.set_target(SaveTarget {
+        let delta = self.tracker.set_target(SaveTarget {
             table: self.table_ref(),
             columns: columns.clone(),
         });
+        self.apply_tracker_delta(&delta, fx);
         if let Some(result) = self.current_result.as_mut()
             && result.columns.is_empty()
         {
@@ -1491,7 +1520,7 @@ impl BrowseModel {
                 fx.output(BrowseTabOutput::StateChanged);
             }
             BrowseTabInput::DuplicateRow { row } => {
-                if self.current_columns.is_empty() {
+                if self.current_columns.is_empty() || self.grid_is_stale() {
                     return;
                 }
                 // With its pending edits, since the copy is of the row the
@@ -1590,6 +1619,9 @@ impl BrowseModel {
                 }));
             }
             BrowseTabInput::GridDeleteRowAt { row } => {
+                if self.grid_is_stale() {
+                    return;
+                }
                 let (Some(row_key), Some(cells)) = (row.key(), row.cells()) else {
                     return;
                 };
@@ -1601,7 +1633,11 @@ impl BrowseModel {
                     fx,
                 );
             }
-            BrowseTabInput::GridCopyRowAsInsert { row } => self.copy_row_as_insert(&row, fx),
+            BrowseTabInput::GridCopyRowAsInsert { row } => {
+                if !self.grid_is_stale() {
+                    self.copy_row_as_insert(&row, fx);
+                }
+            }
             BrowseTabInput::GridCopyToClipboard(text) => {
                 fx.output(BrowseTabOutput::CopyToClipboard(text));
             }

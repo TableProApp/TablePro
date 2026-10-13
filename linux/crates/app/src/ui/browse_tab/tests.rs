@@ -1210,3 +1210,155 @@ fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
         toasts.borrow()
     );
 }
+
+fn people(names: &[&str]) -> Vec<ColumnInfo> {
+    std::iter::once(column("id", true))
+        .chain(names.iter().map(|name| column(name, false)))
+        .collect()
+}
+
+/// One row, id 0, each cell holding its column's name.
+fn people_page(columns: &[ColumnInfo]) -> QueryResult {
+    QueryResult::new(
+        columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+        vec![
+            std::iter::once(Value::Int(0))
+                .chain(columns[1..].iter().map(|column| Value::Text(column.name.clone())))
+                .collect(),
+        ],
+    )
+}
+
+/// A table whose `nickname` another client drops before the tab reads
+/// its columns again. `after` is what the page under the new columns
+/// answers.
+fn losing_nickname(after: FakeReply<QueryResult>) -> ConnectionScript {
+    let before = people(&["nickname", "name", "email"]);
+    let mut script = serving_table();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(before.clone()))
+        .always(FakeReply::ok(people(&["name", "email"])));
+    script
+        .query_bound
+        .when_sql_contains("nickname", FakeReply::ok(people_page(&before)))
+        .always(after);
+    script
+}
+
+fn without_nickname() -> FakeReply<QueryResult> {
+    FakeReply::ok(people_page(&people(&["name", "email"])))
+}
+
+/// Each assignment of the save, by the name of the column it writes.
+fn saved_cells(tracker: &TabTrackerHandle) -> Vec<(String, Option<String>)> {
+    let batch = tracker.begin_save().expect("a save").expect("changes to save");
+    batch
+        .changes
+        .changes
+        .changes
+        .iter()
+        .flat_map(|change| match change {
+            tablepro_core::save::RowChange::Update(update) => update.assignments.clone(),
+            other => panic!("only a cell was edited: {other:?}"),
+        })
+        .map(|(col, value)| {
+            (
+                batch.columns[col].name.clone(),
+                tablepro_core::export::value_to_text(&value),
+            )
+        })
+        .collect()
+}
+
+fn edit_first_row(harness: &Harness, column: usize, input: &str) {
+    harness.tab().send(BrowseTabInput::GridCellEdited {
+        row: harness.grid_row(0),
+        column,
+        input: input.to_owned(),
+    });
+    assert_eq!(harness.tracker.pending_count(), 1);
+}
+
+fn headers_are(tab: &BrowseTab, expected: &[&str]) -> bool {
+    header_titles(tab) == expected
+}
+
+#[gtk4::test]
+fn refresh_after_a_column_is_dropped_keeps_an_edit_on_its_column() {
+    let harness = Harness::open(losing_nickname(without_nickname()), []);
+    wait_until(WAIT, || {
+        headers_are(harness.tab(), &["id", "nickname", "name", "email"])
+    })
+    .expect("the first grid");
+    edit_first_row(&harness, 2, "Grace");
+
+    harness.tab().send(BrowseTabInput::Refresh);
+    wait_until(WAIT, || headers_are(harness.tab(), &["id", "name", "email"])).expect("the grid under the new columns");
+
+    assert_eq!(
+        saved_cells(&harness.tracker),
+        vec![("name".to_owned(), Some("Grace".to_owned()))]
+    );
+}
+
+#[gtk4::test]
+fn a_structure_save_that_drops_the_edited_column_refuses_the_save() {
+    let harness = Harness::open(losing_nickname(without_nickname()), []);
+    wait_until(WAIT, || {
+        headers_are(harness.tab(), &["id", "nickname", "name", "email"])
+    })
+    .expect("the first grid");
+    edit_first_row(&harness, 1, "countess");
+
+    harness
+        .session
+        .invalidate_table(&tablepro_core::TableRef::unqualified("users"));
+    harness.tab().send(BrowseTabInput::SchemaChanged);
+    wait_until(WAIT, || headers_are(harness.tab(), &["id", "name", "email"])).expect("the grid under the new columns");
+
+    let refused = harness
+        .tracker
+        .begin_save()
+        .map(|batch| batch.map(|batch| batch.changes.changes));
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|rejection| rejection.message().contains("nickname")),
+        "{refused:?}"
+    );
+    assert_eq!(
+        harness.tracker.pending_count(),
+        1,
+        "the edit was dropped without a word"
+    );
+}
+
+#[gtk4::test]
+fn a_grid_built_for_columns_the_table_lost_takes_no_edits() {
+    let harness = Harness::open(losing_nickname(FakeReply::UntilStopped), []);
+    wait_until(WAIT, || {
+        headers_are(harness.tab(), &["id", "nickname", "name", "email"])
+    })
+    .expect("the first grid");
+    let row = harness.grid_row(0);
+
+    harness
+        .session
+        .invalidate_table(&tablepro_core::TableRef::unqualified("users"));
+    harness.tab().send(BrowseTabInput::SchemaChanged);
+    wait_until(WAIT, || harness.tab().columns() == people(&["name", "email"])).expect("the new columns");
+    // Column 2 was name in the grid the event came from, and is email now.
+    harness.tab().send(BrowseTabInput::GridCellEdited {
+        row,
+        column: 2,
+        input: "Grace".to_owned(),
+    });
+
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "an edit in the old grid landed on another column"
+    );
+    assert_eq!(harness.visible_page().as_deref(), Some("loading"));
+}

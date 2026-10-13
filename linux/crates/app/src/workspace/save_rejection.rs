@@ -1,6 +1,7 @@
 use tablepro_core::dml::BuildSqlError;
 use tablepro_session::OperationError;
 
+use super::DirtyTab;
 use crate::services::pending_structure::SaveBlocker;
 
 /// Why a save did not start. Nothing was sent.
@@ -16,6 +17,12 @@ pub enum SaveRejection {
     ColumnsNotRead,
     /// The row changes cannot be written as SQL.
     Build(BuildSqlError),
+    /// Edits made before the table's columns changed are for these
+    /// columns, which are gone or no longer take them.
+    ColumnsChanged(Vec<String>),
+    /// Edits made before the table's primary key changed name their
+    /// rows by the old one.
+    KeyChanged,
     /// The structure cannot be saved as it stands.
     Blocked(SaveBlocker),
     NoConnection,
@@ -34,6 +41,16 @@ impl SaveRejection {
                 crate::i18n::gettext("The table's columns have not been read yet. Try again in a moment.")
             }
             Self::Build(error) => crate::ui::error_text::operation_error_message(&OperationError::Build(error.clone())),
+            Self::ColumnsChanged(columns) => {
+                let quoted: Vec<String> = columns.iter().map(|name| DirtyTab::quote(name)).collect();
+                crate::i18n::gettext_f(
+                    "The table changed after these edits were made, and the edits to {columns} no longer fit it. Nothing was saved. Discard the changes and make them again.",
+                    &[("columns", &quoted.join(", "))],
+                )
+            }
+            Self::KeyChanged => crate::i18n::gettext(
+                "The table's primary key changed after these edits were made, so the rows they change can no longer be found. Nothing was saved. Discard the changes and make them again.",
+            ),
             Self::Blocked(blocker) => crate::ui::error_text::save_blocker_text(blocker),
             Self::NoConnection => crate::i18n::gettext("No active connection."),
         }
@@ -60,10 +77,23 @@ mod tests {
             SaveRejection::ColumnsNotRead,
             SaveRejection::Blocked(SaveBlocker::Draft(DraftProblem::NoColumns)),
             SaveRejection::NoConnection,
+            SaveRejection::ColumnsChanged(vec!["nickname".to_owned()]),
+            SaveRejection::KeyChanged,
         ];
 
         assert!(told.iter().all(SaveRejection::needs_alert));
         assert!(!SaveRejection::AlreadySaving.needs_alert());
+    }
+
+    #[test]
+    fn edits_the_columns_left_behind_name_their_columns() {
+        let rejection = SaveRejection::ColumnsChanged(vec!["nickname".to_owned(), "age".to_owned()]);
+
+        assert!(
+            rejection.message().contains("“nickname”, “age”"),
+            "{}",
+            rejection.message()
+        );
     }
 
     #[test]

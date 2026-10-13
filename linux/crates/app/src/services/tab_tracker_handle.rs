@@ -82,8 +82,9 @@ impl TabTrackerHandle {
 
     /// The table and columns the tab read, which every save is planned
     /// against.
-    pub(crate) fn set_target(&self, target: SaveTarget) {
-        self.0.borrow_mut().set_target(target);
+    #[must_use = "the grid shows stale rows until the delta is applied"]
+    pub(crate) fn set_target(&self, target: SaveTarget) -> TrackerDelta {
+        self.0.borrow_mut().set_target(target)
     }
 
     pub(crate) fn pending_state(&self) -> PendingState {
@@ -135,7 +136,7 @@ mod tests {
     /// A tracker on a two-column table, with one edit pending.
     fn edited() -> TabTrackerHandle {
         let tracker = TabTrackerHandle::default();
-        tracker.set_target(SaveTarget {
+        let _ = tracker.set_target(SaveTarget {
             table: TableRef::unqualified("t"),
             columns: vec![integer("id", true), integer("n", false)],
         });

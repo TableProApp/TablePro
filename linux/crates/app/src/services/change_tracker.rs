@@ -11,6 +11,7 @@ use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
+use super::column_relayout::{ColumnRelayout, Misfit};
 use super::save_batch::{SaveBatch, SaveTarget};
 use super::touch::Touch;
 use super::tracker_delta::{TrackerDelta, VisualChange};
@@ -115,6 +116,16 @@ struct InFlightSave {
     written: HashMap<(RowKey, usize), Value>,
 }
 
+/// A pending change the table's columns no longer have a place for.
+/// Saved by its old position it would write another column or row, and
+/// dropped it would be lost unseen, so it stays pending and refuses
+/// every save until it is discarded.
+#[derive(Debug, Clone, PartialEq)]
+struct SetAside {
+    touched: Touch,
+    misfit: Misfit,
+}
+
 #[derive(Debug, Default)]
 pub struct TabChangeTracker {
     drafts: Vec<DraftRow>,
@@ -130,8 +141,9 @@ pub struct TabChangeTracker {
     // cleared by that older timer.
     error_row_gen: u64,
     /// The table and columns the tab last read, which a save is planned
-    /// against.
+    /// against. Every column position the tracker holds is one in these.
     target: Option<SaveTarget>,
+    set_aside: Vec<SetAside>,
     saving: Option<InFlightSave>,
     /// A save that may have landed. Saving again could apply it twice,
     /// so nothing saves until the tab is reloaded or discarded.
@@ -140,7 +152,7 @@ pub struct TabChangeTracker {
 
 impl TabChangeTracker {
     pub fn pending_count(&self) -> usize {
-        self.drafts.len() + self.deletes.len() + self.updates.len()
+        self.drafts.len() + self.deletes.len() + self.updates.len() + self.set_aside.len()
     }
 
     /// An edit the running save holds back comes back as a redraw of its
@@ -438,6 +450,7 @@ impl TabChangeTracker {
         self.drafts.clear();
         self.deletes.clear();
         self.updates.clear();
+        self.set_aside.clear();
         self.undo.clear();
         self.redo.clear();
         self.delta(rows, visual)
@@ -610,8 +623,110 @@ impl TabChangeTracker {
         })
     }
 
-    pub(crate) fn set_target(&mut self, target: SaveTarget) {
-        self.target = Some(target);
+    /// Columns read again move every pending change to the column of
+    /// the same name. A change they have no place for is set aside.
+    pub(crate) fn set_target(&mut self, target: SaveTarget) -> TrackerDelta {
+        let columns = target.columns.clone();
+        match self.target.replace(target) {
+            Some(previous) if previous.columns != columns => {
+                self.relayout(&ColumnRelayout::new(&previous.columns, &columns))
+            }
+            _ => self.delta(Vec::new(), Vec::new()),
+        }
+    }
+
+    fn relayout(&mut self, layout: &ColumnRelayout<'_>) -> TrackerDelta {
+        let mut rows = Vec::new();
+        let mut visual = Vec::new();
+        let set_aside = self.set_aside.len();
+        for ((row_key, col), edit) in std::mem::take(&mut self.updates) {
+            match layout.key(&row_key).and_then(|()| layout.cell(col, &edit.pending)) {
+                Ok(moved) => {
+                    self.updates.insert((row_key.clone(), moved), edit);
+                }
+                Err(misfit) => self.set_aside.push(SetAside {
+                    touched: edit.touched,
+                    misfit,
+                }),
+            }
+            rows.push(row_key);
+        }
+        for (row_key, mut mark) in std::mem::take(&mut self.deletes) {
+            match layout.key(&row_key) {
+                Ok(()) => {
+                    mark.original_values = layout.fetched(&mark.original_values);
+                    self.deletes.insert(row_key.clone(), mark);
+                }
+                Err(misfit) => self.set_aside.push(SetAside {
+                    touched: mark.touched,
+                    misfit,
+                }),
+            }
+            rows.push(row_key);
+        }
+        for mut draft in std::mem::take(&mut self.drafts) {
+            match layout.row(&draft.values) {
+                Ok(values) => {
+                    draft.values = values;
+                    self.drafts.push(draft);
+                }
+                Err(misfit) => {
+                    visual.push(VisualChange::RemoveDraft {
+                        draft_id: draft.draft_id,
+                    });
+                    self.set_aside.push(SetAside {
+                        touched: draft.touched,
+                        misfit,
+                    });
+                }
+            }
+        }
+        if let Some(save) = self.saving.as_mut() {
+            save.written = std::mem::take(&mut save.written)
+                .into_iter()
+                .filter_map(|((row_key, col), value)| {
+                    layout.key(&row_key).ok()?;
+                    Some(((row_key, layout.position(col)?), value))
+                })
+                .collect();
+        }
+        let undo: Option<VecDeque<UndoOp>> = self.undo.iter().map(|op| op.relayout(layout)).collect();
+        let redo: Option<VecDeque<UndoOp>> = self.redo.iter().map(|op| op.relayout(layout)).collect();
+        match (self.set_aside.len() == set_aside, undo, redo) {
+            (true, Some(undo), Some(redo)) => {
+                self.undo = undo;
+                self.redo = redo;
+            }
+            // A step back would bring a change to a place it no longer has.
+            _ => {
+                self.undo.clear();
+                self.redo.clear();
+            }
+        }
+        dedup(&mut rows);
+        self.delta(rows, visual)
+    }
+
+    /// Why the changes set aside cannot be saved, the key first since
+    /// it strands every edited row.
+    fn set_aside_rejection(&self) -> Option<SaveRejection> {
+        if self.set_aside.is_empty() {
+            return None;
+        }
+        if self.set_aside.iter().any(|change| change.misfit == Misfit::Key) {
+            return Some(SaveRejection::KeyChanged);
+        }
+        let mut columns: Vec<String> = Vec::new();
+        for change in &self.set_aside {
+            if let Misfit::Columns(names) = &change.misfit {
+                for name in names {
+                    if !columns.contains(name) {
+                        columns.push(name.clone());
+                    }
+                }
+            }
+        }
+        Some(SaveRejection::ColumnsChanged(columns))
     }
 
     pub(crate) fn pending_state(&self) -> PendingState {
@@ -635,6 +750,9 @@ impl TabChangeTracker {
         }
         if self.saving.is_some() {
             return Err(SaveRejection::AlreadySaving);
+        }
+        if let Some(rejection) = self.set_aside_rejection() {
+            return Err(rejection);
         }
         if self.pending_count() == 0 {
             return Ok(None);
@@ -735,6 +853,7 @@ impl TabChangeTracker {
             }
             !saved
         });
+        self.set_aside.retain(|change| !snapshot.includes(change.touched));
         self.drafts.retain(|draft| {
             let saved = snapshot.includes(draft.touched);
             if saved {
@@ -1571,7 +1690,7 @@ mod tests {
 
     fn saving_on(columns: Vec<ColumnInfo>) -> TabChangeTracker {
         let mut t = TabChangeTracker::default();
-        t.set_target(SaveTarget {
+        let _ = t.set_target(SaveTarget {
             table: tablepro_core::meta::TableRef::unqualified("t"),
             columns,
         });
@@ -1651,6 +1770,155 @@ mod tests {
 
         edit(&mut t, 1, "b", "b");
         assert_eq!(t.pending_count(), 0, "a return to what the save wrote stayed pending");
+    }
+
+    fn retarget(t: &mut TabChangeTracker, columns: &[ColumnInfo]) {
+        let _ = t.set_target(SaveTarget {
+            table: tablepro_core::meta::TableRef::unqualified("t"),
+            columns: columns.to_vec(),
+        });
+    }
+
+    fn rejection(t: &mut TabChangeTracker) -> String {
+        match t.begin_save() {
+            Err(rejection) => rejection.message(),
+            Ok(batch) => panic!("the save went ahead: {batch:?}"),
+        }
+    }
+
+    #[test]
+    fn an_edit_follows_its_column_when_another_is_dropped() {
+        let before = vec![pk_col("id"), data_col("nickname"), data_col("name"), data_col("email")];
+        let after = vec![pk_col("id"), data_col("name"), data_col("email")];
+        let mut t = saving_on(before);
+        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), text("Grace"));
+
+        retarget(&mut t, &after);
+
+        assert_eq!(assignments(&t, &after), vec![("name".to_owned(), text("Grace"))]);
+        assert_eq!(pending_at(&t, 1, 1), text("Grace"));
+        assert_eq!(t.cell_state(&rk(&[Value::Int(1)]), 2), CellState::Clean);
+    }
+
+    #[test]
+    fn a_draft_follows_its_columns_when_one_is_added_and_one_dropped() {
+        let before = vec![pk_col("id"), data_col("nickname"), data_col("name")];
+        let after = vec![pk_col("id"), data_col("name"), data_col("email")];
+        let mut t = saving_on(before);
+        let draft_id = insert(&mut t, vec![Value::Null, Value::Null, text("Ada")]);
+
+        retarget(&mut t, &after);
+
+        assert_eq!(
+            t.draft_values(draft_id),
+            Some(&[Value::Null, text("Ada"), Value::Null][..])
+        );
+    }
+
+    #[test]
+    fn an_edit_to_a_dropped_column_refuses_the_save() {
+        let before = vec![pk_col("id"), data_col("nickname"), data_col("name")];
+        let after = vec![pk_col("id"), data_col("name")];
+        let mut t = saving_on(before);
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("ada"), text("countess"));
+        edit(&mut t, 2, "Grace", "Hopper");
+
+        retarget(&mut t, &after);
+
+        assert!(rejection(&mut t).contains("nickname"));
+        assert_eq!(t.pending_count(), 2, "an edit nothing can save was dropped");
+        assert_eq!(t.pending_state(), PendingState::Unsaved);
+    }
+
+    #[test]
+    fn a_draft_with_a_value_in_a_dropped_column_refuses_the_save() {
+        let before = vec![pk_col("id"), data_col("nickname"), data_col("name")];
+        let after = vec![pk_col("id"), data_col("name")];
+        let mut t = saving_on(before);
+        let _ = insert(&mut t, vec![Value::Null, text("ada"), text("Ada")]);
+
+        retarget(&mut t, &after);
+
+        assert!(rejection(&mut t).contains("nickname"));
+        assert_eq!(t.pending_count(), 1);
+    }
+
+    #[test]
+    fn an_edit_that_no_longer_fits_a_retyped_column_refuses_the_save() {
+        let before = vec![pk_col("id"), test_column("score", "text")];
+        let after = vec![pk_col("id"), test_column("score", "integer")];
+        let mut t = saving_on(before);
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("1"), text("high"));
+
+        retarget(&mut t, &after);
+
+        assert!(rejection(&mut t).contains("score"));
+    }
+
+    #[test]
+    fn an_edit_that_still_fits_a_retyped_column_saves() {
+        let before = vec![pk_col("id"), test_column("score", "integer")];
+        let after = vec![pk_col("id"), test_column("score", "bigint")];
+        let mut t = saving_on(before);
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, Value::Int(1), Value::Int(2));
+
+        retarget(&mut t, &after);
+
+        assert_eq!(assignments(&t, &after), vec![("score".to_owned(), Value::Int(2))]);
+        assert!(t.begin_save().is_ok_and(|batch| batch.is_some()));
+    }
+
+    #[test]
+    fn a_new_primary_key_refuses_edits_to_rows_named_by_the_old_one() {
+        let before = vec![pk_col("id"), test_column("legacy_id", "integer"), data_col("name")];
+        let mut legacy_key = test_column("legacy_id", "integer");
+        legacy_key.primary_key = true;
+        let mut plain_id = test_column("id", "integer");
+        plain_id.nullable = false;
+        let after = vec![plain_id, legacy_key, data_col("name")];
+        let mut t = saving_on(before);
+        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), text("Grace"));
+        t.track_delete(rk(&[Value::Int(2)]), vec![Value::Int(2), Value::Int(9), text("Bob")]);
+
+        retarget(&mut t, &after);
+
+        assert_eq!(t.begin_save().err(), Some(SaveRejection::KeyChanged));
+        assert_eq!(t.pending_count(), 2);
+    }
+
+    #[test]
+    fn undo_after_a_column_is_dropped_steps_back_on_the_moved_column() {
+        let before = vec![pk_col("id"), data_col("nickname"), data_col("name")];
+        let after = vec![pk_col("id"), data_col("name")];
+        let mut t = saving_on(before);
+        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), text("Grace"));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), text("Hopper"));
+        retarget(&mut t, &after);
+
+        let _ = t.undo();
+
+        assert_eq!(assignments(&t, &after), vec![("name".to_owned(), text("Grace"))]);
+        let _ = t.redo();
+        assert_eq!(assignments(&t, &after), vec![("name".to_owned(), text("Hopper"))]);
+    }
+
+    #[test]
+    fn discard_drops_an_edit_the_columns_left_behind() {
+        let before = vec![pk_col("id"), data_col("nickname")];
+        let after = vec![pk_col("id")];
+        let mut t = saving_on(before);
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("ada"), text("countess"));
+        retarget(&mut t, &after);
+
+        let _ = t.discard();
+
+        assert_eq!(t.pending_count(), 0);
+        assert!(matches!(t.begin_save(), Ok(None)));
+    }
+
+    /// The cell as the grid draws it at `col`, over a fetched "Ada".
+    fn pending_at(t: &TabChangeTracker, id: i64, col: usize) -> Value {
+        t.cell_overlay(&rk(&[Value::Int(id)]), col, &text("Ada")).value
     }
 
     #[test]

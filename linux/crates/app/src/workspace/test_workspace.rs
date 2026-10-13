@@ -81,7 +81,7 @@ impl Workspace {
         let rows = Rc::new(ChangeTrackerRegistry::default());
         let tab = Uuid::new_v4();
         let tracker = rows.register(tab);
-        tracker.set_target(SaveTarget {
+        let _ = tracker.set_target(SaveTarget {
             table: TableRef::unqualified("t"),
             columns: vec![integer("id", true), integer("n", false)],
         });

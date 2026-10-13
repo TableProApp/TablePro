@@ -1,6 +1,7 @@
 use tablepro_core::Value;
 
 use super::change_tracker::{CellEdit, DeleteMark, DraftRow, RowKey};
+use super::column_relayout::ColumnRelayout;
 use super::touch::Touch;
 
 /// One step of a tab's undo history, holding the pending state on both
@@ -36,6 +37,67 @@ pub enum UndoOp {
 }
 
 impl UndoOp {
+    /// The step under the columns `layout` moves to, or `None` when a
+    /// value in it has no place there.
+    pub(crate) fn relayout(&self, layout: &ColumnRelayout<'_>) -> Option<Self> {
+        let delete_mark = |mark: &DeleteMark| DeleteMark {
+            original_values: layout.fetched(&mark.original_values),
+            touched: mark.touched,
+        };
+        match self {
+            UndoOp::CellEdit {
+                row_key,
+                col,
+                before,
+                after,
+            } => {
+                layout.key(row_key).ok()?;
+                let mut moved = layout.position(*col)?;
+                for edit in [before, after].into_iter().flatten() {
+                    moved = layout.cell(*col, &edit.pending).ok()?;
+                }
+                Some(UndoOp::CellEdit {
+                    row_key: row_key.clone(),
+                    col: moved,
+                    before: before.clone(),
+                    after: after.clone(),
+                })
+            }
+            UndoOp::DraftCell {
+                draft_id,
+                col,
+                before,
+                after,
+                before_touch,
+                after_touch,
+            } => {
+                layout.cell(*col, before).ok()?;
+                Some(UndoOp::DraftCell {
+                    draft_id: *draft_id,
+                    col: layout.cell(*col, after).ok()?,
+                    before: before.clone(),
+                    after: after.clone(),
+                    before_touch: *before_touch,
+                    after_touch: *after_touch,
+                })
+            }
+            UndoOp::Insert { draft } => Some(UndoOp::Insert {
+                draft: DraftRow {
+                    values: layout.row(&draft.values).ok()?,
+                    ..draft.clone()
+                },
+            }),
+            UndoOp::Delete { row_key, before, after } => {
+                layout.key(row_key).ok()?;
+                Some(UndoOp::Delete {
+                    row_key: row_key.clone(),
+                    before: before.as_ref().map(delete_mark),
+                    after: delete_mark(after),
+                })
+            }
+        }
+    }
+
     pub fn is_about_draft(&self, draft_id: u64) -> bool {
         match self {
             UndoOp::Insert { draft } => draft.draft_id == draft_id,
