@@ -8,11 +8,24 @@ struct MysqlProxyState {
     awaiting_ack: bool,
 }
 
+#[derive(Clone, Copy)]
+enum LostAckTarget {
+    Update,
+    Commit,
+}
+
 fn is_lost_ack_update(sql: &[u8]) -> bool {
     String::from_utf8_lossy(sql)
         .trim_start()
         .to_ascii_uppercase()
         .starts_with("UPDATE LOST_ACK_TARGET")
+}
+
+fn is_lost_ack_commit(sql: &[u8]) -> bool {
+    String::from_utf8_lossy(sql)
+        .trim()
+        .trim_end_matches(';')
+        .eq_ignore_ascii_case("COMMIT")
 }
 
 async fn read_packet<R: tokio::io::AsyncRead + Unpin>(reader: &mut R) -> std::io::Result<Option<Vec<u8>>> {
@@ -32,9 +45,10 @@ async fn read_packet<R: tokio::io::AsyncRead + Unpin>(reader: &mut R) -> std::io
     Ok(Some(packet))
 }
 
-async fn mysql_proxy_dropping_update_ack(
+async fn mysql_proxy_dropping_ack(
     target_host: String,
     target_port: u16,
+    target: LostAckTarget,
 ) -> (
     u16,
     std::sync::Arc<AtomicBool>,
@@ -55,6 +69,7 @@ async fn mysql_proxy_dropping_update_ack(
             accept_count.fetch_add(1, Ordering::SeqCst);
             let host = target_host.clone();
             let dropped_ack = ack_state.clone();
+            let target = target;
             tokio::spawn(async move {
                 let Ok(server) = TcpStream::connect((host.as_str(), target_port)).await else {
                     return;
@@ -71,11 +86,16 @@ async fn mysql_proxy_dropping_update_ack(
                         let payload = &packet[4..];
                         if let Some((&command, body)) = payload.split_first() {
                             let mut state = client_state.lock().expect("proxy state lock");
-                            if command == 0x16 && is_lost_ack_update(body) {
+                            if matches!(target, LostAckTarget::Update) && command == 0x16 && is_lost_ack_update(body) {
                                 state.prepare_ack_pending = true;
-                            } else if command == 0x03 && is_lost_ack_update(body) {
+                            } else if command == 0x03
+                                && match target {
+                                    LostAckTarget::Update => is_lost_ack_update(body),
+                                    LostAckTarget::Commit => is_lost_ack_commit(body),
+                                }
+                            {
                                 state.awaiting_ack = true;
-                            } else if command == 0x17 && body.len() >= 4 {
+                            } else if matches!(target, LostAckTarget::Update) && command == 0x17 && body.len() >= 4 {
                                 let statement_id = u32::from_le_bytes(body[..4].try_into().expect("4 bytes"));
                                 state.awaiting_ack = state.target_statement_id == Some(statement_id);
                             }
@@ -169,7 +189,7 @@ async fn a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect() {
         .unwrap();
 
     let (proxy_port, dropped_ack, accepted, proxy_task) =
-        mysql_proxy_dropping_update_ack(opts.host.clone(), opts.port).await;
+        mysql_proxy_dropping_ack(opts.host.clone(), opts.port, LostAckTarget::Update).await;
     let mut proxied_opts = opts;
     proxied_opts.host = "127.0.0.1".into();
     proxied_opts.port = proxy_port;
@@ -218,6 +238,106 @@ async fn a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect() {
         audit.rows,
         vec![vec![Value::Int(1)]],
         "trigger audit is the replay oracle"
+    );
+
+    drop(connection);
+    proxy_task.abort();
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_committed_mysql_batch_with_a_lost_commit_ack_is_not_replayed_after_reconnect() {
+    use secrecy::ExposeSecret;
+
+    let (_container, opts) = super::shared_container::start_mysql_durable().await;
+    let observer = connect(opts.clone()).await;
+    observer
+        .execute("CREATE TABLE lost_ack_target (id INT PRIMARY KEY, value INT NOT NULL)")
+        .await
+        .unwrap();
+    observer
+        .execute("CREATE TABLE lost_ack_audit (target_id INT NOT NULL)")
+        .await
+        .unwrap();
+    let fixture = sqlx::mysql::MySqlPoolOptions::new()
+        .connect_with(
+            sqlx::mysql::MySqlConnectOptions::new()
+                .host(&opts.host)
+                .port(opts.port)
+                .username(&opts.username)
+                .password(opts.password.expose_secret())
+                .database(&opts.database)
+                .ssl_mode(sqlx::mysql::MySqlSslMode::Disabled),
+        )
+        .await
+        .unwrap();
+    sqlx::raw_sql(
+        "CREATE TRIGGER lost_ack_record_update AFTER UPDATE ON lost_ack_target
+         FOR EACH ROW INSERT INTO lost_ack_audit VALUES (NEW.id)",
+    )
+    .execute(&fixture)
+    .await
+    .unwrap();
+    fixture.close().await;
+    observer
+        .execute("INSERT INTO lost_ack_target VALUES (1, 0)")
+        .await
+        .unwrap();
+
+    let (proxy_port, dropped_ack, accepted, proxy_task) =
+        mysql_proxy_dropping_ack(opts.host.clone(), opts.port, LostAckTarget::Commit).await;
+    let mut proxied_opts = opts;
+    proxied_opts.host = "127.0.0.1".into();
+    proxied_opts.port = proxy_port;
+    let connection = MysqlDriver.connect(proxied_opts).await.expect("connect through proxy");
+    let batch = vec![(
+        "UPDATE lost_ack_target SET value = value + 1 WHERE id = 1".into(),
+        vec![],
+    )];
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        connection.execute_in_transaction(&batch),
+    )
+    .await
+    .expect("lost COMMIT acknowledgement must not hang");
+    assert!(
+        dropped_ack.load(Ordering::SeqCst),
+        "proxy must drop the COMMIT acknowledgement"
+    );
+    assert!(
+        matches!(result, Err(DriverError::Disconnected)),
+        "commit outcome remains uncertain: {result:?}"
+    );
+
+    let recovered = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            match connection.query("SELECT value FROM lost_ack_target WHERE id = 1").await {
+                Ok(result) => break result,
+                Err(DriverError::Disconnected) => tokio::time::sleep(std::time::Duration::from_millis(50)).await,
+                Err(error) => panic!("pool recovery query failed unexpectedly: {error:?}"),
+            }
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!(
+            "pool must recover within five seconds; proxy accepted {} connections",
+            accepted.load(Ordering::SeqCst)
+        )
+    });
+    assert!(
+        accepted.load(Ordering::SeqCst) >= 2,
+        "pool recovery must establish a new TCP connection"
+    );
+    assert_eq!(recovered.rows, vec![vec![Value::Int(1)]]);
+    let audit = observer
+        .query("SELECT target_id FROM lost_ack_audit ORDER BY target_id")
+        .await
+        .unwrap();
+    assert_eq!(
+        audit.rows,
+        vec![vec![Value::Int(1)]],
+        "the trigger row is the replay oracle"
     );
 
     drop(connection);
