@@ -1,6 +1,5 @@
 use tablepro_core::edit::ReadOnlyReason;
 
-/// Why one cell of one row cannot be edited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CellLock {
     /// The column's values have no text form to type.

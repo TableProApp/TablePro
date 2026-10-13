@@ -25,7 +25,6 @@ mod imp {
         /// IME popover ends the edit, and committing then would send the
         /// text from before the composition.
         pub preedit_active: Cell<bool>,
-        /// Why the row bound now cannot be edited here.
         pub lock: Cell<Option<CellLock>>,
     }
 
@@ -80,7 +79,6 @@ impl GridCell {
         self.imp().column.set(column);
     }
 
-    /// The widget that draws the value. Set once, at setup.
     pub fn set_content(&self, content: &impl IsA<gtk::Widget>) {
         let content = content.as_ref();
         if self.imp().content.set(content.clone()).is_ok() {

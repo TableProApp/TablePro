@@ -29,8 +29,6 @@ const WIDE_TABLE_THRESHOLD: usize = 8;
 /// About 14 characters at the default font size.
 const MIN_COLUMN_WIDTH_PX: i32 = 120;
 
-/// `result` gives the columns and whether the read was cut short;
-/// `rows` are what the grid shows, each carrying its own identity.
 pub fn build_column_view(
     result: &QueryResult,
     rows: impl IntoIterator<Item = RowObject>,
