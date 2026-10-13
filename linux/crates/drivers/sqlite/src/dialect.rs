@@ -119,7 +119,7 @@ impl SqlDialect for SqliteDialect {
             // Text and the temporal values, stored as the ISO text
             // SQLite's date functions read.
             other => match value_to_text(other) {
-                Some(text) => Ok(format!("'{}'", text.replace('\'', "''"))),
+                Some(text) => Ok(text_literal(&text)),
                 None => Ok("NULL".to_owned()),
             },
         }
@@ -199,6 +199,20 @@ impl SqlDialect for SqliteDialect {
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
         Some(&DDL)
+    }
+}
+
+/// SQLite ends SQL text at the first NUL, wherever it stands, so a NUL
+/// inside quotes would cut the literal short. Each one is joined in
+/// with `char(0)` instead.
+fn text_literal(text: &str) -> String {
+    let quoted = |piece: &str| format!("'{}'", piece.replace('\'', "''"));
+    match text.contains('\0') {
+        false => quoted(text),
+        true => {
+            let pieces: Vec<String> = text.split('\0').map(quoted).collect();
+            format!("({})", pieces.join(" || char(0) || "))
+        }
     }
 }
 
@@ -389,6 +403,20 @@ mod tests {
             assert_eq!(dialect().literal(&value, &text).as_deref(), Ok(expected), "{value:?}");
         }
         assert!(dialect().literal(&Value::Float64(f64::NAN), &text).is_err());
+    }
+
+    #[test]
+    fn a_nul_in_text_is_joined_in_rather_than_quoted() {
+        let text = ColumnType::untyped_text("TEXT");
+
+        assert_eq!(
+            dialect().literal(&Value::Text("a\0b'c".to_owned()), &text).as_deref(),
+            Ok("('a' || char(0) || 'b''c')")
+        );
+        assert_eq!(
+            dialect().literal(&Value::Text("\0".to_owned()), &text).as_deref(),
+            Ok("('' || char(0) || '')")
+        );
     }
 
     #[test]
