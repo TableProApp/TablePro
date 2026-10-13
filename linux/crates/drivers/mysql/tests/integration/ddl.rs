@@ -2,7 +2,8 @@
 
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::{
-    CollationName, ColumnVisibility, DraftColumn, GeneratedStorage, TableDefinition, TableDraft, diff_table,
+    BuildDdlError, CollationName, ColumnVisibility, DraftColumn, GeneratedStorage, Permission, RefusalReason,
+    TableDefinition, TableDraft, diff_table,
 };
 use tablepro_core::{Connection, WriteKind};
 use tablepro_test_fixtures::{MysqlFlavour, MysqlOptions};
@@ -247,6 +248,85 @@ async fn mariadb_restated_columns_keep_every_attribute() {
     assert_eq!(
         text(&scalar(connection.as_ref(), "SELECT concat(label, '|', doubled) FROM kept").await),
         "it's a|4"
+    );
+    connection.close().await.expect("a close");
+}
+
+/// MariaDB keeps a column CHECK's constraint name from when it was
+/// written, through a rename, so the check is found where SHOW CREATE
+/// TABLE prints it. Renaming and restating in one ALTER would splice the
+/// check with the old name, so that is refused before anything runs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn mariadb_check_follows_its_column_through_a_rename() {
+    let fixture = start(MysqlFlavour::Mariadb).await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &["CREATE TABLE kept (id int PRIMARY KEY, doc json NULL, web point REF_SYSTEM_ID=102100 NULL)"],
+    )
+    .await;
+    let dialect = connection.dialect();
+    let ddl = dialect.ddl().expect("MySQL plans its DDL");
+    let original = read(connection.as_ref()).await;
+    let mut draft = TableDraft::from_definition(&original);
+    for column in &mut draft.columns {
+        if column.name == "doc" {
+            column.name = "body".to_owned();
+            column.comment = Some("x".to_owned());
+        }
+    }
+
+    let both = ddl.plan_alter_table(&original, &diff_table(&original, &draft));
+    let (_, renamed) = change(connection.as_ref(), |column| {
+        if column.name == "doc" {
+            column.name = "body".to_owned();
+        }
+    })
+    .await;
+    let (before, after) = change(connection.as_ref(), |column| {
+        if column.name == "body" {
+            column.comment = Some("x".to_owned());
+        }
+    })
+    .await;
+
+    assert!(
+        matches!(
+            &both,
+            Err(BuildDdlError::Refused { reason: RefusalReason::NamesRenamedColumn(name), .. }) if name == "doc"
+        ),
+        "{both:?}"
+    );
+    let check = |definition: &TableDefinition| {
+        definition
+            .column("body")
+            .and_then(|column| column.attributes.check.as_ref())
+            .map(|check| check.as_sql().to_owned())
+    };
+    assert_eq!(check(&renamed).as_deref(), Some("json_valid(`body`)"));
+    assert_kept(&before, &after, MysqlFlavour::Mariadb);
+    assert_eq!(check(&after).as_deref(), Some("json_valid(`body`)"));
+    assert!(
+        apply(
+            connection.as_ref(),
+            WriteKind::RowChanges,
+            &["INSERT INTO kept (id, body) VALUES (1, 'not json')"],
+        )
+        .await
+        .is_err(),
+        "the json_valid check is gone"
+    );
+    setup(connection.as_ref(), &["ALTER TABLE kept ADD COLUMN doc int NULL"]).await;
+    let added = read(connection.as_ref()).await;
+    let doc = added.column("doc").expect("doc");
+    assert_eq!(doc.attributes.check, None);
+    assert!(doc.attributes.unmodeled.is_empty());
+    let web = added.column("web").expect("web");
+    assert_eq!(web.attributes.spatial_reference, None);
+    assert_eq!(
+        ddl.column_capabilities(&added, web).alter_nullability,
+        Permission::Refused(RefusalReason::UnmodeledAttribute("REF_SYSTEM_ID".to_owned()))
     );
     connection.close().await.expect("a close");
 }

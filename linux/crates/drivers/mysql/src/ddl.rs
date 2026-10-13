@@ -1,13 +1,16 @@
 mod mysql_column_definition;
 
+use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, foreign_key_sql, index_keys_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, ChangedAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlPlan,
-    Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, ChangedAttributes, ColumnAlteration, ColumnCapabilities, ColumnDefinition, DdlCapabilities,
+    DdlDialect, DdlOperation, DdlPlan, Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition,
+    TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
 
+use crate::catalog::printed_names;
 use crate::dialect::MySqlDialect;
 use mysql_column_definition::{nullability_permission, render, restatement};
 
@@ -153,6 +156,13 @@ impl DdlDialect for MySqlDialect {
 
     fn plan_alter_table(&self, original: &TableDefinition, changes: &TableChanges) -> Result<DdlPlan, BuildDdlError> {
         changes.check(self, original)?;
+        for alteration in changes
+            .altered_columns
+            .iter()
+            .filter(|alteration| restates(alteration.changed))
+        {
+            refuse_renamed_names(alteration, changes)?;
+        }
         let mut statements = Vec::new();
         let table = changes.target(&original.table);
         // The new name is qualified too: a bare one resolves against the
@@ -257,6 +267,44 @@ impl DdlDialect for MySqlDialect {
 /// primary-key flag alone is the table's key clause.
 fn restates(changed: ChangedAttributes) -> bool {
     changed.column_type || changed.nullability || changed.default || changed.auto_increment || changed.comment
+}
+
+/// The server reads a restated column against the names the same ALTER
+/// gives, while the expressions it splices were printed with the names
+/// before it. MariaDB's own CHECK on a column names the column, and any
+/// other expression is searched for a renamed column's old name.
+fn refuse_renamed_names(alteration: &ColumnAlteration, changes: &TableChanges) -> Result<(), BuildDdlError> {
+    let original = &alteration.original;
+    let attributes = &original.attributes;
+    let refuse = |renamed: &str| BuildDdlError::Refused {
+        column: original.name().to_owned(),
+        operation: DdlOperation::RenameColumn,
+        reason: RefusalReason::NamesRenamedColumn(renamed.to_owned()),
+    };
+    if attributes.check.is_some() && original.name() != alteration.draft.name {
+        return Err(refuse(original.name()));
+    }
+    let default = match &alteration.draft.default {
+        ColumnDefault::Expression(expression) => Some(expression),
+        _ => None,
+    };
+    let expressions = [
+        attributes.check.as_ref(),
+        attributes.generated.as_ref().map(|generated| &generated.expression),
+        default,
+    ];
+    let named = |name: &str| {
+        let printed = printed_names(name);
+        expressions.iter().flatten().any(|expression| {
+            printed
+                .iter()
+                .any(|printed| expression.as_sql().contains(printed.as_str()))
+        })
+    };
+    match changes.renamed_columns.iter().find(|rename| named(&rename.from)) {
+        Some(rename) => Err(refuse(&rename.from)),
+        None => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -805,6 +853,58 @@ mod tests {
                  `doc` longtext CHARACTER SET `utf8mb4` COLLATE `utf8mb4_bin` NULL INVISIBLE COMMENT 'x' CHECK \
                  (json_valid(`doc`)), MODIFY COLUMN `total` int GENERATED ALWAYS AS (`id` * 2) STORED INVISIBLE \
                  COMMENT 'y'"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_restatement_that_names_a_column_the_same_save_renames_is_refused() {
+        let mut table = users();
+        table.columns.extend([
+            with_attributes("doc", "longtext", |attributes| {
+                attributes.check = Some(SqlExpression::from_catalog_text("json_valid(`doc`)"));
+            }),
+            with_attributes("base", "int", |_| {}),
+            with_attributes("bounded", "int", |attributes| {
+                attributes.check = Some(SqlExpression::from_catalog_text("`bounded` > `base`"));
+            }),
+        ]);
+        generated(&mut table, "total", Some("`base` * 2"));
+        let names = |name: &str| RefusalReason::NamesRenamedColumn(name.to_owned());
+
+        let own = alter_on(&mariadb(), &table, |draft| {
+            edit_column(draft, "doc", |column| {
+                column.name = "body".to_owned();
+                column.comment = Some("x".to_owned());
+            });
+        });
+        let checked = alter_on(&mariadb(), &table, |draft| {
+            edit_column(draft, "base", |column| column.name = "floor".to_owned());
+            edit_column(draft, "bounded", |column| column.nullable = false);
+        });
+        let computed = alter_on(&mariadb(), &table, |draft| {
+            edit_column(draft, "base", |column| column.name = "floor".to_owned());
+            edit_column(draft, "total", |column| column.comment = Some("y".to_owned()));
+        });
+        let apart = alter_on(&mariadb(), &table, |draft| {
+            edit_column(draft, "doc", |column| column.name = "body".to_owned());
+            edit_column(draft, "bounded", |column| column.nullable = false);
+        });
+
+        assert!(refused(&own, DdlOperation::RenameColumn, &names("doc")), "{own:?}");
+        assert!(
+            refused(&checked, DdlOperation::RenameColumn, &names("base")),
+            "{checked:?}"
+        );
+        assert!(
+            refused(&computed, DdlOperation::RenameColumn, &names("base")),
+            "{computed:?}"
+        );
+        assert_eq!(
+            sql(apart),
+            [
+                "ALTER TABLE `app`.`users` RENAME COLUMN `doc` TO `body`, MODIFY COLUMN `bounded` int NOT NULL CHECK \
+                 (`bounded` > `base`)"
             ]
         );
     }
