@@ -69,8 +69,12 @@ impl SqlDialect for MssqlDialect {
             }
             BindTarget::Column(column) => param_type_for(column)?,
         };
-        let sql = match &param_type {
-            ParamType::ServerText(cast) => format!("CAST({marker} AS {cast})"),
+        let sql = match (&param_type, target) {
+            (ParamType::ServerText(cast), _) => format!("CAST({marker} AS {cast})"),
+            (ParamType::Timestamp, BindTarget::Column(column)) => match legacy_datetime(column) {
+                Some(legacy) => format!("CAST({marker} AS {legacy})"),
+                None => marker,
+            },
             _ => marker,
         };
         Ok(Placeholder::bound(sql, BoundParam::new(value, param_type)?))
@@ -262,6 +266,17 @@ fn fraction(nanos: u32, digits: Option<u8>) -> String {
     }
 }
 
+/// tiberius sends every timestamp as datetime2(7), and SQL Server widens
+/// a datetime column to compare with it: a stored .003 becomes .0033333,
+/// so the value the grid shows matches no row. Cast back to the column's
+/// own type and both sides round the same way.
+fn legacy_datetime(column: &ColumnInfo) -> Option<&'static str> {
+    let declared = column.column_type.catalog.as_ref()?.cast_target.as_sql();
+    ["datetime", "smalldatetime"]
+        .into_iter()
+        .find(|legacy| declared.eq_ignore_ascii_case(legacy))
+}
+
 /// The parameter type a column takes.
 fn param_type_for(column: &ColumnInfo) -> Result<ParamType, BindError> {
     let column_type = &column.column_type;
@@ -370,6 +385,18 @@ mod tests {
             placeholder.param.as_ref().map(BoundParam::param_type),
             Some(&ParamType::Int32)
         );
+    }
+
+    #[test]
+    fn a_legacy_datetime_parameter_is_cast_to_the_column_type() {
+        let stamp = NaiveDate::from_ymd_opt(2024, 6, 15)
+            .and_then(|date| date.and_hms_milli_opt(10, 0, 0, 3))
+            .unwrap();
+        let timestamp = || Value::Timestamp(tablepro_core::value::Temporal::Finite(stamp));
+
+        assert_eq!(bound("datetime", timestamp()).sql, "CAST(@P1 AS datetime)");
+        assert_eq!(bound("smalldatetime", timestamp()).sql, "CAST(@P1 AS smalldatetime)");
+        assert_eq!(bound("datetime2(3)", timestamp()).sql, "@P1");
     }
 
     #[test]

@@ -9,7 +9,7 @@ use tablepro_core::{CallOptions, DriverError, ErrorCategory, Value, WriteBatch};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{CALL, batch, columns, connect, dbo, scalar, setup, start, within};
+use crate::support::{CALL, batch, browse, columns, connect, dbo, scalar, setup, start, within};
 
 async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableRef, id: i64) -> WriteBatch {
     let columns = columns(connection, table).await;
@@ -28,6 +28,47 @@ async fn update_label(connection: &dyn tablepro_core::Connection, table: &TableR
     plan_save(connection.dialect().as_ref(), table, &columns, &identity, &changes)
         .expect("a save plan")
         .batch
+}
+
+/// A datetime keeps 1/300 s and the grid shows it to the millisecond, as
+/// SQL Server does; the key read back has to find its row again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn datetime_key_with_a_third_of_a_millisecond_saves() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.stamped (at datetime PRIMARY KEY, label nvarchar(50) NOT NULL)",
+            "INSERT INTO dbo.stamped VALUES ('2024-06-15T10:00:00.003', N'kept')",
+        ],
+    )
+    .await;
+    let table = dbo("stamped");
+    let columns = columns(connection.as_ref(), &table).await;
+    let identity = connection
+        .row_identity(&table, within(CALL))
+        .await
+        .expect("an identity");
+    let key = browse(connection.as_ref(), &table).await.remove(0).remove(0);
+    let changes = ChangeSet {
+        updates: vec![RowUpdate {
+            key: vec![key],
+            assignments: vec![(1, Value::Text("changed".to_owned()))],
+        }],
+        ..ChangeSet::default()
+    };
+    let save = plan_save(connection.dialect().as_ref(), &table, &columns, &identity, &changes)
+        .expect("a save plan")
+        .batch;
+
+    connection.write_batch(&save, within(CALL)).await.expect("the save");
+
+    assert_eq!(
+        scalar(connection.as_ref(), "SELECT label FROM dbo.stamped").await,
+        Value::Text("changed".to_owned())
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
