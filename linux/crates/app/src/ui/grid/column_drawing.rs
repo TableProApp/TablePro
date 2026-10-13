@@ -3,7 +3,7 @@ use gtk4::prelude::*;
 
 use tablepro_core::{ColumnInfo, Value};
 
-use super::display_text::{auto_filled_sentinel, editable_null_sentinel, value_to_display_text, value_to_edit_text};
+use super::display_text::{auto_filled_sentinel, editable_null_sentinel, value_to_display_text};
 use super::{CellEditor, CellLock, GridCell, GridRowId, RowObject, TabGridContext, cell_editability};
 
 const PENDING_CSS_CLASSES: &[&str] = &[
@@ -50,12 +50,8 @@ fn draw_cell(grid_cell: &GridCell, value: &Value, pending_classes: &[&'static st
     let is_null = matches!(value, Value::Null);
     let text = if is_null && auto_filled {
         auto_filled_sentinel()
-    } else if editable {
-        if is_null {
-            editable_null_sentinel()
-        } else {
-            value_to_edit_text(value)
-        }
+    } else if is_null && editable {
+        editable_null_sentinel()
     } else {
         value_to_display_text(value)
     };

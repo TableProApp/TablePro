@@ -3,12 +3,11 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 use sourceview5::prelude::*;
 
+use super::display_text::truncate_for_display;
 use super::{GridCell, GridMsg, GridSink};
 
 fn current_text(cell: &GridCell) -> String {
-    cell.editor()
-        .map(|editor| editor.text().to_string())
-        .unwrap_or_default()
+    cell.edit_text().unwrap_or_default()
 }
 
 /// Parent the popover to the cell and keep it there until it closes.
@@ -32,7 +31,7 @@ fn present(cell: &GridCell, popover: &gtk::Popover) {
 fn commit(cell: &GridCell, popover: &gtk::Popover, input: String, sink: &GridSink) {
     // Drawn now rather than after the tracker's round trip.
     if let Some(editor) = cell.editor() {
-        editor.set_text(&input);
+        editor.set_text(&truncate_for_display(&input));
     }
     let row = cell.row();
     popover.popdown();
@@ -102,8 +101,6 @@ pub(super) fn show_spin_button_popover(cell: &GridCell, sink: &GridSink, is_floa
     spin.grab_focus();
 }
 
-/// Saves through a button, since Return inserts a newline in a
-/// multi-line buffer.
 pub(super) fn show_json_popover(cell: &GridCell, sink: &GridSink) {
     let buffer = sourceview5::Buffer::new(None);
     if let Some(lang) = sourceview5::LanguageManager::default().language("json") {
@@ -117,9 +114,25 @@ pub(super) fn show_json_popover(cell: &GridCell, sink: &GridSink) {
     view.set_auto_indent(true);
     view.set_tab_width(2);
     view.set_indent_width(2);
+    show_buffer_popover(cell, sink, &view);
+}
+
+/// For a text the one-line editor cannot lay out without stalling.
+pub(super) fn show_long_text_popover(cell: &GridCell, sink: &GridSink, text: &str) {
+    let buffer = sourceview5::Buffer::new(None);
+    buffer.set_text(text);
+    let view = sourceview5::View::with_buffer(&buffer);
+    view.set_wrap_mode(gtk::WrapMode::WordChar);
+    show_buffer_popover(cell, sink, &view);
+}
+
+/// Saves through a button, since Return inserts a newline in a
+/// multi-line buffer.
+fn show_buffer_popover(cell: &GridCell, sink: &GridSink, view: &sourceview5::View) {
+    let buffer = view.buffer();
 
     let scrolled = gtk::ScrolledWindow::builder()
-        .child(&view)
+        .child(view)
         .min_content_width(420)
         .min_content_height(280)
         .has_frame(true)
@@ -169,8 +182,8 @@ pub(super) fn show_json_popover(cell: &GridCell, sink: &GridSink) {
         let start = buffer_for_commit.start_iter();
         let end = buffer_for_commit.end_iter();
         let text = buffer_for_commit.text(&start, &end, true).to_string();
-        // The tab validates the JSON and refuses a malformed value with
-        // a toast.
+        // The tab parses the text for its column and refuses, with a
+        // toast, a value the column cannot take.
         commit(&cell, &popover, text, &sink);
     });
 

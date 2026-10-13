@@ -246,6 +246,7 @@ fn setup_editable_cell(grid_cell: &GridCell, sink: GridSink, editor_kind: CellEd
     editor.set_margin_start(8);
     editor.set_margin_end(8);
     grid_cell.set_content(&editor);
+    grid_cell.set_sink(sink.clone());
     install_edit_commit_handler(grid_cell, sink.clone());
     install_edit_triggers(grid_cell, sink, editor_kind);
 }
@@ -788,6 +789,84 @@ mod tests {
         editor.stop_editing(false);
 
         assert_eq!(edited_rows(&grid.take_messages()), vec![]);
+    }
+
+    /// Past the length the grid cuts a cell's text at.
+    fn long_text() -> String {
+        format!("tpyo{}", "x".repeat(60_000))
+    }
+
+    /// The text of whichever editor the cell opened: its entry, or the
+    /// popover it opened instead.
+    fn opened_text(cell: &GridCell) -> Option<String> {
+        let editor = cell.editor()?;
+        if editor.is_editing() {
+            return Some(editor.entry().text().to_string());
+        }
+        let view = crate::test_support::first_descendant_of_type::<sourceview5::View>(cell)?;
+        let buffer = view.buffer();
+        Some(buffer.text(&buffer.start_iter(), &buffer.end_iter(), true).to_string())
+    }
+
+    #[gtk4::test]
+    fn editing_a_long_text_starts_from_the_whole_value() {
+        let grid = name_rows(Value::Text(long_text()));
+        let cell = grid.cell_of(1, 1);
+
+        enter_edit_mode(&cell);
+
+        let opened = opened_text(&cell).expect("an editor opened");
+        assert_eq!(opened.len(), long_text().len(), "the editor opened on the cut text");
+        assert_eq!(opened, long_text());
+    }
+
+    #[gtk4::test]
+    fn a_long_text_saved_from_its_editor_sends_the_whole_value() {
+        let grid = name_rows(Value::Text(long_text()));
+        let cell = grid.cell_of(1, 1);
+        enter_edit_mode(&cell);
+        let fixed = long_text().replacen("tpyo", "typo", 1);
+        let view = crate::test_support::first_descendant_of_type::<sourceview5::View>(&cell).expect("a text popover");
+
+        view.buffer().set_text(&fixed);
+        descendants(&cell)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+            .find(|button| button.has_css_class("suggested-action"))
+            .expect("the Save button")
+            .emit_clicked();
+
+        assert_eq!(edited_rows(&grid.take_messages()), vec![(Some(key(1)), 1, fixed)]);
+        assert!(
+            cell.editor().is_some_and(|editor| editor.text().len() < 20_000),
+            "the cell drew the whole value"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_text_that_reads_as_the_null_sentinel_opens_as_itself() {
+        let grid = name_rows(Value::Text(editable_null_sentinel()));
+        let cell = grid.cell_of(1, 1);
+
+        enter_edit_mode(&cell);
+
+        assert_eq!(opened_text(&cell), Some(editable_null_sentinel()));
+    }
+
+    #[gtk4::test]
+    fn a_blob_in_a_text_column_does_not_open_on_its_placeholder() {
+        let grid = name_rows(Value::Bytes(vec![1, 2, 3]));
+        let cell = grid.cell_of(1, 1);
+
+        enter_edit_mode(&cell);
+
+        assert_eq!(opened_text(&cell), None, "the editor opened on the size placeholder");
+        assert!(
+            grid.take_messages()
+                .iter()
+                .any(|msg| matches!(msg, GridMsg::ShowToast(_))),
+            "the cell did not say why it would not open"
+        );
     }
 
     fn width_binding(tasks: &tablepro_session::runtime::Tasks, root: &tempfile::TempDir) -> ColumnWidthBinding {

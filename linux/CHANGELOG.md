@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Undo after editing a cell twice restored the fetched value instead of the first edit.
 - An edit made while a save ran was dropped when it set the cell back to the value it was read with.
 - Refresh or a structure change while edits were pending could save an edit into another column or row.
+- Editing a long text cell saved only its first 10,000 characters, and a blob in a text column saved its size label.
 - A save that deleted a row and added a new one with the same unique value failed.
 - The window title showed no unsaved-changes bullet for pending structure changes.
 - `real` values showed extra digits in the grid, copies and exports, such as 0.10000000149011612 for 0.1.

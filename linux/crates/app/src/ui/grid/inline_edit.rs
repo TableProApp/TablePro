@@ -4,11 +4,15 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 
 use super::cell_editor_kind::CellEditorKind;
-use super::cell_popovers::{show_calendar_popover, show_json_popover, show_spin_button_popover};
-use super::display_text::editable_null_sentinel;
+use super::cell_popovers::{
+    show_calendar_popover, show_json_popover, show_long_text_popover, show_spin_button_popover,
+};
+use super::display_text::is_cut_for_display;
 use super::{EditSnapshot, GridCell, GridMsg, GridSink};
 
-/// Clears the `<NULL>` sentinel first, so the user does not type over it.
+/// Opens on the whole value, never on the text the cell draws: that
+/// is cut short for a long value, and saving it would cut the value.
+/// A value too long for the one-line editor opens in a popover.
 pub(crate) fn enter_edit_mode(cell: &GridCell) {
     if cell.lock().is_some() {
         return;
@@ -16,10 +20,30 @@ pub(crate) fn enter_edit_mode(cell: &GridCell) {
     let Some(editor) = cell.editor() else {
         return;
     };
-    if editor.text().as_str() == editable_null_sentinel() {
-        editor.set_text("");
+    let Some(text) = editable_text(cell) else {
+        return;
+    };
+    if !is_cut_for_display(&text) {
+        editor.start_editing(&text);
+        return;
     }
-    editor.start_editing();
+    if let Some(sink) = cell.sink() {
+        show_long_text_popover(cell, &sink, &text);
+    }
+}
+
+/// The cell's whole value, or `None` after telling the user why it
+/// cannot be typed over.
+fn editable_text(cell: &GridCell) -> Option<String> {
+    let text = cell.edit_text();
+    if text.is_none()
+        && let Some(sink) = cell.sink()
+    {
+        sink(GridMsg::ShowToast(crate::i18n::gettext(
+            "This value has no text form to edit.",
+        )));
+    }
+    text
 }
 
 /// `child_focus` on the window is what a real Tab press does.
@@ -40,9 +64,14 @@ pub(super) fn install_edit_triggers(cell: &GridCell, sink: GridSink, editor_kind
         CellEditorKind::Json => Rc::new(move |cell| show_json_popover(cell, &sink)),
     };
     let trigger = move |cell: &GridCell| {
-        if cell.lock().is_none() {
-            open(cell);
+        if cell.lock().is_some() {
+            return;
         }
+        // The text editor checks for itself, since the menu opens it too.
+        if editor_kind != CellEditorKind::Text && editable_text(cell).is_none() {
+            return;
+        }
+        open(cell);
     };
     let trigger = Rc::new(trigger);
 

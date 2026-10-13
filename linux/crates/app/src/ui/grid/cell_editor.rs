@@ -159,10 +159,13 @@ impl CellEditor {
             .unwrap_or(false)
     }
 
-    pub fn start_editing(&self) {
+    /// `text` is the whole value, never what the label drew: that has
+    /// `<NULL>` for a NULL. The label takes it too, so Escape puts back
+    /// what the edit started from and sends nothing.
+    pub fn start_editing(&self, text: &str) {
         let stack = self.stack_widget();
         let entry = self.entry_widget();
-        entry.set_text(&self.label_widget().text());
+        self.set_text(text);
         stack.set_visible_child_name("edit");
         entry.grab_focus();
         // The first keystroke replaces the value, as in a Files rename.

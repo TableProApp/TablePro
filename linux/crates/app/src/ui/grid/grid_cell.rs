@@ -7,7 +7,8 @@ use gtk4::{self as gtk, glib};
 
 use super::cell_binding::CellBinding;
 use super::column_drawing::ColumnDrawing;
-use super::{CellEditor, CellLock, EditSnapshot, RowObject};
+use super::display_text::value_to_edit_text;
+use super::{CellEditor, CellLock, EditSnapshot, GridSink, RowObject};
 
 mod imp {
     use super::*;
@@ -30,6 +31,8 @@ mod imp {
         pub preedit_active: Cell<bool>,
         pub lock: Cell<Option<CellLock>>,
         pub drawing: OnceCell<Rc<ColumnDrawing>>,
+        /// Where an editor that opens in a popover sends its value.
+        pub sink: OnceCell<GridSink>,
         pub binding: RefCell<Option<CellBinding>>,
         /// The label cannot say what was drawn once an edit has cleared
         /// a NULL sentinel from it.
@@ -138,6 +141,28 @@ impl GridCell {
 
     pub(super) fn set_drawing(&self, drawing: Rc<ColumnDrawing>) {
         let _ = self.imp().drawing.set(drawing);
+    }
+
+    pub(super) fn set_sink(&self, sink: GridSink) {
+        let _ = self.imp().sink.set(sink);
+    }
+
+    pub(super) fn sink(&self) -> Option<GridSink> {
+        self.imp().sink.get().cloned()
+    }
+
+    /// The whole value the cell draws, pending edit included, as an
+    /// editor starts from it. `None` with no row bound or no text form.
+    pub(super) fn edit_text(&self) -> Option<String> {
+        let row = self
+            .imp()
+            .binding
+            .borrow()
+            .as_ref()
+            .map(|binding| binding.row().clone())?;
+        let drawing = self.imp().drawing.get()?;
+        let (value, _) = drawing.tab_ctx.bind_state(&row, self.column());
+        value_to_edit_text(&value)
     }
 
     pub(super) fn bind(&self, row: &RowObject) {
