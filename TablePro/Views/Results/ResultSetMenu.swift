@@ -5,14 +5,7 @@
 
 import SwiftUI
 
-/// The control that chooses which result set the pane shows.
-///
-/// A pull-down in the status bar's leading zone, beside the view-mode switcher, which is where
-/// Postico 2 puts the same control and where Script Editor puts its Description/Result/Log
-/// selector. It costs no band of its own, which is the point: the strip it replaces spent 32pt in
-/// every query tab, including the overwhelmingly common one with a single result.
-///
-/// Pin, Unpin, Close and Close Others move across unchanged from the strip's context menu.
+/// A pull-down in the status bar rather than a strip of its own, which spent 32pt in every query tab, even with one result.
 struct ResultSetMenu: View {
     let model: ResultSetMenuModel
     /// Spelled out where the bar has room, counted in figures where it does not.

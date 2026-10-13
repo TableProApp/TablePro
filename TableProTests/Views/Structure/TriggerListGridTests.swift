@@ -3,7 +3,9 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
+import SwiftUI
 @testable import TablePro
 import Testing
 
@@ -84,6 +86,48 @@ struct TriggerListGridTests {
         #expect(TriggerListColumns.widths(showsEnabled: false) == [240, 90, 160])
         #expect(TriggerListColumns.widths(showsEnabled: true).count == TriggerListColumns.titles(showsEnabled: true).count)
         #expect(TriggerListColumns.widths(showsEnabled: false).count == TriggerListColumns.titles(showsEnabled: false).count)
+    }
+
+    @Test("Enabled reads aloud as Enabled or Disabled, and says nothing where the engine does not")
+    func enabledIsSpokenByName() {
+        let enabled = TriggerListColumns.enabledColumn
+        #expect(TriggerListColumns.titles(showsEnabled: true)[enabled] == String(localized: "Enabled"))
+        #expect(TriggerListColumns.spokenValues(for: triggers[0], showsEnabled: true) == [enabled: String(localized: "Enabled")])
+        #expect(TriggerListColumns.spokenValues(for: triggers[1], showsEnabled: true) == [enabled: String(localized: "Disabled")])
+        #expect(TriggerListColumns.spokenValues(for: triggers[2], showsEnabled: true).isEmpty)
+        #expect(TriggerListColumns.spokenValues(for: triggers[0], showsEnabled: false).isEmpty)
+    }
+
+    @Test("Each column keeps the minimum width the list has always given it")
+    func minimumWidths() {
+        #expect(TriggerListColumns.minimumWidths(showsEnabled: true) == [140, 70, 90, 60])
+        #expect(TriggerListColumns.minimumWidths(showsEnabled: false) == [140, 70, 90])
+        for showsEnabled in [true, false] {
+            let minimums = TriggerListColumns.minimumWidths(showsEnabled: showsEnabled)
+            #expect(minimums.count == TriggerListColumns.titles(showsEnabled: showsEnabled).count)
+            #expect(zip(minimums, TriggerListColumns.widths(showsEnabled: showsEnabled)).allSatisfy { $0 <= $1 })
+        }
+    }
+
+    private func tableView(in view: NSView?) -> NSTableView? {
+        guard let view else { return nil }
+        if let tableView = view as? KeyHandlingTableView { return tableView }
+        return view.subviews.lazy.compactMap { self.tableView(in: $0) }.first
+    }
+
+    @Test("The list's columns carry their minimum widths into the grid")
+    func gridColumnsCarryTheirMinimums() throws {
+        let window = ThemeTestFixture.host(
+            TriggerListPane(triggers: triggers, databaseType: .mysql, state: TriggerInspectorState()),
+            size: NSSize(width: 700, height: 300)
+        )
+        let tableView = try #require(tableView(in: window.contentView))
+        let presented = tableView.tableColumns.filter { $0.identifier != ColumnIdentitySchema.rowNumberIdentifier && !$0.isHidden }
+        let minimums = Dictionary(uniqueKeysWithValues: presented.map { ($0.headerCell.stringValue, $0.minWidth) })
+
+        let titles = TriggerListColumns.titles(showsEnabled: true)
+        #expect(minimums == Dictionary(uniqueKeysWithValues: zip(titles, TriggerListColumns.minimumWidths(showsEnabled: true))))
+        withExtendedLifetime(window) {}
     }
 
     @Test("A selected trigger keeps its row through a sort")

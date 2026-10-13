@@ -582,7 +582,11 @@ extension FilterCoordinator: FilterPanelActions {
 }
 
 extension FilterCoordinator: FilterSQLPreviewing {
+    var filterPreviewDatabaseType: DatabaseType {
+        parent.connection.type
+    }
+
     func filterPreviewSQL() -> String {
-        generateFilterPreviewSQL(databaseType: parent.connection.type)
+        generateFilterPreviewSQL(databaseType: filterPreviewDatabaseType)
     }
 }

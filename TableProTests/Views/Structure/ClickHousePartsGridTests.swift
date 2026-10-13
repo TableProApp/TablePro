@@ -40,10 +40,29 @@ struct ClickHousePartsGridTests {
         #expect(ClickHousePartsView.gridRow(for: inactive).values.last == "NO")
     }
 
+    @Test("Active reads aloud as Active or Inactive rather than YES or NO")
+    func activeIsSpokenByName() {
+        let inactive = ClickHousePartInfo(
+            partition: "", name: "p", rows: 0, bytesOnDisk: 0, modificationTime: "", active: false
+        )
+        let active = ClickHousePartsView.activeColumn
+
+        #expect(ClickHousePartsView.columnTitles[active] == String(localized: "Active"))
+        #expect(ClickHousePartsView.gridRow(for: part).spokenValues == [active: String(localized: "Active")])
+        #expect(ClickHousePartsView.gridRow(for: inactive).spokenValues == [active: String(localized: "Inactive")])
+    }
+
     @Test("Each column opens at the width the parts list has always given it")
     func defaultWidths() {
         #expect(ClickHousePartsView.columnWidths == [120, 200, 100, 100, 160, 60])
         #expect(ClickHousePartsView.columnWidths.count == ClickHousePartsView.columnTitles.count)
+    }
+
+    @Test("Each column keeps the minimum width the parts list has always given it")
+    func minimumWidths() {
+        #expect(ClickHousePartsView.columnMinimumWidths == [80, 100, 60, 60, 100, 50])
+        #expect(ClickHousePartsView.columnMinimumWidths.count == ClickHousePartsView.columnTitles.count)
+        #expect(zip(ClickHousePartsView.columnMinimumWidths, ClickHousePartsView.columnWidths).allSatisfy { $0 <= $1 })
     }
 
     @Test("Drop and Detach name the one selected part's partition, and none while several are selected")

@@ -18,8 +18,14 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         case fitted(maxLines: Int)
     }
 
+    internal enum Highlighting: Equatable {
+        case engine
+        case json
+    }
+
     let sql: String
     var databaseType: DatabaseType = .mysql
+    var highlighting: Highlighting = .engine
     /// A SwiftUI `.accessibilityIdentifier` lands on the representable's wrapper, not on the text
     /// view AppKit publishes, so the only way to name this element is to set it on the text view.
     var accessibilityIdentifier: String?
@@ -103,12 +109,15 @@ struct HighlightedSQLTextView: NSViewRepresentable {
             textView.string = sql
         }
 
-        /// The highlighting bakes a colour per range, so it is applied again whenever the theme or
-        /// the editor font moves, not only when the query does.
-        guard !sql.isEmpty, textChanged || fontChanged || context.coordinator.revision != themeRevision else {
+        /// The highlighting bakes a colour per range, so it is applied again whenever the theme, the
+        /// editor font or the highlighting moves, not only when the query does.
+        let highlightingChanged = context.coordinator.highlighting != highlighting
+        guard !sql.isEmpty,
+              textChanged || fontChanged || highlightingChanged || context.coordinator.revision != themeRevision else {
             return
         }
         context.coordinator.revision = themeRevision
+        context.coordinator.highlighting = highlighting
         applyHighlighting(to: textView)
     }
 
@@ -148,6 +157,7 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     @MainActor
     final class Coordinator {
         var revision = -1
+        var highlighting: Highlighting?
         private var themeCancellable: AnyCancellable?
 
         /// An Accent, Highlight or contrast change moves no published value, so nothing would otherwise redraw the
@@ -242,6 +252,28 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         return patterns
     }()
 
+    /// The JSON editor's colors: keys and values both as strings. Strings go last so a digit or a literal inside one stays string-colored.
+    private static let jsonPatterns: [(regex: NSRegularExpression, slot: ThemeSlot)] = {
+        let sources: [(pattern: String, slot: ThemeSlot)] = [
+            (#"-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b"#, .syntaxNumber),
+            (#"\b(?:true|false|null)\b"#, .syntaxNull),
+            (#""(?:[^"\\]|\\.)*""#, .syntaxString),
+        ]
+        return sources.compactMap { source in
+            (try? NSRegularExpression(pattern: source.pattern)).map { (regex: $0, slot: source.slot) }
+        }
+    }()
+
+    private var activePatterns: [(regex: NSRegularExpression, slot: ThemeSlot)] {
+        if highlighting == .json { return Self.jsonPatterns }
+        switch PluginManager.shared.editorLanguage(for: databaseType) {
+        case .javascript:
+            return Self.mqlPatterns
+        default:
+            return Self.syntaxPatterns
+        }
+    }
+
     private func applyHighlighting(to textView: NSTextView) {
         guard let textStorage = textView.textStorage else { return }
         guard textStorage.length > 0 else { return }
@@ -254,13 +286,6 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         textStorage.addAttribute(.font, value: font, range: fullRange)
         textStorage.addAttribute(.foregroundColor, value: ThemeEngine.shared.palette[.editorText], range: fullRange)
 
-        let activePatterns: [(regex: NSRegularExpression, slot: ThemeSlot)]
-        switch PluginManager.shared.editorLanguage(for: databaseType) {
-        case .javascript:
-            activePatterns = Self.mqlPatterns
-        default:
-            activePatterns = Self.syntaxPatterns
-        }
         let text = textStorage.string
         let maxHighlightLength = 10_000
         let highlightRange: NSRange

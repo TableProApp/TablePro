@@ -549,6 +549,7 @@ struct DataGridView: NSViewRepresentable {
             firstClickSortDirection: coordinator.firstClickSortDirection,
             supportsColumnSort: configuration.supportsColumnSort,
             supportsValueFilter: configuration.supportsValueFilter,
+            minimumWidths: configuration.columnMinimumWidths,
             widthCalculator: { columnName, slot in
                 coordinator.automaticColumnWidth(
                     for: columnName,

@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Triggers and ClickHouse Parts in table structure shown as data grids, with multiple selection and Copy.
 - Filter and maintenance SQL previews highlighted as SQL in the editor font.
 - Details in Quick Switcher, autocomplete, Settings, query plans, tooltips and the result bar separated by commas or space instead of a dot.
+- Filter and maintenance previews highlighted in the editor font, DynamoDB's as JSON.
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.

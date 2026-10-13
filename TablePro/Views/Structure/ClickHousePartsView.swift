@@ -2,8 +2,6 @@
 //  ClickHousePartsView.swift
 //  TablePro
 //
-//  Displays ClickHouse partition/part information from system.parts.
-//
 
 import os
 import SwiftUI
@@ -101,6 +99,7 @@ struct ClickHousePartsView: View {
             model: grid,
             columns: Self.columnTitles,
             defaultWidths: Self.columnWidths,
+            minimumWidths: Self.columnMinimumWidths,
             contentKey: hasher.finalize(),
             rows: { parts.map(Self.gridRow(for:)) },
             databaseType: connection.type,
@@ -112,6 +111,8 @@ struct ClickHousePartsView: View {
     }
 
     internal static let columnWidths: [CGFloat] = [120, 200, 100, 100, 160, 60]
+    internal static let columnMinimumWidths: [CGFloat] = [80, 100, 60, 60, 100, 50]
+    internal static let activeColumn = 5
 
     static var columnTitles: [String] {
         [
@@ -134,7 +135,8 @@ struct ClickHousePartsView: View {
                 ByteSizeFormatting.string(bytes: part.bytesOnDisk),
                 part.modificationTime,
                 part.active ? "YES" : "NO",
-            ]
+            ],
+            spokenValues: [activeColumn: part.active ? String(localized: "Active") : String(localized: "Inactive")]
         )
     }
 

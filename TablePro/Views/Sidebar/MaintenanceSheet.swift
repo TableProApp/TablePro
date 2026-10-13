@@ -8,7 +8,7 @@ import TableProPluginKit
 
 /// Confirms a maintenance operation and shows the statements that will run.
 ///
-/// The preview is the driver's own SQL, handed in as a closure, and the Execute button sends the same
+/// The preview is the driver's own statements, handed in as a closure, and the Execute button sends the same
 /// option values back through the same builder. It used to write its own copy of the statement and
 /// disagree with it: `REINDEX orders`, which is not valid SQL, where `REINDEX TABLE "orders"` ran.
 /// The option controls come from the operation for the same reason, rather than from a switch gated
@@ -58,17 +58,7 @@ struct MaintenanceSheet: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(String(localized: "SQL Preview"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HighlightedSQLTextView(
-                    sql: sqlPreview,
-                    databaseType: databaseType,
-                    lineLayout: .fitted(maxLines: Self.previewMaxLines)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
+            previewSection
 
             Divider()
 
@@ -87,6 +77,24 @@ struct MaintenanceSheet: View {
         }
         .padding(20)
         .frame(width: 420)
+    }
+
+    private var previewSection: some View {
+        let statements = preview(values)
+        let text = statements.joined(separator: ";\n")
+        let syntax = Self.previewSyntax(of: statements)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(syntax == .json ? String(localized: "Preview") : String(localized: "SQL Preview"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HighlightedSQLTextView(
+                sql: text,
+                databaseType: databaseType,
+                highlighting: syntax,
+                lineLayout: .fitted(maxLines: Self.previewMaxLines)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+        }
     }
 
     private var header: some View {
@@ -147,4 +155,18 @@ struct MaintenanceSheet: View {
     }
 
     internal static let previewMaxLines = 8
+
+    internal static func previewSyntax(of statements: [String]) -> HighlightedSQLTextView.Highlighting {
+        guard !statements.isEmpty, statements.allSatisfy(isJSONRequest) else { return .engine }
+        return .json
+    }
+
+    /// An API driver writes a statement as an action name and its JSON request body, which the SQL patterns barely color.
+    private static func isJSONRequest(_ statement: String) -> Bool {
+        let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+        let action = trimmed.prefix { $0.isLetter }
+        let body = trimmed.dropFirst(action.count).drop { $0.isWhitespace }
+        guard !action.isEmpty, body.first == "{" else { return false }
+        return (try? JSONSerialization.jsonObject(with: Data(body.utf8))) is [String: Any]
+    }
 }
