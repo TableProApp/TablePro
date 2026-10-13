@@ -262,7 +262,7 @@ where
     stdout.flush().await.map_err(|e| e.to_string())
 }
 
-fn tool_description(name: &str) -> &'static str {
+pub(crate) fn tool_description(name: &str) -> &'static str {
     match name {
         "list_connections" => "List saved database connections visible to this token",
         "list_tables" => "List tables on a connection",
@@ -283,7 +283,7 @@ fn tool_description(name: &str) -> &'static str {
     }
 }
 
-fn tool_schema(name: &str) -> JsonValue {
+pub(crate) fn tool_schema(name: &str) -> JsonValue {
     match name {
         "list_connections" => json!({"type": "object", "properties": {}}),
         "list_tables" | "execute_query" | "execute_write" | "explain_query" | "export_data" => json!({

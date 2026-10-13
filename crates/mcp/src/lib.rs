@@ -9,6 +9,8 @@
 mod auth;
 mod bridge;
 mod rate_limit;
+#[cfg(feature = "rmcp-prototype")]
+pub mod rmcp_server;
 mod server;
 mod tokens;
 mod tools;

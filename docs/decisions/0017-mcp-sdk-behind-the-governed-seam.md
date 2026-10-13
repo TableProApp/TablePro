@@ -26,6 +26,20 @@ Replace the protocol, transport and tool-schema layer of `crates/mcp` with `rmcp
 
 The migration is staged behind the existing MCP tests. The adoption is complete only when every current MCP test passes against the new layer, including the refusal without a token, the bad-token refusal, the disconnect-aware cancellation with no execution after a disconnect during approval, and the shutdown test.
 
+## Prototype result (2026-10-12)
+
+`crates/mcp/src/rmcp_server.rs`, behind the off-by-default cargo feature `rmcp-prototype`, serves the existing `McpBridge` through `rmcp` over stdio. It implements `list_tools` and `call_tool` by hand so `tools::dispatch` and the existing tool descriptions and schemas are reused unchanged. Seven tests pass over the SDK's wire:
+
+- `tools/list` is refused without a token and with a bad token, and lists all 11 tools for a valid token.
+- `tools/call` with the token in the arguments works, and without a token or with a bad token returns an error result and runs nothing.
+
+Findings that change the plan:
+
+- The SDK exposes the request's `_meta` (so `_meta.authorization` works) and a cancellation token per request (`RequestContext::ct`), which is what disconnect-aware cancellation needs.
+- A top-level `params.token`, one of the three places clients may send a token today, is dropped by the SDK's typed parameters. A test documents the gap. Closing it needs a small transport shim that moves it into `_meta` before the SDK parses the message, or a deliberate deprecation of that location.
+- The streamable-HTTP service, the `Origin` and loopback checks as middleware, and wiring `RequestContext::ct` to the approval and execute path are not in the prototype yet; they are the next stages.
+- `cargo deny` passes with the new optional dependency.
+
 ## Rationale
 
 The protocol layer is maintained by the project that defines the protocol, and tracks the specification for us. The code we keep is exactly the code that is specific to BookiE and security-critical. The SDK's schema generation removes a class of drift between a tool's description and its real arguments.

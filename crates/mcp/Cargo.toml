@@ -27,6 +27,10 @@ hex.workspace = true
 libc.workspace = true
 secrecy.workspace = true
 axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json"] }
+rmcp = { version = "3.5", default-features = false, features = ["server", "transport-io"], optional = true }
+
+[features]
+rmcp-prototype = ["dep:rmcp"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
