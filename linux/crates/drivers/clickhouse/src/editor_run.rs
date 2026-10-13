@@ -201,11 +201,8 @@ impl Stop {
         self.fired = Some(interrupt);
         self.give_up = Some(Instant::now() + self.grace);
         let control = control.clone();
-        tokio::spawn(async move {
-            if let Err(error) = kill_query(&control, query_id).await {
-                tracing::debug!(%error, "the KILL QUERY for an editor run failed");
-            }
-        });
+        let grace = self.grace;
+        tokio::spawn(async move { kill_within(&control, query_id, grace).await });
     }
 
     async fn gave_up(&self) {
@@ -328,6 +325,27 @@ mod tests {
     use tablepro_core::{ServerCode, ServerDiagnostics};
 
     use super::*;
+
+    #[tokio::test]
+    async fn a_kill_the_server_never_answers_gives_up_at_the_grace() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("a listener");
+        let address = listener.local_addr().expect("an address");
+        let silent = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((socket, _)) = listener.accept().await {
+                held.push(socket);
+            }
+        });
+        let control = clickhouse::Client::default().with_url(format!("http://{address}"));
+
+        let killing = kill_within(&control, Uuid::new_v4(), Duration::from_millis(200));
+
+        assert!(
+            tokio::time::timeout(Duration::from_secs(10), killing).await.is_ok(),
+            "the KILL waited on a server that never answered"
+        );
+        silent.abort();
+    }
 
     #[test]
     fn only_a_body_the_driver_could_not_read_is_killed_after_it_fails() {
