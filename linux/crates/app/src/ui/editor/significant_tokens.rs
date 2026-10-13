@@ -23,9 +23,9 @@ pub fn significant_tokens(text: &str, grammar: SqlGrammar, settings: LexicalSett
             ScriptTokenKind::LineComment | ScriptTokenKind::BlockComment => slice.trim_end(),
             _ => slice,
         };
-        let gap = tokens
-            .last()
-            .map_or(Gap::Free, |previous| gap_between(previous, token.kind, body, spacing));
+        let gap = tokens.last().map_or(Gap::Free, |previous| {
+            gap_between(grammar, previous, token.kind, body, spacing)
+        });
         tokens.push(SignificantToken {
             kind: token.kind,
             text: body.to_owned(),
@@ -40,7 +40,6 @@ pub fn significant_tokens(text: &str, grammar: SqlGrammar, settings: LexicalSett
 pub struct SignificantToken {
     kind: ScriptTokenKind,
     text: String,
-    /// What separates it from the token before it.
     gap: Gap,
 }
 
@@ -60,13 +59,23 @@ enum Gap {
     LineBreak,
 }
 
+/// Words sqlformat spaces from their paren that MySQL 8.4 and MariaDB
+/// 11.4 were checked to read the same either way.
+const MYSQL_SPACED_CALLS: [&str; 7] = ["EXISTS", "IF", "IFNULL", "IN", "REPLACE", "USING", "VALUES"];
+
 #[derive(Debug, Clone, Copy, Default)]
 struct Spacing {
     spaced: bool,
     line_break: bool,
 }
 
-fn gap_between(previous: &SignificantToken, kind: ScriptTokenKind, text: &str, spacing: Spacing) -> Gap {
+fn gap_between(
+    grammar: SqlGrammar,
+    previous: &SignificantToken,
+    kind: ScriptTokenKind,
+    text: &str,
+    spacing: Spacing,
+) -> Gap {
     let strings = previous.kind == ScriptTokenKind::StringLiteral && kind == ScriptTokenKind::StringLiteral;
     if strings && spacing.line_break {
         return Gap::LineBreak;
@@ -75,16 +84,25 @@ fn gap_between(previous: &SignificantToken, kind: ScriptTokenKind, text: &str, s
         && kind == ScriptTokenKind::Punct
         && previous.text != ","
         && text != ",";
+    // Without IGNORE_SPACE, MySQL reads `count(` as the built-in and
+    // `count (` as a stored function named count.
+    let call = grammar == SqlGrammar::MySql
+        && previous.kind == ScriptTokenKind::Word
+        && kind == ScriptTokenKind::OpenParen
+        && !MYSQL_SPACED_CALLS
+            .iter()
+            .any(|word| word.eq_ignore_ascii_case(&previous.text));
     let free = spacing_is_free(previous.kind, &previous.text) || spacing_is_free(kind, text);
-    if !strings && !operator && free {
+    if !strings && !operator && !call && free {
         return Gap::Free;
     }
     if spacing.spaced { Gap::Spaced } else { Gap::Touching }
 }
 
-/// Whether spacing next to this token never changes what an engine
-/// reads: a bracket, a separator, a comment, or an operator character
-/// that is never part of a name, a literal or a parameter.
+/// Whether spacing next to this token changes nothing an engine reads,
+/// outside the pairs `gap_between` checks first: a bracket, a
+/// separator, a comment, or an operator character that is never part
+/// of a name, a literal or a parameter.
 fn spacing_is_free(kind: ScriptTokenKind, text: &str) -> bool {
     match kind {
         ScriptTokenKind::OpenParen
@@ -148,6 +166,23 @@ mod tests {
         assert_ne!(
             tokens_for("select @@version", SqlGrammar::MySql),
             tokens_for("select @@ version", SqlGrammar::MySql)
+        );
+    }
+
+    #[test]
+    fn a_space_before_a_mysql_call_changes_the_statement() {
+        assert_ne!(
+            tokens_for("select count(a) from t", SqlGrammar::MySql),
+            tokens_for("select count (a) from t", SqlGrammar::MySql)
+        );
+        assert_eq!(
+            tokens_for("select count(a) from t", SqlGrammar::MySql),
+            tokens_for("select\n    count(a)\nfrom t", SqlGrammar::MySql)
+        );
+        assert_eq!(tokens("select count(a) from t"), tokens("select count (a) from t"));
+        assert_eq!(
+            tokens_for("select ifnull(a, 0) from t where a in(1)", SqlGrammar::MySql),
+            tokens_for("select ifnull (a, 0) from t where a in (1)", SqlGrammar::MySql)
         );
     }
 

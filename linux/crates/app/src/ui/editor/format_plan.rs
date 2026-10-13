@@ -9,11 +9,11 @@ use super::significant_tokens::significant_tokens;
 /// sqlformat has its own lexer, and it does not know every dialect the
 /// app connects to: it reads `//` as an operator, ends a nested block
 /// comment at the first `*/`, treats a backslash as an escape inside
-/// quotes, takes `$$` for a keyword, and puts a space inside `+=` and
-/// `b'01'`. Reformatting through it can therefore change what a
-/// statement means. Each statement is checked against its own tokens
-/// afterwards, and one that came back different is written out as the
-/// user typed it.
+/// quotes, takes `$$` for a keyword, and puts a space inside `+=`,
+/// `b'01'` and `GROUP_CONCAT(`. Reformatting through it can therefore
+/// change what a statement means. Each statement is checked against
+/// its own tokens afterwards, and one that came back different is
+/// written out as the user typed it.
 pub fn format_script(text: &str, grammar: SqlGrammar, settings: LexicalSettings) -> String {
     let plan = ScriptPlan::build(text, grammar, settings);
     let mut out = String::with_capacity(text.len());
@@ -183,6 +183,31 @@ mod tests {
 
         for (source, grammar) in cases {
             assert_eq!(format(source, grammar), source, "{grammar:?}");
+        }
+    }
+
+    #[test]
+    fn a_mysql_call_keeps_its_name_against_its_paren() {
+        // sqlformat writes `GROUP_CONCAT (a)`, which MySQL reads as a
+        // stored function of that name.
+        let out = format("SELECT GROUP_CONCAT(a) FROM t", SqlGrammar::MySql);
+
+        assert!(
+            out.contains("GROUP_CONCAT(a)"),
+            "the call was split from its paren: {out}"
+        );
+    }
+
+    #[test]
+    fn mysql_statements_with_untouched_calls_are_still_formatted() {
+        for source in [
+            "select count(*), max(a) from t",
+            "insert into t (a, b) values (1, 2)",
+            "select ifnull(a, 0) from t where a in(1, 2)",
+        ] {
+            let out = format(source, SqlGrammar::MySql);
+
+            assert!(out.contains('\n'), "the statement was not reflowed: {out}");
         }
     }
 
