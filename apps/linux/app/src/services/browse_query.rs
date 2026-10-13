@@ -4,7 +4,10 @@ use std::collections::HashSet;
 
 use tablepro_core::{ColumnInfo, FilterSet, KEYSET_OFFSET_THRESHOLD, Value, build_filter_where, keyset_where_clause};
 
+use order::resolved_order_by;
+
 mod mongodb;
+mod order;
 mod redis;
 
 pub(crate) struct BrowseTarget<'a> {
@@ -84,6 +87,27 @@ impl BrowseTarget<'_> {
         sort: Option<(usize, bool)>,
         cursor: Option<&[Value]>,
     ) -> Result<PageQuery, String> {
+        self.page_with(offset, limit, sort, cursor, false)
+    }
+
+    pub fn page_by_row_id(
+        &self,
+        offset: u64,
+        limit: u64,
+        sort: Option<(usize, bool)>,
+        cursor: Option<&[Value]>,
+    ) -> Result<PageQuery, String> {
+        self.page_with(offset, limit, sort, cursor, true)
+    }
+
+    fn page_with(
+        &self,
+        offset: u64,
+        limit: u64,
+        sort: Option<(usize, bool)>,
+        cursor: Option<&[Value]>,
+        row_id_order: bool,
+    ) -> Result<PageQuery, String> {
         let (projection, projected) = self.projection();
         let mut query = self.filtered_query(&projection)?;
         query.projected_columns = projected;
@@ -93,7 +117,7 @@ impl BrowseTarget<'_> {
         let order = if sort.is_none() && matches!(self.driver_id, "mongodb" | "redis") {
             None
         } else {
-            resolved_order_by(self.driver_id, self.columns, sort)
+            resolved_order_by(self.driver_id, self.columns, sort, row_id_order)
         };
         let keys: Vec<&str> = self
             .columns
@@ -164,33 +188,6 @@ impl BrowseTarget<'_> {
     }
 }
 
-fn resolved_order_by(driver_id: &str, columns: &[ColumnInfo], sort: Option<(usize, bool)>) -> Option<String> {
-    let mut terms = Vec::new();
-    let selected = sort.and_then(|(index, ascending)| {
-        columns.get(index).map(|column| {
-            let direction = if ascending { "ASC" } else { "DESC" };
-            terms.push(format!(
-                "{} {direction}",
-                tablepro_core::sql_dialect::quote_ident(driver_id, &column.name)
-            ));
-            column.name.as_str()
-        })
-    });
-    for column in columns.iter().filter(|column| column.primary_key) {
-        if selected == Some(column.name.as_str()) {
-            continue;
-        }
-        terms.push(format!(
-            "{} ASC",
-            tablepro_core::sql_dialect::quote_ident(driver_id, &column.name)
-        ));
-    }
-    if driver_id == "postgres" && !columns.iter().any(|column| column.primary_key) {
-        terms.push("ctid ASC".to_owned());
-    }
-    (!terms.is_empty()).then(|| terms.join(", "))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,7 +251,7 @@ mod tests {
     fn default_order_uses_every_primary_key_column() {
         let columns = vec![column("tenant", true), column("name", false), column("id", true)];
         assert_eq!(
-            resolved_order_by("postgres", &columns, None).as_deref(),
+            resolved_order_by("postgres", &columns, None, false).as_deref(),
             Some("\"tenant\" ASC, \"id\" ASC")
         );
     }
@@ -263,7 +260,7 @@ mod tests {
     fn explicit_sort_appends_primary_key_tie_breakers() {
         let columns = vec![column("tenant", true), column("name", false), column("id", true)];
         assert_eq!(
-            resolved_order_by("postgres", &columns, Some((1, false))).as_deref(),
+            resolved_order_by("postgres", &columns, Some((1, false)), false).as_deref(),
             Some("\"name\" DESC, \"tenant\" ASC, \"id\" ASC")
         );
     }
@@ -272,7 +269,7 @@ mod tests {
     fn sorted_primary_key_is_not_duplicated() {
         let columns = vec![column("tenant", true), column("id", true)];
         assert_eq!(
-            resolved_order_by("postgres", &columns, Some((0, false))).as_deref(),
+            resolved_order_by("postgres", &columns, Some((0, false)), false).as_deref(),
             Some("\"tenant\" DESC, \"id\" ASC")
         );
     }
@@ -560,7 +557,7 @@ mod tests {
             hidden_columns: None,
         };
         let PageQuery::Sql(page) = target
-            .page(KEYSET_OFFSET_THRESHOLD, 25, None, Some(&[Value::Int(5)]))
+            .page_by_row_id(KEYSET_OFFSET_THRESHOLD, 25, None, Some(&[Value::Int(5)]))
             .unwrap()
         else {
             panic!("PostgreSQL unkeyed browse pages require ordered SQL")

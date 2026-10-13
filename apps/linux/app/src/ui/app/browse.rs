@@ -170,7 +170,13 @@ impl App {
             filter: &filter,
             hidden_columns: Some(&hidden_columns),
         };
-        let query = match target.page(offset, limit, sort, keyset_cursor.as_deref()) {
+        let row_id_order = self.relation_is_ordinary_table(schema.as_deref(), &table);
+        let page = if row_id_order {
+            target.page_by_row_id(offset, limit, sort, keyset_cursor.as_deref())
+        } else {
+            target.page(offset, limit, sort, keyset_cursor.as_deref())
+        };
+        let query = match page {
             Ok(query) => query,
             Err(message) => {
                 sender.input(AppMsg::LoadFailed(
@@ -509,6 +515,14 @@ impl App {
         );
     }
 
+    fn relation_is_ordinary_table(&self, schema: Option<&str>, table: &str) -> bool {
+        use crate::services::sidebar_tree::NodeKind;
+        self.sidebar_nodes.borrow().iter().any(|node| {
+            matches!(&node.kind, NodeKind::Table { schema: node_schema, name }
+                if name == table && node_schema.as_deref() == schema)
+        })
+    }
+
     fn export_page_plan(&self, tab_id: Uuid) -> Option<(crate::services::export_pages::PagePlan, Option<usize>)> {
         let tabs = self.workspace_tabs.borrow();
         let model = tabs.get(&tab_id)?.browse_controller()?.model();
@@ -519,6 +533,7 @@ impl App {
             columns: model.columns().to_vec(),
             filter: model.current_filter().clone(),
             sort: model.current_sort(),
+            row_id_order: self.relation_is_ordinary_table(model.schema(), model.table()),
             timeout_secs: crate::services::operation_control::timeout_for(
                 &self.preferences,
                 &self.database,

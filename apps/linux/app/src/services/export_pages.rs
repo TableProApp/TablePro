@@ -21,6 +21,7 @@ pub(crate) struct PagePlan {
     pub columns: Vec<ColumnInfo>,
     pub filter: FilterSet,
     pub sort: Option<(usize, bool)>,
+    pub row_id_order: bool,
     pub timeout_secs: u32,
 }
 
@@ -38,9 +39,12 @@ fn page_future(
         filter: &plan.filter,
         hidden_columns: None,
     };
-    let query = target
-        .page(offset, EXPORT_PAGE_ROWS, plan.sort, None)
-        .map_err(ExportError::Source)?;
+    let page = if plan.row_id_order {
+        target.page_by_row_id(offset, EXPORT_PAGE_ROWS, plan.sort, None)
+    } else {
+        target.page(offset, EXPORT_PAGE_ROWS, plan.sort, None)
+    };
+    let query = page.map_err(ExportError::Source)?;
     let schema = plan.schema.clone();
     let table = plan.table.clone();
     let deadline = crate::services::operation_control::deadline_for(plan.timeout_secs);
@@ -120,6 +124,7 @@ mod tests {
             columns: Vec::new(),
             filter: FilterSet::default(),
             sort: None,
+            row_id_order: false,
             timeout_secs: 0,
         }
     }
