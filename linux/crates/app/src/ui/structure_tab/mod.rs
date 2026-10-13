@@ -62,8 +62,7 @@ use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
 
 use self::columns::{ColumnRowContext, build_column_expander_row};
-pub(crate) use self::ddl_text::build_error_text;
-use self::ddl_text::draft_problem_text;
+pub(crate) use self::ddl_text::{build_error_text, save_blocker_text};
 use self::fks::build_fk_row;
 use self::indexes::build_index_row;
 pub(crate) use self::structure_command::{LoadedStructure, StructureCommand, StructureRequestKind};
@@ -512,10 +511,17 @@ impl StructureModel {
             Some(original) => diff_table(original, &draft),
             None => TableChanges::default(),
         };
+        let unparsed_defaults = self
+            .invalid_defaults
+            .keys()
+            .filter_map(|row| draft.columns.get(*row))
+            .map(|column| column.name.clone())
+            .collect();
         PendingStructure {
             original,
             draft,
             changes,
+            unparsed_defaults,
         }
     }
 
@@ -1037,10 +1043,11 @@ impl StructureModel {
             ColumnField::Comment(comment) => column.comment = comment,
         }
         // A rebuild sets each widget to the value the model already has,
-        // which is no edit.
+        // which is no edit. A default the parser refused is no edit
+        // either, but the tracker has to learn of it, or a close prompt
+        // would save without it.
         if column == previous {
-            self.refresh_buttons(self.pending().change_count());
-            self.regenerate_sql_preview(&self.pending());
+            self.recompute_dirty_state(fx);
             return;
         }
         if let Some(slot) = self.draft.borrow_mut().columns.get_mut(index) {
@@ -1070,14 +1077,8 @@ impl StructureModel {
 
     fn save(&mut self, fx: &mut StructureEffects) {
         let pending = self.pending();
-        if let Err(problem) = pending.draft.validate() {
-            fx.output(StructureTabOutput::ShowToast(draft_problem_text(&problem)));
-            return;
-        }
-        if !self.invalid_defaults.is_empty() {
-            fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
-                "Fix the highlighted fields first.",
-            )));
+        if let Err(blocker) = pending.check() {
+            fx.output(StructureTabOutput::ShowToast(save_blocker_text(&blocker)));
             return;
         }
         if !pending.has_changes() {

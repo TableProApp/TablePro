@@ -27,6 +27,7 @@ mod tests {
             original: None,
             draft,
             changes: TableChanges::default(),
+            unparsed_defaults: Vec::new(),
         })
     }
 

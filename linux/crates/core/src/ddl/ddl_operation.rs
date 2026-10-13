@@ -4,6 +4,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DdlOperation {
     CreateTable,
+    AlterTable,
     DropTable,
     DropTableCascade,
     RenameTable,
@@ -31,6 +32,7 @@ impl fmt::Display for DdlOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::CreateTable => "creating a table",
+            Self::AlterTable => "changing a table",
             Self::DropTable => "dropping a table",
             Self::DropTableCascade => "dropping a table with its dependents",
             Self::RenameTable => "renaming a table",

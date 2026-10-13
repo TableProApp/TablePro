@@ -2,6 +2,8 @@
 
 use tablepro_core::ddl::{BuildDdlError, DdlOperation, DraftProblem, RefusalReason};
 
+use crate::services::pending_structure::SaveBlocker;
+
 /// Why a control is off, for its tooltip.
 pub(crate) fn refusal_text(reason: &RefusalReason) -> String {
     match reason {
@@ -56,6 +58,14 @@ pub(crate) fn draft_problem_text(problem: &DraftProblem) -> String {
             "Foreign key {name} needs as many referenced columns as source columns.",
             &[("name", name)],
         ),
+    }
+}
+
+/// Why Save, from the tab or from a close prompt, refused.
+pub(crate) fn save_blocker_text(blocker: &SaveBlocker) -> String {
+    match blocker {
+        SaveBlocker::Draft(problem) => draft_problem_text(problem),
+        SaveBlocker::UnparsedDefault(_) => crate::i18n::gettext("Fix the highlighted fields first."),
     }
 }
 

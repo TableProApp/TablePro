@@ -26,7 +26,7 @@ use crate::services::from_session::FromSession;
 use crate::services::pending_structure::PendingStructure;
 use crate::ui::app::{App, AppMsg, WorkspaceTab};
 use crate::ui::error_text;
-use crate::ui::structure_tab::{StructureMode, StructureTabInput};
+use crate::ui::structure_tab::{StructureMode, StructureTabInput, save_blocker_text};
 
 impl App {
     /// Sidebar right-click → "New Table…" or schema-header "+" button.
@@ -136,7 +136,7 @@ impl App {
             cascade: false,
         };
         let origin = Arc::downgrade(&session);
-        let work = run_schema_plan(session, dropped.clone(), move |ddl, table| {
+        let work = run_schema_plan(session, dropped.clone(), DdlOperation::DropTable, move |ddl, table| {
             ddl.plan_drop_table(table, options)
         });
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
@@ -165,8 +165,9 @@ impl App {
         let Some(tracker) = self.structure_trackers.get(tab_id) else {
             return;
         };
-        match tracker.begin_save() {
-            Some(pending) => self.run_structure_save(tab_id, pending, sender),
+        match tracker.begin_save().map(|pending| (pending.check(), pending)) {
+            Some((Ok(()), pending)) => self.run_structure_save(tab_id, pending, sender),
+            Some((Err(blocker), _)) => self.refuse_structure_save(tab_id, save_blocker_text(&blocker)),
             // Nothing to save, so a close waiting on this save can go
             // ahead.
             None => sender.input(AppMsg::StructureSaveCompleted {
@@ -217,11 +218,7 @@ impl App {
             return;
         }
         let Some(session) = self.context.active.get() else {
-            self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-            sender.input(AppMsg::StructureSaveFailed(
-                tab_id,
-                crate::i18n::gettext("No active connection."),
-            ));
+            self.refuse_structure_save(tab_id, crate::i18n::gettext("No active connection."));
             return;
         };
         // Only a Structure tab hosts the DDL editor, so a save for any
@@ -240,7 +237,9 @@ impl App {
         let metadata = self.context.active.metadata();
         let work = async move {
             let table = pending.table();
-            let (statements, written) = run_schema_plan(session, table, move |ddl, _| pending.plan(ddl)).await?;
+            let operation = pending.operation();
+            let (statements, written) =
+                run_schema_plan(session, table, operation, move |ddl, _| pending.plan(ddl)).await?;
             // Structure edits change the database too, so the history
             // shows the DDL that did it and not only editor statements.
             let ran = super::ran_statements::RanStatements::starting(history, metadata, statements);
@@ -356,6 +355,13 @@ impl App {
         if self.in_flight_saves.get() > 0 {
             self.in_flight_saves.set(self.in_flight_saves.get() - 1);
         }
+        self.refuse_structure_save(tab_id, message);
+    }
+
+    /// End a save with `message`. A save refused before it ran never
+    /// counted itself in `in_flight_saves`, so only a failed run gives
+    /// one back, in `on_structure_save_failed`.
+    fn refuse_structure_save(&mut self, tab_id: Uuid, message: String) {
         self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
         // Match the Browse-side `SaveFailedForTab` handler: a save
         // that started from the close-with-pending dialog left this
@@ -494,10 +500,12 @@ impl App {
 
 /// Plan a schema change with the dialect of the connection that runs
 /// it, and run the plan as one write. The statements come back whether
-/// or not the write went through, for the history.
+/// or not the write went through, for the history. `operation` is what
+/// a connection with no DDL dialect refuses.
 async fn run_schema_plan<P>(
     session: Arc<Session>,
     table: TableRef,
+    operation: DdlOperation,
     plan: P,
 ) -> Result<(Vec<String>, Result<WriteReport, OperationError>), OperationError>
 where
@@ -509,9 +517,7 @@ where
             let dialect = lease.dialect();
             let planned = match dialect.ddl() {
                 Some(ddl) => plan(ddl, &table).map_err(SqlBuildError::from),
-                None => Err(SqlBuildError::from(BuildDdlError::Unsupported(
-                    DdlOperation::CreateTable,
-                ))),
+                None => Err(SqlBuildError::from(BuildDdlError::Unsupported(operation))),
             };
             async move {
                 let plan = planned?;

@@ -513,6 +513,14 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
         !tab.imp().save_button.is_sensitive(),
         "a default that does not parse can be saved"
     );
+    // What a close prompt's Save reads.
+    let typed = tracker.begin_save().expect("the change is still pending");
+    assert_eq!(
+        typed.check(),
+        Err(crate::services::pending_structure::SaveBlocker::UnparsedDefault(
+            "id".to_owned()
+        ))
+    );
     drop(tab);
     drain_main_context();
     runtime.shutdown();
