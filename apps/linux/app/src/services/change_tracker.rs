@@ -33,27 +33,22 @@ use uuid::Uuid;
 use tablepro_core::{
     ColumnInfo, Value,
     sql_dialect::{
-        build_insert_from_draft, build_keyed_delete, build_keyed_update, build_mongodb_keyed_delete,
+        build_insert_from_draft_touched, build_keyed_delete, build_keyed_update, build_mongodb_keyed_delete,
         build_mongodb_keyed_update, build_optimistic_keyed_update,
     },
 };
 
+#[path = "change_tracker_draft.rs"]
+mod draft;
 #[path = "change_tracker_row_identity.rs"]
 mod row_identity;
+
+pub use draft::DraftRow;
 
 use row_identity::keyvalue_to_value;
 pub use row_identity::{KeyValue, MaterializeError, RowKey, pk_values_are_unreadable};
 
 const UNDO_LIMIT: usize = 50;
-
-/// A draft row collected by the tracker. `values` is the full column
-/// vector (length = `columns.len()` at the time of creation). Empty
-/// cells start as `Value::Null`.
-#[derive(Debug, Clone)]
-pub struct DraftRow {
-    pub draft_id: u64,
-    pub values: Vec<Value>,
-}
 
 /// One pending cell modification. `prev_value` is what the cell held
 /// before the user touched it (used for undo + visual revert).
@@ -219,10 +214,7 @@ impl TabChangeTracker {
     pub fn track_insert(&mut self, default_values: Vec<Value>) -> RowKey {
         let draft_id = self.next_draft_id;
         self.next_draft_id += 1;
-        self.inserts.push(DraftRow {
-            draft_id,
-            values: default_values.clone(),
-        });
+        self.inserts.push(DraftRow::new(draft_id, default_values.clone()));
         let key = RowKey::Draft(draft_id);
         self.push_undo(UndoOp::Insert {
             draft_id,
@@ -278,7 +270,7 @@ impl TabChangeTracker {
             && col < draft.values.len()
         {
             let prev = draft.values[col].clone();
-            draft.values[col] = new.clone();
+            draft.set(col, new.clone(), true);
             self.push_undo(UndoOp::CellEdit {
                 row_key: RowKey::Draft(draft_id),
                 col,
@@ -317,7 +309,7 @@ impl TabChangeTracker {
                     if let Some(draft) = self.inserts.iter_mut().find(|d| d.draft_id == *draft_id)
                         && *col < draft.values.len()
                     {
-                        draft.values[*col] = prev_value.clone();
+                        draft.set(*col, prev_value.clone(), !matches!(prev_value, Value::Null));
                     }
                 } else {
                     self.set_pending_edit(row_key, *col, Some(base), prev_value);
@@ -380,7 +372,7 @@ impl TabChangeTracker {
                     if let Some(draft) = self.inserts.iter_mut().find(|d| d.draft_id == *draft_id)
                         && *col < draft.values.len()
                     {
-                        draft.values[*col] = new_value.clone();
+                        draft.set(*col, new_value.clone(), true);
                     }
                 } else {
                     self.set_pending_edit(row_key, *col, Some(base), new_value);
@@ -388,10 +380,7 @@ impl TabChangeTracker {
                 row_key.clone()
             }
             UndoOp::Insert { draft_id, values } => {
-                self.inserts.push(DraftRow {
-                    draft_id: *draft_id,
-                    values: values.clone(),
-                });
+                self.inserts.push(DraftRow::new(*draft_id, values.clone()));
                 RowKey::Draft(*draft_id)
             }
             UndoOp::Delete {
@@ -527,12 +516,13 @@ impl TabChangeTracker {
         let mut out: Vec<(String, Vec<Value>)> = Vec::new();
         let mut sources: Vec<StatementSource> = Vec::new();
         for draft in &self.inserts {
-            out.push(build_insert_from_draft(
+            out.push(build_insert_from_draft_touched(
                 driver_id,
                 schema,
                 table,
                 columns,
                 &draft.values,
+                &draft.touched,
             )?);
             sources.push(StatementSource::Insert {
                 draft_id: draft.draft_id,

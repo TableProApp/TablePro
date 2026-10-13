@@ -409,3 +409,41 @@ fn undoing_an_edit_back_to_the_original_restores_the_previous_edit_and_redo_clea
     tracker.redo().unwrap();
     assert_eq!(tracker.pending_count(), 1);
 }
+
+#[test]
+fn a_draft_cell_the_user_set_to_null_overrides_the_column_default_but_an_untouched_one_does_not() {
+    let mut defaulted = schema();
+    defaulted[0].is_auto_increment = true;
+    defaulted[1].default_value = Some("'new'::text".into());
+    let mut tracker = TabChangeTracker::new();
+    let RowKey::Draft(untouched) = tracker.track_insert(vec![Value::Null, Value::Null, Value::Null]) else {
+        panic!("a draft key")
+    };
+    let RowKey::Draft(nulled) = tracker.track_insert(vec![Value::Null, Value::Null, Value::Null]) else {
+        panic!("a draft key")
+    };
+    tracker.track_draft_cell_edit(nulled, 1, Value::Text("x".into()));
+    tracker.track_draft_cell_edit(nulled, 1, Value::Null);
+    let _ = untouched;
+
+    let (statements, _) = tracker.materialize("postgres", None, "t", &defaulted).unwrap();
+    let sql: Vec<&str> = statements.iter().map(|(sql, _)| sql.as_str()).collect();
+    assert_eq!(sql[0], r#"INSERT INTO "t" ("label") VALUES ($1)"#);
+    assert_eq!(sql[1], r#"INSERT INTO "t" ("note", "label") VALUES ($1, $2)"#);
+}
+
+#[test]
+fn undoing_back_to_the_untouched_draft_value_lets_the_default_apply_again() {
+    let mut defaulted = schema();
+    defaulted[0].is_auto_increment = true;
+    defaulted[1].default_value = Some("'new'::text".into());
+    let mut tracker = TabChangeTracker::new();
+    let RowKey::Draft(draft) = tracker.track_insert(vec![Value::Null, Value::Null, Value::Null]) else {
+        panic!("a draft key")
+    };
+    tracker.track_draft_cell_edit(draft, 1, Value::Null);
+    tracker.undo().unwrap();
+
+    let (statements, _) = tracker.materialize("postgres", None, "t", &defaulted).unwrap();
+    assert_eq!(statements[0].0, r#"INSERT INTO "t" ("label") VALUES ($1)"#);
+}

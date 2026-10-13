@@ -16,6 +16,8 @@ mod null_binding;
 mod scenario_table;
 #[path = "stale_plan.rs"]
 mod stale_plan;
+#[path = "touched_insert.rs"]
+mod touched_insert;
 #[path = "type_change_default.rs"]
 mod type_change_default;
 #[path = "type_change_statement_cache.rs"]

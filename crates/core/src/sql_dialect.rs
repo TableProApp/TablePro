@@ -7,12 +7,14 @@ use crate::{ColumnInfo, Value};
 mod postgres_enum_tests;
 
 mod error;
+mod inserts;
 mod pg_native_text;
 #[path = "sql_dialect/updates.rs"]
 mod updates;
 pub(crate) use pg_native_text::{postgres_native_text_cast_type, text_cast_placeholder};
 
 pub use error::BuildSqlError;
+pub use inserts::{build_insert_from_draft, build_insert_from_draft_touched};
 pub use updates::{
     build_keyed_update, build_keyed_value_select, build_mongodb_keyed_delete, build_mongodb_keyed_update,
     build_optimistic_keyed_update,
@@ -250,65 +252,6 @@ pub fn build_full_row_update(
         &quote_ident(driver_id, table),
         &set_clauses.join(", "),
         &where_clause,
-    );
-    Ok((sql, params))
-}
-
-/// Build an INSERT for a draft row collected by the inline-edit
-/// changeset. Skips auto-increment columns and generated columns
-/// entirely (the database supplies their values). For nullable
-/// columns whose `Value` is `Null` AND have a `default_value`,
-/// also skip the column so the server applies its default rather
-/// than receiving an explicit NULL.
-pub fn build_insert_from_draft(
-    driver_id: &str,
-    schema: Option<&str>,
-    table: &str,
-    columns: &[ColumnInfo],
-    values: &[Value],
-) -> Result<(String, Vec<Value>), BuildSqlError> {
-    if columns.len() != values.len() {
-        return Err(BuildSqlError::LengthMismatch {
-            expected: columns.len(),
-            got: values.len(),
-        });
-    }
-    let mut col_idents: Vec<String> = Vec::new();
-    let mut placeholders: Vec<String> = Vec::new();
-    let mut params: Vec<Value> = Vec::new();
-    for (i, col) in columns.iter().enumerate() {
-        if col.is_auto_increment || col.is_generated {
-            continue;
-        }
-        let value_is_null = matches!(values[i], Value::Null);
-        if value_is_null && col.default_value.is_some() {
-            // Let the server apply its default rather than overriding
-            // it with an explicit NULL — matters when the default is
-            // CURRENT_TIMESTAMP, gen_random_uuid(), etc.
-            continue;
-        }
-        col_idents.push(quote_ident(driver_id, &col.name));
-        let placeholder = placeholder_for(driver_id, params.len());
-        let value_sql = if driver_id == "postgres" {
-            text_cast_placeholder(col, &values[i], placeholder)
-        } else {
-            placeholder
-        };
-        placeholders.push(value_sql);
-        params.push(values[i].clone());
-    }
-    if col_idents.is_empty() {
-        return Err(BuildSqlError::NothingToUpdate);
-    }
-    let qualified = match schema {
-        Some(s) => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, table)),
-        None => quote_ident(driver_id, table),
-    };
-    let sql = format!(
-        "INSERT INTO {} ({}) VALUES ({})",
-        qualified,
-        col_idents.join(", "),
-        placeholders.join(", ")
     );
     Ok((sql, params))
 }
