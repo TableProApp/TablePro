@@ -295,8 +295,9 @@ impl EditorSession for SqliteEditorSession {
         if let Some(flag) = shared.current.lock().unwrap_or_else(PoisonError::into_inner).take() {
             flag.raise();
         }
-        // A statement that will not stop keeps the connection until its
-        // run gives it up at the end of the cancel grace.
+        // The run holds the connection until its statement ends and the
+        // transaction state is read. When that outlasts this wait, the
+        // connection closes once the session and its run are both gone.
         let Ok(mut held) = tokio::time::timeout(shared.cancel_grace, shared.connection.lock()).await else {
             return;
         };

@@ -44,5 +44,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV export did not neutralise formulas in values of a type TablePro does not recognise.
 - Format could put a space inside `+=`, `b'01'` or `@@version`, or between a MySQL function such as `GROUP_CONCAT` and its parenthesis, and change what the statement does.
 - Opening a pipe or a device as a SQL file never finished, or read past the 8 MB limit.
-- Importing a CSV or a connections file from a pipe or a device never finished, or read past the size limit.
+- Importing a CSV or a connections file from a pipe or a device never finished, a CSV could read past its size limit, and a connections file had none.
 - SQL run in the editor, a typed filter or a column default, and the values in them, reached the journal at debug level.

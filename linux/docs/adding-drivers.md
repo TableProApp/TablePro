@@ -291,7 +291,7 @@ A run streams `ResultEvent`s into a `ResultSink`:
 - `CommandCompleted { rows_affected }` reports a statement that returned no rows; `None` is "not reported", not zero.
 - `Notice` passes on a server notice or warning.
 
-`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, SQL Server and ClickHouse then stop the statement on the server, and SQLite stops stepping it. MySQL sends no `KILL`: sqlx reads the rest of the result off the wire before the next statement. `stream_read` uses the same sink and events, without a row limit.
+`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, and SQLite stops stepping it. `stream_read` uses the same sink and events, without a row limit.
 
 ## The row-limit rule
 

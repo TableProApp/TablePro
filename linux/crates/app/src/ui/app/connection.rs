@@ -1072,8 +1072,6 @@ impl App {
     }
 }
 
-/// The filter both file dialogs open with. Built fresh each time
-/// because a GtkFileFilter belongs to the dialog it is given to.
 /// An export holds names, hosts and options, never secrets, so even
 /// thousands of connections come to well under this.
 const MAX_CONNECTIONS_FILE_BYTES: usize = 8 * 1024 * 1024;
@@ -1092,6 +1090,8 @@ async fn read_connections_file(file: &gio::File) -> Result<Vec<u8>, String> {
         })
 }
 
+/// The filter both file dialogs open with. Built fresh each time
+/// because a GtkFileFilter belongs to the dialog it is given to.
 fn json_filter() -> gtk::FileFilter {
     let filter = gtk::FileFilter::new();
     filter.set_name(Some(&crate::i18n::gettext("JSON files")));
