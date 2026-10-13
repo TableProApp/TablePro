@@ -36,165 +36,38 @@ impl App {
     }
 
     fn build_workspace_root(&mut self, sender: ComponentSender<Self>) {
-        let tab_view = adw::TabView::new();
-        let tab_bar = adw::TabBar::builder()
-            .view(&tab_view)
-            .autohide(false)
-            .expand_tabs(true)
-            .build();
-
-        let overview_button = adw::TabButton::builder()
-            .view(&tab_view)
-            .action_name("overview.open")
-            .tooltip_text(crate::i18n::gettext("View open tabs"))
-            .valign(gtk::Align::Center)
-            .build();
-        // Hide the overview button until there are at least 2 tabs —
-        // its grid is meaningless when there's only one page open.
-        // Bound via property-binding so it tracks `n-pages` live.
-        overview_button.set_visible(tab_view.n_pages() > 1);
-        let overview_button_for_pages = overview_button.clone();
-        tab_view.connect_n_pages_notify(move |view| {
-            overview_button_for_pages.set_visible(view.n_pages() > 1);
-        });
-        tab_bar.set_start_action_widget(Some(&overview_button));
-
-        // "+" button in the tab bar opens a new editor (query) tab —
-        // this is the only way to create an editor tab from the UI.
-        // Browse tabs come from sidebar clicks.
-        let new_query_button = gtk::Button::builder()
-            .icon_name(crate::ui::icons::TAB_NEW)
-            .tooltip_text(crate::i18n::gettext("New query (Ctrl+E)"))
-            .valign(gtk::Align::Center)
-            .build();
-        new_query_button.add_css_class("flat");
-        let new_tab_sender = sender.clone();
-        new_query_button.connect_clicked(move |_| new_tab_sender.input(AppMsg::NewEditorTab));
-        tab_bar.set_end_action_widget(Some(&new_query_button));
-
-        // 2-step close: TabView signals close → App message → close_finish.
-        let close_sender = sender.clone();
-        tab_view.connect_close_page(move |_view, page| {
-            if let Some(id) = read_workspace_tab_id(page) {
-                close_sender.input(AppMsg::WorkspaceTabClosed(id));
-            }
-            glib::Propagation::Stop
-        });
-
-        // Right-click tab → context menu. AdwTabView reads a menu model
-        // and fires `connect_setup_menu` with the target page just
-        // before the popover opens; we stash that page in a shared
-        // Cell so the action callbacks know which tab the user
-        // right-clicked. Setting `menu-model` on AdwTabView is the
-        // documented way to extend the per-tab popover.
-        let menu_target: Rc<RefCell<Option<adw::TabPage>>> = Rc::new(RefCell::new(None));
-        let menu_target_setup = menu_target.clone();
-        tab_view.connect_setup_menu(move |_view, page| {
-            *menu_target_setup.borrow_mut() = page.cloned();
-        });
-        let action_group = gio::SimpleActionGroup::new();
-        let close_others_action = gio::SimpleAction::new("close-others", None);
-        let menu_target_others = menu_target.clone();
-        let sender_close_others = sender.clone();
-        close_others_action.connect_activate(move |_, _| {
-            let target = menu_target_others.borrow().clone();
-            if let Some(page) = target
-                && let Some(id) = read_workspace_tab_id(&page)
-            {
-                sender_close_others.input(AppMsg::CloseOtherWorkspaceTabs(id));
-            }
-        });
-        action_group.add_action(&close_others_action);
-        let close_right_action = gio::SimpleAction::new("close-right", None);
-        let menu_target_right = menu_target;
-        let sender_close_right = sender.clone();
-        close_right_action.connect_activate(move |_, _| {
-            let target = menu_target_right.borrow().clone();
-            if let Some(page) = target
-                && let Some(id) = read_workspace_tab_id(&page)
-            {
-                sender_close_right.input(AppMsg::CloseWorkspaceTabsToRight(id));
-            }
-        });
-        action_group.add_action(&close_right_action);
-        tab_view.insert_action_group("tab", Some(&action_group));
-
-        let bulk_menu = gio::Menu::new();
-        bulk_menu.append(
-            Some(&crate::i18n::gettext("Close Other Tabs")),
-            Some("tab.close-others"),
-        );
-        bulk_menu.append(
-            Some(&crate::i18n::gettext("Close Tabs to the Right")),
-            Some("tab.close-right"),
-        );
-        tab_view.set_menu_model(Some(&bulk_menu));
-
-        // Both selection-change AND any pages-list change (insert /
-        // remove / drag-reorder) trigger persist + title-refresh.
-        // Without connect_pages_notify, drag-reorder doesn't persist
-        // until the next other event.
-        let pages_sender = sender.clone();
-        tab_view.connect_selected_page_notify(move |_| {
-            pages_sender.input(AppMsg::WorkspaceTabsChanged);
-        });
-        let reorder_sender = sender.clone();
-        tab_view.connect_pages_notify(move |_| {
-            reorder_sender.input(AppMsg::WorkspaceTabsChanged);
-        });
-
-        let inner = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-        inner.append(&tab_bar);
-        inner.append(&tab_view);
-
-        let tab_overview = adw::TabOverview::builder()
-            .view(&tab_view)
-            .enable_new_tab(true) // overview "+" → editor tab
-            .enable_search(true)
-            .child(&inner)
-            .build();
-        // Overview "+" button must return a real TabPage synchronously —
-        // we build an SqlEditor inline, register the slot, and return
-        // the page. Browse tabs aren't creatable from the overview
-        // (they need a sidebar table target).
-        // Overview "+" must return a real TabPage synchronously. We
-        // construct an editor slot inline using the same label scheme
-        // as `append_editor_tab` ("Query 1", "Query 2", …) so the two
-        // entry points are visually indistinguishable.
-        let workspace_tabs_for_create = self.workspace_tabs.clone();
-        let tab_view_for_create = tab_view.clone();
-        let schema_buffer_for_create = self.schema_buffer.clone();
-        let settings_for_create = self.settings.clone();
-        let history_for_create = self.history.store();
-        let tasks_for_create = self.tasks.clone();
-        let session_for_create = self.context.active.clone();
-        let hold_for_create = self.context.hold.clone();
-        let close_timeout_for_create = self.context.close_timeout();
-        let sender_for_create = sender.clone();
-        let toasts_for_create = self.toast_overlay.clone();
-        tab_overview.connect_create_tab(move |_| {
+        let workspace_tabs = self.workspace_tabs.clone();
+        let schema_buffer = self.schema_buffer.clone();
+        let settings = self.settings.clone();
+        let history = self.history.store();
+        let tasks = self.tasks.clone();
+        let session = self.context.active.clone();
+        let hold = self.context.hold.clone();
+        let close_timeout = self.context.close_timeout();
+        let input = sender.input_sender().clone();
+        let toasts = self.toast_overlay.downgrade();
+        // Numbered like the tabs `append_editor_tab` makes, so the two
+        // ways of opening one look the same.
+        let create_tab = move |tab_view: &adw::TabView| {
             let tab_id = Uuid::new_v4();
             let editor = SqlEditor::new(SqlEditorInit {
-                schema_buffer: schema_buffer_for_create.clone(),
+                schema_buffer: schema_buffer.clone(),
                 initial_query: None,
-                settings: settings_for_create.clone(),
-                history: history_for_create.clone(),
-                tasks: tasks_for_create.clone(),
-                session: session_for_create.clone(),
-                hold: hold_for_create.clone(),
-                close_timeout: close_timeout_for_create,
+                settings: settings.clone(),
+                history: history.clone(),
+                tasks: tasks.clone(),
+                session: session.clone(),
+                hold: hold.clone(),
+                close_timeout,
             });
-            connect_editor(&editor, tab_id, &sender_for_create, &toasts_for_create);
-            let page = tab_view_for_create.append(&editor);
-            let editor_count = workspace_tabs_for_create
+            connect_editor(&editor, tab_id, &input, &toasts);
+            let page = tab_view.append(&editor);
+            let editor_count = workspace_tabs
                 .borrow()
                 .values()
                 .filter(|t| matches!(t, WorkspaceTab::Editor(_)))
                 .count();
-            let label = default_editor_tab_label(editor_count + 1);
-            page.set_title(&label);
-            // Empty query → no tooltip; tooltip will be set on first edit
-            // via on_editor_tab_query_changed.
+            page.set_title(&default_editor_tab_label(editor_count + 1));
             write_workspace_tab_id(&page, tab_id);
             let slot = EditorTabSlot {
                 editor,
@@ -202,23 +75,13 @@ impl App {
                 draft: tablepro_storage::DraftId::new(),
                 query: String::new(),
             };
-            {
-                let mut tabs = workspace_tabs_for_create.borrow_mut();
-                tabs.insert(tab_id, WorkspaceTab::Editor(slot));
-            }
-            sender_for_create.input(AppMsg::WorkspaceTabsChanged);
+            workspace_tabs.borrow_mut().insert(tab_id, WorkspaceTab::Editor(slot));
+            input.emit(AppMsg::WorkspaceTabsChanged);
             page
-        });
-
-        // Ctrl+T is bound globally (alongside Ctrl+E) in
-        // `install_window_shortcuts` so it fires even when this
-        // tab-area widget tree isn't focused (e.g. the empty-state
-        // status page). Keeping a local controller here would just
-        // duplicate the binding.
-        let _ = sender;
-
-        self.workspace_root = Some(tab_overview);
-        self.workspace_tab_view = Some(tab_view);
+        };
+        let chrome = build_workspace_chrome(sender.input_sender(), create_tab);
+        self.workspace_root = Some(chrome.overview);
+        self.workspace_tab_view = Some(chrome.view);
     }
 
     /// Read the saved tabs for the just-connected database, plus the
@@ -584,7 +447,7 @@ impl App {
             hold: self.context.hold.clone(),
             close_timeout: self.context.close_timeout(),
         });
-        connect_editor(&editor, tab_id, &sender, &self.toast_overlay);
+        connect_editor(&editor, tab_id, sender.input_sender(), &self.toast_overlay.downgrade());
         let page = tab_view.append(&editor);
         let label = match query.trim().is_empty() {
             true => default_editor_tab_label(self.editor_tab_count() + 1),
@@ -1288,6 +1151,140 @@ impl App {
     }
 }
 
+/// What a connected window's tabs live in: the overview, and the view
+/// inside it that holds the pages.
+struct WorkspaceChrome {
+    overview: adw::TabOverview,
+    view: adw::TabView,
+}
+
+/// Build the tab bar, view and overview. `create_tab` makes the page the
+/// overview's own new-tab button asks for, which it needs back at once.
+fn build_workspace_chrome(
+    input: &relm4::Sender<AppMsg>,
+    create_tab: impl Fn(&adw::TabView) -> adw::TabPage + 'static,
+) -> WorkspaceChrome {
+    let tab_view = adw::TabView::new();
+    let tab_bar = adw::TabBar::builder()
+        .view(&tab_view)
+        .autohide(false)
+        .expand_tabs(true)
+        .build();
+
+    let overview_button = adw::TabButton::builder()
+        .view(&tab_view)
+        .action_name("overview.open")
+        .tooltip_text(crate::i18n::gettext("View open tabs"))
+        .valign(gtk::Align::Center)
+        .build();
+    // With one page the overview has nothing to choose between. A
+    // binding, unlike a notify handler, holds the button weakly, and the
+    // button holds the view.
+    tab_view
+        .bind_property("n-pages", &overview_button, "visible")
+        .transform_to(|_, pages: i32| Some(pages > 1))
+        .sync_create()
+        .build();
+    tab_bar.set_start_action_widget(Some(&overview_button));
+
+    // Browse tabs need a table to show, so they open from the sidebar,
+    // and this button only makes editor tabs.
+    let new_query_button = gtk::Button::builder()
+        .icon_name(crate::ui::icons::TAB_NEW)
+        .tooltip_text(crate::i18n::gettext("New query (Ctrl+E)"))
+        .valign(gtk::Align::Center)
+        .build();
+    new_query_button.add_css_class("flat");
+    let new_tab_input = input.clone();
+    new_query_button.connect_clicked(move |_| new_tab_input.emit(AppMsg::NewEditorTab));
+    tab_bar.set_end_action_widget(Some(&new_query_button));
+
+    // A tab with unsaved work asks first, so the App finishes the close.
+    let close_input = input.clone();
+    tab_view.connect_close_page(move |_view, page| {
+        if let Some(id) = read_workspace_tab_id(page) {
+            close_input.emit(AppMsg::WorkspaceTabClosed(id));
+        }
+        glib::Propagation::Stop
+    });
+
+    // The view names the right-clicked page only while its menu is
+    // open, so the actions read it from here.
+    let menu_target: Rc<RefCell<Option<adw::TabPage>>> = Rc::new(RefCell::new(None));
+    let menu_target_setup = menu_target.clone();
+    tab_view.connect_setup_menu(move |_view, page| {
+        *menu_target_setup.borrow_mut() = page.cloned();
+    });
+    let action_group = gio::SimpleActionGroup::new();
+    let close_others_action = gio::SimpleAction::new("close-others", None);
+    let menu_target_others = menu_target.clone();
+    let close_others_input = input.clone();
+    close_others_action.connect_activate(move |_, _| {
+        let target = menu_target_others.borrow().clone();
+        if let Some(page) = target
+            && let Some(id) = read_workspace_tab_id(&page)
+        {
+            close_others_input.emit(AppMsg::CloseOtherWorkspaceTabs(id));
+        }
+    });
+    action_group.add_action(&close_others_action);
+    let close_right_action = gio::SimpleAction::new("close-right", None);
+    let menu_target_right = menu_target;
+    let close_right_input = input.clone();
+    close_right_action.connect_activate(move |_, _| {
+        let target = menu_target_right.borrow().clone();
+        if let Some(page) = target
+            && let Some(id) = read_workspace_tab_id(&page)
+        {
+            close_right_input.emit(AppMsg::CloseWorkspaceTabsToRight(id));
+        }
+    });
+    action_group.add_action(&close_right_action);
+    tab_view.insert_action_group("tab", Some(&action_group));
+
+    let bulk_menu = gio::Menu::new();
+    bulk_menu.append(
+        Some(&crate::i18n::gettext("Close Other Tabs")),
+        Some("tab.close-others"),
+    );
+    bulk_menu.append(
+        Some(&crate::i18n::gettext("Close Tabs to the Right")),
+        Some("tab.close-right"),
+    );
+    tab_view.set_menu_model(Some(&bulk_menu));
+
+    // A drag reorder changes only `pages`, and it has to persist too.
+    let selected_input = input.clone();
+    tab_view.connect_selected_page_notify(move |_| selected_input.emit(AppMsg::WorkspaceTabsChanged));
+    let pages_input = input.clone();
+    tab_view.connect_pages_notify(move |_| pages_input.emit(AppMsg::WorkspaceTabsChanged));
+
+    let inner = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    inner.append(&tab_bar);
+    inner.append(&tab_view);
+
+    let overview = adw::TabOverview::builder()
+        .view(&tab_view)
+        .enable_new_tab(true)
+        .enable_search(true)
+        .child(&inner)
+        .build();
+    // `connect_create_tab` has to return a page, and an overview with no
+    // view has none to make.
+    overview.connect_closure(
+        "create-tab",
+        false,
+        glib::closure_local!(move |overview: &adw::TabOverview| -> Option<adw::TabPage> {
+            overview.view().map(|view| create_tab(&view))
+        }),
+    );
+
+    WorkspaceChrome {
+        overview,
+        view: tab_view,
+    }
+}
+
 pub(super) fn qualified_browse_tab_label(schemas_count: usize, schema: Option<&str>, table: &str) -> String {
     if schemas_count >= 2
         && let Some(s) = schema
@@ -1417,27 +1414,37 @@ fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
 
 /// Forward an editor tab's signals into the window. The toast overlay
 /// is the window's, so a replaced query's Undo button lives there.
-fn connect_editor(editor: &SqlEditor, tab_id: Uuid, sender: &ComponentSender<App>, toasts: &adw::ToastOverlay) {
-    let input = sender.input_sender().clone();
+fn connect_editor(
+    editor: &SqlEditor,
+    tab_id: Uuid,
+    input: &relm4::Sender<AppMsg>,
+    toasts: &glib::WeakRef<adw::ToastOverlay>,
+) {
+    let run_state = input.clone();
     editor.connect_run_state_changed(move |_, running| {
-        input.emit(AppMsg::EditorTabRunStateChanged(tab_id, running));
+        run_state.emit(AppMsg::EditorTabRunStateChanged(tab_id, running));
     });
-    let input = sender.input_sender().clone();
-    editor.connect_query_changed(move |_, text| input.emit(AppMsg::EditorTabQueryChanged(tab_id, text)));
-    let input = sender.input_sender().clone();
-    editor.connect_copy_to_clipboard(move |_, text| input.emit(AppMsg::CopyToClipboard(text)));
-    let input = sender.input_sender().clone();
-    editor.connect_toast(move |_, text| input.emit(AppMsg::ShowToast(text)));
-    let input = sender.input_sender().clone();
+    let query = input.clone();
+    editor.connect_query_changed(move |_, text| query.emit(AppMsg::EditorTabQueryChanged(tab_id, text)));
+    let clipboard = input.clone();
+    editor.connect_copy_to_clipboard(move |_, text| clipboard.emit(AppMsg::CopyToClipboard(text)));
+    let toast = input.clone();
+    editor.connect_toast(move |_, text| toast.emit(AppMsg::ShowToast(text)));
+    let export = input.clone();
     editor.connect_export_results(move |_, result, name| {
-        input.emit(AppMsg::ExportResults {
+        export.emit(AppMsg::ExportResults {
             result,
             name,
             target: None,
         });
     });
+    // The overlay is an ancestor of the editor, so a strong capture
+    // would keep both alive once the window lets go of them.
     let toasts = toasts.clone();
     editor.connect_undoable_toast(move |editor, title| {
+        let Some(toasts) = toasts.upgrade() else {
+            return;
+        };
         let toast = adw::Toast::new(&title);
         toast.set_button_label(Some(&crate::i18n::gettext("Undo")));
         let editor = editor.downgrade();
@@ -1448,4 +1455,86 @@ fn connect_editor(editor: &SqlEditor, tab_id: Uuid, sender: &ComponentSender<App
         });
         toasts.add_toast(toast);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{drain_main_context, find_by_action_name};
+
+    fn blank_page(view: &adw::TabView) -> adw::TabPage {
+        view.append(&gtk::Label::new(None))
+    }
+
+    #[gtk4::test]
+    fn tab_view_freed_after_teardown() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let (input, _receiver) = relm4::channel::<AppMsg>();
+        let chrome = build_workspace_chrome(&input, blank_page);
+        let stack = gtk::Stack::new();
+        stack.add_named(&chrome.overview, Some("tabs"));
+        blank_page(&chrome.view);
+        let created = chrome.overview.emit_by_name::<Option<adw::TabPage>>("create-tab", &[]);
+        assert!(created.is_some(), "the overview's new-tab button made no page");
+        drop(created);
+        assert_eq!(chrome.view.n_pages(), 2);
+        let view = chrome.view.downgrade();
+        let overview = chrome.overview.downgrade();
+
+        stack.remove(&chrome.overview);
+        drop(chrome);
+        drain_main_context();
+
+        assert!(view.upgrade().is_none(), "the tab view outlived its teardown");
+        assert!(overview.upgrade().is_none(), "the overview outlived its teardown");
+    }
+
+    #[gtk4::test]
+    fn overview_button_shows_from_the_second_tab() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let (input, _receiver) = relm4::channel::<AppMsg>();
+        let chrome = build_workspace_chrome(&input, blank_page);
+        let button = find_by_action_name(&chrome.overview, "overview.open").expect("the overview button");
+        assert!(!button.is_visible(), "shown with no tabs");
+
+        let first = blank_page(&chrome.view);
+        assert!(!button.is_visible(), "shown with one tab");
+        blank_page(&chrome.view);
+        assert!(button.is_visible(), "hidden with two tabs");
+
+        chrome.view.close_page(&first);
+        chrome.view.close_page_finish(&first, true);
+        assert!(!button.is_visible(), "still shown after closing back to one tab");
+    }
+
+    #[gtk4::test]
+    fn an_editor_tab_leaves_the_toast_overlay_free() {
+        crate::register_test_resources();
+        let runtime = crate::test_support::test_runtime();
+        let settings = crate::test_support::MemorySettings::new();
+        let editor = SqlEditor::new(SqlEditorInit {
+            schema_buffer: crate::ui::editor::build_schema_buffer(),
+            initial_query: None,
+            settings: settings.get().clone(),
+            history: None,
+            tasks: runtime.tasks(),
+            session: crate::services::active_session::ActiveSession::new(),
+            hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
+            close_timeout: std::time::Duration::from_secs(5),
+        });
+        let toasts = adw::ToastOverlay::new();
+        toasts.set_child(Some(&editor));
+        let (input, _receiver) = relm4::channel::<AppMsg>();
+        connect_editor(&editor, Uuid::new_v4(), &input, &toasts.downgrade());
+        let overlay = toasts.downgrade();
+
+        drop(editor);
+        drop(toasts);
+        drain_main_context();
+
+        assert!(
+            overlay.upgrade().is_none(),
+            "an editor tab kept the window's toast overlay alive"
+        );
+    }
 }
