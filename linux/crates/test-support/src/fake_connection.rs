@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -28,6 +28,7 @@ pub struct FakeConnection {
     dialect: Arc<dyn SqlDialect>,
     read_only: bool,
     close_behaviour: CloseBehaviour,
+    close_started: AtomicBool,
     link: LinkWatch,
     closed: CancellationToken,
     counters: CallCounters,
@@ -40,6 +41,7 @@ impl FakeConnection {
             dialect: script.dialect.clone(),
             read_only: script.read_only,
             close_behaviour: script.close,
+            close_started: AtomicBool::new(false),
             script: Mutex::new(script),
             link: LinkWatch::new(),
             closed: CancellationToken::new(),
@@ -375,7 +377,7 @@ impl Connection for FakeConnection {
 
     async fn close(&self) -> Result<(), DriverError> {
         CallCounters::record(&self.counters.close);
-        let first = !self.closed.is_cancelled();
+        let first = !self.close_started.swap(true, Ordering::SeqCst);
         self.closed.cancel();
         if first {
             self.close_behaviour.run().await;
@@ -399,6 +401,7 @@ fn apply_limit(mut result: QueryResult, limit: RowLimit) -> QueryResult {
 mod tests {
     use std::time::Duration;
 
+    use futures::future::BoxFuture;
     use tablepro_core::LossPhase;
     use tablepro_core::meta::ObjectKind;
     use tablepro_core::statement::{Statement, StatementBuilder};
@@ -406,6 +409,7 @@ mod tests {
     use tokio::time::Instant;
 
     use super::*;
+    use crate::close_race::{ROUNDS, pending_closes};
 
     fn select(sql: &str) -> Statement {
         let mut builder = StatementBuilder::new();
@@ -473,6 +477,26 @@ mod tests {
         let again = Instant::now();
         delayed.close().await.unwrap();
         assert_eq!(again.elapsed(), Duration::ZERO, "a second close waited again");
+    }
+
+    fn close_connection(connection: &FakeConnection) -> BoxFuture<'_, ()> {
+        Box::pin(async move { drop(connection.close().await) })
+    }
+
+    #[test]
+    fn concurrent_closes_run_the_close_behaviour_once() {
+        let pending = pending_closes(
+            ROUNDS,
+            || {
+                FakeConnection::new(ConnectionScript {
+                    close: CloseBehaviour::Hang,
+                    ..ConnectionScript::default()
+                })
+            },
+            close_connection,
+        );
+
+        assert!(pending.iter().all(|&hung| hung == 1), "{pending:?}");
     }
 
     #[tokio::test(start_paused = true)]
