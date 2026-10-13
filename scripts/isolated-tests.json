@@ -295,6 +295,7 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::local_sort::tests::local_text_sort_follows_the_locale_collation_not_byte_order"
       "ui::grid::local_filter::tests::sorting_a_truncated_result_without_a_filter_warns_that_only_loaded_rows_were_sorted"
     ],
     [

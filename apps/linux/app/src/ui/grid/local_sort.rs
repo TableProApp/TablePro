@@ -15,8 +15,23 @@ pub(super) fn sorted_source_indices(result: &QueryResult, column: usize, ascendi
     }) {
         return None;
     }
+    let text_keys = values
+        .iter()
+        .map(|value| match value {
+            Value::Text(text) => Some(glib::CollationKey::from(text)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let mut indices = (0..result.rows.len()).collect::<Vec<_>>();
-    indices.sort_by(|left, right| compare_values(values[*left], values[*right], ascending));
+    indices.sort_by(|left, right| match (&text_keys[*left], &text_keys[*right]) {
+        (Some(left_key), Some(right_key)) => {
+            let order = left_key
+                .cmp(right_key)
+                .then_with(|| compare_values(values[*left], values[*right], true));
+            if ascending { order } else { order.reverse() }
+        }
+        _ => compare_values(values[*left], values[*right], ascending),
+    });
     Some(indices)
 }
 
@@ -150,5 +165,24 @@ mod tests {
 
         assert_eq!(sorted_source_indices(&mixed, 0, true), None);
         assert_eq!(sorted_source_indices(&undecodable, 0, true), None);
+    }
+
+    #[test]
+    #[ignore = "requires isolated GTK display"]
+    fn local_text_sort_follows_the_locale_collation_not_byte_order() {
+        let set = unsafe { libc::setlocale(libc::LC_ALL, c"en_US.UTF-8".as_ptr()) };
+        if set.is_null() {
+            eprintln!("en_US.UTF-8 is not installed; skipping");
+            return;
+        }
+        let result = result(vec![
+            Value::Text("Zebra".into()),
+            Value::Text("éclair".into()),
+            Value::Text("apple".into()),
+        ]);
+        let order = sorted_source_indices(&result, 0, true).unwrap();
+        assert_eq!(order, vec![2, 1, 0], "apple, éclair, Zebra");
+        let descending = sorted_source_indices(&result, 0, false).unwrap();
+        assert_eq!(descending, vec![0, 1, 2]);
     }
 }
