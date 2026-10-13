@@ -13,8 +13,9 @@ pub(crate) use catalog_cells::CatalogCells;
 pub(crate) use mysql_column_row::{MySqlColumnRow, columns_sql};
 pub(crate) use mysql_extra::{ExtraGenerated, MySqlExtra};
 pub(crate) use table_definition::{
-    COLUMN_ENGINE_ATTRIBUTES_SQL, INBOUND_FOREIGN_KEYS_SQL, MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL,
-    column_checks, geometry_srids, inbound_foreign_keys,
+    COLUMN_ENGINE_ATTRIBUTES_SQL, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL, ListedSrid, MARIADB_COLUMN_CHECKS_SQL,
+    MARIADB_GEOMETRY_SRIDS_SQL, column_checks, geometry_srids, inbound_foreign_keys, place_column_checks,
+    printed_names,
 };
 
 use sqlx::mysql::{MySql, MySqlColumn};

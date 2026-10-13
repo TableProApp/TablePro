@@ -17,9 +17,9 @@ use tablepro_core::meta::{
 use tablepro_core::{DriverError, ForeignKeyInfo};
 
 use crate::catalog::{
-    COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, INBOUND_FOREIGN_KEYS_SQL, MARIADB_COLUMN_CHECKS_SQL,
-    MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, column_checks, column_definition, column_info, columns_sql,
-    geometry_srids, inbound_foreign_keys,
+    COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL, ListedSrid,
+    MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, column_checks, column_definition,
+    column_info, columns_sql, geometry_srids, inbound_foreign_keys, place_column_checks,
 };
 use crate::decode::decode_row;
 use crate::dialect::MySqlDialect;
@@ -320,7 +320,8 @@ pub(crate) async fn fetch_table_definition(
     let flavour = dialect.flavour();
     let mut rows = column_rows(connection, flavour, table).await?;
     let engine = table_engine::lookup(connection, flavour, table).await?;
-    let attributes = engine_attributes(connection, dialect, table).await;
+    let mut attributes = engine_attributes(connection, dialect, table).await;
+    let create_statement = show_create(connection, dialect, table).await?;
     let checks = match flavour {
         MySqlFlavour::MariaDb => {
             let binds = table_binds(table);
@@ -333,8 +334,13 @@ pub(crate) async fn fetch_table_definition(
             )
             .await?;
             for (column, srid) in geometry_srids(&geometry)? {
-                if let Some(row) = rows.iter_mut().find(|row| row.name == column) {
-                    row.srs_id = Some(srid);
+                match srid {
+                    ListedSrid::Exact(srid) => {
+                        if let Some(row) = rows.iter_mut().find(|row| row.name == column) {
+                            row.srs_id = Some(srid);
+                        }
+                    }
+                    ListedSrid::Saturated => attributes.push((column, "REF_SYSTEM_ID".to_owned())),
                 }
             }
             let checks = catalog_rows(
@@ -345,13 +351,15 @@ pub(crate) async fn fetch_table_definition(
                 &binds,
             )
             .await?;
-            column_checks(&checks)?
+            let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
+            place_column_checks(&create_statement, &names, column_checks(&checks)?)
         }
         MySqlFlavour::MySql => Vec::new(),
     };
     let columns = rows
         .iter()
-        .map(|row| {
+        .enumerate()
+        .map(|(index, row)| {
             let mut unmodeled: Vec<UnmodeledAttribute> = attributes
                 .iter()
                 .filter(|(column, _)| *column == row.name)
@@ -360,11 +368,14 @@ pub(crate) async fn fetch_table_definition(
             if engine.is_ndb() {
                 unmodeled.push(UnmodeledAttribute::new("ENGINE=ndbcluster"));
             }
+            let check = checks.get(index);
+            if check == Some(&ColumnCheck::Unplaced) {
+                unmodeled.push(UnmodeledAttribute::new("CHECK"));
+            }
             let mut definition = column_definition(row, flavour, unmodeled);
-            definition.attributes.check = checks
-                .iter()
-                .find(|(column, _)| *column == row.name)
-                .map(|(_, clause)| SqlExpression::from_catalog_text(clause.as_str()));
+            if let Some(ColumnCheck::Clause(clause)) = check {
+                definition.attributes.check = Some(SqlExpression::from_catalog_text(clause.as_str()));
+            }
             definition
         })
         .collect();
@@ -386,7 +397,6 @@ pub(crate) async fn fetch_table_definition(
     )
     .await?;
     let inbound_foreign_keys: Vec<InboundForeignKey> = inbound_foreign_keys(&inbound)?;
-    let create_statement = show_create(connection, dialect, table).await?;
     Ok(TableDefinition {
         table: table.clone(),
         columns,
