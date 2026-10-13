@@ -52,8 +52,6 @@ impl CredentialPromptPresenter {
     }
 }
 
-/// The response the dialog closes with, or `None` as soon as nobody
-/// waits for the answer.
 async fn response_while_wanted(
     dialog: &adw::AlertDialog,
     parent: &gtk4::Widget,

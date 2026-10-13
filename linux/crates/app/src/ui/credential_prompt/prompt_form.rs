@@ -89,8 +89,6 @@ impl PromptForm {
         Self { dialog, rows, remember }
     }
 
-    /// Close the dialog with nothing left typed in it, for a prompt
-    /// nobody waits on any more.
     pub fn abandon(&self) {
         for row in &self.rows {
             drop(row.take());
