@@ -48,6 +48,7 @@ pub(crate) struct MysqlEndpoint {
     transport: Arc<dyn Transport>,
     options: MySqlConnectOptions,
     tls_server_name: String,
+    verifies_name: bool,
     liveness: LivenessPolicy,
 }
 
@@ -102,6 +103,7 @@ impl MysqlEndpoint {
             transport: target.transport.clone(),
             options,
             tls_server_name: target.tls_server_name().to_owned(),
+            verifies_name: target.tls.mode == TlsMode::VerifyFull,
             liveness,
         })
     }
@@ -117,15 +119,26 @@ impl MysqlEndpoint {
     /// The options for one login over the transport's route. Over a
     /// socket the `host` is not dialled, so it carries the name TLS
     /// verifies: the service's own, never the forward's.
-    fn options_for(&self, kind: SessionKind) -> MySqlConnectOptions {
+    ///
+    /// Over TCP, sqlx verifies the certificate against the host it dials
+    /// and takes no other name, so a route whose name differs is refused
+    /// rather than checked against the wrong one.
+    fn options_for(&self, kind: SessionKind) -> Result<MySqlConnectOptions, DriverError> {
         let options = match self.transport.route() {
-            TransportRoute::Tcp(endpoint) => self.options.clone().host(endpoint.host()).port(endpoint.port()),
+            TransportRoute::Tcp(endpoint) => {
+                if self.verifies_name && endpoint.host() != self.tls_server_name {
+                    return Err(DriverError::Config(ConfigError::ServerNameOverrideUnsupported {
+                        route: self.transport.kind().class(),
+                    }));
+                }
+                self.options.clone().host(endpoint.host()).port(endpoint.port())
+            }
             TransportRoute::UnixSocket(path) => self.options.clone().socket(path).host(&self.tls_server_name),
         };
-        match kind {
+        Ok(match kind {
             SessionKind::Workspace => options.timezone(Some(WORKSPACE_TIME_ZONE.to_owned())),
             SessionKind::Editor | SessionKind::Control => options,
-        }
+        })
     }
 
     /// Log in and set the session up, within the connect and login
@@ -152,7 +165,7 @@ impl MysqlEndpoint {
     }
 
     async fn open(&self, kind: SessionKind, limits: &SessionLimits) -> Result<MySqlPhysical, DriverError> {
-        let options = self.options_for(kind);
+        let options = self.options_for(kind)?;
         let mut connection = match options.connect().await {
             Ok(connection) => connection,
             Err(error) => return Err(self.explain(map_connect_error(&error, self.service())).await),
@@ -252,4 +265,142 @@ async fn identify(connection: &mut MySqlConnection, endpoint: &NetworkEndpoint) 
         .parse::<u64>()
         .map_err(|_| DriverError::Protocol(format!("CONNECTION_ID() returned {id:?}")))?;
     Ok((connection_id, text(1)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use async_trait::async_trait;
+    use secrecy::SecretString;
+    use tablepro_core::{TlsConfig, TransportClass, TransportError, TransportKind, TransportStream};
+
+    use super::*;
+
+    /// A route whose dial target is not the service, as a forward that
+    /// listens on a local port would be.
+    #[derive(Debug)]
+    struct Route {
+        service: NetworkEndpoint,
+        kind: TransportKind,
+        route: TransportRoute,
+    }
+
+    #[async_trait]
+    impl Transport for Route {
+        fn service_endpoint(&self) -> &NetworkEndpoint {
+            &self.service
+        }
+
+        fn kind(&self) -> TransportKind {
+            self.kind.clone()
+        }
+
+        fn route(&self) -> TransportRoute {
+            self.route.clone()
+        }
+
+        async fn open(&self) -> Result<Box<dyn TransportStream>, TransportError> {
+            Err(TransportError::Refused {
+                endpoint: self.service.clone(),
+            })
+        }
+
+        async fn reroute(&self, _endpoint: NetworkEndpoint) -> Result<Arc<dyn Transport>, TransportError> {
+            Err(TransportError::Refused {
+                endpoint: self.service.clone(),
+            })
+        }
+
+        async fn explain_closed_stream(&self) -> Option<TransportError> {
+            None
+        }
+    }
+
+    fn endpoint(host: &str) -> NetworkEndpoint {
+        NetworkEndpoint::new(host, 3306).unwrap()
+    }
+
+    fn mysql_endpoint(route: Route, server_name: Option<&str>) -> MysqlEndpoint {
+        let target = NetworkTarget {
+            transport: Arc::new(route),
+            credentials: Credentials::Password {
+                username: "app".to_owned(),
+                password: SecretString::from("secret"),
+            },
+            database: Some("app".to_owned()),
+            tls: TlsConfig {
+                server_name: server_name.map(str::to_owned),
+                ..TlsConfig::verify_full()
+            },
+        };
+        MysqlEndpoint::new(&target, LivenessPolicy::DESKTOP).unwrap()
+    }
+
+    #[test]
+    fn a_direct_route_verifies_the_host_it_dials() {
+        let direct = mysql_endpoint(
+            Route {
+                service: endpoint("db.prod"),
+                kind: TransportKind::DirectTcp,
+                route: TransportRoute::Tcp(endpoint("db.prod")),
+            },
+            None,
+        );
+
+        let options = direct.options_for(SessionKind::Editor).unwrap();
+
+        assert_eq!(options.get_host(), "db.prod");
+        assert_eq!(options.get_socket(), None);
+    }
+
+    /// sqlx would check the certificate against 127.0.0.1, not the name
+    /// the user gave, so the login is refused before it is attempted.
+    #[test]
+    fn a_tcp_route_to_another_host_than_the_name_is_refused() {
+        let forwarded = |server_name| {
+            mysql_endpoint(
+                Route {
+                    service: endpoint("db.prod"),
+                    kind: TransportKind::SshForward {
+                        destination: "bastion".to_owned(),
+                    },
+                    route: TransportRoute::Tcp(endpoint("127.0.0.1")),
+                },
+                server_name,
+            )
+        };
+
+        for server_name in [None, Some("db.internal")] {
+            assert!(
+                matches!(
+                    forwarded(server_name).options_for(SessionKind::Workspace),
+                    Err(DriverError::Config(ConfigError::ServerNameOverrideUnsupported {
+                        route: TransportClass::SshForward
+                    }))
+                ),
+                "{server_name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_socket_route_carries_the_name_tls_verifies() {
+        let socket = mysql_endpoint(
+            Route {
+                service: endpoint("db.prod"),
+                kind: TransportKind::SshForward {
+                    destination: "bastion".to_owned(),
+                },
+                route: TransportRoute::UnixSocket("/run/user/1000/forward.sock".into()),
+            },
+            Some("db.internal"),
+        );
+
+        let options = socket.options_for(SessionKind::Control).unwrap();
+
+        assert_eq!(options.get_host(), "db.internal");
+        assert_eq!(
+            options.get_socket().map(|path| path.as_path()),
+            Some(std::path::Path::new("/run/user/1000/forward.sock"))
+        );
+    }
 }
