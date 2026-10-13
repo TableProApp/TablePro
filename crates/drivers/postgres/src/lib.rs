@@ -1036,7 +1036,7 @@ fn map_sqlx_error(err: sqlx::Error) -> DriverError {
 
 fn with_pooler_hint(message: &str, sqlstate: Option<&str>) -> String {
     match sqlstate {
-        Some("42P05" | "26000") => format!(
+        Some("42P05" | "26000") if message.contains("\"sqlx_s_") => format!(
             "{message} (the server connection may be behind a pooler in transaction mode: enable its prepared statement support, for example PgBouncer max_prepared_statements, or use session pooling)"
         ),
         _ => message.to_string(),

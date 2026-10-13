@@ -17,6 +17,17 @@ fn pooler_symptoms_get_a_hint_and_other_errors_are_left_alone() {
         "relation \"t\" does not exist"
     );
     assert_eq!(with_pooler_hint("boom", None), "boom");
+    for message in [
+        "prepared statement \"mine\" already exists",
+        "prepared statement \"mine\" does not exist",
+    ] {
+        let state = if message.ends_with("exists") { "42P05" } else { "26000" };
+        assert_eq!(
+            with_pooler_hint(message, Some(state)),
+            message,
+            "a statement the user prepared is not a pooler symptom"
+        );
+    }
 }
 
 #[test]
