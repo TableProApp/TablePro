@@ -78,9 +78,8 @@ pub(crate) struct SessionLinks {
     key: SessionKey,
     _claim: SessionClaim,
     _health: WatchForwarder,
-    /// Feeds the sidebar and the editor's completion words. Dropped
-    /// before the session shuts down, so a list read for a session the
-    /// window let go of never repaints it.
+    /// Feeds the sidebar. Dropped before the session shuts down, so a
+    /// list read for a session the window let go of never repaints it.
     _catalog_watch: WatchForwarder,
 }
 
@@ -444,7 +443,6 @@ impl App {
         self.session_links = None;
         close_session(&self.context.active, &*self.context.hold);
         self.reconnect_banner.set_revealed(false);
-        self.schema_buffer.set_text(crate::ui::editor::SQL_KEYWORDS);
         self.current_driver_id = None;
         self.read_only = false;
         self.read_only_badge.set_visible(false);
@@ -826,13 +824,8 @@ impl App {
         });
     }
 
-    /// The session's objects in the sidebar and among the editor's
-    /// completion words.
     pub(super) fn show_objects(&mut self, objects: &[ObjectInfo]) {
-        let objects = browsable(objects.to_vec());
-        self.table_names = objects.iter().map(|object| object.name.clone()).collect();
-        self.repopulate_sidebar(objects);
-        self.rebuild_schema_buffer();
+        self.repopulate_sidebar(browsable(objects.to_vec()));
     }
 
     /// Only what the grid can page through goes in the sidebar.

@@ -8,6 +8,7 @@ pub const DOCUMENT_OPEN_RECENT: &str = "document-open-recent-symbolic";
 pub const DOCUMENT_SAVE: &str = "document-save-symbolic";
 pub const EDIT_CLEAR: &str = "edit-clear-symbolic";
 pub const EDIT_COPY: &str = "edit-copy-symbolic";
+pub const FOLDER: &str = "folder-symbolic";
 pub const GO_FIRST: &str = "go-first-symbolic";
 pub const GO_LAST: &str = "go-last-symbolic";
 pub const GO_NEXT: &str = "go-next-symbolic";
@@ -22,6 +23,7 @@ pub const PROCESS_STOP: &str = "process-stop-symbolic";
 pub const STATEMENT_PENDING: &str = "statement-pending-symbolic";
 pub const SIDEBAR_SHOW: &str = "sidebar-show-symbolic";
 pub const SUCCESS: &str = "object-select-symbolic";
+pub const SYSTEM_RUN: &str = "system-run-symbolic";
 pub const SYSTEM_SEARCH: &str = "system-search-symbolic";
 pub const TABLE_RELATION: &str = "table-relation-symbolic";
 pub const TAB_NEW: &str = "tab-new-symbolic";
@@ -32,6 +34,7 @@ pub const VIEW_GRID: &str = "view-grid-symbolic";
 pub const VIEW_LIST: &str = "view-list-symbolic";
 pub const VIEW_MORE: &str = "view-more-symbolic";
 pub const VIEW_PIN: &str = "view-pin-symbolic";
+pub const VIEW_REVEAL: &str = "view-reveal-symbolic";
 pub const VIEW_SORT_ASCENDING: &str = "view-sort-ascending-symbolic";
 pub const WINDOW_CLOSE: &str = "window-close-symbolic";
 
@@ -50,6 +53,7 @@ pub const ALL: &[&str] = &[
     DOCUMENT_SAVE,
     EDIT_CLEAR,
     EDIT_COPY,
+    FOLDER,
     GO_FIRST,
     GO_LAST,
     GO_NEXT,
@@ -64,6 +68,7 @@ pub const ALL: &[&str] = &[
     SIDEBAR_SHOW,
     STATEMENT_PENDING,
     SUCCESS,
+    SYSTEM_RUN,
     SYSTEM_SEARCH,
     TABLE_RELATION,
     TAB_NEW,
@@ -74,6 +79,7 @@ pub const ALL: &[&str] = &[
     VIEW_LIST,
     VIEW_MORE,
     VIEW_PIN,
+    VIEW_REVEAL,
     VIEW_SORT_ASCENDING,
     WINDOW_CLOSE,
 ];

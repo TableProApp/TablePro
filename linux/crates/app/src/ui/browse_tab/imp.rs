@@ -166,7 +166,6 @@ impl ObjectImpl for BrowseTab {
         SIGNALS.get_or_init(|| {
             vec![
                 Signal::builder("state-changed").build(),
-                Signal::builder("columns-changed").build(),
                 Signal::builder("copy-row-as-insert")
                     .param_types([u32::static_type()])
                     .build(),

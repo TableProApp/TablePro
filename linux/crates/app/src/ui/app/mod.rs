@@ -22,7 +22,7 @@ use uuid::Uuid;
 use super::browse_tab::{BrowseTab, BrowseTabInput};
 use super::connect_dialog::ConnectDialog;
 use super::connection_row::{ConnectionRow, ConnectionRowOutput};
-use super::editor::{SqlEditor, build_schema_buffer};
+use super::editor::SqlEditor;
 use super::history_dialog::HistoryDialog;
 use super::sidebar_row::{SidebarRow, SidebarRowOutput};
 use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
@@ -123,15 +123,12 @@ pub struct App {
     /// This window's pending DDL, one tracker per Structure tab.
     structure_trackers: std::rc::Rc<StructureTrackerRegistry>,
     dialog: Option<ConnectDialog>,
-    schema_buffer: gtk::TextBuffer,
     history_dialog: Option<Controller<HistoryDialog>>,
     saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
     import_dialog: Option<Controller<super::import_dialog::ImportCsvDialog>>,
     welcome_view: Controller<WelcomeView>,
     /// Driver id is connection-wide, not per-tab.
     current_driver_id: Option<String>,
-    /// The table names the editor completes; the tabs add their columns.
-    table_names: Vec<String>,
     /// Read-only flag is connection-wide; fanned out to every BrowseTab
     /// when toggled.
     read_only: bool,
@@ -415,8 +412,6 @@ pub enum AppMsg {
     },
 
     // ── Workspace tab routing ────────────────────────────────────────
-    /// Any browse tab's columns changed; rebuild editor schema buffer.
-    WorkspaceSchemaWordsChanged,
     /// User clicked the close-X on any workspace tab.
     WorkspaceTabClosed(Uuid),
     /// Tab right-click "Close Other Tabs" → close every tab except
@@ -1216,13 +1211,11 @@ impl SimpleComponent for App {
             change_trackers,
             structure_trackers,
             dialog: None,
-            schema_buffer: build_schema_buffer(),
             history_dialog: None,
             saved_queries_dialog: None,
             import_dialog: None,
             welcome_view,
             current_driver_id: None,
-            table_names: Vec::new(),
             read_only: false,
             saved_connections: Vec::new(),
             connected: false,
@@ -1305,7 +1298,6 @@ impl SimpleComponent for App {
                 open_mode,
             } => self.dispatch_select_table(schema, name, open_mode, sender),
             AppMsg::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
-            AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
             AppMsg::ExecuteBrowseTransaction {
                 tab_id,
                 table,

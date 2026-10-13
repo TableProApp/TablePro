@@ -104,7 +104,6 @@ impl App {
                         touched.and_then(|rows| i64::try_from(rows).ok()),
                         None,
                     );
-                    sender.input(AppMsg::WorkspaceSchemaWordsChanged);
                     sender.input(AppMsg::SaveCompletedForTab(tab_id));
                 }
                 Err(error) => {

@@ -90,6 +90,16 @@ crates/app/src/ui/credential_prompt/prompt_form.rs
 crates/app/src/ui/credential_prompt/prompt_text.rs
 crates/app/src/ui/credential_prompt/prompter.rs
 crates/app/src/ui/editor/buffer_edit.rs
+crates/app/src/ui/editor/completion/catalog_read.rs
+crates/app/src/ui/editor/completion/completion_scope.rs
+crates/app/src/ui/editor/completion/fuzzy.rs
+crates/app/src/ui/editor/completion/mod.rs
+crates/app/src/ui/editor/completion/proposal_kind.rs
+crates/app/src/ui/editor/completion/sql_completion_provider.rs
+crates/app/src/ui/editor/completion/sql_completion_provider_imp.rs
+crates/app/src/ui/editor/completion/sql_proposal.rs
+crates/app/src/ui/editor/completion/sql_proposal_imp.rs
+crates/app/src/ui/editor/completion/tests.rs
 crates/app/src/ui/editor/editor_session_slot.rs
 crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs

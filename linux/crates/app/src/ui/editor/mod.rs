@@ -3,6 +3,7 @@
 //! gets a line in the results list.
 
 mod buffer_edit;
+mod completion;
 mod editor_session_slot;
 mod format_plan;
 mod imp;
@@ -51,7 +52,6 @@ glib::wrapper! {
 }
 
 pub struct SqlEditorInit {
-    pub schema_buffer: gtk4::TextBuffer,
     pub initial_query: Option<String>,
     pub settings: Rc<tablepro_storage::AppSettings>,
     pub history: Option<tablepro_storage::QueryHistory>,
@@ -94,7 +94,7 @@ impl SqlEditor {
         buffer.set_text(&initial_text);
         imp.source_view.set_buffer(Some(&buffer));
         editor.connect_theme(&init.settings);
-        editor.connect_completion(&init.schema_buffer, &buffer);
+        editor.connect_completion(&buffer);
         editor.connect_buffer(&buffer);
         editor.install_actions();
         editor.install_shortcuts();
@@ -533,11 +533,15 @@ impl SqlEditor {
         self.imp().app_handlers.replace(handlers);
     }
 
-    fn connect_completion(&self, schema_buffer: &gtk4::TextBuffer, buffer: &sourceview5::Buffer) {
-        let provider = sourceview5::CompletionWords::new(Some("SQL"));
-        provider.register(schema_buffer);
-        provider.register(buffer);
-        self.imp().source_view.completion().add_provider(&provider);
+    fn connect_completion(&self, buffer: &sourceview5::Buffer) {
+        let completion = self.imp().source_view.completion();
+        if let Some(deps) = self.deps() {
+            let catalog = completion::SqlCompletionProvider::new(deps.session.clone(), deps.tasks.clone());
+            completion.add_provider(&catalog);
+        }
+        let words = sourceview5::CompletionWords::new(Some(&crate::i18n::pgettext("completion group", "Document")));
+        words.register(buffer);
+        completion.add_provider(&words);
     }
 
     fn connect_buffer(&self, buffer: &sourceview5::Buffer) {
@@ -840,31 +844,6 @@ fn toggle_line_comment(buffer: &gtk4::TextBuffer) {
         }
     }
     buffer.end_user_action();
-}
-
-pub const SQL_KEYWORDS: &str = "\
-SELECT FROM WHERE INSERT INTO VALUES UPDATE SET DELETE \
-JOIN INNER LEFT RIGHT FULL OUTER ON USING UNION INTERSECT EXCEPT \
-GROUP BY ORDER HAVING LIMIT OFFSET DISTINCT ALL AS WITH \
-CREATE TABLE INDEX VIEW DROP ALTER TRUNCATE \
-PRIMARY KEY FOREIGN REFERENCES UNIQUE NOT NULL DEFAULT CHECK \
-AND OR IS LIKE IN BETWEEN EXISTS ANY \
-COUNT SUM AVG MIN MAX CASE WHEN THEN ELSE END \
-TRUE FALSE ASC DESC RETURNING";
-
-pub fn build_schema_buffer() -> gtk4::TextBuffer {
-    let buf = gtk4::TextBuffer::new(None);
-    buf.set_text(SQL_KEYWORDS);
-    buf
-}
-
-pub fn update_schema_buffer(buffer: &gtk4::TextBuffer, schema_words: &[String]) {
-    let mut text = String::from(SQL_KEYWORDS);
-    for w in schema_words {
-        text.push(' ');
-        text.push_str(w);
-    }
-    buffer.set_text(&text);
 }
 
 /// File-name stem for an editor export, taken from the statement that

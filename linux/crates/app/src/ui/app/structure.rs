@@ -474,8 +474,8 @@ impl App {
         });
     }
 
-    /// The sidebar and the editor's completion words follow the
-    /// session's object list. A failed refresh keeps both as they were.
+    /// The sidebar follows the session's object list. A failed refresh
+    /// keeps it as it was.
     pub(super) fn on_catalog_changed(&mut self, snapshot: &tablepro_session::ObjectListSnapshot) {
         self.show_objects(&snapshot.objects);
     }

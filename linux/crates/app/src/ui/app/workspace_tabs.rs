@@ -37,7 +37,6 @@ impl App {
     }
 
     fn build_workspace_root(&mut self, sender: ComponentSender<Self>) {
-        let schema_buffer = self.schema_buffer.clone();
         let settings = self.settings.clone();
         let history = self.history.store();
         let tasks = self.tasks.clone();
@@ -45,7 +44,6 @@ impl App {
         let hold = self.context.hold.clone();
         let close_timeout = self.context.close_timeout();
         let editor_init = move || SqlEditorInit {
-            schema_buffer: schema_buffer.clone(),
             initial_query: None,
             settings: settings.clone(),
             history: history.clone(),
@@ -359,7 +357,6 @@ impl App {
         let tab_id = Uuid::new_v4();
         let query = initial_query.clone().unwrap_or_default();
         let editor = SqlEditor::new(SqlEditorInit {
-            schema_buffer: self.schema_buffer.clone(),
             initial_query,
             settings: self.settings.clone(),
             history: self.history.store(),
@@ -396,7 +393,6 @@ impl App {
         tab_view.set_selected_page(&page);
         self.workspace_outer_stack.set_visible_child_name("tabs");
         self.refresh_window_title();
-        self.rebuild_schema_buffer();
         self.persist_workspace_state();
     }
 
@@ -592,7 +588,6 @@ impl App {
         if self.workspace_tabs.borrow().is_empty() {
             self.workspace_outer_stack.set_visible_child_name("empty");
         }
-        self.rebuild_schema_buffer();
         self.refresh_window_title();
     }
 
@@ -912,19 +907,6 @@ impl App {
         let tabs = self.workspace_tabs.borrow();
         let (schema, table) = tabs.get(&id)?.schema_table()?;
         Some((schema.map(str::to_owned), table.to_string()))
-    }
-
-    pub(super) fn rebuild_schema_buffer(&self) {
-        let mut words: Vec<String> = self.table_names.clone();
-        let tabs = self.workspace_tabs.borrow();
-        for tab in tabs.values() {
-            if let Some(browse) = tab.browse_tab() {
-                words.extend(browse.columns().into_iter().map(|column| column.name));
-            }
-        }
-        words.sort_unstable();
-        words.dedup();
-        crate::ui::editor::update_schema_buffer(&self.schema_buffer, &words);
     }
 
     pub(super) fn sidebar_schemas_distinct(&self) -> usize {
@@ -1385,8 +1367,6 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &relm4::Send
 fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
     let state = input.clone();
     browse.connect_state_changed(move |_| state.emit(AppMsg::WorkspaceTabsChanged));
-    let columns = input.clone();
-    browse.connect_columns_changed(move |_| columns.emit(AppMsg::WorkspaceSchemaWordsChanged));
     let copy_row = input.clone();
     browse.connect_copy_row_as_insert(move |_, row_position| {
         copy_row.emit(AppMsg::CopyRowAsInsert { tab_id, row_position });
@@ -1495,11 +1475,9 @@ mod tests {
     ) -> WorkspaceChrome {
         adw::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
-        let schema_buffer = crate::ui::editor::build_schema_buffer();
         let settings = settings.get().clone();
         let tasks = runtime.tasks();
         let editor_init = move || SqlEditorInit {
-            schema_buffer: schema_buffer.clone(),
             initial_query: None,
             settings: settings.clone(),
             history: None,
@@ -1605,7 +1583,6 @@ mod tests {
         let runtime = crate::test_support::test_runtime();
         let settings = crate::test_support::MemorySettings::new();
         let editor = SqlEditor::new(SqlEditorInit {
-            schema_buffer: crate::ui::editor::build_schema_buffer(),
             initial_query: None,
             settings: settings.get().clone(),
             history: None,

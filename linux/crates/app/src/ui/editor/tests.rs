@@ -45,7 +45,6 @@ fn editor_with(runs: Replies<FakeRun>, text: &str) -> Harness {
     let active = ActiveSession::new();
     active.replace(session_with(fake.clone(), runtime.tasks()));
     let editor = SqlEditor::new(SqlEditorInit {
-        schema_buffer: build_schema_buffer(),
         initial_query: Some(text.to_owned()),
         settings: settings.get().clone(),
         history: None,
@@ -306,7 +305,6 @@ fn the_icon_buttons_have_accessible_names() {
 fn unconnected_editor(settings: &MemorySettings, tasks: Tasks) -> SqlEditor {
     crate::register_test_resources();
     SqlEditor::new(SqlEditorInit {
-        schema_buffer: build_schema_buffer(),
         initial_query: None,
         settings: settings.get().clone(),
         history: None,
