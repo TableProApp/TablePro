@@ -178,9 +178,15 @@ pub(super) fn install_grid_context_menus(
                 let context = context.borrow();
                 let Some(slot) = context.as_ref() else { return };
                 let Some(view) = view.upgrade() else { return };
-                if row_object_at(&view, position(slot))
-                    .and_then(|row| row.cell_preview(slot.col_index))
-                    .is_some()
+                let row = row_object_at(&view, position(slot));
+                if let Some(value) = pending_cell_value(&slot.widget) {
+                    let copy_text = copy_value_text(&slot.widget, row.as_ref(), slot.col_index);
+                    value_viewer::present(&view, &slot.column_name, &value, copy_text);
+                    return;
+                }
+                if row
+                    .as_ref()
+                    .is_some_and(|row| row.cell_preview(slot.col_index).is_some())
                 {
                     let (_, row_key) = cell_row_identity(&slot.widget);
                     if row_key.is_empty() {
@@ -673,6 +679,12 @@ fn cell_row_identity(widget: &gtk::Widget) -> (u32, Vec<Value>) {
         ROW_KEY_SLOT.cloned(widget).unwrap_or_default(),
     )
 }
+fn pending_cell_value(widget: &gtk::Widget) -> Option<Value> {
+    if IS_NULL_SLOT.get(widget).unwrap_or(false) {
+        return Some(Value::Null);
+    }
+    FULL_EDIT_TEXT_SLOT.cloned(widget).map(Value::Text)
+}
 fn previewed_cell_text(row: Option<&crate::ui::row_object::RowObject>, col: usize) -> Option<String> {
     let row = row?;
     row.cell_preview(col)?;
@@ -805,6 +817,28 @@ mod tests {
         IS_NULL_SLOT.set(&editor, false);
         FULL_EDIT_TEXT_SLOT.set(&editor, draft_value.clone());
         assert_eq!(copy_value_text(editor.upcast_ref(), Some(&draft), 0), draft_value);
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn view_value_resolves_pending_text_null_and_draft_values_from_the_cell() {
+        gtk::init().unwrap();
+        let editor = crate::ui::cell_editor::CellEditor::new();
+        let widget = editor.upcast_ref::<gtk::Widget>();
+        let pending = "new value".repeat(1_200);
+        IS_NULL_SLOT.set(&editor, false);
+        FULL_EDIT_TEXT_SLOT.set(&editor, pending.clone());
+        assert_eq!(pending_cell_value(widget), Some(Value::Text(pending.clone())));
+
+        IS_NULL_SLOT.set(&editor, true);
+        FULL_EDIT_TEXT_SLOT.take(&editor);
+        assert_eq!(pending_cell_value(widget), Some(Value::Null));
+
+        IS_NULL_SLOT.set(&editor, false);
+        assert_eq!(pending_cell_value(widget), None);
+
+        FULL_EDIT_TEXT_SLOT.set(&editor, pending.clone());
+        assert_eq!(pending_cell_value(widget), Some(Value::Text(pending)));
     }
 
     #[test]

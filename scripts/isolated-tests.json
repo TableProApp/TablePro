@@ -205,6 +205,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::context_menu::tests::view_value_resolves_pending_text_null_and_draft_values_from_the_cell"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::column_visibility::tests::hiding_a_column_hides_it_persists_it_and_keeps_the_last_one"
     ],
     [
