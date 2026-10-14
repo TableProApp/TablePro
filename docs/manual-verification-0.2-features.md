@@ -56,7 +56,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 ## Connection dialog and browse shortcuts
 
 - [ ] Screen readers can activate Driver, Endpoint and TLS, and announce Port, Connect timeout and Query timeout. GTK AT-SPI scenario passed in Xvfb on 2026-10-13; native Hyprland verification is pending. The sidebar search, saved-filter name and colour picker are outside this connection-form check, [#658](https://github.com/cozyGarage/BookiE/issues/658).
-- [ ] New connection defaults match the selected driver; no PostgreSQL defaults leak into another engine. Switching drivers and editing a saved connection preserves intended custom values. **2026-10-12 Hyprland dark:** defaults passed for all seven drivers; switching drivers resets typed port, database and username, [#653](https://github.com/cozyGarage/BookiE/issues/653).
+- [ ] New connection defaults match the selected driver; no PostgreSQL defaults leak into another engine. Switching drivers and editing a saved connection preserves intended custom values. **2026-10-12 historical run:** defaults passed for all seven drivers; switching drivers reset custom port, database and username values. Fixed by [#740](https://github.com/cozyGarage/BookiE/pull/740); transition tests cover all three fields, and installed Hyprland retest remains pending ([#653](https://github.com/cozyGarage/BookiE/issues/653)).
 - [ ] For MySQL/MariaDB, select a local Unix socket and confirm the form shows a socket-file path while hiding host and port. Switch back to Network and confirm the socket path is hidden and host/port return.
 - [ ] Connect through a real local MySQL/MariaDB socket, save the connection, reopen it, and confirm the socket path and endpoint mode remain selected. Export and re-import a bundle and confirm the same endpoint is retained.
 - [ ] Confirm a missing or invalid socket path fails without attempting a TCP connection. Local sockets refuse TLS and SSH; existing PostgreSQL socket-directory and SSH-forwarded MySQL socket connections still work.
@@ -96,6 +96,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 
 ## Structure tab, column comments
 
+- [ ] Open an existing Structure tab and make an unsaved change: its title keeps the `· Structure` suffix alongside the dirty marker. The regression test in [#796](https://github.com/cozyGarage/BookiE/pull/796) covers title state; installed Wayland retest pending.
 - [ ] A Comment row appears per column on PostgreSQL, MySQL, SQL Server and ClickHouse. **2026-10-12 Hyprland dark:** PostgreSQL passed; others not run.
 - [ ] On ClickHouse the field is populated but not editable for an existing column, with a tooltip saying why.
 - [ ] No Comment row appears on SQLite or DuckDB.
@@ -180,6 +181,7 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 ## Explain tree
 
 - [ ] On PostgreSQL, Explain a join: the dialog opens on a Tree tab with nested steps, a cost bar per step and the filter or condition lines under their step; the Text tab shows the raw plan. **2026-10-12 Hyprland dark:** tree, cost bars and condition lines passed; the Text tab not checked. The Tree and Text switcher shows missing icons, [#656](https://github.com/cozyGarage/BookiE/issues/656).
+- [ ] Press Escape while the Explain plan dialog is open: the dialog closes. The installed GTK scenario `explain_plan_window_closes_on_escape` covers this behavior ([#781](https://github.com/cozyGarage/BookiE/pull/781)); installed Wayland retest pending.
 - [ ] On SQLite, Explain a query that scans and searches: steps nest by their parent.
 - [ ] On MySQL, ClickHouse or DuckDB the dialog shows the text plan with no Tree tab.
 - [ ] Explain on an empty editor still shows the existing message.
@@ -193,7 +195,7 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 
 ## Filter by This Value
 
-- [ ] Right-click a cell in a browsed table: Filter by This Value narrows the rows and the filter strip shows the new rule. **2026-10-12 Hyprland dark:** passed; also covered by the installed GTK scenario `filter_by_this_value_narrows_the_browse_rows`. The filter strip opens with the rule editor collapsed, [#660](https://github.com/cozyGarage/BookiE/issues/660).
+- [ ] Right-click a cell in a browsed table: Filter by This Value narrows the rows and the filter strip shows the new rule. **2026-10-12 historical run:** filtering passed, but the rule editor opened collapsed; fixed by [#820](https://github.com/cozyGarage/BookiE/pull/820). The installed GTK scenario `filter_by_this_value_narrows_the_browse_rows` covers the filter action; installed retest of the expanded editor is pending ([#660](https://github.com/cozyGarage/BookiE/issues/660)).
 - [ ] On a NULL cell it filters with IS NULL.
 - [ ] Doing it again on another value of the same column replaces that rule.
 - [ ] A JSON or binary cell shows "Values of this type can't be used as a filter". **2026-10-12 Hyprland dark:** JSON passed; binary not run.
@@ -223,6 +225,7 @@ In browse and SQL result grids, text, JSON and binary cells over 8 KiB show a ty
 - [ ] A value below the threshold displays in full and remains editable where that type supports grid edits.
 - [ ] Values over the threshold show a prefix and `… (N bytes total)`, and the cell does not offer inline editing.
 - [ ] View Value shows the complete text or JSON, including the final characters or JSON structure.
+- [ ] A long unbroken value wraps without display-only hyphens; the GTK widget regression covers this rendering property ([#791](https://github.com/cozyGarage/BookiE/pull/791)); installed retest pending.
 - [ ] Copy Value copies the complete text or JSON rather than the displayed preview.
 - [ ] Repeat with a binary value over the threshold; the preview reports the original byte count and View Value exposes the full bytes.
 
@@ -252,7 +255,7 @@ In browse and SQL result grids, text, JSON and binary cells over 8 KiB show a ty
 ## Pinned results and gutter marks
 
 - [ ] On SQL Server, run `EXEC sys.sp_executesql N'SELECT 1 AS first_result; SELECT 2 AS second_result;'` as one query. Confirm the result-set selector shows both sets in source order and each displays its own column and value.
-- [ ] Run `SELECT 1; SELECT 2;`, click Pin results, change the script and run it again: the first results stay as tabs marked 📌 ahead of the new ones. The button now reads Unpin results (2); clicking it drops the pinned tabs. **2026-10-12 Hyprland dark:** passed; also covered by the installed GTK scenario `pinned_results_stay_ahead_of_the_next_run`. Statement numbers continue after the pinned tabs, [#660](https://github.com/cozyGarage/BookiE/issues/660).
+- [ ] Run `SELECT 1 AS one; SELECT 2 AS two;`, pin both results, then run `SELECT 3 AS three;` and `SELECT 4 AS four; SELECT * FROM missing_table;`: pinned results stay first and the failed second statement is labelled **Statement 2**, not Statement 4. Unpin removes the pinned results. **2026-10-12 historical run:** pin ordering passed, but failure numbering after pinning was not checked; fixed by [#785](https://github.com/cozyGarage/BookiE/pull/785). The installed GTK scenario `pinned_results_stay_ahead_of_the_next_run` covers the failure; installed Wayland retest pending ([#660](https://github.com/cozyGarage/BookiE/issues/660)).
 - [ ] After running a script, each statement's first line shows a tick or, for a failed statement, a cross in the gutter, in light and dark. Edit the script and run it again: the marks follow the new run. **2026-10-12 Hyprland dark:** dark theme passed.
 
 ## Carried over from the earlier sprint
