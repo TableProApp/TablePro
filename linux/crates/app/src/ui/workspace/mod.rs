@@ -15,6 +15,7 @@ mod structure;
 mod window_tabs;
 mod workspace_actions;
 mod workspace_persistence;
+mod workspace_tab_view;
 mod workspace_tabs;
 
 use std::cell::{Cell, RefCell};

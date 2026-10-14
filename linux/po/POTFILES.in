@@ -223,6 +223,7 @@ crates/app/src/ui/workspace/structure.rs
 crates/app/src/ui/workspace/window_tabs.rs
 crates/app/src/ui/workspace/workspace_actions.rs
 crates/app/src/ui/workspace/workspace_persistence.rs
+crates/app/src/ui/workspace/workspace_tab_view.rs
 crates/app/src/ui/workspace/workspace_tabs.rs
 crates/app/src/workspace/close_decision.rs
 crates/app/src/workspace/close_guard.rs
