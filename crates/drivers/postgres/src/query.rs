@@ -62,8 +62,25 @@ pub(super) async fn query_connection_once(
     let inferred_text_types = description
         .as_ref()
         .map_or(&[][..], |description| description.inferred_text_types.as_slice());
-    let query = bind_pg_params(sqlx::query(sqlx::AssertSqlSafe(sql)), params, inferred_text_types)?;
-    let mut stream = query.fetch(&mut **connection);
+    let needs_text_results = match description.as_ref() {
+        Some(description) => description.column_type_infos.iter().any(requires_server_text_result),
+        None => {
+            let parameter_types = pg_parameter_type_infos(params);
+            let statement = connection
+                .prepare_with(sqlx::AssertSqlSafe(sql).into_sql_str(), &parameter_types)
+                .await
+                .map_err(map_sqlx_error)?;
+            statement
+                .columns()
+                .iter()
+                .any(|column| requires_server_text_result(column.type_info()))
+        }
+    };
+    if needs_text_results {
+        connection.set_next_query_result_format(sql, sqlx::postgres::PgValueFormat::Text);
+    }
+    let mut stream =
+        bind_pg_params(sqlx::query(sqlx::AssertSqlSafe(sql)), params, inferred_text_types)?.fetch(&mut **connection);
     let (mut result, mut type_infos, mut column_origins) = collect_query_rows(&mut stream, MAX_QUERY_ROWS).await?;
     if result.truncated {
         stop_server_query(stop, &mut stream).await;
@@ -156,6 +173,18 @@ async fn stream_into_result_once(
     limit: usize,
     stop: Option<QueryStop<'_>>,
 ) -> Result<QueryResult, DriverError> {
+    let statement = connection
+        .prepare(sqlx::AssertSqlSafe(sql).into_sql_str())
+        .await
+        .map_err(map_sqlx_error)?;
+    if statement
+        .columns()
+        .iter()
+        .any(|column| requires_server_text_result(column.type_info()))
+    {
+        connection.set_next_query_result_format(sql, sqlx::postgres::PgValueFormat::Text);
+    }
+    drop(statement);
     let mut stream = sqlx::query(sqlx::AssertSqlSafe(sql)).fetch(&mut **connection);
     let (mut result, mut type_infos, mut column_origins) = collect_query_rows(&mut stream, limit).await?;
     if result.truncated {
@@ -459,15 +488,34 @@ fn extract_non_null_value(row: &PgRow, idx: usize, type_name: &str, raw: &sqlx::
         "UUID" => row.try_get::<uuid::Uuid, _>(idx).map(Value::Uuid),
         "JSONB" => row.try_get::<serde_json::Value, _>(idx).map(Value::Json),
         "BYTEA" => row.try_get::<Vec<u8>, _>(idx).map(Value::Bytes),
-        _ => row.try_get::<String, _>(idx).map(Value::Text),
+        _ => extract_fallback_text(row, idx, raw),
     };
     decoded.unwrap_or_else(|_| undecodable(idx, type_name))
+}
+
+fn extract_fallback_text(row: &PgRow, idx: usize, raw: &sqlx::postgres::PgValueRef<'_>) -> Result<Value, sqlx::Error> {
+    if raw.format() == sqlx::postgres::PgValueFormat::Text {
+        return raw
+            .as_str()
+            .map(|value| Value::Text(value.into()))
+            .map_err(sqlx::Error::Decode);
+    }
+    row.try_get::<String, _>(idx).map(Value::Text)
 }
 
 fn extract_json_text(raw: &sqlx::postgres::PgValueRef<'_>, idx: usize, type_name: &str) -> Value {
     raw.as_str()
         .map(|value| Value::JsonText(value.to_owned()))
         .unwrap_or_else(|_| undecodable(idx, type_name))
+}
+
+fn requires_server_text_result(type_info: &PgTypeInfo) -> bool {
+    let name = type_info.name().trim_matches('"');
+    [
+        "CHAR", "HSTORE", "LTREE", "OID", "RECORD", "REGCLASS", "TSVECTOR", "XML",
+    ]
+    .iter()
+    .any(|candidate| name.eq_ignore_ascii_case(candidate))
 }
 
 fn float4_as_f64(value: f32) -> f64 {

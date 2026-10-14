@@ -205,6 +205,12 @@ impl PgConnection {
     ) -> Result<impl Stream<Item = Result<Either<PgQueryResult, PgRow>, Error>> + 'e, Error> {
         let mut logger = QueryLogger::new(query, self.inner.log_settings.clone());
         let sql = logger.sql().as_str();
+        let result_format = self
+            .inner
+            .next_query_result_format
+            .take()
+            .filter(|(expected_sql, _)| expected_sql == sql)
+            .map_or(PgValueFormat::Binary, |(_, format)| format);
 
         // before we continue, wait until we are "ready" to accept more queries
         self.wait_until_ready().await?;
@@ -246,7 +252,7 @@ impl PgConnection {
                 formats: &[PgValueFormat::Binary],
                 num_params,
                 params: &arguments.buffer,
-                result_formats: &[PgValueFormat::Binary],
+                result_formats: &[result_format],
             })?;
 
             // executes the portal up to the passed limit
@@ -278,7 +284,7 @@ impl PgConnection {
             self.write_sync();
 
             // prepared statements are binary
-            PgValueFormat::Binary
+            result_format
         } else {
             // Query will trigger a ReadyForQuery
             self.queue_simple_query(sql)?;
