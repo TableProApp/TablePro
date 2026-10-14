@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Logout waits while there are unsaved changes, and logout and suspend wait while a save is running.
 - Auto-increment on and off for PostgreSQL columns in the Structure tab, numbering on from the largest existing value.
 - SQLite column type, nullability, default and primary key changes, and foreign keys added or removed, in the Structure tab.
+- Delete button in the table grid, with the reason in its tooltip when the selected rows can't be deleted.
+- Set to DEFAULT in a new row's cell menu, for columns the server fills.
 
 ### Changed
 
@@ -29,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structure tab sets a column NOT NULL when it joins the primary key, and gives its nullability back when it leaves.
 - Auto increment in the Structure tab no longer needs the primary key on PostgreSQL and SQL Server.
 - SQLite foreign keys show the name their CREATE TABLE gives them.
+- Delete, Duplicate and Copy as in a grid cell's menu act on every selected row when the clicked row is selected.
+- Grid cells edit in place with the keyboard each type needs; dates open a calendar, and JSON, XML and long text a larger editor.
+- Set Value in a grid cell's menu is Set to Empty, Set to NULL and Set to DEFAULT, each shown only where the column takes it.
 
 ### Fixed
 
@@ -49,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse DateTime values showed as UTC text when the server profile or session set ISO output.
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
 - A new row removed with Delete stayed in the grid while the save left it out.
+- Undoing a delete of many rows took one Ctrl+Z per row and could not bring back more than 50.
+- Editing a number in the grid could round it: integers past 2^53 and floats past six decimal places.
+- Setting a new row's cell to NULL saved the column's default instead.
+- Setting a NOT NULL cell to NULL was accepted and failed at save.
+- The Menu key on a read-only grid cell opened a text selection menu instead of the cell's menu.
+- Text with a NUL character showed cut short in the grid, and editing it saved the cut value.
 - An edit, Set Value or row action in the table grid could land on another row once a row above it came or went.
 - Editing, undoing or deleting a row in the table grid dropped it from a selection of several rows.
 - Copy as INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.

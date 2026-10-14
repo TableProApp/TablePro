@@ -448,6 +448,7 @@ fn failing_source(plan: &SavePlan, changes: &TrackedChanges, error: &DriverError
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::edit::CellInput;
     use tablepro_core::meta::TableRef;
     use tablepro_core::{CommitToken, LossPhase, Value};
     use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
@@ -591,8 +592,13 @@ mod tests {
         let columns = vec![integer("id", true), integer("n", false)];
         let edited = RowKey::from_pk_values(&[Value::Int(3)]).unwrap();
         let tracker = TabTrackerHandle::default();
-        let _ = tracker.apply(TrackerEdit::Insert {
-            values: vec![Value::Int(10), Value::Int(1)],
+        let _ = tracker.apply(TrackerEdit::InsertDrafts {
+            rows: vec![
+                vec![Value::Int(10), Value::Int(1)]
+                    .into_iter()
+                    .map(CellInput::Value)
+                    .collect(),
+            ],
         });
         let _ = tracker.apply(TrackerEdit::Cell {
             row_key: edited.clone(),

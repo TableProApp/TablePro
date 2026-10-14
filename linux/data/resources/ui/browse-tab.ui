@@ -76,6 +76,16 @@
               </object>
             </child>
             <child type="start">
+              <object class="GtkButton" id="delete_button">
+                <property name="icon-name">list-remove-symbolic</property>
+                <property name="action-name">tab.delete-rows</property>
+                <property name="tooltip-text" translatable="yes">Delete selected rows (Delete)</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
               <!-- One linked group reads as one navigation control, as
                    the back and forward buttons do in Files. -->
               <object class="GtkBox">

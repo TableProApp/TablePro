@@ -7,6 +7,7 @@
 
 mod ddl;
 mod driver;
+mod edit;
 mod operation;
 mod script;
 mod secret;
@@ -18,6 +19,7 @@ mod tls_remedy;
 
 pub use ddl::{build_error_text, refusal_text, save_blocker_text};
 pub use driver::{config_message, driver_message};
+pub use edit::edit_parse_message;
 pub use operation::{connect_error_message, operation_error_message, task_failure_message};
 pub use script::script_diagnostic_message;
 pub use tls_remedy::{TlsRemedy, connect_remedy};

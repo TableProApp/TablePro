@@ -1,4 +1,4 @@
-use tablepro_core::Value;
+use tablepro_core::edit::CellInput;
 
 use super::change_tracker::{CellEdit, DeleteMark, DraftRow, RowKey};
 use super::column_relayout::ColumnRelayout;
@@ -21,19 +21,25 @@ pub enum UndoOp {
     DraftCell {
         draft_id: u64,
         col: usize,
-        before: Value,
-        after: Value,
+        before: CellInput,
+        after: CellInput,
         before_touch: Touch,
         after_touch: Touch,
     },
+    /// One undo removes every draft the insert made.
     Insert {
-        draft: DraftRow,
+        drafts: Vec<DraftRow>,
     },
     Delete {
-        row_key: RowKey,
-        before: Option<DeleteMark>,
-        after: DeleteMark,
+        steps: Vec<DeleteStep>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeleteStep {
+    pub row_key: RowKey,
+    pub before: Option<DeleteMark>,
+    pub after: DeleteMark,
 }
 
 impl UndoOp {
@@ -71,38 +77,58 @@ impl UndoOp {
                 before_touch,
                 after_touch,
             } => {
-                layout.cell(*col, before).ok()?;
+                layout.input_cell(*col, before).ok()?;
                 Some(UndoOp::DraftCell {
                     draft_id: *draft_id,
-                    col: layout.cell(*col, after).ok()?,
+                    col: layout.input_cell(*col, after).ok()?,
                     before: before.clone(),
                     after: after.clone(),
                     before_touch: *before_touch,
                     after_touch: *after_touch,
                 })
             }
-            UndoOp::Insert { draft } => Some(UndoOp::Insert {
-                draft: DraftRow {
-                    values: layout.row(&draft.values).ok()?,
-                    ..draft.clone()
-                },
+            UndoOp::Insert { drafts } => Some(UndoOp::Insert {
+                drafts: drafts
+                    .iter()
+                    .map(|draft| {
+                        Some(DraftRow {
+                            cells: layout.draft(&draft.cells).ok()?,
+                            ..draft.clone()
+                        })
+                    })
+                    .collect::<Option<_>>()?,
             }),
-            UndoOp::Delete { row_key, before, after } => {
-                layout.key(row_key).ok()?;
-                Some(UndoOp::Delete {
-                    row_key: row_key.clone(),
-                    before: before.as_ref().map(delete_mark),
-                    after: delete_mark(after),
-                })
-            }
+            UndoOp::Delete { steps } => Some(UndoOp::Delete {
+                steps: steps
+                    .iter()
+                    .map(|step| {
+                        layout.key(&step.row_key).ok()?;
+                        Some(DeleteStep {
+                            row_key: step.row_key.clone(),
+                            before: step.before.as_ref().map(delete_mark),
+                            after: delete_mark(&step.after),
+                        })
+                    })
+                    .collect::<Option<_>>()?,
+            }),
         }
     }
 
-    pub fn is_about_draft(&self, draft_id: u64) -> bool {
+    /// Drops what the step says about a draft that is gone, and returns
+    /// whether anything is left of the step.
+    pub fn forget_draft(&mut self, draft_id: u64) -> bool {
+        let gone = RowKey::Draft(draft_id);
         match self {
-            UndoOp::Insert { draft } => draft.draft_id == draft_id,
-            UndoOp::DraftCell { draft_id: id, .. } => *id == draft_id,
-            UndoOp::CellEdit { row_key, .. } | UndoOp::Delete { row_key, .. } => *row_key == RowKey::Draft(draft_id),
+            UndoOp::Insert { drafts } => {
+                drafts.retain(|draft| draft.draft_id != draft_id);
+                !drafts.is_empty()
+            }
+            UndoOp::DraftCell { draft_id: id, .. } => *id != draft_id,
+            UndoOp::CellEdit { row_key, .. } => *row_key != gone,
+            UndoOp::Delete { steps } => {
+                steps.retain(|step| step.row_key != gone);
+                !steps.is_empty()
+            }
         }
     }
 }

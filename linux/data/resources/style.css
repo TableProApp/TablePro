@@ -26,16 +26,16 @@ textview.sql-editor, textview.sql-editor text {
 
 /* Italic only: the dim-label Adwaita class added alongside already
    supplies the opacity. */
-label.tp-null-sentinel {
+.tp-null-sentinel {
   font-style: italic;
 }
 
 /* GtkColumnView's default cell focus is a 1px outline that vanishes
    against the selected-row highlight. A 2px inset accent ring is the
-   spreadsheet-standard focused-cell signal. The selectors stay explicit
-   so the ring never stacks on a GtkCheckButton, which paints its own. */
-columnview > listview > row > cell:focus-within > tp-grid-cell > label,
-columnview > listview > row > cell:focus-within > tp-grid-cell > .tp-cell-editor {
+   spreadsheet-standard focused-cell signal. The selector names the text
+   display and its editor, so the ring never stacks on a GtkCheckButton,
+   which paints its own. */
+columnview > listview > row > cell:focus-within > tp-grid-cell > .tp-cell-text {
   box-shadow: inset 0 0 0 2px var(--accent-color);
   border-radius: 2px;
 }
@@ -71,8 +71,7 @@ columnview > listview > row > cell:focus-within > tp-grid-cell > .tp-cell-editor
     color: var(--error-fg-color);
   }
 
-  columnview > listview > row > cell:focus-within > tp-grid-cell > label,
-  columnview > listview > row > cell:focus-within > tp-grid-cell > .tp-cell-editor {
+  columnview > listview > row > cell:focus-within > tp-grid-cell > .tp-cell-text {
     box-shadow: inset 0 0 0 3px var(--accent-color);
   }
 }
