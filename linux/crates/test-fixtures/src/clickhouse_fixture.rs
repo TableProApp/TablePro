@@ -1,8 +1,10 @@
 use std::time::Duration;
 
+use testcontainers::bollard::query_parameters::InspectContainerOptions;
 use testcontainers::core::IntoContainerPort;
+use testcontainers::core::client::docker_client_instance;
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, ContainerRequest, GenericImage, ImageExt};
+use testcontainers::{ContainerAsync, ContainerRequest, GenericImage, ImageExt, TestcontainersError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::Instant;
@@ -14,10 +16,12 @@ const HTTP_PORT: u16 = ClickHouseFixture::HTTP_PORT;
 const HTTPS_PORT: u16 = ClickHouseFixture::HTTPS_PORT;
 const PASSWORD_USER: &str = "tablepro";
 const DATABASE: &str = "tablepro";
+const SERVICE: &str = "clickhouse";
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 // A connection that is accepted and never answered must not use up the deadline.
 const READY_ATTEMPT: Duration = Duration::from_secs(5);
 const READY_RETRY: Duration = Duration::from_millis(250);
+const LOG_TAIL_LINES: usize = 40;
 
 pub struct ClickHouseFixture {
     container: ContainerAsync<GenericImage>,
@@ -36,16 +40,20 @@ impl ClickHouseFixture {
     pub const HTTPS_PORT: u16 = 8443;
 
     pub async fn start() -> Result<Self, FixtureError> {
-        Self::launch(None).await
+        Self::launch(None, Vec::new(), READY_TIMEOUT).await
     }
 
     pub async fn start_in(network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(Some(network)).await
+        Self::launch(Some(network), Vec::new(), READY_TIMEOUT).await
     }
 
     // No CLICKHOUSE_DB: the image would start, stop and restart the server
     // to create it. One HTTP CREATE DATABASE is both that and the readiness check.
-    async fn launch(network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
+    async fn launch(
+        network: Option<&TestNetwork>,
+        extra_files: Vec<ContainerFile>,
+        ready_timeout: Duration,
+    ) -> Result<Self, FixtureError> {
         let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
         let mut request: ContainerRequest<GenericImage> = FixtureImage::CLICKHOUSE
@@ -57,10 +65,16 @@ impl ClickHouseFixture {
         if let (Some(network), Some(alias)) = (network, &network_alias) {
             request = request.with_network(network.name()).with_container_name(alias);
         }
-        let container = with_files(request, Self::files(&pki, &password)?).start().await?;
-        let host = container.get_host().await?.to_string();
-        let http_port = container.get_host_port_ipv4(HTTP_PORT).await?;
-        let https_port = container.get_host_port_ipv4(HTTPS_PORT).await?;
+        let mut files = Self::files(&pki, &password)?;
+        files.extend(extra_files);
+        let container = with_files(request, files).start().await?;
+        let (host, http_port, https_port) = match published(&container).await {
+            Ok(published) => published,
+            Err(error) => {
+                let reason = format!("its ports are not published: {error}");
+                return Err(not_ready(&container, reason, "none".to_owned()).await);
+            }
+        };
         let fixture = Self {
             container,
             pki,
@@ -70,7 +84,7 @@ impl ClickHouseFixture {
             https_port,
             network_alias,
         };
-        fixture.create_database().await?;
+        fixture.create_database(ready_timeout).await?;
         Ok(fixture)
     }
 
@@ -103,8 +117,14 @@ impl ClickHouseFixture {
              </{client}>\n\
              </users></clickhouse>\n"
         );
+        // Otherwise the server logs only to files, and a failed start leaves no log to report.
+        let console = "<clickhouse><logger>\n\
+                       <console>1</console>\n\
+                       <console_log_level>information</console_log_level>\n\
+                       </logger></clickhouse>\n";
         Ok(vec![
             ContainerFile::readable("/etc/clickhouse-server/config.d/tls.xml", server),
+            ContainerFile::readable("/etc/clickhouse-server/config.d/console.xml", console),
             ContainerFile::readable("/etc/clickhouse-server/users.d/tablepro.xml", users),
             ContainerFile::readable(format!("{tls}/ca.pem"), pki.read(PkiFile::Ca)?),
             ContainerFile::readable(format!("{tls}/server.pem"), pki.read(PkiFile::ServerCertificate)?),
@@ -148,27 +168,79 @@ impl ClickHouseFixture {
         ExecOutput::run(&self.container, command).await
     }
 
-    async fn create_database(&self) -> Result<(), FixtureError> {
+    async fn create_database(&self, ready_timeout: Duration) -> Result<(), FixtureError> {
         let request = query_request(
             &self.host,
             &self.password_credentials(),
             &format!("CREATE DATABASE IF NOT EXISTS {DATABASE}"),
         );
-        let deadline = Instant::now() + READY_TIMEOUT;
-        while Instant::now() < deadline {
+        let deadline = Instant::now() + ready_timeout;
+        loop {
             let attempt = exchange(&self.host, self.http_port, &request);
-            if let Ok(Ok(reply)) = tokio::time::timeout(READY_ATTEMPT, attempt).await
-                && status_code(&reply) == Some(200)
-            {
-                return Ok(());
+            let last_reply = match tokio::time::timeout(READY_ATTEMPT, attempt).await {
+                Ok(Ok(reply)) if status_code(&reply) == Some(200) => return Ok(()),
+                Ok(Ok(reply)) => reply_summary(&reply),
+                Ok(Err(error)) => error.to_string(),
+                Err(_) => format!("no reply within {} seconds", READY_ATTEMPT.as_secs()),
+            };
+            if !self.container.is_running().await? {
+                return Err(not_ready(&self.container, "the container exited".to_owned(), last_reply).await);
+            }
+            if Instant::now() >= deadline {
+                let reason = format!("no answer within {} seconds", ready_timeout.as_secs());
+                return Err(not_ready(&self.container, reason, last_reply).await);
             }
             tokio::time::sleep(READY_RETRY).await;
         }
-        Err(FixtureError::NotReady {
-            service: "clickhouse",
-            seconds: READY_TIMEOUT.as_secs(),
-        })
     }
+}
+
+async fn published(container: &ContainerAsync<GenericImage>) -> Result<(String, u16, u16), TestcontainersError> {
+    let host = container.get_host().await?.to_string();
+    let http_port = container.get_host_port_ipv4(HTTP_PORT).await?;
+    let https_port = container.get_host_port_ipv4(HTTPS_PORT).await?;
+    Ok((host, http_port, https_port))
+}
+
+async fn not_ready(container: &ContainerAsync<GenericImage>, reason: String, last_reply: String) -> FixtureError {
+    FixtureError::ContainerNotReady {
+        service: SERVICE,
+        reason,
+        last_reply,
+        state: state(container).await,
+        logs: log_tail(container).await,
+    }
+}
+
+async fn state(container: &ContainerAsync<GenericImage>) -> String {
+    let inspected = match docker_client_instance().await {
+        Ok(docker) => docker
+            .inspect_container(container.id(), None::<InspectContainerOptions>)
+            .await
+            .map_err(|error| error.to_string()),
+        Err(error) => Err(error.to_string()),
+    };
+    match inspected.map(|response| response.state) {
+        Ok(Some(state)) => format!(
+            "status {}, exit code {}, OOM killed {}, error \"{}\"",
+            state.status.map(|status| status.to_string()).unwrap_or_default(),
+            state.exit_code.map(|code| code.to_string()).unwrap_or_default(),
+            state.oom_killed.unwrap_or_default(),
+            state.error.unwrap_or_default(),
+        ),
+        Ok(None) => "no state reported".to_owned(),
+        Err(error) => format!("unavailable: {error}"),
+    }
+}
+
+async fn log_tail(container: &ContainerAsync<GenericImage>) -> String {
+    let stdout = container.stdout_to_vec().await;
+    let stderr = container.stderr_to_vec().await;
+    format!(
+        "stdout:\n{}\nstderr:\n{}",
+        stream_tail(stdout.as_deref().map_err(ToString::to_string)),
+        stream_tail(stderr.as_deref().map_err(ToString::to_string)),
+    )
 }
 
 fn query_request(host: &str, credentials: &FixtureCredentials, query: &str) -> String {
@@ -201,9 +273,40 @@ fn status_code(reply: &str) -> Option<u16> {
     parts.next()?.parse().ok()
 }
 
+fn reply_summary(reply: &str) -> String {
+    let status = reply.lines().next().unwrap_or_default();
+    let body = reply
+        .split_once("\r\n\r\n")
+        .and_then(|(_, body)| body.lines().find(|line| !line.trim().is_empty()))
+        .unwrap_or_default();
+    match (status.is_empty(), body.is_empty()) {
+        (true, _) => "an empty reply".to_owned(),
+        (false, true) => status.to_owned(),
+        (false, false) => format!("{status}: {body}"),
+    }
+}
+
+fn stream_tail(output: Result<&[u8], String>) -> String {
+    match output {
+        Ok(bytes) => {
+            let text = String::from_utf8_lossy(bytes);
+            let lines: Vec<&str> = text.lines().collect();
+            lines[lines.len().saturating_sub(LOG_TAIL_LINES)..].join("\n")
+        }
+        Err(error) => format!("unavailable: {error}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn config_file(name: &str, body: &str) -> ContainerFile {
+        ContainerFile::readable(
+            format!("/etc/clickhouse-server/config.d/{name}"),
+            format!("<clickhouse>{body}</clickhouse>\n"),
+        )
+    }
 
     #[test]
     fn the_query_request_carries_the_credentials_and_the_body_length() {
@@ -220,5 +323,94 @@ mod tests {
         assert_eq!(status_code("HTTP/1.1 516 Unknown\r\n\r\nCode: 516."), Some(516));
         assert_eq!(status_code("SSH-2.0-OpenSSH_10.3\r\n"), None);
         assert_eq!(status_code(""), None);
+    }
+
+    #[test]
+    fn a_refused_query_is_summarised_with_the_server_message() {
+        let reply = "HTTP/1.0 516 Unknown\r\nX-ClickHouse-Exception-Code: 516\r\n\r\n\
+                     Code: 516. DB::Exception: tablepro: Authentication failed\n";
+
+        assert_eq!(
+            reply_summary(reply),
+            "HTTP/1.0 516 Unknown: Code: 516. DB::Exception: tablepro: Authentication failed"
+        );
+        assert_eq!(
+            reply_summary("HTTP/1.0 500 Internal Server Error\r\n\r\n"),
+            "HTTP/1.0 500 Internal Server Error"
+        );
+        assert_eq!(reply_summary(""), "an empty reply");
+    }
+
+    #[test]
+    fn the_log_tail_keeps_the_last_lines() {
+        let log: String = (1..=50).map(|line| format!("line {line}\n")).collect();
+
+        let tail = stream_tail(Ok(log.as_bytes()));
+
+        assert!(tail.starts_with("line 11\n"), "{tail}");
+        assert!(tail.ends_with("\nline 50"), "{tail}");
+        assert_eq!(stream_tail(Err("gone".to_owned())), "unavailable: gone");
+    }
+
+    #[test]
+    fn the_server_also_logs_to_the_console() {
+        let pki = TestPki::generate().unwrap();
+        let files = ClickHouseFixture::files(&pki, "secret").unwrap();
+
+        let console = files
+            .iter()
+            .find(|file| file.target() == "/etc/clickhouse-server/config.d/console.xml")
+            .unwrap();
+
+        let text = String::from_utf8_lossy(console.contents());
+        assert!(text.contains("<console>1</console>"), "{text}");
+        assert!(
+            text.contains("<console_log_level>information</console_log_level>"),
+            "{text}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires docker"]
+    async fn a_server_that_exits_is_reported_at_once_with_its_state_and_logs() {
+        let broken = config_file("zz-broken.xml", "<timezone>Nowhere/Invalid</timezone>");
+        let started = Instant::now();
+
+        let error = ClickHouseFixture::launch(None, vec![broken], READY_TIMEOUT)
+            .await
+            .err()
+            .unwrap();
+
+        assert!(started.elapsed() < READY_TIMEOUT / 2, "took {:?}", started.elapsed());
+        let FixtureError::ContainerNotReady {
+            reason, state, logs, ..
+        } = &error
+        else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(reason, "the container exited");
+        assert!(state.starts_with("status exited, exit code "), "{state}");
+        assert!(logs.contains("Nowhere/Invalid"), "{logs}");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires docker"]
+    async fn a_server_that_never_answers_is_reported_with_its_state_and_logs() {
+        let elsewhere = config_file("zz-elsewhere.xml", "<http_port>8124</http_port>");
+
+        let error = ClickHouseFixture::launch(None, vec![elsewhere], Duration::from_secs(8))
+            .await
+            .err()
+            .unwrap();
+
+        let FixtureError::ContainerNotReady {
+            reason, state, logs, ..
+        } = &error
+        else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(reason, "no answer within 8 seconds");
+        assert!(state.starts_with("status running, "), "{state}");
+        assert!(logs.contains("Listening for http://0.0.0.0:8124"), "{logs}");
     }
 }

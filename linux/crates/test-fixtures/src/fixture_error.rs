@@ -16,4 +16,12 @@ pub enum FixtureError {
     },
     #[error("{service} did not accept connections within {seconds} seconds")]
     NotReady { service: &'static str, seconds: u64 },
+    #[error("{service} was not ready: {reason}; last reply: {last_reply}; container {state}\n{logs}")]
+    ContainerNotReady {
+        service: &'static str,
+        reason: String,
+        last_reply: String,
+        state: String,
+        logs: String,
+    },
 }
