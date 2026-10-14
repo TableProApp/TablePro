@@ -81,7 +81,7 @@ pub(super) fn install_window_lifecycle(
             let in_flight_for_poll = in_flight_saves_for_close.clone();
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                 if in_flight_for_poll.get() == 0 {
-                    dialog_for_poll.close();
+                    dialog_for_poll.force_close();
                     force_close_for_poll.set(true);
                     window_for_poll.close();
                     glib::ControlFlow::Break
