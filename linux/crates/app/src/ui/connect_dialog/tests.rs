@@ -484,6 +484,27 @@ fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
     assert_eq!(edited.connection.id, saved.id);
     assert!(!edited.is_new);
     assert_eq!(edited.connection.host, "db2.example.com");
+    assert_eq!(edited.connection.name, "app@db2.example.com");
+}
+
+#[gtk4::test]
+fn a_connect_from_new_connection_keeps_a_renamed_entry_s_name() {
+    let saved = shop();
+    let harness = open(Options {
+        saved: vec![saved.clone()],
+        ..Options::default()
+    });
+    fill_network(&harness.dialog);
+    assert_eq!(harness.dialog.imp().name_row.text(), "");
+    let log = SignalLog::connect(&harness.dialog, "submitted", |values| {
+        values[1].get::<ConnectSubmission>().expect("a submission")
+    });
+
+    harness.dialog.imp().connect_button.emit_clicked();
+
+    let submitted = log.take().remove(0).pending_save;
+    assert_eq!(submitted.connection.id, saved.id);
+    assert_eq!(submitted.connection.name, "Shop", "the connect undid the rename");
 }
 
 #[gtk4::test]

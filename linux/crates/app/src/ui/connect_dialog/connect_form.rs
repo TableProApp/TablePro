@@ -385,6 +385,27 @@ impl ConnectForm {
         }
     }
 
+    /// The entry a connect from the New Connection dialog writes over
+    /// `existing`, the entry it describes again. An empty Name row there
+    /// means no name was typed, so a name the user gave the entry stays;
+    /// one that was only where it connects follows the form.
+    pub fn submitted_connection(
+        &self,
+        caps: &DriverCapabilities,
+        valid: &ValidatedForm,
+        id: Uuid,
+        existing: Option<&SavedConnection>,
+    ) -> SavedConnection {
+        let mut connection = self.saved_connection(caps, valid, id, existing);
+        if let Some(existing) = existing
+            && self.name.trim().is_empty()
+            && existing.name != Self::from_saved(existing, caps).label(caps)
+        {
+            existing.name.clone_into(&mut connection.name);
+        }
+        connection
+    }
+
     /// The secrets the entry is saved with. The database password goes
     /// in even when empty: a login with no password is still a login
     /// the keyring answers for.
@@ -987,6 +1008,50 @@ mod tests {
         assert_eq!(saved_from(&form, postgres()).name, "app@db2.example.com");
         form.name = "  Shop ".to_owned();
         assert_eq!(saved_from(&form, postgres()).name, "Shop");
+    }
+
+    #[test]
+    fn a_connect_from_new_connection_keeps_the_name_of_a_renamed_match() {
+        let form = filled("postgres", postgres());
+        let valid = form.validate(postgres()).expect("valid");
+        let renamed = SavedConnection {
+            name: "Shop".to_owned(),
+            ..saved_from(&form, postgres())
+        };
+        let candidate = form.saved_connection(postgres(), &valid, Uuid::new_v4(), None);
+        assert_eq!(
+            match_saved_connection(std::slice::from_ref(&renamed), &candidate, false),
+            Some(renamed.id)
+        );
+
+        let submitted = form.submitted_connection(postgres(), &valid, renamed.id, Some(&renamed));
+        assert_eq!(submitted.name, "Shop", "the connect undid the rename");
+
+        let named = ConnectForm {
+            name: "Shop (EU)".to_owned(),
+            ..form.clone()
+        };
+        let valid = named.validate(postgres()).expect("valid");
+        assert_eq!(
+            named
+                .submitted_connection(postgres(), &valid, renamed.id, Some(&renamed))
+                .name,
+            "Shop (EU)"
+        );
+    }
+
+    #[test]
+    fn a_derived_name_follows_the_form_on_a_connect() {
+        let derived = saved_from(&filled("postgres", postgres()), postgres());
+        let moved = ConnectForm {
+            host: "db2.example.com".to_owned(),
+            ..filled("postgres", postgres())
+        };
+        let valid = moved.validate(postgres()).expect("valid");
+
+        let submitted = moved.submitted_connection(postgres(), &valid, derived.id, Some(&derived));
+
+        assert_eq!(submitted.name, "app@db2.example.com");
     }
 
     #[test]

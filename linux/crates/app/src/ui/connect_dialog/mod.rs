@@ -590,7 +590,7 @@ impl ConnectDialog {
                     .and_then(|id| saved_connections.iter().find(|saved| saved.id == id))
             });
         let id = existing.map_or(candidate.id, |saved| saved.id);
-        let connection = form.saved_connection(caps, &valid, id, existing);
+        let connection = form.submitted_connection(caps, &valid, id, existing);
         let request = connect_request(&entry, &form, &valid, &connection);
         let pending_save = PendingSave {
             secrets: form.secrets_to_store(&valid, &connection),
