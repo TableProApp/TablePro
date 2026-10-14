@@ -19,9 +19,10 @@ use tablepro_core::meta::{
 use tablepro_core::{DriverError, ForeignKeyInfo, ServerCode, ServerDiagnostics};
 
 use crate::catalog::{
-    self, InboundKeyRow, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_name, generated_expressions,
+    self, InboundKeyRow, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_names, generated_expressions,
     inbound_foreign_keys, select_dependents,
 };
+use crate::ddl::declared_foreign_key_names;
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
 
@@ -126,7 +127,7 @@ pub(crate) async fn fetch_foreign_keys(
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => entry.insert((
                 ForeignKeyInfo {
-                    name: foreign_key_name(&table.name, id),
+                    name: String::new(),
                     columns: Vec::new(),
                     ref_schema: table.schema.clone(),
                     ref_table: text(&row, "table")?,
@@ -143,8 +144,17 @@ pub(crate) async fn fetch_foreign_keys(
             None => *to_primary = true,
         }
     }
+    let declared = match keys.is_empty() {
+        true => None,
+        false => create_statement(connection, table)
+            .await?
+            .as_deref()
+            .and_then(declared_foreign_key_names),
+    };
+    let mut names = foreign_key_names(&table.name, declared, keys.len()).into_iter();
     let mut resolved = Vec::with_capacity(keys.len());
     for (mut key, to_primary) in keys.into_values() {
+        key.name = names.next().unwrap_or_default();
         // A key that names no parent columns points at the parent's
         // primary key.
         if to_primary {
@@ -239,15 +249,7 @@ pub(crate) async fn fetch_table_definition(
 ) -> Result<TableDefinition, DriverError> {
     let shape = table_shape(connection, table).await?;
     let schema_sql = quote(schema_of(table));
-    let create_statement: Option<String> = sqlx::query(AssertSqlSafe(catalog::object_sql(&schema_sql)))
-        .bind(table.name.as_str())
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(map_error)?
-        .map(|row| row.try_get::<Option<String>, _>("sql"))
-        .transpose()
-        .map_err(map_error)?
-        .flatten();
+    let create_statement = create_statement(connection, table).await?;
 
     let expressions = match (
         &create_statement,
@@ -285,6 +287,7 @@ pub(crate) async fn fetch_table_definition(
         .map(|row| {
             Ok(InboundKeyRow {
                 child: text(row, "child")?,
+                child_sql: row.try_get("child_sql").map_err(map_error)?,
                 id: row.try_get("id").map_err(map_error)?,
                 from: text(row, "from")?,
                 to: row.try_get("to").map_err(map_error)?,
@@ -310,6 +313,20 @@ pub(crate) async fn fetch_table_definition(
         inbound_foreign_keys: inbound,
         source,
     })
+}
+
+/// The CREATE statement SQLite stored for the table.
+async fn create_statement(connection: &mut SqlxConnection, table: &TableRef) -> Result<Option<String>, DriverError> {
+    let schema_sql = quote(schema_of(table));
+    Ok(sqlx::query(AssertSqlSafe(catalog::object_sql(&schema_sql)))
+        .bind(table.name.as_str())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(map_error)?
+        .map(|row| row.try_get::<Option<String>, _>("sql"))
+        .transpose()
+        .map_err(map_error)?
+        .flatten())
 }
 
 async fn dependents(

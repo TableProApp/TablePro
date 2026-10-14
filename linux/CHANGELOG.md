@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save Changes dialog on close that lists every tab with unsaved changes and saves only the ones left checked.
 - Logout waits while there are unsaved changes, and logout and suspend wait while a save is running.
 - Auto-increment on and off for PostgreSQL columns in the Structure tab, numbering on from the largest existing value.
+- SQLite column type, nullability, default and primary key changes, and foreign keys added or removed, in the Structure tab.
 
 ### Changed
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show CREATE TABLE gives the server's own statement on MySQL, ClickHouse and SQLite.
 - Structure tab sets a column NOT NULL when it joins the primary key, and gives its nullability back when it leaves.
 - Auto increment in the Structure tab no longer needs the primary key on PostgreSQL and SQL Server.
+- SQLite foreign keys show the name their CREATE TABLE gives them.
 
 ### Fixed
 

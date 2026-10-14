@@ -66,7 +66,7 @@ fn keeps(row: &SchemaRow, mentions: &HashSet<String>, table: &str, names: &[Stri
 
 /// Every identifier the SQL names, lowercased and unquoted. A name
 /// inside a string literal or a comment is not a reference.
-fn words(sql: &str) -> HashSet<String> {
+pub(crate) fn words(sql: &str) -> HashSet<String> {
     let plan = ScriptPlan::build(
         sql,
         SqlGrammar::Sqlite,

@@ -67,6 +67,22 @@ A `COMMIT` never crosses a network, so nothing is left to resolve afterwards (`C
 
 The grid names a row by its primary key, then by a unique index whose columns are all `NOT NULL`, then by `rowid`. A `WITHOUT ROWID` table with neither key, or a table with a column named `rowid` that hides the real one, is read-only in the grid.
 
+## Structure changes
+
+`ALTER TABLE` renames a table or a column, adds a column, and drops one. The DDL dialect uses it where SQLite allows the change: an added column with no key, a constant default, and NOT NULL only with a default; a dropped column that has no key or UNIQUE of its own. Every other change rebuilds the table, following the procedure in [lang_altertable.html](https://www.sqlite.org/lang_altertable.html#otheralter), in one batch under `ForeignKeyMode::SuspendedThenVerified`:
+
+1. Drop the views, and the triggers on other tables, that name the table, since the rename in step 5 checks every one of them.
+2. Create `_tablepro_rebuild_<table>` from the stored CREATE TABLE with only the edited parts replaced: a column's type, NULL, DEFAULT and key, the key itself, and the foreign keys added or dropped. A COLLATE, CHECK, generated expression, conflict clause, comment or `WITHOUT ROWID` the edit did not touch stays as it was written.
+3. Copy the rows, with their rowids unless the table has none or an `INTEGER PRIMARY KEY` column carries them. A generated column is computed again.
+4. With AUTOINCREMENT on both sides, carry the `sqlite_sequence` mark, so a deleted number is not handed out again.
+5. Drop the old table and rename the new one into its place.
+6. Make the indexes, triggers and views again from their stored SQL, in the order the schema first made them.
+7. Rename columns, then the table, natively, so SQLite carries the new names into every index, trigger, view and foreign key.
+
+The foreign key check covers the rebuilt table and every table whose keys point at it, and fails the save only for a violation the save introduced. A rebuild refuses to drop a column that a kept index, CHECK, generated column, foreign key, trigger or view still names. A table whose CREATE TABLE the reader cannot follow, such as a virtual table, keeps the native changes and refuses the rest as `UnreadableDefinition`.
+
+SQLite's pragmas do not report a foreign key's constraint name, so the definition reads it from the CREATE TABLE text, and a key declared without one is named `fk_<table>_<n>` after its position.
+
 ## Editor sessions
 
 - A script is split where SQLite itself would end a statement, so the semicolons inside a trigger body do not end it. Text the splitter cannot finish, such as an unterminated string, goes to SQLite whole, so the error is SQLite's own. The splitter is tested against `sqlite3_complete` (`tests/script_plan_matches_sqlite3_complete.rs`).
