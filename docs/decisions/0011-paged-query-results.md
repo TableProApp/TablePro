@@ -28,7 +28,7 @@ Add an optional driver capability that opens a forward-only cursor over a single
 
 ## Implementation status
 
-Core and PostgreSQL cursor support and the read-only snapshot session path have landed. `PolicyGuard` now authorizes one read statement in a read-only snapshot, masks each fetched page, and records page and terminal audit outcomes. PostgreSQL is the only driver with cursor support; other drivers return `Unsupported`. The SQL editor is not wired to this path yet, so its results remain materialized under the existing caps. The guarded cursor lifecycle is covered by policy tests; editor integration and its retained-page behavior remain open.
+Core and PostgreSQL cursor support and PostgreSQL read-only snapshot sessions have landed. `PolicyGuard` now authorizes one read statement in a read-only snapshot, masks each fetched page, and records page and terminal audit outcomes. PostgreSQL is the only driver with cursor support; other drivers return `Unsupported`. The SQL editor is not wired to this path yet, so its results remain materialized under the existing caps. The guarded cursor lifecycle is covered by policy tests; editor integration and its retained-page behavior remain open.
 
 ## Open questions
 
