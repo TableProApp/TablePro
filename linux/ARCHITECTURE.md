@@ -112,7 +112,7 @@ Files come from Open With in a file manager or from the command line (`HANDLES_O
 
 ## Windows and sessions
 
-Each window is a `SessionWindow` (`crates/app/src/ui/session_window/`) for one connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)). Its `SessionPage` is the picker of saved connections, the connect while it runs, the failure when it fails, or the session's `Workspace`. Every page past the picker holds the `SessionClaim` on the session's key, so leaving the page releases it.
+Each window is a `SessionWindow` (`crates/app/src/ui/session_window/`) for one connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)). Its `SessionPage` is the picker of saved connections, the connect while it runs, the failure when it fails, or the session's `Workspace`. Every picker's `WelcomeView` binds the one `SavedConnectionList` that `AppServices` builds, which follows the list the `ConnectionStore` publishes after each write, so a save, a connect's last-opened stamp, an edit or a delete in any window reaches every picker. A row's menu and its `picker` actions name the connection by id and read it from the list again when they run. Every page past the picker holds the `SessionClaim` on the session's key, so leaving the page releases it.
 
 - A connect claims the key in the `SessionRegistry` before it starts, so a second window asking for the same database brings the first forward. The connect runs on `Tasks` under a cancel token, and a result for an attempt the user cancelled or replaced is closed instead of adopted.
 - Adopting a connected session starts its `Session`, attaches it to the claim, which `SessionSignals` hears through the registry, records the key in `OpenSessions` and builds the `Workspace`.
@@ -127,7 +127,7 @@ The `Workspace` (`crates/app/src/ui/workspace/`) shows one session: the sidebar 
 
 The application, its windows, the workspace and every view a rewrite has reached are gtk-rs subclasses. A widget with a layout has a CompositeTemplate `.ui` file under `data/resources/ui/`, compiled into the GResource: the session window and its pages, the workspace, the browse, structure and SQL editor tabs, the results pane, and the connect and preferences dialogs with their sections. A subclass keeps its state in its `imp` struct and reports through signals. The window and the workspace take input through their input queues; a browse or structure tab handles its input in `send` at once, and one that arrives while another is being handled waits for it.
 
-A few views are still [Relm4](https://relm4.org) components ([ADR 0003](docs/decisions/0003-relm4-architecture.md)): the picker's `WelcomeView` with its `ConnectionRow` factory, and the saved-queries and CSV import dialogs. Their output reaches the subclass that hosts them through `connect_receiver` or `relm4_bridge`, which put it on that subclass's queue. The two patterns coexist until a rewrite turns each component into a subclass.
+A few views are still [Relm4](https://relm4.org) components ([ADR 0003](docs/decisions/0003-relm4-architecture.md)): the saved-queries and CSV import dialogs. Their output reaches the subclass that hosts them through `connect_receiver` or `relm4_bridge`, which put it on that subclass's queue. The two patterns coexist until a rewrite turns each component into a subclass.
 
 See [docs/state-management.md](docs/state-management.md) for the patterns and naming we use.
 

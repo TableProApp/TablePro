@@ -78,9 +78,8 @@ pub(crate) enum SessionWindowInput {
     },
     /// The located file's path is saved; connect to it.
     LocatedSaved(Box<SavedConnection>),
-    ReloadConnections,
-    ConnectionsLoaded(Vec<SavedConnection>),
-    ConnectionListUnavailable,
+    /// Read the connection list, which every picker follows from then on.
+    LoadConnections,
     ResetConnectionList,
     /// The keyring kept a deleted connection's secrets, so the entry
     /// was kept too. The toast's Retry runs the same delete again.

@@ -1,14 +1,11 @@
 //! The saved connections a window's picker lists, and the connect
 //! dialog that adds to them.
 
-use std::sync::Arc;
-
 use gtk4 as gtk;
 use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use relm4::ComponentController;
 
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
@@ -95,7 +92,7 @@ impl SessionWindow {
             connector: context.connector.clone(),
             interaction: context.attended(),
             tasks: state.services.tasks.clone(),
-            saved_connections: Arc::from(self.imp().saved_connections.borrow().clone()),
+            saved_connections: state.services.saved_connections.connections(),
             remembered_driver: state.services.settings.connect_dialog_driver(),
             ssh_environment: ssh,
             prefill,
@@ -141,15 +138,13 @@ impl SessionWindow {
                     )));
                 }
             }
-            input.deliver(SessionWindowInput::ReloadConnections);
         });
     }
 
-    /// Stamp the connection's last-opened time, then read the list again
-    /// so the picker sorts by it. The read waits for the stamp, or it
-    /// would show the old order until the next one.
+    /// Stamp the connection's last-opened time, which every picker sorts
+    /// by once the store publishes the list with it.
     pub(super) fn touch_last_opened(&self, id: Uuid) {
-        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+        let Some(state) = self.state() else {
             return;
         };
         let connections = state.services.storage.connections().clone();
@@ -165,36 +160,24 @@ impl SessionWindow {
                 Ok(Ok(())) => {}
             }
             drop(hold);
-            input.deliver(SessionWindowInput::ReloadConnections);
         });
     }
 
-    pub(super) fn on_reload_connections(&self) {
-        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+    /// Read the connection list, once per process: the store publishes
+    /// it, and every picker follows the store from then on.
+    pub(super) fn on_load_connections(&self) {
+        let Some(state) = self.state() else {
             return;
         };
         let store = state.services.storage.connections().clone();
         let reading = state.services.tasks.spawn_blocking_task(move || store.load_blocking());
         glib::spawn_future_local(async move {
             match reading.await {
-                Ok(Ok(connections)) => input.deliver(SessionWindowInput::ConnectionsLoaded(connections.to_vec())),
-                Ok(Err(error)) => {
-                    tracing::warn!(%error, "the saved connections could not be read");
-                    input.deliver(SessionWindowInput::ConnectionListUnavailable);
-                }
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => tracing::warn!(%error, "the saved connections could not be read"),
                 Err(failure) => tracing::warn!(%failure, "the connections read task failed"),
             }
         });
-    }
-
-    pub(super) fn on_connections_loaded(&self, mut connections: Vec<SavedConnection>) {
-        crate::ui::connection_list::sort(&mut connections);
-        self.imp().saved_connections.replace(connections.clone());
-        if let Some(welcome) = self.imp().welcome.borrow().as_ref() {
-            welcome
-                .sender()
-                .deliver(crate::ui::welcome_view::WelcomeViewInput::SetConnections(connections));
-        }
     }
 
     /// `saved` as the connection list holds it now, or `None` once it is
@@ -211,12 +194,7 @@ impl SessionWindow {
     }
 
     fn saved_connection(&self, id: Uuid) -> Option<SavedConnection> {
-        self.imp()
-            .saved_connections
-            .borrow()
-            .iter()
-            .find(|saved| saved.id == id)
-            .cloned()
+        self.state()?.services.saved_connections.get(id)
     }
 
     /// The name a dialog or toast calls a saved connection by.
@@ -320,7 +298,6 @@ impl SessionWindow {
             }
             drop(claim);
             drop(hold);
-            input.deliver(SessionWindowInput::ReloadConnections);
         });
     }
 
@@ -334,7 +311,7 @@ impl SessionWindow {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
-        let copy = tablepro_storage::duplicate(&source, &self.imp().saved_connections.borrow());
+        let copy = tablepro_storage::duplicate(&source, &state.services.saved_connections.connections());
         let name = copy.name.clone();
         let connections = state.services.storage.connections().clone();
         let secrets = state.services.storage.secrets().clone();
@@ -355,7 +332,6 @@ impl SessionWindow {
             // one, so a keyring that refuses is reported rather than
             // undoing the copy.
             let carried = copy_secrets(secrets.as_ref(), source.id, copy_id, &name).await;
-            input.deliver(SessionWindowInput::ReloadConnections);
             input.deliver(SessionWindowInput::ShowToast(if carried {
                 crate::i18n::gettext_f("Duplicated as {name}", &[("name", &name)])
             } else {
@@ -414,7 +390,6 @@ impl SessionWindow {
                 tracing::warn!(%error, "could not save the connection");
                 input.deliver(SessionWindowInput::ShowToast(failure));
             }
-            input.deliver(SessionWindowInput::ReloadConnections);
         });
     }
 
@@ -501,7 +476,6 @@ impl SessionWindow {
                     crate::i18n::gettext("The connections could not be imported.")
                 }
             };
-            input.deliver(SessionWindowInput::ReloadConnections);
             input.deliver(SessionWindowInput::ShowToast(message));
         });
     }
@@ -514,7 +488,7 @@ impl SessionWindow {
         };
         let banner = picker.banner();
         let Some(content) =
-            crate::ui::connection_list_banner::banner_content(&state.services.storage.connections().snapshot().state)
+            crate::ui::connection_list_banner::banner_content(&state.services.saved_connections.state())
         else {
             banner.set_revealed(false);
             return;
@@ -565,7 +539,7 @@ impl SessionWindow {
     /// Move the unreadable list aside, holding the process until the
     /// rename lands so a quit right after Reset keeps it.
     pub(super) fn reset_connection_list(&self) {
-        let (Some(state), Some(input), Some(picker)) = (self.state(), self.input(), self.imp().picker.get()) else {
+        let (Some(state), Some(picker)) = (self.state(), self.imp().picker.get()) else {
             return;
         };
         let store = state.services.storage.connections().clone();
@@ -585,7 +559,6 @@ impl SessionWindow {
                     toasts.add_toast(adw::Toast::new(&crate::ui::connection_list_banner::reset_toast_text(
                         &moved,
                     )));
-                    input.deliver(SessionWindowInput::ReloadConnections);
                     return;
                 }
                 Ok(Err(error)) => error.to_string(),
@@ -767,7 +740,13 @@ mod tests {
     /// The picker lists the test's connection, which names it in the
     /// dialogs.
     fn wait_for_list(window: &SessionWindow) {
-        wait_until(WAIT, || !window.imp().saved_connections.borrow().is_empty()).expect("the connection list");
+        let list = window
+            .state()
+            .expect("the window's state")
+            .services
+            .saved_connections
+            .clone();
+        wait_until(WAIT, || !list.connections().is_empty()).expect("the connection list");
     }
 
     fn listed(test: &TestWindow, id: Uuid) -> bool {
@@ -834,7 +813,7 @@ mod tests {
 
         wait_until(WAIT, || !listed(&test, test.saved.id)).expect("the entry to go");
         assert!(test.vault.is_empty(), "the secrets outlived the entry");
-        wait_until(WAIT, || test.window.imp().saved_connections.borrow().is_empty())
+        wait_until(WAIT, || test.services.saved_connections.connections().is_empty())
             .expect("the picker to drop the entry");
     }
 

@@ -26,6 +26,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/ssh-section.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/structure-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/tls-section.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/welcome-view.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/workspace.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/table-relation-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/statement-pending-symbolic.svg</file>
