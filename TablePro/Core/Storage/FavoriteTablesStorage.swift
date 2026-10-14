@@ -63,7 +63,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
     private var cache: Set<FavoriteEntry>?
     private let lock = NSLock()
 
-    init(userDefaults: UserDefaults = .standard, syncTracker: SyncChangeTracker = .shared) {
+    init(userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncTracker: SyncChangeTracker = .shared) {
         self.defaults = userDefaults
         self.syncTracker = syncTracker
     }

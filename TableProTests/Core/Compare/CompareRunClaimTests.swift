@@ -25,13 +25,13 @@ final class CompareRunClaimTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         defaults = UserDefaults(suiteName: suiteName)
         storage = CompareSyncProfileStorage(defaults: defaults)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         storage = nil
         defaults = nil
         super.tearDown()

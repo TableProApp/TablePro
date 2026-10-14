@@ -51,7 +51,7 @@ final class RegistryClient: ObservableObject {
     nonisolated private static let manifestCacheFileName = "registry-manifest.json"
 
     init(
-        userDefaults: UserDefaults = .standard,
+        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         session: URLSession = RegistryClient.makeDefaultSession(),
         manifestCacheURL: URL = RegistryClient.defaultManifestCacheURL()
     ) {

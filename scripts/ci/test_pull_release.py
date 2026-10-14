@@ -158,5 +158,67 @@ class PublishTargetTests(unittest.TestCase):
             self.assertEqual(pull_release.main(["0.75.0", "--dry-run"]), 0)
 
 
+@contextlib.contextmanager
+def clone_of_main(ahead=False, behind=False):
+    """A checkout of main with an origin, one unpushed commit when ahead, one missing when behind."""
+    with tempfile.TemporaryDirectory() as directory:
+        origin = pathlib.Path(directory, "origin.git")
+        work = pathlib.Path(directory, "work")
+
+        def run(cwd, *args):
+            subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+        def commit(cwd, message):
+            run(cwd, "-c", "user.email=test@example.com", "-c", "user.name=Test",
+                "commit", "--quiet", "--allow-empty", "-m", message)
+
+        run(directory, "init", "--quiet", "--bare", "--initial-branch", "main", str(origin))
+        run(directory, "clone", "--quiet", str(origin), str(work))
+        run(work, "checkout", "--quiet", "-B", "main")
+        pathlib.Path(work, "appcast.xml").write_text(BASE, encoding="utf-8")
+        run(work, "add", "appcast.xml")
+        commit(work, "seed")
+        run(work, "push", "--quiet", "origin", "main")
+        if behind:
+            other = pathlib.Path(directory, "other")
+            run(directory, "clone", "--quiet", str(origin), str(other))
+            commit(other, "merged elsewhere")
+            run(other, "push", "--quiet", "origin", "main")
+        if ahead:
+            commit(work, "not pushed")
+        previous = os.getcwd()
+        os.chdir(work)
+        try:
+            yield work
+        finally:
+            os.chdir(previous)
+
+
+class PushContentTests(unittest.TestCase):
+    """The release key bypasses every check on main, so a withdrawal push must hold that commit alone."""
+
+    def test_accepts_main_at_origin(self):
+        with clone_of_main():
+            pull_release.require_in_step_with_origin()
+
+    def test_refuses_an_unpushed_commit(self):
+        with clone_of_main(ahead=True):
+            with self.assertRaises(pull_release.FeedError) as caught:
+                pull_release.require_in_step_with_origin()
+            self.assertIn("origin/main", str(caught.exception))
+
+    def test_refuses_a_main_behind_origin(self):
+        with clone_of_main(behind=True):
+            with self.assertRaises(pull_release.FeedError):
+                pull_release.require_in_step_with_origin()
+
+    def test_an_unpushed_commit_writes_nothing(self):
+        with clone_of_main(ahead=True) as work:
+            feed_path = pathlib.Path(work, "appcast.xml")
+            before = feed_path.read_text(encoding="utf-8")
+            self.assertEqual(pull_release.main(["0.75.0"]), 1)
+            self.assertEqual(feed_path.read_text(encoding="utf-8"), before)
+
+
 if __name__ == "__main__":
     unittest.main()

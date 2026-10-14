@@ -9,7 +9,7 @@ extension WelcomeViewModel {
     func presentWelcomeSheetIfFirstLaunch() {
         guard WelcomeSheetGate.shouldPresent(
             hasSeen: services.appSettingsStorage.hasSeenWelcomeSheet(),
-            isUITestSandbox: AppStorageEnvironment.shared.isIsolated,
+            isUITestSandbox: isUITestSandbox,
             uiTestRequestsSheet: UITestLaunchEnvironment.requestsWelcomeSheet
         ) else { return }
         guard !hasPendingPresentation else { return }

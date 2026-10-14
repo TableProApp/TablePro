@@ -61,13 +61,17 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel = makeViewModel()
     }
 
-    private func makeViewModel(importableAppDetector: @escaping @MainActor () -> Bool = { false }) -> WelcomeViewModel {
+    private func makeViewModel(
+        importableAppDetector: @escaping @MainActor () -> Bool = { false },
+        isUITestSandbox: Bool = false
+    ) -> WelcomeViewModel {
         WelcomeViewModel(
             services: makeServices(),
             importableAppDetector: importableAppDetector,
             groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults),
             recentConnections: recents,
-            listPreferences: preferences
+            listPreferences: preferences,
+            isUITestSandbox: isUITestSandbox
         )
     }
 
@@ -393,6 +397,13 @@ final class WelcomeViewModelTests: XCTestCase {
         relaunched.setUp()
 
         XCTAssertFalse(relaunched.presentsWelcomeSheet, "The sheet must not come back on its own")
+    }
+
+    func testAUITestSandboxSkipsTheFirstLaunchSheet() {
+        let sandboxed = makeViewModel(isUITestSandbox: true)
+        sandboxed.setUp()
+
+        XCTAssertFalse(sandboxed.presentsWelcomeSheet)
     }
 
     func testARoutedSheetWinsOverTheWelcomeSheet() {

@@ -16,11 +16,11 @@ final class CompareRowGridModelTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 

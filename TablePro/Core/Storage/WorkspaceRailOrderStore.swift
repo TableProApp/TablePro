@@ -13,7 +13,7 @@ internal final class WorkspaceRailOrderStore {
     private let defaults: UserDefaults
     private var cachedOrder: [WorkspaceID]
 
-    internal init(defaults: UserDefaults = .standard) {
+    internal init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
         self.cachedOrder = Self.decode(from: defaults)
     }

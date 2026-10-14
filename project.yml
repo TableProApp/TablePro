@@ -34,6 +34,7 @@ settings:
 
 fileGroups:
   - Configs
+  - TestPlans
   - project.yml
 
 packages:
@@ -1367,11 +1368,10 @@ schemes:
       config: Debug
     test:
       config: Debug
-      targets:
-        - name: TableProTests
-          parallelizable: true
-        - name: TableProUITests
-          parallelizable: true
+      testPlans:
+        - path: TestPlans/Unit.xctestplan
+          defaultPlan: true
+        - path: TestPlans/UI.xctestplan
     profile:
       config: Release
     analyze:

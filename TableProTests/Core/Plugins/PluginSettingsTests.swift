@@ -109,7 +109,7 @@ struct PluginSettingsStorageTests {
         storage.save(true)
 
         let expectedKey = "com.TablePro.plugin.\(pluginId).settings"
-        let value = UserDefaults.standard.data(forKey: expectedKey)
+        let value = PluginHostStorage.resolveDefaults().data(forKey: expectedKey)
         #expect(value != nil)
     }
 

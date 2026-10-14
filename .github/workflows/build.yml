@@ -21,20 +21,66 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: SwiftLint
-    uses: ./.github/workflows/swiftlint.yml
+  # Runs no suite. A release commit changes only release files, so its own push skips both suites.
+  # For each suite the verdict is the newest first-parent commit on main where its job ran, waited
+  # for when still running, and it holds only if nothing the suite reads changed since.
+  verdict:
+    name: Tested on main
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
-  # No `secrets: inherit`. That handed the suite CERTIFICATES_P12, CERTIFICATES_PASSWORD,
-  # NOTARY_PASSWORD, PROVISIONING_PROFILE, SPARKLE_PRIVATE_KEY, TELEGRAM_BOT_TOKEN and
-  # REGISTRY_DEPLOY_KEY, none of which it reads.
-  test:
-    name: macOS Tests
-    uses: ./.github/workflows/macos-tests.yml
+      - name: Find the passing runs that cover this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The walk below follows the tag's own parents, so a tag off main would borrow main's verdict.
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_SHA is not on main"
+            exit 1
+          fi
+          covered() {
+            local workflow="$1" job="$2" suite="$3" sha run conclusion changed
+            for sha in $(git rev-list --first-parent --max-count=50 HEAD); do
+              run=$(gh run list --workflow "$workflow" --commit "$sha" --event push --limit 1 \
+                --json databaseId --jq '.[0].databaseId // empty') || return 1
+              [ -n "$run" ] || continue
+              gh run watch "$run" --interval 60 > /dev/null || return 1
+              conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs" \
+                --jq ".jobs[] | select(.name == \"$job\") | .conclusion") || return 1
+              case "$conclusion" in
+                skipped) continue ;;
+                success) ;;
+                *) echo "::error::$job ended '$conclusion' on $sha (run $run)"; return 1 ;;
+              esac
+              changed=$(scripts/ci/detect-changed-paths.sh --base "$sha" "$suite") || return 1
+              if [ "$changed" != false ]; then
+                echo "::error::$job passed on $sha, but files it reads changed before $GITHUB_SHA"
+                return 1
+              fi
+              echo "$job: run $run on $sha" >> "$GITHUB_STEP_SUMMARY"
+              return 0
+            done
+            echo "::error::no $job run among the last 50 commits on main"
+            return 1
+          }
+          status=0
+          covered macos-tests.yml "macOS Tests" macos || status=1
+          covered ios-tests.yml "iOS and Package Tests" ios || status=1
+          exit "$status"
 
   build:
     name: Build ${{ matrix.arch }}
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # No fail-fast. A failing arch would otherwise cancel its sibling mid-notarization, which is
@@ -69,12 +115,14 @@ jobs:
       # build-release.sh clones packages into ~/.spm-cache via -clonedSourcePackagesDirPath,
       # so this restores the checkouts instead of re-cloning 30 repositories on every release.
       # Package.resolved pins every revision and is tracked, which is why it can key the cache.
-      - name: Cache Swift package checkouts
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # macos-tests.yml saves it from main; a save here would land in this tag's scope, which no
+      # other tag can read.
+      - name: Restore Swift package checkouts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.spm-cache
-          key: ${{ runner.os }}-spm-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: ${{ runner.os }}-spm-
+          key: spm-${{ runner.os }}-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
 
       # create-dmg is the only Homebrew formula either arm needs. The MySQL plugin links
       # Libs/libmariadb.a, which download-libs.sh vendors and prepare-libs.sh selects per
@@ -159,9 +207,11 @@ jobs:
 
   release:
     name: Create GitHub Release
-    runs-on: macos-26
-    needs: [lint, test, build, registry-readiness]
+    runs-on: xcode-27
+    needs: [verdict, build, registry-readiness]
     if: startsWith(github.ref, 'refs/tags/v')
+    # Holds APPCAST_DEPLOY_KEY, released only to v* tags.
+    environment: release
     # Ten deltas at about a minute of CPU each, built two at a time.
     timeout-minutes: 30
     permissions:
@@ -340,6 +390,16 @@ jobs:
           path: appcast/appcast.xml
           retention-days: 90
 
+      # Fails before anything is published when the secret does not match a deploy key.
+      - name: Check the release deploy key
+        env:
+          APPCAST_DEPLOY_KEY: ${{ secrets.APPCAST_DEPLOY_KEY }}
+        run: |
+          eval "$(ssh-agent -s)" > /dev/null
+          trap 'ssh-agent -k > /dev/null' EXIT
+          ssh-add - <<< "$APPCAST_DEPLOY_KEY"
+          git ls-remote "git@github.com:${GITHUB_REPOSITORY}.git" HEAD > /dev/null
+
       # A published release is immutable, so every asset goes on the draft first.
       - name: Create the draft release
         id: draft
@@ -369,7 +429,11 @@ jobs:
       # a release that went out clean: every user's updater would keep reporting "up to date"
       # for a version that shipped. A rejected push now rebases and retries, and a push that
       # still will not land fails the job.
+      # Pushed with the release deploy key, the ruleset's only bypass actor: a fresh commit on main
+      # has no checks of its own yet.
       - name: Commit appcast.xml to repo
+        env:
+          APPCAST_DEPLOY_KEY: ${{ secrets.APPCAST_DEPLOY_KEY }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
 
@@ -383,6 +447,10 @@ jobs:
           # scripts/ci main happened to hold, rather than the code the tag was tested with.
           TOOLS=$(mktemp -d)
           cp -R scripts/ci "$TOOLS/"
+
+          eval "$(ssh-agent -s)" > /dev/null
+          trap 'ssh-agent -k > /dev/null' EXIT
+          ssh-add - <<< "$APPCAST_DEPLOY_KEY"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -436,7 +504,7 @@ jobs:
             fi
 
             git commit -m "Update appcast.xml for v${VERSION}"
-            if git push origin main; then
+            if git push "git@github.com:${GITHUB_REPOSITORY}.git" HEAD:main; then
               exit 0
             fi
             echo "Push rejected, re-merging onto the current origin/main (attempt ${attempt})"

@@ -82,6 +82,13 @@ struct QueryPlanThemeTests {
         return MountedOutline(window: window, outline: outline, coordinator: coordinator)
     }
 
+    @Test("The outline saves its columns only under an autosave name")
+    func outlineSavesColumnsOnlyUnderAName() throws {
+        let mounted = try mountOutline()
+
+        #expect(mounted.outline.autosaveTableColumns == (mounted.outline.autosaveName != nil))
+    }
+
     @Test("Under the default pair the outline's rows are AppKit's own row view, and its cells are records cells")
     func outlineRowsAreNativeByDefault() throws {
         try Fixture.preservingEngine {

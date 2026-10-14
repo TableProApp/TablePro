@@ -6,7 +6,7 @@ struct PrivilegeExpansionStore {
     private let defaults: UserDefaults
     private let key: String
 
-    init(connectionId: UUID, defaults: UserDefaults = .standard) {
+    init(connectionId: UUID, defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
         key = Self.prefix + connectionId.uuidString
     }

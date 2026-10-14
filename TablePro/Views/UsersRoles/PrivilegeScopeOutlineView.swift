@@ -31,7 +31,8 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
         outlineView.headerView = NSTableHeaderView()
         outlineView.allowsColumnResizing = true
         outlineView.autosaveName = SplitViewAutosaveName.current("com.TablePro.usersRoles.scopeOutline")
-        outlineView.autosaveTableColumns = true
+        // Without a name AppKit still saves, under "NSTableView Columns v3 (null)" in the standard domain.
+        outlineView.autosaveTableColumns = outlineView.autosaveName != nil
         outlineView.autosaveExpandedItems = false
         outlineView.setAccessibilityIdentifier("usersroles-scope-tree")
 

@@ -35,7 +35,7 @@ final class CustomSlashCommandStorage: ObservableObject {
 
     @Published private(set) var commands: [CustomSlashCommand] = []
 
-    init(defaults: UserDefaults = .standard, syncTracker: SyncChangeTracker = .shared) {
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncTracker: SyncChangeTracker = .shared) {
         self.defaults = defaults
         self.syncTracker = syncTracker
         self.commands = Self.load(from: defaults)

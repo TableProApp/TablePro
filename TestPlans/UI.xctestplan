@@ -1,0 +1,29 @@
+{
+  "configurations" : [
+    {
+      "id" : "BBB5D79A-DA0D-46D6-8E12-08BB3D29239B",
+      "name" : "Default",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "defaultTestExecutionTimeAllowance" : 180,
+    "maximumTestExecutionTimeAllowance" : 300,
+    "maximumTestRepetitions" : 2,
+    "testRepetitionMode" : "retryOnFailure",
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:TablePro.xcodeproj",
+        "identifier" : "4A39348C7D83BCFE9925C1B6",
+        "name" : "TableProUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

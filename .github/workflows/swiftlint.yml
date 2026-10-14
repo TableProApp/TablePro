@@ -1,17 +1,14 @@
 name: SwiftLint
 
-# No paths filter, so the check reports on every pull request and can be required.
-# build.yml calls this workflow for a release tag, so the pin below is the only one.
 on:
   pull_request:
   push:
     branches: [main]
-  workflow_call:
   workflow_dispatch:
 
 concurrency:
-  group: swiftlint-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: swiftlint-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -27,7 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The image's entrypoint is swiftlint itself, so a second "swiftlint" would lint everything
+      # twice. SwiftLint drops a custom rule whose regex does not compile with only a warning and
+      # still exits 0, so the warning fails the step here. No --quiet: "Done linting" carries the
+      # file count.
       - name: Run SwiftLint
         run: |
+          status=0
           docker run --rm -v "$PWD:/work" -w /work "$SWIFTLINT_IMAGE" \
-            swiftlint lint --strict --reporter github-actions-logging
+            lint --strict --reporter github-actions-logging 2> swiftlint.err || status=$?
+          grep -v "^Linting '" swiftlint.err >&2 || true
+          if grep -E "Invalid configuration|is not a valid rule identifier" swiftlint.err; then
+            echo "::error::A SwiftLint config has a rule SwiftLint could not load."
+            exit 1
+          fi
+          exit "$status"

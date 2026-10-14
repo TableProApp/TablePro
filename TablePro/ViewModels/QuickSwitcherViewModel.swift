@@ -192,7 +192,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     init(
         connectionId: UUID,
         services: AppServices,
-        defaults: UserDefaults = .standard,
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         catalogStore: QuickSwitcherCatalogStore = .shared
     ) {
         self.connectionId = connectionId

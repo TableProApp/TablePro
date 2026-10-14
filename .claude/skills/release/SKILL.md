@@ -45,19 +45,28 @@ Check each one. If any fails, stop and say what is wrong.
    in `Configs/Version.xcconfig`, and its tag is free (`git tag -l "v<version>"`). Ask if it is missing.
 2. The tree is clean (`git status --porcelain`), or the user says the changes belong in the release.
    `[Unreleased]` has entries; if not, say the release has no notes.
-3. `swiftlint lint --strict` is clean. Fix findings first, in their own commit.
+3. `swiftlint lint --strict` is clean. Fix findings first, through their own pull request.
 4. If `Plugins/TableProPluginKit/` changed since the last tag, settle the ABI now (stage 3, PluginKit),
    because a breaking bump publishes plugins before the app tag.
 5. `scripts/export-cloudkit-schema.sh --check` passes. A field in the snapshot but not in Production
    makes CloudKit reject every record that carries it, so the user deploys it in CloudKit Console
    before the tag. It needs the cktool management token on this Mac.
-6. Warn, without blocking, when you are not on `main`, and report the last finished full-suite
-   verdict on `main` with its commit. `main` is often red on merge skew; the tag's own run is the gate.
+6. Stop when you are not on `main` or it is not `origin/main`. The tag runs no suite: its `Tested on main` job takes, for
+   `macOS Tests` and `iOS and Package Tests` each, the newest `main` commit where that job ran, and
+   fails the release when it is red or when files the suite reads changed after it. Report both
+   verdicts below, and stop when either is a failure.
 
    ```bash
-   gh run list --workflow=macos-tests.yml --branch main --limit 30 --json conclusion,headSha,createdAt \
-     -q '[.[] | select(.conclusion == "success" or .conclusion == "failure")][0]
-         | "\(.conclusion) \(.headSha[0:9]) \(.createdAt)"'
+   for pair in 'macos-tests.yml|macOS Tests' 'ios-tests.yml|iOS and Package Tests'; do
+     for id in $(gh run list --workflow "${pair%%|*}" --branch main --event push --limit 20 \
+         --json databaseId -q '.[].databaseId'); do
+       verdict=$(gh run view "$id" --json headSha,jobs \
+         -q ".headSha[0:9] + \" \" + ([.jobs[] | select(.name == \"${pair#*|}\") | .conclusion][0] // \"\")")
+       case "$verdict" in *' ' | *skipped) continue ;; esac
+       echo "${pair#*|}: $verdict (run $id)"
+       break
+     done
+   done
    ```
 
 ### Credit the entries
@@ -164,13 +173,26 @@ release with the flag.
 
 ### Commit, tag, push
 
+`main` takes no direct push. The release commit is the one exception: it goes up with the release
+deploy key `~/.ssh/tablepro_release`, the only bypass in main's ruleset. The key has a passphrase and
+is never added to ssh-agent, so you cannot run that push: ask the user to run it in their own
+terminal, wait for them to confirm it landed, then push the tag. The key skips every check, so
+before you hand it over, prove the push carries the release commit and nothing else. Stop if the
+check prints nothing.
+
 ```bash
 git add Configs/Version.xcconfig CHANGELOG.md .github/release-flags.json \
     TablePro/Resources/WhatsNew.md
 scripts/check-banned-words.sh --staged
 git commit -m "release: v<version>"
+git fetch origin main
+[ "$(git branch --show-current)" = main ] \
+  && [ "$(git rev-parse HEAD^)" = "$(git rev-parse origin/main)" ] \
+  && [ -z "$(git diff --name-only HEAD^ HEAD | grep -vxE 'CHANGELOG\.md|Configs/Version\.xcconfig|TablePro/Resources/WhatsNew\.md|\.github/release-flags\.json')" ] \
+  && echo "only the release commit"
 git tag -a v<version> -m "v<version>"
-git push origin main
+# The user runs this one:
+GIT_SSH_COMMAND='ssh -i ~/.ssh/tablepro_release -o IdentitiesOnly=yes' git push origin main
 git push origin v<version>
 ```
 
@@ -186,24 +208,26 @@ git -C ../tablepro-docs push origin main
 The docs CI fails while the app's `CHANGELOG.md` carries a version the page does not, so push it in
 the same sitting as the tag.
 
-- Keep the subject exactly `release: v<version>`: `scripts/ci/detect-changed-paths.sh` matches it to
-  skip the duplicate test run on `main`, since the tag's run is the one that gates.
+- Keep the subject exactly `release: v<version>`.
 - Always `-a -m`: the owner's git has `tag.gpgSign=true`, and a plain `git tag <name>` fails with
   "no tag message?".
-- Keep unrelated work out of the release commit. A lint fix made on the way goes first, as its own
-  Conventional Commit of at most 72 characters.
+- Keep the release commit to the four files above. No suite reads them, so its push to `main` skips
+  both suites and the tag takes the verdict of the code it ships. Any other file runs the suites on
+  that push, and the tag waits for them. A lint fix made on the way lands first, through its own
+  pull request.
 
 The tag runs `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and tar.xz, Sparkle signatures,
 deltas from the previous five releases, the GitHub Release with notes from `CHANGELOG.md`, then
-`appcast.xml`. The release is created as a draft holding every asset and published in one step, only
-when `lint`, `test`, `build` and `registry-readiness` pass. The job fails when the tag disagrees with
-`MARKETING_VERSION`.
+`appcast.xml`, pushed with `APPCAST_DEPLOY_KEY` from the `release` environment. The release is created
+as a draft holding every asset and published in one step, only when `Tested on main`, both builds and
+`Registry Readiness` pass. The job fails when the tag disagrees with `MARKETING_VERSION`.
 
 A published release is immutable: its assets and its tag are locked. When a run fails:
 
-- Before **Publish the release**, only a draft exists. Fix forward on `main` and move the tag:
-  `git tag -f -a v<version> -m "v<version>"`, then `git push origin v<version> --force`. The next run
-  reuses the draft.
+- Before **Publish the release**, only a draft exists. Fix forward on `main` through a pull request,
+  then move the tag to the commit it lands as: `git fetch origin main`,
+  `git tag -f -a v<version> -m "v<version>" origin/main`, then `git push origin v<version> --force`.
+  The next run reuses the draft.
 - After it, at the `appcast.xml` push for instance, use **Re-run failed jobs**. The release job finds
   the same files already published and carries on. **Re-run all jobs** rebuilds, and the release job
   refuses the new files.
@@ -216,11 +240,14 @@ minutes away. Removing the version from `appcast.xml` is the only way to un-ship
 
 ```bash
 python3 scripts/ci/pull-release.py <version> --dry-run
-python3 scripts/ci/pull-release.py <version>
+# The user runs this one, for the same reason as the release push:
+GIT_SSH_COMMAND='ssh -i ~/.ssh/tablepro_release -o IdentitiesOnly=yes' \
+    python3 scripts/ci/pull-release.py <version>
 ```
 
-It commits and pushes to `main`. Leave the GitHub Release so direct DMG links resolve. Users who
-already installed the build are reached by the corrective release with `criticalUpdate` set.
+It commits and pushes to `main` with the release key. Leave the GitHub Release so direct DMG links
+resolve. Users who already installed the build are reached by the corrective release with
+`criticalUpdate` set.
 
 ## Stage 3: Plugins
 

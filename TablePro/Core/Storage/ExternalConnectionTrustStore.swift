@@ -28,7 +28,7 @@ internal final class ExternalConnectionTrustStore: ExternalConnectionTrustChecki
 
     private let defaults: UserDefaults
 
-    internal init(defaults: UserDefaults = .standard) {
+    internal init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
     }
 

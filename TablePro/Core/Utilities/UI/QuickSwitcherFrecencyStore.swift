@@ -29,7 +29,7 @@ internal struct QuickSwitcherFrecencyStore {
     private let key: String
     private let legacyKey: String
 
-    init(connectionId: UUID, defaults: UserDefaults = .standard) {
+    init(connectionId: UUID, defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
         self.key = Self.keyPrefix + connectionId.uuidString
         self.legacyKey = Self.legacyMRUKeyPrefix + connectionId.uuidString

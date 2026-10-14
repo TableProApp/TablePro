@@ -42,7 +42,7 @@ A raw `xcodebuild` failure comes back as a head-and-tail excerpt of about 10,000
 - **The accessibility tree differs between this machine and the CI runner.** A contextual `NSMenu` has its identifier locally and not on CI, so reach it with `app.windows.firstMatch.menus.firstMatch`. The data grid is identifier `data-grid`, since the window holds several tables. Click the grid at an offset from `data-grid`, never on a row or cell element, which XCUITest reads as obscured.
 - **`.accessibilityIdentifier` on a SwiftUI container replaces the identifier of every child** in that hosting tree. When the container needs one, put `.accessibilityElement(children: .contain)` before it.
 - **Diagnose by dumping the tree** (`print(app.windows.firstMatch.debugDescription)` inside a `UITestCase`), not by guessing.
-- **When UI tests cannot start on this machine** (`Timed out while enabling automation mode`, zero cases), reproduce it on an untouched suite, then say in the PR that CI runs the suite. When a test fails only on the runner for a reason you cannot establish, quarantine it in `.github/macos-ui-test-quarantine.txt` with the reason instead of guessing at a fix.
+- **When UI tests cannot start on this machine** (`Timed out while enabling automation mode`, zero cases), reproduce it on an untouched suite, then say in the PR that CI runs the suite. When a test fails only on the runner for a reason you cannot establish, mark it XCTExpectFailure with the reason and an issue link instead of guessing at a fix.
 
 ## Lint
 

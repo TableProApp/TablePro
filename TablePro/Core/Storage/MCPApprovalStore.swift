@@ -45,7 +45,7 @@ actor MCPApprovalStore: MCPApprovalStoring {
 
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
     }
 

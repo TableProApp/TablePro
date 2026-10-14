@@ -5,21 +5,21 @@
 #   verify.sh [options] generate
 #   verify.sh [options] build [Scheme]          # default scheme: TablePro
 #   verify.sh [options] plugins                 # AllPlugins aggregate
-#   verify.sh [options] test  <Suite> [Suite…]
-#   verify.sh [options] uitest <Suite> [Suite…]
-#   verify.sh [options] package <Package> [filter]   # swift test in Packages/<Package>
-#   verify.sh [options] ios <Suite> [Suite…]         # TableProMobileTests on a simulator
+#   verify.sh [options] test   [Test...]        # TestPlans/Unit.xctestplan, all of it when no Test is named
+#   verify.sh [options] uitest [Test...]        # TestPlans/UI.xctestplan, all of it when no Test is named
+#   verify.sh [options] package <Package> [regex]    # swift test in Packages/<Package>
+#   verify.sh [options] ios <Suite> [Suite...]       # TableProMobileTests on a simulator
 #   verify.sh [options] abi   <merge-base>
-#   verify.sh [options] lint  <path> [path…]
+#   verify.sh [options] lint  <path> [path...]
 #   verify.sh [options] docs [docs-checkout]    # TableProApp/docs checks against this tree (default ../tablepro-docs)
-#   verify.sh [options] l10n                    # plugin and package strings in the app catalog, managed manually
+#   verify.sh [options] l10n                    # plugin and package strings in the mac and ios catalogs
 #
+# A Test is Suite, Suite/case(), or either behind its target name (TableProGrammarsTests/Suite).
+# A bare Suite is a Swift type name, looked up in every test target of the tree.
+# A test target no plan lists (TableProCore, TableProOracle) runs under swift test, not xcodebuild.
+# `test` with no Test runs the Unit plan only; those two packages run with `package <Package>`.
+# A name no target declares exits 3 before anything builds. A Test that runs nothing is FAIL.
 # Here --no-wait skips the wait for another xcodebuild, and --offline pins SwiftPM to Package.resolved.
-
-# Sourced by verify.sh, which owns the options, the log and the verdict. A backend defines
-# platform_step, which runs one step and ends in emit, and platform_parse, which re-derives a
-# verdict from a stored log that has no receipt. STEP_DETAIL is read by emit over there, which is
-# all SC2034 is off for.
 
 MAX_WAIT_SECONDS=1800
 
@@ -31,7 +31,7 @@ diagnose_environment() {
         found=0
     fi
     if grep -q 'produced no further output' "$log" 2> /dev/null; then
-        note "cause: the Swift frontend crashed without a diagnostic. Flaky on this machine. Rerun before believing any 'cannot find type' error."
+        note "cause: the Swift frontend crashed without a diagnostic. Rerun before believing any 'cannot find type' error."
         found=0
     fi
     if grep -q "Could not resolve package dependencies\|Couldn't fetch updates from remote" "$log" 2> /dev/null; then
@@ -43,33 +43,33 @@ diagnose_environment() {
         found=0
     fi
     if grep -q 'The test runner hung before establishing connection' "$log" 2> /dev/null; then
-        note "cause: the XCTest host wedged before running anything. Check the executed count below."
+        note "cause: the XCTest host wedged before running anything."
+        found=0
+    fi
+    if grep -q 'Timed out while enabling automation mode\|failed to initialize for UI testing' "$log" 2> /dev/null; then
+        note "cause: Automation Mode is off and XCTest could not turn it on. Check with automationmodetool; enabling it needs an admin password."
         found=0
     fi
     return $found
 }
 
 report_errors() {
-    local log="$1"
-    local errors
+    local log="$1" errors total
     errors="$(grep -E '(^|[^a-zA-Z])error: ' "$log" 2> /dev/null \
         | sed 's/^.*\/\([^/]*\.swift:[0-9]*:[0-9]*\)/\1/' \
         | sort -u | head -12)"
-    if [ -n "$errors" ]; then
-        echo "errors:"
-        printf '%s\n' "$errors" | sed 's/^/  /'
-        local total
-        total="$(grep -cE '(^|[^a-zA-Z])error: ' "$log" 2> /dev/null)"
-        [ "$total" -gt 12 ] && echo "  … $((total - 12)) more, see the log"
-    fi
+    [ -n "$errors" ] || return 0
+    echo "errors:"
+    printf '%s\n' "$errors" | sed 's/^/  /'
+    total="$(grep -cE '(^|[^a-zA-Z])error: ' "$log" 2> /dev/null)"
+    [ "$total" -gt 12 ] && echo "  ... $((total - 12)) more, see the log"
 }
 
 # ---------------------------------------------------------------------------- environment
 
 setup_toolchain() {
     [ -x "${DEVELOPER_DIR:-/nonexistent}/usr/bin/xcodebuild" ] && return 0
-    # The Xcode that xcode-select names wins when it is a full Xcode. Command Line Tools has no
-    # xcodebuild and no sourcekitd, so fall back to whichever Xcode is installed.
+    # Command Line Tools has no xcodebuild and no sourcekitd, so fall back to an installed Xcode.
     local candidate
     for candidate in "$(xcode-select -p 2> /dev/null)" \
         /Applications/Xcode.app/Contents/Developer \
@@ -81,9 +81,7 @@ setup_toolchain() {
     done
 }
 
-# Only a build of THIS checkout contends: every worktree builds into its own DerivedData, so a
-# machine-wide wait stalled a worktree run for as long as a peer session built somewhere else.
-# A build belongs here when it names this checkout's project or runs from its root.
+# Every worktree builds into its own DerivedData, so only a build of this checkout contends.
 checkout_busy() {
     local pid
     for pid in $(pgrep -f 'Developer/usr/bin/xcodebuild' 2> /dev/null); do
@@ -114,110 +112,317 @@ xcodebuild_flags() {
     is_offline && printf ' %s' "-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile"
 }
 
-# ---------------------------------------------------------------------------- test reporting
+# ---------------------------------------------------------------------------- test selection
 
-# Mutes failing cases listed in the CI quarantine files, so a red run reports only the failures
-# that are new.
-PASS_PATTERN="^test case .* passed|✔ test .* passed"
-FAIL_PATTERN="^test case .* failed|✘ test .* (failed|recorded an issue)"
-
-report_tests() {
-    local log="$1"
-    local passed failed executed
-    passed="$(grep -ciE "$PASS_PATTERN" "$log" 2> /dev/null)"
-    failed="$(grep -ciE "$FAIL_PATTERN" "$log" 2> /dev/null)"
-    executed=$((passed + failed))
-    note "cases: $executed executed, $passed passed, $failed failed"
-
-    if [ "$executed" -eq 0 ]; then
-        STATUS=INCONCLUSIVE
-        note "cause: zero cases executed. The filter matched nothing, or the host wedged. A -only-testing filter naming a Swift Testing @Test function silently matches nothing and still prints TEST SUCCEEDED. Filter by suite."
-        return
-    fi
-    if [ "$failed" -eq 0 ]; then
-        # A crash, a timeout or an unrecognised line format fails the run without a case line the
-        # patterns above can count. This printed PASS over a log that said TEST FAILED.
-        if grep -qE '^\*\* TEST FAILED \*\*|^Failing tests:' "$log" 2> /dev/null; then
-            STATUS=FAIL
-            note "cause: xcodebuild reported a failure that no counted case line names. Read the block below."
-            note "$(grep -A 8 '^Failing tests:' "$log" 2> /dev/null | sed 's/^/  /' | head -10)"
-            return
-        fi
-        STATUS=PASS
-        return
-    fi
-
-    local quarantine="$REPO_ROOT/.github/macos-test-quarantine.txt"
-    local ui_quarantine="$REPO_ROOT/.github/macos-ui-test-quarantine.txt"
-
-    # Both quarantine files hold one case per line as Suite/case(), never a bare suite name, so a
-    # failing line is matched by its own case id. Matching the suite instead did two wrong things
-    # at once: it never matched the unit file at all, so every quarantined case was reported as a
-    # new failure; and on the UI file it muted the whole suite, hiding a real regression sitting
-    # beside a quarantined case.
-    # xcodebuild prints a failing case in three spellings and the quarantine files use only the
-    # last one, so every line is normalised to Suite/case() before the lookup:
-    #   Test Case '-[TableProUITests.FooUITests testBar]' failed (1.0 seconds).   XCTest
-    #   Test case 'FooUITests.testBar()' failed on 'My Mac' ...                   XCTest
-    #   Test case 'FooTests/bar()' failed on 'My Mac' ...                         Swift Testing
-    # Matching only the third muted nothing written by XCTest, which is every entry in the UI
-    # quarantine file, so a clean uitest run reported both quarantined cases as new failures.
-    local fail_lines unmuted muted_cases=0
-    fail_lines="$(grep -iE "$FAIL_PATTERN" "$log" 2> /dev/null)"
-    unmuted=""
-    while IFS= read -r line; do
-        [ -n "$line" ] || continue
-        local case_id
-        case_id="$(printf '%s\n' "$line" | sed -E \
-            -e "s|.*'-\[[A-Za-z0-9_]+\.([A-Za-z0-9_]+) ([A-Za-z0-9_]+)\]'.*|\1/\2()|" \
-            -e "s|.*'([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\(\)'.*|\1/\2()|" \
-            -e "s|.*'([A-Za-z0-9_]+/[A-Za-z0-9_]+\(\))'.*|\1|")"
-        # A line none of the three matched comes back unchanged, so require the normalised shape
-        # before trusting it. Failing to extract must report the line, never mute it.
-        case "$case_id" in
-            *' '* | *'/'*'/'*) case_id="" ;;
-            */*'()') ;;
-            *) case_id="" ;;
-        esac
-        if [ -n "$case_id" ] \
-            && { grep -qxF "$case_id" "$quarantine" 2> /dev/null \
-                || grep -qxF "$case_id" "$ui_quarantine" 2> /dev/null; }; then
-            muted_cases=$((muted_cases + 1))
-            continue
-        fi
-        unmuted="$unmuted$line"$'\n'
-    done <<< "$fail_lines"
-
-    [ "$muted_cases" -gt 0 ] && note "muted: $muted_cases quarantined case(s)"
-
-    local suites
-    suites="$(printf '%s\n' "$unmuted" \
-        | grep -oE "[A-Za-z_][A-Za-z0-9_]*Tests" \
-        | grep -vxE "TableProTests|TableProUITests" \
-        | sort -u)"
-
-    if [ -z "$suites" ]; then
-        if [ -z "${unmuted//[$'\n' ]/}" ]; then
-            STATUS=PASS
-            note "verdict: no unexplained failures. Every failing case is quarantined."
-            return
-        fi
-        STATUS=FAIL
-        note "failing cases (no suite name on the line, read the log):"
-        note "$(printf '%s\n' "$unmuted" | sed 's/^/  /' | head -10)"
-        return
-    fi
-
-    STATUS=FAIL
-    note "failing suites: $(printf '%s ' $suites)"
-    note "$(printf '%s\n' "$unmuted" | sed 's/^/  /' | head -10)"
+# One line per test target, "<target><TAB><route>": the plan that lists it (Unit, UI), or
+# swift:<Package> for a package test target no plan lists.
+test_targets_table() {
+    local plan manifest package target table=""
+    for plan in Unit UI; do
+        [ -f "$REPO_ROOT/TestPlans/$plan.xctestplan" ] || continue
+        table="$table$(jq -r --arg plan "$plan" '.testTargets[].target.name + "\t" + $plan' \
+            "$REPO_ROOT/TestPlans/$plan.xctestplan")"$'\n'
+    done
+    for manifest in "$REPO_ROOT"/Packages/*/Package.swift; do
+        [ -f "$manifest" ] || continue
+        package="${manifest%/Package.swift}"
+        package="${package##*/}"
+        for target in $(awk '/\.testTarget\(/ { t = 1 }
+                t && /name:/ { if (match($0, /"[^"]+"/)) print substr($0, RSTART + 1, RLENGTH - 2); t = 0 }' "$manifest"); do
+            case $'\n'"$table" in
+                *$'\n'"$target"$'\t'*) ;;
+                *) table="$table$target"$'\t'"swift:$package"$'\n' ;;
+            esac
+        done
+    done
+    printf '%s' "$table"
 }
 
-# SwiftLint applies `.swiftlint.yml`'s `included:` to a DIRECTORY argument but not to a file
-# argument, so `swiftlint lint --strict TableProTests` reports zero violations having linted
-# nothing at all. Measured 2026-09-15: that command found 0 and `TableProTests/**/*.swift` found
-# 1227. Name the directories a run was handed and then dropped, so a clean result is not read as
-# coverage it never had.
+route_of() {
+    printf '%s' "$TEST_TARGETS" | awk -F'\t' -v t="$1" '$1 == t { print $2; exit }'
+}
+
+# The test targets that declare a type named $1, one per line. A file outside every known target
+# prints as ?<directory>.
+targets_declaring() {
+    local file part target
+    git -C "$REPO_ROOT" grep --untracked -l -E \
+        "^[^/\"]*(struct|class|enum|actor|extension)[[:space:]]+$1([^A-Za-z0-9_]|\$)" -- '*Tests/*.swift' 2> /dev/null \
+        | while IFS= read -r file; do
+            target=""
+            IFS=/ read -r -a parts <<< "$file"
+            for part in "${parts[@]}"; do
+                [ -n "$(route_of "$part")" ] && { target="$part"; break; }
+            done
+            printf '%s\n' "${target:-?${file%/*}}"
+        done | sort -u
+}
+
+# Sets TARGET, TEST_PATH and ROUTE for one Test argument, or says why it cannot and fails.
+resolve_test() {
+    local first="${1%%/*}" rest="" found known
+    [ "$first" = "$1" ] || rest="${1#*/}"
+    case "$first" in
+        '' | *[!A-Za-z0-9_]*) echo "not a test name: $1" >&2; return 1 ;;
+    esac
+    TARGET="" TEST_PATH="$rest"
+    # TableProGrammarsTests/case() names a suite that shares its target's name, not a target.
+    if [ -n "$(route_of "$first")" ] \
+        && ! { [ -n "$rest" ] && [ "${rest#*/}" = "$rest" ] && [ "${rest%)}" != "$rest" ]; }; then
+        TARGET="$first"
+    else
+        found="$(targets_declaring "$first")"
+        known="$(grep -v '^?' <<< "$found")"
+        if [ -z "$found" ]; then
+            echo "no test type named $first in this tree" >&2
+            return 1
+        elif [ -z "$known" ]; then
+            echo "$first is declared only under ${found#?}, which no test plan or package lists" >&2
+            case "$found" in *TableProMobileTests*) echo "  run it with: verify.sh ios $first" >&2 ;; esac
+            return 1
+        elif [ "$(wc -l <<< "$known" | tr -d ' ')" -gt 1 ]; then
+            echo "$first is declared in more than one test target; name it as <target>/$1:" >&2
+            sed 's/^/  /' <<< "$known" >&2
+            return 1
+        fi
+        TARGET="$known" TEST_PATH="$1"
+    fi
+    ROUTE="$(route_of "$TARGET")"
+}
+
+ere_escape() {
+    printf '%s' "$1" | sed 's/[][\\.*^$+?(){}|]/\\&/g'
+}
+
+# Matches a test identifier, <target><sep><suite>/<case>(): sep is / in a result bundle and . under
+# swift test. XCTest names a case without the parentheses, so they are optional.
+test_regex() {
+    local target="$1" path="$2" sep="$3"
+    if [ -z "$path" ]; then
+        printf '^%s(%s|$)' "$(ere_escape "$target")" "$(ere_escape "$sep")"
+    else
+        printf '^%s%s%s(\\(\\))?(/|$)' "$(ere_escape "$target")" "$(ere_escape "$sep")" "$(ere_escape "${path%()}")"
+    fi
+}
+
+# ---------------------------------------------------------------------------- test results
+
+# Every test case in a result bundle as "<target>/<suite>/<case><TAB><result><TAB>retried?". A runner
+# that crashed or never started is reported as a case under "System Failures"; it is not a test.
+xcresult_cases() {
+    xcrun xcresulttool get test-results tests --path "$1" --compact 2> /dev/null | jq -r '
+        [.. | objects | select((.nodeType // "") | endswith("test bundle"))][] | .name as $target
+        | .children[]? | (.nodeType == "Test Suite" and .name == "System Failures") as $system
+        | .. | objects | select(.nodeType == "Test Case")
+        | [ "\($target)/\(.nodeIdentifier // .name)", (if $system then "System Failure" else .result end),
+            (if .result == "Passed" and any(.children[]?; .nodeType == "Repetition" and .result == "Failed")
+             then "retried" else "" end) ] | @tsv'
+}
+
+# Every test case in swift test's xunit files as "<target>.<suite>/<case><TAB><result>".
+xunit_cases() {
+    local file
+    for file in "$@"; do
+        [ -f "$file" ] || continue
+        xmllint --format "$file" 2> /dev/null | awk '
+            function attr(line, name,    v) {
+                if (!match(line, " " name "=\"[^\"]*\"")) return ""
+                v = substr(line, RSTART + length(name) + 3, RLENGTH - length(name) - 4)
+                gsub(/&quot;/, "\"", v); gsub(/&apos;/, "\047", v)
+                gsub(/&lt;/, "<", v); gsub(/&gt;/, ">", v); gsub(/&amp;/, "\\&", v)
+                return v
+            }
+            function flush() { if (open) print key "\t" state; open = 0 }
+            /<testcase[ >]/ {
+                flush()
+                # A nested Swift Testing suite comes as Target.Outer.Inner; its filters use Outer/Inner.
+                cls = attr($0, "classname"); dot = index(cls, ".")
+                if (dot) { rest = substr(cls, dot + 1); gsub(/\./, "/", rest); cls = substr(cls, 1, dot) rest }
+                key = cls "/" attr($0, "name"); state = "Passed"; open = 1
+                if ($0 ~ /\/>[[:space:]]*$/) flush()
+                next
+            }
+            open && /<skipped/ { state = "Skipped" }
+            open && /<(failure|error)[ >\/]/ { state = "Failed" }
+            /<\/testcase>/ { flush() }
+            END { flush() }'
+    done
+}
+
+# Tallies a case list against the run's filters ("<label><TAB><regex>[<TAB>...]"). Prints the notes,
+# then a last line "<executed> <failed> <filters that ran nothing> <runner failures>".
+tally_cases() {
+    local cases="$1" filters="$2" sep="$3"
+    awk -F'\t' -v sep="$sep" '
+        FILENAME == ARGV[1] { if ($0 != "") { n++; label[n] = $1; re[n] = $2 }; next }
+        $0 == "" { next }
+        {
+            target = $1
+            cut = index(target, sep)
+            if (cut) target = substr(target, 1, cut - 1)
+            if ($2 == "System Failure") { runner++; next }
+            if (!(target in seen)) { seen[target] = 1; order[++targets] = target }
+            if ($2 == "Skipped") { skipped++; tskipped[target]++; next }
+            executed++; tran[target]++
+            if ($2 == "Passed") passed++
+            else if ($2 == "Failed") failed++
+            else expected++
+            if ($3 == "retried") retried[++nretried] = $1
+            for (i = 1; i <= n; i++) if ($1 ~ re[i]) hits[i]++
+        }
+        END {
+            line = "tests: " executed + 0 " executed, " passed + 0 " passed, " failed + 0 " failed, " skipped + 0 " skipped"
+            if (expected) line = line ", " expected " expected failures"
+            if (runner) line = line ", " runner " runner failures"
+            print line
+            if (targets) {
+                line = "targets:"
+                for (i = 1; i <= targets; i++) {
+                    t = order[i]
+                    line = line (i > 1 ? "," : "") " " t " " tran[t] + 0
+                    if (tskipped[t]) line = line " (" tskipped[t] " skipped)"
+                }
+                print line
+            }
+            zero = 0
+            for (i = 1; i <= n; i++) if (!hits[i]) { zero++; print "ran nothing: " label[i] }
+            if (nretried) {
+                print "passed only on retry, a flake to fix:"
+                for (i = 1; i <= nretried; i++) print "  " retried[i]
+            }
+            print executed + 0, failed + 0, zero, runner + 0
+        }' "$filters" "$cases"
+}
+
+# Sets RUN_EXECUTED, RUN_FAILED, RUN_ZERO and RUN_SYSTEM from a case list, and notes the tallies.
+apply_tally() {
+    local out counts
+    out="$(tally_cases "$@")"
+    counts="$(tail -1 <<< "$out")"
+    read -r RUN_EXECUTED RUN_FAILED RUN_ZERO RUN_SYSTEM <<< "$counts"
+    note "$(sed '$d' <<< "$out")"
+}
+
+# Build errors with their file and line, which the result bundle keeps even when the log interleaves them.
+report_build_errors() {
+    local errors
+    errors="$(xcrun xcresulttool get build-results --path "$1" --compact 2> /dev/null | jq -r '
+        .errors[]? | select(.message | startswith("Testing cancelled") | not)
+        | if .sourceURL then
+            (.sourceURL | capture("^file://(?<path>[^#]*)#.*StartingLineNumber=(?<line>[0-9]+)")) as $at
+            | "\($at.path | split("/") | last):\($at.line | tonumber + 1): \(.message)"
+          else .message end' | head -12)"
+    [ -n "$errors" ] || return 1
+    note "errors:"
+    note "$(sed 's/^/  /' <<< "$errors")"
+}
+
+# The result bundle is the verdict. The log only explains a run that left no tests in it.
+report_xcresult() {
+    local bundle="$1" code="$2" filters="$3" log="$4" cases
+    cases="${bundle%.xcresult}.cases"
+    xcresult_cases "$bundle" > "$cases"
+    apply_tally "$cases" "$filters" /
+    rm -f "$cases"
+    if [ "$RUN_FAILED" -gt 0 ] || [ "$RUN_SYSTEM" -gt 0 ]; then
+        note "$(xcrun xcresulttool get test-results summary --path "$bundle" --compact 2> /dev/null | jq -r '
+            .testFailures[:10][] | "  \(.targetName)/\(.testIdentifierString): \(.failureText | split("\n")[0])"')"
+    fi
+    if [ "$RUN_EXECUTED" -eq 0 ] && [ "$RUN_FAILED" -eq 0 ] && [ "$RUN_SYSTEM" -eq 0 ] && report_build_errors "$bundle"; then
+        RUN_STATUS=FAIL
+        note "cause: the test build failed, so no test ran."
+    elif [ "$RUN_EXECUTED" -eq 0 ] && [ "$code" -ne 0 ]; then
+        RUN_STATUS=FAIL
+        note "cause: xcodebuild exited $code before any test ran."
+        note "$(report_errors "$log")"
+    elif [ "$RUN_FAILED" -gt 0 ]; then
+        RUN_STATUS=FAIL
+    elif [ "$RUN_SYSTEM" -gt 0 ]; then
+        RUN_STATUS=FAIL
+        note "cause: the test runner failed outside any test."
+    elif [ "$code" -ne 0 ]; then
+        RUN_STATUS=FAIL
+        note "cause: xcodebuild exited $code although no test failed."
+        note "$(report_errors "$log")"
+    elif [ "$RUN_ZERO" -gt 0 ] || [ "$RUN_EXECUTED" -eq 0 ]; then
+        RUN_STATUS=FAIL
+        note "cause: a filter or the whole run executed no test. Filter by the Swift type name, and a case as Suite/case()."
+    else
+        RUN_STATUS=PASS
+    fi
+}
+
+report_xunit() {
+    local log="$1" code="$2" filters="$3" xunit="${1%.log}.xml" cases
+    note "results: $xunit"
+    cases="${log%.log}.cases"
+    xunit_cases "$xunit" "${xunit%.xml}-swift-testing.xml" > "$cases"
+    apply_tally "$cases" "$filters" .
+    rm -f "$cases"
+    if [ "$code" -ne 0 ] || [ "$RUN_FAILED" -gt 0 ]; then
+        RUN_STATUS=FAIL
+        note "$(report_errors "$log")"
+        note "$(grep -E '✘ Test .* (failed|recorded an issue)' "$log" | sed 's/^/  /' | head -10)"
+    elif [ "$RUN_ZERO" -gt 0 ] || [ "$RUN_EXECUTED" -eq 0 ]; then
+        RUN_STATUS=FAIL
+        note "cause: a filter or the whole run executed no test. swift test matches a filter against <Target>.<Suite>/<case>()."
+    else
+        RUN_STATUS=PASS
+    fi
+}
+
+# A run that executed no test says nothing about the change when a known environment cause explains it.
+ran_nothing_for_the_environment() {
+    [ "$RUN_STATUS" != PASS ] && [ "${RUN_EXECUTED:-0}" -eq 0 ] && diagnose_environment "$1"
+}
+
+# The worst verdict of the runs in one step wins.
+merge_status() {
+    case "$1" in
+        FAIL) STATUS=FAIL ;;
+        INCONCLUSIVE) [ "$STATUS" = FAIL ] || STATUS=INCONCLUSIVE ;;
+        *) [ -n "$STATUS" ] || STATUS="$1" ;;
+    esac
+}
+
+run_plan() {
+    local plan="$1" log="$2" filters="$3" bundle="${2%.log}.xcresult" only=() label regex arg
+    while IFS=$'\t' read -r label regex arg; do
+        only+=("-only-testing:$arg")
+    done < "$filters"
+    note "run: xcodebuild test -testPlan $plan${only[*]+ (${#only[@]} filter(s))}"
+    # shellcheck disable=SC2046
+    run_logged "$log" xcodebuild test -project "$REPO_ROOT/TablePro.xcodeproj" -scheme TablePro \
+        -testPlan "$plan" -resultBundlePath "$bundle" $(xcodebuild_flags) ${only[@]+"${only[@]}"}
+    RUN_CODE=$?
+    report_xcresult "$bundle" "$RUN_CODE" "$filters" "$log"
+    ran_nothing_for_the_environment "$log" && RUN_STATUS=INCONCLUSIVE
+    # A failing run's bundle carries diagnostics of about 150 MB; a passing one is not worth keeping.
+    if [ "$RUN_STATUS" = PASS ]; then
+        rm -rf "$bundle"
+    else
+        note "results: $bundle"
+    fi
+}
+
+# A package with a Package.resolved runs pinned to it, the way CI runs it.
+run_swift_tests() {
+    local package="$1" log="$2" filters="$3" dir="$REPO_ROOT/Packages/$1" args=() label regex
+    [ -f "$dir/Package.resolved" ] && args+=(--force-resolved-versions)
+    while IFS=$'\t' read -r label regex _; do
+        args+=(--filter "$regex")
+    done < "$filters"
+    note "run: swift test --package-path Packages/$package --parallel${args[*]+ ${args[*]}}"
+    # SwiftPM writes the XCTest xunit file only for a parallel run; a serial one leaves just the
+    # Swift Testing file, and every XCTest case would go uncounted.
+    run_logged "$log" swift test --package-path "$dir" --parallel --xunit-output "${log%.log}.xml" ${args[@]+"${args[@]}"}
+    RUN_CODE=$?
+    report_xunit "$log" "$RUN_CODE" "$filters"
+    ran_nothing_for_the_environment "$log" && RUN_STATUS=INCONCLUSIVE
+}
+
+# SwiftLint applies `.swiftlint.yml`'s `included:` to a directory argument but not to a file
+# argument, so a directory outside that scope lints nothing and reports zero violations.
 swiftlint_filtered_dirs() {
     local config="$REPO_ROOT/.swiftlint.yml"
     [ -f "$config" ] || return 0
@@ -247,27 +452,31 @@ swiftlint_filtered_dirs() {
 # ---------------------------------------------------------------------------- steps
 
 platform_parse() {
-    STATUS=PASS
-    grep -q '^\*\* \(BUILD\|TEST\) FAILED \*\*' "$1" 2> /dev/null && STATUS=FAIL
-
-    # Treat anything that looks like a test run as one, not only a log that already has case
-    # lines. A wedged host prints TEST SUCCEEDED with zero cases, and keying on case lines
-    # meant report_tests never ran, so that log parsed as a pass.
-    if grep -qiE "$PASS_PATTERN|$FAIL_PATTERN|^Test Suite |-only-testing:|^\*\* TEST (SUCCEEDED|FAILED) \*\*" "$1" 2> /dev/null; then
-        report_tests "$1"
+    local stem="${1%.log}" filters="${1%.log}.filters"
+    [ -f "$filters" ] || filters=/dev/null
+    STATUS="" RUN_STATUS="" RUN_EXECUTED=0
+    if [ -d "$stem.xcresult" ]; then
+        note "results: $stem.xcresult"
+        report_xcresult "$stem.xcresult" 0 "$filters" "$1"
+    elif [ -f "$stem.xml" ] || [ -f "$stem-swift-testing.xml" ]; then
+        report_xunit "$1" 0 "$filters"
     else
-        parse_errors="$(report_errors "$1")"
-        if [ -n "$parse_errors" ]; then
-            note "$parse_errors"
-            # swiftlint and other non-xcodebuild tools never print the ** BUILD FAILED **
-            # banner, so without this a lint log full of errors reported PASS and exit 0.
-            STATUS=FAIL
-        fi
+        case "${1##*/}" in
+            test-* | uitest-* | ios-* | package-*)
+                RUN_STATUS=INCONCLUSIVE
+                note "cause: no result bundle or xunit file beside this log, so there is no test verdict to re-read."
+                ;;
+            *)
+                RUN_STATUS=PASS
+                grep -q '^\*\* BUILD FAILED \*\*' "$1" 2> /dev/null && RUN_STATUS=FAIL
+                local errors
+                errors="$(report_errors "$1")"
+                [ -n "$errors" ] && { note "$errors"; RUN_STATUS=FAIL; }
+                ;;
+        esac
     fi
-
-    # An environment cause outranks whatever the log appears to say, because the run did not
-    # get far enough to be evidence about the change. This runs last so nothing overwrites it.
-    diagnose_environment "$1" && STATUS=INCONCLUSIVE
+    ran_nothing_for_the_environment "$1" && RUN_STATUS=INCONCLUSIVE
+    merge_status "$RUN_STATUS"
 }
 
 platform_step() {
@@ -298,8 +507,7 @@ platform_step() {
             wait_for_free_toolchain
             log="$(new_log "build-$scheme")"
             : > "$log"
-            # The HANA plugin embeds a Go helper that is built, not downloaded, so a fresh worktree has
-            # none and AllPlugins fails on "has no arm64 slice" every time until someone builds it.
+            # Xcode copies the HANA helper into the plugin and never builds it.
             helper="$REPO_ROOT/Native/HanaBridge/bin/tablepro-hana-helper"
             if [ "$scheme" = "AllPlugins" ] && [ ! -e "$helper" ] && command -v go > /dev/null; then
                 "$REPO_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
@@ -321,37 +529,69 @@ platform_step() {
             ;;
 
         test | uitest)
-            [ $# -ge 1 ] || usage
-            target="TableProTests"
-            [ "$STEP" = "uitest" ] && target="TableProUITests"
-            STEP_DETAIL="$target: $*"
-            setup_toolchain
-            require_tool xcodebuild
-            wait_for_free_toolchain
-            filters=()
-            for suite in "$@"; do filters+=("-only-testing:$target/$suite"); done
-            log="$(new_log "test-${1}")"
-            # shellcheck disable=SC2046
-            run_logged "$log" xcodebuild -project "$REPO_ROOT/TablePro.xcodeproj" -scheme TablePro \
-                test $(xcodebuild_flags) "${filters[@]}"
-            code=$?
-            # report_tests owns the verdict on this path, so reading the TEST SUCCEEDED banner here
-            # was dead: it was always overwritten. Keep the environment answer instead, which the
-            # build path already honours and this path used to discard.
-            env_failed=1
-            diagnose_environment "$log" && env_failed=0
-
-            if grep -qE '(^|[^a-zA-Z])error: ' "$log" 2> /dev/null && ! grep -qiE "$PASS_PATTERN|$FAIL_PATTERN" "$log" 2> /dev/null; then
-                STATUS=FAIL
-                note "cause: the test target failed to build. The errors below are compile errors, not test failures."
-                note "$(report_errors "$log")"
-                [ "$env_failed" -eq 0 ] && STATUS=INCONCLUSIVE
-                emit "$log" $code
+            plan=Unit other=uitest
+            [ "$STEP" = "uitest" ] && plan=UI other=test
+            require_tool jq
+            require_tool git
+            [ -f "$REPO_ROOT/TestPlans/$plan.xctestplan" ] || { echo "no TestPlans/$plan.xctestplan in $REPO_ROOT" >&2; exit 3; }
+            TEST_TARGETS="$(test_targets_table)"
+            plan_tests="" swift_tests="" packages=""
+            for test in "$@"; do
+                resolve_test "$test" || exit 3
+                case "$ROUTE" in
+                    "$plan")
+                        plan_tests="$plan_tests$test"$'\t'"$(test_regex "$TARGET" "$TEST_PATH" /)"$'\t'"$TARGET${TEST_PATH:+/$TEST_PATH}"$'\n'
+                        ;;
+                    swift:*)
+                        [ "$STEP" = test ] || { echo "$test is in $TARGET, a swift test target: verify.sh test $test" >&2; exit 3; }
+                        swift_tests="$swift_tests${ROUTE#swift:}"$'\t'"$test"$'\t'"$(test_regex "$TARGET" "$TEST_PATH" .)"$'\n'
+                        case " $packages " in *" ${ROUTE#swift:} "*) ;; *) packages="$packages ${ROUTE#swift:}" ;; esac
+                        ;;
+                    *)
+                        echo "$test is in $TARGET, which the $ROUTE plan runs: verify.sh $other $test" >&2
+                        exit 3
+                        ;;
+                esac
+            done
+            runs=""
+            runs_plan=0
+            if [ $# -eq 0 ] || [ -n "$plan_tests" ]; then
+                runs_plan=1
+                runs="$plan plan"
             fi
-
-            report_tests "$log"
-            [ "$env_failed" -eq 0 ] && STATUS=INCONCLUSIVE
-            emit "$log" $code
+            for package in $packages; do runs="${runs:+$runs, }swift test $package"; done
+            STEP_DETAIL="$runs${*:+: $*}"
+            setup_toolchain
+            name="$(printf '%s' "${1:-all}" | tr -c 'A-Za-z0-9_-' '_')"
+            log="$(new_log "$STEP-$name")"
+            : > "$log"
+            code=0
+            run_log=""
+            if [ "$runs_plan" -eq 1 ]; then
+                require_tool xcodebuild
+                wait_for_free_toolchain
+                run_log="$log"
+                printf '%s' "$plan_tests" > "${run_log%.log}.filters"
+                run_plan "$plan" "$run_log" "${run_log%.log}.filters"
+                merge_status "$RUN_STATUS"
+                code=$RUN_CODE
+            fi
+            for package in $packages; do
+                require_tool swift
+                require_tool xmllint
+                # The first run writes the step's own log; each later one gets its own beside it.
+                if [ -z "$run_log" ]; then
+                    run_log="$log"
+                else
+                    run_log="${log%.log}-$package.log"
+                    note "log: $run_log"
+                fi
+                printf '%s' "$swift_tests" | awk -F'\t' -v p="$package" '$1 == p { print $2 "\t" $3 }' > "${run_log%.log}.filters"
+                run_swift_tests "$package" "$run_log" "${run_log%.log}.filters"
+                merge_status "$RUN_STATUS"
+                [ "$code" -ne 0 ] || code=$RUN_CODE
+            done
+            emit "$log" "$code"
             ;;
 
         abi)
@@ -394,31 +634,22 @@ platform_step() {
                 note "NOT LINTED, outside .swiftlint.yml included: $filtered"
                 note "  a directory argument is filtered, a file argument is not: <dir>/**/*.swift"
             fi
-
             emit "$log" $code
             ;;
 
         package)
             [ $# -ge 1 ] || usage
-            package_dir="$REPO_ROOT/Packages/$1"
-            [ -f "$package_dir/Package.swift" ] || { echo "no such package: Packages/$1" >&2; exit 3; }
+            [ -f "$REPO_ROOT/Packages/$1/Package.swift" ] || { echo "no such package: Packages/$1" >&2; exit 3; }
             STEP_DETAIL="$1${2:+ --filter $2}"
             setup_toolchain
             require_tool swift
+            require_tool xmllint
             log="$(new_log "package-$1")"
-            filter=()
-            [ $# -ge 2 ] && filter=(--filter "$2")
-            run_logged "$log" swift test --package-path "$package_dir" --force-resolved-versions ${filter[@]+"${filter[@]}"}
-            code=$?
-            report_tests "$log"
-            # swift test exits non-zero for a compile error or a crash that leaves no case line.
-            if [ $code -ne 0 ] && [ "$STATUS" = "PASS" ]; then
-                STATUS=FAIL
-                note "cause: swift test exited $code. The errors below are from the log."
-                note "$(report_errors "$log")"
-            fi
-            diagnose_environment "$log" && STATUS=INCONCLUSIVE
-            emit "$log" $code
+            : > "${log%.log}.filters"
+            [ $# -ge 2 ] && printf '%s\t%s\n' "$2" "$2" > "${log%.log}.filters"
+            run_swift_tests "$1" "$log" "${log%.log}.filters"
+            merge_status "$RUN_STATUS"
+            emit "$log" "$RUN_CODE"
             ;;
 
         ios)
@@ -426,8 +657,11 @@ platform_step() {
             STEP_DETAIL="TableProMobileTests: $*"
             setup_toolchain
             require_tool xcodebuild
+            require_tool jq
             wait_for_free_toolchain
-            log="$(new_log "ios-${1}")"
+            name="$(printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_')"
+            log="$(new_log "ios-$name")"
+            bundle="${log%.log}.xcresult"
             : > "$log"
             project="$REPO_ROOT/TableProMobile/TableProMobile.xcodeproj"
             if [ ! -d "$project" ]; then
@@ -442,38 +676,47 @@ platform_step() {
                 emit "$log" 2
             fi
             filters=()
-            for suite in "$@"; do filters+=("-only-testing:TableProMobileTests/$suite"); done
+            : > "${log%.log}.filters"
+            for suite in "$@"; do
+                filters+=("-only-testing:TableProMobileTests/$suite")
+                printf '%s\t%s\n' "$suite" "$(test_regex TableProMobileTests "$suite" /)" >> "${log%.log}.filters"
+            done
             xcodebuild test -project "$project" -scheme TableProMobile -destination "id=$simulator" \
                 -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
-                "${filters[@]}" >> "$log" 2>&1
+                -resultBundlePath "$bundle" "${filters[@]}" >> "$log" 2>&1
             code=$?
-            report_tests "$log"
-            diagnose_environment "$log" && STATUS=INCONCLUSIVE
+            note "results: $bundle"
+            report_xcresult "$bundle" "$code" "${log%.log}.filters" "$log"
+            ran_nothing_for_the_environment "$log" && RUN_STATUS=INCONCLUSIVE
+            merge_status "$RUN_STATUS"
             emit "$log" $code
             ;;
 
         l10n)
-            # Plugin strings live in the app's catalog, and CI fails a PR whose new plugin message is
-            # missing from it or not managed manually, which neither a build nor SwiftLint notices.
+            require_tool python3
             log="$(new_log l10n)"
             : > "$log"
             code=0
-            echo "== localization.py plugins" >> "$log"
-            (cd "$REPO_ROOT" && python3 scripts/localization.py plugins) >> "$log" 2>&1 || code=1
+            failed=""
+            for target in mac ios; do
+                echo "== localization.py plugins --target $target" >> "$log"
+                (cd "$REPO_ROOT" && python3 scripts/localization.py plugins --target "$target") >> "$log" 2>&1 \
+                    || { code=1; failed="$failed $target"; }
+            done
             if [ $code -eq 0 ]; then
                 STATUS=PASS
+                note "mac and ios: every plugin and package string is in the catalog, managed manually"
             else
                 STATUS=FAIL
-                note "$(grep -vE '^==' "$log" | tail -12 | sed 's/^/  /')"
-                note "  plugin strings: python3 scripts/localization.py plugins --add"
+                note "$(grep -vE '^(==|ok:|  )' "$log" | grep -v '^Run with --add' | sed 's/^/  /' | head -12)"
+                for target in $failed; do
+                    note "  $target: python3 scripts/localization.py plugins --add --target $target"
+                done
             fi
             emit "$log" $code
             ;;
 
         docs)
-            # The docs live in TableProApp/docs, whose CI checks them against the app's main only. Run
-            # here with --app pointed at this tree, the same checks say whether a paired docs change
-            # passes once this branch merges, and whether this branch breaks a page that is already live.
             log="$(new_log docs)"
             : > "$log"
             code=0
@@ -493,8 +736,6 @@ platform_step() {
                     note "$docs_root: house style, source claims and links all agree with this tree"
                 else
                     STATUS=FAIL
-                    # The scripts print one line per check, most of them "ok". Show the failing check
-                    # and the file:line under it, not the twenty passes above it.
                     note "$(grep -A 2 -E '^ *FAIL' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
                     note "$(grep -E 'contradict|house style' "$log" 2> /dev/null | sed 's/^/  /' | head -3)"
                 fi
