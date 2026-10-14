@@ -5,7 +5,7 @@
 
 ## Context
 
-Browse exports fetch successive pages with separate `fetch_rows` or SQL requests. Concurrent inserts, deletes or updates between requests can make an offset export omit or repeat rows, or combine values from different database states. The current export path does not hold a read transaction across pages.
+Before full-table export was refused, browse exports fetched successive pages with separate `fetch_rows` or SQL requests. Concurrent inserts, deletes or updates between requests could make an offset export omit or repeat rows, or combine values from different database states. The current implementation refuses full-table export until it can hold one read snapshot across the operation.
 
 ## Decision
 
