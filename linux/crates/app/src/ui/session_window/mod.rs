@@ -481,6 +481,12 @@ impl SessionWindow {
         let Some(state) = self.state() else {
             return;
         };
+        // A picker another window deleted the entry under still lists it.
+        let Some(saved) = self.saved_as_stored(&saved) else {
+            self.show_toast(&crate::i18n::gettext("The connection was deleted."));
+            self.on_reload_connections();
+            return;
+        };
         if !self.page_is(|page| matches!(page, SessionPage::Picker)) {
             // This window has its session; another one opens this.
             let key = SessionKey::Saved(saved.id);

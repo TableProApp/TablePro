@@ -113,8 +113,11 @@ leaves nothing unreachable behind when a step fails:
    failure here is reported and does not bring the entry back.
 
 A connection open or connecting in a window is not deleted; the dialog
-offers that window instead. The window holds the process until the delete
-ends, as it does for every other write to the connection list.
+offers that window instead. The delete claims the connection's key while it
+runs, so a connect started meanwhile from a picker that still lists it is
+refused, and opening it from such a picker afterwards says it was deleted.
+The window holds the process until the delete ends, as it does for every
+other write to the connection list.
 
 ## Where files go
 

@@ -280,15 +280,20 @@ impl SessionWindow {
     /// Delete a saved connection the user confirmed, under a hold so a
     /// quit right after it does not cut it off between the keyring and
     /// the list.
+    ///
+    /// The delete claims the connection's key until it ends, so a
+    /// connect started meanwhile from a picker that still lists it is
+    /// refused rather than given an entry whose tabs are being purged.
     pub(super) fn on_confirm_delete(&self, id: Uuid, options: DeletionOptions) {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
         let name = self.connection_name(id);
         // It may have been opened since the dialog asked.
-        if self.offer_open_window(id, &name) {
+        let Ok(claim) = state.context.sessions.claim(SessionKey::Saved(id), self.id()) else {
+            self.offer_open_window(id, &name);
             return;
-        }
+        };
         let services = state.services.clone();
         let hold = services.hold().acquire();
         glib::spawn_future_local(async move {
@@ -316,6 +321,7 @@ impl SessionWindow {
                     )));
                 }
             }
+            drop(claim);
             drop(hold);
             input.deliver(SessionWindowInput::ReloadConnections);
         });
@@ -899,6 +905,57 @@ mod tests {
         assert_eq!(test.hold.live(), 1, "the delete ran without a hold");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
         assert!(!listed(&test, copy.id), "the hold ended before the delete");
+    }
+
+    #[gtk4::test]
+    fn a_delete_keeps_the_connection_from_opening_until_it_ends() {
+        let test = TestWindow::picker("DeleteClaims");
+        wait_for_list(&test.window);
+        let key = test.key();
+
+        test.window.on_confirm_delete(test.saved.id, DeletionOptions::default());
+
+        assert!(
+            test.services
+                .sessions
+                .claim(key.clone(), test.window.id() + 100)
+                .is_err(),
+            "a connect could claim the entry being deleted"
+        );
+        wait_until(WAIT, || test.hold.live() == 0).expect("the delete to end");
+        assert!(!listed(&test, test.saved.id));
+        assert_eq!(
+            test.services.sessions.window_for(&key),
+            None,
+            "the key stayed claimed after the delete"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_deleted_connection_still_listed_elsewhere_does_not_open() {
+        let test = TestWindow::picker("DeletedRow");
+        wait_for_list(&test.window);
+        test.window.on_confirm_delete(test.saved.id, DeletionOptions::default());
+        wait_until(WAIT, || test.hold.live() == 0).expect("the delete to end");
+
+        test.window
+            .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+        wait_until(WAIT, || {
+            test.window
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .any(|toast| toast.title().as_deref() == Some("The connection was deleted."))
+        })
+        .expect("the user to be told");
+
+        assert_eq!(test.window.page_name(), "picker");
+        assert!(
+            test.connector.calls().is_empty(),
+            "a deleted connection was connected to"
+        );
+        assert_eq!(test.services.sessions.window_for(&test.key()), None);
     }
 
     #[gtk4::test]
