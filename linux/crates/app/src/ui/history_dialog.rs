@@ -1015,10 +1015,11 @@ impl HistoryDialog {
         let parent_window = self.root.root().and_then(|r| r.downcast::<gtk::Window>().ok());
         dialog.save(parent_window.as_ref(), gio::Cancellable::NONE, move |outcome| {
             let Ok(file) = outcome else { return };
-            let Some(path) = file.path() else { return };
-            if let Err(e) = std::fs::write(&path, content.as_bytes()) {
-                tracing::warn!(error = %e, path = %path.display(), "history export write failed");
-            }
+            glib::spawn_future_local(async move {
+                if let Err(error) = crate::ui::file_write::replace_file(&file, content.into_bytes()).await {
+                    tracing::warn!(%error, path = %file.parse_name(), "history export write failed");
+                }
+            });
         });
     }
 
