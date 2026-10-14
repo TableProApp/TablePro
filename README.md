@@ -38,9 +38,9 @@ BookiE 0.1.5 (tag `linux-v0.1.5`) targets:
 
 `tablepro` and `tablepro-agentd` remain command aliases. Application ID and XDG paths stay `com.tablepro.linux` / `tablepro`.
 
-**The released `.deb` does not run on the default Ubuntu 24.04 or 25.10 libraries.** It needs the GNOME 50 package line; the separate build / CI floor supports the Ubuntu 24.04 stack. GTK CI builds in Debian testing for the GNOME 50 library baseline.
+**The released `.deb` does not run on the default Ubuntu 24.04 or 25.10 libraries.** It needs the GNOME 50 runtime line. Cargo compile and distro-floor tests support the lower Ubuntu 24.04 stack; the root Meson project separately declares GNOME 50 library requirements. GTK CI builds in Debian testing, whose library set meets that higher line.
 
-Build / CI floor: GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13). The GNOME 50 GitHub Release `.deb` uses a higher package line (GTK 4.22+, GLib 2.88+, libadwaita 1.9+, GtkSourceView 5.18+). Details: [ADR 0002](docs/decisions/0002-rust-gtk4-libadwaita.md) and [platforms](docs/platforms.md). Build with Rust 1.98. No AUR, Flathub, or Fedora package. No 32-bit or ARM artifacts.
+Cargo compile / CI floor: GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13). The root Meson project and GNOME 50 GitHub Release `.deb` use GTK 4.22+, GLib 2.88+, libadwaita 1.9+, GtkSourceView 5.18+. Details: [ADR 0002](docs/decisions/0002-rust-gtk4-libadwaita.md) and [platforms](docs/platforms.md). Build with Rust 1.98. No AUR, Flathub, or Fedora package. No 32-bit or ARM artifacts.
 
 ## Named query parameters
 

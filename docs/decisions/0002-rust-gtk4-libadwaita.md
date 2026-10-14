@@ -23,10 +23,10 @@ BookiE uses Rust and the gtk-rs stack on Linux only. Two native-library floors a
 
 | Floor | GTK4 | GLib | libadwaita | GtkSourceView | Where it applies |
 |---|---|---|---|---|---|
-| Build / CI floor | 4.14+ | 2.80+ | 1.5+ | 5.12+ | Ubuntu 24.04 and Debian 13 distro-floor jobs, local builds that target those distros ([platforms](../platforms.md), [packaging](../../apps/linux/packaging/README.md)) |
-| GNOME 50 package line | 4.22+ | 2.88+ | 1.9+ | 5.18+ | GitHub Release `.deb` that expects GNOME 50 libraries; Arch/Omarchy packages that ship against current GNOME |
+| Cargo compile / CI floor | 4.14+ | 2.80+ | 1.5+ | 5.12+ | Ubuntu 24.04 and Debian 13 Cargo-based distro-floor tests; this floor does not configure the root Meson project ([platforms](../platforms.md), [packaging](../../apps/linux/packaging/README.md)) |
+| GNOME 50 Meson / package line | 4.22+ | 2.88+ | 1.9+ | 5.18+ | Root Meson dependency requirements and GitHub Release `.deb`; Arch/Omarchy packages track current GNOME |
 
-Rust bindings come from the gtk-rs project. Rust 1.98 remains the language floor for both. Do not treat the package line as the only supported build, and do not treat the build floor as the release artifact's runtime baseline.
+Rust bindings come from the gtk-rs project. Rust 1.98 remains the language floor for both. Cargo compile and test support at the lower floor does not imply that Meson builds or the release `.deb` support those libraries.
 
 ## Rationale
 

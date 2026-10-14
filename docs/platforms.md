@@ -4,11 +4,11 @@ One page for what runs where. The [sprint](bookie-0.2-sprint.md) owns release ap
 
 ## Supported stacks
 
-Two native-library floors are defined in [ADR 0002](decisions/0002-rust-gtk4-libadwaita.md): the **build / CI floor** and the **GNOME 50 package line**.
+Two native-library floors are defined in [ADR 0002](decisions/0002-rust-gtk4-libadwaita.md): the **Cargo compile / CI floor** and the **GNOME 50 Meson / package line**.
 
-The build floor is the Ubuntu 24.04 stack: GTK 4.14, GLib 2.80, libadwaita 1.5 and GtkSourceView 5.12. Debian 13 (GTK 4.18, libadwaita 1.7) and newer are above it. `scripts/test-distro-floor.sh` runs the app unit and widget tiers in containers; the Forgejo `distro-floor` job also runs installed GTK safety there on every push. Native installed-package AT-SPI acceptance remains open (PKG-2 in the [ledger](known-issues.md)).
+The Cargo compile / CI floor is the Ubuntu 24.04 stack: GTK 4.14, GLib 2.80, libadwaita 1.5 and GtkSourceView 5.12. Debian 13 (GTK 4.18, libadwaita 1.7) and newer are above it. `scripts/test-distro-floor.sh` runs app unit and widget tests there; with `DISTRO_FLOOR_INSTALLED=1`, it also runs GTK safety against a Cargo-built binary staged under the target directory. This does not configure the root Meson project or install a distro package.
 
-The GitHub Release `.deb` that needs GNOME 50 libraries follows the higher package line (GTK 4.22, GLib 2.88, libadwaita 1.9, GtkSourceView 5.18). Arch and Omarchy packages track current GNOME. Neither floor replaces the other.
+The root Meson project declares the higher GNOME 50 library line (GTK 4.22, GLib 2.88, libadwaita 1.9, GtkSourceView 5.18). The released `.deb` has that same runtime baseline. Arch and Omarchy packages track current GNOME. Native installed-package acceptance remains open (PKG-1); Debian and Ubuntu desktop acceptance remains open for the later GNOME target (PKG-2). Neither floor replaces the other.
 
 Neither distro packages Rust 1.98. Build with rustup.
 
