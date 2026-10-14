@@ -24,10 +24,10 @@ pub(crate) fn compare(a: &Value, b: &Value) -> Ordering {
     }
 }
 
-/// The order of a column whose rows each choose their own storage, as
-/// SQLite's do: NULL, then numbers by value, then text, then blobs.
-/// Two texts are `Equal` here, so the collating sorter after this one
-/// orders them.
+/// The order of a column that can hold text: NULL, then numbers by
+/// value, then text, then blobs, then the rest as `compare` orders
+/// them. Two texts are `Equal` here, so the collating sorter after this
+/// one orders them.
 pub(crate) fn storage_class_order(a: &Value, b: &Value) -> Ordering {
     let class = storage_class(a);
     match class.cmp(&storage_class(b)) {

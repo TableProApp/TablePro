@@ -151,6 +151,30 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_text_column_orders_its_numbers_before_its_text() {
+        let mut column = named("tag", "nvarchar(20)", false);
+        column.column_type.dynamic_storage = false;
+        let (view, selection) = grid(
+            &[column],
+            vec![
+                vec![Value::Int(10)],
+                vec![text("b")],
+                vec![Value::Int(9)],
+                vec![Value::Null],
+                vec![text("a")],
+            ],
+            recorder().0,
+        );
+
+        sort(&view, 0, gtk::SortType::Ascending);
+
+        assert_eq!(
+            shown(&selection, 0),
+            [Value::Null, Value::Int(9), Value::Int(10), text("a"), text("b")]
+        );
+    }
+
+    #[gtk4::test]
     fn text_column_sorter_is_string_sorter_with_unicode_collation() {
         let (view, _selection) = grid(&[named("name", "varchar(20)", false)], Vec::new(), recorder().0);
         let column = view

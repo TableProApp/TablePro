@@ -13,16 +13,15 @@ use super::value_order::{compare, sort_text, storage_class_order};
 /// Text is collated in the user's locale by `GtkStringSorter`, which
 /// builds a `g_utf8_collate_key` once per row and compares the keys
 /// with `strcmp`, so a sort of thousands of rows does not normalise a
-/// string for every comparison. A sorter ahead of it places what it
-/// cannot: NULL, and in a column whose rows each choose their storage,
-/// the numbers and blobs.
+/// string for every comparison. The sorter ahead of it places every
+/// value that is not text, so the pair serves any column that can hold
+/// text: a text kind, or one with `dynamic_storage`, which a column of
+/// an ordinary SQLite table has because its rows choose their own
+/// storage whatever the declared kind.
 pub(crate) fn column_sorter(index: usize, column: &ResultColumn) -> gtk::Sorter {
     let column_type = &column.column_type;
-    if column_type.dynamic_storage {
+    if column_type.dynamic_storage || holds_text(&column_type.kind) {
         return collating(cells_by(index, storage_class_order), index);
-    }
-    if holds_text(&column_type.kind) {
-        return collating(cells_by(index, nulls_first), index);
     }
     cells_by(index, compare).upcast()
 }
@@ -61,8 +60,4 @@ fn cells_by(index: usize, order: fn(&Value, &Value) -> Ordering) -> gtk::CustomS
         )
         .into()
     })
-}
-
-fn nulls_first(a: &Value, b: &Value) -> Ordering {
-    b.is_null().cmp(&a.is_null())
 }
