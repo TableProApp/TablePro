@@ -154,7 +154,7 @@ To run one scenario using an already-built candidate (without another Cargo buil
 ```bash
 TABLEPRO_GTK_BINARY=/absolute/path/to/bookie \
 TABLEPRO_GTK_SCENARIO=current_page_workbook_preserves_typed_values \
-TABLEPRO_GTK_ARTIFACT_DIR=/tmp/bookie-workbook-evidence \
+TABLEPRO_GTK_ARTIFACT_DIR=target/gtk-evidence \
 bash scripts/test-gtk-safety.sh
 ```
 
