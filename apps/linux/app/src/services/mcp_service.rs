@@ -1,13 +1,13 @@
 //! In-process MCP server for the GTK app. Agents talk to the same
 //! policy-gated connections the UI uses.
 
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 use async_trait::async_trait;
 use tablepro_core::Connection;
 use tablepro_mcp::{ConnectionProvider, McpBridge, McpServerConfig, TokenPermissions, TokenStore};
 use tablepro_policy::Principal;
-use tablepro_storage::{SavedConnection, load_connections, store_mcp_token};
+use tablepro_storage::{SavedConnection, StorageError, load_connections, store_mcp_token};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -116,21 +116,53 @@ fn server_config(test_port: Option<&str>) -> McpServerConfig {
     config
 }
 
-/// Issue a token, store plaintext in libsecret, return plaintext once.
 pub async fn issue_token(
     bridge: Option<&Arc<McpBridge>>,
     name: String,
     permissions: TokenPermissions,
     connection_allowlist: Vec<Uuid>,
-) -> Result<(Uuid, String), String> {
+) -> Result<IssuedToken, String> {
+    issue_token_with_store(
+        bridge,
+        name,
+        permissions,
+        connection_allowlist,
+        |id, plaintext, label| async move { store_mcp_token(id, &plaintext, &label).await },
+    )
+    .await
+}
+
+pub struct IssuedToken {
+    pub plaintext: String,
+    pub keyring_saved: bool,
+}
+
+async fn issue_token_with_store<F, Fut>(
+    bridge: Option<&Arc<McpBridge>>,
+    name: String,
+    permissions: TokenPermissions,
+    connection_allowlist: Vec<Uuid>,
+    store: F,
+) -> Result<IssuedToken, String>
+where
+    F: FnOnce(Uuid, String, String) -> Fut,
+    Fut: Future<Output = Result<(), StorageError>>,
+{
     let bridge = bridge.ok_or_else(|| "MCP server is not running".to_string())?;
     let (meta, plaintext) = bridge
         .tokens()
         .issue(name.clone(), permissions, connection_allowlist, None)?;
-    if let Err(e) = store_mcp_token(meta.id, &plaintext, &format!("TablePro MCP: {name}")).await {
-        tracing::warn!(error = %e, "failed to store MCP token in libsecret");
-    }
-    Ok((meta.id, plaintext))
+    let keyring_saved = match store(meta.id, plaintext.clone(), format!("TablePro MCP: {name}")).await {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to store MCP token in libsecret");
+            false
+        }
+    };
+    Ok(IssuedToken {
+        plaintext,
+        keyring_saved,
+    })
 }
 
 pub fn revoke_token(bridge: Option<&Arc<McpBridge>>, id: Uuid) -> Result<(), String> {
@@ -150,7 +182,71 @@ pub fn list_tokens(bridge: Option<&Arc<McpBridge>>) -> Vec<tablepro_mcp::McpToke
 
 #[cfg(test)]
 mod tests {
-    use super::server_config;
+    use super::{issue_token_with_store, server_config};
+    use std::sync::Arc;
+
+    use tablepro_core::Connection;
+    use tablepro_mcp::{ConnectionProvider, McpBridge, TokenPermissions, TokenStore};
+    use tablepro_storage::{KeyringFailure, SavedConnection, StorageError};
+    use uuid::Uuid;
+
+    struct NoConnections;
+
+    #[async_trait::async_trait]
+    impl ConnectionProvider for NoConnections {
+        async fn list_saved_connections(&self) -> Result<Vec<SavedConnection>, String> {
+            Ok(Vec::new())
+        }
+
+        async fn connection(
+            &self,
+            _connection_id: Uuid,
+            _principal: tablepro_policy::Principal,
+        ) -> Result<Arc<dyn Connection>, String> {
+            Err("unused test connection".into())
+        }
+    }
+
+    fn bridge() -> (tempfile::TempDir, Arc<McpBridge>) {
+        let directory = tempfile::tempdir().unwrap();
+        let tokens = Arc::new(TokenStore::open(directory.path().join("tokens.json")).unwrap());
+        let bridge = Arc::new(McpBridge::new(Arc::new(NoConnections), tokens));
+        (directory, bridge)
+    }
+
+    #[tokio::test]
+    async fn issue_token_reports_successful_keyring_storage() {
+        let (_directory, bridge) = bridge();
+        let issued = issue_token_with_store(
+            Some(&bridge),
+            "test client".into(),
+            TokenPermissions::ReadOnly,
+            vec![Uuid::new_v4()],
+            |_, _, _| async { Ok::<(), StorageError>(()) },
+        )
+        .await
+        .unwrap();
+
+        assert!(issued.keyring_saved);
+        assert_eq!(bridge.tokens().list().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn issue_token_remains_usable_when_keyring_storage_fails() {
+        let (_directory, bridge) = bridge();
+        let issued = issue_token_with_store(
+            Some(&bridge),
+            "test client".into(),
+            TokenPermissions::ReadOnly,
+            vec![Uuid::new_v4()],
+            |_, _, _| async { Err(StorageError::Keyring(KeyringFailure::Unavailable)) },
+        )
+        .await
+        .unwrap();
+
+        assert!(!issued.keyring_saved);
+        assert!(bridge.tokens().authenticate(&issued.plaintext).is_ok());
+    }
 
     #[test]
     fn test_mcp_port_override_accepts_only_nonzero_u16_values() {

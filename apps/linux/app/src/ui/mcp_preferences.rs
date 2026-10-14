@@ -48,7 +48,7 @@ pub fn build_page(
     let issue_group = adw::PreferencesGroup::builder()
         .title(tr!("Issue token"))
         .description(tr!(
-            "Plaintext is shown once and stored in the system keyring. Agents send it as a Bearer token."
+            "Plaintext is shown once. Keyring storage is best-effort; the confirmation states whether it was saved."
         ))
         .build();
 
@@ -120,8 +120,8 @@ pub fn build_page(
                 return;
             }
             match mcp_service::issue_token(bridge.as_ref(), name, permissions, allowlist).await {
-                Ok((_id, plaintext)) => {
-                    show_issued_token(&parent, &plaintext);
+                Ok(issued) => {
+                    show_issued_token(&parent, &issued.plaintext, issued.keyring_saved);
                     clear_and_refresh(&tokens_group, bridge.clone());
                 }
                 Err(e) => {
@@ -200,17 +200,29 @@ fn permissions_label(p: TokenPermissions) -> &'static str {
     }
 }
 
-fn show_issued_token(parent: &impl IsA<gtk::Widget>, plaintext: &str) {
+fn show_issued_token(parent: &impl IsA<gtk::Widget>, plaintext: &str, keyring_saved: bool) {
     let alert = adw::AlertDialog::new(
         Some(&tr!("Token issued")),
-        Some(&format!(
-            "{}\n\n{}\n\n{}",
-            tr!("Copy this token now. It will not be shown again in the UI."),
-            plaintext,
-            tr!("Endpoint: http://127.0.0.1:17432/mcp")
-        )),
+        Some(&issued_token_message(plaintext, keyring_saved)),
     );
     alert.add_response("ok", &tr!("Done"));
     alert.set_default_response(Some("ok"));
     alert.present(Some(parent));
+}
+
+fn issued_token_message(plaintext: &str, keyring_saved: bool) -> String {
+    let storage_notice = if keyring_saved {
+        tr!("This token is saved in the system keyring.")
+    } else {
+        tr!(
+            "This token was not saved in the system keyring. Copy it now and add it to your MCP client configuration; closing this dialog loses it."
+        )
+    };
+    format!(
+        "{}\n\n{}\n\n{}\n\n{}",
+        tr!("Copy this token now. It will not be shown again in the UI."),
+        plaintext,
+        tr!("Endpoint: http://127.0.0.1:17432/mcp"),
+        storage_notice,
+    )
 }

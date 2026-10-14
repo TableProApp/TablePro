@@ -78,7 +78,6 @@ What the application does not do, or does differently from what you might expect
 - **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); the cause remains under investigation.
 - **Debug panic output can expose sensitive panic text** (SEC-10 / [#849](https://github.com/cozyGarage/BookiE/issues/849)): setting `TABLEPRO_DEBUG_PANICS=1` currently leaves Rust's default hook active, which may print the raw panic payload. Avoid enabling it until the fix lands.
 - **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Intermittent failures remain under investigation; recent failures include an application shutdown with a bad exit status after the scenarios passed. The required consecutive full-run evidence has not been met.
-- **MCP token keyring save can fail after issuance** (UI-43 / [#861](https://github.com/cozyGarage/BookiE/issues/861)): the token is still issued, but the dialog may say it was saved when the keyring write failed.
 
 ## Test and CI limits
 
