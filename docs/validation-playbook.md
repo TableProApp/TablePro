@@ -12,15 +12,15 @@ Run commands from the repository root with the toolchain required by the reposit
 
 ### Local pre-push gate
 
-On a local machine with Docker and the required native libraries, run the available hosted-equivalent layers before pushing:
+On a local machine with Docker and the required native libraries, run a broad local regression pass before pushing:
 
 ```bash
-python3 scripts/run-test-layer.py full app-server values drivers tls \
+python3 scripts/run-test-layer.py full app-server values drivers b4-rollback tls \
   postgres-release keyring security-policy supply-chain widgets ui \
   workflow-lint harness packaging-contracts change-contracts
 ```
 
-This runs the fast workspace gate, app-server and cross-driver value contracts, Docker driver/TLS/PostgreSQL fixtures, keyring and dependency policy checks. The runner saves a commit-pinned report and logs under `target/quality/`. Current milestone acceptance is in the [active sprint](bookie-0.2-sprint.md) and owning boards. Dated release audits and validation history are source-pinned records, not current status.
+This runs the fast workspace gate, app-server and cross-driver value contracts, Docker driver/rollback/TLS/PostgreSQL/SSH fixtures, keyring and dependency policy checks. It does not replace nightly coverage, mutation, soak or installed-package acceptance. Specialized local fixtures are listed below. The runner saves a commit-pinned report and logs under `target/quality/`. Current milestone acceptance is in the [active sprint](bookie-0.2-sprint.md) and owning boards. Dated release audits and validation history are source-pinned records, not current status.
 
 Run `quick` for a short edit loop. Run the pre-push gate after changes that touch shared core/value paths or before handing a B3 slice to review. Keep the hosted workflow as the recorded platform/packaging check.
 
@@ -30,7 +30,7 @@ python3 scripts/run-test-layer.py harness
 python3 scripts/run-test-layer.py quick
 python3 scripts/run-test-layer.py change-contracts
 python3 scripts/run-test-layer.py security-policy supply-chain
-python3 scripts/run-test-layer.py drivers tls postgres-release
+python3 scripts/run-test-layer.py drivers b4-rollback tls postgres-release
 python3 scripts/run-test-layer.py widgets app-server keyring ui
 python3 scripts/run-test-layer.py values
 ```
@@ -74,6 +74,7 @@ Missing tools, nonzero exits, timeouts, cancellations and absent required test s
 | `full` | Default workspace checks including app logic | GNOME 50 development stack; no display automation or DuckDB |
 | `sandbox` | Integration tests without external servers or a display | Local sockets/processes must be allowed |
 | `drivers` | PostgreSQL, MySQL, MSSQL, ClickHouse, Redis, MongoDB, MCP BSON, policy sessions, PostgreSQL socket and SSH | Docker and OpenSSH; SQLite is in sandbox, DuckDB has its own Build job |
+| `b4-rollback` | MySQL failed-batch rollback and PostgreSQL rollback-failure handling | Docker and native TLS build dependencies |
 | `values` | Exact values across eight drivers, core, app and MCP | Docker, GTK build dependencies, optional DuckDB build; strict selected-test counts |
 | `tls` | CA, hostname, encryption and plaintext refusal against real servers | Docker Compose and generated private fixture certificates |
 | `ssh` | SSH agent authentication and OpenSSH sessions | Docker and OpenSSH client tools |
@@ -84,6 +85,10 @@ Missing tools, nonzero exits, timeouts, cancellations and absent required test s
 | `app-server` | Registered PostgreSQL/MySQL/MongoDB parser, keyed-edit and metadata contracts | GNOME 50 build libraries and Docker; hosted GTK fast job |
 | `keyring` | Registered Secret Service contracts | Private D-Bus, gnome-keyring and libsecret tools |
 | `ui` | Real application actions and database postconditions via AT-SPI | GNOME 50, Xvfb, PyAT-SPI; X11 automation, not Wayland acceptance |
+| `mssql-kerberos` | SQL Server integrated authentication, SPN refusal and verified TLS against an isolated test domain | Docker Compose with privileged-container support; opt-in local fixture |
+| `gtk-clickhouse` | Installed GTK Enum16 grid edit against ClickHouse | GNOME 50, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
+| `gtk-mysql-approval` | Approval and dispatch behavior against MySQL | GNOME 50, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
+| `gtk-mongodb` | Installed GTK MongoDB cursor visibility and grid edits | GNOME 50, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
 
 Build/package, mutation, coverage and acceptance retain their existing entrypoints:
 
