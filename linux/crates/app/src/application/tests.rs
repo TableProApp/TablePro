@@ -481,6 +481,38 @@ fn a_cancelled_quit_forgets_a_restore_that_failed_during_it() {
 }
 
 #[gtk4::test]
+fn a_quit_without_close_requests_keeps_the_sessions_recorded() {
+    let test = TestApp::new("ShutdownRecord");
+    let open = test.database("open.db");
+    test.record(std::slice::from_ref(&open));
+    let services = test.services();
+    let connected = Rc::new(Cell::new(false));
+    let (app, seen, key) = (test.app.downgrade(), connected.clone(), open.clone());
+    let deadline = std::time::Instant::now() + WAIT;
+    glib::timeout_add_local(Duration::from_millis(20), move || {
+        let Some(app) = app.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        seen.set(services.sessions.live_count() == 1 && services.sessions.window_for(&key).is_some());
+        if seen.get() || std::time::Instant::now() > deadline {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "GTK quits this way when the session ends, without asking the windows"
+            )]
+            app.quit();
+            return glib::ControlFlow::Break;
+        }
+        glib::ControlFlow::Continue
+    });
+
+    let code = test.app.run_with_args(&["tablepro"]);
+
+    assert_eq!(code, glib::ExitCode::SUCCESS);
+    assert!(connected.get(), "the recorded session never opened");
+    assert_eq!(test.recorded(), [open]);
+}
+
+#[gtk4::test]
 fn new_window_action_opens_another_window() {
     let test = TestApp::started("NewWindow");
     test.window();
