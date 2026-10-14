@@ -2,6 +2,8 @@ substitutions = configuration_data()
 substitutions.set('app-id', application_id)
 substitutions.set('bindir', bindir)
 substitutions.set('gettext-package', meson.project_name())
+substitutions.set('version', meson.project_version())
+substitutions.set('screenshots-base-url', screenshots_base_url)
 
 desktop_file_in = configure_file(
   input: 'app.tablepro.TablePro.desktop.in.in',

@@ -19,3 +19,10 @@ option(
   value: false,
   description: 'Install the files a Flatpak build needs, such as the Kerberos configuration.',
 )
+
+option(
+  'screenshots_base_url',
+  type: 'string',
+  value: '',
+  description: 'The https URL the metainfo screenshots are under. Empty uses data/screenshots at the release tag.',
+)

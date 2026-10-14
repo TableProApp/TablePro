@@ -102,6 +102,72 @@ mod tests {
             format!("{}.desktop", config::APP_ID)
         );
         assert!(!xml.contains("@app-id@") && !xml.contains("@gettext-package@"), "{xml}");
+        assert!(
+            !xml.contains("@version@") && !xml.contains("@screenshots-base-url@"),
+            "{xml}"
+        );
+    }
+
+    fn newest_release(xml: &str) -> &str {
+        let marker = "<release version=\"";
+        let start = xml.find(marker).expect("the metainfo lists a release") + marker.len();
+        let length = xml[start..].find('"').expect("the release version is quoted");
+        &xml[start..start + length]
+    }
+
+    #[test]
+    fn embedded_metainfo_pins_project_links_to_the_release_tag() {
+        let xml = embedded_metainfo();
+        let tree = format!(
+            "https://github.com/TableProApp/TablePro/blob/linux-v{}/linux",
+            newest_release(&xml)
+        );
+
+        assert_eq!(
+            metainfo_text(&xml, "<url type=\"translate\"", "</url>"),
+            format!("{tree}/po/README.md")
+        );
+        assert_eq!(
+            metainfo_text(&xml, "<url type=\"contribute\"", "</url>"),
+            format!("{tree}/CONTRIBUTING.md")
+        );
+    }
+
+    #[test]
+    fn every_metainfo_screenshot_is_a_committed_png() {
+        let xml = embedded_metainfo();
+        let screenshots = metainfo_text(&xml, "<screenshots", "</screenshots>");
+        let mut listed: Vec<String> = screenshots
+            .split("</screenshot>")
+            .filter(|entry| !entry.trim().is_empty())
+            .map(|entry| {
+                assert!(entry.contains("<caption"), "a screenshot without a caption: {entry}");
+                let url = metainfo_text(entry, "<image", "</image>");
+                assert!(url.starts_with("https://"), "{url}");
+                url.rsplit('/').next().unwrap_or_default().to_owned()
+            })
+            .collect();
+        listed.sort();
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/screenshots");
+        let mut committed: Vec<String> = std::fs::read_dir(&dir)
+            .expect("data/screenshots is readable")
+            .map(|entry| {
+                entry
+                    .expect("a readable entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        committed.sort();
+
+        assert_eq!(listed, committed);
+        assert!(!listed.is_empty());
+        for name in &listed {
+            let bytes = std::fs::read(dir.join(name)).expect("the screenshot is readable");
+            assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "{name} is not a PNG");
+        }
     }
 
     #[test]

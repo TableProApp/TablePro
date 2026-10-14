@@ -56,15 +56,29 @@ fn render_template() -> Result<String, String> {
     let package = env::var("CARGO_PKG_NAME").map_err(|error| format!("CARGO_PKG_NAME: {error}"))?;
     let template = fs::read_to_string(METAINFO_TEMPLATE)
         .map_err(|error| format!("could not read {METAINFO_TEMPLATE}: {error}"))?;
+    let version = newest_release(&template).ok_or_else(|| format!("{METAINFO_TEMPLATE} lists no release"))?;
+    let screenshots =
+        format!("https://raw.githubusercontent.com/TableProApp/TablePro/linux-v{version}/linux/data/screenshots");
     let rendered = template
         .replace("@app-id@", &app_id)
-        .replace("@gettext-package@", &package);
+        .replace("@gettext-package@", &package)
+        .replace("@version@", version)
+        .replace("@screenshots-base-url@", &screenshots);
     if let Some(name) = unfilled_placeholder(&rendered) {
         return Err(format!(
             "{METAINFO_TEMPLATE} uses @{name}@, which build.rs does not fill"
         ));
     }
     Ok(rendered)
+}
+
+/// Meson fills `@version@` with the project version, and a release
+/// commit lists that version first.
+fn newest_release(template: &str) -> Option<&str> {
+    let marker = "<release version=\"";
+    let start = template.find(marker)? + marker.len();
+    let length = template[start..].find('"')?;
+    Some(&template[start..start + length])
 }
 
 /// The name of a Meson `@name@` placeholder still in `text`.
