@@ -4,6 +4,8 @@ use secrecy::{ExposeSecret, SecretString};
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination};
 use tablepro_storage::{SavedSshAuth, SavedSshConfig};
 
+pub use crate::services::ssh_environment::SshEnvironment;
+
 /// How the SSH server is logged in to, in the order the combo shows
 /// them. OpenSSH does the work for each; the app only picks which one
 /// it tries first.
@@ -64,26 +66,6 @@ impl SshAuthChoice {
             SavedSshAuth::Password => Self::Password,
             SavedSshAuth::KeyboardInteractive => Self::KeyboardInteractive,
         }
-    }
-}
-
-/// What the machine offers for SSH logins, read once when the dialog
-/// opens so a test can say what it has instead.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SshEnvironment {
-    pub agent: bool,
-    pub default_key: Option<PathBuf>,
-}
-
-impl SshEnvironment {
-    pub fn detect() -> Self {
-        let agent = std::env::var_os("SSH_AUTH_SOCK").is_some_and(|socket| !socket.is_empty());
-        let ssh_dir = glib::home_dir().join(".ssh");
-        let default_key = ["id_ed25519", "id_ecdsa", "id_rsa"]
-            .into_iter()
-            .map(|candidate| ssh_dir.join(candidate))
-            .find(|path| path.exists());
-        Self { agent, default_key }
     }
 }
 

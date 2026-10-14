@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
 - Format could split `+=`, `b'01'` or `@@version`, or detach a MySQL function from its parenthesis, and change the statement.
 - Opening a SQL, CSV or connections file from a pipe or a device never finished, or read past its size limit.
-- Exporting results or query history to a slow disk or a network folder froze the window until the write ended.
+- Exporting results or query history, or opening the connect dialog, froze the window on a slow disk or network folder.
 - The sidebar's table search button had no name for screen readers.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.
 - MySQL and MariaDB connections that verify the certificate did not trust certificate authorities installed on the system.

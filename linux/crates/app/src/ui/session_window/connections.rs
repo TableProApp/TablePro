@@ -51,11 +51,41 @@ pub(super) fn prefill_for(source: &ConnectSource) -> Option<ConnectPrefill> {
 
 impl SessionWindow {
     /// Show the connect dialog over this window, filled from `prefill`
-    /// when a connect from it failed, with the focus on `focus`.
+    /// when a connect from it failed, with the focus on `focus`. It
+    /// opens once the user's SSH keys are looked for, which reads the
+    /// disk and so runs off the GTK thread.
     pub(super) fn present_connect_dialog(&self, prefill: Option<ConnectPrefill>, focus: Option<FormField>) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        // A second request while the first waits would stack two dialogs.
+        if self.imp().dialog_opening.replace(true) {
+            return;
+        }
+        let detecting = state
+            .services
+            .tasks
+            .spawn_blocking_task(SshEnvironment::detect_blocking);
+        let window = self.downgrade();
+        glib::spawn_future_local(async move {
+            let environment = detecting.await.unwrap_or_else(|failure| {
+                tracing::warn!(%failure, "could not look for SSH keys");
+                SshEnvironment::default()
+            });
+            if let Some(window) = window.upgrade() {
+                window.imp().dialog_opening.set(false);
+                window.show_connect_dialog(prefill, focus, environment);
+            }
+        });
+    }
+
+    fn show_connect_dialog(&self, prefill: Option<ConnectPrefill>, focus: Option<FormField>, ssh: SshEnvironment) {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
+        if self.imp().shut_down.get() {
+            return;
+        }
         let context = &state.context;
         let dialog = ConnectDialog::new(ConnectDialogInit {
             drivers: context.drivers.clone(),
@@ -64,7 +94,7 @@ impl SessionWindow {
             tasks: state.services.tasks.clone(),
             saved_connections: Arc::from(self.imp().saved_connections.borrow().clone()),
             remembered_driver: state.services.settings.connect_dialog_driver(),
-            ssh_environment: SshEnvironment::detect(),
+            ssh_environment: ssh,
             prefill,
         });
         let submitted = input.clone();

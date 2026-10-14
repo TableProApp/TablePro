@@ -110,15 +110,16 @@ jobs:
         # This code runs on the GTK thread, where a slow disk or a
         # network mount freezes the window. A storage call ending in
         # _blocking is handed to spawn_blocking_task on the same line,
-        # which is what this check can see. Tests may do either.
+        # which is what this check can see. A Path method that stats the
+        # disk blocks the same way. Tests may do either.
         run: |
           # The $0 in the awk program is awk's record, not a shell variable.
           # shellcheck disable=SC2016
           found=$(find crates/app/src/ui -name '*.rs' ! -name tests.rs -print0 \
-            | xargs -0 awk '/^mod tests \{/ { nextfile } /std::fs::/ || (/_blocking\(/ && !/spawn_blocking_task\(/) { print FILENAME ":" FNR ": " $0 }')
+            | xargs -0 awk '/^mod tests \{/ { nextfile } /std::fs::/ || /\.(exists|try_exists|is_dir|is_file|is_symlink|canonicalize|read_dir|read_link|symlink_metadata)\(/ || (/_blocking\(/ && !/spawn_blocking_task\(/) { print FILENAME ":" FNR ": " $0 }')
           if [ -n "$found" ]; then
             echo "$found"
-            echo "::error::crates/app/src/ui must not call std::fs, or a _blocking function outside spawn_blocking_task"
+            echo "::error::crates/app/src/ui must not call std::fs or a Path method that reads the disk, or a _blocking function outside spawn_blocking_task"
             exit 1
           fi
       - name: Window actions on the window's own map

@@ -265,9 +265,14 @@ impl SshSection {
             .filters(&filters)
             .default_filter(&filter)
             .build();
-        let ssh_dir = glib::home_dir().join(".ssh");
-        if ssh_dir.is_dir() {
-            dialog.set_initial_folder(Some(&gio::File::for_path(&ssh_dir)));
+        // Asked through GIO, which reads the disk on its own threads.
+        let ssh_dir = gio::File::for_path(glib::home_dir().join(".ssh"));
+        let is_dir = ssh_dir
+            .query_info_future("standard::type", gio::FileQueryInfoFlags::NONE, glib::Priority::DEFAULT)
+            .await
+            .is_ok_and(|info| info.file_type() == gio::FileType::Directory);
+        if is_dir {
+            dialog.set_initial_folder(Some(&ssh_dir));
         }
         let parent = self.root().and_downcast::<gtk4::Window>();
         if let Some(path) = dialog

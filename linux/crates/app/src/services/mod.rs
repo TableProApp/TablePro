@@ -11,6 +11,7 @@ pub mod save_batch;
 pub mod secret_labels;
 pub mod secret_save_report;
 pub mod session_context;
+pub mod ssh_environment;
 pub mod structure_tracker;
 pub mod structure_tracker_handle;
 pub mod structure_tracker_registry;

@@ -266,6 +266,22 @@ fn the_header_icon_buttons_are_labelled() {
 }
 
 #[gtk4::test]
+fn the_connect_dialog_opens_once_over_its_own_window() {
+    let test = TestWindow::picker("ConnectDialog");
+
+    test.window.send(SessionWindowInput::OpenConnectDialog);
+    test.window.send(SessionWindowInput::OpenConnectDialog);
+    wait_until(WAIT, || test.window.imp().dialog.borrow().is_some()).expect("the connect dialog");
+    drain_main_context();
+
+    let dialogs = descendants(&test.window)
+        .into_iter()
+        .filter(|widget| widget.is::<crate::ui::connect_dialog::ConnectDialog>())
+        .count();
+    assert_eq!(dialogs, 1);
+}
+
+#[gtk4::test]
 fn claiming_open_key_presents_owner_window() {
     let test = TestWindow::connected("Owner");
     let other = test

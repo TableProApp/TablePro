@@ -44,6 +44,7 @@ crates/app/src/services/save_batch.rs
 crates/app/src/services/secret_labels.rs
 crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
+crates/app/src/services/ssh_environment.rs
 crates/app/src/services/structure_tracker.rs
 crates/app/src/services/structure_tracker_handle.rs
 crates/app/src/services/structure_tracker_registry.rs
