@@ -236,7 +236,7 @@ pub(super) fn install_window_lifecycle(
 
     let breakpoint = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
         adw::BreakpointConditionLengthType::MaxWidth,
-        600.0,
+        960.0,
         adw::LengthUnit::Sp,
     ));
     breakpoint.add_setter(split_view, "collapsed", Some(&true.into()));

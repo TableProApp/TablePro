@@ -26,6 +26,42 @@ class XWindowAttributes(ctypes.Structure):
 ATSPI_WINDOW_Y_OFFSET = int(os.environ.get("TABLEPRO_GTK_Y_OFFSET", "19"))
 
 
+def x11_resize_window(width, height):
+    x11 = ctypes.CDLL("libX11.so.6")
+    x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x11.XOpenDisplay.restype = ctypes.c_void_p
+    x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+    x11.XDefaultRootWindow.restype = ctypes.c_ulong
+    x11.XQueryTree.argtypes = [
+        ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_ulong),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_ulong)), ctypes.POINTER(ctypes.c_uint),
+    ]
+    x11.XGetWindowAttributes.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(XWindowAttributes)]
+    x11.XResizeWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_uint, ctypes.c_uint]
+    x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    x11.XFree.argtypes = [ctypes.c_void_p]
+    x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+    display = x11.XOpenDisplay(None)
+    assert display, "X11 display is unavailable"
+    try:
+        root = x11.XDefaultRootWindow(display)
+        root_return, parent, children, count = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.POINTER(ctypes.c_ulong)(), ctypes.c_uint()
+        x11.XQueryTree(display, root, ctypes.byref(root_return), ctypes.byref(parent), ctypes.byref(children), ctypes.byref(count))
+        window = None
+        for index in range(count.value):
+            attrs = XWindowAttributes()
+            x11.XGetWindowAttributes(display, children[index], ctypes.byref(attrs))
+            if attrs.map_state == 2 and attrs.width >= 800 and attrs.height >= 600:
+                window = children[index]
+        if children:
+            x11.XFree(children)
+        assert window is not None, "the application window was not found on the X display"
+        x11.XResizeWindow(display, window, width, height)
+        x11.XSync(display, 0)
+    finally:
+        x11.XCloseDisplay(display)
+
+
 def x11_click(window_x, window_y, button=3, clicks=1):
     if gtk_input.uses_atspi_input():
         gtk_input.click(window_x, int(window_y) + ATSPI_WINDOW_Y_OFFSET, button, clicks)
@@ -635,6 +671,32 @@ GLib.MainLoop().run()
         ]
         assert not unnamed, "controls without an accessible name:\n" + "\n".join(unnamed)
 
+    def narrow_window_keeps_main_and_editor_toolbar_actions_reachable(database, base):
+        ui.open_saved_connection(ui.CONNECTION_NAME)
+        window = ui.wait_for_frame_containing(" — BookiE")
+        ui.wait_for_node(name="Split", role=pyatspi.ROLE_TOGGLE_BUTTON)
+        for width in (928, 847, 802):
+            x11_resize_window(width, 760)
+            time.sleep(0.5)
+            bounds = window.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+            assert bounds.width == width, f"window did not resize to {width} px: {bounds.width} px"
+            editor_panel = ui.wait_for_node(name="Query 1", role=pyatspi.ROLE_PANEL)
+            panel_bounds = editor_panel.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+            assert panel_bounds.width >= width - 140, (
+                f"editor content did not reclaim the collapsed sidebar width at {width} px: "
+                f"content width={panel_bounds.width}\n{ui.accessible_snapshot()}"
+            )
+            for name, role in (
+                ("Main menu", pyatspi.ROLE_TOGGLE_BUTTON),
+                ("Split", pyatspi.ROLE_TOGGLE_BUTTON),
+                ("Close", pyatspi.ROLE_PUSH_BUTTON),
+            ):
+                control = ui.wait_for_node(name=name, role=role)
+                extents = control.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+                assert extents.width > 0 and extents.x >= 0 and extents.x + extents.width <= bounds.width, (
+                    f"{name} is outside the {width} px window: "
+                    f"x={extents.x}, width={extents.width}\n{ui.accessible_snapshot()}"
+                )
     def connection_colour_chooser_has_an_accessible_button(database, base):
         ui.invoke_accessible_action("win.disconnect")
         ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON)
@@ -1450,6 +1512,7 @@ GLib.MainLoop().run()
         ctrl_tab_returns_to_the_most_recently_used_tab,
         holding_ctrl_while_pressing_tab_walks_deeper_into_the_history,
         interactive_controls_have_accessible_names,
+        narrow_window_keeps_main_and_editor_toolbar_actions_reachable,
         connection_colour_chooser_has_an_accessible_button,
         alt_arrows_jump_between_statements,
         row_inspector_lists_every_column_of_the_selected_row,

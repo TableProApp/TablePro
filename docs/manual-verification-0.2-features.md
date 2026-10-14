@@ -105,6 +105,8 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 
 ## Editor and history
 
+- [ ] At 847 px and 802 px window widths, the navigation sidebar collapses and the main menu, editor Split action and window close control remain visible and usable. The automated Xvfb scenario checks their bounds; native Hyprland verification remains open under [#657](https://github.com/cozyGarage/BookiE/issues/657).
+
 - [ ] Toggle **Split** on and off with the mouse and keyboard; edit the query from either pane, confirm both views update, and check that each pane keeps its scroll position at a narrow window width. **2026-10-12 Hyprland dark:** mouse toggle and shared buffer passed; keyboard and narrow width not run. The orphaned-tab abort was fixed by [#667](https://github.com/cozyGarage/BookiE/pull/667); repeat the installed flow.
 - [ ] Ctrl+O opens a `.sql` file into a new tab titled with the file name. **2026-10-12 Hyprland dark:** passed.
 - [ ] Typing marks the title with `•`; Ctrl+S saves, clears the mark and shows "Saved". **2026-10-12 Hyprland dark:** passed.
