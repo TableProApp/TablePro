@@ -17,6 +17,8 @@ use super::{StructureModel, StructureTabInput};
 #[template(resource = "/app/tablepro/TablePro/ui/structure-tab.ui")]
 pub struct StructureTab {
     #[template_child]
+    pub stale_banner: TemplateChild<adw::Banner>,
+    #[template_child]
     pub inner_stack: TemplateChild<gtk::Stack>,
     #[template_child]
     pub name_row: TemplateChild<adw::PreferencesGroup>,
@@ -104,6 +106,9 @@ impl ObjectImpl for StructureTab {
                     .param_types([String::static_type(), String::static_type()])
                     .build(),
                 Signal::builder("toast").param_types([String::static_type()]).build(),
+                Signal::builder("loading-changed")
+                    .param_types([bool::static_type()])
+                    .build(),
                 Signal::builder("alert")
                     .param_types([String::static_type(), String::static_type()])
                     .build(),

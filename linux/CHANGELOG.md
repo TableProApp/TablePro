@@ -33,8 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
-- Try Again on a table tab's error page, and Retry on a banner over rows a refresh could not read again.
-- Table tabs show a spinner in the tab bar while they read.
+- Try Again on a table tab's error page, and Retry on a banner over rows or a structure that could not be read again.
+- Table and structure tabs show a spinner in the tab bar while they read.
 
 ### Changed
 
@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Denser grid rows, with numbers aligned right in even-width digits at the precision their column declares.
 - A grid value too long to draw says how many bytes it leaves out, and its tooltip points to Show Row as JSON.
 - Refresh keeps a table's rows, selection and focused cell on screen while it reads the table again.
+- A structure tab keeps the table's structure on screen while it reads it again, a save included.
 
 ### Removed
 

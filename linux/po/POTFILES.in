@@ -256,6 +256,7 @@ crates/app/src/ui/structure_tab/mod.rs
 crates/app/src/ui/structure_tab/referential_action_label.rs
 crates/app/src/ui/structure_tab/review_dialog.rs
 crates/app/src/ui/structure_tab/structure_command.rs
+crates/app/src/ui/structure_tab/structure_fetch.rs
 crates/app/src/ui/structure_tab/table_choice_object.rs
 crates/app/src/ui/structure_tab/tests.rs
 crates/app/src/ui/style_scheme_grid.rs

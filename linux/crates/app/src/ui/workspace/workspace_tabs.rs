@@ -340,6 +340,8 @@ impl WorkspaceModel {
         connect_structure(&structure, tab_id, &self.input);
 
         let page = tab_view.append(&structure);
+        let follow = follow_loading(&page, structure.is_loading());
+        structure.connect_loading_changed(move |_, loading| follow(loading));
         let title = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
         // Told apart from the table's own tab, with the middle dot GNOME
         // apps use in compound titles.

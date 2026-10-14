@@ -329,31 +329,179 @@ fn readable_once() -> ConnectionScript {
     script
 }
 
+fn banner(harness: &Harness) -> adw::Banner {
+    harness.tab().imp().stale_banner.get()
+}
+
+fn banner_tooltip(harness: &Harness) -> String {
+    banner(harness)
+        .tooltip_text()
+        .map(|text| text.to_string())
+        .unwrap_or_default()
+}
+
 #[gtk4::test]
-fn a_failed_read_after_a_schema_change_keeps_the_definition() {
+fn structure_refresh_failure_keeps_editor_and_shows_banner() {
     let harness = Harness::open(StructureMode::Edit, readable_once(), []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
     let toasts = toasts(harness.tab());
 
     harness.tab().send(StructureTabInput::SchemaChanged);
-    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the failed read was not reported");
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
 
     assert_eq!(harness.page().as_deref(), Some("editor"));
     assert_eq!(harness.column_names(), ["id"]);
-    assert!(toasts.borrow()[0].contains("denied"), "{:?}", toasts.borrow());
+    assert!(
+        banner_tooltip(&harness).contains("denied"),
+        "{}",
+        banner_tooltip(&harness)
+    );
+    assert!(toasts.borrow().is_empty(), "{:?}", toasts.borrow());
+    assert!(!harness.tab().is_loading());
+    assert!(harness.tab().imp().columns_box.is_sensitive());
 }
 
+/// The definition on screen is from before the save, so the draft holds
+/// still until a read lands: unlocked, its diff would offer the saved
+/// changes again.
 #[gtk4::test]
-fn a_failed_read_after_a_save_shows_the_error() {
+fn a_failed_read_after_a_save_keeps_the_saved_draft_locked() {
     let harness = Harness::open(StructureMode::Edit, readable_once(), []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
 
     harness
         .tab()
         .send(StructureTabInput::SaveCompleted { new_table_name: None });
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
 
-    wait_until(WAIT, || harness.page().as_deref() == Some("error"))
-        .expect("a definition from before the save stayed editable");
+    assert_eq!(harness.page().as_deref(), Some("editor"));
+    assert!(!harness.tab().imp().columns_box.is_sensitive());
+    assert!(
+        !harness.tracker().has_pending(),
+        "the saved changes came back as pending"
+    );
+}
+
+#[gtk4::test]
+fn structure_first_load_failure_shows_error_page() {
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .always(FakeReply::err(DriverError::server("no <such> table")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+
+    wait_until(WAIT, || harness.page().as_deref() == Some("error")).expect("the error page");
+
+    let imp = harness.tab().imp();
+    let description = imp
+        .error_status
+        .description()
+        .map(|text| text.to_string())
+        .unwrap_or_default();
+    assert!(description.contains("no &lt;such&gt; table"), "{description}");
+    assert!(imp.retry_button.is_visible());
+    assert!(!banner(&harness).is_revealed());
+    assert!(!harness.tab().is_loading());
+}
+
+#[gtk4::test]
+fn index_fetch_failure_keeps_loaded_indexes() {
+    let indexed = TableDefinition {
+        indexes: vec![tablepro_core::IndexInfo {
+            name: "users_id_idx".to_owned(),
+            keys: vec![tablepro_core::meta::IndexKey::Column {
+                name: "id".to_owned(),
+                descending: false,
+            }],
+            unique: true,
+            primary: false,
+            predicate: None,
+        }],
+        ..definition("id")
+    };
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(indexed))
+        .always(FakeReply::err(DriverError::server("indexes unreadable")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+
+    harness.tab().send(StructureTabInput::SchemaChanged);
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
+
+    let indexes: Vec<String> = harness.draft().indexes.into_iter().map(|index| index.name).collect();
+    assert_eq!(indexes, ["users_id_idx"]);
+    assert_eq!(harness.page().as_deref(), Some("editor"));
+}
+
+#[gtk4::test]
+fn structure_retry_after_failure_hides_banner() {
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(definition("id")))
+        .once(FakeReply::err(DriverError::server("denied")))
+        .always(FakeReply::ok(definition("email")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    harness.tab().send(StructureTabInput::SchemaChanged);
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the stale banner");
+
+    banner(&harness).emit_by_name::<()>("button-clicked", &[]);
+
+    wait_until(WAIT, || harness.column_names() == ["email"]).expect("Retry read the table again");
+    assert!(
+        !banner(&harness).is_revealed(),
+        "the banner outlived the read that landed"
+    );
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        3
+    );
+}
+
+#[gtk4::test]
+fn schema_save_shows_new_column_list() {
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(TableDefinition {
+            columns: vec![integer_column("id", true), integer_column("name", false)],
+            ..definition("id")
+        }))
+        .always(FakeReply::ok(TableDefinition {
+            columns: vec![
+                integer_column("id", true),
+                integer_column("name", false),
+                integer_column("email", false),
+            ],
+            ..definition("id")
+        }));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let loading = Rc::new(RefCell::new(Vec::new()));
+    let sink = loading.clone();
+    harness
+        .tab()
+        .connect_loading_changed(move |_, busy| sink.borrow_mut().push(busy));
+
+    harness
+        .tab()
+        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+
+    assert_eq!(
+        harness.page().as_deref(),
+        Some("editor"),
+        "the read after the save blanked the tab"
+    );
+    wait_until(WAIT, || column_rows(harness.tab()).len() == 3).expect("the columns the save left");
+    assert_eq!(harness.column_names(), ["id", "name", "email"]);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        2
+    );
+    assert_eq!(*loading.borrow(), [true, false]);
 }
 
 /// The control named `name` in the row the Columns list shows at
