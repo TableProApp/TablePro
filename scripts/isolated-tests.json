@@ -371,6 +371,11 @@
       "tablepro-app",
       "--lib",
       "ui::app::organization::tests::changing_a_connection_colour_updates_the_retained_tab_bar"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::filter_strip::tests::an_externally_applied_rule_expands_the_rule_editor"
     ]
   ],
   "keyring": [
