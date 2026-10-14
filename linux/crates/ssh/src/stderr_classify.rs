@@ -6,6 +6,9 @@ const PROTOCOL_DETAIL_LIMIT: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DeclinedHostKey {
+    /// The host ssh asked about, which behind a jump host is not always
+    /// the destination.
+    pub host: String,
     pub algorithm: String,
     pub fingerprint: String,
 }
@@ -60,10 +63,10 @@ fn host_key_failure(stderr: &str, context: &ClassifyContext<'_>) -> Option<SshFa
         return Some(unknown_host_key(context.host, "", "", false, false));
     }
     if stderr.contains("Host key verification failed.") {
-        let (algorithm, fingerprint) = context
-            .declined_host_key
-            .map_or(("", ""), |key| (key.algorithm.as_str(), key.fingerprint.as_str()));
-        return Some(unknown_host_key(context.host, algorithm, fingerprint, true, true));
+        let (host, algorithm, fingerprint) = context.declined_host_key.map_or((context.host, "", ""), |key| {
+            (key.host.as_str(), key.algorithm.as_str(), key.fingerprint.as_str())
+        });
+        return Some(unknown_host_key(host, algorithm, fingerprint, true, true));
     }
     None
 }
@@ -335,6 +338,7 @@ mod tests {
     #[test]
     fn declined_prompt_reports_the_declined_key() {
         let declined = DeclinedHostKey {
+            host: "[jump.example.com]:2200".to_owned(),
             algorithm: "ED25519".to_owned(),
             fingerprint: "SHA256:abc".to_owned(),
         };
@@ -345,7 +349,7 @@ mod tests {
         assert_eq!(
             classify(Some(255), "Host key verification failed.\n", &context),
             TransportError::Ssh(SshFailure::HostKeyUnknown {
-                host: "bastion".to_owned(),
+                host: "[jump.example.com]:2200".to_owned(),
                 algorithm: "ED25519".to_owned(),
                 sha256_fingerprint: "SHA256:abc".to_owned(),
                 trust_allowed: true,

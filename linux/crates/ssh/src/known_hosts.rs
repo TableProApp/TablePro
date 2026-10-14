@@ -1,12 +1,24 @@
 use std::ffi::OsString;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use tablepro_core::SshFailure;
 use tokio::process::Command;
 
+use crate::route::{lookup, trace_route};
 use crate::{SshConfig, SshServices};
+
+/// Why a key ssh reported as changed was left in known_hosts.
+#[derive(Debug, thiserror::Error)]
+pub enum ForgetHostKeyError {
+    /// `ssh -G` names no host of this connection by `host` that reads
+    /// `known_hosts`, so the report did not come from ssh's own check.
+    #[error("{host} in {} is not a host key this connection uses", .known_hosts.display())]
+    NotThisConnection { host: String, known_hosts: PathBuf },
+    #[error(transparent)]
+    Ssh(#[from] SshFailure),
+}
 
 pub async fn forget_host_key(services: &SshServices, config: &SshConfig, known_hosts: &Path) -> Result<(), SshFailure> {
     let mut args: Vec<OsString> = vec!["-G".into()];
@@ -32,10 +44,49 @@ pub async fn forget_host_key(services: &SshServices, config: &SshConfig, known_h
     forget_known_host(services, &lookup, known_hosts).await
 }
 
+/// Remove the old key of a host whose key ssh reported as changed.
+///
+/// The report is read from ssh's stderr, where a server's login banner
+/// is printed too, so `host` and `known_hosts` are taken only when
+/// `ssh -G` resolves the connection's destination or one of its jump
+/// hosts to `host`, and lists `known_hosts` among the UserKnownHostsFile
+/// entries for it.
+pub async fn forget_changed_host_key(
+    services: &SshServices,
+    config: &SshConfig,
+    host: &str,
+    known_hosts: &Path,
+) -> Result<(), ForgetHostKeyError> {
+    let program = &services.ssh_program;
+    let config_file = services.config_file.as_deref();
+    let resolved = lookup(program, config_file, &config.destination, &config.jump_hosts).await;
+    let route = trace_route(program, config_file, resolved.as_deref()).await;
+    let mut hosts: Vec<String> = resolved.into_iter().collect();
+    for hop in &route.hops {
+        hosts.extend(lookup(program, config_file, &hop.destination, &[]).await);
+    }
+    let ours = hosts.iter().find_map(|resolved| {
+        let name = known_hosts_lookup(resolved)?;
+        let reads = user_known_hosts_files(resolved).iter().any(|file| file == known_hosts);
+        (reads && name.eq_ignore_ascii_case(host)).then_some(name)
+    });
+    let Some(name) = ours else {
+        return Err(ForgetHostKeyError::NotThisConnection {
+            host: host.to_owned(),
+            known_hosts: known_hosts.to_owned(),
+        });
+    };
+    Ok(forget_known_host(services, &name, known_hosts).await?)
+}
+
 /// Remove every key `known_hosts` holds for `lookup`, the name ssh looks
 /// the host up by: `host`, `[host]:port` or a HostKeyAlias, as ssh
 /// prints it when a key changes.
-pub async fn forget_known_host(services: &SshServices, lookup: &str, known_hosts: &Path) -> Result<(), SshFailure> {
+pub(crate) async fn forget_known_host(
+    services: &SshServices,
+    lookup: &str,
+    known_hosts: &Path,
+) -> Result<(), SshFailure> {
     if lookup.trim().is_empty() {
         return Err(SshFailure::InvalidDestination {
             detail: "no host to remove from known_hosts".to_owned(),
@@ -73,6 +124,18 @@ pub(crate) fn known_hosts_lookup(ssh_g_output: &str) -> Option<String> {
         Some(port) if port != "22" => Some(format!("[{hostname}]:{port}")),
         _ => Some(hostname.to_owned()),
     }
+}
+
+/// The UserKnownHostsFile entries `ssh -G` printed, `~` and `%` tokens
+/// already expanded. ssh prints them unquoted, so a path with a space
+/// in it splits and matches nothing.
+fn user_known_hosts_files(ssh_g_output: &str) -> Vec<PathBuf> {
+    ssh_g_output
+        .lines()
+        .filter_map(|line| line.strip_prefix("userknownhostsfile "))
+        .flat_map(str::split_whitespace)
+        .map(PathBuf::from)
+        .collect()
 }
 
 async fn run(program: &Path, args: &[OsString]) -> Result<String, SshFailure> {
@@ -152,6 +215,127 @@ mod tests {
         let left = std::fs::read_to_string(&known_hosts).unwrap();
         assert!(!left.contains("[db.example.com]:2222"), "{left}");
         assert!(left.contains(&format!("db.example.com {KEY}")), "{left}");
+    }
+
+    /// An `ssh` whose `-G` prints what `hosts` gives for the host named
+    /// last, the way an ssh_config would resolve it, and fails for any
+    /// other.
+    fn fake_ssh(dir: &Path, hosts: &[(&str, String)]) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let cases: String = hosts
+            .iter()
+            .map(|(host, resolved)| format!("  {host}) printf '{resolved}' ;;\n"))
+            .collect();
+        let program = dir.join("ssh");
+        std::fs::write(
+            &program,
+            format!("#!/bin/sh\nfor last; do :; done\ncase \"$last\" in\n{cases}  *) exit 255 ;;\nesac\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        program
+    }
+
+    fn tunnel(host: &str) -> SshConfig {
+        SshConfig {
+            destination: crate::SshDestination::new(host, None, None).unwrap(),
+            jump_hosts: Vec::new(),
+            auth: crate::SshAuth::Agent,
+        }
+    }
+
+    /// A banner can print the lines of a changed key for any host and
+    /// file, so only a host and file `ssh -G` gives for the connection
+    /// lose a key.
+    #[tokio::test]
+    async fn a_changed_key_is_removed_only_for_this_connections_hosts_and_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        let elsewhere = dir.path().join("elsewhere");
+        let keys = format!("[db.example.com]:2222 {KEY}\nother.example.com {KEY}\n");
+        for path in [&known_hosts, &elsewhere] {
+            std::fs::write(path, &keys).unwrap();
+        }
+        let resolved = format!(
+            "hostname db.example.com\\nport 2222\\nuserknownhostsfile {} {}/known_hosts2\\n",
+            known_hosts.display(),
+            dir.path().display()
+        );
+        let services = SshServices {
+            ssh_program: fake_ssh(dir.path(), &[("db", resolved)]),
+            ..services(dir.path())
+        };
+
+        let other_host = forget_changed_host_key(&services, &tunnel("db"), "other.example.com", &known_hosts).await;
+        let other_file = forget_changed_host_key(&services, &tunnel("db"), "[db.example.com]:2222", &elsewhere).await;
+
+        assert!(
+            matches!(other_host, Err(ForgetHostKeyError::NotThisConnection { .. })),
+            "{other_host:?}"
+        );
+        assert!(
+            matches!(other_file, Err(ForgetHostKeyError::NotThisConnection { .. })),
+            "{other_file:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&known_hosts).unwrap(), keys);
+        assert_eq!(std::fs::read_to_string(&elsewhere).unwrap(), keys);
+
+        forget_changed_host_key(&services, &tunnel("db"), "[db.example.com]:2222", &known_hosts)
+            .await
+            .unwrap();
+
+        let left = std::fs::read_to_string(&known_hosts).unwrap();
+        assert!(!left.contains("[db.example.com]:2222"), "{left}");
+        assert!(left.contains("other.example.com"), "{left}");
+    }
+
+    /// A jump host the configuration adds is one of the connection's
+    /// hosts, by the name and file its own `ssh -G` gives.
+    #[tokio::test]
+    async fn a_jump_hosts_changed_key_is_removed_from_its_own_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        std::fs::write(&known_hosts, format!("bastion.example.com {KEY}\n10.0.0.5 {KEY}\n")).unwrap();
+        let file = known_hosts.display();
+        let services = SshServices {
+            ssh_program: fake_ssh(
+                dir.path(),
+                &[
+                    (
+                        "db",
+                        format!("hostname 10.0.0.5\\nport 22\\nproxyjump bastion\\nuserknownhostsfile {file}\\n"),
+                    ),
+                    (
+                        "bastion",
+                        format!("hostname bastion.example.com\\nport 22\\nuserknownhostsfile {file}\\n"),
+                    ),
+                ],
+            ),
+            ..services(dir.path())
+        };
+
+        forget_changed_host_key(&services, &tunnel("db"), "bastion.example.com", &known_hosts)
+            .await
+            .unwrap();
+
+        let left = std::fs::read_to_string(&known_hosts).unwrap();
+        assert!(!left.contains("bastion.example.com"), "{left}");
+        assert!(left.contains("10.0.0.5"), "{left}");
+    }
+
+    #[test]
+    fn user_known_hosts_files_from_ssh_g_output() {
+        let output = "hostname h\nuserknownhostsfile /home/u/.ssh/known_hosts /home/u/.ssh/known_hosts2\n";
+
+        assert_eq!(
+            user_known_hosts_files(output),
+            [
+                PathBuf::from("/home/u/.ssh/known_hosts"),
+                PathBuf::from("/home/u/.ssh/known_hosts2")
+            ]
+        );
+        assert!(user_known_hosts_files("hostname h\n").is_empty());
     }
 
     #[tokio::test]

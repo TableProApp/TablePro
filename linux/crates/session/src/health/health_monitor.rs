@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     FailureCause, HealthPolicy, LinkGeneration, MonitorAction, MonitorMailbox, MonitorSignal, PendingSignals,
-    ProbeOutcome, ReachabilityTarget, ReconnectPlan, ReconnectResult, SessionHealth,
+    ProbeOutcome, ReachabilityTarget, ReconnectPlan, ReconnectResult, ReviewedHostKey, SessionHealth,
 };
 use crate::connect::{ConnectError, PendingSession};
 use crate::link::{ConnectionLease, ConnectionLink};
@@ -33,7 +33,7 @@ pub(crate) struct MonitorContext {
     /// The error that parked the session, for the user to review.
     pub last_rejection: Arc<Mutex<Option<Arc<ConnectError>>>>,
     /// A host key the user reviewed and trusted for their next retry.
-    pub trusted_host_key: Arc<Mutex<Option<String>>>,
+    pub trusted_host_key: Arc<Mutex<Option<ReviewedHostKey>>>,
 }
 
 enum Wakeup {
@@ -565,6 +565,13 @@ mod tests {
         assert_eq!(*started.session.health().borrow(), SessionHealth::Online);
     }
 
+    fn reviewed(fingerprint: &str) -> ReviewedHostKey {
+        ReviewedHostKey {
+            host: "bastion".to_owned(),
+            fingerprint: fingerprint.to_owned(),
+        }
+    }
+
     fn ask_host_key(fingerprint: &str) -> FakeEstablish {
         FakeEstablish::AskHostKey {
             host: "bastion".to_owned(),
@@ -618,7 +625,7 @@ mod tests {
         settle().await;
         assert_eq!(*started.session.health().borrow(), parked_on_unknown_host_key());
 
-        started.session.retry_trusting_host_key("SHA256:new".to_owned());
+        started.session.retry_trusting_host_key(reviewed("SHA256:new"));
         settle().await;
 
         assert_eq!(*started.session.health().borrow(), SessionHealth::Online);
@@ -638,7 +645,7 @@ mod tests {
         started.session.signal(lost());
         settle().await;
 
-        started.session.retry_trusting_host_key("SHA256:new".to_owned());
+        started.session.retry_trusting_host_key(reviewed("SHA256:new"));
         settle().await;
 
         assert_eq!(prompter.requests().len(), 1, "a key nobody reviewed was trusted");

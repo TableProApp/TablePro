@@ -2,7 +2,8 @@
 
 use gtk4::prelude::*;
 use tablepro_core::{DriverError, SshFailure, TransportError};
-use tablepro_session::{FailureCause, MonitorSignal, SessionHealth};
+use tablepro_session::{FailureCause, MonitorSignal, ReviewedHostKey, SessionHealth};
+use tablepro_ssh::ForgetHostKeyError;
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::{DeliverInput, spawn_and_deliver};
@@ -114,7 +115,10 @@ impl WorkspaceModel {
         };
         match failure.fingerprint.is_empty() {
             true => session.signal(MonitorSignal::RetryNow),
-            false => session.retry_trusting_host_key(failure.fingerprint.clone()),
+            false => session.retry_trusting_host_key(ReviewedHostKey {
+                host: failure.host.clone(),
+                fingerprint: failure.fingerprint.clone(),
+            }),
         }
     }
 
@@ -125,8 +129,9 @@ impl WorkspaceModel {
     }
 
     /// ssh never accepts a changed key, so the old one leaves known_hosts
-    /// first, with the ssh-keygen command ssh itself suggests. Returns
-    /// whether ssh-keygen was started.
+    /// first, with the ssh-keygen command ssh itself suggests, once the
+    /// session's own tunnel confirms the host and the file. Returns
+    /// whether that was started.
     fn forget_old_host_key(&self, failure: HostKeyFailure) -> bool {
         let HostKeyFailureKind::Changed { known_hosts, .. } = &failure.kind else {
             return false;
@@ -135,11 +140,20 @@ impl WorkspaceModel {
             tracing::warn!("no SSH services to remove the old host key with");
             return false;
         };
+        let Some(config) = self
+            .context
+            .active
+            .get()
+            .and_then(|session| session.ssh_config().cloned())
+        else {
+            tracing::warn!("the session has no SSH tunnel to check the changed host key against");
+            return false;
+        };
         let (host, known_hosts) = (failure.host.clone(), known_hosts.clone());
         let input = self.input.clone();
         drop(spawn_and_deliver(
             &self.tasks,
-            async move { tablepro_ssh::forget_known_host(&ssh, &host, &known_hosts).await },
+            async move { tablepro_ssh::forget_changed_host_key(&ssh, &config, &host, &known_hosts).await },
             move |forgotten| {
                 let forgotten = match forgotten {
                     Ok(Ok(())) => Ok(()),
@@ -153,10 +167,13 @@ impl WorkspaceModel {
     }
 }
 
-fn forget_failure_detail(failure: &SshFailure) -> String {
-    match failure {
-        SshFailure::ConfigRejected { detail } => detail.clone(),
-        other => crate::ui::error_text::driver_message(&DriverError::Transport(TransportError::Ssh(other.clone()))),
+fn forget_failure_detail(error: &ForgetHostKeyError) -> String {
+    match error {
+        ForgetHostKeyError::NotThisConnection { .. } => crate::i18n::gettext("it is not a key this connection uses"),
+        ForgetHostKeyError::Ssh(SshFailure::ConfigRejected { detail }) => detail.clone(),
+        ForgetHostKeyError::Ssh(other) => {
+            crate::ui::error_text::driver_message(&DriverError::Transport(TransportError::Ssh(other.clone())))
+        }
     }
 }
 
@@ -232,6 +249,7 @@ mod tests {
     use tablepro_session::ConnectError;
     use tablepro_session::fakes::FakeEstablish;
     use tablepro_ssh::{SshRuntimeCell, SshServices};
+    use tablepro_storage::{SavedSshAuth, SavedSshConfig};
     use tablepro_test_support::{ConnectionScript, FakeReply};
 
     use super::*;
@@ -324,6 +342,15 @@ mod tests {
     /// A window whose connection dropped and whose first reconnect
     /// parked it; `reconnects` answer that one and the ones after.
     fn parked(name: &str, reconnects: Vec<FakeEstablish>, ssh: Option<SshServices>) -> TestWindow {
+        parked_with(name, reconnects, ssh, None)
+    }
+
+    fn parked_with(
+        name: &str,
+        reconnects: Vec<FakeEstablish>,
+        ssh: Option<SshServices>,
+        tunnel: Option<SavedSshConfig>,
+    ) -> TestWindow {
         let mut establish = vec![FakeEstablish::Connect(healthy())];
         establish.extend(reconnects);
         let test = TestWindow::with_script(
@@ -331,6 +358,7 @@ mod tests {
             Script {
                 establish,
                 ssh,
+                tunnel,
                 ..Script::default()
             },
         );
@@ -489,9 +517,13 @@ mod tests {
     }
 
     fn changed_key(known_hosts: &Path) -> FakeEstablish {
+        changed_key_of("[bastion]:2222", known_hosts)
+    }
+
+    fn changed_key_of(host: &str, known_hosts: &Path) -> FakeEstablish {
         FakeEstablish::Fail(ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
             SshFailure::HostKeyChanged {
-                host: "[bastion]:2222".to_owned(),
+                host: host.to_owned(),
                 algorithm: "ED25519".to_owned(),
                 sha256_fingerprint: FINGERPRINT.to_owned(),
                 known_hosts: known_hosts.to_owned(),
@@ -500,15 +532,55 @@ mod tests {
         ))))
     }
 
+    /// The tunnel the parked sessions go through. The server is on this
+    /// machine, so no reachability check runs.
+    fn tunnel() -> SavedSshConfig {
+        SavedSshConfig {
+            host: "127.0.0.1".to_owned(),
+            port: Some(2222),
+            username: None,
+            jump_hosts: Vec::new(),
+            auth: SavedSshAuth::Agent,
+        }
+    }
+
+    /// SSH services whose `ssh -G` resolves the tunnel's host to
+    /// `[bastion]:2222`, looked up in `known_hosts`, the way an
+    /// ssh_config with `HostName bastion` would.
+    fn resolving_ssh(dir: &Path, known_hosts: &Path) -> SshServices {
+        use std::os::unix::fs::PermissionsExt;
+
+        let program = dir.join("ssh");
+        let resolved = format!(
+            "hostname bastion\\nport 2222\\nhostkeyalias none\\nuserknownhostsfile {} {}\\n",
+            known_hosts.display(),
+            dir.join("known_hosts2").display()
+        );
+        std::fs::write(&program, format!("#!/bin/sh\nprintf '{resolved}'\n")).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        SshServices {
+            ssh_program: program,
+            ..ssh_services(dir)
+        }
+    }
+
+    fn has_toast(test: &TestWindow, text: &str) -> bool {
+        descendants(&test.workspace())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+            .any(|label| label.label().contains(text))
+    }
+
     #[gtk4::test]
     fn replace_removes_the_old_key_and_retries_trusting_the_new_one() {
         let dir = tempfile::tempdir().unwrap();
         let known_hosts = dir.path().join("known_hosts");
         std::fs::write(&known_hosts, format!("[bastion]:2222 {KEY}\nother {KEY}\n")).unwrap();
-        let test = parked(
+        let test = parked_with(
             "ReviewReplace",
             vec![changed_key(&known_hosts), asks("[bastion]:2222", FINGERPRINT)],
-            Some(ssh_services(dir.path())),
+            Some(resolving_ssh(dir.path(), &known_hosts)),
+            Some(tunnel()),
         );
         let banner = wait_for_button(&test, "Review Key…");
         assert!(banner.title().contains("does not match"), "{}", banner.title());
@@ -537,12 +609,13 @@ mod tests {
         std::fs::set_permissions(&slow_keygen, std::fs::Permissions::from_mode(0o755)).unwrap();
         let ssh = SshServices {
             ssh_keygen_program: slow_keygen,
-            ..ssh_services(dir.path())
+            ..resolving_ssh(dir.path(), &known_hosts)
         };
-        let test = parked(
+        let test = parked_with(
             "ReviewReplaceBusy",
             vec![changed_key(&known_hosts), asks("[bastion]:2222", FINGERPRINT)],
             Some(ssh),
+            Some(tunnel()),
         );
         wait_for_button(&test, "Review Key…");
         review_and_answer(&test, "replace");
@@ -558,5 +631,55 @@ mod tests {
             "a second review opened while ssh-keygen was still running"
         );
         wait_until(WAIT, || health(&test) == SessionHealth::Online).expect("the session back online");
+    }
+
+    /// ssh's stderr carries the server's login banner too, so a changed
+    /// key it reports for a host or a file this connection does not use
+    /// stays where it is.
+    #[gtk4::test]
+    fn replace_leaves_a_key_this_connection_does_not_use() {
+        for (name, host, file) in [
+            ("ReviewForgedHost", "other", "known_hosts"),
+            ("ReviewForgedFile", "[bastion]:2222", "elsewhere"),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let known_hosts = dir.path().join("known_hosts");
+            let reported = dir.path().join(file);
+            let keys = format!("[bastion]:2222 {KEY}\nother {KEY}\n");
+            for path in [&known_hosts, &dir.path().join("elsewhere")] {
+                std::fs::write(path, &keys).unwrap();
+            }
+            let test = parked_with(
+                name,
+                vec![changed_key_of(host, &reported)],
+                Some(resolving_ssh(dir.path(), &known_hosts)),
+                Some(tunnel()),
+            );
+            wait_for_button(&test, "Review Key…");
+
+            review_and_answer(&test, "replace");
+
+            wait_until(WAIT, || has_toast(&test, "it is not a key this connection uses"))
+                .unwrap_or_else(|_| panic!("{name}: the forged report was not refused"));
+            assert_eq!(std::fs::read_to_string(&reported).unwrap(), keys, "{name}");
+            assert_eq!(test.connector.calls().len(), 2, "{name}: a refused replace retried");
+        }
+    }
+
+    #[gtk4::test]
+    fn trust_answers_only_for_the_host_it_was_reviewed_for() {
+        let test = parked(
+            "ReviewTrustHost",
+            vec![asks("bastion", FINGERPRINT), asks("jump", FINGERPRINT)],
+            None,
+        );
+        wait_for_button(&test, "Review Key…");
+
+        review_and_answer(&test, "trust");
+
+        wait_until(WAIT, || alert(&test).is_some()).expect("ssh's question about another host to reach the user");
+        if let Some(question) = alert(&test) {
+            question.force_close();
+        }
     }
 }
