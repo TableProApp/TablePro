@@ -25,8 +25,8 @@ What the application does not do, or does differently from what you might expect
 - **Hidden-column projection still needs desktop acceptance** (PERF-9). Merged
   [#384](https://github.com/cozyGarage/BookiE/pull/384) projects hidden non-key
   columns out of the select and refuses full-row copy, row JSON and current-page
-  export while those values are unfetched. Distribution Wayland/GNOME acceptance
-  remains open.
+  export while those values are unfetched. Installed Arch/Hyprland Wayland
+  acceptance remains open; Debian/GNOME acceptance follows after 0.2.0.
 - **A table without a primary key cannot be deleted from the grid** (TEST-14). There
   is no all-column fallback, by design.
 - **ClickHouse ambiguous local times:** a `DateTime64` that falls in a repeated or
