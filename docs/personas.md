@@ -27,7 +27,7 @@ Copy this block per persona only when adding a new one.
 - **Jobs to be done.** When I open a saved connection, I want to browse and query without leaving the desktop, so I can stay on my machine. When I run a write, I want policy and an audit record, so I can see what happened.
 - **Goals.** Connect through SSH if needed. Bind parameters. See native values. Stop a query on the server. Keep credentials out of JSON files.
 - **Decisions they influence.** Static drivers (ADR 0001), GTK stack (ADR 0002), Relm4 (ADR 0003), Secret Service (ADR 0004), cancellation (ADR 0005), type/value (ADR 0007), session ownership (ADR 0008).
-- **Success signals.** A connection opens and a governed query returns without an account. Secrets stay in Secret Service. A denied statement is audited as denied.
+- **Success signals.** A connection opens and a governed query returns without an account. Saved database and SSH credentials use Secret Service; MCP tokens are shown once at issuance. A denied statement is audited as denied.
 - **Anti-goals.** Multi-tenant roles, a hosted workspace, a web console.
 - **Who / context.** Developer or DBA on Arch, Debian testing or another Linux desktop. Comfortable with SQL. Uses GTK applications.
 

@@ -196,7 +196,7 @@ sequenceDiagram
 
 | Stage | Owner | Invariant |
 |---|---|---|
-| Resolve | `storage` | Secrets stay in Secret Service / `secrecy` until the driver boundary. |
+| Resolve | `storage` | Saved database and SSH secrets stay in Secret Service / `secrecy` until their driver or SSH boundary. MCP token delivery follows its issuance path in [storage](docs/storage.md). |
 | Assemble route | `transport` | Dial endpoint and TLS service identity are separate fields. |
 | Guard | `policy` | No raw driver handle leaves MCP or agentd. |
 | Statement | `policy` | Preview, transaction, retry and batch use the same checks as direct execution. |
@@ -252,7 +252,7 @@ Helpers stay in the crate that owns the behaviour. Do not grow a cross-crate “
 
 - Dependencies point toward `core`. No cycles. Drivers and domain crates never import GTK or Relm4.
 - Consumers never hold a raw driver `Connection`; only a `PolicyGuard`.
-- Secrets stay in Secret Service / `secrecy` until the driver boundary; never in JSON, argv, traces or audit fields.
+- Saved database and SSH secrets stay in Secret Service / `secrecy` until their driver or SSH boundary. MCP tokens follow their issuance path in [storage](docs/storage.md). Secrets never go in connection JSON, argv, traces or audit fields.
 - Dial target and TLS verify hostname are separate fields under SSH ([transport](#transport-and-service-identity)).
 - Late async results apply only when the generation or request id still matches.
 - Preview, transaction, retry and batch paths use the same policy checks as direct execution.
