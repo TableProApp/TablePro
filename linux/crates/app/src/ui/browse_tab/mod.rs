@@ -1679,7 +1679,8 @@ impl BrowseModel {
             }
             BrowseTabInput::BulkDeleteAnswered { ticket, confirmed } => {
                 // An answer to a confirmation the tab already cancelled
-                // or replaced.
+                // or replaced, or the close response a dialog sends after
+                // its answer when it closes.
                 if self
                     .confirming_delete
                     .as_ref()
@@ -1840,13 +1841,7 @@ impl BrowseModel {
         let ticket = self.next_confirmation;
         self.next_confirmation += 1;
         let tab = self.this.clone();
-        // Closing the dialog answers it again with its close response,
-        // so only the first answer counts.
-        let answered = Cell::new(false);
         dialog.connect_response(None, move |dlg, response| {
-            if answered.replace(true) {
-                return;
-            }
             if let Some(tab) = tab.upgrade() {
                 tab.send(BrowseTabInput::BulkDeleteAnswered {
                     ticket,

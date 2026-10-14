@@ -1400,6 +1400,8 @@ fn change_schema(harness: &Harness, done: impl Fn(&[ColumnInfo]) -> bool) {
     wait_until(WAIT, || done(&harness.tab().columns())).expect("the new columns");
 }
 
+/// Answering closes the dialog, which answers again with its close
+/// response, and the rows stay marked.
 #[gtk4::test]
 fn a_confirmed_bulk_delete_marks_every_selected_row() {
     let mut script = serving_table();
@@ -1517,4 +1519,33 @@ fn a_failed_row_count_logs_its_category_and_not_the_server_message() {
     let text = lines.text();
     assert!(!text.contains("hunter2"), "{text}");
     assert!(text.contains("category=Some(Server)"), "{text}");
+}
+
+#[gtk4::test]
+fn a_second_delete_replaces_the_waiting_confirmation() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    ask_to_delete_every_row(&harness);
+    let (first, _) = confirming(harness.tab()).expect("the first confirmation");
+
+    harness.tab().send(BrowseTabInput::DeleteSelectedRow);
+    drain_main_context();
+    let (second, dialog) = confirming(harness.tab()).expect("the closed confirmation cancelled the new one");
+    assert_ne!(first, second);
+    harness.tab().send(BrowseTabInput::BulkDeleteAnswered {
+        ticket: first,
+        confirmed: true,
+    });
+    drain_main_context();
+
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "an answer to the replaced confirmation marked the rows"
+    );
+    assert_eq!(confirming(harness.tab()).map(|(ticket, _)| ticket), Some(second));
+    answer_delete(&dialog);
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
 }
