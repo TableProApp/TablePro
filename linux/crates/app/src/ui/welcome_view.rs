@@ -1,275 +1,223 @@
-use relm4::adw::prelude::*;
-use relm4::factory::FactoryVecDeque;
-use relm4::prelude::*;
-use relm4::{adw, gtk};
+//! The picker's saved connections: a preferences page bound to the list
+//! every window shares, with a group for the connections in no group
+//! and one for each group the user made.
 
+use std::cell::{OnceCell, RefCell};
+use std::rc::Rc;
+
+use gtk4 as gtk;
+use gtk4::glib;
+use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::{ConnectionColor, SavedConnection};
-use uuid::Uuid;
+use tablepro_storage::ConnectionListState;
 
-use super::connection_list;
-use super::connection_row::{ConnectionRow, ConnectionRowInit, ConnectionRowOutput};
-use crate::runtime::DeliverInput;
+use crate::services::saved_connection_list::{SavedConnectionList, StateObserverId};
+use crate::services::saved_connection_object::SavedConnectionObject;
+use crate::ui::picker::connection_row;
 
-pub struct WelcomeView {
-    connections: Vec<SavedConnection>,
-    factory: FactoryVecDeque<ConnectionRow>,
-    /// The factory's own list box, kept so the group headers can be
-    /// reinstalled whenever the list changes.
-    listbox: gtk::ListBox,
-    stack: gtk::Stack,
-    tasks: Option<Tasks>,
-}
-
-#[derive(Debug)]
-pub enum WelcomeViewInput {
-    SetConnections(Vec<SavedConnection>),
-    OpenConnect,
-    OpenSaved(SavedConnection),
-    Delete(Uuid),
-    Duplicate(SavedConnection),
-    SetColor(Uuid, Option<ConnectionColor>),
-    SetGroup(Uuid, Option<String>),
-}
-
-#[derive(Debug)]
-pub enum WelcomeViewOutput {
-    OpenConnect,
-    OpenSaved(SavedConnection),
-    Delete(Uuid),
-    Duplicate(SavedConnection),
-    SetColor(Uuid, Option<ConnectionColor>),
-    SetGroup(Uuid, Option<String>),
-}
-
-#[derive(Debug, Default)]
-pub struct WelcomeViewInit {
-    /// Reads what the rows show that is on disk.
-    pub tasks: Option<Tasks>,
-}
-
-impl SimpleComponent for WelcomeView {
-    type Init = WelcomeViewInit;
-    type Input = WelcomeViewInput;
-    type Output = WelcomeViewOutput;
-    type Root = gtk::Stack;
-    type Widgets = ();
-
-    fn init_root() -> Self::Root {
-        gtk::Stack::builder().build()
-    }
-
-    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        let listbox = gtk::ListBox::builder()
-            .selection_mode(gtk::SelectionMode::None)
-            .css_classes(["boxed-list"])
-            .build();
-        let factory: FactoryVecDeque<ConnectionRow> =
-            FactoryVecDeque::builder()
-                .launch(listbox.clone())
-                .forward(sender.input_sender(), |out| match out {
-                    ConnectionRowOutput::Open(saved) => WelcomeViewInput::OpenSaved(saved),
-                    ConnectionRowOutput::Delete(id) => WelcomeViewInput::Delete(id),
-                    ConnectionRowOutput::Duplicate(saved) => WelcomeViewInput::Duplicate(saved),
-                    ConnectionRowOutput::SetColor(id, color) => WelcomeViewInput::SetColor(id, color),
-                    ConnectionRowOutput::SetGroup(id, group) => WelcomeViewInput::SetGroup(id, group),
-                });
-
-        // Empty page — no saved connections yet. GNOME convention is
-        // state / instruction / action — title states the situation,
-        // description tells the user what to do, the button restates
-        // the action with verb-first phrasing (matches Settings's
-        // "No printers found" / "Add a printer to begin." / "Add
-        // Printer" pattern).
-        let empty_page = adw::StatusPage::builder()
-            .icon_name(crate::ui::icons::NETWORK_SERVER)
-            .title(crate::i18n::gettext("No connections yet"))
-            .description(crate::i18n::gettext("Add a database connection to get started."))
-            .build();
-        let empty_btn = gtk::Button::builder()
-            .label(crate::i18n::gettext("Add Connection"))
-            .halign(gtk::Align::Center)
-            .build();
-        empty_btn.add_css_class("suggested-action");
-        empty_btn.add_css_class("pill");
-        let s_empty = sender.clone();
-        empty_btn.connect_clicked(move |_| s_empty.deliver(WelcomeViewInput::OpenConnect));
-        empty_page.set_child(Some(&empty_btn));
-        root.add_named(&empty_page, Some("empty"));
-
-        // Populated page — saved connections list. AdwClamp is the
-        // GNOME pattern for "constrain reading width to a sensible
-        // max in a scrollable area"; it centres + caps width without
-        // the manual `gtk::Box` halign/margin gymnastics.
-        let scroller = gtk::ScrolledWindow::builder()
-            .hexpand(true)
-            .vexpand(true)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .build();
-        let clamp = adw::Clamp::builder().maximum_size(560).build();
-        let outer = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(12)
-            .margin_top(24)
-            .margin_bottom(24)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
-
-        // The picker's header bar has New Connection, so the list has no
-        // button of its own; the empty page keeps its pill.
-        let group = adw::PreferencesGroup::builder()
-            .title(crate::i18n::gettext("Saved connections"))
-            .build();
-        group.add(factory.widget());
-        outer.append(&group);
-        clamp.set_child(Some(&outer));
-
-        scroller.set_child(Some(&clamp));
-        root.add_named(&scroller, Some("populated"));
-        root.set_visible_child_name("empty");
-
-        let model = WelcomeView {
-            connections: Vec::new(),
-            factory,
-            listbox,
-            stack: root.clone(),
-            tasks: init.tasks,
-        };
-        ComponentParts { model, widgets: () }
-    }
-
-    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
-        match msg {
-            WelcomeViewInput::SetConnections(connections) => {
-                self.connections = connections;
-                connection_list::sort(&mut self.connections);
-                let groups = connection_list::groups(&self.connections);
-                let mut guard = self.factory.guard();
-                guard.clear();
-                for saved in &self.connections {
-                    guard.push_back(ConnectionRowInit {
-                        saved: saved.clone(),
-                        groups: groups.clone(),
-                        tasks: self.tasks.clone(),
-                    });
-                }
-                drop(guard);
-                connection_list::install_group_headers(&self.listbox, std::rc::Rc::new(self.connections.clone()));
-                let name = if self.connections.is_empty() {
-                    "empty"
-                } else {
-                    "populated"
-                };
-                self.stack.set_visible_child_name(name);
-            }
-            WelcomeViewInput::OpenConnect => {
-                let _ = sender.output(WelcomeViewOutput::OpenConnect);
-            }
-            WelcomeViewInput::OpenSaved(saved) => {
-                let _ = sender.output(WelcomeViewOutput::OpenSaved(saved));
-            }
-            WelcomeViewInput::Delete(id) => {
-                let _ = sender.output(WelcomeViewOutput::Delete(id));
-            }
-            WelcomeViewInput::Duplicate(saved) => {
-                let _ = sender.output(WelcomeViewOutput::Duplicate(saved));
-            }
-            WelcomeViewInput::SetColor(id, color) => {
-                let _ = sender.output(WelcomeViewOutput::SetColor(id, color));
-            }
-            WelcomeViewInput::SetGroup(id, group) => {
-                let _ = sender.output(WelcomeViewOutput::SetGroup(id, group));
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
+mod imp {
     use super::*;
+    use libadwaita::subclass::prelude::*;
 
-    fn connection(name: &str, group: Option<&str>) -> SavedConnection {
-        SavedConnection {
-            id: Uuid::new_v4(),
-            name: name.to_owned(),
-            driver_id: "postgres".to_owned(),
-            host: "db".to_owned(),
-            port: 5432,
-            database: "app".to_owned(),
-            username: "postgres".to_owned(),
-            tls: tablepro_core::TlsConfig::verify_full(),
-            read_only: false,
-            auth_mode: tablepro_core::AuthMode::Password,
-            ssh: None,
-            last_opened_at: None,
-            color: None,
-            group: group.map(str::to_owned),
+    #[derive(Default, gtk::CompositeTemplate)]
+    #[template(resource = "/app/tablepro/TablePro/ui/welcome-view.ui")]
+    pub struct WelcomeView {
+        #[template_child]
+        pub stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub page: TemplateChild<adw::PreferencesPage>,
+        #[template_child]
+        pub ungrouped: TemplateChild<adw::PreferencesGroup>,
+        pub(super) parts: OnceCell<super::Parts>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for WelcomeView {
+        const NAME: &'static str = "TableProWelcomeView";
+        type Type = super::WelcomeView;
+        type ParentType = adw::Bin;
+
+        fn class_init(klass: &mut Self::Class) {
+            klass.bind_template();
+        }
+
+        fn instance_init(object: &glib::subclass::InitializingObject<Self>) {
+            object.init_template();
         }
     }
 
-    /// The header text on each row, in list order, with `None` where a
-    /// row carries no header.
-    fn headers(view: &WelcomeView) -> Vec<Option<String>> {
-        (0..)
-            .map_while(|index| view.listbox.row_at_index(index))
-            .map(|row| {
-                row.header()
-                    .and_then(|widget| widget.downcast::<gtk::Label>().ok())
-                    .map(|label| label.label().to_string())
+    impl ObjectImpl for WelcomeView {
+        fn dispose(&self) {
+            self.obj().shutdown();
+        }
+    }
+
+    impl WidgetImpl for WelcomeView {}
+    impl BinImpl for WelcomeView {}
+}
+
+glib::wrapper! {
+    pub struct WelcomeView(ObjectSubclass<imp::WelcomeView>)
+        @extends adw::Bin, gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+pub(super) struct Parts {
+    list: Rc<SavedConnectionList>,
+    tasks: Option<Tasks>,
+    /// The groups after the ungrouped one, by name, in list order.
+    groups: RefCell<Vec<(String, adw::PreferencesGroup)>>,
+    rows_changed: RefCell<Option<glib::SignalHandlerId>>,
+    state_changed: RefCell<Option<StateObserverId>>,
+}
+
+impl WelcomeView {
+    /// A view of `list`. `tasks` reads the file a portal path stands for.
+    pub(crate) fn new(list: Rc<SavedConnectionList>, tasks: Option<Tasks>) -> Self {
+        let view: Self = glib::Object::new();
+        let imp = view.imp();
+        let _ = imp.parts.set(Parts {
+            list: list.clone(),
+            tasks,
+            groups: RefCell::new(Vec::new()),
+            rows_changed: RefCell::new(None),
+            state_changed: RefCell::new(None),
+        });
+        let ungrouped = view.filtered(None);
+        let group = imp.ungrouped.get();
+        group.set_visible(ungrouped.n_items() > 0);
+        let shown = group.downgrade();
+        ungrouped.connect_items_changed(move |model, _, _, _| {
+            if let Some(group) = shown.upgrade() {
+                group.set_visible(model.n_items() > 0);
+            }
+        });
+        view.bind(&group, &ungrouped);
+        let weak = view.downgrade();
+        let rows_changed = list.model().connect_items_changed(move |_, _, _, _| {
+            if let Some(view) = weak.upgrade() {
+                view.refresh();
+            }
+        });
+        let weak = view.downgrade();
+        let state_changed = list.connect_state_changed(move |_| {
+            if let Some(view) = weak.upgrade() {
+                view.refresh_page();
+            }
+        });
+        if let Some(parts) = imp.parts.get() {
+            parts.rows_changed.replace(Some(rows_changed));
+            parts.state_changed.replace(Some(state_changed));
+        }
+        view.refresh();
+        view
+    }
+
+    /// Stop following the list, which outlives every window.
+    pub(crate) fn shutdown(&self) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        if let Some(handler) = parts.rows_changed.take() {
+            parts.list.model().disconnect(handler);
+        }
+        if let Some(observer) = parts.state_changed.take() {
+            parts.list.disconnect_state_changed(observer);
+        }
+    }
+
+    /// The rows of the connections in `group`, or in none.
+    fn filtered(&self, group: Option<&str>) -> gtk::FilterListModel {
+        let list = self.imp().parts.get().map(|parts| parts.list.model());
+        let group = group.map(str::to_owned);
+        let filter = gtk::CustomFilter::new(move |item| {
+            item.downcast_ref::<SavedConnectionObject>()
+                .is_some_and(|object| object.group() == group)
+        });
+        gtk::FilterListModel::new(list, Some(filter))
+    }
+
+    fn bind(&self, group: &adw::PreferencesGroup, rows: &gtk::FilterListModel) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        let (list, tasks) = (parts.list.clone(), parts.tasks.clone());
+        group.bind_model(Some(rows), move |object| {
+            connection_row(object, &list.groups(), tasks.as_ref())
+        });
+    }
+
+    fn refresh(&self) {
+        self.refresh_groups();
+        self.refresh_page();
+    }
+
+    /// A group of its own for each group the list has, after the
+    /// connections in none, rebuilt only when the set of groups changes.
+    fn refresh_groups(&self) {
+        let imp = self.imp();
+        let Some(parts) = imp.parts.get() else {
+            return;
+        };
+        let names = parts.list.groups();
+        let unchanged = parts.groups.borrow().iter().map(|(name, _)| name).eq(names.iter());
+        if unchanged {
+            return;
+        }
+        for (_, group) in parts.groups.take() {
+            imp.page.remove(&group);
+        }
+        let mut built = Vec::with_capacity(names.len());
+        for name in names {
+            // A group's title is markup, and the name is the user's text.
+            let group = adw::PreferencesGroup::builder()
+                .title(glib::markup_escape_text(&name).as_str())
+                .build();
+            self.bind(&group, &self.filtered(Some(&name)));
+            imp.page.add(&group);
+            built.push((name, group));
+        }
+        parts.groups.replace(built);
+    }
+
+    /// The empty page only once the list is read and holds nothing. A
+    /// list still loading, or one that cannot be read, shows no promise
+    /// to add to it; the banner says why.
+    fn refresh_page(&self) {
+        let imp = self.imp();
+        let Some(parts) = imp.parts.get() else {
+            return;
+        };
+        let empty = parts.list.model().n_items() == 0 && matches!(parts.list.state(), ConnectionListState::Ready(_));
+        imp.stack.set_visible_child_name(if empty { "empty" } else { "list" });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sections(&self) -> Vec<(String, Vec<String>)> {
+        let imp = self.imp();
+        let mut groups = vec![imp.ungrouped.get()];
+        if let Some(parts) = imp.parts.get() {
+            groups.extend(parts.groups.borrow().iter().map(|(_, group)| group.clone()));
+        }
+        groups
+            .into_iter()
+            .filter(|group| group.is_visible())
+            .map(|group| {
+                let rows = crate::test_support::descendants(&group)
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+                    .map(|row| row.title().to_string())
+                    .collect();
+                (group.title().to_string(), rows)
             })
             .collect()
     }
 
-    #[gtk4::test]
-    fn a_grouped_list_carries_one_header_per_group() {
-        let view = WelcomeView::builder().launch(WelcomeViewInit::default());
-        view.sender()
-            .send(WelcomeViewInput::SetConnections(vec![
-                connection("loose", None),
-                connection("a", Some("Work")),
-                connection("b", Some("Work")),
-                connection("c", Some("Zoo")),
-            ]))
-            .expect("send");
-
-        crate::test_support::drain_main_context();
-
-        assert_eq!(
-            headers(&view.model()),
-            vec![None, Some("Work".to_owned()), None, Some("Zoo".to_owned())]
-        );
-    }
-
-    #[gtk4::test]
-    fn an_ungrouped_list_carries_no_headers_at_all() {
-        let view = WelcomeView::builder().launch(WelcomeViewInit::default());
-        view.sender()
-            .send(WelcomeViewInput::SetConnections(vec![
-                connection("a", None),
-                connection("b", None),
-            ]))
-            .expect("send");
-
-        crate::test_support::drain_main_context();
-
-        assert_eq!(headers(&view.model()), vec![None, None]);
-    }
-
-    #[gtk4::test]
-    fn taking_the_last_connection_out_of_a_group_takes_its_header_with_it() {
-        let view = WelcomeView::builder().launch(WelcomeViewInit::default());
-        view.sender()
-            .send(WelcomeViewInput::SetConnections(vec![connection("a", Some("Work"))]))
-            .expect("send");
-        crate::test_support::drain_main_context();
-        assert_eq!(headers(&view.model()), vec![Some("Work".to_owned())]);
-
-        view.sender()
-            .send(WelcomeViewInput::SetConnections(vec![connection("a", None)]))
-            .expect("send");
-        crate::test_support::drain_main_context();
-
-        assert_eq!(headers(&view.model()), vec![None]);
+    #[cfg(test)]
+    pub(crate) fn visible_page(&self) -> Option<String> {
+        self.imp().stack.visible_child_name().map(|name| name.to_string())
     }
 }

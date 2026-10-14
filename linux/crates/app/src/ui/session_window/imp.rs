@@ -6,9 +6,7 @@ use gtk4::glib;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
-use relm4::Controller;
 use tablepro_session::{ConnectAttempts, SessionKey};
-use tablepro_storage::SavedConnection;
 
 use super::locate_file::LocateChooser;
 use super::picker_page::PickerPage;
@@ -16,6 +14,7 @@ use super::session_page::SessionPage;
 use super::{SessionWindowInput, WindowState};
 use crate::runtime::InputSender;
 use crate::services::file_location::LocationClassifier;
+use crate::services::saved_connection_list::StateObserverId;
 use crate::ui::connect_dialog::ConnectDialog;
 use crate::ui::welcome_view::WelcomeView;
 use crate::workspace::{CloseGuards, WindowInhibitor};
@@ -47,8 +46,9 @@ pub struct SessionWindow {
     pub(super) inhibitor: RefCell<Option<WindowInhibitor>>,
     pub(super) dirty: Cell<bool>,
     pub(super) saving: Cell<bool>,
-    pub(super) saved_connections: RefCell<Vec<SavedConnection>>,
-    pub(super) welcome: RefCell<Option<Controller<WelcomeView>>>,
+    pub(super) welcome: RefCell<Option<WelcomeView>>,
+    /// Shows the banner while the shared connection list cannot be read.
+    pub(super) list_observer: Cell<Option<StateObserverId>>,
     pub(super) picker: OnceCell<PickerPage>,
     pub(super) dialog: RefCell<Option<ConnectDialog>>,
     /// The connect dialog was asked for and opens once the SSH keys are

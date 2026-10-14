@@ -7,8 +7,8 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    BrowseGrid, BrowseTab, CellEditor, FilterStrip, GridCell, HistoryRow, SidebarList, SqlEditor, SqlEditorTab,
-    StructureTab,
+    BrowseGrid, BrowseTab, CellEditor, FilterStrip, GridCell, HistoryRow, PickerRow, SidebarList, SqlEditor,
+    SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, General, TableStructure, Tabs};
 
@@ -265,7 +265,7 @@ pub const ACCELERATORS: &[Accelerator] = &[
     local(
         SidebarList,
         BUBBLE,
-        "sidebar-row.context-menu",
+        "sidebar.context-menu",
         &["Menu", "<Shift>F10"],
         Unlisted,
     ),
@@ -276,6 +276,7 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["Menu", "<Shift>F10"],
         Unlisted,
     ),
+    local(PickerRow, BUBBLE, "picker-row.menu", &["Menu", "<Shift>F10"], Unlisted),
 ];
 
 pub fn install_application_accelerators(app: &impl IsA<gtk::Application>) {
@@ -323,6 +324,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         FilterStrip => "tablepro-filter-strip-shortcuts",
         SidebarList => "tablepro-sidebar-list-shortcuts",
         HistoryRow => "tablepro-history-row-shortcuts",
+        PickerRow => "tablepro-picker-row-shortcuts",
     }
 }
 

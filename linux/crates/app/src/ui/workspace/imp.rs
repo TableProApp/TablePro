@@ -38,7 +38,7 @@ pub struct Workspace {
     #[template_child]
     pub table_search: TemplateChild<gtk::SearchEntry>,
     #[template_child]
-    pub sidebar_scroll: TemplateChild<gtk::ScrolledWindow>,
+    pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]
     pub content_root: TemplateChild<adw::ToolbarView>,
     #[template_child]

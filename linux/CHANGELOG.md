@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
 - Licenses of the third-party crates TablePro is built with, in About TablePro and installed with the app.
 - F9 and the sidebar button show and hide the table sidebar.
+- Sidebar lists the tables of every schema, a section per schema with the default one first, and a middle click opens one in a new tab.
+- Connect leads a saved connection's menu, which a right click, the Menu key or Shift+F10 opens.
 - Find and replace in the SQL editor with Ctrl+F and Ctrl+H, matching case, whole words or regular expressions.
 
 ### Changed
@@ -85,7 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keyboard Shortcuts lists every shortcut, grouped by where it works.
 - About TablePro links to the website, documentation and issue tracker, and shows a release's notes.
 - The sidebar and the tabs each have a header bar, and a narrow window folds the sidebar away and swaps the tab bar for a tab button.
+- Sidebar menus offer Edit Structure, Import CSV and Drop Table only on tables, and nothing that writes on a read-only connection.
 - New Connection and the main menu sit in the connection list's header bar.
+- Each connection group is a section of its own in the connection list, after the connections in no group.
 - A tab with unsaved changes or an open transaction shows a dot icon instead of a • in its title.
 - The window title names the tab in front and its connection, and the header says when the connection is read-only.
 - Tab titles name the schema once the database has two schemas of its own.
@@ -105,6 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copying many rows, or showing a row with a long value as JSON, froze the window.
 - A query saved just before quitting could be lost.
 - The sidebar's table search button had no name for screen readers.
+- The sidebar was slow to fill and to search on databases with thousands of tables, and said nothing when the list could not be read again.
+- A connection added, changed or deleted in one window did not show in the other windows' connection lists.
+- A connection name with & or < in it showed wrong in the connection list.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.
 - MySQL and MariaDB connections that verify the certificate did not trust certificate authorities installed on the system.
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.

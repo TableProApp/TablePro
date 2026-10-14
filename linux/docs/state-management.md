@@ -1,6 +1,6 @@
 # State management
 
-The `app` crate's application, windows, workspace and tabs are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)). A few views are still [Relm4](https://relm4.org) components ([decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md)): `WelcomeView`, the `ConnectionRow` and `SidebarRow` factories, and the saved-queries and CSV import dialogs. New views are subclasses. This page covers where state lives, the rules every view follows, and the patterns for each kind.
+The `app` crate's application, windows, workspace and tabs are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)). A few views are still [Relm4](https://relm4.org) components ([decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md)): the saved-queries and CSV import dialogs. New views are subclasses. This page covers where state lives, the rules every view follows, and the patterns for each kind.
 
 ## Where state lives
 

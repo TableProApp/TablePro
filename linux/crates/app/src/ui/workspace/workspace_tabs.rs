@@ -389,33 +389,6 @@ impl WorkspaceModel {
         self.sync_sidebar_selection();
     }
 
-    /// With no Table tab active, no row stays selected: one would say
-    /// the editor shows that table.
-    pub(super) fn sync_sidebar_selection(&self) {
-        let listbox = self.sidebar_factory.widget();
-        let Some((schema, table)) = self.selected_browse_slot_table() else {
-            listbox.unselect_all();
-            return;
-        };
-        let schemas = self.sidebar_schemas.borrow();
-        let mut idx = 0_i32;
-        while let Some(row) = listbox.row_at_index(idx) {
-            // The factory builds one row per TableInfo, in the same order
-            // as `sidebar_schemas`, so we can pair each row with its
-            // schema-Option by index. SidebarRow stashes its table name
-            // in widget-name (no CSS conflict, no qdata machinery).
-            let row_table = row.widget_name();
-            let row_schema = schemas.get(idx as usize).cloned().unwrap_or(None);
-            if row_table.as_str() == table && row_schema.as_deref() == schema.as_deref() {
-                // select_row doesn't trigger row-activated (user-only
-                // signal), so this won't recurse into SelectTable.
-                listbox.select_row(Some(&row));
-                return;
-            }
-            idx += 1;
-        }
-    }
-
     pub(super) fn selected_workspace_tab_id(&self) -> Option<Uuid> {
         self.index.id_of(&self.tab_view.selected_page()?)
     }

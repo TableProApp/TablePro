@@ -39,6 +39,7 @@ pub const USER_TRASH: &str = "user-trash-symbolic";
 pub const VIEW_GRID: &str = "view-grid-symbolic";
 pub const VIEW_LIST: &str = "view-list-symbolic";
 pub const VIEW_MORE: &str = "view-more-symbolic";
+pub const VIEW_PAGED: &str = "view-paged-symbolic";
 pub const VIEW_PIN: &str = "view-pin-symbolic";
 pub const VIEW_REVEAL: &str = "view-reveal-symbolic";
 pub const VIEW_SORT_ASCENDING: &str = "view-sort-ascending-symbolic";
@@ -89,6 +90,7 @@ pub const ALL: &[&str] = &[
     VIEW_GRID,
     VIEW_LIST,
     VIEW_MORE,
+    VIEW_PAGED,
     VIEW_PIN,
     VIEW_REVEAL,
     VIEW_SORT_ASCENDING,

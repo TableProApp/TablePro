@@ -17,4 +17,6 @@ pub enum ShortcutOwner {
     SidebarList,
     /// A row of the query history dialog.
     HistoryRow,
+    /// A saved connection's row in the picker.
+    PickerRow,
 }

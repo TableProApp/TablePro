@@ -64,8 +64,7 @@
                           </object>
                         </child>
                         <property name="content">
-                          <object class="GtkScrolledWindow" id="sidebar_scroll">
-                            <property name="hscrollbar-policy">never</property>
+                          <object class="AdwBin" id="sidebar_slot">
                             <property name="vexpand">true</property>
                           </object>
                         </property>

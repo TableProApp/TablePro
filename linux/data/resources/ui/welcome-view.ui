@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProWelcomeView" parent="AdwBin">
+    <property name="child">
+      <object class="GtkStack" id="stack">
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">list</property>
+            <property name="child">
+              <object class="AdwPreferencesPage" id="page">
+                <child>
+                  <!-- The connections in no group. Each group the list
+                       files connections under gets a group of its own
+                       after this one. -->
+                  <object class="AdwPreferencesGroup" id="ungrouped">
+                    <property name="title" translatable="yes">Saved Connections</property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">empty</property>
+            <property name="child">
+              <object class="AdwStatusPage">
+                <property name="icon-name">network-server-symbolic</property>
+                <property name="title" translatable="yes">No Connections</property>
+                <property name="description" translatable="yes">Add a database connection to get started.</property>
+                <property name="child">
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">Add Connection</property>
+                    <property name="action-name">win.new-connection</property>
+                    <property name="halign">center</property>
+                    <style>
+                      <class name="suggested-action"/>
+                      <class name="pill"/>
+                    </style>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

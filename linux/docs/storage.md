@@ -113,9 +113,11 @@ leaves nothing unreachable behind when a step fails:
    failure here is reported and does not bring the entry back.
 
 A connection open or connecting in a window is not deleted; the dialog
-offers that window instead. The delete claims the connection's key while it
-runs, so a connect started meanwhile from a picker that still lists it is
-refused, and opening it from such a picker afterwards says it was deleted.
+offers that window instead. It asks once, in that one dialog. The delete
+claims the connection's key while it runs, so a connect started meanwhile
+from a picker that still lists it is refused. Every picker follows the list
+the store publishes, so the row goes from each once the entry is removed,
+and a menu still open on it finds no connection and does nothing.
 The purge waits for the drafts a just-closed workspace is still writing
 (`WorkspaceStore::writes_in_flight`). The window holds the process until the
 delete ends, as it does for every other write to the connection list.
