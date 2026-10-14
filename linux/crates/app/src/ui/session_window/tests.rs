@@ -584,6 +584,38 @@ fn an_unsaved_file_opens_a_session_of_its_own() {
 }
 
 #[gtk4::test]
+fn a_file_window_that_could_not_show_the_owner_stays_open_from_then_on() {
+    let test = TestWindow::connected("OpenFileOwnerGone");
+    let database = test._dir.path().join("local.db");
+    std::fs::write(&database, b"").expect("seed");
+    let uri = glib::filename_to_uri(std::fs::canonicalize(&database).expect("canonical"), None)
+        .expect("a uri")
+        .to_string();
+    // An owner the application cannot bring forward.
+    let _held = test
+        .services
+        .sessions
+        .claim(SessionKey::File(uri), test.window.id() + 100)
+        .expect("claim the file");
+    let extra = test
+        .app
+        .open_window(WindowLaunch::OpenFile(gio::File::for_path(&database)))
+        .and_then(|window| window.downcast::<SessionWindow>().ok())
+        .expect("a window for the file");
+    wait_until(WAIT, || !extra.imp().opening_file.get()).expect("the file to resolve");
+    drain_main_context();
+    assert_eq!(extra.page_name(), "picker");
+    test.window.set_visible(false);
+
+    extra.send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    wait_until(WAIT, || test.window.is_visible()).expect("the connection's window to come forward");
+    drain_main_context();
+
+    assert_eq!(test.app.windows().len(), 2, "the picker closed under the user");
+    assert_eq!(extra.page_name(), "picker");
+}
+
+#[gtk4::test]
 fn late_show_create_reply_after_disconnect_is_dropped() {
     let test = TestWindow::connected_with("LateShowCreate", |script| {
         script.dialect = Arc::new(drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new(

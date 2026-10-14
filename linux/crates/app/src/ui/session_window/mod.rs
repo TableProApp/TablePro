@@ -486,8 +486,11 @@ impl SessionWindow {
         match state.context.sessions.claim(key, self.id()) {
             Ok(claim) => Some(claim),
             Err(ClaimError::AlreadyOpen { window_id }) => {
-                if self.present_owner(window_id) && self.imp().opened_for_file.replace(false) {
-                    self.send(SessionWindowInput::CloseCurrent);
+                // A window that stayed to say the owner could not be
+                // shown is the user's picker from then on.
+                let opened_for_file = self.imp().opened_for_file.replace(false);
+                if self.present_owner(window_id) && opened_for_file {
+                    self.close();
                 }
                 None
             }
