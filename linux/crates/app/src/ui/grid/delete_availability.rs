@@ -15,8 +15,7 @@ pub enum DeleteBlock {
 }
 
 impl DeleteBlock {
-    /// Why Delete is off, for its button's tooltip. `None` when nothing
-    /// needs saying: there is just nothing selected.
+    /// `None` with nothing selected, which needs no explaining.
     pub fn explanation(self) -> Option<String> {
         match self {
             Self::NoRows => None,

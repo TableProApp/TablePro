@@ -8,7 +8,6 @@ use super::display_text::value_to_display_text;
 use super::edit_commit::{commit_input, send_commit};
 use super::{EditSnapshot, GridCell};
 
-/// A boolean cell: a check button that commits as it is toggled.
 pub struct ToggleCell;
 
 /// How a check button shows a cell's value.

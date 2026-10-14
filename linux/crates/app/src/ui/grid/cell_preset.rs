@@ -10,7 +10,6 @@ pub enum CellPreset {
     Default,
 }
 
-/// Which presets a cell's menu offers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CellPresets {
     pub empty: bool,

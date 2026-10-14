@@ -9,12 +9,10 @@ use super::edit_commit::{commit_edit, send_commit};
 use super::inline_editor::{InlineEditor, InlineOptions};
 use super::{EditSnapshot, GridCell};
 
-/// The day a calendar opens on.
 #[derive(Debug, Clone)]
 enum CalendarStart {
     On(glib::DateTime),
-    /// A NULL the column may keep: the calendar shows today and commits
-    /// nothing until a day is picked.
+    /// A NULL the column may keep, which stays until a day is picked.
     Today,
 }
 

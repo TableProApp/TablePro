@@ -108,7 +108,6 @@ impl BrowseTab {
         )));
         imp.inner_stack.set_visible_child_name("loading");
         imp.read_only_banner.set_revealed(init.read_only);
-        imp.delete_button.set_icon_name(crate::ui::icons::LIST_REMOVE);
 
         let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS.iter().map(|n| format_thousands(*n)).collect();
         let page_size_strs: Vec<&str> = page_size_labels.iter().map(String::as_str).collect();
@@ -667,10 +666,8 @@ pub(crate) enum BrowseTabInput {
     /// Queued after an insert, so the focus lands on the column view
     /// as it is once the insert is drawn.
     FocusInsertedDraft,
-    /// Delete over these rows, from the key, the button or the menu.
     DeleteRows(Vec<RowObject>),
-    /// An edit the grid parsed for the column, which the tab checks
-    /// against the cell's lock before the tracker takes it.
+    /// Checked against the cell's lock before the tracker takes it.
     GridEdit {
         row: RowObject,
         column: usize,
@@ -826,19 +823,25 @@ impl BrowseModel {
     /// only the ones the cell can take; the keyboard's Set NULL reaches
     /// here for any cell, and a column that refuses the value says why,
     /// as committing an empty cell would.
-    fn resolve_cell_preset(&self, preset: CellPreset, row: &RowObject, col: usize) -> Result<CellInput, String> {
+    fn resolve_cell_preset(
+        &self,
+        preset: CellPreset,
+        row: &RowObject,
+        col: usize,
+    ) -> Option<Result<CellInput, String>> {
         let Some(column) = self.current_columns.get(col) else {
-            return Err(crate::ui::error_text::edit_parse_message(&EditParseError::Required));
+            tracing::error!(col, "a preset reached a column the tab does not have");
+            return None;
         };
         let presets = cell_presets(column, row.id());
-        match preset {
+        Some(match preset {
             CellPreset::Empty => parse_edit_text("", column, edit_context(row.id()))
                 .map_err(|error| crate::ui::error_text::edit_parse_message(&error)),
             CellPreset::Null if presets.null => Ok(CellInput::Value(Value::Null)),
             CellPreset::Null => Err(crate::ui::error_text::edit_parse_message(&EditParseError::Required)),
             CellPreset::Default if presets.default => Ok(CellInput::Default),
             CellPreset::Default => Err(crate::i18n::gettext("This cell can't take the column's default")),
-        }
+        })
     }
 
     fn table_label(&self) -> String {
@@ -1620,11 +1623,12 @@ impl BrowseModel {
                     return;
                 }
                 let input = match self.resolve_cell_preset(preset, &row, column) {
-                    Ok(input) => input,
-                    Err(message) => {
+                    Some(Ok(input)) => input,
+                    Some(Err(message)) => {
                         fx.output(BrowseTabOutput::ShowToast(message));
                         return;
                     }
+                    None => return,
                 };
                 self.edit_cell(&row, column, input, fx);
             }

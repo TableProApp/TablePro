@@ -76,9 +76,8 @@
               </object>
             </child>
             <child type="start">
-              <!-- Follows tab.delete-rows, which the Delete key names
-                   too; the tab sets the tooltip. -->
               <object class="GtkButton" id="delete_button">
+                <property name="icon-name">list-remove-symbolic</property>
                 <property name="action-name">tab.delete-rows</property>
                 <property name="tooltip-text" translatable="yes">Delete selected rows (Delete)</property>
                 <style>
