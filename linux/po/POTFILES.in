@@ -1,6 +1,10 @@
 crates/app/src/application/app_actions.rs
 crates/app/src/application/app_services.rs
+crates/app/src/application/app_services.rs
+crates/app/src/application/app_services.rs
 crates/app/src/application/app_window_host.rs
+crates/app/src/application/imp.rs
+crates/app/src/application/imp.rs
 crates/app/src/application/imp.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
@@ -211,13 +215,18 @@ crates/app/src/ui/session_window/connections.rs
 crates/app/src/ui/session_window/imp.rs
 crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
+crates/app/src/ui/session_window/mod.rs
+crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/open_file_tests.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
 crates/app/src/ui/session_window/secret_retry.rs
 crates/app/src/ui/session_window/session_page.rs
+crates/app/src/ui/session_window/session_restore.rs
 crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs
+crates/app/src/ui/session_window/session_window_input.rs
+crates/app/src/ui/session_window/session_window_input.rs
 crates/app/src/ui/session_window/session_window_input.rs
 crates/app/src/ui/session_window/sqlite_location_dialog.rs
 crates/app/src/ui/session_window/tests.rs
@@ -263,6 +272,7 @@ crates/app/src/ui/workspace/structure.rs
 crates/app/src/ui/workspace/window_tabs.rs
 crates/app/src/ui/workspace/workspace_actions.rs
 crates/app/src/ui/workspace/workspace_persistence.rs
+crates/app/src/ui/workspace/workspace_tab_view.rs
 crates/app/src/ui/workspace/workspace_tabs.rs
 crates/app/src/workspace/close_decision.rs
 crates/app/src/workspace/close_guard.rs
@@ -278,6 +288,9 @@ crates/app/src/workspace/engine_profile.rs
 crates/app/src/workspace/inhibit_reason.rs
 crates/app/src/workspace/legacy_tab_file.rs
 crates/app/src/workspace/mod.rs
+crates/app/src/workspace/open_sessions.rs
+crates/app/src/workspace/open_sessions_load.rs
+crates/app/src/workspace/open_sessions_record.rs
 crates/app/src/workspace/open_transaction_dialog.rs
 crates/app/src/workspace/pending_state.rs
 crates/app/src/workspace/persist_debouncer.rs
@@ -294,6 +307,7 @@ crates/app/src/workspace/save_snapshot.rs
 crates/app/src/workspace/save_start.rs
 crates/app/src/workspace/save_ticket.rs
 crates/app/src/workspace/schema_write.rs
+crates/app/src/workspace/session_key_record.rs
 crates/app/src/workspace/sort_record.rs
 crates/app/src/workspace/structure_review_tests.rs
 crates/app/src/workspace/tab_directory.rs
@@ -311,6 +325,8 @@ crates/app/src/workspace/workspace_load.rs
 crates/app/src/workspace/workspace_load_error.rs
 crates/app/src/workspace/workspace_record.rs
 crates/app/src/workspace/workspace_save_error.rs
+crates/app/src/workspace/workspace_store.rs
+crates/app/src/workspace/workspace_store.rs
 crates/app/src/workspace/workspace_store.rs
 crates/app/src/workspace/write_job.rs
 crates/app/src/workspace/writes_in_flight.rs

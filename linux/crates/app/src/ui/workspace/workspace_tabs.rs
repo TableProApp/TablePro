@@ -19,6 +19,7 @@ use crate::workspace::{
 };
 
 use super::workspace_persistence::reopen;
+use super::workspace_tab_view::new_workspace_tab_view;
 use super::{
     CLOSED_TABS_CAPACITY, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceInput, WorkspaceModel,
     WorkspaceSender, WorkspaceTab, read_workspace_tab_id, write_workspace_tab_id,
@@ -850,7 +851,7 @@ fn build_workspace_chrome(
     input: &WorkspaceSender,
     create_tab: impl Fn(&adw::TabView) -> adw::TabPage + 'static,
 ) -> WorkspaceChrome {
-    let tab_view = adw::TabView::new();
+    let tab_view = new_workspace_tab_view();
     let tab_bar = adw::TabBar::builder()
         .view(&tab_view)
         .autohide(false)

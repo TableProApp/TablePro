@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Review before a structure save that drops data, rebuilds the table or can stop halfway, with the SQL it runs.
 - Arrow keys move between grid cells; F2 or Return edits one, Tab carries an edit to the next cell, and Shift+F10 opens the cell menu.
 - Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
+- Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 
 ### Changed
 
@@ -139,6 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structure tab could not save two columns swapping names, or a column taking the name of one being removed.
 - Changing the type of a SQL Server column with a default failed.
 - A bulk delete confirmed after the table's primary key changed marked rows by their old key.
+- Ctrl+Home and Ctrl+End jumped to the first or last tab instead of the start or end of the SQL editor or table.
 
 ### Security
 

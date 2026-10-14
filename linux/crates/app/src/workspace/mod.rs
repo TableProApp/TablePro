@@ -1,6 +1,7 @@
 //! A window's workspace: which tabs were open and what the editor ones
 //! held, kept between sessions, and the saves its tabs run and the
-//! prompts that decide whether they may close.
+//! prompts that decide whether they may close. Also which sessions the
+//! windows show, so a launch opens them again.
 
 mod close_decision;
 mod close_guard;
@@ -15,6 +16,9 @@ mod draft_writer;
 mod engine_profile;
 mod inhibit_reason;
 mod legacy_tab_file;
+mod open_sessions;
+mod open_sessions_load;
+mod open_sessions_record;
 mod open_transaction_dialog;
 mod pending_state;
 mod persist_debouncer;
@@ -31,6 +35,7 @@ mod save_snapshot;
 mod save_start;
 mod save_ticket;
 mod schema_write;
+mod session_key_record;
 mod sort_record;
 #[cfg(test)]
 mod structure_review_tests;
@@ -69,6 +74,9 @@ pub use draft_writer::DraftWriter;
 pub use engine_profile::EngineProfile;
 pub use inhibit_reason::InhibitReason;
 pub(crate) use legacy_tab_file::remove_legacy_tab_file;
+pub use open_sessions::OpenSessions;
+pub use open_sessions_load::OpenSessionsLoad;
+pub use open_sessions_record::OpenSessionsRecord;
 pub use pending_state::PendingState;
 pub use persist_debouncer::PersistDebouncer;
 pub(crate) use ran_statements::RanStatements;
@@ -83,6 +91,7 @@ pub use save_snapshot::SaveSnapshot;
 pub use save_start::SaveStart;
 pub use save_ticket::SaveTicket;
 pub(crate) use schema_write::run_schema_plan;
+pub use session_key_record::SessionKeyRecord;
 pub use sort_record::SortRecord;
 pub use tab_directory::TabDirectory;
 pub use tab_entry::TabEntry;

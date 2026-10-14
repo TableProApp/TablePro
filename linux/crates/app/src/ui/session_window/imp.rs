@@ -7,7 +7,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 use relm4::Controller;
-use tablepro_session::ConnectAttempts;
+use tablepro_session::{ConnectAttempts, SessionKey};
 use tablepro_storage::SavedConnection;
 
 use super::locate_file::LocateChooser;
@@ -37,6 +37,9 @@ pub struct SessionWindow {
     pub(super) page: RefCell<SessionPage>,
     /// Which connect attempt is current, so a late result is discarded.
     pub(super) attempts: ConnectAttempts,
+    /// The recorded session the window was opened to restore, until the
+    /// saved connection is looked up or the file resolved.
+    pub(super) restoring: RefCell<Option<SessionKey>>,
     /// One close prompt at a time, for a tab, the window or a
     /// disconnect.
     pub(super) close_guards: OnceCell<Rc<CloseGuards>>,

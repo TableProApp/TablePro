@@ -199,6 +199,11 @@ impl TestWindow {
         SessionKey::Saved(self.saved.id)
     }
 
+    /// Where the test keeps its files, the fake database among them.
+    pub(crate) fn dir(&self) -> &std::path::Path {
+        self._dir.path()
+    }
+
     /// The connection the last connect built.
     pub(crate) fn connection(&self) -> Arc<FakeConnection> {
         self.connector.connections().pop().expect("a connection")

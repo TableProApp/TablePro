@@ -90,6 +90,12 @@
       <description>GtkSourceView style scheme id for the SQL editor.</description>
     </key>
 
+    <key name="restore-session" type="b">
+      <default>true</default>
+      <summary>Restore session</summary>
+      <description>Whether the connections open when TablePro quit are opened again at the next launch.</description>
+    </key>
+
     <key name="connect-dialog-driver" type="s">
       <default>'postgres'</default>
       <summary>Driver the connect dialog opens with</summary>

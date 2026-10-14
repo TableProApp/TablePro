@@ -33,6 +33,10 @@ impl WindowRegistry {
         self.windows.borrow().get(&id).is_some_and(SessionWindow::is_inhibiting)
     }
 
+    pub(crate) fn keeps_session(&self, id: u32) -> bool {
+        self.windows.borrow().get(&id).is_some_and(SessionWindow::keeps_session)
+    }
+
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.windows.borrow().len()

@@ -11,6 +11,8 @@ use tablepro_storage::AppSettings;
 #[template(resource = "/app/tablepro/TablePro/ui/preferences-dialog.ui")]
 pub struct PreferencesDialog {
     #[template_child]
+    pub restore_session_row: TemplateChild<adw::SwitchRow>,
+    #[template_child]
     pub page_size_row: TemplateChild<adw::SpinRow>,
     #[template_child]
     pub confirm_row: TemplateChild<adw::SwitchRow>,

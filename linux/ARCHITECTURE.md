@@ -240,6 +240,7 @@ The Structure tab is **definition + draft**, not a per-change log. The `TableDef
 | Saved connections | JSON, `g_file_set_contents_full` CONSISTENT + DURABLE, 0600 | `$XDG_CONFIG_HOME/tablepro/connections.json` |
 | Connection passwords + SSH secrets | libsecret via `oo7` (Secret Service / KWallet) | keyring item per connection UUID |
 | Workspace tabs, one file per session | JSON, durable write, debounced 500 ms, off the GTK thread | `$XDG_STATE_HOME/tablepro/workspaces/<connection id>.json`, `file-<sha256 of the URI>.json` for an unsaved file |
+| Sessions open at quit, reopened at launch | JSON, durable write, off the GTK thread | `$XDG_STATE_HOME/tablepro/workspaces/open-sessions.json` |
 | Editor tab text | one file per tab, debounced 500 ms | `$XDG_DATA_HOME/tablepro/drafts/<workspace name>/` |
 | Query history | SQLite + FTS5 virtual table, 0600 | `$XDG_STATE_HOME/tablepro/history.db` |
 | Application preferences | GSettings | schema `app.tablepro.TablePro` |
@@ -247,6 +248,8 @@ The Structure tab is **definition + draft**, not a per-change log. The `TableDef
 | Per-table column widths | JSON, durable write | `$XDG_CONFIG_HOME/tablepro/column_widths.json` |
 
 `WorkspaceStore` reads a session's file once its session is adopted, and the window writes the tab list only after that read, so a write never lands on tabs not yet restored. A file that cannot be read, that another version wrote, or that is over 1 MiB is left as it is and nothing is written over it until the user picks Reset on the toast, which moves it aside as `<name>.json.corrupt-<seconds>`. Every open tab is saved and restored, with no cap on the count. Writes go through one task that keeps the newest record per file. Editor records carry a draft id, never the text, and the editor's `content-changed` signal carries no text either: the tab label reads at most 200 characters.
+
+`OpenSessions` records the session each window adopts, a file or a saved connection, and drops it on a disconnect or a closed window. A quit freezes the record before it asks the first window and writes it before the process may end, so the first activate of the next launch reopens those windows when `restore-session` is on. An activate that reaches the old process while it still closes a session restores the same way. A cancelled quit keeps the keys of the windows still showing or connecting their session. A record that cannot be read is moved aside as `open-sessions.json.corrupt-<seconds>`.
 
 A restore deletes the drafts no saved or open tab names, except while a moved-aside copy of the session's file is there, since that copy may name them. A draft that cannot be read is moved aside as `<id>.sql.corrupt-<seconds>`, which the cleanup never deletes, and its tab opens empty with a toast. A disconnect writes the open tabs' text before their buffers go.
 
