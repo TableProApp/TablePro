@@ -27,7 +27,7 @@ use tablepro_core::statement::{Statement, StatementBuilder};
 use tablepro_core::{ForeignKeyCheck, ForeignKeyMode};
 
 use super::column_constraint_segment::ColumnConstraintKind;
-use super::create_table_source::{CreateTableSource, tokens};
+use super::create_table_source::{CreateTableSource, Token, tokens, unquote};
 use super::native_change_rules::names;
 use super::source_element::{SourceColumn, SourceElement, TableConstraint, TableConstraintKind};
 use super::{default_clause, foreign_key_constraint};
@@ -221,7 +221,7 @@ impl Rebuild<'_> {
         ));
         for object in self.recreated() {
             let sql = replayable(self.dialect, &object.sql, schema.as_deref())
-                .ok_or_else(|| unreadable(&object.name, DdlOperation::AlterTable))?;
+                .ok_or_else(|| BuildDdlError::UnreplayableDependent(object.name.clone()))?;
             statements.push(sql);
         }
         for rename in self.naming.ordered_renames() {
@@ -594,7 +594,7 @@ impl Rebuild<'_> {
             }
             users.extend(
                 self.recreated()
-                    .filter(|object| words(&object.sql).contains(&folded))
+                    .filter(|object| self.mentions(object).contains(&folded))
                     .map(|object| object.name.clone()),
             );
             if !users.is_empty() {
@@ -606,6 +606,41 @@ impl Rebuild<'_> {
             }
         }
         Ok(())
+    }
+
+    /// The names a recreated object mentions, lowercased and unquoted.
+    /// In a trigger on another table, `new.x` and `old.x` are that
+    /// table's columns, never this one's.
+    fn mentions(&self, object: &SchemaObjectSource) -> HashSet<String> {
+        if object.kind != SchemaObjectKind::Trigger || self.owned(object) {
+            return words(&object.sql);
+        }
+        let Ok(scanned) = tokens(&object.sql) else {
+            return words(&object.sql);
+        };
+        let text = |token: &Token| object.sql.get(token.range.clone()).unwrap_or_default();
+        let is = |index: Option<usize>, kind: ScriptTokenKind, spellings: &[&str]| {
+            index.and_then(|index| scanned.get(index)).is_some_and(|token| {
+                token.kind == kind
+                    && spellings
+                        .iter()
+                        .any(|spelling| text(token).eq_ignore_ascii_case(spelling))
+            })
+        };
+        let mut mentions = HashSet::new();
+        for (index, token) in scanned.iter().enumerate() {
+            let name = match token.kind {
+                ScriptTokenKind::Word => text(token).to_lowercase(),
+                ScriptTokenKind::QuotedIdentifier => unquote(text(token)).to_lowercase(),
+                _ => continue,
+            };
+            let row_reference = is(index.checked_sub(1), ScriptTokenKind::Punct, &["."])
+                && is(index.checked_sub(2), ScriptTokenKind::Word, &["new", "old"]);
+            if !row_reference {
+                mentions.insert(name);
+            }
+        }
+        mentions
     }
 
     fn element(&self, index: usize) -> &SourceElement {

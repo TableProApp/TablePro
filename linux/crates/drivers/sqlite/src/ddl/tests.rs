@@ -811,14 +811,7 @@ fn a_dependent_carrying_a_second_statement_is_not_replayed() {
 
     let plan = alter(&orders, |draft| retype(draft, "total", "NUMERIC"));
 
-    assert_eq!(
-        refusal(&plan),
-        Some((
-            "big_orders",
-            DdlOperation::AlterTable,
-            &RefusalReason::UnreadableDefinition
-        ))
-    );
+    assert_eq!(plan, Err(BuildDdlError::UnreplayableDependent("big_orders".to_owned())));
 }
 
 #[test]
@@ -1103,6 +1096,55 @@ fn a_column_that_becomes_the_rowid_renumbers_the_rows() {
     );
     assert!(!checks(&retyped)[0].rowids_renumbered);
     assert!(!checks(&copied)[0].rowids_renumbered);
+}
+
+#[test]
+fn a_trigger_elsewhere_naming_its_own_row_does_not_hold_a_dropped_column() {
+    let mut kept = table(
+        "kept",
+        vec![
+            rowid_alias("id"),
+            column("status", "TEXT", false),
+            column("note", "TEXT", false),
+        ],
+        "CREATE TABLE kept (id INTEGER PRIMARY KEY, status TEXT UNIQUE, note TEXT)",
+    );
+    let own_row = object(
+        SchemaObjectKind::Trigger,
+        "others_sync",
+        "others",
+        "CREATE TRIGGER others_sync AFTER UPDATE ON others WHEN new.status = 'done' BEGIN UPDATE kept SET note = \
+         OLD.\"STATUS\" WHERE id = new.id; END",
+    );
+    let writes = object(
+        SchemaObjectKind::Trigger,
+        "others_copy",
+        "others",
+        "CREATE TRIGGER others_copy AFTER INSERT ON others BEGIN UPDATE kept SET status = new.status; END",
+    );
+    let drop_status = |draft: &mut TableDraft| draft.columns.retain(|column| column.name != "status");
+    if let Some(source) = kept.source.as_mut() {
+        source.dependents = vec![own_row.clone()];
+    }
+    let allowed = sql(alter(&kept, drop_status));
+    if let Some(source) = kept.source.as_mut() {
+        source.dependents = vec![own_row, writes];
+    }
+
+    let refused = alter(&kept, drop_status);
+
+    assert_eq!(
+        allowed[1],
+        "CREATE TABLE \"_tablepro_rebuild_kept\" (id INTEGER PRIMARY KEY, note TEXT)"
+    );
+    assert_eq!(
+        refusal(&refused),
+        Some((
+            "status",
+            DdlOperation::DropColumn,
+            &RefusalReason::ColumnInUse(vec!["others_copy".to_owned()])
+        ))
+    );
 }
 
 #[test]
