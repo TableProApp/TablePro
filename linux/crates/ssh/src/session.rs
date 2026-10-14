@@ -261,17 +261,20 @@ async fn pin_jump_hosts(
     config_file: Option<&Path>,
     master_dir: &Path,
 ) -> Result<Option<PathBuf>, TransportError> {
-    let pinned = hop_config::hosts_to_pin(hops);
+    let pinned: Vec<String> = hop_config::hosts_to_pin(hops).into_iter().map(str::to_owned).collect();
     if pinned.is_empty() {
         return Ok(None);
     }
-    let contents = hop_config::render(&pinned, config_file)?;
+    let config_file = config_file.map(Path::to_path_buf);
     let master_dir = master_dir.to_owned();
-    tokio::task::spawn_blocking(move || hop_config::write(&master_dir, &contents))
-        .await
-        .map_err(|error| protocol(&format!("the ssh setup task failed: {error}")))?
-        .map(Some)
-        .map_err(TransportError::from)
+    tokio::task::spawn_blocking(move || {
+        let contents = hop_config::render(&pinned, config_file.as_deref())?;
+        hop_config::write(&master_dir, &contents)
+    })
+    .await
+    .map_err(|error| protocol(&format!("the ssh setup task failed: {error}")))?
+    .map(Some)
+    .map_err(TransportError::from)
 }
 
 pub(crate) struct HandshakeDeadline {

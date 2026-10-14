@@ -26,7 +26,7 @@ const SSHD_SCRIPT: &str = "apk add --no-cache openssh >/dev/null \
 
 struct Fixture {
     container: ContainerAsync<GenericImage>,
-    _temp: tempfile::TempDir,
+    temp: tempfile::TempDir,
     host: String,
     port: u16,
     config: PathBuf,
@@ -76,7 +76,7 @@ async fn start() -> TestResult<Fixture> {
     };
     Ok(Fixture {
         container,
-        _temp: temp,
+        temp,
         host,
         port,
         config,
@@ -420,11 +420,56 @@ async fn a_jump_host_whose_config_skips_the_host_key_check_still_asks() {
         config_file: Some(fixture.config.clone()),
         ..fixture.services.clone()
     };
+
+    jump_host_asks(&fixture, &services).await.unwrap();
+}
+
+/// The same with no `-F`, as the app runs: the pinned file includes the
+/// user's `~/.ssh/config` and copies in the system's. ssh looks the user
+/// file up in the password database but an `Include` follows `HOME`, so
+/// the wrapper hands the file to the lookups with `-F` and to the
+/// `Include` through `HOME`. The pinned file's own `-F` comes last on
+/// the master's command line and wins.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_jump_host_whose_user_config_skips_the_host_key_check_still_asks() {
+    let fixture = start().await.unwrap();
+    let home = fixture.temp.path().join("home");
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    let user_config = home.join(".ssh").join("config");
+    write_config(&user_config, &fixture.known_hosts, "accept-new").unwrap();
+    // An Include refuses a file others can write.
+    std::fs::set_permissions(&user_config, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let wrapper = fixture.temp.path().join("ssh-as-user");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\nHOME='{}' exec ssh -F '{}' \"$@\"\n",
+            home.display(),
+            user_config.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let services = SshServices {
+        ssh_program: wrapper,
+        config_file: None,
+        ..fixture.services.clone()
+    };
+
+    jump_host_asks(&fixture, &services).await.unwrap();
+}
+
+async fn jump_host_asks(fixture: &Fixture, services: &SshServices) -> TestResult<()> {
     let config = SshConfig {
         // sshd reaches itself on its own port, so one container is both
         // the jump host and the destination behind it.
-        destination: SshDestination::new("127.0.0.1", Some(2222), Some("deploy".to_owned())).unwrap(),
-        jump_hosts: vec![SshDestination::new(&fixture.host, Some(fixture.port), Some("deploy".to_owned())).unwrap()],
+        destination: SshDestination::new("127.0.0.1", Some(2222), Some("deploy".to_owned()))?,
+        jump_hosts: vec![SshDestination::new(
+            &fixture.host,
+            Some(fixture.port),
+            Some("deploy".to_owned()),
+        )?],
         auth: SshAuth::Agent,
     };
     let prompter = Arc::new(FakePrompter::new(vec![
@@ -436,7 +481,7 @@ async fn a_jump_host_whose_config_skips_the_host_key_check_still_asks() {
 
     let session = SshSession::connect(
         &config,
-        &services,
+        services,
         &LivenessPolicy::DESKTOP,
         CredentialInteraction::Attended(prompter.clone()),
         CancellationToken::new(),
@@ -457,12 +502,13 @@ async fn a_jump_host_whose_config_skips_the_host_key_check_still_asks() {
         ),
         "{purposes:?}"
     );
-    let session = session.unwrap();
+    let session = session?;
     assert_eq!(
         session.first_hop_endpoint(),
-        Some(&NetworkEndpoint::new(&fixture.host, fixture.port).unwrap())
+        Some(&NetworkEndpoint::new(&fixture.host, fixture.port)?)
     );
     session.shutdown(Duration::from_secs(5)).await;
+    Ok(())
 }
 
 #[tokio::test]
