@@ -3,6 +3,7 @@ crates/app/src/application/app_services.rs
 crates/app/src/application/app_window_host.rs
 crates/app/src/application/imp.rs
 crates/app/src/application/mod.rs
+crates/app/src/application/open_files.rs
 crates/app/src/application/quit_sequence.rs
 crates/app/src/application/tests.rs
 crates/app/src/application/window_host.rs
@@ -184,6 +185,7 @@ crates/app/src/ui/session_window/connections.rs
 crates/app/src/ui/session_window/imp.rs
 crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
+crates/app/src/ui/session_window/open_file_tests.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
 crates/app/src/ui/session_window/session_page.rs

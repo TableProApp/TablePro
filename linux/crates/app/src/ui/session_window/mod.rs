@@ -9,6 +9,8 @@ mod connecting_page;
 mod connections;
 mod imp;
 mod locate_file;
+#[cfg(test)]
+mod open_file_tests;
 mod picker_page;
 mod resolve_file_identity;
 mod session_page;
@@ -168,7 +170,11 @@ impl SessionWindow {
         match launch {
             WindowLaunch::Picker => {}
             WindowLaunch::Connect(saved) => input.deliver(SessionWindowInput::OpenSaved(saved)),
-            WindowLaunch::OpenFile(file) => input.deliver(SessionWindowInput::OpenFile(file)),
+            WindowLaunch::OpenFile(file) => {
+                imp.opening_file.set(true);
+                imp.opened_for_file.set(true);
+                input.deliver(SessionWindowInput::OpenFile(file));
+            }
         }
     }
 
@@ -181,6 +187,16 @@ impl SessionWindow {
         if let Some(input) = self.imp().input.get() {
             input.deliver(message);
         }
+    }
+
+    /// On the picker with nothing under way, so a file handed to the
+    /// application can open here.
+    pub(crate) fn is_idle(&self) -> bool {
+        let imp = self.imp();
+        self.page_is(|page| matches!(page, SessionPage::Picker))
+            && !imp.opening_file.get()
+            && !imp.dialog_opening.get()
+            && imp.dialog.try_borrow().is_ok_and(|dialog| dialog.is_none())
     }
 
     /// Whether the window holds logout back now.
@@ -346,6 +362,9 @@ impl SessionWindow {
             _ => false,
         };
         window_actions::sync(self.upcast_ref(), &page, editable);
+        if !matches!(page, SessionPage::Picker) {
+            imp.opened_for_file.set(false);
+        }
         let left = imp.page.replace(page);
         imp.toast_overlay.set_child(child.as_ref());
         drop(left);
@@ -467,19 +486,24 @@ impl SessionWindow {
         match state.context.sessions.claim(key, self.id()) {
             Ok(claim) => Some(claim),
             Err(ClaimError::AlreadyOpen { window_id }) => {
-                self.present_owner(window_id);
+                if self.present_owner(window_id) && self.imp().opened_for_file.replace(false) {
+                    self.send(SessionWindowInput::CloseCurrent);
+                }
                 None
             }
         }
     }
 
-    fn present_owner(&self, window_id: u32) {
+    /// False when the owner could not be brought forward, and this
+    /// window says so instead.
+    fn present_owner(&self, window_id: u32) -> bool {
         let presented = self.state().is_some_and(|state| state.host.present_window(window_id));
         if !presented {
             self.show_toast(&crate::i18n::gettext(
                 "This connection is already open in another window.",
             ));
         }
+        presented
     }
 
     fn on_open_saved(&self, saved: SavedConnection) {
@@ -512,6 +536,7 @@ impl SessionWindow {
             state.host.open_window(WindowLaunch::OpenFile(file));
             return;
         }
+        self.imp().opening_file.set(true);
         let path = file.path();
         let uri = file.uri().to_string();
         let resolving_uri = uri.clone();
@@ -533,6 +558,7 @@ impl SessionWindow {
     }
 
     fn on_file_resolved(&self, resolved: ResolvedFile) {
+        self.imp().opening_file.set(false);
         let ResolvedFile { uri, target } = resolved;
         if !self.page_is(|page| matches!(page, SessionPage::Picker)) {
             if let Some(state) = self.state() {

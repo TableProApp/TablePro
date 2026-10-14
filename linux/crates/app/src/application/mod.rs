@@ -5,6 +5,7 @@ mod app_actions;
 mod app_services;
 mod app_window_host;
 mod imp;
+mod open_files;
 mod quit_sequence;
 mod window_host;
 mod window_launch;
@@ -40,6 +41,7 @@ impl TableProApplication {
         let app: Self = glib::Object::builder()
             .property("application-id", config::APP_ID)
             .property("resource-base-path", config::RESOURCE_BASE_PATH)
+            .property("flags", gio::ApplicationFlags::HANDLES_OPEN)
             .build();
         services.bind_application(&app);
         // Only `new` sets it, and it has just built the object.

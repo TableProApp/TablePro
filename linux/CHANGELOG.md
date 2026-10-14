@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New Window (Ctrl+Shift+N, or `tablepro --new-window`) opens another window in the running TablePro.
 - Read-only or read-write choice before opening a SQLite file on a network share or FUSE filesystem.
 - Locate… for a saved SQLite connection whose file was moved or renamed.
+- Open SQLite files from the file manager's Open With, or with `tablepro file.sqlite3`.
 
 ### Changed
 

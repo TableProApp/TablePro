@@ -40,6 +40,12 @@ name = "application_lifecycle"
 path = "tests/application_lifecycle.rs"
 harness = false
 
+# D-Bus starts the binary, which opens its windows on GTK's main thread.
+[[test]]
+name = "open_files"
+path = "tests/open_files.rs"
+harness = false
+
 [features]
 default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]

@@ -70,6 +70,13 @@ impl ApplicationImpl for TableProApplication {
         app.open_window(WindowLaunch::Picker);
     }
 
+    /// The files from Open With in the file manager, or from the command
+    /// line. GApplication opens them instead of activating, so no picker
+    /// window comes with them.
+    fn open(&self, files: &[gio::File], _hint: &str) {
+        self.obj().open_files(files);
+    }
+
     /// `--new-window` on a second launch opens the window in the running
     /// instance and exits. On the first launch it falls through to
     /// activate, which opens the one window either way.

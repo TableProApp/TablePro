@@ -52,6 +52,12 @@ pub struct SessionWindow {
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,
     pub(super) shut_down: Cell<bool>,
+    /// A file handed to the window is being resolved, so the window is
+    /// not free for another one.
+    pub(super) opening_file: Cell<bool>,
+    /// The window opened for a file and has shown nothing else yet, so
+    /// it closes again when another window already has that file.
+    pub(super) opened_for_file: Cell<bool>,
     /// Reads which filesystem a database file is on. `None` reads the
     /// real one; a test stands in for a network share.
     pub(super) classify_location: Cell<Option<LocationClassifier>>,

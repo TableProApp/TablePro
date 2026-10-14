@@ -82,6 +82,20 @@ feature: SQL Server Windows integrated auth links MIT Kerberos and runs
 bindgen at build time. `cargo build -p tablepro --no-default-features`
 leaves it out, and the connect dialog then hides Windows (Kerberos).
 
+## Opening SQLite files
+
+Once installed, TablePro is in the file manager's **Open With** for
+SQLite databases (`application/vnd.sqlite3`). From a terminal:
+
+```bash
+tablepro app.sqlite3
+```
+
+A running TablePro opens the file in its own window and the new launch
+exits. A file already open brings its window forward. A database on a
+network or FUSE filesystem asks whether to open read-only first, because
+SQLite's locking cannot be trusted there.
+
 ## SQL Server with Windows integrated auth
 
 Pick **Method → Windows (Kerberos)** in the connect dialog. There is no
