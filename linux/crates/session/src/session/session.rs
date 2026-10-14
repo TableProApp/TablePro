@@ -11,7 +11,7 @@ use tokio_util::task::AbortOnDropHandle;
 use uuid::Uuid;
 
 use super::{ObjectListSnapshot, SchemaCatalog, SessionDeps};
-use crate::connect::{ConnectionMetadata, PendingSession};
+use crate::connect::{ConnectError, ConnectionMetadata, PendingSession};
 use crate::health::{
     LinkGeneration, MonitorContext, MonitorMailbox, MonitorSignal, ReachabilityTarget, ReconnectPlan, SessionHealth,
     run_monitor,
@@ -30,6 +30,8 @@ pub struct Session {
     metadata: ConnectionMetadata,
     workspace_settings: WorkspaceSettings,
     reachability: Arc<Mutex<ReachabilityTarget>>,
+    last_rejection: Arc<Mutex<Option<Arc<ConnectError>>>>,
+    trusted_host_key: Arc<Mutex<Option<String>>>,
     runner: OperationRunner,
     mailbox: Arc<MonitorMailbox>,
     health: watch::Receiver<SessionHealth>,
@@ -54,6 +56,8 @@ impl Session {
             &parts.established,
         )));
         let link = Arc::new(ConnectionLink::new(parts.established));
+        let last_rejection = Arc::new(Mutex::new(None));
+        let trusted_host_key = Arc::new(Mutex::new(None));
         let mailbox = Arc::new(MonitorMailbox::new());
         let (health_sender, health) = watch::channel(SessionHealth::Online);
         let cancel = CancellationToken::new();
@@ -86,12 +90,16 @@ impl Session {
             catalog: catalog.clone(),
             reachability: reachability.clone(),
             close_timeout,
+            last_rejection: last_rejection.clone(),
+            trusted_host_key: trusted_host_key.clone(),
         };
         let monitor = deps.tasks.spawn_owned(run_monitor(context));
         Arc::new(Session {
             metadata: parts.request.metadata,
             workspace_settings: parts.request.workspace_settings,
             reachability,
+            last_rejection,
+            trusted_host_key,
             runner,
             mailbox,
             health,
@@ -190,6 +198,24 @@ impl Session {
 
     pub fn signal(&self, signal: MonitorSignal) {
         self.mailbox.post(signal);
+    }
+
+    /// Why the last reconnect was refused, kept until one succeeds. A
+    /// parked session's banner reads it to say what the user can do.
+    pub fn last_rejection(&self) -> Option<Arc<ConnectError>> {
+        self.last_rejection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Retry, answering ssh's question about the host key `fingerprint`
+    /// for the user, who reviewed it. A different key, or any other
+    /// question, still reaches them; ssh records the key in known_hosts
+    /// as it does when the user answers.
+    pub fn retry_trusting_host_key(&self, fingerprint: String) {
+        *self.trusted_host_key.lock().unwrap_or_else(PoisonError::into_inner) = Some(fingerprint);
+        self.mailbox.post(MonitorSignal::RetryNow);
     }
 
     pub fn runner(&self) -> &OperationRunner {

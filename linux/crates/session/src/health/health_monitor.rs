@@ -30,6 +30,10 @@ pub(crate) struct MonitorContext {
     pub catalog: Arc<SchemaCatalog>,
     pub reachability: Arc<Mutex<ReachabilityTarget>>,
     pub close_timeout: Duration,
+    /// The error that parked the session, for the user to review.
+    pub last_rejection: Arc<Mutex<Option<Arc<ConnectError>>>>,
+    /// A host key the user reviewed and trusted for their next retry.
+    pub trusted_host_key: Arc<Mutex<Option<String>>>,
 }
 
 enum Wakeup {
@@ -157,7 +161,11 @@ async fn probe(ctx: &MonitorContext) -> ProbeOutcome {
 /// and whatever it built is closed rather than adopted.
 async fn reconnect(ctx: &MonitorContext, user_asked: bool) -> Option<ReconnectResult> {
     let plan = ctx.plan.clone();
-    let interaction = plan.interaction(user_asked);
+    let trusted = match user_asked {
+        true => lock(&ctx.trusted_host_key).take(),
+        false => None,
+    };
+    let interaction = plan.interaction(user_asked, trusted);
     let attempt_cancel = ctx.cancel.child_token();
     let attempt = async move {
         // Only the connect has to run on after a cancel. A password
@@ -195,7 +203,11 @@ async fn reconnect(ctx: &MonitorContext, user_asked: bool) -> Option<ReconnectRe
         Ok(Ok(established)) => established,
         Ok(Err(error)) => {
             tracing::info!(%error, "a reconnect attempt failed");
-            return Some(classify_failure(&error));
+            let result = classify_failure(&error);
+            if matches!(result, ReconnectResult::Rejected(_)) {
+                *lock(&ctx.last_rejection) = Some(Arc::new(error));
+            }
+            return Some(result);
         }
         Err(failure) => {
             tracing::error!(%failure, "a reconnect attempt panicked");
@@ -221,7 +233,8 @@ async fn reconnect(ctx: &MonitorContext, user_asked: bool) -> Option<ReconnectRe
     if ctx.cancel.is_cancelled() {
         return None;
     }
-    *ctx.reachability.lock().unwrap_or_else(PoisonError::into_inner) = reachability;
+    *lock(&ctx.reachability) = reachability;
+    *lock(&ctx.last_rejection) = None;
     ctx.catalog.commit(parts.schemas, parts.objects);
     if !remember.is_empty() {
         let stored = ctx.plan.credentials.remember(remember);
@@ -244,6 +257,10 @@ fn classify_failure(error: &ConnectError) -> ReconnectResult {
     }
 }
 
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 async fn discard_late(pending: PendingSession) {
     let report = pending.discard().await;
     tracing::debug!(?report, "closed a reconnect that finished after its session ended");
@@ -259,6 +276,7 @@ mod tests {
     use super::*;
     use crate::connect::{ConnectRequest, CredentialSource, RefreshedRequest};
     use crate::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
+    use crate::health::Reachability;
     use crate::operation::DefaultDeadlines;
     use crate::session::{Session, SessionDeps};
     use crate::test_support::paused_tasks;
@@ -422,6 +440,38 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn lost_then_unreachable_offline_then_reachable_reconnects_immediately() {
+        let connector = FakeConnector::new([FakeEstablish::Fail(refused()), FakeEstablish::Fail(refused())])
+            .always(FakeEstablish::Connect(healthy()));
+        let started = start(healthy(), connector);
+        let lost_at = Instant::now();
+
+        started.session.signal(lost());
+        settle().await;
+        started
+            .session
+            .signal(MonitorSignal::Reachability(Reachability::Unreachable));
+        tokio::time::sleep(HealthPolicy::BACKOFF_INITIAL + Duration::from_secs(5)).await;
+        assert_eq!(*started.session.health().borrow(), SessionHealth::Offline);
+        assert_eq!(started.connector.calls().len(), 2);
+
+        let back_at = Instant::now();
+        started
+            .session
+            .signal(MonitorSignal::Reachability(Reachability::Reachable));
+        settle().await;
+
+        let calls = started.connector.calls();
+        assert_eq!(calls.len(), 3, "the network came back and nothing reconnected");
+        assert_eq!(
+            calls[2].at, back_at,
+            "the reconnect waited for the offline recheck instead of the network"
+        );
+        assert!(back_at - lost_at < HealthPolicy::OFFLINE_RECHECK);
+        assert_eq!(*started.session.health().borrow(), SessionHealth::Online);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn health_counts_the_reconnect_attempts() {
         let connector = FakeConnector::new([]).always(FakeEstablish::Fail(refused()));
         let started = start(healthy(), connector);
@@ -516,6 +566,90 @@ mod tests {
         settle().await;
         assert_eq!(started.connector.calls().len(), 2);
         assert_eq!(*started.session.health().borrow(), SessionHealth::Online);
+    }
+
+    fn ask_host_key(fingerprint: &str) -> FakeEstablish {
+        FakeEstablish::AskHostKey {
+            host: "bastion".to_owned(),
+            fingerprint: fingerprint.to_owned(),
+            script: healthy(),
+        }
+    }
+
+    fn parked_on_unknown_host_key() -> SessionHealth {
+        SessionHealth::Failed {
+            cause: FailureCause::HostKeyUnknown,
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_records_last_rejection() {
+        let declined = FakeEstablish::declined_host_key("bastion", "SHA256:new");
+        let connector = FakeConnector::new([FakeEstablish::Fail(refused()), FakeEstablish::Fail(declined.clone())])
+            .always(FakeEstablish::Connect(healthy()));
+        let started = start(healthy(), connector);
+
+        started.session.signal(lost());
+        settle().await;
+        assert_eq!(
+            started.session.last_rejection(),
+            None,
+            "a retryable failure was kept as a rejection"
+        );
+        tokio::time::sleep(HealthPolicy::BACKOFF_INITIAL).await;
+        settle().await;
+
+        assert_eq!(*started.session.health().borrow(), parked_on_unknown_host_key());
+        assert_eq!(started.session.last_rejection().as_deref(), Some(&declined));
+
+        started.session.signal(MonitorSignal::RetryNow);
+        settle().await;
+        assert_eq!(*started.session.health().borrow(), SessionHealth::Online);
+        assert_eq!(
+            started.session.last_rejection(),
+            None,
+            "a rejection outlived the reconnect"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_trusted_host_key_is_not_asked_about_again() {
+        let prompter = Arc::new(FakePrompter::new([]));
+        let connector = FakeConnector::new([ask_host_key("SHA256:new"), ask_host_key("SHA256:new")]);
+        let started = start_with(healthy(), connector, Some(prompter.clone()));
+        started.session.signal(lost());
+        settle().await;
+        assert_eq!(*started.session.health().borrow(), parked_on_unknown_host_key());
+
+        started.session.retry_trusting_host_key("SHA256:new".to_owned());
+        settle().await;
+
+        assert_eq!(*started.session.health().borrow(), SessionHealth::Online);
+        assert!(
+            prompter.requests().is_empty(),
+            "the user was asked about a key they trusted"
+        );
+        let attended: Vec<bool> = started.connector.calls().iter().map(|call| call.attended).collect();
+        assert_eq!(attended, [false, true]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_different_host_key_on_the_trusted_retry_asks_the_user() {
+        let prompter = Arc::new(FakePrompter::new([]));
+        let connector = FakeConnector::new([ask_host_key("SHA256:new"), ask_host_key("SHA256:other")]);
+        let started = start_with(healthy(), connector, Some(prompter.clone()));
+        started.session.signal(lost());
+        settle().await;
+
+        started.session.retry_trusting_host_key("SHA256:new".to_owned());
+        settle().await;
+
+        assert_eq!(prompter.requests().len(), 1, "a key nobody reviewed was trusted");
+        assert_eq!(*started.session.health().borrow(), parked_on_unknown_host_key());
+        assert_eq!(
+            started.session.last_rejection().as_deref(),
+            Some(&FakeEstablish::declined_host_key("bastion", "SHA256:other"))
+        );
     }
 
     #[tokio::test(start_paused = true)]

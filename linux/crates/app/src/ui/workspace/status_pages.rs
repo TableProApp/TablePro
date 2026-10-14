@@ -10,7 +10,7 @@ use crate::runtime::DeliverInput;
 
 impl WorkspaceModel {
     pub(super) fn show_toast(&self, msg: &str) {
-        self.toast_overlay.add_toast(adw::Toast::new(msg));
+        self.toast_overlay.add_toast(plain_toast(msg));
     }
 
     pub(super) fn show_error_alert(&self, title: &str, message: &str) {
@@ -146,6 +146,14 @@ impl WorkspaceModel {
     }
 }
 
+/// Toast text carries file paths and server messages, which an
+/// `&` or `<` would break as markup.
+fn plain_toast(message: &str) -> adw::Toast {
+    let toast = adw::Toast::new(message);
+    toast.set_use_markup(false);
+    toast
+}
+
 /// A name for a query the user has not named, taken from the first
 /// line that is neither blank nor a comment. It is a starting point in
 /// an entry the user can edit, not a final name.
@@ -168,7 +176,7 @@ fn suggested_query_name(query: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::suggested_query_name;
+    use super::{plain_toast, suggested_query_name};
     use crate::test_support::{finish_on_main, wait_until};
     use crate::ui::session_window::tests::{TestWindow, WAIT};
 
@@ -195,6 +203,16 @@ mod tests {
             saved.iter().any(|query| query.name == "Orders"),
             "the hold ended before the save"
         );
+    }
+
+    #[gtk4::test]
+    fn a_toast_shows_its_text_as_written() {
+        let text = "ssh-keygen could not open /home/a&b/<known_hosts>";
+
+        let toast = plain_toast(text);
+
+        assert!(!toast.uses_markup());
+        assert_eq!(toast.title().as_deref(), Some(text));
     }
 
     #[test]

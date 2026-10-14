@@ -4321,6 +4321,7 @@ dependencies = [
  "log",
  "proptest",
  "relm4",
+ "rustix",
  "secrecy",
  "serde",
  "serde_json",

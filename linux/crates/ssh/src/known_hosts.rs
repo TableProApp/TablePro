@@ -29,6 +29,18 @@ pub async fn forget_host_key(services: &SshServices, config: &SshConfig, known_h
     let lookup = known_hosts_lookup(&resolved).ok_or_else(|| SshFailure::ConfigRejected {
         detail: "ssh -G printed no hostname".to_owned(),
     })?;
+    forget_known_host(services, &lookup, known_hosts).await
+}
+
+/// Remove every key `known_hosts` holds for `lookup`, the name ssh looks
+/// the host up by: `host`, `[host]:port` or a HostKeyAlias, as ssh
+/// prints it when a key changes.
+pub async fn forget_known_host(services: &SshServices, lookup: &str, known_hosts: &Path) -> Result<(), SshFailure> {
+    if lookup.trim().is_empty() {
+        return Err(SshFailure::InvalidDestination {
+            detail: "no host to remove from known_hosts".to_owned(),
+        });
+    }
     let keygen_args: Vec<OsString> = vec![
         "-R".into(),
         lookup.into(),
@@ -109,6 +121,47 @@ mod tests {
         assert_eq!(known_hosts_lookup(default_port).as_deref(), Some("db.example.com"));
 
         assert_eq!(known_hosts_lookup("port 22\n"), None);
+    }
+
+    fn services(dir: &Path) -> SshServices {
+        SshServices {
+            runtime: std::sync::Arc::new(crate::SshRuntimeCell::new(dir.join("runtime"))),
+            ssh_program: "ssh".into(),
+            ssh_keygen_program: "ssh-keygen".into(),
+            askpass_program: "tablepro-askpass".into(),
+            config_file: None,
+        }
+    }
+
+    const KEY: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8g";
+
+    #[tokio::test]
+    async fn forget_known_host_removes_only_that_host() {
+        let dir = tempfile::tempdir().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        std::fs::write(
+            &known_hosts,
+            format!("[db.example.com]:2222 {KEY}\ndb.example.com {KEY}\n"),
+        )
+        .unwrap();
+
+        forget_known_host(&services(dir.path()), "[db.example.com]:2222", &known_hosts)
+            .await
+            .unwrap();
+
+        let left = std::fs::read_to_string(&known_hosts).unwrap();
+        assert!(!left.contains("[db.example.com]:2222"), "{left}");
+        assert!(left.contains(&format!("db.example.com {KEY}")), "{left}");
+    }
+
+    #[tokio::test]
+    async fn forget_known_host_refuses_an_empty_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+
+        let refused = forget_known_host(&services(dir.path()), " ", &known_hosts).await;
+
+        assert!(matches!(refused, Err(SshFailure::InvalidDestination { .. })));
     }
 
     #[test]

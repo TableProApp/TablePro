@@ -38,6 +38,7 @@ pub(crate) struct Script {
     /// What each connect gets, before `connection` from then on.
     pub establish: Vec<FakeEstablish>,
     pub credentials: Option<FakeCredentialSource>,
+    pub ssh: Option<tablepro_ssh::SshServices>,
 }
 
 /// A TablePro over fakes with one window open on the picker and `saved`
@@ -81,6 +82,7 @@ impl TestWindow {
             mut connection,
             establish,
             credentials,
+            ssh,
         } = script;
         connection.probe.always(FakeReply::ok(()));
         connection.list_schemas.always(FakeReply::ok(Vec::new()));
@@ -105,6 +107,9 @@ impl TestWindow {
         .with_hold(hold.clone());
         if let Some(credentials) = credentials {
             services = services.with_credentials(Rc::new(FakeSources(credentials)));
+        }
+        if let Some(ssh) = ssh {
+            services = services.with_ssh(ssh);
         }
         let app = TableProApplication::new(services);
         app.set_application_id(Some(&format!("{}.Test.Window{name}", crate::config::SCHEMA_ID)));

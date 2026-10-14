@@ -9,6 +9,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
+use super::session_signals::SessionSignals;
 use super::{AppServices, WindowLaunch, WindowRegistry, install_app_actions};
 use crate::workspace::CloseDecision;
 
@@ -22,6 +23,8 @@ pub struct TableProApplication {
     pub(super) quit: RefCell<Option<glib::JoinHandle<CloseDecision>>>,
     /// The window the quit is waiting on.
     pub(super) quit_asking: Cell<Option<u32>>,
+    /// Only the primary instance has sessions to tell.
+    pub(super) session_signals: RefCell<Option<SessionSignals>>,
 }
 
 #[glib::object_subclass]
@@ -54,6 +57,8 @@ impl ApplicationImpl for TableProApplication {
         install_app_actions(&app);
         if let Some(services) = self.services.get() {
             services.start();
+            self.session_signals
+                .replace(Some(SessionSignals::start(&services.sessions)));
         }
         app.connect_query_end(|app| {
             app.present_inhibiting_window();
@@ -91,6 +96,7 @@ impl ApplicationImpl for TableProApplication {
 
     fn shutdown(&self) {
         self.windows.clear();
+        drop(self.session_signals.take());
         drop(self.quit.take());
         self.parent_shutdown();
     }

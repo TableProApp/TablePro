@@ -144,6 +144,12 @@ impl AppServices {
             .clone()
     }
 
+    /// The OpenSSH client and its helpers. `None` in a test that brings
+    /// none.
+    pub(crate) fn ssh(&self) -> Option<SshServices> {
+        self.ssh.clone()
+    }
+
     pub(crate) fn hold(&self) -> Rc<dyn ProcessHold> {
         self.hold.clone()
     }
@@ -156,6 +162,12 @@ impl AppServices {
     #[cfg(test)]
     pub(crate) fn with_hold(mut self, hold: Rc<dyn ProcessHold>) -> Self {
         self.hold = hold;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_ssh(mut self, ssh: SshServices) -> Self {
+        self.ssh = Some(ssh);
         self
     }
 

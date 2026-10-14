@@ -56,6 +56,10 @@ impl SessionRegistry {
         self.entries.borrow().get(key).map(|entry| entry.window_id)
     }
 
+    pub fn session(&self, key: &SessionKey) -> Option<Arc<Session>> {
+        self.entries.borrow().get(key)?.session.as_ref()?.upgrade()
+    }
+
     pub fn attached_sessions(&self) -> Vec<(SessionKey, Arc<Session>)> {
         self.entries
             .borrow()
@@ -215,9 +219,15 @@ mod tests {
         claim.attach(&session);
         assert_eq!(registry.live_count(), 1);
         assert_eq!(registry.attached_sessions().len(), 1);
+        assert!(
+            registry
+                .session(&key)
+                .is_some_and(|found| Arc::ptr_eq(&found, &session))
+        );
         drop(claim);
 
         assert_eq!(registry.live_count(), 0);
+        assert!(registry.session(&key).is_none());
         assert_eq!(
             *events.borrow(),
             [
