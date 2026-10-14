@@ -63,7 +63,7 @@ What the application does not do, or does differently from what you might expect
 
 - The 0.2.0 desktop target is Arch Linux / Omarchy under Hyprland as a native Wayland client. Installed package acceptance, including install, upgrade and rollback, remains pending (PKG-1 / [#574](https://github.com/cozyGarage/BookiE/issues/574)); Xvfb results do not count.
 - Native Debian and Ubuntu GNOME desktop acceptance remains open for the later PKG-2 phase, although the packages build and the installed test suite passes in containers.
-- The Flatpak build installs and shows a window on a Debian 13 guest, but Flathub submission and screenshots are not done and the package is not offered (PKG-4, PKG-8).
+- Flatpak build, install and launch checks pass, but Flathub submission and screenshots are not done and the package is not offered (PKG-4, PKG-8).
 - Windows and macOS are not supported; the application is built for Linux with GTK 4 and libadwaita.
 
 ## Known bugs
