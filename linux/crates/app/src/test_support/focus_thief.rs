@@ -16,10 +16,19 @@ pub(crate) struct FocusThief {
 }
 
 impl FocusThief {
+    /// The window has the focus first, so a focus-out it has not seen
+    /// yet cannot land after the theft. Other tests' windows take the
+    /// focus too, so it is asked for until it comes.
     pub(crate) fn take_from(window: &impl IsA<gtk::Window>) -> Result<Self, WaitTimedOut> {
+        let window = window.as_ref();
+        wait_until(WAIT, || {
+            if !window.is_active() {
+                window.present();
+            }
+            window.is_active()
+        })?;
         let thief = gtk::Window::new();
         thief.present();
-        let window = window.as_ref();
         wait_until(WAIT, || !window.is_active())?;
         Ok(Self { window: thief })
     }

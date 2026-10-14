@@ -12,7 +12,7 @@ use super::cell_binding::CellBinding;
 use super::cell_focus::return_focus;
 use super::column_drawing::ColumnDrawing;
 use super::grid_columns::GridColumns;
-use super::inline_editor::InlineEditor;
+use super::inline_editor::{InlineEditor, commit_inline};
 use super::{CellLock, EditSnapshot, GridSink, RowObject};
 
 /// Enough for any number, date or short text.
@@ -336,6 +336,9 @@ impl GridCell {
             .is_some_and(|focus| self.row_holds(&focus));
         if let Some(window) = window.as_ref().filter(|_| held) {
             gtk::prelude::GtkWindowExt::set_focus(window, None::<&gtk::Widget>);
+            // The focus leaving commits a one-line edit, but a field that
+            // lost it to another window already left and hears nothing.
+            commit_inline(self);
         }
         self.cancel_edit();
         let (Some(window), true) = (window, held) else {
@@ -417,7 +420,8 @@ mod tests {
     use crate::services::tracker_edit::TrackerEdit;
     use crate::test_support::{FocusThief, descendants, drain_main_context, wait_until};
     use crate::ui::grid::test_grid::{
-        Grid, WAIT, after_next_frame, flag_rows, focus_in_grid, key, named, page, recorder, two_text_rows,
+        Grid, WAIT, after_next_frame, edited_rows, flag_rows, focus_in_grid, key, named, page, recorder, text,
+        two_text_rows, type_into,
     };
     use crate::ui::grid::{RowObject, build_result_grid};
 
@@ -561,6 +565,26 @@ mod tests {
         after_next_frame(&grid);
 
         assert!(focus_in_grid(&grid), "the focus left the grid");
+    }
+
+    /// The focus leaving commits an edit whose row a page takes out. A
+    /// field whose window lost the focus to another has already left,
+    /// and its edit is committed all the same.
+    #[gtk4::test]
+    fn a_page_that_takes_an_edited_row_from_an_inactive_window_commits_the_edit() {
+        let grid = two_text_rows();
+        let cell = grid.focus(0, 1);
+        type_into(&cell, "typed");
+        let _thief = FocusThief::take_from(&grid.window).expect("another window takes the focus");
+
+        grid.store.splice(0, grid.store.n_items(), &page(3..5));
+        drain_main_context();
+
+        assert!(!cell.is_editing(), "the edit outlived its row");
+        assert_eq!(
+            edited_rows(&grid.take_messages()),
+            vec![(Some(key(1)), 1, text("typed"))]
+        );
     }
 
     #[gtk4::test]

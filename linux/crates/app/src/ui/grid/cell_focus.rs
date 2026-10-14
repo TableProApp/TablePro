@@ -131,7 +131,7 @@ mod tests {
     use tablepro_core::value::Temporal;
 
     use super::edit_row;
-    use crate::test_support::{drain_main_context, first_descendant_of_type, wait_until};
+    use crate::test_support::{FocusThief, drain_main_context, first_descendant_of_type, wait_until};
     use crate::ui::grid::test_grid::{Grid, WAIT, after_next_frame, edited_rows, key, named, text};
     use crate::ui::grid::{GridCell, begin_edit};
 
@@ -245,6 +245,32 @@ mod tests {
         assert!(!name.is_editing());
         assert_eq!(grid.focused_cell().as_ref(), Some(&name), "the focus did not come back");
         assert!(grid.take_messages().is_empty(), "Escape sent the typed text");
+    }
+
+    /// Another window taking the focus is no focus change in this one,
+    /// so the edit stays open, and typing goes on there once it is back.
+    #[gtk4::test]
+    fn an_edit_stays_open_while_another_window_has_the_focus() {
+        let grid = mixed_rows();
+        let name = grid.focus(1, 1);
+        crate::ui::grid::begin_edit(&name);
+        let editor = name.inline_text().expect("an editor");
+        editor.set_text("typed");
+
+        let thief = FocusThief::take_from(&grid.window).expect("another window takes the focus");
+        after_next_frame(&grid);
+        assert!(name.is_editing(), "another window taking the focus ended the edit");
+        thief.give_back(&grid.window);
+        drain_main_context();
+        after_next_frame(&grid);
+
+        assert!(name.is_editing(), "the edit ended when the window came back");
+        assert!(grid.take_messages().is_empty(), "the half-typed value was sent");
+        assert_eq!(
+            gtk::prelude::GtkWindowExt::focus(&grid.window).as_ref(),
+            Some(editor.upcast_ref::<gtk::Widget>()),
+            "the focus left the field"
+        );
     }
 
     #[gtk4::test]

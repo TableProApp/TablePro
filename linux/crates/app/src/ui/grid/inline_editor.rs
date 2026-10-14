@@ -67,6 +67,11 @@ impl InlineEditor {
     }
 }
 
+/// Commit the cell's one-line edit, as its field losing the focus does.
+pub(super) fn commit_inline(cell: &GridCell) {
+    finish_inline(cell, true);
+}
+
 /// End the cell's one-line edit. The field leaves before the commit is
 /// sent, so the redraw the commit causes meets no open editor.
 fn finish_inline(cell: &GridCell, commit: bool) {
@@ -148,10 +153,16 @@ fn connect_commit(cell: &GridCell, text: &gtk::Text) {
 
     let focus = gtk::EventControllerFocus::new();
     let weak = cell.downgrade();
-    focus.connect_leave(move |_| {
+    focus.connect_leave(move |focus| {
         let Some(cell) = weak.upgrade() else {
             return;
         };
+        // Another window taking the focus leaves it in the field, so the
+        // edit stays open for when the window is back. A focus moving
+        // within the window is unset while the leave runs.
+        if focus.widget().is_some_and(|field| holds_window_focus(&field)) {
+            return;
+        }
         if composing.get() {
             commit_when_composed.set(true);
             return;
@@ -159,6 +170,14 @@ fn connect_commit(cell: &GridCell, text: &gtk::Text) {
         finish_inline(&cell, true);
     });
     text.add_controller(focus);
+}
+
+fn holds_window_focus(widget: &gtk::Widget) -> bool {
+    widget
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window))
+        .is_some_and(|focus| focus == *widget || focus.is_ancestor(widget))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
