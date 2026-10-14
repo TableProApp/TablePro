@@ -116,4 +116,4 @@ The classifier and gate queue are shipped. Nothing else in this proposal is appr
 
 ## What this does not change
 
-The gate rules (Forgejo and GitHub both green on the same head), the policy and audit seam, and the privacy stance stay as they are.
+The workflow rules in [AGENTS.md](../../AGENTS.md) and the [validation playbook](../validation-playbook.md) continue to govern; this proposal does not change them. The policy and audit seam and the privacy stance also remain unchanged.
