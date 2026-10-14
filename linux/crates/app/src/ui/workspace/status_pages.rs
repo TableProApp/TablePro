@@ -27,6 +27,8 @@ impl WorkspaceModel {
     pub(super) fn on_show_history(&mut self) {
         let dialog = HistoryDialog::new(HistoryDialogInit {
             history: self.history.clone(),
+            connections: self.storage.connections().clone(),
+            preferred_connection: self.context.active.metadata().map(|metadata| metadata.id),
             tasks: self.tasks.clone(),
         });
         let input = self.input.clone();

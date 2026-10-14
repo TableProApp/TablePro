@@ -9,7 +9,6 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 use tablepro_storage::query_history::HistoryQuery;
-use uuid::Uuid;
 
 use super::DialogParts;
 use super::history_paging::HistoryPaging;
@@ -26,8 +25,6 @@ pub struct HistoryDialog {
     pub reset_filters_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub connection_row: TemplateChild<adw::ComboRow>,
-    #[template_child]
-    pub connection_labels: TemplateChild<gtk::StringList>,
     #[template_child]
     pub status_row: TemplateChild<adw::ComboRow>,
     #[template_child]
@@ -57,8 +54,6 @@ pub struct HistoryDialog {
     pub(super) parts: OnceCell<DialogParts>,
     /// The search the rows on screen answer.
     pub(super) query: RefCell<HistoryQuery>,
-    /// The connection filter's ids, after "All Connections".
-    pub(super) connection_ids: RefCell<Vec<Uuid>>,
     pub(super) paging: RefCell<HistoryPaging>,
 }
 

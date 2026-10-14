@@ -33,13 +33,6 @@
                               <object class="AdwComboRow" id="connection_row">
                                 <property name="title" translatable="yes">Connection</property>
                                 <property name="use-markup">false</property>
-                                <property name="model">
-                                  <object class="GtkStringList" id="connection_labels">
-                                    <items>
-                                      <item translatable="yes">All Connections</item>
-                                    </items>
-                                  </object>
-                                </property>
                               </object>
                             </child>
                             <child>

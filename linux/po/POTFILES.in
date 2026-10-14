@@ -258,6 +258,7 @@ crates/app/src/ui/grid/tab_grid_context.rs
 crates/app/src/ui/grid/test_grid.rs
 crates/app/src/ui/grid/toggle_cell.rs
 crates/app/src/ui/handler_guard.rs
+crates/app/src/ui/history_dialog/connection_filter.rs
 crates/app/src/ui/history_dialog/history_actions.rs
 crates/app/src/ui/history_dialog/history_entry_object.rs
 crates/app/src/ui/history_dialog/history_entry_object_imp.rs

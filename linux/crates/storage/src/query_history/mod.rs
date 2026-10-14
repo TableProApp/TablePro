@@ -1,5 +1,6 @@
 mod entry;
 mod export;
+mod history_connection;
 mod history_cursor;
 mod history_page;
 mod history_query;
@@ -23,6 +24,7 @@ use crate::paths::StoragePaths;
 use crate::unix_time::{from_unix, to_unix};
 
 pub use entry::Entry;
+pub use history_connection::HistoryConnection;
 pub use history_cursor::HistoryCursor;
 pub use history_page::{HistoryPage, HistoryPageRequest, MAX_PAGE_SIZE};
 pub use history_query::HistoryQuery;
@@ -41,6 +43,10 @@ const MAX_QUERY_BYTES: usize = 1024 * 1024;
 /// a convenience, not an archive, and an unbounded table makes every
 /// search slower for everyone.
 const MAX_UNPINNED_ENTRIES: i64 = 100_000;
+
+/// Ids per statement when a list of them is bound, well under SQLite's
+/// limit on parameters.
+const IDS_PER_STATEMENT: usize = 500;
 
 const ENTRY_COLUMNS: &str = "h.id, h.query, h.driver_id, h.connection_id, h.connection_name, h.executed_at, \
      h.duration_ms, h.rows_affected, h.success, h.cancelled, h.pinned, h.error";
@@ -235,26 +241,60 @@ impl QueryHistory {
         Ok(())
     }
 
-    pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM history WHERE id = ?")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
+    /// Delete the entries and hand back what they held, so the delete
+    /// can be undone with `restore`.
+    pub async fn delete_returning(&self, ids: &[i64]) -> Result<Vec<Entry>, StorageError> {
+        let mut transaction = self.pool.begin().await?;
+        let mut deleted = Vec::with_capacity(ids.len());
+        for chunk in ids.chunks(IDS_PER_STATEMENT) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!(
+                "DELETE FROM history WHERE id IN ({placeholders}) RETURNING id, query, driver_id, connection_id, \
+                 connection_name, executed_at, duration_ms, rows_affected, success, cancelled, pinned, error"
+            );
+            let mut statement = sqlx::query(AssertSqlSafe(sql));
+            for id in chunk {
+                statement = statement.bind(id);
+            }
+            for row in statement.fetch_all(&mut *transaction).await? {
+                deleted.push(Self::row_to_entry(row)?);
+            }
+        }
+        transaction.commit().await?;
+        deleted.sort_by_key(|entry| entry.id);
+        Ok(deleted)
     }
 
-    pub async fn delete_many(&self, ids: &[i64]) -> Result<usize, StorageError> {
-        if ids.is_empty() {
-            return Ok(0);
+    /// Put deleted entries back under their own ids, pinned or not as
+    /// they were. The insert triggers index them again.
+    pub async fn restore(&self, entries: &[Entry]) -> Result<(), StorageError> {
+        let mut transaction = self.pool.begin().await?;
+        for entry in entries {
+            sqlx::query(
+                "INSERT INTO history (
+                     id, query, query_folded, driver_id, connection_id, connection_name,
+                     executed_at, duration_ms, rows_affected, success, cancelled, pinned, error
+                 )
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(entry.id)
+            .bind(&entry.query)
+            .bind(fold(&entry.query))
+            .bind(&entry.driver_id)
+            .bind(entry.connection_id.to_string())
+            .bind(&entry.connection_name)
+            .bind(to_unix(entry.executed_at))
+            .bind(entry.duration_ms)
+            .bind(entry.rows_affected)
+            .bind(i64::from(entry.success))
+            .bind(i64::from(entry.cancelled))
+            .bind(i64::from(entry.pinned))
+            .bind(&entry.error)
+            .execute(&mut *transaction)
+            .await?;
         }
-        let placeholders = vec!["?"; ids.len()].join(",");
-        let sql = format!("DELETE FROM history WHERE id IN ({placeholders})");
-        let mut q = sqlx::query(AssertSqlSafe(sql.as_str()));
-        for id in ids {
-            q = q.bind(id);
-        }
-        let affected = q.execute(&self.pool).await?.rows_affected();
-        Ok(affected as usize)
+        transaction.commit().await?;
+        Ok(())
     }
 
     pub async fn clear_all(&self) -> Result<usize, StorageError> {
@@ -330,21 +370,26 @@ impl QueryHistory {
         Ok(removed)
     }
 
-    pub async fn known_connections(&self) -> Result<Vec<(Uuid, String)>, StorageError> {
-        let rows = sqlx::query(
-            "SELECT DISTINCT connection_id, connection_name FROM history ORDER BY connection_name COLLATE NOCASE",
+    /// Every connection the history holds entries for, under the name
+    /// of its latest run, so a renamed connection is listed once.
+    pub async fn connections_with_history(&self) -> Result<Vec<HistoryConnection>, StorageError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT connection_id, connection_name FROM (
+                 SELECT connection_id, connection_name,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY connection_id ORDER BY executed_at DESC, id DESC
+                        ) AS recency
+                 FROM history
+             )
+             WHERE recency = 1
+             ORDER BY connection_name COLLATE NOCASE, connection_id",
         )
         .fetch_all(&self.pool)
         .await?;
-        let mut out = Vec::with_capacity(rows.len());
-        for row in rows {
-            let id_str: String = row.try_get("connection_id")?;
-            let name: String = row.try_get("connection_name")?;
-            if let Ok(id) = Uuid::parse_str(&id_str) {
-                out.push((id, name));
-            }
-        }
-        Ok(out)
+        Ok(rows
+            .into_iter()
+            .filter_map(|(id, name)| Uuid::parse_str(&id).ok().map(|id| HistoryConnection { id, name }))
+            .collect())
     }
 
     pub async fn fetch_by_ids(&self, ids: &[i64]) -> Result<Vec<Entry>, StorageError> {
@@ -930,5 +975,77 @@ mod tests {
             ),
             ["SELECT ok"]
         );
+    }
+
+    #[tokio::test]
+    async fn connections_with_history_uses_latest_name() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let (renamed, other) = (Uuid::new_v4(), Uuid::new_v4());
+        let now = SystemTime::now();
+        for (connection, name, ago) in [
+            (renamed, "Old name", 300),
+            (renamed, "New name", 10),
+            // Recorded last but ran first, as a restore leaves it.
+            (renamed, "Oldest name", 900),
+            (other, "beta", 60),
+        ] {
+            let mut run = entry("SELECT 1", connection);
+            run.connection_name = name.to_owned();
+            run.executed_at = now - Duration::from_secs(ago);
+            history.record(run).await.expect("record");
+        }
+
+        let connections = history.connections_with_history().await.expect("list");
+
+        assert_eq!(
+            connections,
+            vec![
+                HistoryConnection {
+                    id: other,
+                    name: "beta".to_owned()
+                },
+                HistoryConnection {
+                    id: renamed,
+                    name: "New name".to_owned()
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_returning_then_restore_roundtrips_entries_and_search() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let mut ids = Vec::new();
+        for query in ["SELECT widgets 1", "SELECT widgets 2", "SELECT gadgets"] {
+            let mut run = entry(query, Uuid::new_v4());
+            run.outcome = Outcome::Error("no such table".to_owned());
+            ids.push(history.record(run).await.expect("record"));
+        }
+        history.set_pinned(ids[0], true).await.expect("pin");
+        let before = all(&history).await;
+
+        let deleted = history
+            .delete_returning(&[ids[0], ids[2], 9_999])
+            .await
+            .expect("delete");
+
+        assert_eq!(
+            deleted.iter().map(|entry| entry.id).collect::<Vec<_>>(),
+            vec![ids[0], ids[2]]
+        );
+        assert_eq!(matching(&history, "widgets").await, vec!["SELECT widgets 2"]);
+        assert!(matching(&history, "gadg").await.is_empty());
+
+        history.restore(&deleted).await.expect("restore");
+
+        assert_eq!(all(&history).await, before);
+        assert_eq!(matching(&history, "widgets").await.len(), 2);
+        assert_eq!(matching(&history, "gadg").await, vec!["SELECT gadgets"]);
+        let integrity = sqlx::query("INSERT INTO history_search(history_search) VALUES('integrity-check')")
+            .execute(&history.pool)
+            .await;
+        assert!(integrity.is_ok(), "{integrity:?}");
     }
 }

@@ -9,7 +9,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_storage::query_history::{NewEntry, Outcome};
-use tablepro_storage::{QueryHistory, StoragePaths};
+use tablepro_storage::{ConnectionStore, QueryHistory, SavedConnection, StoragePaths};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -26,6 +26,7 @@ pub(super) struct Harness {
     pub runtime: AppRuntime,
     pub service: HistoryService,
     pub store: QueryHistory,
+    pub connections: ConnectionStore,
     pub window: adw::Window,
     _root: tempfile::TempDir,
 }
@@ -40,6 +41,7 @@ impl Harness {
             retention_days: watch::channel(0).1,
             save: watch::channel(true).1,
         };
+        let connections = ConnectionStore::new(&paths);
         let service = HistoryService::start(paths, preferences, &runtime.tasks());
         let availability = service.availability();
         wait_until(WAIT, || availability.borrow().is_ready()).expect("the history to open");
@@ -51,6 +53,7 @@ impl Harness {
             runtime,
             service,
             store,
+            connections,
             window,
             _root: root,
         }
@@ -81,18 +84,61 @@ impl Harness {
         block_on(&self.runtime, self.store.set_pinned(id, true)).expect("pin");
     }
 
+    pub fn save_connection(&self, id: Uuid, name: &str) {
+        self.connections
+            .upsert_blocking(SavedConnection {
+                id,
+                name: name.to_owned(),
+                driver_id: "postgres".to_owned(),
+                host: "db".to_owned(),
+                port: 5432,
+                database: "app".to_owned(),
+                username: "postgres".to_owned(),
+                tls: tablepro_core::TlsConfig::verify_full(),
+                read_only: false,
+                auth_mode: tablepro_core::AuthMode::Password,
+                ssh: None,
+                last_opened_at: None,
+                color: None,
+                group: None,
+            })
+            .expect("save the connection");
+    }
+
     pub fn dialog(&self) -> HistoryDialog {
+        self.dialog_for(None)
+    }
+
+    pub fn dialog_for(&self, preferred_connection: Option<Uuid>) -> HistoryDialog {
         HistoryDialog::new(HistoryDialogInit {
             history: self.service.clone(),
+            connections: self.connections.clone(),
+            preferred_connection,
             tasks: self.runtime.tasks(),
         })
     }
 
     /// A dialog on the test window, so its list view lays out rows.
     pub fn presented_dialog(&self) -> HistoryDialog {
-        let dialog = self.dialog();
+        self.present(self.dialog())
+    }
+
+    pub fn present(&self, dialog: HistoryDialog) -> HistoryDialog {
         dialog.present(Some(&self.window));
         dialog
+    }
+
+    pub fn stored_queries(&self) -> Vec<String> {
+        block_on(
+            &self.runtime,
+            self.store
+                .search_page(&HistoryQuery::default(), HistoryPageRequest::first(100)),
+        )
+        .expect("search")
+        .entries
+        .into_iter()
+        .map(|entry| entry.query)
+        .collect()
     }
 }
 
@@ -276,4 +322,144 @@ fn row_context_menu_open_emits_output_for_clicked_id() {
         *chosen.borrow(),
         [(QueryDestination::NewTab, "SELECT first".to_owned())]
     );
+}
+
+pub(super) fn filter_labels(dialog: &HistoryDialog) -> Vec<String> {
+    let Some(parts) = dialog.imp().parts.get() else {
+        return Vec::new();
+    };
+    let labels = parts.connection_filter.labels();
+    (0..labels.n_items())
+        .filter_map(|position| labels.string(position))
+        .map(String::from)
+        .collect()
+}
+
+/// The text of the toast on screen, and its button.
+pub(super) fn toast(window: &adw::Window, text: &str) -> Option<gtk::Button> {
+    let toast = descendants(window)
+        .into_iter()
+        .find(|widget| widget.type_().name() == "AdwToastWidget" && has_label(widget, text))?;
+    descendants(&toast)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| button.label().is_some_and(|label| label.contains("Undo")))
+}
+
+fn has_label(root: &gtk::Widget, text: &str) -> bool {
+    descendants(root)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .any(|label| label.label() == text)
+}
+
+#[gtk4::test]
+fn filter_lists_saved_connection_without_live_session() {
+    let harness = Harness::new();
+    let (saved, unsaved) = (Uuid::new_v4(), Uuid::new_v4());
+    harness.record_on("SELECT 1", saved, "Warehouse (old name)");
+    harness.record_on("SELECT 2", unsaved, "Scratch");
+    harness.save_connection(saved, "Warehouse");
+
+    let dialog = harness.dialog();
+
+    wait_until(WAIT, || filter_labels(&dialog).len() == 3).expect("the connections");
+    assert_eq!(filter_labels(&dialog), ["All Connections", "Scratch", "Warehouse"]);
+    let imp = dialog.imp();
+    imp.connection_row.set_selected(2);
+    wait_until(WAIT, || entries(&dialog) == ["SELECT 1"]).expect("the saved connection's queries");
+}
+
+#[gtk4::test]
+fn filter_defaults_to_presenting_window_connection() {
+    let harness = Harness::new();
+    let (other, presenting) = (Uuid::new_v4(), Uuid::new_v4());
+    harness.record_on("SELECT other", other, "Other");
+    harness.record_on("SELECT presenting", presenting, "Presenting");
+
+    let dialog = harness.dialog_for(Some(presenting));
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT presenting"]).expect("the presenting connection's queries");
+    let imp = dialog.imp();
+    let selected = imp.connection_row.selected();
+    assert_eq!(filter_labels(&dialog)[selected as usize], "Presenting");
+
+    let without_history = harness.dialog_for(Some(Uuid::new_v4()));
+    wait_until(WAIT, || entries(&without_history).len() == 2).expect("every query");
+    assert_eq!(without_history.imp().connection_row.selected(), 0);
+}
+
+#[gtk4::test]
+fn delete_undo_restores_row() {
+    let harness = Harness::new();
+    harness.record("SELECT kept");
+    let gone = harness.record("SELECT gone");
+    let dialog = harness.presented_dialog();
+    wait_until(WAIT, || entries(&dialog).len() == 2).expect("the first page");
+
+    dialog
+        .activate_action("history.delete", Some(&gone.to_variant()))
+        .expect("the action");
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT kept"]).expect("the row to go");
+    assert_eq!(harness.stored_queries(), ["SELECT kept"]);
+    wait_until(WAIT, || toast(&harness.window, "1 query deleted").is_some()).expect("a toast");
+    toast(&harness.window, "1 query deleted").expect("Undo").emit_clicked();
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT gone", "SELECT kept"]).expect("the row back");
+    assert_eq!(harness.stored_queries(), ["SELECT gone", "SELECT kept"]);
+    let found = block_on(
+        &harness.runtime,
+        harness
+            .store
+            .search_page(&HistoryQuery::from_input("gone"), HistoryPageRequest::first(10)),
+    )
+    .expect("search");
+    assert_eq!(found.entries.len(), 1, "the restored row is not searchable");
+    assert_eq!(found.entries[0].id, gone);
+}
+
+#[gtk4::test]
+fn bulk_delete_shows_toast_not_alert() {
+    let harness = Harness::new();
+    for query in ["SELECT 1", "SELECT 2", "SELECT 3"] {
+        harness.record(query);
+    }
+    let dialog = harness.presented_dialog();
+    wait_until(WAIT, || entries(&dialog).len() == 3).expect("the first page");
+    dialog.set_selecting(true);
+    let parts = dialog.imp().parts.get().expect("parts");
+    parts.multiple.select_item(0, false);
+    parts.multiple.select_item(2, false);
+
+    dialog
+        .activate_action("history.delete-selected", None)
+        .expect("the action");
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT 2"]).expect("the selected rows to go");
+    assert!(
+        crate::workspace::visible_alert(&harness.window).is_none(),
+        "a bulk delete asked first"
+    );
+    wait_until(WAIT, || toast(&harness.window, "2 queries deleted").is_some()).expect("a toast");
+}
+
+#[gtk4::test]
+fn connection_named_with_ampersand_renders_in_filter() {
+    let harness = Harness::new();
+    let connection = Uuid::new_v4();
+    let name = "R&D <prod>";
+    harness.record_on("SELECT 1", connection, name);
+
+    let dialog = harness.dialog_for(Some(connection));
+
+    wait_until(WAIT, || filter_labels(&dialog).len() == 2).expect("the connections");
+    assert_eq!(filter_labels(&dialog)[1], name);
+    let row = dialog.imp().connection_row.get();
+    assert!(!row.uses_markup(), "the row reads its text as markup");
+    let selected = row
+        .selected_item()
+        .and_downcast::<gtk::StringObject>()
+        .map(|item| item.string().to_string());
+    assert_eq!(selected.as_deref(), Some(name));
 }

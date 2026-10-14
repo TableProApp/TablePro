@@ -1,6 +1,7 @@
 //! The query history: a searchable list of what ran, read a page at a
 //! time off the GTK thread.
 
+mod connection_filter;
 mod history_actions;
 mod history_entry_object;
 mod history_entry_object_imp;
@@ -22,8 +23,11 @@ use gtk4::{gdk, gio, glib, graphene};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::{TaskFailure, Tasks};
-use tablepro_storage::query_history::{HistoryPage, HistoryPageRequest, HistoryQuery, StatusFilter};
-use tablepro_storage::{QueryHistory, StorageError};
+use tablepro_storage::query_history::{
+    Entry, HistoryConnection, HistoryPage, HistoryPageRequest, HistoryQuery, StatusFilter,
+};
+use tablepro_storage::{ConnectionStore, QueryHistory, SavedConnection, StorageError};
+use uuid::Uuid;
 
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::i18n::{gettext, ngettext_f};
@@ -32,6 +36,7 @@ use crate::services::history_service::HistoryService;
 use crate::ui::format::plural_count;
 use history_export::{ExportKind, history_export_failure_text, save_export, show_export_failure};
 
+use connection_filter::ConnectionFilterModel;
 pub(crate) use history_entry_object::HistoryEntryObject;
 use history_row::HistoryRow;
 
@@ -47,6 +52,10 @@ glib::wrapper! {
 
 pub(crate) struct HistoryDialogInit {
     pub history: HistoryService,
+    /// Where the filter reads the connections' current names.
+    pub connections: ConnectionStore,
+    /// The presenting window's connection, which the filter starts on.
+    pub preferred_connection: Option<Uuid>,
     pub tasks: Tasks,
 }
 
@@ -69,6 +78,9 @@ impl QueryDestination {
 /// What the dialog is built with and keeps for its life.
 pub(super) struct DialogParts {
     history: Option<QueryHistory>,
+    connections: ConnectionStore,
+    preferred_connection: Option<Uuid>,
+    connection_filter: ConnectionFilterModel,
     tasks: Tasks,
     entries: gio::ListStore,
     plain: gtk::NoSelection,
@@ -88,8 +100,13 @@ impl HistoryDialog {
         // Parented now: a popover menu finds its actions through the
         // parent it had when it was set up.
         menu.set_parent(&imp.list_view.get());
+        let connection_filter = ConnectionFilterModel::new();
+        imp.connection_row.set_model(Some(connection_filter.labels()));
         let _ = imp.parts.set(DialogParts {
             history: init.history.store(),
+            connections: init.connections,
+            preferred_connection: init.preferred_connection,
+            connection_filter,
             tasks: init.tasks,
             entries,
             plain: gtk::NoSelection::new(Some(sorted.clone())),
@@ -97,9 +114,7 @@ impl HistoryDialog {
             menu,
         });
         dialog.setup_list();
-        dialog.connect_filters();
         dialog.load_connections();
-        dialog.refresh();
         dialog
     }
 
@@ -448,46 +463,74 @@ impl HistoryDialog {
         );
     }
 
+    /// Delete at once and offer Undo, rather than ask first: the entries
+    /// come back as they were.
     fn delete_entries(&self, ids: Vec<i64>) {
         if ids.is_empty() {
             return;
         }
-        self.change_then_refresh("delete", move |history| async move {
-            history.delete_many(&ids).await.map(drop)
+        let Some((history, tasks)) = self.storage() else {
+            return;
+        };
+        let dialog = self.downgrade();
+        drop(spawn_and_deliver(
+            &tasks,
+            async move { history.delete_returning(&ids).await },
+            move |deleted| {
+                let Some(dialog) = dialog.upgrade() else {
+                    return;
+                };
+                match deleted {
+                    Ok(Ok(entries)) => dialog.entries_deleted(entries),
+                    Ok(Err(error)) => {
+                        tracing::warn!(%error, "could not delete from the query history");
+                        dialog.add_toast(&gettext("The queries could not be deleted."));
+                    }
+                    Err(failure) => tracing::warn!(%failure, "the query history delete failed"),
+                }
+            },
+        ));
+    }
+
+    fn entries_deleted(&self, entries: Vec<Entry>) {
+        let imp = self.imp();
+        let Some(parts) = imp.parts.get() else {
+            return;
+        };
+        if entries.is_empty() {
+            return;
+        }
+        let gone: HashSet<i64> = entries.iter().map(|entry| entry.id).collect();
+        parts.entries.retain(|object| {
+            object
+                .downcast_ref::<HistoryEntryObject>()
+                .and_then(HistoryEntryObject::id)
+                .is_none_or(|id| !gone.contains(&id))
         });
+        self.selection_changed();
+        self.show_results();
+
+        let count = entries.len() as u64;
+        let toast = adw::Toast::new(&ngettext_f(
+            "{count} query deleted",
+            "{count} queries deleted",
+            plural_count(count),
+            &[("count", &count.to_string())],
+        ));
+        toast.set_use_markup(false);
+        toast.set_button_label(Some(&gettext("_Undo")));
+        let dialog = self.downgrade();
+        toast.connect_button_clicked(move |_| {
+            if let Some(dialog) = dialog.upgrade() {
+                let entries = entries.clone();
+                dialog.change_then_refresh("restore", move |history| async move { history.restore(&entries).await });
+            }
+        });
+        imp.toast_overlay.add_toast(toast);
     }
 
     fn delete_selected(&self) {
-        let ids = self.selected_ids();
-        let count = ids.len();
-        if count == 0 {
-            return;
-        }
-        let alert = adw::AlertDialog::new(
-            Some(&ngettext_f(
-                "Delete {n} Query?",
-                "Delete {n} Queries?",
-                plural_count(count as u64),
-                &[("n", &count.to_string())],
-            )),
-            Some(&gettext(
-                "Selected entries will be permanently removed from history, including any pinned ones.",
-            )),
-        );
-        alert.add_response("cancel", &gettext("Cancel"));
-        alert.add_response("delete", &gettext("Delete"));
-        alert.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
-        alert.set_default_response(Some("cancel"));
-        alert.set_close_response("cancel");
-        let dialog = self.downgrade();
-        alert.connect_response(None, move |_, response| {
-            if response == "delete"
-                && let Some(dialog) = dialog.upgrade()
-            {
-                dialog.delete_entries(ids.clone());
-            }
-        });
-        alert.present(Some(self));
+        self.delete_entries(self.selected_ids());
     }
 
     fn confirm_clear_all(&self) {
@@ -552,43 +595,85 @@ impl HistoryDialog {
     }
 
     /// List every connection the history holds entries for, so one that
-    /// is not open can still be picked.
+    /// is not open can still be picked, then read the first page with
+    /// the filter on the presenting window's connection.
     fn load_connections(&self) {
-        let Some((history, tasks)) = self.storage() else {
+        let Some(parts) = self.imp().parts.get() else {
             return;
         };
+        let Some(history) = parts.history.clone() else {
+            self.connect_filters();
+            self.show_unavailable();
+            return;
+        };
+        let (store, tasks) = (parts.connections.clone(), parts.tasks.clone());
+        let blocking = tasks.clone();
         let dialog = self.downgrade();
         drop(spawn_and_deliver(
             &tasks,
-            async move { history.known_connections().await },
-            move |listed| {
+            async move {
+                let listed = history.connections_with_history().await;
+                let saved = blocking.spawn_blocking_task(move || store.load_blocking()).await;
+                (listed, saved)
+            },
+            move |loaded| {
                 let Some(dialog) = dialog.upgrade() else {
                     return;
                 };
-                match listed {
-                    Ok(Ok(connections)) => {
-                        let imp = dialog.imp();
-                        for (_, name) in &connections {
-                            imp.connection_labels.append(name);
-                        }
-                        imp.connection_ids
-                            .replace(connections.into_iter().map(|(id, _)| id).collect());
-                    }
-                    Ok(Err(error)) => tracing::warn!(%error, "could not list the connections in the history"),
+                match loaded {
+                    Ok((listed, saved)) => dialog.connections_loaded(listed, saved),
                     Err(failure) => tracing::warn!(%failure, "the history connections task failed"),
                 }
+                dialog.connect_filters();
+                dialog.refresh();
             },
         ));
+    }
+
+    fn connections_loaded(
+        &self,
+        listed: Result<Vec<HistoryConnection>, StorageError>,
+        saved: Result<Result<std::sync::Arc<[SavedConnection]>, StorageError>, TaskFailure>,
+    ) {
+        let imp = self.imp();
+        let Some(parts) = imp.parts.get() else {
+            return;
+        };
+        let listed = match listed {
+            Ok(listed) => listed,
+            Err(error) => {
+                tracing::warn!(%error, "could not list the connections in the history");
+                return;
+            }
+        };
+        // Without the saved list the history's own names still serve.
+        let saved = match saved {
+            Ok(Ok(saved)) => saved,
+            Ok(Err(error)) => {
+                tracing::warn!(%error, "could not read the saved connections for the history filter");
+                std::sync::Arc::from([])
+            }
+            Err(failure) => {
+                tracing::warn!(%failure, "the saved connections read failed");
+                std::sync::Arc::from([])
+            }
+        };
+        parts.connection_filter.fill(&listed, &saved);
+        let preferred = parts
+            .preferred_connection
+            .and_then(|id| parts.connection_filter.position_of(id));
+        if let Some(position) = preferred {
+            imp.connection_row.set_selected(position);
+        }
     }
 
     fn query_from_filters(&self) -> HistoryQuery {
         let imp = self.imp();
         let mut query = HistoryQuery::from_input(&imp.search_entry.text());
         query.connection = imp
-            .connection_row
-            .selected()
-            .checked_sub(1)
-            .and_then(|index| imp.connection_ids.borrow().get(index as usize).copied());
+            .parts
+            .get()
+            .and_then(|parts| parts.connection_filter.id_at(imp.connection_row.selected()));
         query.status = match imp.status_row.selected() {
             1 => StatusFilter::Succeeded,
             2 => StatusFilter::Failed,
