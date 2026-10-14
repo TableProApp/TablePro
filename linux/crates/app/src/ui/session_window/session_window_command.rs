@@ -1,3 +1,4 @@
+use tablepro_core::credentials::SecretKind;
 use tablepro_session::PendingSession;
 use tablepro_session::connect::AttemptGeneration;
 use tablepro_storage::SavedConnection;
@@ -38,10 +39,17 @@ pub(crate) enum AttemptError {
 pub(crate) struct ConnectFailure {
     pub message: String,
     pub remedy: Option<TlsRemedy>,
+    /// The secret the server refused, which the user can type again in
+    /// place of the keyring's copy.
+    pub reenter: Option<SecretKind>,
 }
 
 impl ConnectFailure {
     pub(crate) fn new(message: String) -> Self {
-        Self { message, remedy: None }
+        Self {
+            message,
+            remedy: None,
+            reenter: None,
+        }
     }
 }

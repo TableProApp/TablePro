@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Password prompt on connect when the keyring holds no password, with a choice to remember it.
+- Password prompt on connect when the keyring holds no password or the server refused it, with a choice to remember it.
 - SSH tunnels through the system OpenSSH client, with your agent, host aliases and jump hosts, confirming new host keys.
 - Security group in the connect dialog: encryption mode, CA certificate, client certificate and TLS server name.
 - SQLite file chooser in the connect dialog, with New Database to create a file.

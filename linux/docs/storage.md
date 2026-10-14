@@ -72,6 +72,28 @@ Notes:
 - With no Secret Service at all the store reports `ServiceUnavailable` and the UI prompts at connect time. The app never writes passwords to a plain file as a fallback.
 - Never log a password, ever. Wrap them in `secrecy::SecretString` from the `secrecy` crate before they leave the storage layer.
 
+### When the keyring cannot supply a secret
+
+`KeyringCredentials` reads each secret at every connect. What happens when
+it cannot depends on whether someone is there to answer:
+
+- A connect the user started, and the connect dialog's Test, run attended.
+  A secret that is not stored, or that a locked or missing keyring cannot
+  give, is asked for in a dialog over the window. A missing Secret Service
+  or portal offers no Remember switch, since nothing could keep it.
+- An SSH key with no stored passphrase is left to ssh, which asks through
+  the same prompts at the hop that needs it.
+- A secret typed with Remember on is stored only once the login it was
+  typed for works. A store the keyring refuses is reported in a toast, and
+  the connection stays open.
+- A login the server refused offers Enter Password on the failed page. That
+  retry passes `CredentialDemand::reenter`, which asks again without reading
+  the keyring's copy, the one just refused.
+- Background reconnects run unattended and never ask. A missing secret parks
+  the session until the user presses Retry, which runs attended.
+- A typed secret lives in a `SecretString`, and the prompt clears its rows
+  as it hands the answer over.
+
 ## Where files go
 
 `tablepro_storage::StoragePaths` resolves every directory once at startup

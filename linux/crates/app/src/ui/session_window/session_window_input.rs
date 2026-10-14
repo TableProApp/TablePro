@@ -1,3 +1,4 @@
+use tablepro_core::credentials::SecretKind;
 use tablepro_storage::{ConnectionColor, SavedConnection};
 use uuid::Uuid;
 
@@ -26,6 +27,9 @@ pub(crate) enum SessionWindowInput {
     /// Connect again from where the failed connect came from, reading
     /// the keyring again.
     RetryConnect,
+    /// Connect a saved connection whose login was refused again, asking
+    /// for this secret instead of reading the keyring's copy.
+    RetryWithNewSecret(SecretKind),
     /// Open the connect dialog on a connection that failed to connect,
     /// with the focus on the setting that fixes it.
     EditConnection,

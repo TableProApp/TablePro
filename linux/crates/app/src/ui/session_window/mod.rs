@@ -10,6 +10,7 @@ mod connections;
 mod imp;
 mod picker_page;
 mod resolve_file_identity;
+mod secret_retry;
 mod session_page;
 mod session_teardown;
 mod session_window_command;
@@ -36,7 +37,7 @@ use tablepro_session::{
     ClaimError, ConnectError, ConnectIntent, ConnectSource, MonitorSignal, PendingSession, Session, SessionClaim,
     SessionKey,
 };
-use tablepro_storage::SavedConnection;
+use tablepro_storage::{CredentialDemand, SavedConnection};
 
 use self::connect_failed_page::ConnectFailedPage;
 use self::connecting_page::ConnectingPage;
@@ -246,6 +247,7 @@ impl SessionWindow {
             SessionWindowInput::DialogClosed => drop(self.imp().dialog.take()),
             SessionWindowInput::CancelConnect => self.on_cancel_connect(),
             SessionWindowInput::RetryConnect => self.on_retry_connect(),
+            SessionWindowInput::RetryWithNewSecret(kind) => self.on_retry_with_new_secret(kind),
             SessionWindowInput::EditConnection => self.on_edit_connection(),
             SessionWindowInput::Disconnect => self.on_disconnect(),
             SessionWindowInput::TeardownApproved => {
@@ -312,7 +314,13 @@ impl SessionWindow {
     }
 
     fn show_toast(&self, message: &str) {
-        self.imp().toast_overlay.add_toast(adw::Toast::new(message));
+        self.add_toast(adw::Toast::new(message));
+    }
+
+    fn add_toast(&self, toast: adw::Toast) {
+        #[cfg(test)]
+        self.imp().toasts.borrow_mut().push(toast.clone());
+        self.imp().toast_overlay.add_toast(toast);
     }
 
     /// Move to `page`. The page left behind drops with what it held,
@@ -327,9 +335,14 @@ impl SessionWindow {
                 imp.picker.get().map(|picker| picker.clone().upcast())
             }
             SessionPage::Connecting { source, .. } => Some(ConnectingPage::new(&source_name(source)).upcast()),
-            SessionPage::ConnectFailed { source, failure, .. } => {
-                Some(ConnectFailedPage::new(&failure.message, edit_label(source, failure).as_deref()).upcast())
-            }
+            SessionPage::ConnectFailed { source, failure, .. } => Some(
+                ConnectFailedPage::new(
+                    &failure.message,
+                    edit_label(source, failure).as_deref(),
+                    failure.reenter,
+                )
+                .upcast(),
+            ),
             SessionPage::Workspace { workspace, .. } => Some(workspace.clone().upcast()),
         };
         let editable = match &page {
@@ -577,13 +590,17 @@ impl SessionWindow {
     }
 
     fn begin_connect(&self, claim: SessionClaim, source: ConnectSource) {
+        self.begin_connect_with(claim, source, CredentialDemand::default());
+    }
+
+    fn begin_connect_with(&self, claim: SessionClaim, source: ConnectSource, demand: CredentialDemand) {
         let Some(state) = self.state() else {
             return;
         };
         let ticket = self.imp().attempts.begin();
         let generation = ticket.generation();
         let cancel = ticket.cancel().clone();
-        let work = connect_work(state, &source, cancel);
+        let work = connect_work(state, &source, demand, cancel);
         self.show_page(SessionPage::Connecting { claim, source });
         let input = self.input();
         let (tasks, hold) = (state.services.tasks.clone(), state.services.hold());
@@ -631,17 +648,21 @@ impl SessionWindow {
                 self.show_page(SessionPage::Picker);
                 self.on_open_file(gio::File::for_uri(&identity.uri));
             }
-            // The entry may have been edited or deleted in another window
-            // since the connect failed.
-            ConnectSource::Saved(saved) => match self.saved_as_stored(&saved) {
-                Some(current) => self.begin_connect(claim, ConnectSource::Saved(Box::new(current))),
-                None => {
-                    drop(claim);
-                    self.show_page(SessionPage::Picker);
-                    self.show_toast(&crate::i18n::gettext("The connection was deleted."));
-                }
-            },
+            ConnectSource::Saved(saved) => self.reconnect_saved(claim, *saved, CredentialDemand::default()),
             source => self.begin_connect(claim, source),
+        }
+    }
+
+    /// Connect a failed saved connection again, as it is saved now: the
+    /// entry may have been edited or deleted in another window since.
+    fn reconnect_saved(&self, claim: SessionClaim, saved: SavedConnection, demand: CredentialDemand) {
+        match self.saved_as_stored(&saved) {
+            Some(current) => self.begin_connect_with(claim, ConnectSource::Saved(Box::new(current)), demand),
+            None => {
+                drop(claim);
+                self.show_page(SessionPage::Picker);
+                self.show_toast(&crate::i18n::gettext("The connection was deleted."));
+            }
         }
     }
 
@@ -759,6 +780,7 @@ fn stop_connecting(attempts: &tablepro_session::ConnectAttempts) {
 fn connect_work(
     state: &WindowState,
     source: &ConnectSource,
+    demand: CredentialDemand,
     cancel: tokio_util::sync::CancellationToken,
 ) -> BoxFuture<'static, Result<Connected, AttemptError>> {
     let context = &state.context;
@@ -770,9 +792,16 @@ fn connect_work(
             let drivers = context.drivers.clone();
             let credentials = context.credentials_for(Some(&saved));
             async move {
-                let connected =
-                    connect_flow::connect_saved(&saved, &drivers, &*credentials, &*connector, interaction, cancel)
-                        .await;
+                let connected = connect_flow::connect_saved(
+                    &saved,
+                    &drivers,
+                    &*credentials,
+                    &*connector,
+                    interaction,
+                    demand,
+                    cancel,
+                )
+                .await;
                 match connected {
                     Ok((pending, refused)) => Ok(Connected {
                         pending,
@@ -782,7 +811,13 @@ fn connect_work(
                             .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
                             .collect(),
                     }),
-                    Err(error) => Err(attempt_error(&error)),
+                    Err(error) => Err(match attempt_error(&error) {
+                        AttemptError::Failed(failure) => AttemptError::Failed(ConnectFailure {
+                            reenter: secret_retry::refused_secret(&error, &saved),
+                            ..failure
+                        }),
+                        cancelled => cancelled,
+                    }),
                 }
             }
             .boxed()
@@ -866,6 +901,7 @@ fn attempt_error(error: &ConnectError) -> AttemptError {
         error => AttemptError::Failed(ConnectFailure {
             message: crate::ui::error_text::connect_error_message(error),
             remedy: crate::ui::error_text::connect_remedy(error),
+            reenter: None,
         }),
     }
 }

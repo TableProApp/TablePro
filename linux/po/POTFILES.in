@@ -183,6 +183,7 @@ crates/app/src/ui/session_window/imp.rs
 crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
+crates/app/src/ui/session_window/secret_retry.rs
 crates/app/src/ui/session_window/session_page.rs
 crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs

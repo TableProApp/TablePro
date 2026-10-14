@@ -71,24 +71,20 @@ async fn unsave(secrets: &dyn SecretVault, writes: &dyn ConnectionWrites, id: Uu
 }
 
 /// A secret typed into a prompt is kept only once the login it was
-/// typed for has worked.
+/// typed for has worked. `demand` names a secret the server refused,
+/// which is asked for again rather than read from the keyring.
 pub(super) async fn connect_saved(
     saved: &SavedConnection,
     drivers: &DriverRegistry,
     credentials: &dyn CredentialSource,
     connector: &dyn Connector,
     interaction: CredentialInteraction,
+    demand: CredentialDemand,
     cancel: CancellationToken,
 ) -> Result<(PendingSession, Vec<(SecretKind, SecretError)>), ConnectError> {
     // Dropping the resolve on a cancel drops its prompt too, which is
     // what takes a password dialog still on screen down with it.
-    let resolving = tablepro_session::resolve_saved(
-        saved,
-        drivers,
-        credentials,
-        interaction.clone(),
-        CredentialDemand::default(),
-    );
+    let resolving = tablepro_session::resolve_saved(saved, drivers, credentials, interaction.clone(), demand);
     let refreshed = cancel
         .run_until_cancelled(resolving)
         .await
@@ -365,6 +361,7 @@ mod tests {
             &credentials,
             &connector,
             CredentialInteraction::Attended(prompter),
+            CredentialDemand::default(),
             cancel.clone(),
         );
         let asking = async {
@@ -379,6 +376,69 @@ mod tests {
         assert!(matches!(outcome, Err(ConnectError::Cancelled)), "{outcome:?}");
         assert!(shown.reply.is_closed(), "the prompt is still waited on");
         assert!(connector.calls().is_empty(), "a cancelled attempt still connected");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_password_is_asked_for_again_and_kept_once_it_works() {
+        use tablepro_core::credentials::{PromptPurpose, PromptReason, PromptReply};
+        use tablepro_test_support::Call;
+
+        let saved = connection(Uuid::new_v4());
+        let vault = Arc::new(FakeSecretVault::new());
+        vault
+            .store(
+                saved.id,
+                SecretKind::DatabasePassword,
+                &SecretString::from("old"),
+                "label",
+            )
+            .await
+            .expect("the refused password");
+        let credentials = KeyringCredentials::for_saved(vault.clone(), &saved);
+        let (prompter, mut queue) = GtkCredentialPrompter::new();
+        let prompter: Arc<dyn CredentialPrompter> = Arc::new(prompter);
+        let connector = FakeConnector::new([FakeEstablish::Connect(ConnectionScript::default())]);
+        let drivers = drivers();
+        let loads_before = vault.calls().len();
+
+        let connecting = connect_saved(
+            &saved,
+            &drivers,
+            &credentials,
+            &connector,
+            CredentialInteraction::Attended(prompter),
+            CredentialDemand::reenter(SecretKind::DatabasePassword),
+            CancellationToken::new(),
+        );
+        let answering = async {
+            let shown = queue.next().await.expect("the password prompt");
+            assert_eq!(
+                shown.prompt.purpose,
+                PromptPurpose::DatabasePassword {
+                    reason: PromptReason::Rejected
+                }
+            );
+            shown
+                .reply
+                .send(PromptReply::Submitted {
+                    values: vec![SecretString::from("new")],
+                    remember: true,
+                })
+                .expect("the connect is waiting");
+        };
+        let (outcome, ()) = tokio::join!(connecting, answering);
+
+        let (pending, refused) = outcome.expect("a connection");
+        assert!(refused.is_empty());
+        assert!(
+            !vault.calls()[loads_before..].contains(&Call::Load(saved.id, SecretKind::DatabasePassword)),
+            "the refused password was read again"
+        );
+        assert_eq!(
+            vault.stored_secret(saved.id, SecretKind::DatabasePassword).as_deref(),
+            Some("new")
+        );
+        let _closed = pending.discard().await;
     }
 
     #[tokio::test(start_paused = true)]
@@ -398,6 +458,7 @@ mod tests {
             &credentials,
             &connector,
             CredentialInteraction::Attended(prompter),
+            CredentialDemand::default(),
             cancel.clone(),
         );
         let answering = async {

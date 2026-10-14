@@ -50,6 +50,9 @@ pub struct SessionWindow {
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,
     pub(super) shut_down: Cell<bool>,
+    /// Every toast shown, which the overlay does not list.
+    #[cfg(test)]
+    pub(super) toasts: RefCell<Vec<adw::Toast>>,
 }
 
 #[glib::object_subclass]

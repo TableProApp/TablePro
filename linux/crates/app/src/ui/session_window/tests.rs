@@ -38,6 +38,9 @@ pub(crate) struct Script {
     /// What each connect gets, before `connection` from then on.
     pub establish: Vec<FakeEstablish>,
     pub credentials: Option<FakeCredentialSource>,
+    /// The saved connection logs in to a server with a password, rather
+    /// than opening a file.
+    pub network: bool,
 }
 
 /// A TablePro over fakes with one window open on the picker and `saved`
@@ -51,6 +54,9 @@ pub(crate) struct TestWindow {
     pub hold: Rc<CountingHold>,
     pub connector: FakeConnector,
     pub saved: SavedConnection,
+    /// The keyring every saved connection reads, unless the script
+    /// brings its own credentials.
+    pub vault: Arc<FakeSecretVault>,
     runtime: Option<crate::runtime::AppRuntime>,
     _settings: MemorySettings,
     _dir: tempfile::TempDir,
@@ -71,25 +77,33 @@ impl TestWindow {
         let settings = MemorySettings::new();
         let dir = tempfile::tempdir().expect("a temporary directory");
         let paths = StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID);
-        let storage = AppStorage::new(paths, Arc::new(FakeSecretVault::new()), &runtime.tasks());
-        let saved = saved_connection(&dir.path().join("fake.db"));
-        storage
-            .connections()
-            .upsert_blocking(saved.clone())
-            .expect("save the test's connection");
+        let vault = Arc::new(FakeSecretVault::new());
+        let storage = AppStorage::new(paths, vault.clone(), &runtime.tasks());
         let Script {
             mut connection,
             establish,
             credentials,
+            network,
         } = script;
+        let saved = if network {
+            network_connection()
+        } else {
+            saved_connection(&dir.path().join("fake.db"))
+        };
+        storage
+            .connections()
+            .upsert_blocking(saved.clone())
+            .expect("save the test's connection");
         connection.probe.always(FakeReply::ok(()));
         connection.list_schemas.always(FakeReply::ok(Vec::new()));
         connection.list_objects.always(FakeReply::ok(Vec::new()));
         let mut drivers = DriverRegistry::new();
-        drivers.register(Arc::new(FakeDriver::connecting(
-            &FakeDriver::FILE_CAPABILITIES,
-            connection.clone(),
-        )));
+        let capabilities = if network {
+            &FakeDriver::NETWORK_CAPABILITIES
+        } else {
+            &FakeDriver::FILE_CAPABILITIES
+        };
+        drivers.register(Arc::new(FakeDriver::connecting(capabilities, connection.clone())));
         let connector = FakeConnector::new(establish).always(FakeEstablish::Connect(connection));
         let liveness = LivenessPolicy::DESKTOP;
         let hold = Rc::new(CountingHold::new());
@@ -121,6 +135,7 @@ impl TestWindow {
             hold,
             connector,
             saved,
+            vault,
             runtime: Some(runtime),
             _settings: settings,
             _dir: dir,
@@ -222,7 +237,27 @@ fn saved_connection(database: &std::path::Path) -> SavedConnection {
     }
 }
 
-fn refused() -> FakeEstablish {
+/// A server on this machine, so no reachability check runs.
+fn network_connection() -> SavedConnection {
+    SavedConnection {
+        id: uuid::Uuid::new_v4(),
+        name: "Server".to_owned(),
+        driver_id: "fake".to_owned(),
+        host: "127.0.0.1".to_owned(),
+        port: 5432,
+        database: "shop".to_owned(),
+        username: "app".to_owned(),
+        tls: TlsConfig::verify_full(),
+        read_only: false,
+        auth_mode: AuthMode::Password,
+        ssh: None,
+        last_opened_at: None,
+        color: None,
+        group: None,
+    }
+}
+
+pub(crate) fn refused() -> FakeEstablish {
     FakeEstablish::Fail(ConnectError::Driver(DriverError::Auth { diagnostics: None }))
 }
 

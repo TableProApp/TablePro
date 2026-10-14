@@ -469,7 +469,7 @@ impl SessionWindow {
         ));
         toast.set_button_label(Some(&crate::i18n::gettext("Retry")));
         toast.connect_button_clicked(move |_| input.deliver(SessionWindowInput::DeleteConnection(id)));
-        self.imp().toast_overlay.add_toast(toast);
+        self.add_toast(toast);
     }
 
     pub(super) fn on_reset_connection_list(&self) {
