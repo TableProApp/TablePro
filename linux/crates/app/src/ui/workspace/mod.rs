@@ -102,6 +102,7 @@ pub(crate) struct WorkspaceModel {
     table_search: gtk::SearchEntry,
     /// Removes a changed host key from known_hosts. `None` without ssh.
     ssh: Option<tablepro_ssh::SshServices>,
+    file_revealer: Rc<dyn crate::ui::file_reveal::FileRevealer>,
     /// Held until a Replace's ssh-keygen finishes too, so a second
     /// Replace cannot remove the key the first one's retry wrote.
     reviewing_host_key: bool,
@@ -516,6 +517,7 @@ impl Workspace {
             read_only_badge: imp.read_only_badge.get(),
             table_search: imp.table_search.get(),
             ssh: services.ssh(),
+            file_revealer: services.file_revealer.clone(),
             reviewing_host_key: false,
             workspace_outer_stack: imp.workspace_outer_stack.get(),
             workspace_root: None,

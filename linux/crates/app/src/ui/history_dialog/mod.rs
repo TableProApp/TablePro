@@ -16,6 +16,7 @@ mod imp;
 mod tests;
 
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::time::SystemTime;
 
 use gtk4 as gtk;
@@ -36,6 +37,7 @@ use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::i18n::{gettext, ngettext_f};
 use crate::runtime::spawn_and_deliver;
 use crate::services::history_service::HistoryService;
+use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
 use crate::ui::format::plural_count;
 use history_export::{ExportKind, history_export_failure_text, save_export, show_export_failure};
 
@@ -60,6 +62,7 @@ pub(crate) struct HistoryDialogInit {
     pub connections: ConnectionStore,
     /// The presenting window's connection, which the filter starts on.
     pub preferred_connection: Option<Uuid>,
+    pub revealer: Rc<dyn FileRevealer>,
     pub tasks: Tasks,
 }
 
@@ -85,6 +88,7 @@ pub(super) struct DialogParts {
     connections: ConnectionStore,
     preferred_connection: Option<Uuid>,
     filters: HistoryFilters,
+    revealer: Rc<dyn FileRevealer>,
     tasks: Tasks,
     entries: gio::ListStore,
     plain: gtk::NoSelection,
@@ -112,6 +116,7 @@ impl HistoryDialog {
             connections: init.connections,
             preferred_connection: init.preferred_connection,
             filters,
+            revealer: init.revealer,
             tasks: init.tasks,
             entries,
             plain: gtk::NoSelection::new(Some(sorted.clone())),
@@ -124,7 +129,7 @@ impl HistoryDialog {
     }
 
     pub(crate) fn connect_query_chosen<F: Fn(&Self, QueryDestination, String) + 'static>(&self, f: F) {
-        let f = std::rc::Rc::new(f);
+        let f = Rc::new(f);
         for destination in [QueryDestination::NewTab, QueryDestination::CurrentTab] {
             let f = f.clone();
             self.connect_closure(
@@ -553,18 +558,25 @@ impl HistoryDialog {
         alert.present(Some(self));
     }
 
-    fn show_storage(&self) {
-        let Some((history, _)) = self.storage() else {
+    /// Show the database file selected in its folder; a failure says so
+    /// in the dialog.
+    fn show_in_files(&self) {
+        let Some(parts) = self.imp().parts.get() else {
             return;
         };
-        let path = history.path();
-        let folder = path.parent().unwrap_or(path);
-        let launcher = gtk::FileLauncher::new(Some(&gio::File::for_path(folder)));
-        launcher.launch(
-            self.root().and_downcast::<gtk::Window>().as_ref(),
-            gio::Cancellable::NONE,
-            |_| {},
-        );
+        let Some(history) = parts.history.as_ref() else {
+            return;
+        };
+        let revealing = parts
+            .revealer
+            .reveal(gio::File::for_path(history.path()), self.root().and_downcast());
+        let dialog = self.downgrade();
+        glib::spawn_future_local(async move {
+            let revealed = revealing.await;
+            if let (Some(toast), Some(dialog)) = (reveal_failure_toast(&revealed), dialog.upgrade()) {
+                dialog.imp().toast_overlay.add_toast(toast);
+            }
+        });
     }
 
     fn export_selected(&self, kind: ExportKind) {

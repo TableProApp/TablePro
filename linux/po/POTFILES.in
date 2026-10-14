@@ -212,6 +212,11 @@ crates/app/src/ui/export/replace_file_writer.rs
 crates/app/src/ui/export/replace_file_writer/tests.rs
 crates/app/src/ui/export_dialog.rs
 crates/app/src/ui/file_read.rs
+crates/app/src/ui/file_reveal/file_launcher_revealer.rs
+crates/app/src/ui/file_reveal/file_revealer.rs
+crates/app/src/ui/file_reveal/mod.rs
+crates/app/src/ui/file_reveal/recording_revealer.rs
+crates/app/src/ui/file_reveal/reveal_failure_toast.rs
 crates/app/src/ui/file_write.rs
 crates/app/src/ui/filter_strip.rs
 crates/app/src/ui/format/mod.rs

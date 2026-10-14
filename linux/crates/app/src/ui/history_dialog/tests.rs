@@ -17,6 +17,7 @@ use super::*;
 use crate::runtime::AppRuntime;
 use crate::services::history_preferences::HistoryPreferences;
 use crate::test_support::{descendants, test_runtime, wait_until};
+use crate::ui::file_reveal::RecordingRevealer;
 
 /// Long enough that a loaded machine cannot decide the outcome; a
 /// passing test returns as soon as its condition holds.
@@ -27,12 +28,17 @@ pub(super) struct Harness {
     pub service: HistoryService,
     pub store: QueryHistory,
     pub connections: ConnectionStore,
+    pub revealer: Rc<RecordingRevealer>,
     pub window: adw::Window,
     _root: tempfile::TempDir,
 }
 
 impl Harness {
     pub fn new() -> Self {
+        Self::revealing_with(RecordingRevealer::succeeding())
+    }
+
+    pub fn revealing_with(revealer: RecordingRevealer) -> Self {
         crate::register_test_resources();
         let runtime = test_runtime();
         let root = tempfile::tempdir().expect("tempdir");
@@ -54,6 +60,7 @@ impl Harness {
             service,
             store,
             connections,
+            revealer: Rc::new(revealer),
             window,
             _root: root,
         }
@@ -114,6 +121,7 @@ impl Harness {
             history: self.service.clone(),
             connections: self.connections.clone(),
             preferred_connection,
+            revealer: self.revealer.clone(),
             tasks: self.runtime.tasks(),
         })
     }
@@ -176,8 +184,8 @@ pub(super) fn row_titled(dialog: &HistoryDialog, title: &str) -> Option<HistoryR
     rows(dialog).into_iter().find(|row| row.title() == title)
 }
 
-/// What the row menu's item called `label` activates.
-pub(super) fn menu_item(menu: &gio::MenuModel, label: &str) -> Option<(String, glib::Variant)> {
+/// What the menu's item called `label` activates, and with what target.
+pub(super) fn menu_item(menu: &gio::MenuModel, label: &str) -> Option<(String, Option<glib::Variant>)> {
     for index in 0..menu.n_items() {
         if let Some(section) = menu.item_link(index, gio::MENU_LINK_SECTION)
             && let Some(found) = menu_item(&section, label)
@@ -189,7 +197,7 @@ pub(super) fn menu_item(menu: &gio::MenuModel, label: &str) -> Option<(String, g
             let action = menu
                 .item_attribute_value(index, gio::MENU_ATTRIBUTE_ACTION, Some(glib::VariantTy::STRING))?
                 .get::<String>()?;
-            let target = menu.item_attribute_value(index, gio::MENU_ATTRIBUTE_TARGET, None)?;
+            let target = menu.item_attribute_value(index, gio::MENU_ATTRIBUTE_TARGET, None);
             return Some((action, target));
         }
     }
@@ -316,7 +324,7 @@ fn row_context_menu_open_emits_output_for_clicked_id() {
     let model = menu.menu_model().expect("a menu model");
     let (action, target) = menu_item(&model, "Open in New Tab").expect("an Open item");
     menu.popdown();
-    dialog.activate_action(&action, Some(&target)).expect("the action");
+    dialog.activate_action(&action, target.as_ref()).expect("the action");
 
     assert_eq!(
         *chosen.borrow(),
@@ -538,4 +546,35 @@ fn filters_are_labelled() {
             control.type_().name()
         );
     }
+}
+
+#[gtk4::test]
+fn history_dialog_show_in_files_reveals_the_database_file() {
+    let harness = Harness::new();
+    let dialog = harness.presented_dialog();
+    let header = crate::test_support::first_descendant_of_type::<adw::HeaderBar>(&dialog).expect("a header bar");
+    let menu = descendants(&header)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find_map(|button| button.menu_model())
+        .expect("the dialog's menu");
+    let (action, target) = menu_item(&menu, "Show in Files").expect("a Show in Files item");
+
+    dialog.activate_action(&action, target.as_ref()).expect("the action");
+
+    assert_eq!(harness.revealer.revealed(), [harness.store.path().to_path_buf()]);
+    assert!(harness.store.path().ends_with("history.db"));
+}
+
+#[gtk4::test]
+fn history_dialog_reveal_failure_shows_a_toast() {
+    let harness = Harness::revealing_with(RecordingRevealer::failing());
+    let dialog = harness.presented_dialog();
+
+    dialog
+        .activate_action("history.show-in-files", None)
+        .expect("the action");
+
+    let window: gtk::Widget = harness.window.clone().upcast();
+    wait_until(WAIT, || has_label(&window, "Could not show the file in Files")).expect("a toast");
 }

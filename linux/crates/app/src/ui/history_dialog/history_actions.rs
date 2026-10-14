@@ -35,7 +35,7 @@ pub(super) fn install(klass: &mut <imp::HistoryDialog as ObjectSubclass>::Class)
         dialog.export_selected(ExportKind::Csv);
     });
     klass.install_action("history.clear-all", None, |dialog, _, _| dialog.confirm_clear_all());
-    klass.install_action("history.show-storage", None, |dialog, _, _| dialog.show_storage());
+    klass.install_action("history.show-in-files", None, |dialog, _, _| dialog.show_in_files());
     klass.install_action("history-row.menu", None, |dialog, _, _| dialog.popup_focused_row_menu());
 }
 

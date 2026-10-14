@@ -152,8 +152,8 @@
   <menu id="history_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Show Storage Location</attribute>
-        <attribute name="action">history.show-storage</attribute>
+        <attribute name="label" translatable="yes">Show in Files</attribute>
+        <attribute name="action">history.show-in-files</attribute>
       </item>
     </section>
     <section>

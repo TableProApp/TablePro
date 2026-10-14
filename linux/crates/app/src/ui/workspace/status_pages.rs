@@ -29,6 +29,7 @@ impl WorkspaceModel {
             history: self.history.clone(),
             connections: self.storage.connections().clone(),
             preferred_connection: self.context.active.metadata().map(|metadata| metadata.id),
+            revealer: self.file_revealer.clone(),
             tasks: self.tasks.clone(),
         });
         let input = self.input.clone();
