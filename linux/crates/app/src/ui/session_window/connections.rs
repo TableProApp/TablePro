@@ -552,8 +552,7 @@ impl SessionWindow {
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
         let window = self.downgrade();
-        dialog.connect_response(None, move |dialog, response| {
-            dialog.close();
+        dialog.connect_response(None, move |_, response| {
             if response == "reset"
                 && let Some(window) = window.upgrade()
             {
@@ -976,5 +975,31 @@ mod tests {
             matches!(state(), ConnectionListState::Ready(_)),
             "the hold ended before the list was moved aside"
         );
+    }
+
+    #[gtk4::test]
+    fn reset_closes_its_alert_once() {
+        let test = TestWindow::with_script(
+            "ResetClosedOnce",
+            crate::ui::session_window::tests::Script {
+                unreadable_list: true,
+                ..Default::default()
+            },
+        );
+        let state = || test.services.storage.connections().snapshot().state;
+        wait_until(WAIT, || matches!(state(), ConnectionListState::Unavailable(_))).expect("the unreadable list");
+        test.window.on_reset_connection_list();
+        wait_for_alert(&test.window);
+
+        // With animations off, closing the alert after its click already
+        // closed it logs a critical, which this makes abort the test.
+        let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL);
+        let answered = crate::workspace::answer(&test.window, "reset");
+        crate::test_support::drain_main_context();
+        glib::log_set_always_fatal(previous);
+
+        assert!(answered, "the alert has no Reset button");
+        assert!(open_alert(&test.window).is_none(), "the alert stayed open");
+        wait_until(WAIT, || matches!(state(), ConnectionListState::Ready(_))).expect("the list to be moved aside");
     }
 }

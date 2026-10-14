@@ -207,8 +207,7 @@ impl FactoryComponent for ConnectionRow {
                 dialog.set_close_response("cancel");
                 let id = self.saved.id;
                 let output = sender.output_sender().clone();
-                dialog.connect_response(None, move |dlg, response| {
-                    dlg.close();
+                dialog.connect_response(None, move |_, response| {
                     if response != "add" {
                         return;
                     }

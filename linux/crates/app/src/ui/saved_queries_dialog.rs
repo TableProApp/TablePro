@@ -354,8 +354,7 @@ impl SavedQueriesDialog {
         dialog.set_close_response("cancel");
 
         let sender = sender.clone();
-        dialog.connect_response(None, move |dialog, response| {
-            dialog.close();
+        dialog.connect_response(None, move |_, response| {
             if response != "rename" {
                 return;
             }
@@ -385,8 +384,7 @@ impl SavedQueriesDialog {
         dialog.set_close_response("cancel");
 
         let sender = sender.clone();
-        dialog.connect_response(None, move |dialog, response| {
-            dialog.close();
+        dialog.connect_response(None, move |_, response| {
             if response == "delete" {
                 sender.deliver(SavedQueriesDialogInput::Delete(id));
             }

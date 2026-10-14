@@ -75,8 +75,7 @@ impl WorkspaceModel {
         let input = self.input.clone();
         let schema_for_resp = schema.clone();
         let table_for_resp = table.clone();
-        dialog.connect_response(None, move |dlg, response| {
-            dlg.close();
+        dialog.connect_response(None, move |_, response| {
             if response == "drop" {
                 input.deliver(WorkspaceInput::DropTableConfirmed {
                     schema: schema_for_resp.clone(),
@@ -482,5 +481,27 @@ mod tests {
 
         assert_eq!(settled(aborted), Err(OperationError::Cancelled));
         assert_eq!(settled(Ok(Ok(5))), Ok(5));
+    }
+
+    #[gtk4::test]
+    fn the_drop_prompt_closes_once() {
+        use crate::test_support::wait_until;
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use crate::workspace::{answer, visible_alert};
+
+        let test = TestWindow::connected("DropPromptClosedOnce");
+        test.workspace()
+            .with_model(|model| model.on_drop_table_prompt(None, "users".to_owned()));
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the drop prompt");
+
+        // With animations off, closing the alert after its click already
+        // closed it logs a critical, which this makes abort the test.
+        let previous = gtk4::glib::log_set_always_fatal(gtk4::glib::LogLevels::LEVEL_CRITICAL);
+        let answered = answer(&test.window, "cancel");
+        crate::test_support::drain_main_context();
+        gtk4::glib::log_set_always_fatal(previous);
+
+        assert!(answered, "the prompt has no Cancel button");
+        assert!(visible_alert(&test.window).is_none(), "the prompt stayed open");
     }
 }

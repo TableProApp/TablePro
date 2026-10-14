@@ -270,6 +270,14 @@ pub(super) fn read_workspace_tab_id(page: &adw::TabPage) -> Option<Uuid> {
     unsafe { page.qdata::<Uuid>(workspace_tab_id_quark()).map(|p| *p.as_ref()) }
 }
 
+/// A dialog the user already closed has left its window, and closing it
+/// again logs a critical.
+fn close_if_presented(dialog: &adw::Dialog) {
+    if dialog.parent().is_some() {
+        dialog.close();
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum WorkspaceInput {
     HealthChanged(SessionHealth),
@@ -686,13 +694,13 @@ impl WorkspaceModel {
         self.sidebar_bridge.abort();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
-            dialog.model().dialog().close();
+            close_if_presented(dialog.model().dialog());
         }
         if let Some(dialog) = self.saved_queries_dialog.take() {
-            dialog.model().dialog().close();
+            close_if_presented(dialog.model().dialog());
         }
         if let Some(dialog) = self.import_dialog.take() {
-            dialog.model().dialog().close();
+            close_if_presented(dialog.model().dialog());
         }
         if let Some(window) = self.window() {
             for action in &self.actions {
