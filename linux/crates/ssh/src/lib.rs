@@ -22,7 +22,7 @@ mod sweep;
 pub use config::{SshAuth, SshConfig};
 pub use destination::SshDestination;
 pub use forward::SshForwardTransport;
-pub use known_hosts::{forget_host_key, forget_known_host};
+pub use known_hosts::{ForgetHostKeyError, forget_changed_host_key, forget_host_key};
 pub use prompt::AskpassPrompt;
 pub use runtime::SshRuntime;
 pub use runtime_cell::SshRuntimeCell;

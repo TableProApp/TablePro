@@ -277,8 +277,38 @@ mod tests {
             "CREATE VIEW s3 (id) AS SELECT 1",
             "SELECT s3.id FROM s3",
             "SELECT 1 AS s3",
+            "CREATE INDEX i ON s3 (id) TYPE minmax",
+            "CREATE INDEX IF NOT EXISTS i ON db.s3 (id) TYPE minmax",
         ] {
             assert_eq!(classify(SqlGrammar::ClickHouse, sql), HistoryRecording::Record, "{sql}");
+        }
+        for (grammar, sql) in [
+            (SqlGrammar::PostgreSql, "CREATE UNIQUE INDEX CONCURRENTLY i ON s3 (id)"),
+            (SqlGrammar::PostgreSql, "CREATE INDEX ON s3 (id)"),
+            (SqlGrammar::MySql, "CREATE UNIQUE INDEX i USING BTREE ON s3 (id)"),
+            (SqlGrammar::MsSql, "CREATE UNIQUE NONCLUSTERED INDEX i ON dbo.s3 (id)"),
+            (SqlGrammar::MsSql, "CREATE STATISTICS st ON s3 (id)"),
+            (SqlGrammar::Sqlite, "CREATE INDEX IF NOT EXISTS main.i ON s3 (id)"),
+            (SqlGrammar::Sqlite, "CREATE TABLE t (id int REFERENCES s3 (id))"),
+        ] {
+            assert_eq!(classify(grammar, sql), HistoryRecording::Record, "{grammar:?}: {sql}");
+        }
+    }
+
+    #[test]
+    fn a_carrier_in_a_condition_is_a_call() {
+        for grammar in SqlGrammar::ALL {
+            for sql in [
+                "SELECT u.id FROM users u JOIN logins l ON dblink_connect('password=x') = l.v",
+                "SELECT a.id FROM a JOIN b ON a.id = b.id AND dblink_connect('password=x') = 'OK'",
+                "CREATE VIEW v AS SELECT a.id FROM a JOIN b ON dblink_connect('password=x') = b.v",
+                "SELECT 1 WHERE EXISTS dblink_connect('password=x')",
+                "SELECT 1 WHERE NOT EXISTS dblink_connect('password=x')",
+                "CREATE TABLE t AS SELECT 1 FROM a WHERE EXISTS dblink_connect('password=x')",
+                "SELECT * FROM a JOIN b ON s3('url', 'key', 'secret') = b.v",
+            ] {
+                assert_eq!(classify(grammar, sql), WITHHELD, "{grammar:?}: {sql}");
+            }
         }
     }
 

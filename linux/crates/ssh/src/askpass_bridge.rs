@@ -138,10 +138,13 @@ impl AskpassBridge {
 
     fn record_declined(&mut self, prompt: &AskpassPrompt) {
         if let AskpassPrompt::HostKeyConfirmation {
-            algorithm, fingerprint, ..
+            host,
+            algorithm,
+            fingerprint,
         } = prompt
         {
             self.declined_host_key = Some(DeclinedHostKey {
+                host: host.clone(),
                 algorithm: algorithm.clone(),
                 fingerprint: fingerprint.clone(),
             });
@@ -236,8 +239,10 @@ mod tests {
         assert_eq!(exchange(&mut bridge, "", "deploy@bastion's password: ").await, [CANCEL]);
         assert_eq!(exchange(&mut bridge, "", HOST_KEY_PROMPT).await, [CANCEL]);
         assert_eq!(
-            bridge.declined_host_key().map(|key| key.fingerprint.as_str()),
-            Some("SHA256:abc")
+            bridge
+                .declined_host_key()
+                .map(|key| (key.host.as_str(), key.fingerprint.as_str())),
+            Some(("bastion", "SHA256:abc"))
         );
     }
 

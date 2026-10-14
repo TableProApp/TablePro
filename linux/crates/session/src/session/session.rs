@@ -11,10 +11,10 @@ use tokio_util::task::AbortOnDropHandle;
 use uuid::Uuid;
 
 use super::{ObjectListSnapshot, SchemaCatalog, SessionDeps};
-use crate::connect::{ConnectError, ConnectionMetadata, PendingSession};
+use crate::connect::{ConnectError, ConnectionMetadata, PendingSession, RequestTarget};
 use crate::health::{
-    LinkGeneration, MonitorContext, MonitorMailbox, MonitorSignal, ReachabilityTarget, ReconnectPlan, SessionHealth,
-    run_monitor,
+    LinkGeneration, MonitorContext, MonitorMailbox, MonitorSignal, ReachabilityTarget, ReconnectPlan, ReviewedHostKey,
+    SessionHealth, run_monitor,
 };
 use crate::link::{CloseReport, ConnectionLease, ConnectionLink};
 use crate::operation::{OperationError, OperationKind, OperationRunner};
@@ -31,7 +31,10 @@ pub struct Session {
     workspace_settings: WorkspaceSettings,
     reachability: Arc<Mutex<ReachabilityTarget>>,
     last_rejection: Arc<Mutex<Option<Arc<ConnectError>>>>,
-    trusted_host_key: Arc<Mutex<Option<String>>>,
+    trusted_host_key: Arc<Mutex<Option<ReviewedHostKey>>>,
+    /// The tunnel the connection goes through, which a changed host key
+    /// is checked against before its old key is removed.
+    ssh: Option<tablepro_ssh::SshConfig>,
     runner: OperationRunner,
     mailbox: Arc<MonitorMailbox>,
     health: watch::Receiver<SessionHealth>,
@@ -94,12 +97,17 @@ impl Session {
             trusted_host_key: trusted_host_key.clone(),
         };
         let monitor = deps.tasks.spawn_owned(run_monitor(context));
+        let ssh = match &parts.request.target {
+            RequestTarget::Network { ssh, .. } => ssh.clone(),
+            RequestTarget::File(_) => None,
+        };
         Arc::new(Session {
             metadata: parts.request.metadata,
             workspace_settings: parts.request.workspace_settings,
             reachability,
             last_rejection,
             trusted_host_key,
+            ssh,
             runner,
             mailbox,
             health,
@@ -209,13 +217,18 @@ impl Session {
             .clone()
     }
 
-    /// Retry, answering ssh's question about the host key `fingerprint`
-    /// for the user, who reviewed it. A different key, or any other
-    /// question, still reaches them; ssh records the key in known_hosts
-    /// as it does when the user answers.
-    pub fn retry_trusting_host_key(&self, fingerprint: String) {
-        *self.trusted_host_key.lock().unwrap_or_else(PoisonError::into_inner) = Some(fingerprint);
+    /// Retry, answering ssh's question about the `reviewed` host key
+    /// for the user, who reviewed it. A different key or host, or any
+    /// other question, still reaches them; ssh records the key in
+    /// known_hosts as it does when the user answers.
+    pub fn retry_trusting_host_key(&self, reviewed: ReviewedHostKey) {
+        *self.trusted_host_key.lock().unwrap_or_else(PoisonError::into_inner) = Some(reviewed);
         self.mailbox.post(MonitorSignal::RetryNow);
+    }
+
+    /// The SSH tunnel the connection was made through, if any.
+    pub fn ssh_config(&self) -> Option<&tablepro_ssh::SshConfig> {
+        self.ssh.as_ref()
     }
 
     pub fn runner(&self) -> &OperationRunner {

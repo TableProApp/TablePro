@@ -399,6 +399,11 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "url",
         "odbc",
         "jdbc",
+        "encrypt",
+        "decrypt",
+        "tryDecrypt",
+        "aes_encrypt_mysql",
+        "aes_decrypt_mysql",
     ],
 };
 
@@ -607,6 +612,12 @@ mod tests {
             "CREATE TABLE t (id Int32) ENGINE = URL('http://u:p@h/f.csv', CSV)",
             "SELECT * FROM odbc('DSN=d;UID=u;PWD=p', 't')",
             "SELECT * FROM jdbc('jdbc:mysql://h/?user=u&password=p', 's', 't')",
+            "SELECT encrypt('aes-256-gcm', 'text', 'key', 'iv')",
+            "SELECT decrypt('aes-256-gcm', secret, 'key', 'iv') FROM t",
+            "SELECT tryDecrypt('aes-256-gcm', secret, 'key', 'iv') FROM t",
+            "SELECT aes_encrypt_mysql('aes-256-ecb', 'text', 'key')",
+            "SELECT aes_decrypt_mysql('aes-256-ecb', secret, 'key') FROM t",
+            "SELECT a.id FROM a JOIN b ON decrypt('aes-256-gcm', b.v, 'key', 'iv') = a.v",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),
@@ -626,6 +637,8 @@ mod tests {
             "SELECT url, domain(url) FROM visits",
             "CREATE TABLE url (id Int32) ENGINE = Memory",
             "BACKUP TABLE t TO Disk('backups', 'b.zip')",
+            "SELECT encrypt, decrypt FROM settings",
+            "CREATE TABLE encrypt (id Int32) ENGINE = Memory",
         ] {
             assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
         }

@@ -44,7 +44,8 @@ pub(crate) const INDEX_XINFO_SQL: &str =
 pub(crate) const FOREIGN_KEY_LIST_SQL: &str = "SELECT id, \"table\", \"from\", \"to\", on_update, on_delete \
      FROM pragma_foreign_key_list(?1, ?2) ORDER BY id, seq";
 
-pub(crate) const FOREIGN_KEY_CHECK_SQL: &str = "SELECT \"table\", rowid, parent FROM pragma_foreign_key_check(?1, ?2)";
+pub(crate) const FOREIGN_KEY_CHECK_SQL: &str =
+    "SELECT \"table\", rowid, parent, fkid FROM pragma_foreign_key_check(?1, ?2)";
 
 /// `sqlite_schema` of one schema, which has to be named in the FROM.
 pub(crate) fn objects_sql(schema_sql: &str) -> String {

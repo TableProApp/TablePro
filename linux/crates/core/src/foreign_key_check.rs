@@ -1,3 +1,4 @@
+use crate::ddl::ColumnRename;
 use crate::meta::TableRef;
 
 /// One table whose foreign keys a suspended batch verifies.
@@ -17,6 +18,10 @@ pub struct ForeignKeyCheck {
     /// known by a different rowid on each side, so the violations in it
     /// compare by count.
     pub rowids_renumbered: bool,
+    /// The table's columns the batch renames. A key on a renamed column
+    /// is the same constraint on both sides, so a violation it already
+    /// had is not the batch's.
+    pub renamed_columns: Vec<ColumnRename>,
 }
 
 impl ForeignKeyCheck {
@@ -25,6 +30,7 @@ impl ForeignKeyCheck {
             before,
             after,
             rowids_renumbered: false,
+            renamed_columns: Vec::new(),
         }
     }
 
@@ -36,6 +42,13 @@ impl ForeignKeyCheck {
     pub fn renumbered(self) -> Self {
         Self {
             rowids_renumbered: true,
+            ..self
+        }
+    }
+
+    pub fn with_renamed_columns(self, renamed_columns: Vec<ColumnRename>) -> Self {
+        Self {
+            renamed_columns,
             ..self
         }
     }

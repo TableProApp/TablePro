@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use tablepro_core::ddl::ColumnRename;
 use tablepro_core::{DriverError, ServerCode, ServerDiagnostics};
 
 use crate::errors::{SQLITE_CONSTRAINT, SQLITE_CONSTRAINT_FOREIGNKEY};
@@ -21,6 +22,18 @@ pub(crate) struct Violation {
     /// name the row by, and for one whose rows the batch renumbers.
     pub rowid: Option<i64>,
     pub parent: String,
+    pub key: ViolatedKey,
+}
+
+/// The foreign key a row breaks, by its columns rather than its number:
+/// a rebuild numbers the keys again, and can trade one key for another
+/// to the same parent.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub(crate) struct ViolatedKey {
+    pub columns: Vec<String>,
+    /// Empty for one that names no columns and so points at the parent's
+    /// primary key.
+    pub parent_columns: Vec<String>,
 }
 
 /// Violations in one child table against one parent, that the batch
@@ -32,25 +45,65 @@ pub(crate) struct IntroducedViolations {
     pub count: usize,
 }
 
-/// Name `baseline` rows by the names the tables have after the batch,
-/// so a table the batch renamed compares with itself.
-pub(crate) fn renamed(baseline: Vec<Violation>, renames: &HashMap<String, String>) -> Vec<Violation> {
-    let rename = |name: String| renames.get(&name.to_lowercase()).cloned().unwrap_or(name);
-    baseline
-        .into_iter()
-        .map(|violation| Violation {
-            table: rename(violation.table),
-            rowid: violation.rowid,
-            parent: rename(violation.parent),
-        })
-        .collect()
+/// The names a batch gives tables and their columns, keyed by the
+/// table's name before it, folded.
+#[derive(Debug, Default)]
+pub(crate) struct Renames {
+    tables: HashMap<String, String>,
+    columns: HashMap<String, HashMap<String, String>>,
+}
+
+impl Renames {
+    pub(crate) fn add(&mut self, before: &str, after: &str, columns: &[ColumnRename]) {
+        let before = before.to_lowercase();
+        self.tables.insert(before.clone(), after.to_owned());
+        if !columns.is_empty() {
+            let renamed = columns
+                .iter()
+                .map(|rename| (rename.from.to_lowercase(), rename.to.clone()))
+                .collect();
+            self.columns.insert(before, renamed);
+        }
+    }
+
+    /// Name `baseline` rows by the names their tables and key columns
+    /// have after the batch, so a renamed table or key compares with
+    /// itself.
+    pub(crate) fn apply(&self, baseline: Vec<Violation>) -> Vec<Violation> {
+        baseline
+            .into_iter()
+            .map(|violation| Violation {
+                key: ViolatedKey {
+                    columns: self.column_names(&violation.table, violation.key.columns),
+                    parent_columns: self.column_names(&violation.parent, violation.key.parent_columns),
+                },
+                table: self.table_name(violation.table),
+                rowid: violation.rowid,
+                parent: self.table_name(violation.parent),
+            })
+            .collect()
+    }
+
+    fn table_name(&self, name: String) -> String {
+        self.tables.get(&name.to_lowercase()).cloned().unwrap_or(name)
+    }
+
+    fn column_names(&self, table: &str, columns: Vec<String>) -> Vec<String> {
+        let Some(renamed) = self.columns.get(&table.to_lowercase()) else {
+            return columns;
+        };
+        columns
+            .into_iter()
+            .map(|column| renamed.get(&column.to_lowercase()).cloned().unwrap_or(column))
+            .collect()
+    }
 }
 
 /// The rows of `after` that `before` does not account for, compared as
 /// multisets. Rows without a rowid are all alike, so for them it is the
-/// count per child and parent that compares.
+/// count per child, parent and key that compares.
 pub(crate) fn introduced(before: &[Violation], after: &[Violation]) -> Vec<IntroducedViolations> {
-    let mut remaining: HashMap<(String, Option<i64>, String), usize> = HashMap::new();
+    let mut remaining: HashMap<ViolationKey, usize> = HashMap::new();
     for violation in before {
         *remaining.entry(key(violation)).or_default() += 1;
     }
@@ -79,12 +132,18 @@ pub(crate) fn introduced(before: &[Violation], after: &[Violation]) -> Vec<Intro
     introduced
 }
 
-/// SQLite names tables case-insensitively, and so does the comparison.
-fn key(violation: &Violation) -> (String, Option<i64>, String) {
+type ViolationKey = (String, Option<i64>, String, Vec<String>, Vec<String>);
+
+/// SQLite names tables and columns case-insensitively, and so does the
+/// comparison.
+fn key(violation: &Violation) -> ViolationKey {
+    let folded = |names: &[String]| names.iter().map(|name| name.to_lowercase()).collect();
     (
         violation.table.to_lowercase(),
         violation.rowid,
         violation.parent.to_lowercase(),
+        folded(&violation.key.columns),
+        folded(&violation.key.parent_columns),
     )
 }
 
@@ -114,11 +173,33 @@ mod tests {
     use super::*;
 
     fn violation(table: &str, rowid: Option<i64>, parent: &str) -> Violation {
+        keyed(table, rowid, parent, &["parent"], &["id"])
+    }
+
+    fn keyed(table: &str, rowid: Option<i64>, parent: &str, columns: &[&str], parent_columns: &[&str]) -> Violation {
+        let owned = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
         Violation {
             table: table.to_owned(),
             rowid,
             parent: parent.to_owned(),
+            key: ViolatedKey {
+                columns: owned(columns),
+                parent_columns: owned(parent_columns),
+            },
         }
+    }
+
+    fn renames(before: &str, after: &str, columns: &[(&str, &str)]) -> Renames {
+        let mut renames = Renames::default();
+        let columns: Vec<ColumnRename> = columns
+            .iter()
+            .map(|(from, to)| ColumnRename {
+                from: (*from).to_owned(),
+                to: (*to).to_owned(),
+            })
+            .collect();
+        renames.add(before, after, &columns);
+        renames
     }
 
     #[test]
@@ -127,14 +208,14 @@ mod tests {
             violation("orders_old", Some(7), "people"),
             violation("lines", Some(1), "orders_old"),
         ];
-        let renames = HashMap::from([("orders_old".to_owned(), "orders".to_owned())]);
+        let renames = renames("orders_old", "orders", &[]);
         let after = vec![
             violation("orders", Some(7), "people"),
             violation("lines", Some(1), "orders"),
             violation("lines", Some(2), "orders"),
         ];
 
-        let introduced = introduced(&renamed(before, &renames), &after);
+        let introduced = introduced(&renames.apply(before), &after);
 
         assert_eq!(
             introduced,
@@ -144,6 +225,36 @@ mod tests {
                 count: 1
             }]
         );
+    }
+
+    #[test]
+    fn a_row_breaking_another_key_to_the_same_parent_is_introduced() {
+        let before = vec![keyed("children", Some(1), "parents", &["a"], &["id"])];
+        let after = vec![keyed("children", Some(1), "parents", &["b"], &["id"])];
+
+        assert_eq!(
+            introduced(&before, &after),
+            [IntroducedViolations {
+                table: "children".to_owned(),
+                parent: "parents".to_owned(),
+                count: 1
+            }]
+        );
+    }
+
+    #[test]
+    fn a_renamed_key_column_keeps_its_violation_on_either_side() {
+        let before = vec![
+            keyed("children", Some(1), "parents", &["parent"], &["id"]),
+            keyed("grandchildren", Some(4), "children", &["child"], &["Parent"]),
+        ];
+        let renames = renames("children", "children", &[("parent", "parent_id")]);
+        let after = vec![
+            keyed("children", Some(1), "parents", &["parent_id"], &["id"]),
+            keyed("grandchildren", Some(4), "children", &["child"], &["parent_id"]),
+        ];
+
+        assert!(introduced(&renames.apply(before), &after).is_empty());
     }
 
     #[test]

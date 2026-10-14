@@ -389,8 +389,18 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         (&["START", "GROUP_REPLICATION"], &["PASSWORD"]),
         (&["CREATE"], &["CONNECTION"]),
         (&["ALTER"], &["CONNECTION"]),
+        (&["CLONE"], &["IDENTIFIED"]),
     ],
-    carriers: &["PASSWORD", "OLD_PASSWORD"],
+    carriers: &[
+        "PASSWORD",
+        "OLD_PASSWORD",
+        "AES_ENCRYPT",
+        "AES_DECRYPT",
+        "DES_ENCRYPT",
+        "DES_DECRYPT",
+        "ENCODE",
+        "DECODE",
+    ],
 };
 
 #[cfg(test)]
@@ -653,6 +663,12 @@ mod tests {
             "SELECT OLD_PASSWORD('x')",
             "START GROUP_REPLICATION USER='u', PASSWORD='p'",
             "CREATE TABLE t (id int) /*!50100 ENGINE=FEDERATED CONNECTION='mysql://u:p@h/d/t' */",
+            "SELECT u.id FROM users u JOIN logins l ON PASSWORD('secret') = l.hash",
+            "CLONE INSTANCE FROM 'u'@'h':3306 IDENTIFIED BY 'pw'",
+            "SELECT AES_ENCRYPT('text', 'key')",
+            "SELECT AES_DECRYPT(secret, UNHEX(SHA2('passphrase', 512))) FROM t",
+            "SELECT DES_ENCRYPT('text', 'key'), DES_DECRYPT(secret, 'key') FROM t",
+            "SELECT ENCODE('text', 'pass'), DECODE(secret, 'pass') FROM t",
         ] {
             assert_eq!(
                 dialect(MySqlFlavour::MySql).history_recording(sql),
@@ -673,6 +689,10 @@ mod tests {
             "INSERT INTO users (name, password) VALUES ('a', 'b')",
             "SELECT start, password FROM sessions",
             "START TRANSACTION",
+            "CREATE INDEX by_user USING BTREE ON password (user_id)",
+            "SELECT aes_encrypt, decode FROM settings",
+            "CREATE TABLE aes_decrypt (id INT)",
+            "CLONE LOCAL DATA DIRECTORY = '/var/lib/clone'",
         ] {
             assert_eq!(
                 dialect(MySqlFlavour::MySql).history_recording(sql),

@@ -16,6 +16,7 @@ mod reachability;
 mod reachability_target;
 mod reconnect_plan;
 mod reconnect_result;
+mod reviewed_host_key;
 mod session_health;
 mod trusted_host_key;
 
@@ -32,5 +33,6 @@ pub use reachability::Reachability;
 pub use reachability_target::ReachabilityTarget;
 pub use reconnect_plan::ReconnectPlan;
 pub use reconnect_result::ReconnectResult;
+pub use reviewed_host_key::ReviewedHostKey;
 pub use session_health::SessionHealth;
 pub(crate) use trusted_host_key::TrustedHostKey;

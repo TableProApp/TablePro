@@ -480,6 +480,52 @@ fn an_activate_after_an_approved_quit_restores_its_record() {
     drop(closing);
 }
 
+/// A launch that lands while an approved quit writes the record waits
+/// for the write, then reopens what it wrote, once.
+#[gtk4::test]
+fn an_activate_during_the_quit_flush_restores_the_record_once_written() {
+    let test = TestApp::started("QuitFlushActivate");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    test.record(&[first.clone(), second.clone()]);
+    test.app.activate();
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+    let services = test.services();
+    let closing = services.hold().acquire();
+    let decision = Rc::new(std::cell::RefCell::new(None));
+    let (app, slot) = (test.app.clone(), decision.clone());
+    glib::spawn_future_local(async move {
+        slot.replace(Some(QuitSequence::run(app).await));
+    });
+
+    let mut activated_during_flush = false;
+    wait_until(WAIT, || {
+        let flushing =
+            decision.borrow().is_none() && test.app.windows().is_empty() && test.app.imp().quit_asking.get().is_none();
+        if flushing && !activated_during_flush {
+            test.app.activate();
+            test.app.activate();
+            activated_during_flush = true;
+        }
+        decision.borrow().is_some()
+    })
+    .expect("the quit to finish");
+
+    assert!(
+        activated_during_flush,
+        "the quit ended before a launch could land in its flush"
+    );
+    assert_eq!(*decision.borrow(), Some(CloseDecision::Approved));
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+    let _ = wait_until(Duration::from_millis(300), || test.app.windows().len() > 2);
+    assert_eq!(
+        test.app.windows().len(),
+        2,
+        "a picker opened beside the restored windows"
+    );
+    assert_eq!(services.open_sessions().keys(), [first, second]);
+    drop(closing);
+}
+
 #[gtk4::test]
 fn a_cancelled_quit_forgets_a_restore_that_failed_during_it() {
     let test = TestApp::started("QuitFailedRestore");

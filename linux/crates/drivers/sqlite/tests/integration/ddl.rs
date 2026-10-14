@@ -461,6 +461,86 @@ async fn adding_violating_foreign_key_rolls_back_with_diagnostics() {
     connection.close().await.unwrap();
 }
 
+/// A row that already broke one key still makes the save fail when the
+/// save swaps that key for another one the row breaks.
+#[tokio::test]
+async fn replacing_a_violated_key_with_another_the_row_breaks_rolls_back() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE parents (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE children (id INTEGER PRIMARY KEY, a INTEGER, b INTEGER, FOREIGN KEY (a) REFERENCES \
+             parents (id))",
+            "INSERT INTO parents VALUES (1)",
+        ],
+    )
+    .await
+    .unwrap();
+    unchecked(connection.as_ref(), &["INSERT INTO children VALUES (1, 99, 98)"]).await;
+    let before = read(connection.as_ref(), &named("children")).await;
+
+    let outcome = save(connection.as_ref(), &named("children"), |draft| {
+        draft.foreign_keys = vec![ForeignKeyInfo {
+            name: "children_b".to_owned(),
+            columns: vec!["b".to_owned()],
+            ref_schema: None,
+            ref_table: "parents".to_owned(),
+            ref_columns: vec!["id".to_owned()],
+            on_delete: None,
+            on_update: None,
+        }];
+    })
+    .await;
+
+    let Err(DriverError::RolledBack { source, .. }) = &outcome else {
+        panic!("a key the save added was let through broken: {outcome:?}");
+    };
+    assert!(source.to_string().contains("1 rows of children"), "{source}");
+    assert_eq!(read(connection.as_ref(), &named("children")).await, before);
+    connection.close().await.unwrap();
+}
+
+/// A key column renamed in a rebuild is still the key it was, so the
+/// rows that broke it before are the file's, on either side of the key.
+#[tokio::test]
+async fn a_renamed_key_column_keeps_the_violations_it_had() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE parents (id INTEGER PRIMARY KEY, label TEXT)",
+            "CREATE TABLE children (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES parents (id), note TEXT)",
+            "INSERT INTO parents VALUES (1, 'one')",
+        ],
+    )
+    .await
+    .unwrap();
+    unchecked(connection.as_ref(), &["INSERT INTO children VALUES (1, 99, 'x')"]).await;
+
+    let children = save(connection.as_ref(), &named("children"), |draft| {
+        column(draft, "parent").name = "parent_id".to_owned();
+        retype(draft, "note", "BLOB");
+    })
+    .await;
+    let parents = save(connection.as_ref(), &named("parents"), |draft| {
+        column(draft, "id").name = "key".to_owned();
+        retype(draft, "label", "BLOB");
+    })
+    .await;
+
+    assert!(children.is_ok(), "{children:?}");
+    assert!(parents.is_ok(), "{parents:?}");
+    let keys = read(connection.as_ref(), &named("children")).await.foreign_keys;
+    assert_eq!(keys[0].columns, ["parent_id"]);
+    assert_eq!(keys[0].ref_columns, ["key"]);
+    let orphans = query(connection.as_ref(), "SELECT count(*) FROM pragma_foreign_key_check").await;
+    assert_eq!(orphans.rows[0][0], Value::Int(1));
+    connection.close().await.unwrap();
+}
+
 /// Two columns trade names while one of them changes type, so the
 /// renames after the rebuild step aside through a temporary name.
 #[tokio::test]

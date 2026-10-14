@@ -46,6 +46,9 @@ pub(crate) struct Script {
     /// The saved connection logs in to a server with a password, rather
     /// than opening a file.
     pub network: bool,
+    /// The saved connection reaches its server through this SSH tunnel,
+    /// logging in to the database as the system user.
+    pub tunnel: Option<tablepro_storage::SavedSshConfig>,
     /// The connection list on disk cannot be read, so it holds nothing.
     pub unreadable_list: bool,
 }
@@ -93,12 +96,18 @@ impl TestWindow {
             credentials,
             ssh,
             network,
+            tunnel,
             unreadable_list,
         } = script;
-        let saved = if network {
-            network_connection()
-        } else {
-            saved_connection(&dir.path().join("fake.db"))
+        let network = network || tunnel.is_some();
+        let saved = match tunnel {
+            Some(tunnel) => SavedConnection {
+                ssh: Some(tunnel),
+                auth_mode: AuthMode::Kerberos,
+                ..network_connection()
+            },
+            None if network => network_connection(),
+            None => saved_connection(&dir.path().join("fake.db")),
         };
         if unreadable_list {
             if let Some(parent) = list_file.parent() {
