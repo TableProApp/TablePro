@@ -25,7 +25,24 @@ pub struct CredentialRules {
 /// name followed by a parenthesis is a table and its column list, not a
 /// call: `CREATE TABLE s3 (id int)`. A carrier the engine reserves, such
 /// as T-SQL's OPENROWSET, cannot name a table, so there it is a call.
-const NAME_POSITIONS: [&str; 6] = ["TABLE", "INTO", "VIEW", "REFERENCES", "EXISTS", "ON"];
+/// `EXISTS` and `ON` also start conditions, so `names_an_object` takes
+/// them only in `TABLE IF NOT EXISTS name` and `CREATE INDEX ... ON name`.
+const NAME_POSITIONS: [&str; 4] = ["TABLE", "INTO", "VIEW", "REFERENCES"];
+
+/// The words a CREATE takes before INDEX or STATISTICS, in any engine.
+const INDEX_MODIFIERS: [&str; 11] = [
+    "UNIQUE",
+    "CLUSTERED",
+    "NONCLUSTERED",
+    "COLUMNSTORE",
+    "PRIMARY",
+    "SELECTIVE",
+    "XML",
+    "SPATIAL",
+    "FULLTEXT",
+    "OR",
+    "REPLACE",
+];
 
 impl CredentialRules {
     pub(crate) fn matches(&self, grammar: SqlGrammar, tokens: &[StatementToken<'_>]) -> bool {
@@ -135,19 +152,63 @@ fn qualified_name_start(tokens: &[StatementToken<'_>], at: usize) -> usize {
     }
 }
 
+/// Whether the name starting at `start` is where the grammar puts a
+/// table. Anything else is read as a call, since a call there that was
+/// taken for a name would put its arguments in the history.
 fn names_an_object(tokens: &[StatementToken<'_>], start: usize) -> bool {
-    let Some(before) = start.checked_sub(1).and_then(|index| tokens.get(index)) else {
+    let word_before = |back: usize| start.checked_sub(back).and_then(|index| tokens.get(index));
+    let Some(before) = word_before(1) else {
         return false;
     };
+    if before.is_word("ON") {
+        return on_names_an_indexed_table(tokens, start - 1);
+    }
+    if before.is_word("EXISTS") {
+        // `IF [NOT] EXISTS name (` declares a table or a view; a bare
+        // EXISTS is a condition.
+        let mut back = 2;
+        if word_before(back).is_some_and(|token| token.is_word("NOT")) {
+            back += 1;
+        }
+        return word_before(back).is_some_and(|token| token.is_word("IF"))
+            && word_before(back + 1).is_some_and(|token| token.is_word("TABLE") || token.is_word("VIEW"));
+    }
     if !NAME_POSITIONS.iter().any(|word| before.is_word(word)) {
         return false;
     }
     // ClickHouse describes a table function's result: DESCRIBE TABLE s3(...).
-    let described = start
-        .checked_sub(2)
-        .and_then(|index| tokens.get(index))
-        .is_some_and(|token| token.is_word("DESCRIBE") || token.is_word("DESC"));
+    let described = word_before(2).is_some_and(|token| token.is_word("DESCRIBE") || token.is_word("DESC"));
     !(before.is_word("TABLE") && described)
+}
+
+/// `CREATE [UNIQUE ...] INDEX|STATISTICS [name] ON table (columns)`, the
+/// one place a table name and a parenthesis follow ON. A JOIN's ON, or
+/// any other, starts a condition.
+fn on_names_an_indexed_table(tokens: &[StatementToken<'_>], on: usize) -> bool {
+    let mut at = on;
+    while at > 0 {
+        at -= 1;
+        let Some(token) = tokens.get(at) else {
+            return false;
+        };
+        if token.is_word("CREATE") {
+            let mut next = at + 1;
+            while tokens
+                .get(next)
+                .is_some_and(|token| INDEX_MODIFIERS.iter().any(|word| token.is_word(word)))
+            {
+                next += 1;
+            }
+            return next < on
+                && tokens
+                    .get(next)
+                    .is_some_and(|token| token.is_word("INDEX") || token.is_word("STATISTICS"));
+        }
+        if token.name().is_none() && !token.is_punct('.') {
+            return false;
+        }
+    }
+    false
 }
 
 /// `EXEC name`, or `EXEC @status = name`.

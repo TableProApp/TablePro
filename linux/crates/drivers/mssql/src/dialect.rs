@@ -692,6 +692,7 @@ mod tests {
             "SELECT ENCRYPTBYPASSPHRASE('passphrase', 'data')",
             "SELECT DECRYPTBYPASSPHRASE('passphrase', secret) FROM t",
             "EXEC sp_addlinkedserver @server = 's', @srvproduct = '', @provider = 'MSOLEDBSQL', @provstr = 'Server=h;Uid=u;Pwd=p;'",
+            "SELECT u.id FROM users u JOIN logins l ON DECRYPTBYPASSPHRASE('secret', l.hash) = u.token",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),
@@ -711,6 +712,7 @@ mod tests {
             "ALTER TABLE users ADD password varchar(100)",
             "INSERT INTO [OPENROWSET] (c) VALUES (1)",
             "SELECT 1\nPRINT sp_addlogin",
+            "CREATE NONCLUSTERED INDEX ix ON dbo.sp_password (id)",
         ] {
             assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
         }

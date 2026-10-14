@@ -653,6 +653,7 @@ mod tests {
             "SELECT OLD_PASSWORD('x')",
             "START GROUP_REPLICATION USER='u', PASSWORD='p'",
             "CREATE TABLE t (id int) /*!50100 ENGINE=FEDERATED CONNECTION='mysql://u:p@h/d/t' */",
+            "SELECT u.id FROM users u JOIN logins l ON PASSWORD('secret') = l.hash",
         ] {
             assert_eq!(
                 dialect(MySqlFlavour::MySql).history_recording(sql),
@@ -673,6 +674,7 @@ mod tests {
             "INSERT INTO users (name, password) VALUES ('a', 'b')",
             "SELECT start, password FROM sessions",
             "START TRANSACTION",
+            "CREATE INDEX by_user USING BTREE ON password (user_id)",
         ] {
             assert_eq!(
                 dialect(MySqlFlavour::MySql).history_recording(sql),

@@ -626,6 +626,8 @@ mod tests {
             "SELECT pgp_sym_encrypt('data', 'passphrase')",
             "SELECT pgp_sym_decrypt(secret, 'passphrase') FROM t",
             "UPDATE users SET pw = crypt('secret', gen_salt('bf'))",
+            "SELECT u.id FROM users u JOIN credentials c ON crypt('secret', c.hash) = c.hash",
+            "SELECT id FROM users WHERE EXISTS crypt('secret', hash)",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),
@@ -641,5 +643,11 @@ mod tests {
             tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect()),
             Vec::<&str>::new()
         );
+        for sql in [
+            "CREATE INDEX ON crypt (hash)",
+            "CREATE TABLE IF NOT EXISTS crypt (hash text)",
+        ] {
+            assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
+        }
     }
 }
