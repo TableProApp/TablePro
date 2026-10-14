@@ -1867,6 +1867,38 @@ fn browse_buttons_announce_their_keys() {
     }
 }
 
+/// A page splice leaves the selection model without a selection-changed,
+/// so the tab reads the selection again.
+#[gtk4::test]
+fn a_new_page_turns_off_the_selection_keys() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus", "Ken"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    harness.selection().select_range(0, 2, true);
+    assert!(action_enabled(harness.tab(), "copy-rows"));
+    assert!(action_enabled(harness.tab(), "clear-selection"));
+
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.shown() == text(&["Linus", "Ken"])).expect("the next page");
+
+    assert!(
+        harness.selection().selection().is_empty(),
+        "the new page kept a selection"
+    );
+    assert!(
+        !action_enabled(harness.tab(), "copy-rows"),
+        "Ctrl+C stayed on with nothing selected"
+    );
+    assert!(
+        !action_enabled(harness.tab(), "clear-selection"),
+        "Escape stayed on with nothing selected"
+    );
+    assert!(
+        !harness.tab().imp().selection_label.is_visible(),
+        "the footer still counts the rows that left"
+    );
+}
+
 fn action_enabled(tab: &BrowseTab, name: &str) -> bool {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     let model = tab.imp().model.borrow();

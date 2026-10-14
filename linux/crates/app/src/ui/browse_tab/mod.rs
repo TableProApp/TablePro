@@ -855,6 +855,18 @@ impl BrowseModel {
         self.current_selection.as_ref().map(selected_rows).unwrap_or_default()
     }
 
+    /// GtkMultiSelection emits no selection-changed when its rows are
+    /// spliced, so a page that drops the selected rows comes through here.
+    fn sync_selection(&self) {
+        let selected = self
+            .current_selection
+            .as_ref()
+            .map_or(0, |sel| u32::try_from(sel.selection().size()).unwrap_or(u32::MAX));
+        update_selection_chrome(&self.selection_label, selected);
+        self.actions.follow_selection(selected);
+        self.sync_delete_action();
+    }
+
     /// The rows on screen can change under the selection without it
     /// changing, so this runs on every delta and page as well.
     fn sync_delete_action(&self) {
@@ -1069,7 +1081,7 @@ impl BrowseModel {
         {
             store.splice(0, store.n_items(), &rows);
             self.reindex_rows();
-            self.sync_delete_action();
+            self.sync_selection();
             self.refresh_grid_chrome();
             self.restore_focused_row();
             fx.output(BrowseTabOutput::StateChanged);
@@ -1111,13 +1123,11 @@ impl BrowseModel {
                 actions.follow_selection(n);
                 show_delete_availability(&actions.delete_rows, &button, &selected_rows(sel), read_only);
             });
-            update_selection_chrome(&self.selection_label, 0);
-            self.actions.follow_selection(0);
         }
         browse_actions::install_grid_shortcuts(&column_view);
 
         self.reindex_rows();
-        self.sync_delete_action();
+        self.sync_selection();
 
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&column_view)
@@ -1154,9 +1164,7 @@ impl BrowseModel {
         self.current_selection = None;
         self.rendered_columns.clear();
         self.row_index = GridRowIndex::default();
-        update_selection_chrome(&self.selection_label, 0);
-        self.actions.follow_selection(0);
-        self.sync_delete_action();
+        self.sync_selection();
         self.show_loading();
     }
 
