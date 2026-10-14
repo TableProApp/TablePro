@@ -483,3 +483,36 @@ fn copy_rows_action(tab: &super::BrowseTab) -> gtk4::gio::SimpleAction {
         .map(|model| model.actions.copy_rows.clone())
         .expect("the tab has a model")
 }
+
+/// The status page reads its description as markup, where the `&`
+/// would leave it empty.
+#[gtk4::test]
+fn the_loading_page_names_a_table_with_an_ampersand() {
+    libadwaita::init().expect("libadwaita initialises under the test backend");
+    crate::register_test_resources();
+    let runtime = crate::test_support::test_runtime();
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::Late {
+        after: Duration::from_secs(5),
+        outcome: Ok(rows(&["late"])),
+    });
+    let fake = crate::test_support::FakeSession::start(script, [], runtime.tasks());
+    let root = tempfile::tempdir().expect("tempdir");
+    let tab = super::tests::table_tab(
+        &fake.session,
+        &runtime,
+        &root,
+        "R&D",
+        Default::default(),
+        Default::default(),
+        false,
+    );
+    let shown = || crate::test_support::status_page_description(&tab.imp().loading_page);
+
+    assert_eq!(shown().as_deref(), Some("Fetching rows from R&D"));
+    wait_until(WAIT, || tab.is_loading()).expect("the read to start");
+    assert_eq!(shown().as_deref(), Some("Fetching rows from R&D"));
+
+    drop(tab);
+    runtime.shutdown();
+}

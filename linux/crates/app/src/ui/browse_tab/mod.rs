@@ -128,10 +128,8 @@ impl BrowseTab {
             .map(|id| init.filter_settings.filters(id, init.schema.as_deref(), &init.table))
             .unwrap_or_default();
         let table_label = qualified(init.schema.as_deref(), &init.table);
-        imp.loading_page.set_description(Some(&crate::i18n::gettext_f(
-            "Fetching rows from {table}",
-            &[("table", &table_label)],
-        )));
+        imp.loading_page
+            .set_description(Some(&loading_description(&table_label)));
         imp.inner_stack.set_visible_child_name("loading");
         imp.read_only_banner.set_revealed(init.read_only);
 
@@ -1436,10 +1434,8 @@ impl BrowseModel {
     }
 
     fn show_loading(&self) {
-        self.loading_page.set_description(Some(&crate::i18n::gettext_f(
-            "Fetching rows from {table}",
-            &[("table", &self.table_label())],
-        )));
+        self.loading_page
+            .set_description(Some(&loading_description(&self.table_label())));
         self.inner_stack.set_visible_child_name("loading");
     }
 
@@ -1961,6 +1957,15 @@ impl BrowseModel {
             kind: CopyKind::Rows,
         }));
     }
+}
+
+/// A status page reads its description as markup, and a table's name
+/// can hold an `&` or a `<`.
+fn loading_description(table: &str) -> glib::GString {
+    glib::markup_escape_text(&crate::i18n::gettext_f(
+        "Fetching rows from {table}",
+        &[("table", table)],
+    ))
 }
 
 fn qualified(schema: Option<&str>, table: &str) -> String {

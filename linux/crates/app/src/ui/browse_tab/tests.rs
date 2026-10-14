@@ -317,14 +317,26 @@ pub(super) fn filtered_users_tab(
     tracker: TabTrackerHandle,
     read_only: bool,
 ) -> BrowseTab {
+    table_tab(session, runtime, root, "users", saved, tracker, read_only)
+}
+
+pub(super) fn table_tab(
+    session: &Arc<Session>,
+    runtime: &crate::runtime::AppRuntime,
+    root: &tempfile::TempDir,
+    table: &str,
+    saved: FilterSet,
+    tracker: TabTrackerHandle,
+    read_only: bool,
+) -> BrowseTab {
     let tasks = runtime.tasks();
     let connection_id = uuid::Uuid::new_v4();
     let filter_settings = crate::persistence::FilterSettingsStore::load(root.path().join("filters.json"), &tasks);
-    filter_settings.set_filters(connection_id, None, "users", saved);
+    filter_settings.set_filters(connection_id, None, table, saved);
     BrowseTab::new(BrowseTabInit {
         tracker,
         schema: None,
-        table: "users".to_owned(),
+        table: table.to_owned(),
         connection_id: Some(connection_id),
         read_only,
         page_size: 100,
