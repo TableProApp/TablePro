@@ -371,7 +371,11 @@ impl SqlEditor {
             row_limit: RowLimit::EDITOR_DEFAULT,
         };
         let metadata = session.metadata().clone();
+        // Read again at the end from the run's own session, never the
+        // window's: the link can come up during the run, and the window
+        // can move to another engine before it ends.
         let dialect = session.current_dialect();
+        let ran_on = session.clone();
         let started_at = SystemTime::now();
         let cancel = CancellationToken::new();
         let (events, mut received) = tokio::sync::mpsc::channel(8);
@@ -403,6 +407,7 @@ impl SqlEditor {
                 let finished = matches!(event, RunEvent::Finished);
                 editor.apply_event(event);
                 if finished {
+                    let dialect = dialect.or_else(|| ran_on.current_dialect());
                     editor.finish_run(query, &metadata, started_at, dialect);
                     return;
                 }
@@ -411,6 +416,7 @@ impl SqlEditor {
             // does; the list still has to end and the tab unlock.
             if let Some(editor) = weak.upgrade() {
                 editor.apply_event(RunEvent::Finished);
+                let dialect = dialect.or_else(|| ran_on.current_dialect());
                 editor.finish_run(query, &metadata, started_at, dialect);
             }
         });
@@ -484,8 +490,6 @@ impl SqlEditor {
         self.emit_by_name::<()>("run-state-changed", &[&false]);
     }
 
-    /// `dialect` is the one the run started on, which still names the
-    /// engine when the connection dropped during the run.
     fn record_history(&self, entry: tablepro_storage::query_history::NewEntry, dialect: Option<Arc<dyn SqlDialect>>) {
         let Some(deps) = self.deps() else {
             return;
@@ -493,7 +497,6 @@ impl SqlEditor {
         let Some(history) = deps.history.as_ref() else {
             return;
         };
-        let dialect = dialect.or_else(|| deps.session.get().and_then(|session| session.current_dialect()));
         drop(deps.tasks.spawn_task(history.record(entry, dialect)));
     }
 
