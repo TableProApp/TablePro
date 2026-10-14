@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New Window (Ctrl+Shift+N, or `tablepro --new-window`) opens another window in the running TablePro.
 - Connections wait offline while the network can't reach their server, and reconnect once it can or after a suspend.
 - Review Key in a connection's banner when its SSH host key is refused, to trust a new key, replace a changed one, or retry once the key is fixed outside TablePro.
+- Read-only or read-write choice before opening a SQLite file on a network share or FUSE filesystem.
+- Locate… for a saved SQLite connection whose file was moved or renamed.
+- Open SQLite files from the file manager's Open With, or with `tablepro file.sqlite3`.
 
 ### Changed
 
@@ -42,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
 - Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
 - Deleting a connection asks once, offers its window when it is open, and can delete its query history too.
+- SQLite files shared through the document portal show their own path instead of the portal's.
 
 ### Removed
 

@@ -6,6 +6,8 @@ pub mod column_relayout;
 pub mod connection_deletion;
 pub mod deletion_error;
 pub mod deletion_report;
+pub mod file_location;
+mod file_location_kind;
 pub mod file_resolution;
 pub mod history_availability;
 pub mod history_service;

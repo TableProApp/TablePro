@@ -40,6 +40,12 @@ name = "application_lifecycle"
 path = "tests/application_lifecycle.rs"
 harness = false
 
+# D-Bus starts the binary, which opens its windows on GTK's main thread.
+[[test]]
+name = "open_files"
+path = "tests/open_files.rs"
+harness = false
+
 [features]
 default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]
@@ -61,6 +67,7 @@ tablepro-ssh = { path = "../ssh" }
 tablepro-session = { path = "../session" }
 tablepro-storage = { path = "../storage" }
 gio.workspace = true
+gio-unix.workspace = true
 gtk4.workspace = true
 libadwaita.workspace = true
 sourceview5.workspace = true

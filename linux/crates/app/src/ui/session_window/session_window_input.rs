@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use super::resolve_file_identity::ResolvedFile;
 use super::session_window_command::SessionWindowCommand;
+use super::sqlite_location_dialog::LocationChoice;
 use crate::services::connection_deletion::DeletionOptions;
 use crate::ui::connect_dialog::ConnectSubmission;
 use crate::workspace::CloseReason;
@@ -55,6 +56,19 @@ pub(crate) enum SessionWindowInput {
     SavesInFlightChanged(usize),
     TitleChanged(String),
     Command(Box<SessionWindowCommand>),
+    /// The answer for a file on a filesystem whose locking SQLite cannot
+    /// trust, or ReadWrite when there was nothing to ask.
+    LocationChosen {
+        generation: tablepro_session::connect::AttemptGeneration,
+        choice: LocationChoice,
+    },
+    /// The user found the file the saved connection `id` lost.
+    FileLocated {
+        id: Uuid,
+        path: std::path::PathBuf,
+    },
+    /// The located file's path is saved; connect to it.
+    LocatedSaved(Box<SavedConnection>),
     ReloadConnections,
     ConnectionsLoaded(Vec<SavedConnection>),
     ConnectionListUnavailable,

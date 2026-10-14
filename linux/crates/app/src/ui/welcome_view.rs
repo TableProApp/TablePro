@@ -3,6 +3,7 @@ use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use relm4::{adw, gtk};
 
+use tablepro_session::runtime::Tasks;
 use tablepro_storage::{ConnectionColor, SavedConnection};
 use uuid::Uuid;
 
@@ -17,6 +18,7 @@ pub struct WelcomeView {
     /// reinstalled whenever the list changes.
     listbox: gtk::ListBox,
     stack: gtk::Stack,
+    tasks: Option<Tasks>,
 }
 
 #[derive(Debug)]
@@ -41,7 +43,10 @@ pub enum WelcomeViewOutput {
 }
 
 #[derive(Debug, Default)]
-pub struct WelcomeViewInit;
+pub struct WelcomeViewInit {
+    /// Reads what the rows show that is on disk.
+    pub tasks: Option<Tasks>,
+}
 
 impl SimpleComponent for WelcomeView {
     type Init = WelcomeViewInit;
@@ -54,7 +59,7 @@ impl SimpleComponent for WelcomeView {
         gtk::Stack::builder().build()
     }
 
-    fn init(_init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let listbox = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::None)
             .css_classes(["boxed-list"])
@@ -142,6 +147,7 @@ impl SimpleComponent for WelcomeView {
             factory,
             listbox,
             stack: root.clone(),
+            tasks: init.tasks,
         };
         ComponentParts { model, widgets: () }
     }
@@ -158,6 +164,7 @@ impl SimpleComponent for WelcomeView {
                     guard.push_back(ConnectionRowInit {
                         saved: saved.clone(),
                         groups: groups.clone(),
+                        tasks: self.tasks.clone(),
                     });
                 }
                 drop(guard);
@@ -229,7 +236,7 @@ mod tests {
 
     #[gtk4::test]
     fn a_grouped_list_carries_one_header_per_group() {
-        let view = WelcomeView::builder().launch(WelcomeViewInit);
+        let view = WelcomeView::builder().launch(WelcomeViewInit::default());
         view.sender()
             .send(WelcomeViewInput::SetConnections(vec![
                 connection("loose", None),
@@ -249,7 +256,7 @@ mod tests {
 
     #[gtk4::test]
     fn an_ungrouped_list_carries_no_headers_at_all() {
-        let view = WelcomeView::builder().launch(WelcomeViewInit);
+        let view = WelcomeView::builder().launch(WelcomeViewInit::default());
         view.sender()
             .send(WelcomeViewInput::SetConnections(vec![
                 connection("a", None),
@@ -264,7 +271,7 @@ mod tests {
 
     #[gtk4::test]
     fn taking_the_last_connection_out_of_a_group_takes_its_header_with_it() {
-        let view = WelcomeView::builder().launch(WelcomeViewInit);
+        let view = WelcomeView::builder().launch(WelcomeViewInit::default());
         view.sender()
             .send(WelcomeViewInput::SetConnections(vec![connection("a", Some("Work"))]))
             .expect("send");

@@ -40,6 +40,7 @@ pub use self::form_errors::FormErrors;
 pub use self::form_field::FormField;
 use self::pem_validation::{PemState, PemValidation};
 pub use self::row_problem::show_problem;
+pub(crate) use self::sqlite_file_row::sqlite_file_dialog;
 use crate::ui::error_text::TlsRemedy;
 use crate::ui::ssh_inputs::SshEnvironment;
 
@@ -107,6 +108,7 @@ impl ConnectDialog {
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         let names: Vec<&str> = drivers.iter().map(|entry| entry.display_name.as_str()).collect();
         imp.driver_names.splice(0, imp.driver_names.n_items(), &names);
+        imp.file_row.set_tasks(init.tasks.clone());
         let _ = imp.services.set(DialogServices {
             connector: init.connector,
             interaction: init.interaction,

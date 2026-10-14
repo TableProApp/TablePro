@@ -12,7 +12,11 @@ pub(crate) use crate::services::file_resolution::{FileResolveError, FileTarget, 
 
 /// The request that opens a file nobody saved, through the driver that
 /// opens files.
-pub(crate) fn file_request(identity: &FileIdentity, drivers: &DriverRegistry) -> Result<ConnectRequest, ConnectError> {
+pub(crate) fn file_request(
+    identity: &FileIdentity,
+    drivers: &DriverRegistry,
+    read_only: bool,
+) -> Result<ConnectRequest, ConnectError> {
     let driver = file_driver(drivers).ok_or_else(|| ConnectError::UnknownDriver("sqlite".to_owned()))?;
     let path = identity
         .canonical_path
@@ -30,7 +34,7 @@ pub(crate) fn file_request(identity: &FileIdentity, drivers: &DriverRegistry) ->
         },
         driver,
         target: RequestTarget::File(endpoint),
-        workspace_settings: WorkspaceSettings::workspace(false),
+        workspace_settings: WorkspaceSettings::workspace(read_only),
     })
 }
 
@@ -90,10 +94,13 @@ mod tests {
         )));
         let identity = FileIdentity::new(Some(PathBuf::from("/srv/app.db")), "file:///srv/app.db".to_owned());
 
-        let request = file_request(&identity, &drivers).expect("a request");
+        let request = file_request(&identity, &drivers, false).expect("a request");
+        let read_only = file_request(&identity, &drivers, true).expect("a read-only request");
 
         assert_eq!(request.metadata.name, "app.db");
         assert!(matches!(request.target, RequestTarget::File(_)));
-        assert!(file_request(&identity, &DriverRegistry::new()).is_err());
+        assert!(!request.workspace_settings.read_only);
+        assert!(read_only.workspace_settings.read_only);
+        assert!(file_request(&identity, &DriverRegistry::new(), false).is_err());
     }
 }
