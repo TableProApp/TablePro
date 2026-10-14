@@ -367,7 +367,12 @@ impl SessionWindow {
                         }
                     }
                     Err(error) => window.show_saved_connection_error(
-                        &crate::i18n::gettext("The connection could not be duplicated."),
+                        |reason| {
+                            crate::i18n::gettext_f(
+                                "The connection could not be duplicated. {reason}",
+                                &[("reason", reason)],
+                            )
+                        },
                         &error,
                     ),
                 }
@@ -382,10 +387,9 @@ impl SessionWindow {
             return;
         };
         let editor = state.services.saved_connection_editor.clone();
-        self.change_connection(
-            async move { editor.move_to_group(id, group).await },
-            crate::i18n::gettext("The group could not be saved."),
-        );
+        self.change_connection(async move { editor.move_to_group(id, group).await }, |reason| {
+            crate::i18n::gettext_f("The group could not be saved. {reason}", &[("reason", reason)])
+        });
     }
 
     /// Put a colour on a connection, or take the one it has off.
@@ -394,10 +398,9 @@ impl SessionWindow {
             return;
         };
         let editor = state.services.saved_connection_editor.clone();
-        self.change_connection(
-            async move { editor.set_color(id, color).await },
-            crate::i18n::gettext("The colour could not be saved."),
-        );
+        self.change_connection(async move { editor.set_color(id, color).await }, |reason| {
+            crate::i18n::gettext_f("The colour could not be saved. {reason}", &[("reason", reason)])
+        });
     }
 
     /// Run a change to a saved connection, holding the process until it
@@ -406,7 +409,7 @@ impl SessionWindow {
     fn change_connection(
         &self,
         change: impl std::future::Future<Output = Result<(), SavedConnectionError>> + Send + 'static,
-        failure: String,
+        failure: fn(&str) -> String,
     ) {
         let Some(state) = self.state() else {
             return;
@@ -416,17 +419,16 @@ impl SessionWindow {
         crate::runtime::spawn_and_deliver(&state.services.tasks, change, move |outcome| {
             drop(hold);
             if let (Err(error), Some(window)) = (flatten(outcome), window.upgrade()) {
-                window.show_saved_connection_error(&failure, &error);
+                window.show_saved_connection_error(failure, &error);
             }
         });
     }
 
-    fn show_saved_connection_error(&self, failure: &str, error: &SavedConnectionError) {
-        tracing::warn!(%error, failure, "a change to a saved connection did not happen");
-        self.show_toast(&format!(
-            "{failure} {}",
-            crate::ui::error_text::saved_connection_error_message(error)
-        ));
+    /// Say a change did not happen, with `failure` putting the reason
+    /// where the translation wants it.
+    fn show_saved_connection_error(&self, failure: fn(&str) -> String, error: &SavedConnectionError) {
+        tracing::warn!(%error, "a change to a saved connection did not happen");
+        self.show_toast(&failure(&crate::ui::error_text::saved_connection_error_message(error)));
     }
 
     /// Write the connection list to a file the user picks.
@@ -891,6 +893,32 @@ mod tests {
         assert_eq!(test.hold.live(), 1, "the delete ran without a hold");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
         assert!(!listed(&test, copy.id), "the hold ended before the delete");
+    }
+
+    #[gtk4::test]
+    fn a_refused_copy_says_what_failed_and_why() {
+        let test = TestWindow::picker("CopyRefused");
+        wait_for_list(&test.window);
+        store_password(&test);
+        test.vault.fail_store(SecretKind::DatabasePassword, SecretError::Locked);
+
+        let toasts = || -> Vec<String> {
+            test.window
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .filter_map(|toast| toast.title().map(|title| title.to_string()))
+                .collect()
+        };
+
+        test.window.on_duplicate_connection(test.saved.id);
+        wait_until(WAIT, || !toasts().is_empty()).expect("the refusal");
+
+        assert_eq!(
+            toasts(),
+            ["The connection could not be duplicated. The keyring is locked. Unlock it and try again."]
+        );
     }
 
     #[gtk4::test]
