@@ -6,14 +6,14 @@ use gtk4::prelude::*;
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::edit::CellInput;
 use tablepro_core::filter::{FilterOp, FilterRule};
-use tablepro_core::meta::RowIdentity;
+use tablepro_core::meta::{RowCountEstimate, RowIdentity, TableEstimate};
 use tablepro_core::{ColumnInfo, DriverError, FilterSet, LossPhase, QueryResult, Value};
 use tablepro_session::Session;
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
 use super::row_deletion::RowDeletion;
-use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes, format_thousands};
+use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes};
 use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -21,7 +21,7 @@ use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{FakeSession, drain_main_context, wait_until};
 use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
 
-const WAIT: Duration = Duration::from_secs(10);
+pub(super) const WAIT: Duration = Duration::from_secs(10);
 
 /// A column carrying the server's spelling and the kind it means.
 #[expect(
@@ -63,23 +63,6 @@ fn col_with_default(data_type: &str, default: &str) -> ColumnInfo {
     c
 }
 
-#[test]
-fn format_thousands_handles_common_page_sizes() {
-    assert_eq!(format_thousands(100), "100");
-    assert_eq!(format_thousands(500), "500");
-    assert_eq!(format_thousands(1_000), "1,000");
-    assert_eq!(format_thousands(5_000), "5,000");
-    assert_eq!(format_thousands(10_000), "10,000");
-    assert_eq!(format_thousands(1_000_000), "1,000,000");
-}
-
-#[test]
-fn format_thousands_handles_edges() {
-    assert_eq!(format_thousands(0), "0");
-    assert_eq!(format_thousands(1), "1");
-    assert_eq!(format_thousands(999), "999");
-}
-
 fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
     store.item(position).and_downcast::<RowObject>().expect("a row")
 }
@@ -108,7 +91,7 @@ fn draft_changes_add_and_remove_draft_rows() {
     assert_eq!(index.get(&RowKey::Draft(4)), None);
 }
 
-fn column(name: &str, primary_key: bool) -> ColumnInfo {
+pub(super) fn column(name: &str, primary_key: bool) -> ColumnInfo {
     ColumnInfo {
         name: name.to_owned(),
         column_type: ColumnType::untyped_text("text"),
@@ -121,7 +104,7 @@ fn column(name: &str, primary_key: bool) -> ColumnInfo {
     }
 }
 
-fn rows(names: &[&str]) -> QueryResult {
+pub(super) fn rows(names: &[&str]) -> QueryResult {
     let columns = [column("id", true), column("name", false)];
     QueryResult::new(
         columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
@@ -135,7 +118,7 @@ fn rows(names: &[&str]) -> QueryResult {
 
 /// A connection that serves the table's catalog and count, with the
 /// page left to the test.
-fn serving_table() -> ConnectionScript {
+pub(super) fn serving_table() -> ConnectionScript {
     let mut script = ConnectionScript::default();
     script
         .fetch_columns
@@ -144,28 +127,38 @@ fn serving_table() -> ConnectionScript {
         columns: vec!["id".to_owned()],
     }));
     script.count_rows.always(FakeReply::ok(2));
+    script
+        .table_estimate
+        .always(FakeReply::ok(estimate(RowCountEstimate::Approximate(2))));
     script.probe.always(FakeReply::ok(()));
     script
 }
 
-struct Harness {
-    tab: Option<BrowseTab>,
-    tracker: TabTrackerHandle,
+pub(super) fn estimate(rows: RowCountEstimate) -> TableEstimate {
+    TableEstimate {
+        rows,
+        heap_blocks: None,
+    }
+}
+
+pub(super) struct Harness {
+    pub(super) tab: Option<BrowseTab>,
+    pub(super) tracker: TabTrackerHandle,
     others: Vec<BrowseTab>,
-    session: Arc<Session>,
-    connection: Arc<FakeConnection>,
-    fake: FakeSession,
+    pub(super) session: Arc<Session>,
+    pub(super) connection: Arc<FakeConnection>,
+    pub(super) fake: FakeSession,
     root: tempfile::TempDir,
     runtime: Option<crate::runtime::AppRuntime>,
 }
 
 impl Harness {
-    fn open(script: ConnectionScript, reconnects: impl IntoIterator<Item = FakeEstablish>) -> Self {
+    pub(super) fn open(script: ConnectionScript, reconnects: impl IntoIterator<Item = FakeEstablish>) -> Self {
         Self::open_filtered(script, reconnects, FilterSet::default())
     }
 
     /// The tab opens under `saved`, the filter the table was left with.
-    fn open_filtered(
+    pub(super) fn open_filtered(
         script: ConnectionScript,
         reconnects: impl IntoIterator<Item = FakeEstablish>,
         saved: FilterSet,
@@ -189,12 +182,12 @@ impl Harness {
         }
     }
 
-    fn tab(&self) -> &BrowseTab {
+    pub(super) fn tab(&self) -> &BrowseTab {
         self.tab.as_ref().expect("the tab is open")
     }
 
     /// Another tab on the same table and session.
-    fn open_another(&mut self) -> BrowseTab {
+    pub(super) fn open_another(&mut self) -> BrowseTab {
         let runtime = self.runtime.as_ref().expect("the runtime is running");
         let tab = users_tab(&self.session, runtime, &self.root);
         self.others.push(tab.clone());
@@ -203,7 +196,7 @@ impl Harness {
 
     /// The second cell of each saved row on screen, empty while the
     /// tab shows no page.
-    fn shown(&self) -> Vec<Value> {
+    pub(super) fn shown(&self) -> Vec<Value> {
         self.saved_rows()
             .iter()
             .filter_map(|row| row.cell(1).cloned())
@@ -211,7 +204,7 @@ impl Harness {
     }
 
     /// The saved rows the grid holds for the page on screen.
-    fn saved_rows(&self) -> Vec<RowObject> {
+    pub(super) fn saved_rows(&self) -> Vec<RowObject> {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
         let model = self.tab().imp().model.borrow();
         let Some(selection) = model
@@ -227,19 +220,19 @@ impl Harness {
             .collect()
     }
 
-    fn visible_page(&self) -> Option<String> {
+    pub(super) fn visible_page(&self) -> Option<String> {
         self.tab().imp_stack().visible_child_name().map(|name| name.to_string())
     }
 
     /// The row the grid shows at `position`, drafts included.
-    fn grid_row(&self, position: u32) -> RowObject {
+    pub(super) fn grid_row(&self, position: u32) -> RowObject {
         self.selection()
             .item(position)
             .and_downcast::<RowObject>()
             .expect("a row")
     }
 
-    fn selection(&self) -> gtk4::MultiSelection {
+    pub(super) fn selection(&self) -> gtk4::MultiSelection {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
         self.tab()
             .imp()
@@ -250,7 +243,7 @@ impl Harness {
             .expect("the grid is built")
     }
 
-    fn store(&self) -> gtk4::gio::ListStore {
+    pub(super) fn store(&self) -> gtk4::gio::ListStore {
         self.selection()
             .model()
             .and_downcast::<gtk4::gio::ListStore>()
@@ -268,10 +261,10 @@ impl Harness {
 }
 
 /// The tab in a window, so its grid draws cells.
-struct Shown(gtk4::Window);
+pub(super) struct Shown(pub(super) gtk4::Window);
 
 impl Shown {
-    fn new(tab: &BrowseTab) -> Self {
+    pub(super) fn new(tab: &BrowseTab) -> Self {
         let window = gtk4::Window::new();
         window.set_default_size(600, 400);
         window.set_child(Some(tab));
@@ -287,7 +280,11 @@ impl Drop for Shown {
     }
 }
 
-fn users_tab(session: &Arc<Session>, runtime: &crate::runtime::AppRuntime, root: &tempfile::TempDir) -> BrowseTab {
+pub(super) fn users_tab(
+    session: &Arc<Session>,
+    runtime: &crate::runtime::AppRuntime,
+    root: &tempfile::TempDir,
+) -> BrowseTab {
     filtered_users_tab(
         session,
         runtime,
@@ -297,7 +294,7 @@ fn users_tab(session: &Arc<Session>, runtime: &crate::runtime::AppRuntime, root:
     )
 }
 
-fn filtered_users_tab(
+pub(super) fn filtered_users_tab(
     session: &Arc<Session>,
     runtime: &crate::runtime::AppRuntime,
     root: &tempfile::TempDir,
@@ -321,6 +318,9 @@ fn filtered_users_tab(
         filter_settings,
         session: session.clone(),
         tasks,
+        deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(
+            tablepro_core::LivenessPolicy::DESKTOP,
+        )),
     })
 }
 
@@ -342,11 +342,11 @@ impl BrowseTab {
     }
 }
 
-fn text(values: &[&str]) -> Vec<Value> {
+pub(super) fn text(values: &[&str]) -> Vec<Value> {
     values.iter().map(|value| Value::Text((*value).to_owned())).collect()
 }
 
-fn not_null(column: &str) -> FilterSet {
+pub(super) fn not_null(column: &str) -> FilterSet {
     FilterSet {
         rules: vec![FilterRule {
             column: column.to_owned(),
@@ -357,7 +357,7 @@ fn not_null(column: &str) -> FilterSet {
     }
 }
 
-fn not_null_name() -> FilterSet {
+pub(super) fn not_null_name() -> FilterSet {
     not_null("name")
 }
 
@@ -464,7 +464,7 @@ fn schema_change_reads_the_columns_again_then_the_page() {
     assert_eq!(CallCounters::get(&counters.fetch_columns), 2);
 }
 
-fn header_titles(tab: &BrowseTab) -> Vec<String> {
+pub(super) fn header_titles(tab: &BrowseTab) -> Vec<String> {
     let Some(view) = crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(tab) else {
         return Vec::new();
     };
@@ -538,32 +538,11 @@ fn a_tab_that_opens_reads_the_columns_the_table_has_now() {
     assert_eq!(CallCounters::get(&harness.connection.counters().fetch_columns), 2);
 }
 
-fn toasts(tab: &BrowseTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
+pub(super) fn toasts(tab: &BrowseTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
     let toasts = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let sink = toasts.clone();
     tab.connect_toast(move |_, text| sink.borrow_mut().push(text));
     toasts
-}
-
-#[gtk4::test]
-fn a_failed_refresh_keeps_the_rows_on_screen() {
-    let mut script = serving_table();
-    script
-        .query_bound
-        .once(FakeReply::ok(rows(&["kept"])))
-        .always(FakeReply::err(DriverError::server("denied")));
-    let harness = Harness::open(script, []);
-    wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
-    let toasts = toasts(harness.tab());
-    let counters = harness.connection.counters();
-
-    harness.tab().send(BrowseTabInput::Refresh);
-    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the failed refresh was not reported");
-
-    assert_eq!(CallCounters::get(&counters.query_bound), 2);
-    assert_eq!(harness.shown(), text(&["kept"]), "the failed refresh dropped the rows");
-    assert_eq!(harness.visible_page().as_deref(), Some("grid"));
-    assert!(toasts.borrow()[0].contains("denied"), "{:?}", toasts.borrow());
 }
 
 #[gtk4::test]
@@ -580,7 +559,11 @@ fn a_failed_page_under_a_new_filter_shows_the_error() {
 
     wait_until(WAIT, || harness.visible_page().as_deref() == Some("error"))
         .expect("rows read without the filter stayed under it");
-    assert!(harness.shown().is_empty());
+    assert_eq!(
+        harness.shown(),
+        text(&["unfiltered"]),
+        "the error page let go of the page the paginator still points back to"
+    );
 }
 
 #[gtk4::test]
@@ -874,12 +857,12 @@ fn a_copy_with_a_nul_reaches_the_window_whole() {
     assert_eq!(*copied.borrow(), ["a\0b".to_owned()]);
 }
 
-fn key(id: i64) -> RowKey {
+pub(super) fn key(id: i64) -> RowKey {
     RowKey::from_pk_values(&[Value::Int(id)]).expect("a key")
 }
 
 /// `names` keyed from `first` on, as the next page of `rows` would be.
-fn rows_from(first: i64, names: &[&str]) -> QueryResult {
+pub(super) fn rows_from(first: i64, names: &[&str]) -> QueryResult {
     let mut page = rows(names);
     for (row, id) in page.rows.iter_mut().zip(first..) {
         row[0] = Value::Int(id);
@@ -1015,7 +998,7 @@ fn page_export_snapshot_contains_no_hidden_columns() {
 }
 
 /// A browse page served first, then `next` for every page after it.
-fn paging(first: QueryResult, next: QueryResult) -> ConnectionScript {
+pub(super) fn paging(first: QueryResult, next: QueryResult) -> ConnectionScript {
     let mut script = serving_table();
     script.count_rows.always(FakeReply::ok(1_000));
     script
@@ -1026,7 +1009,7 @@ fn paging(first: QueryResult, next: QueryResult) -> ConnectionScript {
 }
 
 /// Rows enough for a full page, so Next has somewhere to go.
-fn full_page(first: i64) -> QueryResult {
+pub(super) fn full_page(first: i64) -> QueryResult {
     let names: Vec<String> = (0..100).map(|n| format!("row {n}")).collect();
     let names: Vec<&str> = names.iter().map(String::as_str).collect();
     rows_from(first, &names)
@@ -1117,7 +1100,7 @@ fn a_page_that_replaces_the_row_being_edited_keeps_the_edit_and_the_focus() {
     );
 }
 
-fn after_next_frame(window: &gtk4::Window) {
+pub(super) fn after_next_frame(window: &gtk4::Window) {
     let clock = window.frame_clock().expect("the window's frame clock");
     let painted = std::rc::Rc::new(std::cell::Cell::new(false));
     let flag = painted.clone();
@@ -1128,7 +1111,7 @@ fn after_next_frame(window: &gtk4::Window) {
 }
 
 /// The cell showing `column` of the saved row keyed `id`, once drawn.
-fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> GridCell {
+pub(super) fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> GridCell {
     let key = key(id);
     let mut found = None;
     wait_until(WAIT, || {
@@ -1554,7 +1537,7 @@ fn a_grid_built_for_columns_the_table_lost_takes_no_edits() {
     assert_eq!(harness.visible_page().as_deref(), Some("loading"));
 }
 
-fn delete_action(tab: &BrowseTab) -> gtk4::gio::SimpleAction {
+pub(super) fn delete_action(tab: &BrowseTab) -> gtk4::gio::SimpleAction {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     tab.imp()
         .model
@@ -1667,7 +1650,7 @@ fn menu_gesture(cell: &GridCell) -> gtk4::GestureClick {
         .expect("a cell answers a right-click")
 }
 
-fn column_view(tab: &BrowseTab) -> gtk4::ColumnView {
+pub(super) fn column_view(tab: &BrowseTab) -> gtk4::ColumnView {
     crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(tab).expect("the grid")
 }
 
@@ -2332,10 +2315,10 @@ fn a_bulk_delete_waiting_while_a_column_is_added_marks_its_rows_under_the_new_co
 
 /// What this thread logs, as text.
 #[derive(Clone, Default)]
-struct LogLines(Arc<std::sync::Mutex<Vec<u8>>>);
+pub(super) struct LogLines(Arc<std::sync::Mutex<Vec<u8>>>);
 
 impl LogLines {
-    fn text(&self) -> String {
+    pub(super) fn text(&self) -> String {
         let bytes = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         String::from_utf8_lossy(&bytes).into_owned()
     }

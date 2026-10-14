@@ -20,6 +20,8 @@ pub struct BrowseTab {
     #[template_child]
     pub toolbar: TemplateChild<adw::ToolbarView>,
     #[template_child]
+    pub stale_banner: TemplateChild<adw::Banner>,
+    #[template_child]
     pub read_only_banner: TemplateChild<adw::Banner>,
     #[template_child]
     pub no_pk_banner: TemplateChild<adw::Banner>,
@@ -31,6 +33,8 @@ pub struct BrowseTab {
     pub grid_holder: TemplateChild<gtk::Box>,
     #[template_child]
     pub error_page: TemplateChild<adw::StatusPage>,
+    #[template_child]
+    pub retry_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub insert_button: TemplateChild<gtk::Button>,
     #[template_child]
@@ -45,6 +49,12 @@ pub struct BrowseTab {
     pub last_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub paginator_label: TemplateChild<gtk::Label>,
+    #[template_child]
+    pub count_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub count_spinner: TemplateChild<adw::Spinner>,
+    #[template_child]
+    pub count_label: TemplateChild<gtk::Label>,
     #[template_child]
     pub selection_label: TemplateChild<gtk::Label>,
     #[template_child]
@@ -177,6 +187,9 @@ impl ObjectImpl for BrowseTab {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("save-requested").build(),
+                Signal::builder("loading-changed")
+                    .param_types([bool::static_type()])
+                    .build(),
                 Signal::builder("stop-save-requested").build(),
             ]
         })

@@ -284,10 +284,13 @@ impl WorkspaceModel {
             filter_settings: self.storage.filter_settings().clone(),
             session,
             tasks: self.context.tasks.clone(),
+            deadlines: self.context.deadlines.clone(),
         });
         connect_browse(&browse, tab_id, &self.input);
 
         let page = tab_view.append(&browse);
+        let follow = follow_loading(&page, browse.is_loading());
+        browse.connect_loading_changed(move |_, loading| follow(loading));
         let label = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
         page.set_title(&label);
         if let Some(tip) = browse_tab_tooltip(schema.as_deref(), &table, &label) {
@@ -338,6 +341,8 @@ impl WorkspaceModel {
         connect_structure(&structure, tab_id, &self.input);
 
         let page = tab_view.append(&structure);
+        let follow = follow_loading(&page, structure.is_loading());
+        structure.connect_loading_changed(move |_, loading| follow(loading));
         let title = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
         // Told apart from the table's own tab, with the middle dot GNOME
         // apps use in compound titles.
@@ -655,7 +660,7 @@ impl WorkspaceModel {
 
     /// With no Table tab active, no row stays selected: one would say
     /// the editor shows that table.
-    fn sync_sidebar_selection(&self) {
+    pub(super) fn sync_sidebar_selection(&self) {
         let listbox = self.sidebar_factory.widget();
         let Some((schema, table)) = self.selected_browse_slot_table() else {
             listbox.unselect_all();
@@ -1165,6 +1170,20 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSe
     structure.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let alert = input.clone();
     structure.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
+}
+
+/// The tab bar spins on a tab's page while the tab reads. The tab
+/// started reading before it had a page, so the page starts from where
+/// the read stands. The tab holds the handler and the page holds the
+/// tab, so the handler holds the page weakly.
+fn follow_loading(page: &adw::TabPage, loading: bool) -> impl Fn(bool) + 'static {
+    page.set_loading(loading);
+    let page = page.downgrade();
+    move |loading| {
+        if let Some(page) = page.upgrade() {
+            page.set_loading(loading);
+        }
+    }
 }
 
 /// The browse tab's signals, as the workspace's inputs for the tab.

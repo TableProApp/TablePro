@@ -10,6 +10,12 @@
              banner collapsed. -->
         <property name="top-bar-style">flat</property>
         <child type="top">
+          <object class="AdwBanner" id="stale_banner">
+            <property name="title" translatable="yes">Couldn't refresh rows. Showing the last loaded page.</property>
+            <property name="use-markup">false</property>
+          </object>
+        </child>
+        <child type="top">
           <object class="AdwBanner" id="read_only_banner">
             <property name="title" translatable="yes">Read-only connection. Editing disabled.</property>
           </object>
@@ -56,7 +62,17 @@
                 <property name="child">
                   <object class="AdwStatusPage" id="error_page">
                     <property name="icon-name">dialog-error-symbolic</property>
-                    <property name="title" translatable="yes">Couldn't load rows</property>
+                    <property name="title" translatable="yes">Couldn't Load Rows</property>
+                    <property name="child">
+                      <object class="GtkButton" id="retry_button">
+                        <property name="label" translatable="yes">Try Again</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="pill"/>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </property>
                   </object>
                 </property>
               </object>
@@ -128,6 +144,31 @@
                 <style>
                   <class name="dimmed"/>
                 </style>
+              </object>
+            </child>
+            <child type="start">
+              <!-- An exact count can scan the whole table, so it runs
+                   when asked, except for a table small enough. -->
+              <object class="GtkButton" id="count_button">
+                <property name="visible">false</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="AdwSpinner" id="count_spinner">
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="count_label">
+                        <property name="label" translatable="yes">Count Rows</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
               </object>
             </child>
             <child type="start">

@@ -1,62 +1,76 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use tablepro_core::browse::{BrowseSqlError, PageLayout, PageRequest, SortKey, build_count, build_page};
-use tablepro_core::meta::{PagePosition, RowIdentity, TableRef};
+use tablepro_core::browse::{BrowseSqlError, PageLayout, PageRequest, SortKey, build_page};
+use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{ColumnInfo, FilterSet, QueryResult, RowLimit};
+use tablepro_core::{BuildFilterError, ColumnInfo, FilterSet, QueryResult, RowLimit};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind};
 
+use super::column_recheck::RecheckAction;
+use super::columns_fetch::{ColumnFreshness, load_columns};
 use super::{
     BrowseCommand, BrowseModel, BrowseRequestKind, BrowseTabInput, BrowseTabOutput, ColumnsReply, Effects, PageReply,
 };
 use crate::runtime::{RequestTicket, Stamped};
+use crate::ui::tab_load::LoadFailure;
 
 /// What a page or a count reads, copied off the tab so the work owns
 /// it. The SQL is built inside the operation from the lease it runs on,
 /// so it is spelled for that server even when a reconnect lands first.
 #[derive(Debug, Clone)]
-struct ReadPlan {
-    table: TableRef,
-    columns: Vec<ColumnInfo>,
+pub(super) struct ReadPlan {
+    pub(super) table: TableRef,
+    pub(super) columns: Vec<ColumnInfo>,
     identity: RowIdentity,
-    filter: FilterSet,
+    pub(super) filter: FilterSet,
     sort: Vec<SortKey>,
-    offset: u64,
     limit: u64,
 }
 
 impl BrowseModel {
-    /// Ask for one kind of read. A page or a count waits for the
-    /// columns it is built from.
+    /// Ask for one kind of read. A page or an estimate waits for the
+    /// columns, since the tab reads nothing of a table whose columns it
+    /// could not read. A count needs no such wait: it runs only once the
+    /// user or an estimate asks, after the columns.
     pub(super) fn fetch(&mut self, kind: BrowseRequestKind, fx: &mut Effects) {
         match kind {
-            BrowseRequestKind::Columns => self.fetch_columns(false),
-            BrowseRequestKind::Page | BrowseRequestKind::Count if self.identity.is_none() => {
+            BrowseRequestKind::Columns => self.fetch_columns(ColumnFreshness::Cached),
+            BrowseRequestKind::Page | BrowseRequestKind::Estimate if self.identity.is_none() => {
                 self.after_columns.insert(kind);
                 if !self.sequencer.is_pending(BrowseRequestKind::Columns) {
-                    self.fetch_columns(false);
+                    self.fetch_columns(ColumnFreshness::Cached);
                 }
             }
             BrowseRequestKind::Page => self.fetch_page(fx),
-            BrowseRequestKind::Count => self.fetch_count(),
+            BrowseRequestKind::Estimate => self.fetch_estimate(),
+            BrowseRequestKind::Count => self.start_count(self.total.estimate(), fx),
         }
     }
 
-    /// Read the columns, then the page and the count built from them.
-    /// `refresh` asks the server even when the catalog has the columns.
-    pub(super) fn reload_from_columns(&mut self, refresh: bool) {
+    /// Read the columns, then the page built from them and the table's
+    /// estimate. No page is asked for before the columns land, since a
+    /// page is built from them, and a failure to read them fails the read
+    /// at once rather than leave the tab waiting.
+    pub(super) fn reload_from_columns(&mut self, freshness: ColumnFreshness) {
         self.after_columns.insert(BrowseRequestKind::Page);
-        self.after_columns.insert(BrowseRequestKind::Count);
-        self.fetch_columns(refresh);
+        self.after_columns.insert(BrowseRequestKind::Estimate);
+        self.fetch_columns(freshness);
     }
 
-    fn issue(&mut self, kind: BrowseRequestKind) -> RequestTicket {
+    pub(super) fn issue(&mut self, kind: BrowseRequestKind) -> RequestTicket {
         self.issued_on.insert(kind, self.session.link_generation());
         self.sequencer.issue(kind)
     }
 
-    fn fetch_columns(&mut self, refresh: bool) {
+    /// A new read of the columns, so the page read under them gets its
+    /// own recheck.
+    fn fetch_columns(&mut self, freshness: ColumnFreshness) {
+        self.recheck.reset();
+        self.read_columns(freshness);
+    }
+
+    fn read_columns(&mut self, freshness: ColumnFreshness) {
         let ticket = self.issue(BrowseRequestKind::Columns);
         let session = self.session.clone();
         let table = self.table_ref();
@@ -65,13 +79,8 @@ impl BrowseModel {
             // The catalog's read is shared with other views, so a
             // replaced request stops waiting on it without stopping it.
             let columns = tokio::select! {
-                columns = async {
-                    match refresh {
-                        true => session.refresh_columns(table.clone()).await,
-                        false => session.columns(table.clone()).await,
-                    }
-                } => columns?,
-                () = cancel.cancelled() => return Err(Arc::new(OperationError::Cancelled)),
+                columns = load_columns(session.clone(), table.clone(), freshness) => columns?,
+                () = cancel.cancelled() => return Err(LoadFailure::Columns(Arc::new(OperationError::Cancelled))),
             };
             let identity = session
                 .run_cancellable(OperationKind::Metadata, &cancel, move |lease, options| {
@@ -79,11 +88,16 @@ impl BrowseModel {
                     async move { Ok(lease.row_identity(&table, options).await?) }
                 })
                 .await
-                .map_err(Arc::new)?;
+                .map_err(|error| {
+                    if error != OperationError::Cancelled {
+                        tracing::warn!(category = ?error.category(), "browse row identity failed");
+                    }
+                    LoadFailure::Columns(Arc::new(error))
+                })?;
             Ok(ColumnsReply { columns, identity })
         };
         self.deliver(ticket, work, BrowseCommand::Columns, |failure| {
-            Arc::new(OperationError::from(failure))
+            LoadFailure::Columns(Arc::new(OperationError::from(failure)))
         });
     }
 
@@ -91,17 +105,15 @@ impl BrowseModel {
         let Some(plan) = self.read_plan() else {
             return;
         };
-        if let Some(message) = self.filter_problem() {
-            self.on_filter_problem(&message, fx);
+        if let Some(problem) = self.filter_problem() {
+            self.on_filter_problem(problem, fx);
             return;
         }
+        self.begin_read(fx);
         let ticket = self.issue(BrowseRequestKind::Page);
         let session = self.session.clone();
         let cancel = ticket.cancel.clone();
-        let position = match plan.offset {
-            0 => PagePosition::First,
-            offset => PagePosition::Offset(offset),
-        };
+        let position = self.pager.position();
         let work = async move {
             let reply_position = position.clone();
             session
@@ -137,37 +149,10 @@ impl BrowseModel {
         self.deliver(ticket, work, BrowseCommand::Page, OperationError::from);
     }
 
-    /// The "of N" total, under the same filter as the page so the two
-    /// agree. The page toasts a filter that cannot be written, so the
-    /// count stays quiet about it.
-    fn fetch_count(&mut self) {
-        let Some(plan) = self.read_plan() else {
-            return;
-        };
-        if self.filter_problem().is_some() {
-            return;
-        }
-        let ticket = self.issue(BrowseRequestKind::Count);
-        let session = self.session.clone();
-        let cancel = ticket.cancel.clone();
-        let work = async move {
-            session
-                .run_cancellable(OperationKind::Count, &cancel, move |lease, options| {
-                    let plan = plan.clone();
-                    async move {
-                        let statement = build_count(&*lease.dialect(), &plan.table, &plan.columns, &plan.filter)?;
-                        Ok(lease.count_rows(&statement, options).await?)
-                    }
-                })
-                .await
-        };
-        self.deliver(ticket, work, BrowseCommand::Count, OperationError::from);
-    }
-
     /// Run `work` on the app runtime and hand its stamped reply back to
     /// the tab on the GTK thread. The delivery holds the tab weakly, so a
     /// tab closed meanwhile is not kept alive by its own reads.
-    fn deliver<T, E, W>(
+    pub(super) fn deliver<T, E, W>(
         &self,
         ticket: RequestTicket,
         work: W,
@@ -188,7 +173,7 @@ impl BrowseModel {
         });
     }
 
-    fn read_plan(&self) -> Option<ReadPlan> {
+    pub(super) fn read_plan(&self) -> Option<ReadPlan> {
         Some(ReadPlan {
             table: self.table_ref(),
             columns: self.current_columns.clone(),
@@ -199,32 +184,33 @@ impl BrowseModel {
                 .map(|(column, ascending)| SortKey { column, ascending })
                 .into_iter()
                 .collect(),
-            offset: self.current_offset,
-            limit: self.page_size,
+            limit: self.pager.page_size(),
         })
     }
 
     /// Why the tab's filter cannot be written for the current server,
     /// if it cannot.
-    fn filter_problem(&self) -> Option<String> {
+    pub(super) fn filter_problem(&self) -> Option<BuildFilterError> {
         let dialect = self.dialect.as_ref()?;
         let mut builder = StatementBuilder::new();
-        tablepro_core::build_filter(&mut builder, &**dialect, &self.current_columns, &self.current_filter)
-            .err()
-            .map(|error| error.to_string())
+        tablepro_core::build_filter(&mut builder, &**dialect, &self.current_columns, &self.current_filter).err()
     }
 
     /// A filter the dialect cannot write is the user's to fix, and no
-    /// page is read under it. A page already read under these columns
-    /// stays with a toast; without one, the error page says why rather
-    /// than a spinner that nothing will replace.
-    fn on_filter_problem(&mut self, message: &str, fx: &mut Effects) {
-        if self.page.is_some() {
-            self.refresh_inner_stack_visibility();
-            fx.output(BrowseTabOutput::ShowToast(message.to_owned()));
+    /// page is read under it. Rows already on screen stay with a toast,
+    /// and a page still on its way under the old filter is stopped;
+    /// without rows, the error page says why rather than a spinner that
+    /// nothing will replace.
+    fn on_filter_problem(&mut self, problem: BuildFilterError, fx: &mut Effects) {
+        let failure = filter_failure(problem);
+        if !self.load.has_content() {
+            self.on_load_failed(failure, fx);
             return;
         }
-        self.show_error(message);
+        self.sequencer.cancel(BrowseRequestKind::Page);
+        fx.output(BrowseTabOutput::ShowToast(failure.message()));
+        let presentation = self.load.abandon();
+        self.present(presentation, fx);
     }
 
     pub(super) fn on_command(&mut self, command: BrowseCommand, fx: &mut Effects) {
@@ -242,13 +228,15 @@ impl BrowseModel {
                             self.fetch(kind, fx);
                         }
                     }
-                    Err(error) => {
-                        tracing::warn!(
-                            kind = failure_kind(&error),
-                            category = ?error.category(),
-                            "could not read the table's columns"
-                        );
-                        self.on_read_failed(&crate::ui::error_text::operation_error_message(&error), fx);
+                    Err(failure) => {
+                        self.recheck.reset();
+                        // What waited on the columns was never asked, so it
+                        // is asked again with them rather than set off by a
+                        // later read of the columns that wanted none of it.
+                        for kind in std::mem::take(&mut self.after_columns) {
+                            self.failed.insert(kind);
+                        }
+                        self.on_load_failed(failure, fx);
                         self.retry_if_link_moved(BrowseRequestKind::Columns, fx);
                     }
                 }
@@ -259,33 +247,61 @@ impl BrowseModel {
                 }
                 self.failed.record(BrowseRequestKind::Page, &value);
                 match value {
-                    Ok(reply) => {
-                        let offset = reply.offset().unwrap_or(self.current_offset);
-                        self.on_rows_loaded(offset, reply, fx);
-                    }
+                    Ok(reply) => self.on_page_read(reply, fx),
                     Err(error) => {
-                        self.on_read_failed(&crate::ui::error_text::operation_error_message(&error), fx);
+                        self.on_load_failed(LoadFailure::Page(Arc::new(error)), fx);
                         self.retry_if_link_moved(BrowseRequestKind::Page, fx);
                     }
                 }
             }
+            BrowseCommand::Estimate(Stamped { stamp, value }) => {
+                if !self.sequencer.accept(BrowseRequestKind::Estimate, stamp) {
+                    return;
+                }
+                self.failed.record(BrowseRequestKind::Estimate, &value);
+                let failed = value.is_err();
+                self.on_estimate(value, fx);
+                if failed {
+                    self.retry_if_link_moved(BrowseRequestKind::Estimate, fx);
+                }
+            }
+            // A failed count is not asked again on a reconnect: Try Again
+            // runs it, so a count that ran out of time does not run for
+            // another deadline, or under a filter applied since.
             BrowseCommand::Count(Stamped { stamp, value }) => {
                 if !self.sequencer.accept(BrowseRequestKind::Count, stamp) {
                     return;
                 }
-                self.failed.record(BrowseRequestKind::Count, &value);
-                match value {
-                    Ok(count) => self.on_row_count_loaded(count, fx),
-                    Err(error) => {
-                        tracing::debug!(
-                            kind = failure_kind(&error),
-                            category = ?error.category(),
-                            "the row count could not be read"
-                        );
-                        self.retry_if_link_moved(BrowseRequestKind::Count, fx);
-                    }
+                if let Err(error) = &value {
+                    tracing::debug!(
+                        kind = failure_kind(error),
+                        category = ?error.category(),
+                        "the row count could not be read"
+                    );
                 }
+                self.on_count(value, fx);
             }
+        }
+    }
+
+    /// A page read under columns the table no longer has would put cells
+    /// under the wrong headers, so the columns are read again once, then
+    /// the page; a second mismatch fails the read.
+    fn on_page_read(&mut self, reply: PageReply, fx: &mut Effects) {
+        match self
+            .recheck
+            .check(&self.current_columns, &reply.result.columns, &reply.layout)
+        {
+            RecheckAction::Accept => {
+                let offset = reply.offset().unwrap_or(self.pager.start_ordinal());
+                self.on_rows_loaded(offset, reply, fx);
+            }
+            RecheckAction::Refetch => {
+                tracing::debug!("a page came back with other columns; reading the columns again");
+                self.after_columns.insert(BrowseRequestKind::Page);
+                self.read_columns(ColumnFreshness::Refetch);
+            }
+            RecheckAction::Fail => self.on_load_failed(LoadFailure::ColumnsChanged, fx),
         }
     }
 
@@ -316,13 +332,13 @@ impl BrowseModel {
         }
         let kinds = self.failed.take();
         if kinds.contains(&BrowseRequestKind::Page) || kinds.contains(&BrowseRequestKind::Columns) {
-            self.show_loading();
+            self.begin_read(fx);
         }
         match kinds.contains(&BrowseRequestKind::Columns) {
             true => {
                 self.after_columns
                     .extend(kinds.into_iter().filter(|kind| *kind != BrowseRequestKind::Columns));
-                self.fetch_columns(false);
+                self.fetch_columns(ColumnFreshness::Cached);
             }
             false => {
                 for kind in kinds {
@@ -331,6 +347,11 @@ impl BrowseModel {
             }
         }
     }
+}
+
+/// A filter the current server cannot write, as the tab reports it.
+pub(super) fn filter_failure(problem: BuildFilterError) -> LoadFailure {
+    LoadFailure::Page(Arc::new(OperationError::Browse(problem.into())))
 }
 
 /// Every row has the columns the page asked for, visible then identity,
