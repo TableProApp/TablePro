@@ -15,7 +15,8 @@ BookiE uses XDG files for local state, SQLite for query history, a JSONL audit j
 | Query history | SQLite with FTS5 | `$XDG_CONFIG_HOME/tablepro/history.db` |
 | Policy | TOML | `$XDG_CONFIG_HOME/tablepro/policy.toml` |
 | Audit journal | Hash-chained JSONL | `$XDG_DATA_HOME/tablepro/audit.jsonl` |
-| Database passwords, SSH passwords, SSH key passphrases, GUI-issued MCP token plaintext | Secret Service through `oo7` | Desktop keyring |
+| Database passwords, SSH passwords, SSH key passphrases | Secret Service through `oo7` | Desktop keyring |
+| GUI-issued MCP token plaintext | Returned once; storage is attempted through Secret Service | Desktop keyring, when the save succeeds |
 | `bookie-agentd` MCP token plaintext | Printed once to stdout, or written to the explicitly selected token file with owner-only permissions | Issuance output; the token registry stores only its hash |
 
 If `XDG_CONFIG_HOME` is unset, config storage falls back to `~/.config/tablepro/`. If `XDG_DATA_HOME` is unset, the audit journal falls back to `~/.local/share/tablepro/`. A development build uses `tablepro-devel` in place of `tablepro` for every path above, the policy file included.

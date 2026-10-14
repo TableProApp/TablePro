@@ -91,7 +91,7 @@ An absent item (`Ok(None)`) is not a keyring failure. `connect_options_for` then
 
 ## Requirements
 
-- The desktop application MUST store database passwords, SSH passwords, SSH key passphrases, per-hop SSH secrets and GUI-issued MCP token plaintext through Secret Service, not in connection JSON.
+- The desktop application MUST store database passwords, SSH passwords, SSH key passphrases and per-hop SSH secrets through Secret Service, not in connection JSON. GUI-issued MCP token plaintext is returned once and storage through Secret Service is attempted; issuance succeeds if this best-effort save fails. `TokenStore` persists only the token hash.
 - `bookie-agentd` MUST persist only the MCP token hash in its token registry and MUST emit newly issued plaintext once to stdout or an explicitly selected owner-only token file.
 - An absent item MUST return `Ok(None)`.
 - Unavailable, locked or cancelled keyring access MUST return `StorageError::Keyring` with the matching `KeyringFailure`.

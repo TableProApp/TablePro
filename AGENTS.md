@@ -95,11 +95,11 @@ These apply to the GUI, the MCP server and `tablepro-agentd`.
 - Every connection exposed to a consumer is wrapped by `PolicyGuard`. MCP and agent code never sees a raw driver connection.
 - MCP token scopes say who may call a tool, connection allowlists say which connections a token may use, `PolicyGuard` says what SQL may run. All three are required.
 - Preview, transaction, retry and batch paths pass the same policy checks as direct execution.
-- Statement handling keeps the order: classify, evaluate rules, request approval when required, apply masking, execute, write the audit outcome.
+- Statement handling classifies and evaluates rules, requests approval when required, records required audit intent, executes, masks eligible consumer results, then writes the terminal audit outcome.
 - Denied, failed, cancelled and timed-out operations produce their terminal audit state. Audit failure never opens a path around policy.
 - MCP input, saved connection files, imported files, environment variables and database metadata are untrusted.
 - Bind values through driver parameters. Validate and dialect-quote identifiers. Never build SQL by joining untrusted text.
-- Database passwords and SSH secrets live in Secret Service through `tablepro-storage`; GUI-issued MCP token plaintext is saved there. Headless `bookie-agentd` issuance emits the token once to stdout or an explicitly selected owner-only file. Never put secrets in connection JSON, command-line arguments, traces, errors or audit fields. Keep database and SSH secrets in `secrecy` types until their consumer boundary.
+- Database passwords and SSH secrets live in Secret Service through `tablepro-storage`. GUI-issued MCP token plaintext is returned once and Secret Service storage is attempted; issuance still succeeds if that save fails. Headless `bookie-agentd` issuance emits the token once to stdout or an explicitly selected owner-only file. Never put secrets in connection JSON, command-line arguments, traces, errors or audit fields. Keep database and SSH secrets in `secrecy` types until their consumer boundary.
 - Bound request sizes, query limits, timeouts and rate limits at external interfaces. No unbounded queues or collections controlled by callers.
 - MCP tools use least-privilege scopes and deny access when a token, scope, allowlist entry or policy decision is missing.
 - New dependencies need a license and advisory review against `deny.toml`.

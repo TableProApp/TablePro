@@ -11,7 +11,7 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 ## Scope
 
 - Wrapping a driver `Connection` in `PolicyGuard` before the GUI, MCP or `bookie-agentd` issues a handle to a consumer.
-- Per-statement order: classify, evaluate rules, request approval when required, apply masking, execute, write the audit outcome.
+- Per-statement order: classify, evaluate rules, request approval when required, write required audit intent, execute, mask eligible consumer results, then write the terminal audit outcome.
 - Optional session query cursors for one read statement in a read-only snapshot. `PolicyGuard` authorizes once, masks each page, and records page and terminal outcomes under one operation. PostgreSQL is the only driver that supports cursors; the SQL editor is not wired to this path yet.
 - MCP token scopes (`tools:read` / `tools:write` via `TokenPermissions`), per-token rate limits and connection allowlists.
 - Preview, transaction, retry and batch paths using the same rule, approval, intent and audit pipeline as direct execution. Session mode skips the shared-connection short-circuit.
@@ -64,7 +64,7 @@ Source: `PolicyGuard` authorize family in `crates/policy/src/guard.rs`.
 
 1. Classify the SQL (`analyze_statement`).
 2. On a shared connection, `authorize_analysis` may return early from `shared_connection_decision` before categorical rules. Session mode calls `authorize_classified`, which skips that short-circuit and goes to `authorize_with_bound`.
-3. On `Allow`, continue to execute and mask (`should_mask` is agent-only).
+3. On `Allow`, continue to execute; mask the returned result when `should_mask` applies (agent-only).
 4. On `Deny`, write audit terminal `denied` with `AuditErrorCategory::Policy`, then return `DriverError::PolicyDenied`.
 5. On `RequireApproval`, call `ApprovalSink::request` and wait. `ApprovalOutcome` is `AllowOnce` or `Deny` (`crates/policy/src/approval.rs`). `OperationControl` interrupts the wait on cancellation or deadline; the guard records the matching `cancelled` or `timed_out` audit outcome.
 
@@ -106,7 +106,7 @@ Audit intent is written before driver execution when `intent_is_required` is tru
 4. If the decision is `RequireApproval`, wait for `ApprovalOutcome` under `OperationControl`. A cancel during the wait writes terminal `cancelled`; a deadline writes `timed_out`; rejection writes `denied`.
 5. Persist audit intent when required. On required-intent failure, return `PolicyDenied` and do not call the driver.
 6. Execute through the inner `Connection`, honouring `OperationControl` cancellation and timeouts.
-7. Apply masking to the result (`apply_masking`).
+7. Apply masking to the returned result (`apply_masking`) when the principal requires it.
 8. Persist the terminal audit outcome: `succeeded`, `failed`, `cancelled`, `timed_out`, or `unknown`. Audit failure after execution must not open a path around policy.
 9. MCP tools call `authorize_scopes`, then `check_rate`, then `ensure_connection_allowed`, then `provider.connection`, which wraps the driver in `PolicyGuard` before any SQL. Write tools also require `ToolsWrite` before a connection opens.
 

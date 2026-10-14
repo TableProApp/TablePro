@@ -21,7 +21,7 @@ Three checks stay separate. None replaces another:
 | Connection allowlists | Which saved connections may that token use? |
 | `PolicyGuard` | What SQL may run, how is it masked, and what is audited? |
 
-A user SQL statement follows this order: classify, evaluate rules, request approval when required, apply masking, execute, write the audit outcome. Preview, transaction, retry and batch paths use the same order. When audit intent is required, a failed write prevents execution. Denied, failed, cancelled, timed-out and unknown outcomes still get a terminal audit state. Exact when intent is required, and that agent masking is conditional, stay in the governed SQL spec.
+A user SQL statement follows this order: classify, evaluate rules, request approval when required, write required audit intent, execute, mask eligible consumer results, then write the terminal audit outcome. Preview, transaction, retry and batch paths use the same policy and audit pipeline. When audit intent is required, a failed write prevents execution. Denied, failed, cancelled, timed-out and unknown outcomes still get a terminal audit state. Exact intent requirements and conditional agent masking stay in the governed SQL spec.
 
 Metadata and browse fetches that do not carry user SQL still go through the guard. They do not invent a raw driver path.
 
