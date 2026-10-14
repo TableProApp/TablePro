@@ -5,7 +5,7 @@ use super::super::csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptio
 use super::super::test_columns::{cols, typed};
 use super::super::tsv::tsv_writer_builder;
 use super::super::value_text::value_text;
-use super::super::{column_type, render_csv, render_json, render_tsv};
+use super::super::{column_type, render_csv, render_json, render_tsv, row_to_json};
 use super::*;
 use crate::column::{ColumnKind, IntegerKind, IntegerWidth};
 use crate::value::{JsonText, UndecodableReason, UndecodedValue};
@@ -134,6 +134,28 @@ fn csv_encoder_matches_render_csv_fixture_matrix() {
     assert_eq!(checked, 2 * 2 * 2 * 2 * 4 * 3 * 3 * 2);
 }
 
+/// One writer serves the whole export, so a row wider than the header
+/// must not trip the check a writer makes on record lengths.
+#[test]
+fn csv_and_tsv_encoders_take_rows_wider_than_the_header() {
+    let columns: Arc<[ResultColumn]> = cols(&["a"]).into();
+    let rows = vec![
+        vec![Value::Int(1)],
+        vec![Value::Int(2), Value::Int(3)],
+        vec![Value::Int(4)],
+    ];
+    let options = CsvOptions {
+        sanitize_formulas: false,
+        ..CsvOptions::default()
+    };
+
+    assert_eq!(
+        streamed(CsvEncoder::new(columns.clone(), options), &rows),
+        "a\n1\n2,3\n4\n"
+    );
+    assert_eq!(streamed(TsvEncoder::new(columns, true), &rows), "a\n1\n2\t3\n4\n");
+}
+
 #[test]
 fn tsv_encoder_matches_render_tsv() {
     let (columns, rows) = fixture();
@@ -191,8 +213,17 @@ fn json_encoder_output_parses_and_matches_render_json() {
     assert!(chunks.len() > 2, "the export fit in one buffer");
     assert!(chunks[..chunks.len() - 1].iter().all(|chunk| chunk.len() >= CHUNK));
     let text = String::from_utf8(chunks.concat()).expect("utf-8");
+    // render_json runs this encoder into one buffer, so this shows only
+    // that the chunks change nothing.
     assert_eq!(text, render_json(&columns, &rows).expect("the json"));
     let parsed: Vec<serde_json::Value> = serde_json::from_str(&text).expect("a JSON array");
+    // The values themselves, against the serializer that wrote whole
+    // rows before the encoders.
+    let expected: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|row| serde_json::from_str(&row_to_json(&columns, row)).expect("a JSON row"))
+        .collect();
+    assert_eq!(parsed, expected);
     assert_eq!(parsed.len(), 10_000);
     assert_eq!(parsed[9_999]["id"], serde_json::json!(9_999));
     assert_eq!(parsed[3]["name"], serde_json::json!("row \"3\"\n"));

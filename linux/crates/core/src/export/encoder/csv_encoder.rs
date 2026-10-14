@@ -6,20 +6,19 @@ use crate::value::Value;
 use super::super::column_type;
 use super::super::csv::{csv_cell, csv_header, csv_writer_builder};
 use super::super::csv_options::CsvOptions;
-use super::{EncodeError, RECORD_BUFFER, RowEncoder, readable_cells, write_record};
+use super::{EncodeError, RecordWriter, RowEncoder, readable_cells};
 
 /// CSV under the user's options, with formula-like text neutralised
 /// when they ask for it.
 pub struct CsvEncoder {
     columns: Arc<[ResultColumn]>,
     options: CsvOptions,
-    writer: csv::WriterBuilder,
+    writer: RecordWriter,
 }
 
 impl CsvEncoder {
     pub fn new(columns: Arc<[ResultColumn]>, options: CsvOptions) -> Self {
-        let mut writer = csv_writer_builder(&options);
-        writer.buffer_capacity(RECORD_BUFFER);
+        let writer = RecordWriter::new(csv_writer_builder(&options));
         Self {
             columns,
             options,
@@ -31,8 +30,7 @@ impl CsvEncoder {
 impl RowEncoder for CsvEncoder {
     fn begin(&mut self, out: &mut Vec<u8>) {
         if self.options.header_row {
-            write_record(
-                &self.writer,
+            self.writer.write(
                 out,
                 self.columns
                     .iter()
@@ -43,8 +41,7 @@ impl RowEncoder for CsvEncoder {
 
     fn row(&mut self, out: &mut Vec<u8>, cells: &mut dyn Iterator<Item = &Value>) -> Result<(), EncodeError> {
         let cells = readable_cells(&self.columns, cells)?;
-        write_record(
-            &self.writer,
+        self.writer.write(
             out,
             cells
                 .iter()

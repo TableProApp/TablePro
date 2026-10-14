@@ -5,6 +5,9 @@ mod markdown_encoder;
 mod row_encoder;
 mod tsv_encoder;
 
+use std::cell::Cell;
+use std::io;
+
 use crate::column::ResultColumn;
 use crate::value::Value;
 
@@ -53,24 +56,52 @@ fn column_name(columns: &[ResultColumn], index: usize) -> String {
         .map_or_else(|| (index + 1).to_string(), |column| column.name.clone())
 }
 
-/// One record through a writer of its own, straight into `out`.
-///
-/// Writing into memory cannot fail, and a writer that sees a single
-/// record has no earlier field count to disagree with, so neither
-/// result carries anything.
-fn write_record<I, T>(builder: &csv::WriterBuilder, out: &mut Vec<u8>, record: I)
-where
-    I: IntoIterator<Item = T>,
-    T: AsRef<[u8]>,
-{
-    let mut writer = builder.from_writer(out);
-    let _ = writer.write_record(record);
-    let _ = writer.flush();
+/// Writes one record at a time into the caller's buffer, through one
+/// CSV writer kept for the whole export: building a writer allocates and
+/// zeroes its buffer, which per row would cost more than the row.
+struct RecordWriter {
+    writer: csv::Writer<LentBuffer>,
 }
 
-/// A record rarely needs more, and the writer zeroes its whole buffer
-/// for every row.
-const RECORD_BUFFER: usize = 1024;
+/// The caller's buffer, lent to the writer for one record. csv::Writer
+/// has no `get_mut`, so the buffer goes in and out through a `Cell`.
+#[derive(Default)]
+struct LentBuffer(Cell<Vec<u8>>);
+
+impl io::Write for LentBuffer {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.get_mut().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl RecordWriter {
+    /// A row may have more cells than the header, so the writer does
+    /// not hold every record to the first one's length.
+    fn new(mut builder: csv::WriterBuilder) -> Self {
+        builder.flexible(true);
+        Self {
+            writer: builder.from_writer(LentBuffer::default()),
+        }
+    }
+
+    /// Writing into memory cannot fail, and a flexible writer has no
+    /// field count to disagree with, so neither result carries anything.
+    fn write<I, T>(&mut self, out: &mut Vec<u8>, record: I)
+    where
+        I: IntoIterator<Item = T>,
+        T: AsRef<[u8]>,
+    {
+        self.writer.get_ref().0.set(std::mem::take(out));
+        let _ = self.writer.write_record(record);
+        let _ = self.writer.flush();
+        *out = self.writer.get_ref().0.take();
+    }
+}
 
 #[cfg(test)]
 mod tests;
