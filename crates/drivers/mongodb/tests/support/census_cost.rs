@@ -67,6 +67,25 @@ async fn value_contract_mongodb_census_scan_cost_profile() {
                 );
             }
         }
+        let offset = size as u64 - 50;
+        for (label, order_by_field) in [("sorted_id", "_id"), ("sorted_unindexed_value", "value")] {
+            let query = format!(
+                "SELECT * FROM \"appdb\".\"{collection_name}\" ORDER BY \"{order_by_field}\" DESC LIMIT 50 OFFSET {offset}"
+            );
+            let mut samples = Vec::with_capacity(5);
+            for _ in 0..5 {
+                let started = Instant::now();
+                let page = connection.query_params(&query, &[]).await.unwrap();
+                samples.push(started.elapsed());
+                assert_eq!(page.rows.len(), 50);
+            }
+            samples.sort_unstable();
+            println!(
+                "{label} rows={size} offset={offset} samples_us={:?} median_us={}",
+                samples.iter().map(|sample| sample.as_micros()).collect::<Vec<_>>(),
+                samples[2].as_micros(),
+            );
+        }
         census_samples.sort_unstable();
         println!(
             "census rows={size} samples_us={:?} median_us={}",

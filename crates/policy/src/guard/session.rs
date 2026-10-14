@@ -1,9 +1,10 @@
-use tablepro_core::Session;
+use tablepro_core::{QueryCursorId, QueryCursorPage, Session};
 
 use super::*;
 use crate::transaction_control::{TransactionControl, hides_transaction_control, transaction_control};
 
 const CLOSE_ROLLBACK_TIMEOUT: Duration = Duration::from_secs(10);
+const CLOSE_CURSOR_TIMEOUT: Duration = Duration::from_secs(5);
 
 mod refusal;
 
@@ -11,7 +12,40 @@ pub(crate) struct PolicySession {
     guard: PolicyGuard,
     inner: Box<dyn Session>,
     batch: Option<OpenBatch>,
+    cursor: Option<ActiveCursor>,
     retired: bool,
+}
+
+struct ActiveCursor {
+    id: QueryCursorId,
+    audit: CursorAudit,
+    complete: bool,
+}
+
+struct CursorAudit {
+    operation_id: Uuid,
+    batch_id: Uuid,
+    sql: String,
+    targets: Vec<String>,
+    decision_rule: String,
+    approval_outcome: AuditApprovalOutcome,
+    preview_state: AuditPreviewState,
+    analysis: crate::classify::StatementAnalysis,
+}
+
+impl CursorAudit {
+    fn operation(&self) -> AuditOperation<'_> {
+        AuditOperation {
+            operation_id: self.operation_id,
+            batch_id: Some(self.batch_id),
+            sql: &self.sql,
+            class: AuditOperationClass::Read,
+            targets: self.targets.clone(),
+            decision_rule: self.decision_rule.clone(),
+            approval_outcome: self.approval_outcome,
+            preview_state: self.preview_state.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -47,6 +81,7 @@ impl PolicyGuard {
             guard: self.clone(),
             inner,
             batch: None,
+            cursor: None,
             retired: false,
         })
     }
@@ -60,6 +95,15 @@ impl Session for PolicySession {
         params: &[Value],
         control: &OperationControl,
     ) -> Result<QueryResult, DriverError> {
+        if self.cursor.is_some() {
+            return self
+                .refuse_policy(
+                    sql,
+                    "query_cursor_active",
+                    "close the active query cursor before using the session",
+                )
+                .await;
+        }
         if !self.is_usable() {
             return self
                 .refuse_policy(
@@ -102,6 +146,128 @@ impl Session for PolicySession {
         }
     }
 
+    async fn open_query_cursor_controlled(
+        &mut self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryCursorId, DriverError> {
+        if !self.is_usable() {
+            return self
+                .refuse_policy(
+                    sql,
+                    "retired_session",
+                    "the session was retired and cannot open a query cursor",
+                )
+                .await
+                .map(|_| QueryCursorId::new());
+        }
+        let Some(batch) = self.batch.filter(|batch| batch.read_only) else {
+            return self
+                .refuse_policy(
+                    sql,
+                    "query_cursor_requires_read_snapshot",
+                    "query cursors require a read-only snapshot",
+                )
+                .await
+                .map(|_| QueryCursorId::new());
+        };
+        if self.cursor.is_some() {
+            return self
+                .refuse_policy(
+                    sql,
+                    "query_cursor_already_open",
+                    "only one query cursor may be open per session",
+                )
+                .await
+                .map(|_| QueryCursorId::new());
+        }
+        let analysis = self.guard.analyze_statement(sql);
+        if !cursor_query_is_read(&analysis) {
+            return self
+                .refuse_policy(
+                    sql,
+                    "query_cursor_requires_single_read",
+                    "query cursors require one read-only statement",
+                )
+                .await
+                .map(|_| QueryCursorId::new());
+        }
+        let authorization = self.guard.authorize_classified(sql, analysis, Some(control)).await?;
+        let audit = CursorAudit {
+            operation_id: Uuid::new_v4(),
+            batch_id: batch.id,
+            sql: sql.into(),
+            targets: authorization.analysis.facts.tables.clone(),
+            decision_rule: authorization.decision.rule_name().into(),
+            approval_outcome: authorization.approval_outcome,
+            preview_state: authorization.preview_state,
+            analysis: authorization.analysis,
+        };
+        self.open_authorized_cursor(sql, params, control, audit).await
+    }
+
+    async fn fetch_query_cursor_page_controlled(
+        &mut self,
+        cursor_id: QueryCursorId,
+        control: &OperationControl,
+    ) -> Result<QueryCursorPage, DriverError> {
+        let Some(cursor) = self.cursor.as_ref().filter(|cursor| cursor.id == cursor_id) else {
+            return Err(DriverError::Unsupported(
+                "forward-only cursor is not active in this session".into(),
+            ));
+        };
+        let audit = &cursor.audit;
+        let start = Instant::now();
+        let result = self
+            .guard
+            .caught_read(
+                "SESSION FETCH QUERY CURSOR PAGE",
+                self.inner.fetch_query_cursor_page_controlled(cursor_id, control),
+            )
+            .await
+            .map(|mut page| {
+                page.result = self.guard.mask_result_for_analysis(Some(&audit.analysis), page.result);
+                page
+            });
+        let rows = result.as_ref().ok().map(|page| page.result.rows.len() as u64);
+        let terminal_status = match &result {
+            Ok(page) if page.has_next_page => AuditTerminalStatus::Pending,
+            Ok(_) => AuditTerminalStatus::Succeeded,
+            Err(error) => controlled_error_terminal_status(error),
+        };
+        let audit_result = audit_cursor_result(&self.guard, audit, start, &result, rows, terminal_status).await;
+        match result {
+            Err(error) => {
+                self.note_cursor_error(&error);
+                self.close_cursor_driver(cursor_id).await;
+                audit_result?;
+                Err(error)
+            }
+            Ok(page) => {
+                if let Err(error) = audit_result {
+                    self.close_cursor_driver(cursor_id).await;
+                    return Err(error);
+                }
+                if !page.has_next_page
+                    && let Some(cursor) = self.cursor.as_mut()
+                {
+                    cursor.complete = true;
+                }
+                Ok(page)
+            }
+        }
+    }
+
+    async fn close_query_cursor_controlled(
+        &mut self,
+        cursor_id: QueryCursorId,
+        _control: &OperationControl,
+    ) -> Result<(), DriverError> {
+        self.close_active_cursor(cursor_id, Some(AuditTerminalStatus::Cancelled))
+            .await
+    }
+
     fn is_usable(&self) -> bool {
         !self.retired && self.inner.is_usable()
     }
@@ -111,6 +277,13 @@ impl Session for PolicySession {
     }
 
     async fn close(mut self: Box<Self>) -> Result<(), DriverError> {
+        let cursor_cleanup = match self.cursor.as_ref() {
+            Some(cursor) => {
+                self.close_active_cursor(cursor.id, Some(AuditTerminalStatus::Cancelled))
+                    .await
+            }
+            None => Ok(()),
+        };
         let cleanup = if let Some(batch) = self.batch {
             if self.is_usable() && !batch.uncertain {
                 let control = OperationControl::with_timeout(CLOSE_ROLLBACK_TIMEOUT);
@@ -131,11 +304,124 @@ impl Session for PolicySession {
             Ok(())
         };
         let close = self.inner.close().await;
-        cleanup.and(close)
+        cursor_cleanup.and(cleanup).and(close)
     }
 }
 
 impl PolicySession {
+    async fn open_authorized_cursor(
+        &mut self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+        audit: CursorAudit,
+    ) -> Result<QueryCursorId, DriverError> {
+        let operation = audit.operation();
+        self.guard.prepare_governed_read(&operation).await?;
+        let start = Instant::now();
+        let result = self
+            .guard
+            .caught_read(
+                "SESSION OPEN QUERY CURSOR",
+                self.inner.open_query_cursor_controlled(sql, params, control),
+            )
+            .await;
+        let id = match result {
+            Ok(id) => id,
+            Err(error) => {
+                let audit_result = audit_cursor_error(&self.guard, &audit, start, &error).await;
+                self.note_cursor_error(&error);
+                audit_result?;
+                return Err(error);
+            }
+        };
+        self.cursor = Some(ActiveCursor {
+            id,
+            audit,
+            complete: false,
+        });
+        Ok(id)
+    }
+
+    async fn close_active_cursor(
+        &mut self,
+        cursor_id: QueryCursorId,
+        terminal_status: Option<AuditTerminalStatus>,
+    ) -> Result<(), DriverError> {
+        let Some(cursor) = self.cursor.take() else {
+            return Err(DriverError::Unsupported(
+                "forward-only cursor is not active in this session".into(),
+            ));
+        };
+        if cursor.id != cursor_id {
+            self.cursor = Some(cursor);
+            return Err(DriverError::Unsupported(
+                "forward-only cursor is not active in this session".into(),
+            ));
+        }
+        let start = Instant::now();
+        let control = OperationControl::with_timeout(CLOSE_CURSOR_TIMEOUT);
+        let result = self
+            .guard
+            .caught_read(
+                "SESSION CLOSE QUERY CURSOR",
+                self.inner.close_query_cursor_controlled(cursor.id, &control),
+            )
+            .await;
+        if !cursor.complete
+            && let Some(status) = terminal_status
+        {
+            let status = result
+                .as_ref()
+                .map_or_else(controlled_error_terminal_status, |_| status);
+            let audit_result = audit_cursor_result(&self.guard, &cursor.audit, start, &result, None, status).await;
+            if let Err(error) = audit_result {
+                self.retired = true;
+                return Err(error);
+            }
+        }
+        if result.is_err() {
+            self.retired = true;
+        }
+        result
+    }
+
+    async fn close_cursor_driver(&mut self, cursor_id: QueryCursorId) {
+        let control = OperationControl::with_timeout(CLOSE_CURSOR_TIMEOUT);
+        let result = self
+            .guard
+            .caught_read(
+                "SESSION CLOSE QUERY CURSOR",
+                self.inner.close_query_cursor_controlled(cursor_id, &control),
+            )
+            .await;
+        self.cursor = None;
+        self.retired |= result.is_err() || !self.inner.is_usable();
+    }
+
+    fn note_cursor_error(&mut self, error: &DriverError) {
+        if matches!(
+            error,
+            DriverError::Disconnected | DriverError::OperationOutcomeUnknown { .. }
+        ) {
+            self.retired = true;
+        }
+        let Some(batch) = self.batch.as_mut() else {
+            return;
+        };
+        if !batch.read_only
+            && matches!(
+                error,
+                DriverError::Cancelled | DriverError::TimedOut | DriverError::OperationOutcomeUnknown { .. }
+            )
+        {
+            batch.uncertain = true;
+        }
+        if self.guard.ctx.driver_id == "postgres" {
+            batch.aborted = true;
+        }
+    }
+
     async fn begin(&mut self, sql: &str, control: &OperationControl) -> Result<QueryResult, DriverError> {
         if self.batch.is_some() {
             return self
@@ -463,6 +749,63 @@ async fn record_abandoned_transaction(guard: &PolicyGuard, batch_id: Uuid) {
         duration_ms: 0,
     };
     let _ = guard.handle_write_outcome_failure(guard.record_outcome(&operation, outcome).await);
+}
+
+async fn audit_cursor_result<T>(
+    guard: &PolicyGuard,
+    audit: &CursorAudit,
+    start: Instant,
+    result: &Result<T, DriverError>,
+    rows: Option<u64>,
+    terminal_status: AuditTerminalStatus,
+) -> Result<(), DriverError> {
+    let status = result
+        .as_ref()
+        .map_or_else(controlled_error_terminal_status, |_| terminal_status);
+    let audit_result = guard
+        .record_outcome(
+            &audit.operation(),
+            AuditOutcome {
+                terminal_status: status,
+                transaction_outcome: AuditTransactionOutcome::NotApplicable,
+                rows_affected: rows,
+                error_category: result.as_ref().err().map(error_category),
+                duration_ms: start.elapsed().as_millis() as u64,
+            },
+        )
+        .await;
+    guard.handle_read_audit_failure(audit_result)
+}
+
+async fn audit_cursor_error(
+    guard: &PolicyGuard,
+    audit: &CursorAudit,
+    start: Instant,
+    error: &DriverError,
+) -> Result<(), DriverError> {
+    let audit_result = guard
+        .record_outcome(
+            &audit.operation(),
+            AuditOutcome {
+                terminal_status: controlled_error_terminal_status(error),
+                transaction_outcome: AuditTransactionOutcome::NotApplicable,
+                rows_affected: None,
+                error_category: Some(error_category(error)),
+                duration_ms: start.elapsed().as_millis() as u64,
+            },
+        )
+        .await;
+    guard.handle_read_audit_failure(audit_result)
+}
+
+fn cursor_query_is_read(analysis: &crate::classify::StatementAnalysis) -> bool {
+    let external_effects = Effects::SESSION_STATE
+        .union(Effects::HOST_OR_FILE_ACCESS)
+        .union(Effects::ADMIN);
+    !analysis.facts.is_multi_statement
+        && analysis.facts.class == StatementClass::Select
+        && !analysis.facts.effects.writes()
+        && !analysis.facts.effects.contains(external_effects)
 }
 
 fn finish_operation(kind: Finish, batch_id: Uuid) -> AuditOperation<'static> {

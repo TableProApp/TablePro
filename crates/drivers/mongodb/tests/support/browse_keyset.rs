@@ -4,6 +4,39 @@ use tablepro_core::{DatabaseDriver, Value};
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn sorted_deep_page_without_a_key_filter_preserves_order_and_offset() {
+    let (_container, host, port) = super::start_mongo().await;
+    let client = mongodb::Client::with_uri_str(format!("mongodb://{host}:{port}/appdb"))
+        .await
+        .unwrap();
+    let documents = (0..10_005_i32)
+        .map(|rank| doc! { "_id": rank, "rank": rank })
+        .collect::<Vec<_>>();
+    client
+        .database("appdb")
+        .collection::<Document>("sorted_deep_page")
+        .insert_many(documents)
+        .await
+        .unwrap();
+
+    let connection = MongodbDriver.connect(super::opts(&host, port, "appdb")).await.unwrap();
+    let page = connection
+        .query_params(
+            "SELECT * FROM \"appdb\".\"sorted_deep_page\" ORDER BY \"rank\" DESC LIMIT 2 OFFSET 10000",
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let id = page.columns.iter().position(|column| column.name == "_id").unwrap();
+    assert_eq!(
+        page.rows.iter().map(|row| &row[id]).collect::<Vec<_>>(),
+        [&Value::Int(4), &Value::Int(3)]
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn keyset_page_query_reads_rows_after_the_native_id_cursor() {
     let (_container, host, port) = super::start_mongo().await;
     let client = mongodb::Client::with_uri_str(format!("mongodb://{host}:{port}/appdb"))

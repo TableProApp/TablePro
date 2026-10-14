@@ -1,7 +1,8 @@
 use mongodb::bson::{Bson, Document, doc};
 use sqlparser::ast::{
     AssignmentTarget, BinaryOperator, Expr, FromTable, FunctionArg, FunctionArgExpr, FunctionArguments, GroupByExpr,
-    LimitClause, ObjectNamePart, Query, Select, SelectItem, SetExpr, Statement, TableFactor, Value as SqlValue,
+    LimitClause, ObjectNamePart, OrderByKind, Query, Select, SelectItem, SetExpr, Statement, TableFactor,
+    Value as SqlValue,
 };
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
@@ -30,6 +31,7 @@ pub(super) struct BrowsePageSelect {
     pub(super) collection: String,
     pub(super) filter: Document,
     pub(super) key: Option<Bson>,
+    pub(super) sort: Document,
     pub(super) limit: i64,
     pub(super) offset: u64,
 }
@@ -47,6 +49,12 @@ pub(super) fn parse_browse_page_select(
     let Some((select, limit, offset)) = browse_page_query(query) else {
         return Ok(None);
     };
+    let Some(mut sort) = browse_sort(query) else {
+        return Ok(None);
+    };
+    if sort.is_empty() {
+        sort.insert("_id", 1);
+    }
     if !matches!(select.projection.as_slice(), [SelectItem::Wildcard(_)]) {
         return Ok(None);
     }
@@ -57,11 +65,15 @@ pub(super) fn parse_browse_page_select(
     let Some(collection) = collection_named(&relation.relation, database) else {
         return Ok(None);
     };
-    let Some(selection) = select.selection.as_ref() else {
-        return Ok(None);
-    };
-    let Some((filter, key)) = browse_filter(selection, params)? else {
-        return Ok(None);
+    let (filter, key) = match select.selection.as_ref() {
+        Some(selection) => {
+            let Some((filter, key)) = browse_filter(selection, params, sort == doc! { "_id": 1 })? else {
+                return Ok(None);
+            };
+            (filter, key)
+        }
+        None if params.is_empty() => (Document::new(), None),
+        None => return Ok(None),
     };
     if key.is_some() && offset != 0 {
         return Ok(None);
@@ -70,22 +82,27 @@ pub(super) fn parse_browse_page_select(
         collection,
         filter,
         key,
+        sort,
         limit,
         offset,
     }))
 }
 
-fn browse_filter(selection: &Expr, params: &[Value]) -> Result<Option<(Document, Option<Bson>)>, DriverError> {
+fn browse_filter(
+    selection: &Expr,
+    params: &[Value],
+    extract_keyset: bool,
+) -> Result<Option<(Document, Option<Bson>)>, DriverError> {
     let mut predicates = Vec::new();
     collect_and_predicates(selection, &mut predicates);
-    if predicates.iter().filter(|expr| keyset_cursor(expr).is_some()).count() > 1 {
+    if extract_keyset && predicates.iter().filter(|expr| keyset_cursor(expr).is_some()).count() > 1 {
         return Ok(None);
     }
     let mut filter = Document::new();
     let mut key = None;
     let mut index = 0;
     for predicate in predicates {
-        if let Some(cursor) = keyset_cursor(predicate) {
+        if extract_keyset && let Some(cursor) = keyset_cursor(predicate) {
             if key.is_some() {
                 return Ok(None);
             }
@@ -382,6 +399,7 @@ fn keyset_cursor(expr: &Expr) -> Option<&Expr> {
 fn browse_page_query(query: &Query) -> Option<(&Select, i64, u64)> {
     let mut unpaged_query = query.clone();
     unpaged_query.limit_clause = None;
+    unpaged_query.order_by = None;
     simple_value_select(&unpaged_query)?;
     let Some(LimitClause::LimitOffset {
         limit: Some(Expr::Value(limit)),
@@ -403,6 +421,34 @@ fn browse_page_query(query: &Query) -> Option<(&Select, i64, u64)> {
         return None;
     };
     Some((select, limit, offset))
+}
+
+fn browse_sort(query: &Query) -> Option<Document> {
+    let Some(order_by) = &query.order_by else {
+        return Some(Document::new());
+    };
+    if order_by.interpolate.is_some() {
+        return None;
+    }
+    let OrderByKind::Expressions(expressions) = &order_by.kind else {
+        return None;
+    };
+    if expressions.is_empty() {
+        return None;
+    }
+    let mut sort = Document::new();
+    for item in expressions {
+        let field = identifier_from_expr(&item.expr)?;
+        if field.starts_with('$')
+            || field.contains('.')
+            || item.options.nulls_first.is_some()
+            || item.with_fill.is_some()
+        {
+            return None;
+        }
+        sort.insert(field, if item.options.asc == Some(false) { -1 } else { 1 });
+    }
+    Some(sort)
 }
 
 pub(super) fn parse_keyed_value_select(
@@ -810,8 +856,43 @@ mod keyset_page_tests {
 
         assert_eq!(parsed.collection, "records");
         assert_eq!(parsed.key, Some(Bson::String("last".into())));
+        assert_eq!(parsed.sort, doc! { "_id": 1 });
         assert_eq!(parsed.limit, 50);
         assert_eq!(parsed.offset, 0);
+    }
+
+    #[test]
+    fn sorted_keyless_page_accepts_empty_filter_and_deep_offset() {
+        let parsed = parse_browse_page_select(
+            "SELECT * FROM records ORDER BY rank DESC LIMIT 50 OFFSET 10000",
+            &[],
+            "appdb",
+        )
+        .unwrap();
+
+        let parsed = parsed.unwrap();
+        assert_eq!(parsed.collection, "records");
+        assert!(parsed.filter.is_empty());
+        assert_eq!(parsed.key, None);
+        assert_eq!(parsed.sort, doc! { "rank": -1 });
+        assert_eq!(parsed.limit, 50);
+        assert_eq!(parsed.offset, 10_000);
+    }
+
+    #[test]
+    fn sorted_page_keeps_id_predicate_as_filter_instead_of_keyset_cursor() {
+        let parsed = parse_browse_page_select(
+            "SELECT * FROM records WHERE _id > ? ORDER BY rank LIMIT 25 OFFSET 10000",
+            &[Value::Int(100)],
+            "appdb",
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(parsed.key, None);
+        assert_eq!(parsed.filter, doc! { "_id": { "$gt": 100_i64 } });
+        assert_eq!(parsed.sort, doc! { "rank": 1 });
+        assert_eq!(parsed.offset, 10_000);
     }
 
     #[test]
@@ -825,6 +906,7 @@ mod keyset_page_tests {
         .unwrap();
 
         assert_eq!(parsed.key, None);
+        assert_eq!(parsed.sort, doc! { "_id": 1 });
         assert_eq!(parsed.offset, 1);
         assert_eq!(parsed.filter, doc! { "group": { "$eq": "keep" } });
     }
@@ -931,7 +1013,6 @@ mod keyset_page_tests {
             "SELECT value FROM records WHERE _id > ? LIMIT 50 OFFSET 0",
             "SELECT * FROM records WHERE _id > ? LIMIT 0 OFFSET 0",
             "SELECT * FROM records WHERE _id > ? LIMIT 50 OFFSET 1",
-            "SELECT * FROM records WHERE _id > ? ORDER BY value LIMIT 50 OFFSET 0",
         ] {
             assert!(matches!(
                 parse_browse_page_select(sql, &[Value::Int(1)], "appdb"),
