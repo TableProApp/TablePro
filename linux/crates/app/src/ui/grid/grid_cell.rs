@@ -71,7 +71,12 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for GridCell {}
+    impl WidgetImpl for GridCell {
+        fn unroot(&self) {
+            self.obj().leave_detached_row();
+            self.parent_unroot();
+        }
+    }
 }
 
 glib::wrapper! {
@@ -298,6 +303,42 @@ impl GridCell {
             }
         });
         popover.popup();
+    }
+
+    /// GTK detaches a removed row before it unbinds it, and moves a focus
+    /// left inside only after the next frame; a window focus-in between
+    /// the two crashes GTK 4.22 on the detached row. So the focus goes
+    /// before the edit ends, and the grid takes it back after the frame.
+    fn leave_detached_row(&self) {
+        let window = self.root().and_downcast::<gtk::Window>();
+        let held = window
+            .as_ref()
+            .and_then(gtk::prelude::GtkWindowExt::focus)
+            .is_some_and(|focus| focus.is_ancestor(self) || focus == *self.upcast_ref::<gtk::Widget>());
+        if let Some(window) = window.as_ref().filter(|_| held) {
+            gtk::prelude::GtkWindowExt::set_focus(window, None::<&gtk::Widget>);
+        }
+        self.cancel_edit();
+        let (Some(window), true) = (window, held) else {
+            return;
+        };
+        let (Some(view), Some(clock)) = (self.column_view(), window.frame_clock()) else {
+            return;
+        };
+        let view = view.downgrade();
+        let handler: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
+        let slot = handler.clone();
+        let id = clock.connect_after_paint(move |clock| {
+            if let Some(id) = slot.borrow_mut().take() {
+                clock.disconnect(id);
+            }
+            if let Some(view) = view.upgrade()
+                && view.root().is_some()
+            {
+                view.grab_focus();
+            }
+        });
+        handler.replace(Some(id));
     }
 
     fn is_bound(&self) -> bool {

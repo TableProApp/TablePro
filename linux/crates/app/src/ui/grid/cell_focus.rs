@@ -383,6 +383,11 @@ mod tests {
         assert!(popover.parent().is_none(), "the popover outlived its row");
         assert!(!cell.is_editing());
         assert!(grid.take_messages().is_empty());
+        let focus = gtk::prelude::GtkWindowExt::focus(&grid.window);
+        assert!(
+            focus.is_some_and(|focus| focus == *grid.view.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&grid.view)),
+            "the focus left the grid"
+        );
     }
 
     #[gtk4::test]
