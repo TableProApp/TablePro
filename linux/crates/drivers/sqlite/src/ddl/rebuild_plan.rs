@@ -63,6 +63,7 @@ pub(super) fn plan(
         dropped_keys: HashSet::new(),
     };
     rebuild.key = rebuild.written_key()?;
+    rebuild.check_numbering()?;
     rebuild.dropped_keys = rebuild.find_dropped_keys()?;
     rebuild.check_dropped_columns()?;
     rebuild.plan()
@@ -906,6 +907,42 @@ impl Rebuild<'_> {
                 .rowid_alias_before()
                 .is_some_and(|before| before.eq_ignore_ascii_case(alias)),
             None => self.rowid_name().is_none(),
+        }
+    }
+
+    /// SQLite numbers the rowid column, and takes AUTOINCREMENT only on
+    /// it. So numbering cannot stop on a column that stays the rowid,
+    /// and a column that keeps AUTOINCREMENT stays INTEGER.
+    fn check_numbering(&self) -> Result<(), BuildDdlError> {
+        let alias = self.rowid_alias_after();
+        for alteration in &self.changes.altered_columns {
+            let stops = alteration.changed.auto_increment && !alteration.draft.auto_increment;
+            if stops
+                && alias
+                    .as_deref()
+                    .is_some_and(|alias| alias.eq_ignore_ascii_case(&alteration.draft.name))
+            {
+                return Err(BuildDdlError::Refused {
+                    column: alteration.original.name().to_owned(),
+                    operation: DdlOperation::AlterAutoIncrement,
+                    reason: RefusalReason::AlwaysNumbered,
+                });
+            }
+        }
+        let Some(column) = self
+            .source
+            .autoincrement_column()
+            .filter(|column| self.key == Key::Kept && !dropped(self.changes, column))
+        else {
+            return Ok(());
+        };
+        match is_integer(&self.declared_type(&final_name(self.changes, column))?) {
+            true => Ok(()),
+            false => Err(BuildDdlError::Refused {
+                column: column.to_owned(),
+                operation: DdlOperation::AlterColumnType,
+                reason: RefusalReason::NotAnInteger,
+            }),
         }
     }
 }

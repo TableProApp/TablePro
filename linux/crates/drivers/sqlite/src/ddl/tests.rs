@@ -1023,6 +1023,40 @@ fn a_constraint_removed_after_a_line_comment_keeps_the_comment_on_its_line() {
 }
 
 #[test]
+fn numbering_stays_on_while_the_column_is_the_rowid() {
+    let counters = table(
+        "counters",
+        vec![rowid_alias("id"), column("n", "INT", false)],
+        "CREATE TABLE counters (id INTEGER PRIMARY KEY AUTOINCREMENT, n INT)",
+    );
+
+    let off = alter(&counters, |draft| draft.columns[0].auto_increment = false);
+    let retyped_off = sql(alter(&counters, |draft| {
+        retype(draft, "id", "BIGINT");
+        draft.columns[0].auto_increment = false;
+    }));
+    let retyped = alter(&counters, |draft| retype(draft, "id", "BIGINT"));
+
+    assert_eq!(
+        refusal(&off),
+        Some(("id", DdlOperation::AlterAutoIncrement, &RefusalReason::AlwaysNumbered))
+    );
+    assert_eq!(
+        retyped_off[0],
+        "CREATE TABLE \"_tablepro_rebuild_counters\" (id BIGINT, n INT, PRIMARY KEY (\"id\"))"
+    );
+    assert!(
+        retyped_off
+            .iter()
+            .all(|statement| !statement.contains("sqlite_sequence"))
+    );
+    assert_eq!(
+        refusal(&retyped),
+        Some(("id", DdlOperation::AlterColumnType, &RefusalReason::NotAnInteger))
+    );
+}
+
+#[test]
 fn a_descending_integer_key_keeps_its_rows_rowids() {
     let descending = table(
         "t",

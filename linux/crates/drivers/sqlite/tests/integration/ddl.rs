@@ -853,6 +853,66 @@ async fn a_default_written_after_a_line_comment_reads_back() {
     connection.close().await.unwrap();
 }
 
+/// SQLite numbers an INTEGER PRIMARY KEY however it is declared, so
+/// numbering turns off only with the type or the key, and then reads
+/// back off.
+#[tokio::test]
+async fn numbering_turns_off_only_where_it_reads_back_off() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)",
+            "INSERT INTO kept (v) VALUES ('a'), ('b')",
+        ],
+    )
+    .await
+    .unwrap();
+    let before = read(connection.as_ref(), &kept()).await;
+    assert!(before.columns[0].info.is_auto_increment);
+
+    let off = plan(connection.as_ref(), &before, |draft| {
+        column(draft, "id").auto_increment = false;
+    });
+    save(connection.as_ref(), &kept(), |draft| {
+        retype(draft, "id", "BIGINT");
+        column(draft, "id").auto_increment = false;
+    })
+    .await
+    .unwrap();
+
+    assert!(
+        matches!(
+            off,
+            Err(BuildDdlError::Refused {
+                reason: RefusalReason::AlwaysNumbered,
+                ..
+            })
+        ),
+        "{off:?}"
+    );
+    let after = read(connection.as_ref(), &kept()).await;
+    assert!(!after.columns[0].info.is_auto_increment);
+    assert_eq!(after.columns[0].info.column_type.name, "BIGINT");
+    assert_eq!(after.primary_key.map(|key| key.columns), Some(vec!["id".to_owned()]));
+    let rows = query(connection.as_ref(), "SELECT rowid, id, v FROM kept ORDER BY id").await;
+    assert_eq!(
+        rows.rows,
+        [
+            vec![Value::Int(1), Value::Int(1), text("a")],
+            vec![Value::Int(2), Value::Int(2), text("b")]
+        ]
+    );
+    let sequence = query(
+        connection.as_ref(),
+        "SELECT count(*) FROM sqlite_sequence WHERE name = 'kept'",
+    )
+    .await;
+    assert_eq!(sequence.rows[0][0], Value::Int(0));
+    connection.close().await.unwrap();
+}
+
 /// A column that becomes the INTEGER PRIMARY KEY gives its rows its own
 /// values as rowids, so an orphan already there keeps no rowid to be
 /// recognised by. It is still the file's, not the save's.
