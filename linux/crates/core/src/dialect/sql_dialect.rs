@@ -1,7 +1,7 @@
 use crate::column::{ColumnInfo, ColumnType, SqlExpression};
 use crate::ddl::DdlDialect;
 use crate::meta::{EngineRowId, EngineRowIdPart, TableRef};
-use crate::sql_syntax::{ExpressionSyntaxError, SqlGrammar, TypeSyntaxError};
+use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
 use crate::value::Value;
 
 use super::{
@@ -69,6 +69,12 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     fn parse_type(&self, text: &str) -> Result<ColumnType, TypeSyntaxError>;
 
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError>;
+
+    /// Whether SQL the user ran may be kept in the query history. Each
+    /// engine names the statements that can hold a password or a
+    /// connection secret (`classify_for_history` with its own
+    /// `CredentialRules`), and those are never recorded.
+    fn history_recording(&self, sql: &str) -> HistoryRecording;
 
     /// The engine's structure-change spelling, or `None` where the app
     /// does not edit this engine's structure.

@@ -4,7 +4,8 @@ use tablepro_core::dialect::{
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    ExpressionSyntaxError, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError, parse_expression, parse_type,
+    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
+    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::Value;
@@ -87,7 +88,24 @@ impl SqlDialect for FakeDialect {
         let parsed = parse_expression(SqlGrammar::PostgreSql, text, MAX_EXPRESSION_LEN)?;
         Ok(SqlExpression::from_catalog_text(parsed.text))
     }
+
+    fn history_recording(&self, sql: &str) -> HistoryRecording {
+        classify_for_history(SqlGrammar::PostgreSql, &CREDENTIAL_RULES, sql)
+    }
 }
+
+/// Logins and roles, the credential statements every engine with users
+/// has.
+const CREDENTIAL_RULES: CredentialRules = CredentialRules {
+    statement_prefixes: &[
+        &["CREATE", "USER"],
+        &["ALTER", "USER"],
+        &["CREATE", "ROLE"],
+        &["ALTER", "ROLE"],
+    ],
+    conditional_prefixes: &[],
+    carriers: &[],
+};
 
 /// The parameter type that carries a value as it is, so a fake bind
 /// never fails on a type the test did not mean to check.

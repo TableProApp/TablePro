@@ -2,7 +2,10 @@ use std::sync::Mutex;
 
 use crate::column::{ColumnInfo, ColumnType, SqlExpression, SqlTypeExpr};
 use crate::meta::{EngineRowId, EngineRowIdPart};
-use crate::sql_syntax::{ExpressionSyntaxError, SqlGrammar, TypeSyntaxError, parse_expression, parse_type};
+use crate::sql_syntax::{
+    CredentialRules, ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError, classify_for_history,
+    parse_expression, parse_type,
+};
 use crate::statement::{BoundParam, ParamType};
 use crate::value::Value;
 
@@ -249,6 +252,15 @@ impl SqlDialect for TestDialect {
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
         let parsed = parse_expression(self.grammar, text, crate::sql_syntax::MAX_EXPRESSION_LEN)?;
         Ok(SqlExpression::from_catalog_text(parsed.text))
+    }
+
+    fn history_recording(&self, sql: &str) -> HistoryRecording {
+        const RULES: CredentialRules = CredentialRules {
+            statement_prefixes: &[&["CREATE", "USER"], &["ALTER", "USER"]],
+            conditional_prefixes: &[],
+            carriers: &[],
+        };
+        classify_for_history(self.grammar, &RULES, sql)
     }
 }
 

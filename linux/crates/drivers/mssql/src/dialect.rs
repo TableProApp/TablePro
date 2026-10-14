@@ -9,7 +9,8 @@ use tablepro_core::dialect::{
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    ExpressionSyntaxError, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError, parse_expression, parse_type,
+    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
+    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -208,6 +209,10 @@ impl SqlDialect for MssqlDialect {
         Ok(SqlExpression::from_catalog_text(parsed.text))
     }
 
+    fn history_recording(&self, sql: &str) -> HistoryRecording {
+        classify_for_history(SqlGrammar::MsSql, &CREDENTIAL_RULES, sql)
+    }
+
     fn ddl(&self) -> Option<&dyn DdlDialect> {
         Some(self)
     }
@@ -361,6 +366,50 @@ fn integer_param_type(kind: IntegerKind) -> ParamType {
         IntegerWidth::W64 | IntegerWidth::W128 | IntegerWidth::W256 => ParamType::Decimal,
     }
 }
+
+/// Statements whose text can hold a password or a connection string.
+/// The procedures run without EXEC as the first statement of a batch.
+const CREDENTIAL_RULES: CredentialRules = CredentialRules {
+    statement_prefixes: &[
+        &["CREATE", "LOGIN"],
+        &["ALTER", "LOGIN"],
+        &["CREATE", "USER"],
+        &["ALTER", "USER"],
+        &["CREATE", "APPLICATION", "ROLE"],
+        &["ALTER", "APPLICATION", "ROLE"],
+        &["CREATE", "CREDENTIAL"],
+        &["ALTER", "CREDENTIAL"],
+        &["CREATE", "DATABASE", "SCOPED", "CREDENTIAL"],
+        &["ALTER", "DATABASE", "SCOPED", "CREDENTIAL"],
+        &["CREATE", "MASTER", "KEY"],
+        &["ALTER", "MASTER", "KEY"],
+        &["ALTER", "SERVICE", "MASTER", "KEY"],
+        &["CREATE", "CERTIFICATE"],
+        &["ALTER", "CERTIFICATE"],
+        &["CREATE", "SYMMETRIC", "KEY"],
+        &["ALTER", "SYMMETRIC", "KEY"],
+        &["CREATE", "ASYMMETRIC", "KEY"],
+        &["ALTER", "ASYMMETRIC", "KEY"],
+        &["OPEN", "MASTER", "KEY"],
+        &["OPEN", "SYMMETRIC", "KEY"],
+    ],
+    conditional_prefixes: &[
+        (&["BACKUP"], &["PASSWORD", "MEDIAPASSWORD", "ENCRYPTION"]),
+        (&["RESTORE"], &["PASSWORD", "MEDIAPASSWORD", "ENCRYPTION"]),
+    ],
+    carriers: &[
+        "sp_addlogin",
+        "sp_password",
+        "sp_addlinkedsrvlogin",
+        "sp_addapprole",
+        "sp_setapprole",
+        "sp_approlepassword",
+        "sp_control_dbmasterkey_password",
+        "sp_change_users_login",
+        "OPENROWSET",
+        "OPENDATASOURCE",
+    ],
+};
 
 #[cfg(test)]
 mod tests {
@@ -611,5 +660,33 @@ mod tests {
             let literal = dialect.literal(&value, &text).unwrap();
             assert!(dialect.parse_expression(&literal).is_ok(), "{literal}");
         }
+    }
+
+    #[test]
+    fn history_withholds_statements_that_carry_credentials() {
+        for sql in [
+            "CREATE LOGIN l WITH PASSWORD = N'x'",
+            "EXEC sp_password 'o','n'",
+            "sp_addlogin 'l','p'",
+            "SELECT * FROM OPENROWSET('SQLNCLI','Server=x;PWD=y','q')",
+            "BACKUP DATABASE d TO DISK='f' WITH PASSWORD='x'",
+            "SELECT 1\nCREATE LOGIN l WITH PASSWORD = 'x'",
+            "ALTER SERVICE MASTER KEY WITH OLD_ACCOUNT = 'a', OLD_PASSWORD = 'p'",
+            "EXEC sp_change_users_login 'Auto_Fix', 'u', NULL, 'p'",
+        ] {
+            assert_eq!(
+                dialect().history_recording(sql),
+                HistoryRecording::Withhold(tablepro_core::sql_syntax::WithholdReason::CredentialStatement),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn history_records_plain_statements_as_they_are() {
+        assert_eq!(
+            tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect()),
+            Vec::<&str>::new()
+        );
     }
 }

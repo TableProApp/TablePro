@@ -21,6 +21,7 @@ mod fake_reply;
 mod fake_run;
 mod fake_secret_vault;
 mod fault;
+pub mod history_cases;
 mod replies;
 
 pub use call_counters::CallCounters;
