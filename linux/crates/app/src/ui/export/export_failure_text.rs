@@ -2,11 +2,14 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use tablepro_core::ErrorCategory;
 use tablepro_core::export::{EncodeError, RenderError};
+use tablepro_session::OperationError;
 use tablepro_session::runtime::TaskFailure;
 
 use super::{AbortOutcome, ExpectedRows, ExportFailure, ExportOutcome, ExportStreamFailure};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
+use crate::ui::error_text::operation_error_message;
 use crate::ui::format::{format_thousands, plural_count};
 
 pub(crate) fn exported_text(rows: u64, name: &str) -> String {
@@ -36,6 +39,12 @@ pub(crate) fn progress_text(rows: u64, expected: Option<ExpectedRows>) -> String
             plural_count(total),
             &[("rows", &count), ("total", &format_thousands(total))],
         ),
+        Some(ExpectedRows::About(total)) => ngettext_f(
+            "{rows} of about {total} row",
+            "{rows} of about {total} rows",
+            plural_count(total),
+            &[("rows", &count), ("total", &format_thousands(total))],
+        ),
         None => ngettext_f("{rows} row", "{rows} rows", plural_count(rows), &[("rows", &count)]),
     }
 }
@@ -49,22 +58,49 @@ pub(crate) fn failure_text(failure: &ExportFailure, file: Option<AbortOutcome>, 
             &[("column", column)],
         ),
         ExportFailure::Stream(ExportStreamFailure::MultipleResultSets) => {
-            gettext("The query returned more than one result. Export one statement at a time.")
+            gettext("This statement returned more than one result, so it can't be exported as one file.")
+        }
+        ExportFailure::Stream(ExportStreamFailure::NoResultSet) => {
+            gettext("This statement returned no rows to export.")
         }
         ExportFailure::Stream(ExportStreamFailure::Document(error)) => document_text(error),
+        ExportFailure::Stream(ExportStreamFailure::SheetFull { limit }) => gettext_f(
+            "An Excel sheet holds {limit} rows, and this result has more. Export it as CSV instead.",
+            &[("limit", &format_thousands(*limit as u64))],
+        ),
+        ExportFailure::Table(error) => operation_error_message(error),
+        ExportFailure::Statement(error) => rerun_text(error),
         ExportFailure::File(error) => gettext_f(
             "Writing {name} failed: {error}",
             &[("name", name), ("error", error.message())],
         ),
-        ExportFailure::Task(TaskFailure::Panicked(_) | TaskFailure::Aborted) => {
-            gettext("The export stopped unexpectedly.")
-        }
+        ExportFailure::Task(TaskFailure::Panicked(_) | TaskFailure::Aborted)
+        | ExportFailure::Stream(ExportStreamFailure::Task(_)) => gettext("The export stopped unexpectedly."),
     };
     match file {
         Some(AbortOutcome::Incomplete) => {
             format!("{reason}\n\n{}", gettext_f("{name} is incomplete.", &[("name", name)]))
         }
         _ => reason,
+    }
+}
+
+/// Why Export All's run of the statement failed. It ran on a connection
+/// of its own, read-only, which is behind most of the ways it can fail
+/// where the editor's own run did not.
+fn rerun_text(error: &OperationError) -> String {
+    match error.category() {
+        Some(ErrorCategory::ReadOnly) => {
+            gettext("Export All only runs statements that read data. This statement changes data.")
+        }
+        Some(ErrorCategory::Server) => format!(
+            "{}\n\n{}",
+            gettext(
+                "Export All runs the statement again on a separate connection, so temporary tables, session settings and uncommitted changes from this editor aren't available."
+            ),
+            operation_error_message(error)
+        ),
+        _ => operation_error_message(error),
     }
 }
 
@@ -151,4 +187,86 @@ fn show_in_files(file: &gio::File, parent: &glib::WeakRef<gtk::Widget>) {
             tracing::warn!(%error, "the export's folder could not be shown");
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::{DriverError, LossPhase, ReadOnlyRefusal};
+
+    use super::*;
+
+    fn statement(error: DriverError) -> ExportFailure {
+        ExportFailure::Statement(OperationError::Driver(error))
+    }
+
+    #[test]
+    fn editor_rerun_failure_text_per_category() {
+        let missing = || DriverError::server("relation \"scratch\" does not exist");
+        let read_only = failure_text(
+            &statement(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)),
+            None,
+            "rows.csv",
+        );
+        let server = failure_text(&statement(missing()), None, "rows.csv");
+        let lost = failure_text(
+            &statement(DriverError::ConnectionLost {
+                during: LossPhase::Statement,
+            }),
+            None,
+            "rows.csv",
+        );
+        let table = failure_text(
+            &ExportFailure::Table(OperationError::Driver(missing())),
+            None,
+            "rows.csv",
+        );
+        let multiple = failure_text(
+            &ExportFailure::Stream(ExportStreamFailure::MultipleResultSets),
+            None,
+            "rows.csv",
+        );
+
+        assert_eq!(
+            read_only,
+            "Export All only runs statements that read data. This statement changes data."
+        );
+        let (why, said) = server
+            .split_once("\n\n")
+            .expect("a blank line before the server's words");
+        assert_eq!(
+            why,
+            "Export All runs the statement again on a separate connection, so temporary tables, session settings and uncommitted changes from this editor aren't available."
+        );
+        assert_eq!(said, "Query failed: relation \"scratch\" does not exist");
+        assert_eq!(lost, "The connection was closed. Try reconnecting.");
+        assert_eq!(table, said, "a table read has no statement to explain");
+        assert_eq!(
+            multiple,
+            "This statement returned more than one result, so it can't be exported as one file."
+        );
+    }
+
+    #[test]
+    fn progress_against_an_estimate_says_about() {
+        assert_eq!(
+            progress_text(12, Some(ExpectedRows::About(500))),
+            "12 of about 500 rows"
+        );
+        assert_eq!(progress_text(12, Some(ExpectedRows::Exact(500))), "12 of 500 rows");
+        assert_eq!(progress_text(1, None), "1 row");
+    }
+
+    #[test]
+    fn a_full_sheet_says_how_many_rows_it_holds() {
+        let text = failure_text(
+            &ExportFailure::Stream(ExportStreamFailure::SheetFull { limit: 100 }),
+            Some(AbortOutcome::Removed),
+            "rows.xlsx",
+        );
+
+        assert_eq!(
+            text,
+            "An Excel sheet holds 100 rows, and this result has more. Export it as CSV instead."
+        );
+    }
 }

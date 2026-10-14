@@ -8,11 +8,12 @@ use relm4::{adw, gtk};
 
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+use tablepro_session::Session;
 
 use super::export::{
-    DocumentFormat, ExpectedRows, ExportFormat, ExportJob, ExportLedger, ExportSource, InsertTarget, RowFormat,
+    DocumentFormat, ExpectedRows, ExportFormat, ExportJob, ExportLedger, ExportOffer, ExportOrigin, ExportSource,
+    InsertTarget, RowFormat, ScopeChoice, ScopeSource, scope_choices,
 };
-use super::format::{format_thousands, plural_count};
 
 /// The table a result can be written back to as `INSERT` statements.
 ///
@@ -179,23 +180,62 @@ fn combo_row(title: &str, choices: &[&str]) -> adw::ComboRow {
 pub(crate) struct ExportDialogInit<'a> {
     pub parent: &'a adw::ApplicationWindow,
     pub exports: &'a Rc<ExportLedger>,
-    pub source: ExportSource,
-    pub name: String,
-    pub target: Option<SqlTarget>,
+    pub offer: ExportOffer,
     pub dialect: Option<Arc<dyn SqlDialect>>,
     pub settings: &'a Rc<tablepro_storage::AppSettings>,
+}
+
+/// The Rows list: which rows the export writes, one entry per scope
+/// the origin offers.
+struct ScopeRow {
+    row: adw::ComboRow,
+    choices: Vec<ScopeChoice>,
+}
+
+impl ScopeRow {
+    fn new(origin: &ExportOrigin, can_read: bool) -> Self {
+        let mut choices = scope_choices(origin);
+        // A read of every row goes through the tab's session, and a
+        // window that disconnected has none.
+        choices.retain(|choice| can_read || choice.source == ScopeSource::Shown);
+        let titles: Vec<&str> = choices.iter().map(|choice| choice.title.as_str()).collect();
+        let row = combo_row(&crate::i18n::gettext("Rows"), &titles);
+        let preselected = origin.preselected();
+        let index = choices
+            .iter()
+            .position(|choice| choice.source == preselected)
+            .unwrap_or_default();
+        row.set_selected(u32::try_from(index).unwrap_or_default());
+        row.set_sensitive(choices.len() > 1);
+        let subtitles: Vec<String> = choices.iter().map(|choice| choice.subtitle.clone()).collect();
+        let show_subtitle = move |row: &adw::ComboRow| {
+            let subtitle = subtitles.get(row.selected() as usize).map_or("", String::as_str);
+            row.set_subtitle(subtitle);
+        };
+        show_subtitle(&row);
+        row.connect_selected_notify(show_subtitle);
+        Self { row, choices }
+    }
+
+    fn selected(&self) -> Option<&ScopeChoice> {
+        self.choices.get(self.row.selected() as usize)
+    }
 }
 
 pub(crate) fn present(init: ExportDialogInit<'_>) {
     let ExportDialogInit {
         parent,
         exports,
-        source,
-        name,
-        target,
+        offer,
         dialect,
         settings,
     } = init;
+    let ExportOffer {
+        origin,
+        session,
+        name,
+        target,
+    } = offer;
     let target = target.zip(dialect).map(|(target, dialect)| InsertTarget {
         table: target.table,
         dialect,
@@ -204,16 +244,10 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     let page = adw::PreferencesPage::new();
 
     let format_group = adw::PreferencesGroup::new();
+    let scope = ScopeRow::new(&origin, session.is_some());
+    format_group.add(&scope.row);
     let format_labels: Vec<&str> = formats.iter().map(|f| f.label()).collect();
     let format_row = combo_row(&crate::i18n::gettext("Format"), &format_labels);
-    let row_count = source.row_count() as u64;
-    let rows_label = crate::i18n::ngettext_f(
-        "{n} row",
-        "{n} rows",
-        plural_count(row_count),
-        &[("n", &format_thousands(row_count))],
-    );
-    format_row.set_subtitle(&rows_label);
     format_group.add(&format_row);
     page.add(&format_group);
 
@@ -331,7 +365,7 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     toolbar.add_bottom_bar(&footer);
 
     let dialog = adw::Dialog::builder()
-        .title(crate::i18n::gettext("Export Results"))
+        .title(crate::i18n::gettext("Export Rows"))
         .content_width(480)
         .child(&toolbar)
         .build();
@@ -339,7 +373,7 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
 
     // One dialog, one export: the rows go to the job rather than being
     // copied for each click.
-    let source = Rc::new(RefCell::new(Some(source)));
+    let unexported = Rc::new(RefCell::new(Some(Unexported { origin, session })));
     let window = parent.clone();
     let exports = exports.clone();
     let dialog_for_export = dialog.clone();
@@ -348,7 +382,13 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
         let Some(job_format) = format.job_format(rows.read(), &name, target.as_ref()) else {
             return;
         };
-        let Some(source) = source.borrow_mut().take() else {
+        let Some(choice) = scope.selected().cloned() else {
+            return;
+        };
+        let Some(Unexported { origin, session }) = unexported.borrow_mut().take() else {
+            return;
+        };
+        let Some(source) = origin.into_source(choice.source, session) else {
             return;
         };
         dialog_for_export.close();
@@ -357,11 +397,18 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
             job_format,
             name: name.clone(),
             source,
+            expected_rows: choice.expected,
         };
         glib::spawn_future_local(save_with_file_dialog(window.clone(), exports.clone(), chosen));
     });
 
     dialog.present(Some(parent));
+}
+
+/// What the dialog holds until its one export takes it.
+struct Unexported {
+    origin: ExportOrigin,
+    session: Option<Arc<Session>>,
 }
 
 /// One export, as the dialog left it.
@@ -370,6 +417,7 @@ struct Chosen {
     job_format: ExportFormat,
     name: String,
     source: ExportSource,
+    expected_rows: Option<ExpectedRows>,
 }
 
 async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<ExportLedger>, chosen: Chosen) {
@@ -378,6 +426,7 @@ async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<Expor
         job_format,
         name,
         source,
+        expected_rows,
     } = chosen;
     let filter = gtk::FileFilter::new();
     filter.set_name(Some(&crate::i18n::gettext_f(
@@ -389,7 +438,7 @@ async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<Expor
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     filters.append(&filter);
     let file_dialog = gtk::FileDialog::builder()
-        .title(crate::i18n::gettext("Export Results"))
+        .title(crate::i18n::gettext("Export Rows"))
         .modal(true)
         .initial_name(format!("{name}.{}", format.extension()))
         .default_filter(&filter)
@@ -399,7 +448,6 @@ async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<Expor
     let Ok(destination) = file_dialog.save_future(Some(&parent)).await else {
         return;
     };
-    let expected_rows = Some(ExpectedRows::Exact(source.row_count() as u64));
     // The ledger reports how the job ends, or logs why it never began.
     let _ = exports.begin(ExportJob {
         destination,

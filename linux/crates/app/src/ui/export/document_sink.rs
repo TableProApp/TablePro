@@ -185,7 +185,8 @@ mod tests {
         drop(sink);
         let mut full = false;
         while let Some(message) = received.recv().await {
-            full |= matches!(message, ExportMessage::Failed(ExportStreamFailure::SheetFull { limit: got }) if got == limit);
+            full |=
+                matches!(message, ExportMessage::Failed(ExportStreamFailure::SheetFull { limit: got }) if got == limit);
         }
         assert!(full, "the full sheet was not reported");
     }

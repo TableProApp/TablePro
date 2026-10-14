@@ -285,7 +285,10 @@ mod tests {
         assert_eq!(choices[1].expected, None);
         assert_eq!(truncated.preselected(), ScopeSource::Query);
         assert_eq!(complete.preselected(), ScopeSource::Shown);
-        assert_eq!(browse(RowTotal::Unknown, FilterSet::default(), false).preselected(), ScopeSource::Shown);
+        assert_eq!(
+            browse(RowTotal::Unknown, FilterSet::default(), false).preselected(),
+            ScopeSource::Shown
+        );
     }
 
     #[test]

@@ -1,9 +1,11 @@
 use tablepro_core::sql_syntax::script::BatchErrorPolicy;
 use tablepro_core::{
     DriverError, EditorSessionState, ErrorCategory, ResultEvent, RunEnd, RunSummary, TransactionState, Truncation,
+    UserSql,
 };
 
 use super::result_rows::ResultRows;
+use super::script_runner::sql_preview;
 
 /// One line of the results list.
 #[derive(Debug, Clone)]
@@ -53,6 +55,8 @@ pub struct RunLogEntry {
     /// The batch it came from, `None` for a warning about the script.
     pub batch: Option<usize>,
     pub preview: String,
+    /// The text of the batch it came from, which Export All runs again.
+    pub statement: Option<UserSql>,
 }
 
 /// How one run of a batch ended, for deciding whether the next is sent.
@@ -235,6 +239,7 @@ fn failed(error: &DriverError, state: EditorSessionState, error_base: usize) -> 
 /// The results list of one run, built as the batches report.
 #[derive(Debug, Default)]
 pub struct RunLog {
+    statements: Vec<UserSql>,
     previews: Vec<String>,
     entries: Vec<RunLogEntry>,
     /// The first batch no report has arrived for yet.
@@ -245,17 +250,20 @@ pub struct RunLog {
 }
 
 impl RunLog {
-    pub fn new(previews: Vec<String>, warnings: Vec<String>) -> Self {
+    /// The log of a run of `statements`, one per batch.
+    pub fn new(statements: Vec<UserSql>, warnings: Vec<String>) -> Self {
         let entries = warnings
             .into_iter()
             .map(|message| RunLogEntry {
                 kind: EntryKind::ClientWarning { message },
                 batch: None,
                 preview: String::new(),
+                statement: None,
             })
             .collect();
         Self {
-            previews,
+            previews: statements.iter().map(|sql| sql_preview(sql.as_str())).collect(),
+            statements,
             entries,
             ..Self::default()
         }
@@ -268,10 +276,12 @@ impl RunLog {
         match event {
             RunEvent::Batch(report) => {
                 let preview = self.previews.get(report.batch).cloned().unwrap_or_default();
+                let statement = self.statements.get(report.batch).cloned();
                 self.entries.extend(report.entries.into_iter().map(|kind| RunLogEntry {
                     kind,
                     batch: Some(report.batch),
                     preview: preview.clone(),
+                    statement: statement.clone(),
                 }));
                 self.next_batch = self.next_batch.max(report.batch + 1);
                 if report.transaction.is_some() {
@@ -286,6 +296,7 @@ impl RunLog {
                         kind: EntryKind::NotRun,
                         batch: Some(batch),
                         preview: self.previews[batch].clone(),
+                        statement: self.statements.get(batch).cloned(),
                     });
                 }
                 self.next_batch = self.previews.len();
@@ -517,12 +528,10 @@ mod tests {
         }];
         assert!(!continues(Verdict::Failed, BatchErrorPolicy::StopScript));
         let mut log = RunLog::new(
-            vec![
-                "SELECT 1".into(),
-                "SELECT boom".into(),
-                "SELECT 3".into(),
-                "SELECT 4".into(),
-            ],
+            ["SELECT 1", "SELECT boom", "SELECT 3", "SELECT 4"]
+                .into_iter()
+                .map(UserSql::new)
+                .collect(),
             Vec::new(),
         );
 
@@ -552,7 +561,7 @@ mod tests {
 
     #[test]
     fn a_warning_comes_first_and_counts_as_no_result() {
-        let mut log = RunLog::new(vec!["SELECT 1".into()], vec!["Unterminated string".into()]);
+        let mut log = RunLog::new(vec![UserSql::new("SELECT 1")], vec!["Unterminated string".into()]);
 
         log.apply(report(
             0,

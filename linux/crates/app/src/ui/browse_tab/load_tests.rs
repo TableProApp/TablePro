@@ -345,7 +345,7 @@ fn the_rows_behind_the_error_page_take_no_action() {
 
     harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
-    harness.tab().send(BrowseTabInput::ExportCurrentPage);
+    harness.tab().send(BrowseTabInput::Export(None));
 
     assert_eq!(*exported.borrow(), 0, "Export wrote rows the filter does not match");
     assert!(

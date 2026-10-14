@@ -366,6 +366,7 @@ mod tests {
             kind,
             batch: Some(0),
             preview: "SELECT 1".to_owned(),
+            statement: None,
         }
     }
 

@@ -151,6 +151,7 @@ mod tests {
             },
             batch: Some(0),
             preview: String::new(),
+            statement: None,
         };
 
         let widget = entry_widget(&entry, &sink(), |_| {});
@@ -171,6 +172,7 @@ mod tests {
             },
             batch: Some(0),
             preview: String::new(),
+            statement: None,
         };
         let reached = std::rc::Rc::new(std::cell::Cell::new(None));
         let seen = reached.clone();

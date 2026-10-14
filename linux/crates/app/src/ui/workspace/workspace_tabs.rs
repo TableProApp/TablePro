@@ -11,7 +11,7 @@ use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
-use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest};
+use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
 use crate::workspace::{
@@ -1187,9 +1187,7 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     let state = input.clone();
     browse.connect_state_changed(move |_| state.deliver(WorkspaceInput::WorkspaceTabsChanged));
     let export = input.clone();
-    browse.connect_export_results(move |_, ExportRequest { source, name, target }| {
-        export.deliver(WorkspaceInput::ExportResults { source, name, target });
-    });
+    browse.connect_export_results(move |_, offer| export.deliver(WorkspaceInput::ExportResults(Box::new(offer))));
     let alert = input.clone();
     browse.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
     let toast = input.clone();
@@ -1226,13 +1224,7 @@ fn connect_editor(
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let export = input.clone();
-    editor.connect_export_results(move |_, source, name| {
-        export.deliver(WorkspaceInput::ExportResults {
-            source,
-            name,
-            target: None,
-        });
-    });
+    editor.connect_export_results(move |_, offer| export.deliver(WorkspaceInput::ExportResults(Box::new(offer))));
     // The overlay is an ancestor of the editor, so a strong capture
     // would keep both alive once the window lets go of them.
     let toasts = toasts.clone();

@@ -185,7 +185,7 @@
             <child type="end">
               <object class="GtkButton" id="export_button">
                 <property name="icon-name">document-save-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Export results</property>
+                <property name="tooltip-text" translatable="yes">Export…</property>
                 <style>
                   <class name="flat"/>
                 </style>

@@ -26,12 +26,14 @@ impl ExportJobId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpectedRows {
     Exact(u64),
+    /// The server's estimate, which the export may pass.
+    About(u64),
 }
 
 impl ExpectedRows {
     pub(crate) fn total(self) -> u64 {
         match self {
-            Self::Exact(total) => total,
+            Self::Exact(total) | Self::About(total) => total,
         }
     }
 }

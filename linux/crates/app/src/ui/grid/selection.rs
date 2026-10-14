@@ -34,8 +34,8 @@ pub(super) fn select_row_for_menu(column_view: &gtk::ColumnView, position: u32) 
     selection.select_item(position, true);
 }
 
-/// The paginator's Export button and the menu's Export Results both
-/// read the rows here, so one label cannot mean two files.
+/// The paginator's Export button and the menu's Export both read the
+/// rows here, so one label cannot mean two files.
 pub(crate) fn export_snapshot(column_view: &gtk::ColumnView, ctx: &TabGridContext) -> Vec<RowSnapshot> {
     let Some(model) = column_view.model() else {
         return Vec::new();

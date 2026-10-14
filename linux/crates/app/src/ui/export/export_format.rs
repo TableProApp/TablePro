@@ -44,6 +44,14 @@ pub(crate) enum DocumentFormat {
 }
 
 impl DocumentFormat {
+    /// The most rows the document can hold, when it has a most.
+    pub(crate) fn row_limit(&self) -> Option<usize> {
+        match self {
+            Self::Xlsx { .. } => Some(export::XLSX_MAX_DATA_ROWS),
+            Self::Html { .. } | Self::Xml | Self::Sql(_) => None,
+        }
+    }
+
     pub(crate) fn render(&self, columns: &[ResultColumn], rows: &[Vec<Value>]) -> Result<Vec<u8>, RenderError> {
         match self {
             Self::Xlsx { sheet } => export::render_xlsx(columns, rows, sheet),

@@ -27,7 +27,6 @@ pub struct RunBatch {
     pub repeat: u32,
     /// Where the batch starts in the buffer, in characters.
     pub error_base: usize,
-    pub preview: String,
 }
 
 /// What one press of Run sends, and how.
@@ -59,7 +58,6 @@ pub fn plan_batches(
                 text: text.to_owned(),
                 repeat: batch.repeat.get(),
                 error_base: scoped.base_char + text_offsets::byte_to_char(&scoped.text, batch.range.start),
-                preview: sql_preview(text),
             })
         })
         .collect();
@@ -217,9 +215,9 @@ mod tests {
         }
     }
 
-    fn script(text: &str, grammar: SqlGrammar) -> (ScriptRun, Vec<String>, Vec<String>) {
+    fn script(text: &str, grammar: SqlGrammar) -> (ScriptRun, Vec<UserSql>, Vec<String>) {
         let (batches, policy, warnings) = plan_batches(&scoped(text), grammar, 0);
-        let previews = batches.iter().map(|batch| batch.preview.clone()).collect();
+        let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         (
             ScriptRun {
                 batches,
@@ -227,7 +225,7 @@ mod tests {
                 statement_timeout: None,
                 row_limit: RowLimit::EDITOR_DEFAULT,
             },
-            previews,
+            statements,
             warnings,
         )
     }
@@ -249,11 +247,11 @@ mod tests {
         grammar: SqlGrammar,
         cancel: &CancellationToken,
     ) -> RunLog {
-        let (run, previews, warnings) = script(text, grammar);
+        let (run, statements, warnings) = script(text, grammar);
         let (events, mut received) = mpsc::channel(8);
         let session: Arc<dyn EditorSession> = editor.clone();
         let collect = async move {
-            let mut log = RunLog::new(previews, warnings);
+            let mut log = RunLog::new(statements, warnings);
             while let Some(event) = received.recv().await {
                 let finished = matches!(event, RunEvent::Finished);
                 log.apply(event);

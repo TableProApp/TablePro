@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use tablepro_core::export::RowEncoder;
 use tablepro_core::{ResultEvent, ResultSink, SinkFlow, Value};
+use tokio::sync::mpsc;
 
-use super::{ExportMessage, ExportSinkParts, ExportStreamFailure};
+use super::{ExportMessage, ExportStreamFailure, RowFormat};
 
 /// How much encoded output a sink holds before it hands it to the
 /// writer.
@@ -12,7 +13,8 @@ pub(crate) const CHUNK_BYTES: usize = 64 * 1024;
 /// chunks. A send waits while the writer is behind, which stops the
 /// read until the disk catches up.
 pub(crate) struct EncodingSink {
-    parts: ExportSinkParts,
+    messages: mpsc::Sender<ExportMessage>,
+    format: RowFormat,
     /// Built from the columns the stream announces, which are the ones
     /// its rows carry.
     encoder: Option<Box<dyn RowEncoder>>,
@@ -22,9 +24,10 @@ pub(crate) struct EncodingSink {
 }
 
 impl EncodingSink {
-    pub(crate) fn new(parts: ExportSinkParts) -> Self {
+    pub(crate) fn new(messages: mpsc::Sender<ExportMessage>, format: RowFormat) -> Self {
         Self {
-            parts,
+            messages,
+            format,
             encoder: None,
             buffer: Vec::with_capacity(CHUNK_BYTES),
             rows: 0,
@@ -35,7 +38,7 @@ impl EncodingSink {
     // `&mut self` throughout: the encoder is not Sync, so a shared
     // borrow held across an await would make the future not Send.
     async fn send(&mut self, message: ExportMessage) -> SinkFlow {
-        match self.parts.messages.send(message).await {
+        match self.messages.send(message).await {
             Ok(()) => SinkFlow::Continue,
             Err(_) => SinkFlow::ConsumerGone,
         }
@@ -84,7 +87,7 @@ impl ResultSink for EncodingSink {
                 if self.result_sets > 1 {
                     return self.fail(ExportStreamFailure::MultipleResultSets).await;
                 }
-                let mut encoder = self.parts.format.encoder(columns);
+                let mut encoder = self.format.encoder(columns);
                 encoder.begin(&mut self.buffer);
                 self.encoder = Some(encoder);
                 SinkFlow::Continue
@@ -113,11 +116,9 @@ mod tests {
     use tablepro_core::Truncation;
     use tablepro_core::column::{ColumnType, ResultColumn};
     use tablepro_core::export::CsvOptions;
-    use tokio::sync::mpsc;
 
     use super::*;
     use crate::test_support::paused_tasks;
-    use crate::ui::export::RowFormat;
 
     fn columns(names: &[&str]) -> Arc<[ResultColumn]> {
         names
@@ -136,7 +137,7 @@ mod tests {
 
     fn sink(format: RowFormat, capacity: usize) -> (EncodingSink, mpsc::Receiver<ExportMessage>) {
         let (messages, received) = mpsc::channel(capacity);
-        (ExportSinkParts { messages, format }.sink(), received)
+        (EncodingSink::new(messages, format), received)
     }
 
     /// One-cell rows that each encode to exactly 1 KiB of plain CSV.
@@ -167,6 +168,7 @@ mod tests {
             match message {
                 ExportMessage::Chunk { bytes, rows } => chunks.push((bytes, rows)),
                 ExportMessage::Finished { rows } => finished = Some(rows),
+                ExportMessage::Progress { .. } => {}
                 ExportMessage::Failed(failure) => panic!("the export failed: {failure}"),
             }
         }

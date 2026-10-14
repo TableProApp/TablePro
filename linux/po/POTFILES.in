@@ -3,15 +3,11 @@ crates/app/src/application/accelerator.rs
 crates/app/src/application/accelerator_scope.rs
 crates/app/src/application/accelerators.rs
 crates/app/src/application/app_actions.rs
-crates/app/src/application/app_actions.rs
-crates/app/src/application/app_actions.rs
 crates/app/src/application/app_services.rs
 crates/app/src/application/app_window_host.rs
 crates/app/src/application/debug_info.rs
 crates/app/src/application/imp.rs
 crates/app/src/application/legal_section.rs
-crates/app/src/application/mod.rs
-crates/app/src/application/mod.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
 crates/app/src/application/quit_sequence.rs
@@ -198,6 +194,7 @@ crates/app/src/ui/error_text/ssh.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
+crates/app/src/ui/export/document_sink.rs
 crates/app/src/ui/export/encoding_sink.rs
 crates/app/src/ui/export/export_failure_text.rs
 crates/app/src/ui/export/export_format.rs
@@ -209,6 +206,8 @@ crates/app/src/ui/export/export_message.rs
 crates/app/src/ui/export/export_operations_button.rs
 crates/app/src/ui/export/export_outcome.rs
 crates/app/src/ui/export/export_producer.rs
+crates/app/src/ui/export/export_query.rs
+crates/app/src/ui/export/export_scope.rs
 crates/app/src/ui/export/export_sink_parts.rs
 crates/app/src/ui/export/export_source.rs
 crates/app/src/ui/export/mod.rs

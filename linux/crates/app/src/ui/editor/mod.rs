@@ -34,19 +34,19 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sourceview5::prelude::*;
-use tablepro_core::RowLimit;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::{RowLimit, UserSql};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
 use self::buffer_edit::{CursorAnchor, replace_all_undoable};
 use self::imp::RunningScript;
-use self::run_log::{RunEvent, RunLog};
+use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
 use super::clipboard::CopyRequest;
-use super::export::ExportSource;
+use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
@@ -291,16 +291,12 @@ impl SqlEditor {
         )
     }
 
-    pub(crate) fn connect_export_results<F: Fn(&Self, ExportSource, String) + 'static>(
-        &self,
-        f: F,
-    ) -> glib::SignalHandlerId {
+    pub(crate) fn connect_export_results<F: Fn(&Self, ExportOffer) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "export-results",
             false,
             glib::closure_local!(move |editor: &Self, payload: glib::BoxedAnyObject| {
-                let (source, name) = payload.borrow::<(ExportSource, String)>().clone();
-                f(editor, source, name);
+                f(editor, payload.borrow::<ExportOffer>().clone());
             }),
         )
     }
@@ -359,7 +355,7 @@ impl SqlEditor {
             self.say(&crate::i18n::gettext("There is nothing to run."));
             return;
         }
-        let previews = batches.iter().map(|batch| batch.preview.clone()).collect();
+        let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         let run = ScriptRun {
             batches,
             policy,
@@ -389,7 +385,7 @@ impl SqlEditor {
         imp.results.set_summary(&crate::i18n::gettext("Running…"));
         imp.run_button.set_sensitive(false);
         imp.stop_button.set_visible(true);
-        imp.log.replace(Some(RunLog::new(previews, warnings)));
+        imp.log.replace(Some(RunLog::new(statements, warnings)));
         self.show_new_entries(0);
         self.emit_by_name::<()>("run-state-changed", &[&true]);
 
@@ -624,11 +620,7 @@ impl SqlEditor {
                     }
                 }
                 GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
-                GridMsg::ExportResults(source) => {
-                    let name = export_name_for_query(&editor.selected_preview());
-                    let payload = glib::BoxedAnyObject::new((source, name));
-                    editor.emit_by_name::<()>("export-results", &[&payload]);
-                }
+                GridMsg::ExportResults(shown) => editor.offer_export(shown),
                 _ => {}
             }
         });
@@ -649,15 +641,36 @@ impl SqlEditor {
         });
     }
 
-    /// The statement behind the result on screen, to name its export.
-    fn selected_preview(&self) -> String {
+    /// Ask the window to export the result on screen: the rows its
+    /// grid holds, or every row its statement returns when run again.
+    fn offer_export(&self, shown: ExportSource) {
+        let Some(offer) = self.export_offer(shown) else {
+            return;
+        };
+        self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(offer)]);
+    }
+
+    fn export_offer(&self, shown: ExportSource) -> Option<ExportOffer> {
         let imp = self.imp();
-        let index = imp.results.selected().unwrap_or(0) as usize;
-        imp.log
-            .borrow()
-            .as_ref()
-            .and_then(|log| log.entries().get(index).map(|entry| entry.preview.clone()))
-            .unwrap_or_default()
+        let index = usize::try_from(imp.results.selected()?).ok()?;
+        let log = imp.log.borrow();
+        let entry = log.as_ref()?.entries().get(index)?;
+        let EntryKind::ResultSet { result, .. } = &entry.kind else {
+            return None;
+        };
+        Some(ExportOffer {
+            origin: ExportOrigin::Editor {
+                shown,
+                query: ExportQuery::Editor {
+                    sql: entry.statement.clone()?,
+                },
+                shown_rows: result.row_count() as u64,
+                truncated: result.truncated,
+            },
+            session: self.deps().and_then(|deps| deps.session.get()),
+            name: export_name_for_query(&entry.preview),
+            target: None,
+        })
     }
 
     fn install_drop_target(&self) {
