@@ -195,10 +195,19 @@ fn tabs_name_the_schema_once_the_session_has_two() {
     assert_eq!(page.title(), "orders");
     assert_eq!(page.tooltip().as_deref(), Some("public.orders"));
 
-    let input = workspace.input().expect("the workspace's input");
-    input.deliver(WorkspaceInput::TableNamingRead(
-        super::table_naming::TableNaming::SchemaQualified,
-    ));
+    let schema = |name: &str| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default: name == "public",
+        is_system: false,
+    };
+    let session = workspace
+        .read(|model| model.context.active.get())
+        .flatten()
+        .expect("the session");
+    // What a reconnect to a database with a second schema commits.
+    session
+        .catalog()
+        .commit(vec![schema("public"), schema("sales")], Vec::new());
 
     wait_until(WAIT, || page.title() == "public.orders").expect("the tab to name its schema");
     assert!(

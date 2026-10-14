@@ -299,18 +299,13 @@ impl WorkspaceModel {
                 structure.send(StructureTabInput::SchemaChanged);
             }
         }
-        // The catalog watch takes the new list to the sidebar, and logs
-        // the error of one that could not be read.
+        // The catalog watch takes the new list to the sidebar, and a
+        // failure to it as a toast. The default schema's list, which the
+        // editor's completion reads, follows, one read at a time.
         self.context.tasks.spawn_task(async move {
+            let _ = session.refresh_objects(ObjectScope::AllSchemas).await;
             let _ = session.refresh_objects(ObjectScope::DefaultSchema).await;
         });
-    }
-
-    /// The sidebar follows the session's object list. A failed refresh
-    /// keeps it as it was.
-    pub(super) fn on_catalog_changed(&mut self, snapshot: &tablepro_session::ObjectListSnapshot) {
-        self.show_objects(&snapshot.objects);
-        self.read_table_naming();
     }
 }
 

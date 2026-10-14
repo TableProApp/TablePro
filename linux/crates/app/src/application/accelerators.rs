@@ -265,7 +265,7 @@ pub const ACCELERATORS: &[Accelerator] = &[
     local(
         SidebarList,
         BUBBLE,
-        "sidebar-row.context-menu",
+        "sidebar.context-menu",
         &["Menu", "<Shift>F10"],
         Unlisted,
     ),

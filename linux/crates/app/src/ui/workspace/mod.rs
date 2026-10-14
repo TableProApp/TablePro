@@ -11,7 +11,6 @@ mod row_ops;
 mod saves;
 mod shell;
 mod sidebar;
-mod sidebar_section_header;
 mod status_pages;
 mod structure;
 mod structure_target;
@@ -42,10 +41,10 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use relm4::factory::FactoryVecDeque;
 use relm4::{ComponentController, Controller};
 
 use tablepro_core::EditorSession;
+use tablepro_core::meta::{ObjectInfo, SchemaInfo};
 use tablepro_session::runtime::WatchForwarder;
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
@@ -56,7 +55,6 @@ use super::export::{ExportLedger, ExportLedgerInit, ExportOffer, ExportReporter}
 use super::history_dialog::HistoryDialog;
 use super::host_key_failure::HostKeyFailure;
 use super::host_key_review::HostKeyReviewOutcome;
-use super::sidebar_row::SidebarRow;
 use crate::application::AppServices;
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
@@ -107,10 +105,16 @@ pub(crate) struct WorkspaceModel {
     history_gate: glib::JoinHandle<()>,
     /// The window's actions this workspace added, removed with it.
     actions: Vec<&'static str>,
-    sidebar_factory: FactoryVecDeque<SidebarRow>,
-    /// Takes the sidebar rows' output to `input`.
-    sidebar_bridge: glib::JoinHandle<()>,
-    sidebar_schemas: Rc<RefCell<Vec<Option<String>>>>,
+    sidebar: sidebar::SidebarView,
+    /// The schemas the sidebar's sections are made from, which also
+    /// decide whether tab titles name their schema.
+    catalog_schemas: Arc<[SchemaInfo]>,
+    /// The last schema read the sidebar asked for; an older one landing
+    /// late is not shown.
+    sidebar_read: u64,
+    /// Whether every schema's list has landed once. Until then the
+    /// sidebar shows the default schema's.
+    all_schemas_listed: bool,
     toast_overlay: adw::ToastOverlay,
     reconnect_banner: adw::Banner,
     row_op_spinner: adw::Spinner,
@@ -159,6 +163,8 @@ pub(crate) struct WorkspaceModel {
     /// workspace, so nothing reads for a session it let go of.
     _health_watch: WatchForwarder,
     _catalog_watch: WatchForwarder,
+    _reconnect_watch: WatchForwarder,
+    _link_watch: WatchForwarder,
 }
 
 /// Snapshot of a tab the user just closed, retained for Ctrl+Shift+T
@@ -326,9 +332,22 @@ pub(crate) enum WorkspaceInput {
         failure: HostKeyFailure,
         forgotten: Result<(), String>,
     },
-    /// The session's object list for the sidebar changed: a reconnect
-    /// read it again, or a schema change refreshed it.
+    /// Every schema's object list landed: a reconnect read it again, or
+    /// a schema change refreshed it.
     CatalogChanged(ObjectListSnapshot),
+    /// A refresh of that list failed, and the list stays as it was.
+    CatalogReadFailed(String),
+    /// The default schema's list landed, as a reconnect commits it.
+    DefaultListCommitted(ObjectListSnapshot),
+    /// The schemas the sidebar's sections are made from, read for
+    /// `objects`. `None` when they could not be read.
+    SidebarRead {
+        read: u64,
+        objects: Arc<[ObjectInfo]>,
+        schemas: Option<Arc<[SchemaInfo]>>,
+    },
+    /// A reconnect replaced the connection.
+    LinkChanged,
     SelectTable {
         schema: Option<String>,
         name: String,
@@ -395,8 +414,6 @@ pub(crate) enum WorkspaceInput {
     ShowToast(String),
     /// A table or structure tab gained or lost unsaved changes.
     TabDirtyChanged,
-    /// Whether tab titles name the schema, from the session's schemas.
-    TableNamingRead(table_naming::TableNaming),
     NewTableTab {
         schema: Option<String>,
     },
@@ -499,7 +516,7 @@ impl Workspace {
         });
         imp.export_operations_button.bind(&exports.jobs());
 
-        let sidebar = sidebar::build(&workspace, &context, &input);
+        let sidebar = sidebar::build(&workspace, &input, sidebar::SidebarAffordances::for_session(&session));
         let naming = Rc::new(Cell::new(table_naming::TableNaming::default()));
         let factory = tab_factory::TabFactory::new(tab_factory::TabFactoryParts {
             view: tab_view.clone(),
@@ -530,10 +547,26 @@ impl Workspace {
             move |health| health_input.deliver(WorkspaceInput::HealthChanged(health)),
             sidebar::spawn_local,
         );
-        let catalog_input = input.clone();
-        let catalog_watch = sidebar::catalog_watch(&session, move |snapshot| {
-            catalog_input.deliver(WorkspaceInput::CatalogChanged(snapshot));
+        let (listed, failed) = (input.clone(), input.clone());
+        let catalog_watch = sidebar::catalog_watch(
+            &session,
+            move |snapshot| listed.deliver(WorkspaceInput::CatalogChanged(snapshot)),
+            move |error| {
+                failed.deliver(WorkspaceInput::CatalogReadFailed(
+                    crate::ui::error_text::operation_error_message(&error),
+                ));
+            },
+        );
+        let committed = input.clone();
+        let reconnect_watch = sidebar::reconnect_watch(&session, move |snapshot| {
+            committed.deliver(WorkspaceInput::DefaultListCommitted(snapshot));
         });
+        let relinked = input.clone();
+        let link_watch = WatchForwarder::new(
+            session.link_changes(),
+            move |_| relinked.deliver(WorkspaceInput::LinkChanged),
+            sidebar::spawn_local,
+        );
 
         let driver_id = session.metadata().driver_id.clone();
         let driver_name = context
@@ -556,9 +589,10 @@ impl Workspace {
             shell,
             history_gate,
             actions,
-            sidebar_factory: sidebar.factory,
-            sidebar_bridge: sidebar.bridge,
-            sidebar_schemas: sidebar.schemas,
+            sidebar,
+            catalog_schemas: Arc::from([]),
+            sidebar_read: 0,
+            all_schemas_listed: false,
             toast_overlay: imp.toast_overlay.get(),
             reconnect_banner: imp.reconnect_banner.get(),
             row_op_spinner: imp.row_op_spinner.get(),
@@ -587,6 +621,8 @@ impl Workspace {
             closed_tabs_stack: Rc::new(RefCell::new(VecDeque::with_capacity(CLOSED_TABS_CAPACITY))),
             _health_watch: health_watch,
             _catalog_watch: catalog_watch,
+            _reconnect_watch: reconnect_watch,
+            _link_watch: link_watch,
         };
         imp.model.replace(Some(model));
         workspace.register_close_blocker(exports);
@@ -720,21 +756,8 @@ impl WorkspaceModel {
     fn open(&mut self) {
         self.reconnect_banner.set_revealed(false);
         self.table_search.set_text("");
-        let objects = self
-            .context
-            .active
-            .get()
-            .map(|session| {
-                session
-                    .subscribe_objects(tablepro_core::meta::ObjectScope::DefaultSchema)
-                    .borrow()
-                    .objects
-                    .to_vec()
-            })
-            .unwrap_or_default();
-        tracing::info!(driver = %self.driver_id, table_count = objects.len(), "workspace ready");
-        self.show_objects(&objects);
-        self.read_table_naming();
+        tracing::info!(driver = %self.driver_id, "workspace ready");
+        self.open_sidebar();
         self.refresh_window_title();
         self.restore_workspace_tabs(self.key.clone());
         self.refresh_unsaved();
@@ -776,27 +799,9 @@ impl WorkspaceModel {
         }
     }
 
-    /// Read the session's schemas, which the catalog holds from the
-    /// connect, to decide whether table tabs name their schema.
-    pub(super) fn read_table_naming(&self) {
-        let Some(session) = self.context.active.get() else {
-            return;
-        };
-        let input = self.input.clone();
-        crate::runtime::spawn_and_deliver(
-            &self.context.tasks,
-            async move { session.schemas().await },
-            move |read| match read {
-                Ok(Ok(schemas)) => {
-                    input.deliver(WorkspaceInput::TableNamingRead(table_naming::TableNaming::of(&schemas)))
-                }
-                Ok(Err(error)) => tracing::debug!(%error, "the schemas could not be read for the tab titles"),
-                Err(failure) => tracing::debug!(%failure, "the schema read for the tab titles did not finish"),
-            },
-        );
-    }
-
-    pub(super) fn on_table_naming_read(&self, naming: table_naming::TableNaming) {
+    /// Title every tab again when the schemas change whether table tabs
+    /// name their schema.
+    pub(super) fn on_table_naming(&self, naming: table_naming::TableNaming) {
         if self.naming.replace(naming) == naming {
             return;
         }
@@ -809,7 +814,7 @@ impl WorkspaceModel {
 
     fn shutdown(mut self) {
         self.history_gate.abort();
-        self.sidebar_bridge.abort();
+        self.sidebar.shutdown();
         self.shell.release();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
@@ -841,7 +846,11 @@ impl WorkspaceModel {
             WorkspaceInput::OldHostKeyForgotten { failure, forgotten } => {
                 self.on_old_host_key_forgotten(failure, forgotten);
             }
-            WorkspaceInput::CatalogChanged(snapshot) => self.on_catalog_changed(&snapshot),
+            WorkspaceInput::CatalogChanged(snapshot) => self.on_catalog_changed(snapshot),
+            WorkspaceInput::CatalogReadFailed(message) => self.on_catalog_read_failed(&message),
+            WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
+            WorkspaceInput::SidebarRead { read, objects, schemas } => self.on_sidebar_read(read, &objects, schemas),
+            WorkspaceInput::LinkChanged => self.on_link_changed(),
             WorkspaceInput::TabCloseDecided { id, approved } => self.on_tab_close_decided(id, approved),
             WorkspaceInput::SelectTable {
                 schema,
@@ -861,7 +870,6 @@ impl WorkspaceModel {
             WorkspaceInput::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             WorkspaceInput::ShowToast(msg) => self.show_toast(&msg),
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
-            WorkspaceInput::TableNamingRead(naming) => self.on_table_naming_read(naming),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
