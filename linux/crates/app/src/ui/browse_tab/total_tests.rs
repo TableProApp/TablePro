@@ -191,14 +191,17 @@ fn count_failure_shows_unavailable_with_reason() {
         .always(FakeReply::ok(2));
     let harness = Harness::open(script, []);
 
-    wait_until(WAIT, || count_label(&harness) == "Try Again").expect("the failed count");
+    // The count and the page are separate reads, and either can land first.
+    wait_until(WAIT, || {
+        count_label(&harness) == "Try Again" && paginator(&harness) == "Rows 1 – 2 of about 40"
+    })
+    .expect("the failed count under the first page");
     let tooltip = count_button(&harness)
         .tooltip_text()
         .map(|text| text.to_string())
         .unwrap_or_default();
     assert!(tooltip.contains("statement denied"), "{tooltip}");
     assert!(count_button(&harness).is_sensitive());
-    assert_eq!(paginator(&harness), "Rows 1 – 2 of about 40");
 
     count_button(&harness).emit_clicked();
 
