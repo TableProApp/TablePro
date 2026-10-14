@@ -18,7 +18,7 @@ candidate inventory as a release commitment.
 | UI-38 | Local filters and sorting for materialized SQL results | Exact-value filtering and local sort are implemented; settings are retained per statement/result set across reruns and pin/unpin. Selection follows the same materialized result, and app-restart persistence is not included |
 | UI-39 | Full-value text and JSON editor | B3 exact PostgreSQL JSON source carrier first; GTK editor remains UX follow-up under #610 |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
-| UI-17b, UI-22, UI-23, UI-26 | Code folding, typed PostgreSQL activity console, editable SSH profiles | accepted for later; preview tabs, split panes and the docked query history panel have landed (#618, #630, #619); PostgreSQL catalog objects are already built (UI-23) |
+| UI-22, UI-23, UI-26 | Multi-cursor editing, typed PostgreSQL activity console, reusable SSH profiles | accepted for later; preview tabs, split panes, SQL code folding and the docked query history panel have landed (#618, #630, #754, #619); PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |
 | PKG-4, PKG-8 | Flatpak Flathub submission and screenshots, and the file-access decision (`--filesystem=home` or portal only) | guest build/install/launch is proven; not part of 0.2.0; decide PKG-8 before PKG-4 |
 
@@ -60,7 +60,7 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#548](https://github.com/cozyGarage/BookiE/issues/548) | SSH jump chains and reusable profiles in the form (UI-1b, UI-26) |
 | [#549](https://github.com/cozyGarage/BookiE/issues/549) | Foreign key value picker, estimated counts (UI-19); FK navigation, paste TSV and the ENUM and SET pickers are done |
 | [#550](https://github.com/cozyGarage/BookiE/issues/550) | Server output and timing breakdown (UI-20, PERF-4) |
-| [#552](https://github.com/cozyGarage/BookiE/issues/552) | Folding and activity console remain; preview tabs, history panel and split panes have landed (UI-17b, 18, 22, 23, 26) |
+| [#552](https://github.com/cozyGarage/BookiE/issues/552) | Multi-cursor editing and the typed activity console remain; preview tabs, history panel, split panes and SQL code folding have landed (UI-17b, 18, 22, 23, 26; #754) |
 | [#553](https://github.com/cozyGarage/BookiE/issues/553) | Consistent snapshot for full-table export (UI-13b) |
 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | Streamed results (PERF-2, 7, 8) |
 | [#555](https://github.com/cozyGarage/BookiE/issues/555) | MongoDB browse on large collections (PERF-3) |
