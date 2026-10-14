@@ -30,9 +30,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open SQLite files from the file manager's Open With, or with `tablepro file.sqlite3`.
 - Review before a structure save that drops data, rebuilds the table or can stop halfway, with the SQL it runs.
 - Arrow keys move between grid cells; F2 or Return edits one, Tab carries an edit to the next cell, and Shift+F10 opens the cell menu.
-- Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
+- Screen readers name check box cells and say when a grid cell is modified or NULL and a row new or marked for deletion.
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
+- Try Again on a table tab's error page, and Retry on a banner over rows or a structure that could not be read again.
+- Table and structure tabs show a spinner in the tab bar while they read.
+- Count Rows in a table tab's paginator, with the reason on Try Again when a count fails.
+- Exports write in the background, with progress and Stop in the header bar, and a close or quit asks to stop them first.
+- Export a table's current page or every row under its filter and sort, and an editor result's shown rows or all of them.
+- Banner over an editor result the row limit cut short, saying how many rows it shows, with Export All for every row.
+- Sort an editor result by clicking a column header, with text in your language's alphabetical order.
+- Copy as puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
+- Shift+F10 opens the menu of a sidebar table or a query history entry, as the Menu key does.
+- Screen readers name icon-only buttons, and announce the shortcut of the table, SQL editor and filter buttons that have one.
+- An icon beside each table row with a pending change, and bold text in edited cells.
+- Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
+- Licenses of the third-party crates TablePro is built with, in About TablePro and installed with the app.
+- F9 and the sidebar button show and hide the table sidebar.
+- Sidebar lists the tables of every schema, a section per schema with the default one first, and a middle click opens one in a new tab.
+- Connect leads a saved connection's menu, which a right click, the Menu key or Shift+F10 opens.
+- Find and replace in the SQL editor with Ctrl+F and Ctrl+H, matching case, whole words or regular expressions.
 
 ### Changed
 
@@ -47,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set Value in a grid cell's menu is Set to Empty, Set to NULL and Set to DEFAULT, each shown only where the column takes it.
 - Set a grid cell to NULL with Ctrl+Backspace instead of Ctrl+Shift+N.
 - Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
+- JSON exports and copies put one row per line, and a value TablePro couldn't read stops the export instead of becoming NULL.
 - Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
 - Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
 - Deleting a connection asks once, offers its window when it is open, and can delete its query history too.
@@ -54,10 +72,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Index and Add Foreign Key check the form as you type, and pick the referenced table and columns from the database.
 - Denser grid rows, with numbers aligned right in even-width digits at the precision their column declares.
 - A grid value too long to draw says how many bytes it leaves out, and its tooltip points to Show Row as JSON.
+- Refresh keeps a table's rows, selection and focused cell on screen while it reads the table again.
+- A structure tab keeps the table's structure on screen while it reads it again, a save included.
+- Opening a large table no longer counts its rows: the paginator shows the server's estimate, and Last waits for a count.
+- Saving rows updates a table's total without counting the table again.
+- Row counts and page sizes group digits the way the system locale does.
+- Query History opens with Ctrl+Shift+H.
+- Query History finds any part of a query in any case, and loads more entries as you scroll.
+- Query History filters by any connection with history, under its current name, and starts on the window's own.
+- Deleting from Query History offers Undo instead of asking first.
+- Query History's filters sit under the search bar instead of in a popover, and Today replaces the last 24 hours.
+- Show in Files, in Preferences and Query History, selects the history database in its folder.
+- Previous and next page are Alt+Page Up and Alt+Page Down; Page Up and Page Down move through the rows.
+- Ctrl+S, Ctrl+Z, F5 and Ctrl+F act on the tab that has the focus, so a text field keeps its own undo.
+- Keyboard Shortcuts lists every shortcut, grouped by where it works.
+- About TablePro links to the website, documentation and issue tracker, and shows a release's notes.
+- The sidebar and the tabs each have a header bar, and a narrow window folds the sidebar away and swaps the tab bar for a tab button.
+- Sidebar menus offer Edit Structure, Import CSV and Drop Table only on tables, and nothing that writes on a read-only connection.
+- New Connection and the main menu sit in the connection list's header bar.
+- Each connection group is a section of its own in the connection list, after the connections in no group.
+- A tab with unsaved changes or an open transaction shows a dot icon instead of a • in its title.
+- The window title names the tab in front and its connection, and the header says when the connection is read-only.
+- Tab titles name the schema once the database has two schemas of its own.
 
 ### Removed
 
 - Connection buttons in a connected window's header bar; New Window opens another connection.
+- Ctrl+E for a new SQL editor tab; Ctrl+T opens one.
 
 ### Fixed
 
@@ -65,8 +106,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Format could split `+=`, `b'01'` or `@@version`, or detach a MySQL function from its parenthesis, and change the statement.
 - Opening a SQL, CSV or connections file from a pipe or a device never finished, or read past its size limit.
 - Exporting results or query history, or opening the connect dialog, froze the window on a slow disk or network folder.
+- A failed query history export said nothing.
+- Copying many rows, or showing a row with a long value as JSON, froze the window.
 - A query saved just before quitting could be lost.
 - The sidebar's table search button had no name for screen readers.
+- The sidebar was slow to fill and to search on databases with thousands of tables, and said nothing when the list could not be read again.
+- A connection added, changed or deleted in one window did not show in the other windows' connection lists.
+- A connection name with & or < in it showed wrong in the connection list.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.
 - A PostgreSQL query run right after a timeout or Stop could fail as canceled by that earlier stop.
 - MySQL and MariaDB connections that verify the certificate did not trust certificate authorities installed on the system.
@@ -119,6 +165,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A table or structure tab whose read failed while the connection was lost kept its error page after the reconnect.
 - A refresh that failed replaced the rows in a table tab with an error page.
 - Switching connections could show the previous connection's tables in the sidebar, or its reconnect banner.
+- The sidebar lost the selected table each time the table list was read again.
+- A table tab with no columns the account can read showed a page error instead of saying why.
 - Switching connections during a table drop could close the new connection's tabs on a table of the same name.
 - Renaming a MySQL table in another database moved it to the connection's database, and renaming a ClickHouse table failed.
 - Turning a column's primary key on or off in the Structure tab saved nothing.
@@ -146,6 +194,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changing the type of a SQL Server column with a default failed.
 - A bulk delete confirmed after the table's primary key changed marked rows by their old key.
 - Ctrl+Home and Ctrl+End jumped to the first or last tab instead of the start or end of the SQL editor or table.
+- Ctrl+N added a row to a read-only table or a table without a primary key.
 
 ### Security
 

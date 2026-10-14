@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use futures::future::LocalBoxFuture;
 use gtk4 as gtk;
 use tablepro_core::ddl::{BuildDdlError, ChangeReview};
 use tablepro_core::save::{SavePlan, plan_save};
@@ -15,11 +16,12 @@ use uuid::Uuid;
 use super::ran_statements::RanStatements;
 use super::schema_write::run_schema_plan;
 use super::{
-    CloseScope, CloseStep, DirtyKind, DirtyTab, EngineProfile, PendingState, RollbackCause, SaveId, SaveLedger,
-    SaveOutcome, SaveRejection, SaveSettled, SaveStart, SaveTicket, TabDirectory, UnknownCause, WorkspaceEvent,
-    next_close_step,
+    CloseBlocker, CloseScope, CloseStep, DirtyKind, DirtyTab, EngineProfile, PendingState, RollbackCause, SaveId,
+    SaveLedger, SaveOutcome, SaveRejection, SaveSettled, SaveStart, SaveTicket, TabDirectory, UnknownCause,
+    WorkspaceEvent, next_close_step,
 };
 use crate::services::active_session::ActiveSession;
+use crate::services::change_origins::ChangeOrigins;
 use crate::services::change_tracker::{StatementSource, TrackedChanges, pk_identity};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::history_service::HistoryService;
@@ -52,6 +54,8 @@ struct Inner {
     ledger: SaveLedger,
     /// The structure tabs whose save waits on a review.
     reviewing: RefCell<HashSet<Uuid>>,
+    /// Work a window close asks about before it closes any tab.
+    blockers: RefCell<Vec<Rc<dyn CloseBlocker>>>,
 }
 
 impl Inner {
@@ -108,7 +112,24 @@ impl WorkspaceHandle {
             deps,
             ledger: SaveLedger::new(),
             reviewing: RefCell::default(),
+            blockers: RefCell::default(),
         }))
+    }
+
+    /// Have every close of the whole window ask about `blocker`'s work
+    /// while it runs.
+    pub fn register_close_blocker(&self, blocker: Rc<dyn CloseBlocker>) {
+        self.0.blockers.borrow_mut().push(blocker);
+    }
+
+    /// Stop the work of the blocker `close_step` named. A blocker that
+    /// is not there has nothing to stop.
+    pub fn stop_blocker(&self, blocker: usize) -> LocalBoxFuture<'static, ()> {
+        let blocker = self.0.blockers.borrow().get(blocker).cloned();
+        match blocker {
+            Some(blocker) => blocker.stop(),
+            None => Box::pin(std::future::ready(())),
+        }
     }
 
     pub fn ledger(&self) -> &SaveLedger {
@@ -176,6 +197,15 @@ impl WorkspaceHandle {
     /// What closing `scope` has to settle next. Open transactions the
     /// user already agreed to lose in this close are not asked again.
     pub fn close_step(&self, scope: CloseScope, acknowledged: &HashSet<Uuid>) -> CloseStep {
+        if scope == CloseScope::Window {
+            let blocked =
+                self.0.blockers.borrow().iter().enumerate().find_map(|(blocker, work)| {
+                    work.blocking().map(|prompt| CloseStep::StopBlocker { blocker, prompt })
+                });
+            if let Some(step) = blocked {
+                return step;
+            }
+        }
         let dirty: Vec<DirtyTab> = self
             .dirty_tabs()
             .into_iter()
@@ -204,8 +234,8 @@ impl WorkspaceHandle {
             return self.save_rows(tab, &tracker);
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
-            // Ctrl+S still reaches the window while a review is open, and
-            // the review on screen is the one to answer.
+            // A close that saves its tabs can ask again while the review is
+            // open, and the review on screen is the one to answer.
             let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
                 return SaveStart::Rejected(SaveRejection::InReview);
             };
@@ -311,6 +341,7 @@ impl WorkspaceHandle {
         let inner = self.0.clone();
         let tracker = tracker.clone();
         let (changes, snapshot, id) = (batch.changes, batch.snapshot, ticket.id);
+        let origins = ChangeOrigins::of(&changes.changes);
         let _delivery = crate::runtime::spawn_and_deliver(&self.0.deps.tasks, work, move |finished| {
             let work = finished.unwrap_or_else(|failure| SaveWork::failed(OperationError::from(failure)));
             let failing = failing_step(&work, &changes);
@@ -324,6 +355,7 @@ impl WorkspaceHandle {
                     outcome,
                     failing,
                     saved_table_name: None,
+                    origins,
                 },
             );
         });
@@ -344,8 +376,8 @@ impl WorkspaceHandle {
             if review_dialog::confirm(parent, &table, &review, engine).await == ReviewDecision::Cancel {
                 return Err(SaveStart::Rejected(SaveRejection::ReviewDeclined));
             }
-            // Ctrl+Z is a window shortcut too, so the draft can change
-            // under an open review.
+            // The draft and the connection can still change while the
+            // review is open.
             let (_, now) = self.plan_review(tracker)?;
             if now.statements != review.statements {
                 return Err(SaveStart::Rejected(SaveRejection::Unplannable(
@@ -429,6 +461,7 @@ impl WorkspaceHandle {
                     outcome,
                     failing: None,
                     saved_table_name,
+                    origins: ChangeOrigins::default(),
                 },
             );
         });

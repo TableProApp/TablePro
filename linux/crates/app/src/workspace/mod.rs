@@ -3,6 +3,8 @@
 //! prompts that decide whether they may close. Also which sessions the
 //! windows show, so a launch opens them again.
 
+mod close_blocker;
+mod close_blocker_dialog;
 mod close_decision;
 mod close_guard;
 mod close_guards;
@@ -42,6 +44,7 @@ mod structure_review_tests;
 mod tab_directory;
 mod tab_entry;
 mod tab_record;
+mod tab_snapshot;
 #[cfg(test)]
 mod test_workspace;
 mod unknown_cause;
@@ -54,11 +57,13 @@ mod workspace_handle;
 mod workspace_load;
 mod workspace_load_error;
 mod workspace_record;
+mod workspace_record_builder;
 mod workspace_save_error;
 mod workspace_store;
 mod write_job;
 mod writes_in_flight;
 
+pub use close_blocker::{CloseBlockPrompt, CloseBlocker};
 pub use close_decision::CloseDecision;
 pub(crate) use close_guard::CloseGuard;
 pub(crate) use close_guards::CloseGuards;
@@ -96,6 +101,7 @@ pub use sort_record::SortRecord;
 pub use tab_directory::TabDirectory;
 pub use tab_entry::TabEntry;
 pub use tab_record::TabRecord;
+pub use tab_snapshot::TabSnapshot;
 pub use unknown_cause::UnknownCause;
 #[cfg(test)]
 pub use window_inhibitor::InhibitTarget;
@@ -106,5 +112,6 @@ pub use workspace_handle::{WorkspaceDeps, WorkspaceHandle};
 pub use workspace_load::WorkspaceLoad;
 pub use workspace_load_error::WorkspaceLoadError;
 pub use workspace_record::WorkspaceRecord;
+pub use workspace_record_builder::workspace_record;
 pub use workspace_save_error::WorkspaceSaveError;
 pub use workspace_store::WorkspaceStore;

@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use gtk4::prelude::*;
-use gtk4::{self as gtk, glib};
+use gtk4::{self as gtk, gio, glib};
 
 use tablepro_core::ColumnInfo;
 use tablepro_core::column::{ColumnKind, ResultColumn};
@@ -14,7 +14,9 @@ use super::grid_attributes::GridAttributes;
 use super::grid_columns::GridColumns;
 use super::grid_keyboard::GridKeyboard;
 use super::grid_menus::{GridMenuInit, GridMenus, install_grid_context_menus};
+use super::result_sorters::column_sorter;
 use super::row_factory::install_row_factory;
+use super::row_state_column::row_state_column;
 use super::toggle_cell::ToggleCell;
 use super::{GridCell, GridContent, GridMsg, GridSink, RowObject, TabGridContext};
 
@@ -22,29 +24,40 @@ const WIDE_TABLE_THRESHOLD: usize = 8;
 /// About 14 characters at the default font size.
 const MIN_COLUMN_WIDTH_PX: i32 = 120;
 
-pub fn build_column_view(
+/// How a grid's headers sort its rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GridSorting {
+    /// The server sorts: a header click sends `SortChanged` and the rows
+    /// stay in the order they arrived, which `initial` describes.
+    Server { initial: Option<(usize, bool)> },
+    /// The grid sorts the rows it holds, each column by its own sorter.
+    Client,
+}
+
+pub(crate) fn build_column_view(
     content: GridContent,
     schema_columns: &[ColumnInfo],
     sink: GridSink,
-    sort: Option<(usize, bool)>,
-    sortable: bool,
+    sorting: GridSorting,
     tab_ctx: TabGridContext,
 ) -> (gtk::ColumnView, gtk::MultiSelection) {
     let GridContent {
         columns: result_columns,
         rows,
-        truncated,
     } = content;
-    let store = gtk4::gio::ListStore::new::<RowObject>();
+    let store = gio::ListStore::new::<RowObject>();
     store.splice(0, 0, &rows);
-    let selection = gtk::MultiSelection::new(Some(store));
     // Tab leaves the grid, and the arrow keys move between cells.
     let column_view = gtk::ColumnView::builder()
-        .model(&selection)
         .show_row_separators(true)
         .show_column_separators(true)
         .tab_behavior(gtk::ListTabBehavior::Cell)
         .build();
+    let selection = match sorting {
+        GridSorting::Client => sorted_selection(store, column_view.sorter()),
+        GridSorting::Server { .. } => gtk::MultiSelection::new(Some(store)),
+    };
+    column_view.set_model(Some(&selection));
     // GTK's own denser rows for a grid of data.
     column_view.add_css_class("data-table");
     install_row_factory(&column_view, tab_ctx.clone());
@@ -53,7 +66,6 @@ pub fn build_column_view(
         column_view: &column_view,
         sink: sink.clone(),
         columns: result_columns.clone(),
-        truncated,
         tab_ctx: tab_ctx.clone(),
     });
     GridKeyboard::install(&column_view, grid_menus.clone(), sink.clone());
@@ -70,12 +82,18 @@ pub fn build_column_view(
     let grid_columns = Rc::new(GridColumns::default());
     let attributes = Rc::new(GridAttributes::new());
     for (i, column) in result_columns.iter().enumerate() {
+        let sorter = match sorting {
+            // The server orders the rows, so the column's own sorter
+            // only marks the header and must leave them where they are.
+            GridSorting::Server { .. } => gtk::CustomSorter::new(|_, _| gtk::Ordering::Equal).upcast(),
+            GridSorting::Client => column_sorter(i, column),
+        };
         let col = build_column(ColumnInit {
             info: column,
             idx: i,
             catalog: schema_columns.get(i).cloned(),
             sink: sink.clone(),
-            sortable,
+            sorter,
             tab_ctx: tab_ctx.clone(),
             default_min_width,
             column_view: column_view.downgrade(),
@@ -86,10 +104,15 @@ pub fn build_column_view(
         column_view.append_column(&col);
         columns.push(col);
     }
+    if tab_ctx.tracks_changes() {
+        column_view.insert_column(0, &row_state_column(tab_ctx.clone()));
+    }
 
     // Applied before the notify handlers are wired, so it does not echo
     // back as a SortChanged.
-    if let Some((col_idx, ascending)) = sort
+    if let GridSorting::Server {
+        initial: Some((col_idx, ascending)),
+    } = sorting
         && let Some(col) = columns.get(col_idx)
     {
         let direction = if ascending {
@@ -100,7 +123,7 @@ pub fn build_column_view(
         column_view.sort_by_column(Some(col), direction);
     }
 
-    if sortable
+    if matches!(sorting, GridSorting::Server { .. })
         && let Some(view_sorter) = column_view
             .sorter()
             .and_then(|s| s.downcast::<gtk::ColumnViewSorter>().ok())
@@ -132,6 +155,17 @@ pub fn build_column_view(
     (column_view, selection)
 }
 
+/// A selection over `store` sorted by `sorter`, sorted at once on each
+/// click rather than in steps, so the rows never show half sorted and a
+/// copy right after a click takes the order on screen.
+/// `GtkMultiSelection` follows its selected rows to where a sort puts
+/// them.
+fn sorted_selection(store: gio::ListStore, sorter: Option<gtk::Sorter>) -> gtk::MultiSelection {
+    let sorted = gtk::SortListModel::new(Some(store), sorter);
+    sorted.set_incremental(false);
+    gtk::MultiSelection::new(Some(sorted))
+}
+
 /// How a column's cells are built. Editors are made when an edit
 /// opens, so only the display is chosen here.
 #[derive(Clone, Copy)]
@@ -148,7 +182,7 @@ struct ColumnInit<'a> {
     /// `None` for a column the grid knows only from the result set.
     catalog: Option<ColumnInfo>,
     sink: GridSink,
-    sortable: bool,
+    sorter: gtk::Sorter,
     tab_ctx: TabGridContext,
     default_min_width: Option<i32>,
     column_view: glib::WeakRef<gtk::ColumnView>,
@@ -163,7 +197,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         idx,
         catalog,
         sink,
-        sortable,
+        sorter,
         tab_ctx,
         default_min_width,
         column_view,
@@ -196,6 +230,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
 
     let setup_drawing = drawing.clone();
     let setup_columns = grid_columns.clone();
+    let setup_name = info.name.clone();
     factory.connect_setup(move |_, item| {
         let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
             return;
@@ -212,7 +247,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         grid_cell.set_columns(setup_columns.clone());
         match kind {
             CellKind::ReadOnly => grid_cell.set_content(&text_display(numeric)),
-            CellKind::Toggle => ToggleCell::setup(&grid_cell),
+            CellKind::Toggle => ToggleCell::setup(&grid_cell, &setup_name),
             CellKind::Text => {
                 grid_cell.set_content(&text_display(numeric));
                 install_edit_triggers(&grid_cell);
@@ -250,10 +285,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         .resizable(true)
         .expand(true)
         .build();
-    if sortable {
-        let dummy = gtk::CustomSorter::new(|_, _| gtk::Ordering::Equal);
-        column.set_sorter(Some(&dummy));
-    }
+    column.set_sorter(Some(&sorter));
     if let Some(widths) = tab_ctx.column_widths.clone() {
         if let Some(saved) = widths.width(&info.name) {
             column.set_fixed_width(saved);
@@ -299,7 +331,7 @@ mod tests {
     use tablepro_core::Value;
     use tablepro_core::edit::CellInput;
 
-    use super::build_column_view;
+    use super::{GridSorting, build_column_view};
     use crate::services::change_tracker::RowKey;
     use crate::services::tab_tracker_handle::TabTrackerHandle;
     use crate::services::tracker_edit::TrackerEdit;
@@ -750,8 +782,9 @@ mod tests {
             content(&columns, persisted(&rows)),
             &columns,
             sink,
-            Some((0, true)),
-            true,
+            GridSorting::Server {
+                initial: Some((0, true)),
+            },
             context,
         );
         let column = view
@@ -790,8 +823,7 @@ mod tests {
             content(&columns, persisted(&rows)),
             &columns,
             sink,
-            None,
-            false,
+            GridSorting::Server { initial: None },
             tracked(&tracker),
         );
         let window = gtk::Window::new();

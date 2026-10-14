@@ -33,7 +33,9 @@
 //! and reads it again once the session reconnects if the last read
 //! failed. A change to the table from elsewhere reads it again too,
 //! unless the draft has edits: then Discard reads it, and a plan that
-//! writes the table again from the old definition refuses to save.
+//! writes the table again from the old definition refuses to save. A
+//! read that fails with a definition on screen leaves it there under a
+//! banner with Retry.
 
 mod columns;
 mod context;
@@ -51,7 +53,9 @@ mod index_object;
 mod indexes;
 mod referential_action_label;
 pub(crate) mod review_dialog;
+mod structure_actions;
 mod structure_command;
+mod structure_fetch;
 mod table_choice_object;
 #[cfg(test)]
 mod tests;
@@ -71,7 +75,7 @@ use tablepro_core::ddl::{DraftColumn, DraftType, TableChanges, TableDraft, diff_
 use tablepro_core::meta::TableRef;
 use tablepro_core::{ForeignKeyInfo, IndexInfo};
 use tablepro_session::runtime::{Tasks, WatchForwarder};
-use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
+use tablepro_session::{LinkGeneration, Session};
 
 use self::columns::build_column_row;
 use self::context::StructureContext;
@@ -83,11 +87,13 @@ use self::index_dialog::IndexDialog;
 use self::index_object::IndexObject;
 use self::indexes::build_index_row;
 pub(crate) use self::structure_command::{LoadedStructure, StructureCommand, StructureRequestKind};
+use self::structure_fetch::fetch_structure;
 use crate::runtime::{FailedRequests, RequestSequencer, RequestTicket, Stamped};
 use crate::services::pending_structure::PendingStructure;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::ui::error_text::{build_error_text, save_blocker_text};
 use crate::ui::handler_guard::HandlerGuard;
+use crate::ui::tab_load::{ContentLoad, ContentPage, LoadFailure, LoadPresentation, StaleBanner};
 
 glib::wrapper! {
     pub struct StructureTab(ObjectSubclass<imp::StructureTab>)
@@ -153,21 +159,35 @@ impl StructureTab {
         // Saves the user clicking into the preview, selecting all and
         // copying every time they want the DDL in another tool.
         let buffer_for_copy = sql_buffer.downgrade();
+        let tab_for_copy = tab.downgrade();
         imp.copy_sql_button.connect_clicked(move |button| {
             if let Some(buffer) = buffer_for_copy.upgrade() {
                 let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                button.clipboard().set_text(text.as_str());
+                crate::ui::clipboard::copy_text(button, text.to_string(), |message| {
+                    if let Some(tab) = tab_for_copy.upgrade() {
+                        tab.emit_output(StructureTabOutput::ShowToast(message.to_owned()));
+                    }
+                });
             }
         });
 
         imp.name_entry.set_text(&init.table);
         imp.name_row.set_visible(matches!(init.mode, StructureMode::New));
-        imp.drop_button.set_visible(matches!(init.mode, StructureMode::Edit));
+        // A read-only connection is offered nothing that writes, as the
+        // sidebar's table menu offers no Drop Table on one.
+        let read_only = init.session.read_only();
+        imp.drop_button
+            .set_visible(matches!(init.mode, StructureMode::Edit) && !read_only);
         imp.inner_stack.set_visible_child_name(match init.mode {
             StructureMode::New => "editor",
             StructureMode::Edit => "loading",
         });
         let name_changed = tab.connect_widgets();
+        let sender = tab.sender();
+        let stale_banner = StaleBanner::new(imp.stale_banner.get(), move || {
+            sender.input(StructureTabInput::Retry);
+        });
+        tab.install_actions();
 
         let context = Rc::new(RefCell::new(StructureContext {
             mode: init.mode,
@@ -221,12 +241,19 @@ impl StructureTab {
             save_button: imp.save_button.get(),
             discard_button: imp.discard_button.get(),
             drop_button: imp.drop_button.get(),
+            read_only,
             saving_spinner: imp.saving_spinner.get(),
             stop_button: imp.stop_button.get(),
             saving: false,
             last_dirty: false,
             refetching: false,
-            definition_shown: false,
+            load: match init.mode {
+                // A new table's draft is the content from the start.
+                StructureMode::New => ContentLoad::Loaded,
+                StructureMode::Edit => ContentLoad::default(),
+            },
+            tab_loading: false,
+            stale_banner,
             definition_stale: false,
             _theme_handler: theme_handler,
         };
@@ -346,6 +373,25 @@ impl StructureTab {
         )
     }
 
+    /// A read of the table's definition started or ended.
+    pub fn connect_loading_changed<F: Fn(&Self, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "loading-changed",
+            false,
+            glib::closure_local!(move |tab: &Self, loading: bool| f(tab, loading)),
+        )
+    }
+
+    /// A read of the table's definition is running.
+    pub fn is_loading(&self) -> bool {
+        self.imp()
+            .model
+            .try_borrow()
+            .ok()
+            .and_then(|model| model.as_ref().map(|model| model.tab_loading))
+            .unwrap_or(false)
+    }
+
     fn emit_output(&self, output: StructureTabOutput) {
         match output {
             StructureTabOutput::DirtyChanged(dirty) => self.emit_by_name::<()>("dirty-changed", &[&dirty]),
@@ -356,6 +402,7 @@ impl StructureTab {
             }
             StructureTabOutput::ShowToast(text) => self.emit_by_name::<()>("toast", &[&text]),
             StructureTabOutput::ShowAlert { title, body } => self.emit_by_name::<()>("alert", &[&title, &body]),
+            StructureTabOutput::LoadingChanged(loading) => self.emit_by_name::<()>("loading-changed", &[&loading]),
         }
     }
 
@@ -546,6 +593,8 @@ pub(crate) struct StructureModel {
     save_button: gtk::Button,
     discard_button: gtk::Button,
     drop_button: gtk::Button,
+    /// The connection refuses writes, so Drop is not offered.
+    read_only: bool,
     saving_spinner: adw::Spinner,
     stop_button: gtk::Button,
     /// A save of the tab is running, so Save and Discard stay off.
@@ -557,9 +606,12 @@ pub(crate) struct StructureModel {
     /// pre-save state, so diffing them would surface phantom pending
     /// changes; `recompute_dirty_state` waits it out.
     refetching: bool,
-    /// The editor shows a definition the draft still started from, so a
-    /// read of it that fails can leave it on screen.
-    definition_shown: bool,
+    /// Where the read of the definition stands. A failed read with a
+    /// definition on screen leaves it there under the banner.
+    load: ContentLoad,
+    /// What the tab bar was last told, so it hears only changes.
+    tab_loading: bool,
+    stale_banner: StaleBanner,
     /// The table changed after `definition` was read, while the draft
     /// had edits that a read would replace. Discard reads it again
     /// rather than restoring it.
@@ -579,7 +631,7 @@ pub(crate) enum StructureTabInput {
     LinkChanged(LinkGeneration),
     /// The table's definition changed elsewhere.
     SchemaChanged,
-    /// The error page's Try Again.
+    /// Try Again on the error page, or Retry on the banner.
     Retry,
     Save,
     /// The window started saving the tab's pending structure.
@@ -656,6 +708,8 @@ pub(crate) enum StructureTabOutput {
         title: String,
         body: String,
     },
+    /// A read of the definition started or ended, for the tab bar.
+    LoadingChanged(bool),
 }
 
 impl StructureModel {
@@ -808,31 +862,51 @@ impl StructureModel {
         self.name_entry.unblock_signal(&self.name_changed);
     }
 
-    /// Read the table's definition in one call, so the tab rebuilds
-    /// once with columns, indexes and foreign keys from the same moment.
+    /// Read the table's definition. A definition on screen stays there
+    /// while it is read, and through a failure.
+    fn read_definition(&mut self, fx: &mut StructureEffects) {
+        let presentation = self.load.begin();
+        self.present(presentation, fx);
+        self.fetch_definition();
+    }
+
+    /// Show where the read stands: the spinner, the editor or the error
+    /// page, the banner over a definition that could not be read again,
+    /// and the tab bar's spinner.
+    fn present(&mut self, presentation: LoadPresentation, fx: &mut StructureEffects) {
+        match &presentation.page {
+            ContentPage::Spinner => self.inner_stack.set_visible_child_name("loading"),
+            ContentPage::Content => self.inner_stack.set_visible_child_name("editor"),
+            ContentPage::Error(failure) => {
+                // Inline on the status page: a modal alert would say the
+                // same and make the user dismiss it before seeing the
+                // page. The page reads its description as markup.
+                self.error_status
+                    .set_description(Some(&glib::markup_escape_text(&failure.message())));
+                self.inner_stack.set_visible_child_name("error");
+            }
+        }
+        self.stale_banner.show(presentation.stale.as_ref());
+        if self.tab_loading != presentation.tab_loading {
+            self.tab_loading = presentation.tab_loading;
+            fx.output(StructureTabOutput::LoadingChanged(presentation.tab_loading));
+        }
+    }
+
+    /// One read brings columns, indexes and foreign keys from the same
+    /// moment, so the tab rebuilds once.
     fn fetch_definition(&mut self) {
         self.issued_on
             .insert(StructureRequestKind::Definition, self.session.link_generation());
         let RequestTicket { stamp, cancel } = self.sequencer.issue(StructureRequestKind::Definition);
-        let session = self.session.clone();
-        let table = self.table.clone();
-        let work = async move {
-            session
-                .run_cancellable(OperationKind::Metadata, &cancel, move |lease, options| {
-                    let table = table.clone();
-                    async move {
-                        let definition = lease.fetch_table_definition(&table, options).await?;
-                        Ok(LoadedStructure {
-                            definition,
-                            dialect: lease.dialect(),
-                        })
-                    }
-                })
-                .await
-        };
+        let work = fetch_structure(self.session.clone(), self.table.clone(), cancel);
         let tab = self.this.clone();
         let _delivery = crate::runtime::spawn_and_deliver(&self.tasks, work, move |joined| {
-            let value = joined.unwrap_or_else(|failure| Err(OperationError::from(failure)));
+            let value = joined.unwrap_or_else(|failure| {
+                Err(LoadFailure::Definition(Arc::new(
+                    tablepro_session::OperationError::from(failure),
+                )))
+            });
             if let Some(tab) = tab.upgrade() {
                 tab.send(StructureTabInput::Command(StructureCommand::Loaded(Stamped {
                     stamp,
@@ -840,10 +914,6 @@ impl StructureModel {
                 })));
             }
         });
-    }
-
-    fn show_loading(&self) {
-        self.inner_stack.set_visible_child_name("loading");
     }
 
     fn on_loaded(&mut self, loaded: LoadedStructure, fx: &mut StructureEffects) {
@@ -855,8 +925,8 @@ impl StructureModel {
         }
         self.show_draft(draft);
         self.sync_add_rows();
-        self.inner_stack.set_visible_child_name("editor");
-        self.definition_shown = true;
+        let presentation = self.load.succeed();
+        self.present(presentation, fx);
         self.definition_stale = false;
         // The definition is current again, so the diff counts.
         self.refetching = false;
@@ -864,19 +934,17 @@ impl StructureModel {
         self.recompute_dirty_state(fx);
     }
 
-    fn on_load_failed(&mut self, message: &str, fx: &mut StructureEffects) {
-        if self.definition_shown {
-            self.inner_stack.set_visible_child_name("editor");
-            fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext_f(
-                "Couldn't refresh the structure: {error}",
-                &[("error", message)],
-            )));
+    /// With a definition on screen it stays, under the banner. A read
+    /// after a committed save keeps the draft locked: the definition on
+    /// screen is from before the save, so the draft's diff against it
+    /// would offer the saved changes again.
+    fn on_load_failed(&mut self, failure: LoadFailure, fx: &mut StructureEffects) {
+        let presentation = self.load.fail(failure);
+        let content_kept = !matches!(presentation.page, ContentPage::Error(_));
+        self.present(presentation, fx);
+        if content_kept {
             return;
         }
-        // Inline on the status page: a modal alert would say the same
-        // and make the user dismiss it before seeing the page.
-        self.error_status.set_description(Some(message));
-        self.inner_stack.set_visible_child_name("error");
         // A retry from the error page must not find dirty tracking still
         // frozen.
         self.refetching = false;
@@ -891,11 +959,11 @@ impl StructureModel {
         self.failed.record(StructureRequestKind::Definition, &value);
         match value {
             Ok(loaded) => self.on_loaded(loaded, fx),
-            Err(error) => {
-                self.on_load_failed(&crate::ui::error_text::operation_error_message(&error), fx);
+            Err(failure) => {
+                self.on_load_failed(failure, fx);
                 let issued = self.issued_on.get(&StructureRequestKind::Definition).copied();
                 if issued.is_some_and(|issued| self.session.link_generation() > issued) {
-                    self.retry_failed();
+                    self.retry_failed(fx);
                 }
             }
         }
@@ -914,15 +982,12 @@ impl StructureModel {
             self.sync_add_rows();
             self.recompute_dirty_state(fx);
         }
-        self.retry_failed();
+        self.retry_failed(fx);
     }
 
-    fn retry_failed(&mut self) {
+    fn retry_failed(&mut self, fx: &mut StructureEffects) {
         if self.failed.take().contains(&StructureRequestKind::Definition) {
-            if !self.definition_shown {
-                self.show_loading();
-            }
-            self.fetch_definition();
+            self.read_definition(fx);
         }
     }
 
@@ -934,7 +999,7 @@ impl StructureModel {
         match msg {
             StructureTabInput::Start => {
                 if self.mode() == StructureMode::Edit {
-                    self.fetch_definition();
+                    self.read_definition(fx);
                 }
                 self.sync_add_rows();
                 self.regenerate_sql_preview(&self.pending());
@@ -947,16 +1012,11 @@ impl StructureModel {
                 if self.mode() == StructureMode::Edit {
                     match self.last_dirty {
                         true => self.definition_stale = true,
-                        false => self.fetch_definition(),
+                        false => self.read_definition(fx),
                     }
                 }
             }
-            StructureTabInput::Retry => {
-                // Without the loading page the click reads as a no-op
-                // until the reply arrives.
-                self.show_loading();
-                self.fetch_definition();
-            }
+            StructureTabInput::Retry => self.read_definition(fx),
             StructureTabInput::TableNameEdited(text) => {
                 if self.table.name == text {
                     return;
@@ -1009,10 +1069,7 @@ impl StructureModel {
                 // A table the save may have created has nothing to read
                 // yet, so a new one is only cleared.
                 match self.mode() {
-                    StructureMode::Edit => {
-                        self.show_loading();
-                        self.fetch_definition();
-                    }
+                    StructureMode::Edit => self.read_definition(fx),
                     StructureMode::New => fx.input(StructureTabInput::Discard),
                 }
             }
@@ -1033,6 +1090,10 @@ impl StructureModel {
                 self.recompute_dirty_state(fx);
             }
             StructureTabInput::DropTableRequested => {
+                if self.read_only {
+                    tracing::error!("Drop reached a structure tab on a read-only connection");
+                    return;
+                }
                 let table = match &self.context.borrow().definition {
                     Some(definition) => definition.table.clone(),
                     None => self.table.clone(),
@@ -1185,9 +1246,16 @@ impl StructureModel {
         {
             self.columns.splice(position, 1, std::slice::from_ref(column));
         }
-        fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
-            "Wait for the save to finish, then make the change again.",
-        )));
+        // The save landed and the read after it failed, so only Retry
+        // unlocks the draft.
+        let read_failed = self.refetching && !self.saving && !self.tracker.is_saving() && !self.load.is_running();
+        let text = match read_failed {
+            true => {
+                crate::i18n::gettext("The table couldn't be read after the save. Retry, then make the change again.")
+            }
+            false => crate::i18n::gettext("Wait for the save to finish, then make the change again."),
+        };
+        fx.output(StructureTabOutput::ShowToast(text));
     }
 
     fn save_completed(&mut self, new_table_name: Option<String>, fx: &mut StructureEffects) {
@@ -1196,7 +1264,7 @@ impl StructureModel {
             self.context.borrow_mut().mode = StructureMode::Edit;
             self.table.name = name;
             self.show_table_name();
-            self.drop_button.set_visible(true);
+            self.drop_button.set_visible(!self.read_only);
             self.name_row.set_visible(false);
         }
         if self.mode() != StructureMode::Edit {
@@ -1217,8 +1285,7 @@ impl StructureModel {
         }
         self.refetching = true;
         self.sync_editable();
-        self.definition_shown = false;
-        self.fetch_definition();
+        self.read_definition(fx);
     }
 }
 

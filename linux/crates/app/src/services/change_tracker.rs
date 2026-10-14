@@ -105,6 +105,17 @@ pub enum StatementSource {
     Delete { row_key: RowKey },
 }
 
+/// A flash `flash_error_row` started.
+#[derive(Debug, Clone, PartialEq)]
+#[must_use = "the row a flash replaced keeps its mark until it is redrawn"]
+pub struct ErrorFlash {
+    /// Goes back to `clear_error_row_if` when the flash ends.
+    pub generation: u64,
+    /// Another row's flash this one cut short. That flash's own timer
+    /// no longer clears it, so its row needs a redraw now.
+    pub replaced: Option<RowKey>,
+}
+
 /// The save that is running: where its edits end, and the value it
 /// writes to each cell.
 #[derive(Debug)]
@@ -456,12 +467,10 @@ impl TabChangeTracker {
         Some(delta)
     }
 
-    #[cfg(test)]
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
 
-    #[cfg(test)]
     pub fn can_redo(&self) -> bool {
         !self.redo.is_empty()
     }
@@ -497,7 +506,7 @@ impl TabChangeTracker {
         CellOverlay {
             pending: self.pending_input(row_key, col),
             state: self.cell_state(row_key, col),
-            error_flash: self.error_row.as_ref() == Some(row_key),
+            error_flash: self.is_error_row(row_key),
         }
     }
 
@@ -556,12 +565,19 @@ impl TabChangeTracker {
         &self.drafts
     }
 
-    /// Mark the row a failed save points at. The returned generation
-    /// goes back to `clear_error_row_if` when the flash ends.
-    pub fn flash_error_row(&mut self, key: RowKey) -> u64 {
+    /// Mark the row a failed save points at.
+    pub fn flash_error_row(&mut self, key: RowKey) -> ErrorFlash {
         self.error_row_gen = self.error_row_gen.wrapping_add(1);
+        let replaced = self.error_row.take().filter(|previous| *previous != key);
         self.error_row = Some(key);
-        self.error_row_gen
+        ErrorFlash {
+            generation: self.error_row_gen,
+            replaced,
+        }
+    }
+
+    pub fn is_error_row(&self, key: &RowKey) -> bool {
+        self.error_row.as_ref() == Some(key)
     }
 
     /// Clear the flash unless a newer one has started. Returns whether
@@ -2117,13 +2133,31 @@ mod tests {
         let mut t = TabChangeTracker::default();
         let first = rk(&[Value::Int(1)]);
         let second = RowKey::Draft(3);
-        let old = t.flash_error_row(first.clone());
-        let new = t.flash_error_row(second.clone());
+        let old = t.flash_error_row(first.clone()).generation;
+        let new = t.flash_error_row(second.clone()).generation;
 
         assert!(!t.clear_error_row_if(old));
         assert!(t.cell_overlay(&second, 0).error_flash);
         assert!(!t.cell_overlay(&first, 0).error_flash);
         assert!(t.clear_error_row_if(new));
         assert!(!t.cell_overlay(&second, 0).error_flash);
+    }
+
+    #[test]
+    fn a_flash_names_the_row_whose_flash_it_cut_short() {
+        let mut t = TabChangeTracker::default();
+        let first = rk(&[Value::Int(1)]);
+        let second = RowKey::Draft(3);
+
+        assert_eq!(t.flash_error_row(first.clone()).replaced, None);
+        assert_eq!(t.flash_error_row(first.clone()).replaced, None, "a row replaced itself");
+        assert_eq!(t.flash_error_row(second.clone()).replaced, Some(first));
+        let ended = t.flash_error_row(second).generation;
+        assert!(t.clear_error_row_if(ended));
+        assert_eq!(
+            t.flash_error_row(RowKey::Draft(4)).replaced,
+            None,
+            "an ended flash was replaced"
+        );
     }
 }

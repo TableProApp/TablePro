@@ -26,7 +26,7 @@ publish = false
 async-trait = "0.1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
+serde_json = { version = "1", features = ["raw_value"] }
 sqlparser = { version = "0.63", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process"] }
 tokio-util = { version = "0.7", default-features = false, features = ["codec", "rt"] }
@@ -42,8 +42,10 @@ tiberius = { version = "0.13", default-features = false, features = ["tds73", "r
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 csv = "1.4"
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
-# the build free of another C dependency.
-rust_xlsxwriter = { version = "0.99", default-features = false, features = ["chrono"] }
+# the build free of another C dependency. Constant memory lets a sheet
+# spill its rows to a temporary file instead of holding them.
+rust_xlsxwriter = { version = "0.99", default-features = false, features = ["chrono", "constant_memory"] }
+zip = { version = "8.3", default-features = false, features = ["deflate"] }
 futures = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 bytes = "1"

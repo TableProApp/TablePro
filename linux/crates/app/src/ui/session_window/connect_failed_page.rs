@@ -13,6 +13,10 @@ mod imp {
     #[template(resource = "/app/tablepro/TablePro/ui/connect-failed-page.ui")]
     pub struct ConnectFailedPage {
         #[template_child]
+        pub toast_overlay: TemplateChild<adw::ToastOverlay>,
+        #[template_child]
+        pub header_bar: TemplateChild<adw::HeaderBar>,
+        #[template_child]
         pub status_page: TemplateChild<adw::StatusPage>,
         #[template_child]
         pub reenter_button: TemplateChild<gtk::Button>,
@@ -55,10 +59,14 @@ impl ConnectFailedPage {
     /// `None` for a connection the dialog cannot edit, such as a file
     /// nobody saved. `reenter` is the secret the server refused, which
     /// the user is offered to type again.
-    pub fn new(message: &str, edit: Option<&str>, reenter: Option<SecretKind>) -> Self {
+    pub fn new(message: &str, edit: Option<&str>, reenter: Option<SecretKind>, app: Option<&gtk::Application>) -> Self {
         let page: Self = glib::Object::new();
         let imp = page.imp();
-        imp.status_page.set_description(Some(message));
+        imp.header_bar.pack_end(&crate::ui::shell::primary_menu_button(app));
+        // The description is markup, and the reason quotes server text,
+        // file paths and host names.
+        imp.status_page
+            .set_description(Some(&glib::markup_escape_text(message)));
         if let Some(label) = edit {
             imp.edit_button.set_label(label);
             imp.edit_button.set_visible(true);
@@ -73,9 +81,14 @@ impl ConnectFailedPage {
         page
     }
 
+    pub fn toast_overlay(&self) -> adw::ToastOverlay {
+        self.imp().toast_overlay.get()
+    }
+
+    /// The reason as the page shows it.
     #[cfg(test)]
     pub fn message(&self) -> Option<String> {
-        self.imp().status_page.description().map(|text| text.to_string())
+        crate::test_support::status_page_description(&self.imp().status_page)
     }
 
     /// The button that types a refused secret again, while it shows.

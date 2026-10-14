@@ -4,11 +4,13 @@
 
 mod buffer_edit;
 mod completion;
+mod editor_actions;
 mod editor_session_slot;
+mod find_bar;
+mod find_state;
 mod format_plan;
 mod imp;
 mod result_item;
-mod result_rows;
 mod result_widgets;
 mod results_pane;
 mod run_history;
@@ -35,16 +37,19 @@ use libadwaita::prelude::*;
 use sourceview5::prelude::*;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::{QueryResult, RowLimit};
+use tablepro_core::{RowLimit, UserSql};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
 use self::buffer_edit::{CursorAnchor, replace_all_undoable};
 use self::imp::RunningScript;
-use self::run_log::{RunEvent, RunLog};
+use self::result_widgets::PageActions;
+use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
-use super::grid::{GridMsg, GridSink};
+use super::clipboard::{CopyRequest, InClauseRows};
+use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
+use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
@@ -97,11 +102,17 @@ impl SqlEditor {
         // The text the tab opens with is not an edit to take back.
         buffer.set_text(&initial_text);
         imp.source_view.set_buffer(Some(&buffer));
+        imp.find_bar.attach(&imp.source_view);
+        let toasts = editor.downgrade();
+        imp.find_bar.connect_toast(move |_, text| {
+            if let Some(editor) = toasts.upgrade() {
+                editor.emit_by_name::<()>("toast", &[&text]);
+            }
+        });
         editor.connect_theme(&init.settings);
         editor.connect_completion(&buffer);
         editor.connect_buffer(&buffer);
         editor.install_actions();
-        editor.install_shortcuts();
         editor.install_drop_target();
         editor.connect_buttons();
         editor.connect_grid();
@@ -272,16 +283,6 @@ impl SqlEditor {
         )
     }
 
-    pub fn connect_copy_to_clipboard<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
-        self.connect_closure(
-            "copy-to-clipboard",
-            false,
-            glib::closure_local!(move |editor: &Self, text: glib::BoxedAnyObject| {
-                f(editor, text.borrow::<String>().clone());
-            }),
-        )
-    }
-
     pub fn connect_toast<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "toast",
@@ -299,13 +300,12 @@ impl SqlEditor {
         )
     }
 
-    pub fn connect_export_results<F: Fn(&Self, QueryResult, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+    pub(crate) fn connect_export_results<F: Fn(&Self, ExportOffer) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "export-results",
             false,
             glib::closure_local!(move |editor: &Self, payload: glib::BoxedAnyObject| {
-                let (result, name) = payload.borrow::<(QueryResult, String)>().clone();
-                f(editor, result, name);
+                f(editor, payload.borrow::<ExportOffer>().clone());
             }),
         )
     }
@@ -364,7 +364,7 @@ impl SqlEditor {
             self.say(&crate::i18n::gettext("There is nothing to run."));
             return;
         }
-        let previews = batches.iter().map(|batch| batch.preview.clone()).collect();
+        let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         let run = ScriptRun {
             batches,
             policy,
@@ -394,7 +394,7 @@ impl SqlEditor {
         imp.results.set_summary(&crate::i18n::gettext("Running…"));
         imp.run_button.set_sensitive(false);
         imp.stop_button.set_visible(true);
-        imp.log.replace(Some(RunLog::new(previews, warnings)));
+        imp.log.replace(Some(RunLog::new(statements, warnings)));
         self.show_new_entries(0);
         self.emit_by_name::<()>("run-state-changed", &[&true]);
 
@@ -446,12 +446,20 @@ impl SqlEditor {
         let grid_sink = imp.grid_sink.get()?;
         let log = imp.log.borrow();
         let entry = log.as_ref()?.entries().get(usize::try_from(index).ok()?)?;
-        let weak = self.downgrade();
-        Some(result_widgets::entry_widget(entry, grid_sink, move |position| {
-            if let Some(editor) = weak.upgrade() {
-                editor.go_to_char(position);
-            }
-        }))
+        let (errors, exports) = (self.downgrade(), self.downgrade());
+        let actions = PageActions {
+            go_to_error: move |position| {
+                if let Some(editor) = errors.upgrade() {
+                    editor.go_to_char(position);
+                }
+            },
+            export_all: move |shown| {
+                if let Some(editor) = exports.upgrade() {
+                    editor.offer_export(index, shown);
+                }
+            },
+        };
+        Some(result_widgets::entry_widget(entry, grid_sink, actions))
     }
 
     fn finish_run(
@@ -619,14 +627,21 @@ impl SqlEditor {
                 return;
             };
             match message {
-                GridMsg::CopyToClipboard(text) => {
-                    editor.emit_by_name::<()>("copy-to-clipboard", &[&glib::BoxedAnyObject::new(text)]);
+                GridMsg::Copy(request) => editor.copy(request),
+                GridMsg::CopyInClause(values) => editor.copy_in_clause(values),
+                GridMsg::ShowRowJson(request) => {
+                    if let Some(tasks) = editor.deps().map(|deps| deps.tasks.clone()) {
+                        let parent = editor.clone().upcast();
+                        glib::spawn_future_local(async move {
+                            present_row_json(parent, tasks, request).await;
+                        });
+                    }
                 }
                 GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
-                GridMsg::ExportResults(result) => {
-                    let name = export_name_for_query(&editor.selected_preview());
-                    let payload = glib::BoxedAnyObject::new((result, name));
-                    editor.emit_by_name::<()>("export-results", &[&payload]);
+                GridMsg::ExportResults(shown) => {
+                    if let Some(index) = editor.imp().results.selected() {
+                        editor.offer_export(index, shown);
+                    }
                 }
                 _ => {}
             }
@@ -634,74 +649,61 @@ impl SqlEditor {
         let _ = self.imp().grid_sink.set(sink);
     }
 
-    /// The statement behind the result on screen, to name its export.
-    fn selected_preview(&self) -> String {
-        let imp = self.imp();
-        let index = imp.results.selected().unwrap_or(0) as usize;
-        imp.log
-            .borrow()
-            .as_ref()
-            .and_then(|log| log.entries().get(index).map(|entry| entry.preview.clone()))
-            .unwrap_or_default()
-    }
-
-    fn install_actions(&self) {
-        let actions = gio::SimpleActionGroup::new();
-        let weak = self.downgrade();
-        let open = gio::ActionEntry::builder("open-file")
-            .activate(move |_: &gio::SimpleActionGroup, _, _| {
-                if let Some(editor) = weak.upgrade() {
-                    editor.open_file();
-                }
-            })
-            .build();
-        let weak = self.downgrade();
-        let format = gio::ActionEntry::builder("format")
-            .activate(move |_: &gio::SimpleActionGroup, _, _| {
-                if let Some(editor) = weak.upgrade() {
-                    editor.format();
-                }
-            })
-            .build();
-        actions.add_action_entries([open, format]);
-        self.insert_action_group("editor", Some(&actions));
-    }
-
-    fn install_shortcuts(&self) {
-        let controller = gtk4::ShortcutController::new();
-        let shortcut = |key, modifiers, act: fn(&SqlEditor)| {
-            let weak = self.downgrade();
-            gtk4::Shortcut::builder()
-                .trigger(&gtk4::KeyvalTrigger::new(key, modifiers))
-                .action(&gtk4::CallbackAction::new(move |_, _| {
-                    if let Some(editor) = weak.upgrade() {
-                        act(&editor);
-                    }
-                    glib::Propagation::Stop
-                }))
-                .build()
+    /// Render a copy from a result grid off the GTK thread, and toast
+    /// how it went.
+    fn copy(&self, request: CopyRequest) {
+        let Some(tasks) = self.deps().map(|deps| deps.tasks.clone()) else {
+            return;
         };
-        let control = gtk4::gdk::ModifierType::CONTROL_MASK;
-        let control_shift = control | gtk4::gdk::ModifierType::SHIFT_MASK;
-        controller.add_shortcut(shortcut(gtk4::gdk::Key::Return, control, SqlEditor::run));
-        // Esc stops a running query; the editor is not a dialog, so Esc
-        // is otherwise free, and it is the key a user reaches for when a
-        // query runs away.
-        controller.add_shortcut(shortcut(
-            gtk4::gdk::Key::Escape,
-            gtk4::gdk::ModifierType::empty(),
-            SqlEditor::stop,
-        ));
-        controller.add_shortcut(shortcut(gtk4::gdk::Key::f, control_shift, SqlEditor::format));
-        controller.add_shortcut(shortcut(
-            gtk4::gdk::Key::Return,
-            control_shift,
-            SqlEditor::run_at_cursor,
-        ));
-        controller.add_shortcut(shortcut(gtk4::gdk::Key::slash, control, |editor| {
-            toggle_line_comment(&editor.buffer());
-        }));
-        self.imp().source_view.add_controller(controller);
+        let editor = self.downgrade();
+        crate::ui::clipboard::copy_rows(self, &tasks, request, move |text| {
+            if let Some(editor) = editor.upgrade() {
+                editor.emit_by_name::<()>("toast", &[&text]);
+            }
+        });
+    }
+
+    /// An IN list in the spelling of the server the editor runs on.
+    fn copy_in_clause(&self, values: InClauseRows) {
+        let dialect = self
+            .deps()
+            .and_then(|deps| deps.session.get())
+            .and_then(|session| session.current_dialect());
+        match dialect {
+            Some(dialect) => self.copy(CopyRequest::InClause { dialect, values }),
+            None => self.emit_by_name::<()>("toast", &[&crate::i18n::gettext("Connect to a database first.")]),
+        }
+    }
+
+    /// Ask the window to export the result on line `index`: the rows
+    /// its grid shows, or every row its statement returns when run
+    /// again.
+    fn offer_export(&self, index: u32, shown: ExportSource) {
+        let Some(offer) = self.export_offer(index, shown) else {
+            return;
+        };
+        self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(offer)]);
+    }
+
+    fn export_offer(&self, index: u32, shown: ExportSource) -> Option<ExportOffer> {
+        let log = self.imp().log.borrow();
+        let entry = log.as_ref()?.entries().get(usize::try_from(index).ok()?)?;
+        let EntryKind::ResultSet(result) = &entry.kind else {
+            return None;
+        };
+        Some(ExportOffer {
+            origin: ExportOrigin::Editor {
+                shown,
+                query: ExportQuery::Editor {
+                    sql: result.statement.clone(),
+                },
+                shown_rows: result.row_count() as u64,
+                truncated: result.summary.is_truncated(),
+            },
+            session: self.deps().and_then(|deps| deps.session.get()),
+            name: export_name_for_query(&entry.preview),
+            target: None,
+        })
     }
 
     fn install_drop_target(&self) {
@@ -785,10 +787,10 @@ fn show_cursor_position(label: &gtk4::Label, buffer: &sourceview5::Buffer) {
 fn label_run_button(button: &gtk4::Button, has_selection: bool) {
     if has_selection {
         button.set_label(&crate::i18n::gettext("Run Selection"));
-        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the selected text (Ctrl+Return)")));
+        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the selected text")));
     } else {
         button.set_label(&crate::i18n::gettext("Run"));
-        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the script (Ctrl+Return)")));
+        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the script")));
     }
 }
 

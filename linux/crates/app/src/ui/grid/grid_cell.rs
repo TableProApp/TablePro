@@ -241,10 +241,10 @@ impl GridCell {
         let (Some(row), Some(drawing)) = (row, self.drawing()) else {
             return;
         };
-        let state = drawing.draw(self, &row);
+        let drawn = drawing.draw(self, &row);
         // On the cell, since GtkColumnViewCell passes on no accessible
         // property of its own.
-        match cell_description(state) {
+        match cell_description(drawn.state, drawn.null) {
             Some(description) => self.update_property(&[gtk::accessible::Property::Description(&description)]),
             None => self.reset_property(gtk::AccessibleProperty::Description),
         }
@@ -400,11 +400,13 @@ fn holds_focus(widget: &impl IsA<gtk::Widget>) -> bool {
 mod tests {
     use gtk4 as gtk;
     use gtk4::prelude::*;
-    use tablepro_core::Value;
+    use tablepro_core::{ColumnInfo, Value};
 
     use super::GridCell;
     use crate::services::tracker_edit::TrackerEdit;
-    use crate::ui::grid::test_grid::{key, two_text_rows};
+    use crate::test_support::{descendants, wait_until};
+    use crate::ui::grid::test_grid::{Grid, WAIT, flag_rows, key, named, recorder, two_text_rows};
+    use crate::ui::grid::{RowObject, build_result_grid};
 
     fn described(widget: &impl IsA<gtk::Accessible>) -> bool {
         gtk::test_accessible_has_property(widget, gtk::AccessibleProperty::Description)
@@ -427,6 +429,91 @@ mod tests {
 
         grid.redraw(&grid.tracker.undo().expect("an edit to undo"));
         assert!(!described(&cell), "an undone edit still read as modified");
+    }
+
+    fn has_attribute(cell: &GridCell, kind: gtk::pango::AttrType) -> bool {
+        cell.display()
+            .and_then(|display| display.attributes())
+            .is_some_and(|list| list.attributes().iter().any(|attr| attr.type_() == kind))
+    }
+
+    #[gtk4::test]
+    fn modified_cell_renders_bold() {
+        let grid = two_text_rows();
+        let cell = grid.cell_of(1, 1);
+        assert!(!has_attribute(&cell, gtk::pango::AttrType::Weight));
+
+        grid.redraw(&grid.tracker.apply(TrackerEdit::Cell {
+            row_key: key(1),
+            col: 1,
+            original: Value::Text("A".into()),
+            value: Value::Text("edited".into()),
+        }));
+        assert!(
+            has_attribute(&cell, gtk::pango::AttrType::Weight),
+            "an edit showed only by its tint"
+        );
+        assert!(!has_attribute(&grid.cell_of(1, 0), gtk::pango::AttrType::Weight));
+
+        grid.redraw(&grid.tracker.apply(TrackerEdit::DeleteRows {
+            persisted: vec![(key(1), vec![Value::Int(1), Value::Text("A".into())].into())],
+            drafts: Vec::new(),
+        }));
+        assert!(has_attribute(&cell, gtk::pango::AttrType::Strikethrough));
+        assert!(
+            !has_attribute(&cell, gtk::pango::AttrType::Weight),
+            "a cell going away with its row read as an edit"
+        );
+    }
+
+    #[gtk4::test]
+    fn null_cell_has_description_text_null_does_not() {
+        let columns = [named("id", "integer", false), named("name", "text", false)];
+        let rows = vec![RowObject::result(vec![Value::Null, Value::Text("NULL".into())].into())];
+        let (sink, _messages) = recorder();
+        let (view, _selection) = build_result_grid(columns.iter().map(ColumnInfo::result_column).collect(), rows, sink);
+        let window = gtk::Window::new();
+        window.set_child(Some(&view));
+        window.present();
+        let cells = || -> Vec<GridCell> {
+            descendants(&view)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<GridCell>().ok())
+                .filter(|cell| cell.row().is_some())
+                .collect()
+        };
+        wait_until(WAIT, || cells().len() == 2).expect("the cells are drawn");
+        let cell = |column| {
+            cells()
+                .into_iter()
+                .find(|cell| cell.column() == column)
+                .expect("the cell")
+        };
+
+        assert!(described(&cell(0)), "a NULL read the same as the text NULL");
+        assert!(!described(&cell(1)), "the text NULL read as a NULL");
+        window.destroy();
+
+        let editable = Grid::open(
+            vec![named("id", "integer", true), named("name", "text", false)],
+            vec![
+                vec![Value::Int(1), Value::Null],
+                vec![Value::Int(2), Value::Text("NULL".into())],
+            ],
+        );
+        assert!(described(&editable.cell_of(1, 1)));
+        assert!(!described(&editable.cell_of(2, 1)));
+    }
+
+    #[gtk4::test]
+    fn bool_cell_is_labelled() {
+        let grid = flag_rows();
+        let check = grid.cell_of(1, 1).check_button().expect("a check button");
+
+        assert!(gtk::test_accessible_has_property(
+            &check,
+            gtk::AccessibleProperty::Label
+        ));
     }
 
     #[gtk4::test]

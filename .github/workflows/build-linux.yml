@@ -131,6 +131,14 @@ jobs:
             echo "::error::add window actions with add_action_entries on the window, not a group inserted as win"
             exit 1
           fi
+      - name: Tab ids in the tab index
+        # TabIndex maps a page to its tab. qdata on a page is unsafe to
+        # read and outlives the tab it names.
+        run: |
+          if grep -rn 'set_qdata' crates/app/src; then
+            echo "::error::map a tab page to its tab through TabIndex, not set_qdata"
+            exit 1
+          fi
       - name: Docs name paths and types that exist
         # A renamed type or a moved file stays named in prose until
         # something asks. GTK and GLib names resolve against the GIR
@@ -139,6 +147,7 @@ jobs:
           ../scripts/check-doc-symbols.sh \
             linux/ARCHITECTURE.md \
             linux/docs/state-management.md \
+            linux/docs/storage.md \
             linux/docs/testing.md \
             linux/docs/decisions/0012-window-per-session.md
       - name: Clippy
@@ -149,12 +158,49 @@ jobs:
         run: meson compile -C _build
       - name: Tests
         run: xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+      # Meson prints only the last 100 lines of a failed suite, which leaves
+      # out the names of the tests that failed.
+      - name: Keep the Meson test log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: meson-testlog
+          path: linux/_build/meson-logs/testlog.txt
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Secret Service tests
         run: |
           dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
             && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
       - name: Dist
         run: meson dist -C _build --no-tests --formats xztar
+
+  licenses:
+    name: Third-party licenses
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98
+        with:
+          toolchain: "1.98"
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-about@0.9.2
+      - name: Regenerate the notices from Cargo.lock
+        run: build-aux/update-third-party-licenses.sh
+      - name: The committed notices cover every shipped crate
+        # A crate added to or bumped in Cargo.lock changes the regenerated
+        # files, and so does one whose license text changed.
+        run: |
+          if ! git diff --exit-code -- data/licenses; then
+            echo "::error::data/licenses does not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
+            exit 1
+          fi
 
   i18n:
     name: Translations

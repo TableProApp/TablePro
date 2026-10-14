@@ -40,10 +40,10 @@ pub(super) fn build_index_row(
 
     let remove_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
-        .tooltip_text(crate::i18n::gettext("Remove index"))
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&remove_button, &crate::i18n::gettext("Remove Index"), None);
     remove_button.set_widget_name("index-remove");
     // The primary key's constraint owns its index.
     if idx.primary {

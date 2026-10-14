@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tablepro_core::{DriverError, EditorSession, TransactionState};
+use tablepro_core::column::{ColumnType, ResultColumn};
+use tablepro_core::{DriverError, EditorSession, ResultEvent, TransactionState, Truncation, Value};
 use tablepro_session::Session;
 use tablepro_session::fakes::{FakeConnector, FakeCredentialSource};
 use tablepro_session::operation::DefaultDeadlines;
@@ -76,8 +77,12 @@ fn build_editor(runs: Replies<FakeRun>, text: &str, history: impl FnOnce(&Tasks)
 
 /// An editor whose runs go into a real history under `root`.
 fn editor_with_history(root: &tempfile::TempDir, text: &str) -> Harness {
+    editor_with_history_runs(root, answering(), text)
+}
+
+fn editor_with_history_runs(root: &tempfile::TempDir, runs: Replies<FakeRun>, text: &str) -> Harness {
     let paths = tablepro_storage::StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.TablePro.Devel");
-    build_editor(answering(), text, |tasks| {
+    build_editor(runs, text, |tasks| {
         let preferences = HistoryPreferences {
             retention_days: tokio::sync::watch::channel(30).1,
             save: tokio::sync::watch::channel(true).1,
@@ -317,18 +322,46 @@ fn a_dropped_file_goes_in_at_the_cursor_as_one_undo_step() {
 }
 
 #[gtk4::test]
-fn a_copy_from_a_result_grid_reaches_the_tab_whole() {
+fn a_copy_from_a_result_grid_reaches_the_clipboard() {
+    use tablepro_core::column::{ColumnType, ResultColumn};
+
+    use tablepro_core::Value;
+
+    use crate::ui::clipboard::{CopyKind, CopyRequest};
+    use crate::ui::grid::RowSnapshot;
+
     let harness = editor_with(answering(), "SELECT 1");
-    let copied = Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
+    let toasts = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = toasts.clone();
     harness
         .editor
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+        .connect_toast(move |_, text| sink.borrow_mut().push(text));
     let grid = harness.editor.imp().grid_sink.get().expect("the grid's sink").clone();
+    let clipboard = harness.editor.clipboard();
+    clipboard.set_text("before");
+    let columns: std::sync::Arc<[ResultColumn]> = ["a", "b"]
+        .iter()
+        .map(|name| ResultColumn::new(*name, ColumnType::untyped_text("text")))
+        .collect();
+    let rows = vec![
+        RowSnapshot::new(vec![Value::Int(1), Value::Text("x".into())].into(), Vec::new()),
+        RowSnapshot::new(vec![Value::Int(2), Value::Text("y".into())].into(), Vec::new()),
+    ];
 
-    grid(GridMsg::CopyToClipboard("a\0b".to_owned()));
+    grid(GridMsg::Copy(CopyRequest::Rows {
+        columns,
+        rows,
+        kind: CopyKind::Rows,
+    }));
+    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the copy to land");
 
-    assert_eq!(*copied.borrow(), ["a\0b".to_owned()]);
+    assert_eq!(*toasts.borrow(), ["Copied 2 rows".to_owned()]);
+    assert!(clipboard.formats().contain_mime_type("text/tab-separated-values"));
+    let text: Option<String> = clipboard
+        .content()
+        .and_then(|content| content.value(String::static_type()).ok())
+        .and_then(|value| value.get().ok());
+    assert_eq!(text.as_deref(), Some("1\tx\n2\ty\n"));
 }
 
 #[gtk4::test]
@@ -353,6 +386,14 @@ fn the_icon_buttons_have_accessible_names() {
         harness.editor.imp().source_view.upcast_ref::<gtk4::Widget>(),
         gtk4::AccessibleProperty::Label
     ));
+    assert_eq!(
+        crate::test_support::unlabelled_icon_buttons(&harness.editor),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        crate::test_support::tooltips_with_keys(&harness.editor),
+        Vec::<String>::new()
+    );
 }
 
 #[gtk4::test]
@@ -412,18 +453,133 @@ fn a_run_is_judged_by_the_engine_it_ran_on() {
 
 /// What the harness's history holds, newest first.
 fn recorded(harness: &Harness) -> Vec<String> {
+    recorded_entries(harness).into_iter().map(|entry| entry.query).collect()
+}
+
+fn recorded_entries(harness: &Harness) -> Vec<tablepro_storage::query_history::Entry> {
     let Some(history) = harness.history.as_ref().and_then(HistoryService::store) else {
         return Vec::new();
     };
-    let search = history.search(tablepro_storage::query_history::SearchFilter {
-        limit: 100,
-        ..Default::default()
+    let everything = tablepro_storage::query_history::HistoryQuery::default();
+    let search = history.search_page(
+        &everything,
+        tablepro_storage::query_history::HistoryPageRequest::first(100),
+    );
+    block_on(&harness.runtime, search).expect("search").entries
+}
+
+/// A result set of `rows` one-column rows, ended the way `truncation`
+/// says.
+fn result_set(rows: u64, total_rows: Option<u64>, truncation: Truncation) -> FakeRun {
+    let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("text"))].into();
+    let mut events = vec![
+        ResultEvent::ResultSetStarted { columns },
+        ResultEvent::Rows((0..rows).map(|row| vec![Value::Int(row as i64)]).collect()),
+    ];
+    if truncation != Truncation::Complete {
+        events.push(ResultEvent::RowLimitReached { retained: rows });
+    }
+    events.push(ResultEvent::ResultSetFinished {
+        retained: rows,
+        total_rows,
+        truncation,
     });
-    block_on(&harness.runtime, search)
-        .expect("search")
-        .into_iter()
-        .map(|entry| entry.query)
-        .collect()
+    FakeRun::completed(events)
+}
+
+/// The banner over the result page on show.
+fn shown_banner(harness: &Harness) -> adw::Banner {
+    let page = harness
+        .editor
+        .imp()
+        .results
+        .imp()
+        .stack
+        .visible_child()
+        .expect("a result page");
+    crate::test_support::first_descendant_of_type::<adw::Banner>(&page).expect("the page's banner")
+}
+
+#[gtk4::test]
+fn truncated_result_reveals_banner_and_complete_result_hides_it() {
+    let mut runs = Replies::default();
+    runs.when_sql_contains("capped", result_set(3, None, Truncation::ServerStopped));
+    runs.always(result_set(2, Some(2), Truncation::Complete));
+    let harness = editor_with(runs, "SELECT n FROM capped; SELECT n FROM small");
+
+    run_and_wait(&harness);
+    let results = &harness.editor.imp().results;
+    results.select(0);
+    let capped = shown_banner(&harness);
+    results.select(1);
+    let complete = shown_banner(&harness);
+
+    assert!(capped.is_revealed(), "the capped result has no banner");
+    assert_eq!(capped.title(), "Showing the first 3 rows");
+    assert_eq!(capped.button_label().as_deref(), Some("Export All…"));
+    assert!(!complete.is_revealed(), "a complete result shows a banner");
+}
+
+#[gtk4::test]
+fn export_all_uses_originating_statement_of_second_result() {
+    let mut runs = Replies::default();
+    runs.always(result_set(3, Some(40), Truncation::ReadPastLimit));
+    let harness = editor_with(runs, "SELECT n FROM first;\nSELECT n FROM second WHERE n > 2;");
+    let offers = SignalLog::connect(&harness.editor, "export-results", |values| {
+        values[1]
+            .get::<glib::BoxedAnyObject>()
+            .expect("an offer")
+            .borrow::<ExportOffer>()
+            .clone()
+    });
+    run_and_wait(&harness);
+
+    harness.editor.imp().results.select(1);
+    shown_banner(&harness).emit_by_name::<()>("button-clicked", &[]);
+
+    let offers = offers.take();
+    let [offer] = offers.as_slice() else {
+        panic!("one offer, not {}", offers.len());
+    };
+    let ExportOrigin::Editor {
+        shown,
+        query: ExportQuery::Editor { sql },
+        shown_rows,
+        truncated,
+    } = &offer.origin
+    else {
+        panic!("not an editor result: {:?}", offer.origin);
+    };
+    assert_eq!(sql.as_str(), "SELECT n FROM second WHERE n > 2");
+    assert!(*truncated);
+    assert_eq!(*shown_rows, 3);
+    assert_eq!(shown.row_count(), Some(3));
+    assert!(offer.session.is_some(), "Export All has no session to read through");
+    assert_eq!(offer.origin.preselected(), crate::ui::export::ScopeSource::Query);
+}
+
+#[gtk4::test]
+fn history_records_none_for_capped_result() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let mut runs = Replies::default();
+    runs.when_sql_contains("capped", result_set(3, None, Truncation::ServerStopped));
+    runs.always(result_set(2, Some(9), Truncation::ReadPastLimit));
+    let harness = editor_with_history_runs(&root, runs, "SELECT n FROM capped;");
+    run_and_wait(&harness);
+    harness.editor.buffer().set_text("SELECT n FROM counted;");
+    run_and_wait(&harness);
+
+    wait_until(WAIT, || recorded_entries(&harness).len() == 2).expect("both runs recorded");
+    let entries = recorded_entries(&harness);
+    let rows = |query: &str| {
+        entries
+            .iter()
+            .find(|entry| entry.query.contains(query))
+            .map(|entry| entry.rows_affected)
+            .expect("the run's entry")
+    };
+    assert_eq!(rows("capped"), None, "a capped result recorded the rows it kept");
+    assert_eq!(rows("counted"), Some(9));
 }
 
 /// The test drives the runtime from outside it, which is the one place
@@ -508,4 +664,473 @@ fn export_name_slugs_the_statement() {
 #[test]
 fn export_name_falls_back_when_there_is_no_statement() {
     assert_eq!(export_name_for_query("   \n  "), crate::i18n::gettext("query-results"));
+}
+
+/// The editor in a window. A widget finds its ancestors' action groups
+/// once it is rooted, which a key press always is.
+struct InWindow(gtk4::Window);
+
+impl InWindow {
+    fn new(editor: &SqlEditor) -> Self {
+        let window = gtk4::Window::new();
+        window.set_child(Some(editor));
+        Self(window)
+    }
+
+    /// Shown, and holding the keyboard focus.
+    fn presented(editor: &SqlEditor) -> Self {
+        let shown = Self::new(editor);
+        shown.0.set_default_size(480, 320);
+        crate::test_support::KeyInjector::focus_only(&shown.0);
+        wait_until(Duration::from_secs(2), || shown.0.is_active()).expect("the window to take the focus");
+        shown
+    }
+}
+
+impl Drop for InWindow {
+    fn drop(&mut self) {
+        self.0.set_child(None::<&gtk4::Widget>);
+        self.0.destroy();
+    }
+}
+
+fn editor_keys(harness: &Harness) -> gtk4::ShortcutController {
+    crate::test_support::shortcut_keys::owner_controller(
+        &harness.editor.imp().source_view.get(),
+        crate::application::ShortcutOwner::SqlEditor,
+    )
+    .expect("the editor's shortcuts")
+}
+
+/// What `accel` does on the source view, as a key reaching the editor's
+/// controller would. `false` when the key goes on.
+fn press(harness: &Harness, accel: &str) -> bool {
+    use crate::test_support::shortcut_keys::{keystroke, shortcuts, trigger_keys};
+    let key = keystroke(accel);
+    let action = shortcuts(&editor_keys(harness))
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&key))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("the editor binds the key");
+    action.activate(
+        gtk4::ShortcutActionFlags::empty(),
+        &harness.editor.imp().source_view.get(),
+        None,
+    )
+}
+
+/// GtkTextView binds Ctrl+/ to select-all, and a bubble controller on
+/// the view runs before that binding only while it was added last, so
+/// every editor key that a class binds too runs in the capture phase.
+#[gtk4::test]
+fn editor_keys_that_the_view_binds_run_in_capture() {
+    use crate::application::{ACCELERATORS, AcceleratorScope, ShortcutOwner};
+    use crate::test_support::shortcut_keys::{class_binding_keys, keystroke};
+    let harness = editor_with(answering(), "SELECT 1");
+    let view = harness.editor.imp().source_view.get();
+    let class_keys = class_binding_keys(&view);
+    let controller = editor_keys(&harness);
+
+    assert!(
+        class_keys.contains(&keystroke("<Primary>slash")),
+        "the view's own bindings were not found, so the check reads nothing"
+    );
+    assert_eq!(controller.propagation_phase(), gtk4::PropagationPhase::Capture);
+    for entry in ACCELERATORS {
+        let AcceleratorScope::Local {
+            owner: ShortcutOwner::SqlEditor,
+            phase,
+        } = entry.scope
+        else {
+            continue;
+        };
+        if entry
+            .triggers
+            .iter()
+            .any(|accel| class_keys.contains(&keystroke(accel)))
+        {
+            assert_eq!(phase, gtk4::PropagationPhase::Capture, "{}", entry.action);
+        }
+    }
+}
+
+#[gtk4::test]
+fn ctrl_slash_toggles_the_comment() {
+    let harness = editor_with(answering(), "select 1");
+    let _window = InWindow::new(&harness.editor);
+
+    assert!(press(&harness, "<Primary>slash"));
+
+    assert_eq!(buffer_text(&harness.editor.buffer()), "-- select 1");
+    assert!(!harness.editor.buffer().has_selection());
+}
+
+#[gtk4::test]
+fn escape_cancels_only_while_a_query_runs() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::until_stopped());
+    let harness = editor_with(runs, "SELECT pg_sleep(60)");
+    let _window = InWindow::new(&harness.editor);
+
+    assert!(!press(&harness, "Escape"), "Escape was taken with nothing running");
+
+    assert!(press(&harness, "<Primary>Return"));
+    assert!(harness.editor.is_running(), "Ctrl+Return did not run");
+    wait_until(WAIT, || !harness.fake.texts().is_empty()).expect("the statement to start");
+    assert!(press(&harness, "Escape"), "Escape did not cancel the run");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+    assert_eq!(harness.fake.stopped_runs(), 1);
+    assert!(!press(&harness, "Escape"), "Escape stayed taken after the run");
+}
+
+/// GtkPopoverMenu shows only application accelerators by itself.
+#[gtk4::test]
+fn the_editor_menu_shows_the_tables_local_keys() {
+    use crate::application::{ACCELERATORS, AcceleratorScope};
+    let harness = editor_with(answering(), "SELECT 1");
+    let menu = harness
+        .editor
+        .imp()
+        .menu_button
+        .menu_model()
+        .expect("the editor's menu");
+    let mut checked = 0;
+    for section in 0..menu.n_items() {
+        let Some(items) = menu.item_link(section, "section") else {
+            continue;
+        };
+        for item in 0..items.n_items() {
+            let Some(action) = items
+                .item_attribute_value(item, "action", None)
+                .and_then(|value| value.get::<String>())
+            else {
+                continue;
+            };
+            let accel = items
+                .item_attribute_value(item, "accel", None)
+                .and_then(|value| value.get::<String>());
+            let entry = ACCELERATORS.iter().find(|entry| entry.action == action);
+            let expected = entry
+                .filter(|entry| matches!(entry.scope, AcceleratorScope::Local { .. }))
+                .and_then(|entry| entry.triggers.first())
+                .map(|accel| (*accel).to_owned());
+            assert_eq!(accel, expected, "{action}");
+            checked += usize::from(expected.is_some());
+        }
+    }
+    assert!(checked > 0, "no menu item has a local key, so the check reads nothing");
+}
+
+fn find_bar(harness: &Harness) -> find_bar::FindBar {
+    harness.editor.imp().find_bar.get()
+}
+
+/// What `accel` does on the editor tab, as a key reaching the tab's own
+/// controller would.
+fn press_on_tab(harness: &Harness, accel: &str) -> bool {
+    use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
+    let key = keystroke(accel);
+    let controller = owner_controller(&harness.editor, crate::application::ShortcutOwner::SqlEditorTab)
+        .expect("the tab's shortcuts");
+    let action = shortcuts(&controller)
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&key))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("the tab binds the key");
+    action.activate(gtk4::ShortcutActionFlags::empty(), &harness.editor, None)
+}
+
+fn select(buffer: &gtk4::TextBuffer, start: i32, end: i32) {
+    buffer.select_range(&buffer.iter_at_offset(start), &buffer.iter_at_offset(end));
+}
+
+fn selected(buffer: &gtk4::TextBuffer) -> Option<(i32, i32)> {
+    buffer
+        .selection_bounds()
+        .map(|(start, end)| (start.offset(), end.offset()))
+}
+
+/// Open the bar and search for `text`, waiting until the bar shows
+/// what the search counted. The count can be read a moment before the
+/// context says it changed.
+fn search(harness: &Harness, text: &str) -> find_bar::FindBar {
+    assert!(press_on_tab(harness, "<Primary>f"));
+    let bar = find_bar(harness);
+    bar.search_entry().set_text(text);
+    wait_until(WAIT, || !bar.count_text().is_empty()).expect("the search to count");
+    bar
+}
+
+#[gtk4::test]
+fn ctrl_f_reveals_bar_and_prefills_selection() {
+    let harness = editor_with(answering(), "SELECT * FROM orders JOIN orders_lines");
+    let _window = InWindow::new(&harness.editor);
+    let buffer = harness.editor.buffer();
+    select(&buffer, 14, 20);
+
+    assert!(press_on_tab(&harness, "<Primary>f"));
+
+    let bar = find_bar(&harness);
+    assert!(bar.is_open());
+    assert!(!bar.is_replacing());
+    assert_eq!(bar.search_entry().text(), "orders");
+    wait_until(WAIT, || bar.count_text() == "1 of 2").expect("the search to count");
+    assert_eq!(
+        bar.context().map(|context| context.is_highlight()),
+        Some(true),
+        "matches are not highlighted"
+    );
+}
+
+#[gtk4::test]
+fn a_selection_over_lines_is_not_searched_for() {
+    let harness = editor_with(answering(), "SELECT 1;\nSELECT 2;");
+    let _window = InWindow::new(&harness.editor);
+    select(&harness.editor.buffer(), 0, 15);
+
+    assert!(press_on_tab(&harness, "<Primary>f"));
+
+    assert_eq!(find_bar(&harness).search_entry().text(), "");
+}
+
+#[gtk4::test]
+fn next_selects_second_occurrence() {
+    let harness = editor_with(answering(), "orders; orders; orders");
+    let _window = InWindow::new(&harness.editor);
+    let buffer = harness.editor.buffer();
+    select(&buffer, 0, 6);
+    let bar = search(&harness, "orders");
+    wait_until(WAIT, || selected(&buffer) == Some((0, 6))).expect("the first match selected");
+
+    assert!(press_on_tab(&harness, "<Primary>g"));
+    assert_eq!(selected(&buffer), Some((8, 14)));
+    assert_eq!(bar.count_text(), "2 of 3");
+
+    assert!(press_on_tab(&harness, "<Primary><Shift>g"));
+    assert_eq!(selected(&buffer), Some((0, 6)));
+    assert!(press_on_tab(&harness, "<Primary><Shift>g"));
+    assert_eq!(selected(&buffer), Some((16, 22)), "the search did not wrap around");
+}
+
+/// GtkSearchEntry binds Ctrl+G itself, so in the entry the key reaches
+/// the bar as the entry's next-match signal.
+#[gtk4::test]
+fn the_search_entrys_next_match_moves_to_the_next() {
+    let harness = editor_with(answering(), "a; b; a");
+    let _window = InWindow::new(&harness.editor);
+    let buffer = harness.editor.buffer();
+    buffer.place_cursor(&buffer.start_iter());
+    let bar = search(&harness, "a");
+    wait_until(WAIT, || selected(&buffer) == Some((0, 1))).expect("the first match selected");
+
+    bar.search_entry().emit_by_name::<()>("next-match", &[]);
+
+    assert_eq!(selected(&buffer), Some((6, 7)));
+}
+
+#[gtk4::test]
+fn replace_all_is_single_undo_step() {
+    let harness = editor_with(answering(), "x = 1 AND x = 2");
+    let _window = InWindow::new(&harness.editor);
+    let toasts = SignalLog::connect(&harness.editor, "toast", |values| {
+        values[1].get::<String>().expect("a message")
+    });
+    assert!(press_on_tab(&harness, "<Primary>h"));
+    let bar = find_bar(&harness);
+    assert!(bar.is_replacing(), "Ctrl+H did not show the replace row");
+    bar.replace_entry().set_text("y");
+    bar.search_entry().set_text("x");
+    wait_until(WAIT, || bar.count_text().ends_with("of 2")).expect("the search to count");
+
+    WidgetExt::activate_action(&bar, "find.replace-all", None).expect("find.replace-all");
+
+    let buffer = harness.editor.buffer();
+    assert_eq!(toasts.take(), ["Replaced 2 occurrences"]);
+    assert_eq!(buffer_text(&buffer), "y = 1 AND y = 2");
+    buffer.undo();
+    assert_eq!(buffer_text(&buffer), "x = 1 AND x = 2");
+}
+
+#[gtk4::test]
+fn replace_changes_the_selected_match_and_moves_on() {
+    let harness = editor_with(answering(), "x; x; x");
+    let _window = InWindow::new(&harness.editor);
+    let buffer = harness.editor.buffer();
+    select(&buffer, 3, 4);
+    let bar = search(&harness, "x");
+    bar.replace_entry().set_text("yy");
+
+    WidgetExt::activate_action(&bar, "find.replace", None).expect("find.replace");
+
+    assert_eq!(buffer_text(&buffer), "x; yy; x");
+    wait_until(WAIT, || selected(&buffer) == Some((7, 8))).expect("the next match selected");
+}
+
+#[gtk4::test]
+fn nothing_to_replace_leaves_the_buffer_alone() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+    let bar = search(&harness, "orders");
+    assert_eq!(bar.count_text(), "No results");
+
+    let actions = bar.actions().expect("the find actions");
+    assert!(
+        !actions.is_action_enabled("replace-all"),
+        "Replace All is on with nothing to replace"
+    );
+    assert!(!actions.is_action_enabled("replace"));
+    bar.replace_all();
+
+    assert_eq!(buffer_text(&harness.editor.buffer()), "SELECT 1");
+}
+
+#[gtk4::test]
+fn invalid_regex_marks_entry_error() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+    assert!(press_on_tab(&harness, "<Primary>f"));
+    let bar = find_bar(&harness);
+    WidgetExt::activate_action(&bar, "find.regex-enabled", None).expect("find.regex-enabled");
+    let entry = bar.search_entry();
+
+    entry.set_text("(");
+    wait_until(WAIT, || entry.has_css_class("error")).expect("the entry to show the error");
+    assert!(entry.tooltip_text().is_some_and(|text| !text.is_empty()));
+    assert_eq!(bar.count_text(), "");
+
+    entry.set_text("SEL+");
+    wait_until(WAIT, || !entry.has_css_class("error")).expect("the error to clear");
+    assert_eq!(entry.tooltip_text(), None);
+}
+
+#[gtk4::test]
+fn case_sensitive_action_toggles_settings() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+    let bar = find_bar(&harness);
+    assert!(!bar.settings().is_case_sensitive());
+
+    WidgetExt::activate_action(&bar, "find.case-sensitive", None).expect("find.case-sensitive");
+    assert!(bar.settings().is_case_sensitive());
+
+    WidgetExt::activate_action(&bar, "find.at-word-boundaries", None).expect("find.at-word-boundaries");
+    assert!(bar.settings().is_at_word_boundaries());
+}
+
+#[gtk4::test]
+fn escape_hides_bar_and_disables_highlight() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+    let bar = search(&harness, "SEL");
+    let context = bar.context().expect("the search context");
+    assert!(context.is_highlight());
+
+    bar.search_entry().emit_by_name::<()>("stop-search", &[]);
+
+    assert!(!bar.is_open());
+    assert!(!context.is_highlight());
+}
+
+/// A bubble key on the tab reaches it only when no class on the way up
+/// from the focus binds it first. The search entry binds Ctrl+G, which
+/// the bar follows through the entry's own signals.
+#[gtk4::test]
+fn find_keys_are_not_class_bindings_inside_the_tab() {
+    use crate::application::{ACCELERATORS, AcceleratorScope, ShortcutOwner};
+    use crate::test_support::shortcut_keys::{class_keys_on_focus_paths, keystroke};
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+
+    let class_keys = class_keys_on_focus_paths(&harness.editor, |widget| {
+        widget.is::<gtk4::Text>() || widget.is::<gtk4::SearchEntry>()
+    });
+
+    assert!(
+        class_keys.contains(&keystroke("<Primary>slash")),
+        "the view's own bindings were not found, so the check reads nothing"
+    );
+    let mut checked = 0;
+    for entry in ACCELERATORS {
+        let AcceleratorScope::Local {
+            owner: ShortcutOwner::SqlEditorTab,
+            phase,
+        } = entry.scope
+        else {
+            continue;
+        };
+        assert_eq!(phase, gtk4::PropagationPhase::Bubble, "{}", entry.action);
+        for accel in entry.triggers {
+            assert!(
+                !class_keys.contains(&keystroke(accel)),
+                "{accel} of {} never reaches the tab",
+                entry.action
+            );
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 4);
+}
+
+/// These press real keys on the X display every test shares; nextest runs
+/// them with no other test beside them.
+mod real_keys {
+    use super::*;
+
+    /// A real key press, so the editor's controller meets GtkTextView's own
+    /// Ctrl+/ binding in the order GTK runs them.
+    #[gtk4::test]
+    fn ctrl_slash_toggles_comment_instead_of_selecting_all() {
+        let harness = editor_with(answering(), "select 1");
+        let _window = InWindow::presented(&harness.editor);
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.start_iter());
+        harness.editor.imp().source_view.grab_focus();
+
+        crate::test_support::KeyInjector::connect()
+            .expect("an X11 display")
+            .press(gtk4::gdk::Key::slash, gtk4::gdk::ModifierType::CONTROL_MASK)
+            .expect("the key press");
+
+        wait_until(Duration::from_secs(2), || buffer_text(&buffer) == "-- select 1")
+            .expect("Ctrl+/ to comment the line");
+        assert!(!buffer.has_selection(), "Ctrl+/ selected the text");
+    }
+
+    /// Real keys, so Ctrl+F meets every handler on its way up from the
+    /// view, and Escape the search entry's own.
+    #[gtk4::test]
+    fn ctrl_f_in_the_view_opens_find_and_escape_returns_to_it() {
+        // The bar slides in, and its entry takes no key until the first
+        // frame of the slide shows it.
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        let harness = editor_with(answering(), "select 1");
+        let _window = InWindow::presented(&harness.editor);
+        let view = harness.editor.imp().source_view.get();
+        view.grab_focus();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+        let bar = find_bar(&harness);
+        let entry = bar.search_entry();
+
+        keys.press(gtk4::gdk::Key::f, gtk4::gdk::ModifierType::CONTROL_MASK)
+            .expect("the key press");
+        wait_until(Duration::from_secs(2), || {
+            bar.is_open() && entry.state_flags().contains(gtk4::StateFlags::FOCUS_WITHIN)
+        })
+        .expect("Ctrl+F to open the find bar with the focus in its entry");
+
+        keys.press(gtk4::gdk::Key::Escape, gtk4::gdk::ModifierType::empty())
+            .expect("the key press");
+        wait_until(Duration::from_secs(2), || !bar.is_open() && view.has_focus())
+            .expect("Escape to close the bar and return to the view");
+    }
 }

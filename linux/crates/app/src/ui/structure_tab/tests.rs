@@ -312,11 +312,52 @@ fn drop_asks_the_window_with_the_table_it_shows() {
     assert_eq!(*asked.borrow(), [(None, "users".to_owned())]);
 }
 
+/// The driver refuses the DROP on a read-only connection, so the tab
+/// does not offer it, as the sidebar's table menu does not.
+#[gtk4::test]
+fn a_read_only_connection_offers_no_drop() {
+    let mut script = ConnectionScript {
+        read_only: true,
+        ..ConnectionScript::default()
+    };
+    script.fetch_table_definition.always(FakeReply::ok(definition("id")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    assert!(harness.fake.session.read_only());
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let asked = std::rc::Rc::new(std::cell::Cell::new(0));
+    let sink = asked.clone();
+    harness
+        .tab()
+        .connect_drop_table_requested(move |_, _, _| sink.set(sink.get() + 1));
+
+    assert!(!harness.tab().imp().drop_button.is_visible());
+    harness.tab().send(StructureTabInput::DropTableRequested);
+    assert_eq!(asked.get(), 0, "the tab asked to drop the table");
+}
+
 fn toasts(tab: &StructureTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
     let toasts = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let sink = toasts.clone();
     tab.connect_toast(move |_, text| sink.borrow_mut().push(text));
     toasts
+}
+
+#[gtk4::test]
+fn copy_sql_puts_the_statement_on_the_clipboard_and_says_so() {
+    let harness = Harness::open(StructureMode::New, ConnectionScript::default(), []);
+    let toasts = toasts(harness.tab());
+    sql_buffer(harness.tab()).set_text("CREATE TABLE users (id int);");
+
+    harness.tab().imp().copy_sql_button.emit_clicked();
+
+    let text = harness
+        .tab()
+        .clipboard()
+        .content()
+        .and_then(|content| content.value(String::static_type()).ok())
+        .and_then(|value| value.get::<String>().ok());
+    assert_eq!(text.as_deref(), Some("CREATE TABLE users (id int);"));
+    assert_eq!(*toasts.borrow(), ["Copied to clipboard"]);
 }
 
 /// The table reads once, then every read after it fails.
@@ -329,31 +370,200 @@ fn readable_once() -> ConnectionScript {
     script
 }
 
+fn banner(harness: &Harness) -> adw::Banner {
+    harness.tab().imp().stale_banner.get()
+}
+
+fn banner_tooltip(harness: &Harness) -> String {
+    banner(harness)
+        .tooltip_text()
+        .map(|text| text.to_string())
+        .unwrap_or_default()
+}
+
 #[gtk4::test]
-fn a_failed_read_after_a_schema_change_keeps_the_definition() {
+fn structure_refresh_failure_keeps_editor_and_shows_banner() {
     let harness = Harness::open(StructureMode::Edit, readable_once(), []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
     let toasts = toasts(harness.tab());
 
     harness.tab().send(StructureTabInput::SchemaChanged);
-    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the failed read was not reported");
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
 
     assert_eq!(harness.page().as_deref(), Some("editor"));
     assert_eq!(harness.column_names(), ["id"]);
-    assert!(toasts.borrow()[0].contains("denied"), "{:?}", toasts.borrow());
+    assert!(
+        banner_tooltip(&harness).contains("denied"),
+        "{}",
+        banner_tooltip(&harness)
+    );
+    assert!(toasts.borrow().is_empty(), "{:?}", toasts.borrow());
+    assert!(!harness.tab().is_loading());
+    assert!(harness.tab().imp().columns_box.is_sensitive());
 }
 
+/// The definition on screen is from before the save, so the draft holds
+/// still until a read lands: unlocked, its diff would offer the saved
+/// changes again.
 #[gtk4::test]
-fn a_failed_read_after_a_save_shows_the_error() {
+fn a_failed_read_after_a_save_keeps_the_saved_draft_locked() {
     let harness = Harness::open(StructureMode::Edit, readable_once(), []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
 
     harness
         .tab()
         .send(StructureTabInput::SaveCompleted { new_table_name: None });
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
 
-    wait_until(WAIT, || harness.page().as_deref() == Some("error"))
-        .expect("a definition from before the save stayed editable");
+    assert_eq!(harness.page().as_deref(), Some("editor"));
+    assert!(!harness.tab().imp().columns_box.is_sensitive());
+    assert!(
+        !harness.tracker().has_pending(),
+        "the saved changes came back as pending"
+    );
+}
+
+/// The save landed, so waiting for it is no help: the edit waits for a
+/// read of the table that only Retry starts.
+#[gtk4::test]
+fn an_edit_after_a_failed_read_after_a_save_says_to_retry() {
+    let harness = Harness::open(StructureMode::Edit, readable_once(), []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    harness
+        .tab()
+        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
+    let toasts = toasts(harness.tab());
+
+    harness.tab().send(StructureTabInput::AddColumn);
+
+    assert_eq!(
+        *toasts.borrow(),
+        ["The table couldn't be read after the save. Retry, then make the change again."]
+    );
+    assert_eq!(harness.column_names(), ["id"]);
+}
+
+#[gtk4::test]
+fn structure_first_load_failure_shows_error_page() {
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .always(FakeReply::err(DriverError::server("no <such> table")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+
+    wait_until(WAIT, || harness.page().as_deref() == Some("error")).expect("the error page");
+
+    let imp = harness.tab().imp();
+    let description = imp
+        .error_status
+        .description()
+        .map(|text| text.to_string())
+        .unwrap_or_default();
+    assert!(description.contains("no &lt;such&gt; table"), "{description}");
+    assert!(imp.retry_button.is_visible());
+    assert!(!banner(&harness).is_revealed());
+    assert!(!harness.tab().is_loading());
+}
+
+#[gtk4::test]
+fn index_fetch_failure_keeps_loaded_indexes() {
+    let indexed = TableDefinition {
+        indexes: vec![tablepro_core::IndexInfo {
+            name: "users_id_idx".to_owned(),
+            keys: vec![tablepro_core::meta::IndexKey::Column {
+                name: "id".to_owned(),
+                descending: false,
+            }],
+            unique: true,
+            primary: false,
+            predicate: None,
+        }],
+        ..definition("id")
+    };
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(indexed))
+        .always(FakeReply::err(DriverError::server("indexes unreadable")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+
+    harness.tab().send(StructureTabInput::SchemaChanged);
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
+
+    let indexes: Vec<String> = harness.draft().indexes.into_iter().map(|index| index.name).collect();
+    assert_eq!(indexes, ["users_id_idx"]);
+    assert_eq!(harness.page().as_deref(), Some("editor"));
+}
+
+#[gtk4::test]
+fn structure_retry_after_failure_hides_banner() {
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(definition("id")))
+        .once(FakeReply::err(DriverError::server("denied")))
+        .always(FakeReply::ok(definition("email")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    harness.tab().send(StructureTabInput::SchemaChanged);
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the stale banner");
+
+    banner(&harness).emit_by_name::<()>("button-clicked", &[]);
+
+    wait_until(WAIT, || harness.column_names() == ["email"]).expect("Retry read the table again");
+    assert!(
+        !banner(&harness).is_revealed(),
+        "the banner outlived the read that landed"
+    );
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        3
+    );
+}
+
+#[gtk4::test]
+fn schema_save_shows_new_column_list() {
+    let mut script = ConnectionScript::default();
+    script
+        .fetch_table_definition
+        .once(FakeReply::ok(TableDefinition {
+            columns: vec![integer_column("id", true), integer_column("name", false)],
+            ..definition("id")
+        }))
+        .always(FakeReply::ok(TableDefinition {
+            columns: vec![
+                integer_column("id", true),
+                integer_column("name", false),
+                integer_column("email", false),
+            ],
+            ..definition("id")
+        }));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let loading = Rc::new(RefCell::new(Vec::new()));
+    let sink = loading.clone();
+    harness
+        .tab()
+        .connect_loading_changed(move |_, busy| sink.borrow_mut().push(busy));
+
+    harness
+        .tab()
+        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+
+    assert_eq!(
+        harness.page().as_deref(),
+        Some("editor"),
+        "the read after the save blanked the tab"
+    );
+    wait_until(WAIT, || column_rows(harness.tab()).len() == 3).expect("the columns the save left");
+    assert_eq!(harness.column_names(), ["id", "name", "email"]);
+    assert_eq!(
+        CallCounters::get(&harness.fake.connection.counters().fetch_table_definition),
+        2
+    );
+    assert_eq!(*loading.borrow(), [true, false]);
 }
 
 /// The control named `name` in the row the Columns list shows at
@@ -1194,4 +1404,115 @@ fn add_foreign_key_from_the_tab_adds_the_key() {
         (vec!["id".to_owned()], vec!["id".to_owned()])
     );
     window.destroy();
+}
+
+/// Ctrl+S saves as the Save button does, and only while the button could.
+#[gtk4::test]
+fn ctrl_s_saves_while_save_is_on() {
+    use crate::application::ShortcutOwner;
+    use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(TableDefinition {
+        columns: vec![integer_column("id", true)],
+        ..definition("id")
+    }));
+    adw::init().expect("libadwaita initialises under the test backend");
+    crate::register_test_resources();
+    let runtime = crate::test_support::test_runtime();
+    let fake = FakeSession::start(script, [], runtime.tasks());
+    let tab = StructureTab::new(StructureTabInit {
+        tracker: StructureTrackerHandle::default(),
+        schema: None,
+        table: "users".to_owned(),
+        mode: StructureMode::Edit,
+        session: fake.session.clone(),
+        tasks: runtime.tasks(),
+    });
+    wait_until(WAIT, || {
+        tab.imp().inner_stack.visible_child_name().as_deref() == Some("editor")
+    })
+    .expect("the structure");
+    let saves = std::rc::Rc::new(std::cell::Cell::new(0));
+    let counter = saves.clone();
+    tab.connect_save_requested(move |_| counter.set(counter.get() + 1));
+    let ctrl_s = shortcuts(&owner_controller(&tab, ShortcutOwner::StructureTab).expect("the tab's keys"))
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&keystroke("<Primary>s")))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("Ctrl+S is bound");
+    let press = || ctrl_s.activate(gtk::ShortcutActionFlags::empty(), &tab, None);
+
+    assert!(!press(), "Ctrl+S was taken with nothing to save");
+    tab.send(StructureTabInput::ColumnEdited {
+        column: column_object(&tab, 0),
+        field: ColumnField::Default("42".to_owned()),
+    });
+    assert!(press());
+
+    assert_eq!(saves.get(), 1);
+    drop(tab);
+    drain_main_context();
+    runtime.shutdown();
+}
+
+#[gtk4::test]
+fn icon_buttons_are_labelled_without_accelerator_hints() {
+    let table = TableDefinition {
+        table: TableRef::unqualified("users"),
+        columns: vec![integer_column("id", true), integer_column("team_id", false)],
+        primary_key: Some(PrimaryKeyConstraint {
+            name: Some("users_pkey".to_owned()),
+            columns: vec!["id".to_owned()],
+        }),
+        indexes: vec![tablepro_core::IndexInfo {
+            name: "users_team_idx".to_owned(),
+            keys: vec![tablepro_core::meta::IndexKey::Column {
+                name: "team_id".to_owned(),
+                descending: false,
+            }],
+            unique: false,
+            primary: false,
+            predicate: None,
+        }],
+        foreign_keys: vec![tablepro_core::ForeignKeyInfo {
+            name: "users_team_fk".to_owned(),
+            columns: vec!["team_id".to_owned()],
+            ref_schema: None,
+            ref_table: "teams".to_owned(),
+            ref_columns: vec!["id".to_owned()],
+            on_delete: None,
+            on_update: None,
+        }],
+        inbound_foreign_keys: Vec::new(),
+        source: None,
+    };
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(table));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    drain_main_context();
+    let tab = harness.tab();
+    for row in descendants(tab)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::ExpanderRow>().ok())
+    {
+        row.set_expanded(true);
+    }
+    let removes = descendants(tab)
+        .into_iter()
+        .filter(|widget| ["col-remove", "index-remove", "fk-remove"].contains(&widget.widget_name().as_str()))
+        .count();
+    let suggestions = descendants(tab)
+        .into_iter()
+        .filter(|widget| widget.is::<gtk::MenuButton>())
+        .count();
+
+    assert_eq!(removes, 4, "a column, index or foreign key row is missing");
+    assert!(suggestions > 0, "no column offers its suggested types");
+    assert_eq!(crate::test_support::unlabelled_icon_buttons(tab), Vec::<String>::new());
+    assert_eq!(crate::test_support::tooltips_with_keys(tab), Vec::<String>::new());
 }

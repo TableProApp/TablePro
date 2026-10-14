@@ -3,16 +3,23 @@
 
 pub const DIALOG_ERROR: &str = "dialog-error-symbolic";
 pub const DIALOG_WARNING: &str = "dialog-warning-symbolic";
+pub const DOCUMENT_EDIT: &str = "document-edit-symbolic";
+/// Not in Adwaita; the app's resources carry it, as GNOME Text Editor's do.
+pub const DOCUMENT_MODIFIED: &str = "document-modified-symbolic";
 pub const DOCUMENT_OPEN: &str = "document-open-symbolic";
 pub const DOCUMENT_OPEN_RECENT: &str = "document-open-recent-symbolic";
 pub const DOCUMENT_SAVE: &str = "document-save-symbolic";
 pub const EDIT_CLEAR: &str = "edit-clear-symbolic";
 pub const EDIT_COPY: &str = "edit-copy-symbolic";
+pub const EDIT_DELETE: &str = "edit-delete-symbolic";
+pub const EDIT_FIND_REPLACE: &str = "edit-find-replace-symbolic";
 pub const FOLDER: &str = "folder-symbolic";
+pub const GO_DOWN: &str = "go-down-symbolic";
 pub const GO_FIRST: &str = "go-first-symbolic";
 pub const GO_LAST: &str = "go-last-symbolic";
 pub const GO_NEXT: &str = "go-next-symbolic";
 pub const GO_PREVIOUS: &str = "go-previous-symbolic";
+pub const GO_UP: &str = "go-up-symbolic";
 pub const LIST_ADD: &str = "list-add-symbolic";
 pub const LIST_REMOVE: &str = "list-remove-symbolic";
 pub const MEDIA_PLAYBACK_STOP: &str = "media-playback-stop-symbolic";
@@ -34,6 +41,7 @@ pub const USER_TRASH: &str = "user-trash-symbolic";
 pub const VIEW_GRID: &str = "view-grid-symbolic";
 pub const VIEW_LIST: &str = "view-list-symbolic";
 pub const VIEW_MORE: &str = "view-more-symbolic";
+pub const VIEW_PAGED: &str = "view-paged-symbolic";
 pub const VIEW_PIN: &str = "view-pin-symbolic";
 pub const VIEW_REVEAL: &str = "view-reveal-symbolic";
 pub const VIEW_SORT_ASCENDING: &str = "view-sort-ascending-symbolic";
@@ -49,16 +57,22 @@ pub const WINDOW_CLOSE: &str = "window-close-symbolic";
 pub const ALL: &[&str] = &[
     DIALOG_ERROR,
     DIALOG_WARNING,
+    DOCUMENT_EDIT,
+    DOCUMENT_MODIFIED,
     DOCUMENT_OPEN,
     DOCUMENT_OPEN_RECENT,
     DOCUMENT_SAVE,
     EDIT_CLEAR,
     EDIT_COPY,
+    EDIT_DELETE,
+    EDIT_FIND_REPLACE,
     FOLDER,
+    GO_DOWN,
     GO_FIRST,
     GO_LAST,
     GO_NEXT,
     GO_PREVIOUS,
+    GO_UP,
     LIST_ADD,
     LIST_REMOVE,
     MEDIA_PLAYBACK_STOP,
@@ -80,6 +94,7 @@ pub const ALL: &[&str] = &[
     VIEW_GRID,
     VIEW_LIST,
     VIEW_MORE,
+    VIEW_PAGED,
     VIEW_PIN,
     VIEW_REVEAL,
     VIEW_SORT_ASCENDING,

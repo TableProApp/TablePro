@@ -33,7 +33,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use relm4::prelude::*;
+use libadwaita::prelude::AdwApplicationWindowExt;
 
 use tablepro_core::DriverError;
 use tablepro_session::connect::StoreConnectionWrites;
@@ -45,20 +45,19 @@ use tablepro_session::{
 };
 use tablepro_storage::{CredentialDemand, SavedConnection};
 
-use self::connect_failed_page::ConnectFailedPage;
-use self::connecting_page::ConnectingPage;
-use self::picker_page::PickerPage;
+pub(super) use self::connect_failed_page::ConnectFailedPage;
+pub(super) use self::connecting_page::ConnectingPage;
+pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::SessionPage;
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
 pub(crate) use self::session_window_input::SessionWindowInput;
 use self::sqlite_location_dialog::FileCheck;
-pub(crate) use self::window_actions::install_window_shortcuts;
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
 use crate::ui::connect_dialog::ConnectSubmission;
-use crate::ui::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
+use crate::ui::welcome_view::WelcomeView;
 use crate::ui::workspace::{Workspace, WorkspaceInit, WorkspaceInput};
 use crate::workspace::{
     ApplicationInhibit, CloseDecision, CloseGuards, CloseReason, InhibitReason, WindowInhibitor, WorkspaceHandle,
@@ -122,7 +121,6 @@ impl SessionWindow {
         }
         crate::ui::window_geometry::restore(self.upcast_ref(), &services.settings);
         window_actions::install(self.upcast_ref(), &input);
-        install_window_shortcuts(self.upcast_ref());
         imp.prompt_presenter
             .replace(Some(crate::ui::credential_prompt::CredentialPromptPresenter::start(
                 prompts, self,
@@ -139,26 +137,20 @@ impl SessionWindow {
         imp.inhibitor
             .replace(Some(WindowInhibitor::new(ApplicationInhibit::new(self))));
 
-        let welcome_input = input.clone();
-        let welcome = WelcomeView::builder()
-            .launch(WelcomeViewInit {
-                tasks: Some(services.tasks.clone()),
-            })
-            .connect_receiver(move |_, out| {
-                welcome_input.deliver(match out {
-                    WelcomeViewOutput::OpenConnect => SessionWindowInput::OpenConnectDialog,
-                    WelcomeViewOutput::OpenSaved(saved) => SessionWindowInput::OpenSaved(Box::new(saved)),
-                    WelcomeViewOutput::Delete(id) => SessionWindowInput::DeleteConnection(id),
-                    WelcomeViewOutput::Duplicate(saved) => SessionWindowInput::DuplicateConnection(Box::new(saved)),
-                    WelcomeViewOutput::SetColor(id, color) => SessionWindowInput::SetConnectionColor(id, color),
-                    WelcomeViewOutput::SetGroup(id, group) => SessionWindowInput::SetConnectionGroup(id, group),
-                });
-            });
-        let picker = PickerPage::new(welcome.widget());
+        let list = services.saved_connections.clone();
+        let welcome = WelcomeView::new(list.clone(), Some(services.tasks.clone()));
+        crate::ui::picker::install_picker_actions(&welcome, list.clone(), input.clone());
+        let picker = PickerPage::new(&welcome, self.application().as_ref());
         let reset_input = input.clone();
         picker
             .banner()
             .connect_button_clicked(move |_| reset_input.deliver(SessionWindowInput::ResetConnectionList));
+        let window = self.downgrade();
+        imp.list_observer.set(Some(list.connect_state_changed(move |_| {
+            if let Some(window) = window.upgrade() {
+                window.show_connection_list_banner();
+            }
+        })));
         imp.welcome.replace(Some(welcome));
         let _ = imp.picker.set(picker);
         let _ = imp.state.set(WindowState {
@@ -168,7 +160,8 @@ impl SessionWindow {
         });
 
         self.show_page(SessionPage::Picker);
-        input.deliver(SessionWindowInput::ReloadConnections);
+        self.show_connection_list_banner();
+        input.deliver(SessionWindowInput::LoadConnections);
         match launch {
             WindowLaunch::Picker => {}
             WindowLaunch::Connect(saved) => input.deliver(SessionWindowInput::OpenSaved(saved)),
@@ -182,6 +175,12 @@ impl SessionWindow {
                 input.deliver(SessionWindowInput::Restore(key));
             }
         }
+    }
+
+    /// The banner over the picker that says the list cannot be read.
+    #[cfg(test)]
+    pub(crate) fn connection_list_banner(&self) -> Option<adw::Banner> {
+        self.imp().picker.get().map(PickerPage::banner)
     }
 
     /// What the window's actions, pages and background work send it.
@@ -211,13 +210,20 @@ impl SessionWindow {
         self.page_is(|page| matches!(page, SessionPage::Connecting { .. } | SessionPage::Workspace { .. }))
     }
 
-    /// Whether the window holds logout back now.
+    /// Whether the window holds logout back now, for its unsaved
+    /// changes or for an export its workspace is writing.
     pub(crate) fn is_inhibiting(&self) -> bool {
-        self.imp()
-            .inhibitor
-            .borrow()
-            .as_ref()
-            .is_some_and(WindowInhibitor::is_held)
+        let exporting = self
+            .workspace()
+            .and_then(|workspace| workspace.exports())
+            .is_some_and(|exports| exports.is_inhibiting());
+        exporting
+            || self
+                .imp()
+                .inhibitor
+                .borrow()
+                .as_ref()
+                .is_some_and(WindowInhibitor::is_held)
     }
 
     /// A test session has no session manager to grant an inhibition.
@@ -242,7 +248,12 @@ impl SessionWindow {
         }
         self.release_session();
         drop(imp.dialog.take());
-        drop(imp.welcome.take());
+        if let Some(welcome) = imp.welcome.take() {
+            welcome.shutdown();
+        }
+        if let (Some(observer), Some(state)) = (imp.list_observer.take(), imp.state.get()) {
+            state.services.saved_connections.disconnect_state_changed(observer);
+        }
         drop(imp.inhibitor.take());
     }
 
@@ -335,9 +346,7 @@ impl SessionWindow {
             SessionWindowInput::LocationChosen { generation, choice } => self.on_location_chosen(generation, choice),
             SessionWindowInput::FileLocated { id, path } => self.on_file_located(id, path),
             SessionWindowInput::LocatedSaved(located) => self.on_located_saved(*located),
-            SessionWindowInput::ReloadConnections => self.on_reload_connections(),
-            SessionWindowInput::ConnectionsLoaded(connections) => self.on_connections_loaded(connections),
-            SessionWindowInput::ConnectionListUnavailable => self.show_connection_list_banner(),
+            SessionWindowInput::LoadConnections => self.on_load_connections(),
             SessionWindowInput::ResetConnectionList => self.on_reset_connection_list(),
             SessionWindowInput::SecretDeleteFailed(id, options) => self.on_secret_delete_failed(id, options),
             SessionWindowInput::DeleteConnection(id) => self.on_delete_connection(id),
@@ -353,13 +362,18 @@ impl SessionWindow {
     }
 
     fn show_toast(&self, message: &str) {
-        self.add_toast(adw::Toast::new(message));
+        self.add_toast(crate::ui::plain_toast(message));
     }
 
+    /// On the page on screen: a toast for a page left behind would never
+    /// show.
     fn add_toast(&self, toast: adw::Toast) {
         #[cfg(test)]
         self.imp().toasts.borrow_mut().push(toast.clone());
-        self.imp().toast_overlay.add_toast(toast);
+        match self.imp().page_toasts.borrow().as_ref() {
+            Some(overlay) => overlay.add_toast(toast),
+            None => tracing::debug!(title = ?toast.title(), "a toast with no page to show it on"),
+        }
     }
 
     /// Move to `page`. The page left behind drops with what it held,
@@ -368,21 +382,34 @@ impl SessionWindow {
     fn show_page(&self, page: SessionPage) {
         self.tear_down();
         let imp = self.imp();
-        let child: Option<gtk::Widget> = match &page {
+        let app = self.application();
+        let (child, toasts): (Option<gtk::Widget>, Option<adw::ToastOverlay>) = match &page {
             SessionPage::Picker => {
                 self.set_title(Some(&crate::i18n::gettext("TablePro")));
-                imp.picker.get().map(|picker| picker.clone().upcast())
+                let picker = imp.picker.get();
+                (
+                    picker.map(|picker| picker.clone().upcast()),
+                    picker.map(PickerPage::toast_overlay),
+                )
             }
-            SessionPage::Connecting { source, .. } => Some(ConnectingPage::new(&source_name(source)).upcast()),
-            SessionPage::ConnectFailed { source, failure, .. } => Some(
-                ConnectFailedPage::new(
+            SessionPage::Connecting { source, .. } => {
+                let connecting = ConnectingPage::new(&source_name(source), app.as_ref());
+                let toasts = connecting.toast_overlay();
+                (Some(connecting.upcast()), Some(toasts))
+            }
+            SessionPage::ConnectFailed { source, failure, .. } => {
+                let failed = ConnectFailedPage::new(
                     &failure.message,
                     edit_label(source, failure).as_deref(),
                     failure.reenter,
-                )
-                .upcast(),
-            ),
-            SessionPage::Workspace { workspace, .. } => Some(workspace.clone().upcast()),
+                    app.as_ref(),
+                );
+                let toasts = failed.toast_overlay();
+                (Some(failed.upcast()), Some(toasts))
+            }
+            SessionPage::Workspace { workspace, .. } => {
+                (Some(workspace.clone().upcast()), Some(workspace.toast_overlay()))
+            }
         };
         let editable = match &page {
             SessionPage::ConnectFailed { source, .. } => is_editable(source),
@@ -393,7 +420,8 @@ impl SessionWindow {
             imp.opened_for_file.set(false);
         }
         let left = imp.page.replace(page);
-        imp.toast_overlay.set_child(child.as_ref());
+        imp.page_toasts.replace(toasts);
+        self.set_content(child.as_ref());
         drop(left);
     }
 
@@ -551,7 +579,6 @@ impl SessionWindow {
         // A picker another window deleted the entry under still lists it.
         let Some(saved) = self.saved_as_stored(&saved) else {
             self.show_toast(&crate::i18n::gettext("The connection was deleted."));
-            self.on_reload_connections();
             return;
         };
         if !self.page_is(|page| matches!(page, SessionPage::Picker)) {

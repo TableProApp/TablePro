@@ -7,24 +7,9 @@ impl WorkspaceModel {
         self.row_op_spinner.set_visible(in_flight);
     }
 
-    pub(super) fn on_copy_to_clipboard(&self, text: String) {
-        match clipboard_refusal(&text) {
-            Some(refusal) => self.show_toast(&refusal),
-            None => {
-                self.toast_overlay.clipboard().set_text(&text);
-                self.show_toast(&crate::i18n::gettext("Copied to clipboard"));
-            }
-        }
+    pub(super) fn on_copy_text(&self, text: String) {
+        crate::ui::clipboard::copy_text(&self.toast_overlay, text, |message| self.show_toast(message));
     }
-}
-
-/// Why `text` cannot go on the clipboard, if it cannot.
-///
-/// The clipboard takes a C string, so a NUL would cut the copy short,
-/// and a cut copy pasted back would change the value without a word.
-fn clipboard_refusal(text: &str) -> Option<String> {
-    text.contains('\0')
-        .then(|| crate::i18n::gettext("Values with a NUL character can't be copied"))
 }
 
 #[cfg(test)]
@@ -35,12 +20,6 @@ mod tests {
     use crate::ui::session_window::tests::TestWindow;
     use crate::ui::workspace::WorkspaceInput;
 
-    #[test]
-    fn text_with_a_nul_is_refused() {
-        assert!(clipboard_refusal("a\0b").is_some());
-        assert_eq!(clipboard_refusal("a\tb\nc"), None);
-    }
-
     #[gtk4::test]
     fn a_copy_with_a_nul_says_so_and_leaves_the_clipboard_alone() {
         let test = TestWindow::connected("CopyNul");
@@ -48,11 +27,11 @@ mod tests {
         clipboard.set_text("before");
         let input = test.workspace().input().expect("the workspace's input");
 
-        input.deliver(WorkspaceInput::CopyToClipboard("a\0b".to_owned()));
+        input.deliver(WorkspaceInput::CopyText("a\0b".to_owned()));
         drain_main_context();
 
         assert_eq!(local_text(&clipboard).as_deref(), Some("before"));
-        let refusal = clipboard_refusal("a\0b").expect("a refusal");
+        let refusal = crate::ui::clipboard::ClipboardError::ContainsNul.message();
         assert!(
             descendants(&test.workspace())
                 .iter()
@@ -61,7 +40,7 @@ mod tests {
             "no toast said why"
         );
 
-        input.deliver(WorkspaceInput::CopyToClipboard("a\tb".to_owned()));
+        input.deliver(WorkspaceInput::CopyText("a\tb".to_owned()));
         drain_main_context();
         assert_eq!(local_text(&clipboard).as_deref(), Some("a\tb"));
     }

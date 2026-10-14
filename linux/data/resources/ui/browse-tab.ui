@@ -10,6 +10,12 @@
              banner collapsed. -->
         <property name="top-bar-style">flat</property>
         <child type="top">
+          <object class="AdwBanner" id="stale_banner">
+            <property name="title" translatable="yes">Couldn't refresh rows. Showing the last loaded page.</property>
+            <property name="use-markup">false</property>
+          </object>
+        </child>
+        <child type="top">
           <object class="AdwBanner" id="read_only_banner">
             <property name="title" translatable="yes">Read-only connection. Editing disabled.</property>
           </object>
@@ -56,7 +62,17 @@
                 <property name="child">
                   <object class="AdwStatusPage" id="error_page">
                     <property name="icon-name">dialog-error-symbolic</property>
-                    <property name="title" translatable="yes">Couldn't load rows</property>
+                    <property name="title" translatable="yes">Couldn't Load Rows</property>
+                    <property name="child">
+                      <object class="GtkButton" id="retry_button">
+                        <property name="label" translatable="yes">Try Again</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="pill"/>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </property>
                   </object>
                 </property>
               </object>
@@ -68,8 +84,7 @@
             <child type="start">
               <object class="GtkButton" id="insert_button">
                 <property name="icon-name">list-add-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Insert row (Ctrl+N)</property>
-                <property name="sensitive">false</property>
+                <property name="action-name">browse.insert-row</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -78,8 +93,7 @@
             <child type="start">
               <object class="GtkButton" id="delete_button">
                 <property name="icon-name">list-remove-symbolic</property>
-                <property name="action-name">tab.delete-rows</property>
-                <property name="tooltip-text" translatable="yes">Delete selected rows (Delete)</property>
+                <property name="action-name">browse.delete-rows</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -95,28 +109,24 @@
                 <child>
                   <object class="GtkButton" id="first_button">
                     <property name="icon-name">go-first-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">First page</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
                 <child>
                   <object class="GtkButton" id="prev_button">
                     <property name="icon-name">go-previous-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Previous page (Page Up)</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
                 <child>
                   <object class="GtkButton" id="next_button">
                     <property name="icon-name">go-next-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Next page (Page Down)</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
                 <child>
                   <object class="GtkButton" id="last_button">
                     <property name="icon-name">go-last-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Last page</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
@@ -128,6 +138,31 @@
                 <style>
                   <class name="dimmed"/>
                 </style>
+              </object>
+            </child>
+            <child type="start">
+              <!-- An exact count can scan the whole table, so it runs
+                   when asked, except for a table small enough. -->
+              <object class="GtkButton" id="count_button">
+                <property name="visible">false</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="AdwSpinner" id="count_spinner">
+                        <property name="visible">false</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="count_label">
+                        <property name="label" translatable="yes">Count Rows</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
               </object>
             </child>
             <child type="start">
@@ -144,7 +179,6 @@
             <child type="end">
               <object class="GtkButton" id="export_button">
                 <property name="icon-name">document-save-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Export results</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -155,8 +189,8 @@
                    filtering rows, and the search icons mean Ctrl+F's
                    other use. -->
               <object class="GtkButton" id="filter_button">
-                <property name="tooltip-text" translatable="yes">Filter rows (Ctrl+F)</property>
-                <property name="action-name">win.open-filter</property>
+                <property name="tooltip-text" translatable="yes">Filter rows</property>
+                <property name="action-name">browse.filter</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -221,7 +255,7 @@
                 <child type="end">
                   <object class="GtkButton" id="save_button">
                     <property name="label" translatable="yes">Save</property>
-                    <property name="tooltip-text" translatable="yes">Save pending edits (Ctrl+S)</property>
+                    <property name="tooltip-text" translatable="yes">Save pending edits</property>
                     <style>
                       <class name="suggested-action"/>
                     </style>

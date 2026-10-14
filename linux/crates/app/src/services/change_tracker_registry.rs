@@ -1,13 +1,7 @@
-use super::tab_registry::{TabRegistry, TrackerHandle};
+use super::tab_registry::TabRegistry;
 use super::tab_tracker_handle::TabTrackerHandle;
 
 pub type ChangeTrackerRegistry = TabRegistry<TabTrackerHandle>;
-
-impl TrackerHandle for TabTrackerHandle {
-    fn has_pending(&self) -> bool {
-        self.pending_count() > 0
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -36,23 +30,20 @@ mod tests {
         edit(&first.register(tab));
         let other = second.register(tab);
 
-        assert_eq!(first.dirty(), vec![tab]);
-        assert!(second.dirty().is_empty());
+        assert_eq!(first.get(tab).map(|tracker| tracker.pending_count()), Some(1));
         assert_eq!(other.pending_count(), 0);
     }
 
     #[test]
-    fn dirty_lists_only_pending_tabs() {
+    fn a_discard_empties_the_tabs_tracker() {
         let registry = ChangeTrackerRegistry::default();
         let edited = Uuid::new_v4();
-        let clean = Uuid::new_v4();
         edit(&registry.register(edited));
-        registry.register(clean);
-
-        assert_eq!(registry.dirty(), vec![edited]);
+        registry.register(Uuid::new_v4());
 
         let _ = registry.get(edited).expect("registered").discard();
-        assert!(registry.dirty().is_empty());
+
+        assert_eq!(registry.register(edited).pending_count(), 0);
     }
 
     #[test]
@@ -65,7 +56,6 @@ mod tests {
 
         registry.unregister(tab);
         assert!(registry.get(tab).is_none());
-        assert!(registry.dirty().is_empty());
         assert_eq!(registry.register(tab).pending_count(), 0);
     }
 }

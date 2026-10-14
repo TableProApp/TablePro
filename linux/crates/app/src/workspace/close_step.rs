@@ -1,10 +1,16 @@
-use super::{CloseScope, DirtyKind, DirtyTab};
+use super::{CloseBlockPrompt, CloseScope, DirtyKind, DirtyTab};
 
-/// What a close has to settle next, in the order it settles them: a
+/// What a close has to settle next, in the order it settles them: work
+/// that is not a tab's is asked about before anything is discarded, a
 /// save still running decides what the others are, and an outcome
 /// nobody knows comes before anything is saved again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CloseStep {
+    /// The workspace's `blocker`th close blocker has work running.
+    StopBlocker {
+        blocker: usize,
+        prompt: CloseBlockPrompt,
+    },
     WaitForSaves,
     ResolveUnknownOutcome(Vec<DirtyTab>),
     ConfirmOpenTransactions(Vec<DirtyTab>),

@@ -62,6 +62,7 @@ tablepro-driver-mssql = { path = "../drivers/mssql" }
 tablepro-driver-mysql = { path = "../drivers/mysql" }
 tablepro-driver-postgres = { path = "../drivers/postgres" }
 tablepro-driver-sqlite = { path = "../drivers/sqlite" }
+async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
 serde.workspace = true
@@ -87,6 +88,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
+# Counts grouped the way the user's locale groups digits.
+icu_decimal = { version = "2.3", features = ["alloc"] }
+icu_locale_core = { version = "2.3", features = ["alloc"] }
 sqlformat = "0.5"
 
 [dev-dependencies]
@@ -100,6 +104,8 @@ tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 # bridge the way it does.
 log = "0.4"
 tracing-log = "0.2"
+# Real key presses through XTEST, which GDK reads as it reads a keyboard.
+x11rb = { version = "0.14", features = ["xtest"] }
 
 [build-dependencies]
 glib-build-tools.workspace = true

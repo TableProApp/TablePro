@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use tablepro_core::ddl::TableDefinition;
 use tablepro_core::dialect::SqlDialect;
-use tablepro_session::OperationError;
 
 use crate::runtime::Stamped;
+use crate::ui::tab_load::LoadFailure;
 
 /// The one read a structure tab makes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -24,5 +24,5 @@ pub(crate) struct LoadedStructure {
 /// reply to a replaced request is dropped.
 #[derive(Debug)]
 pub(crate) enum StructureCommand {
-    Loaded(Stamped<Result<LoadedStructure, OperationError>>),
+    Loaded(Stamped<Result<LoadedStructure, LoadFailure>>),
 }

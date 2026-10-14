@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use gtk4::glib;
@@ -5,6 +6,7 @@ use gtk4::prelude::*;
 use tablepro_core::EditorSession;
 use uuid::Uuid;
 
+use super::unsaved_icon::apply_unsaved_icon;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 use crate::runtime::DeliverInput;
@@ -62,9 +64,7 @@ impl WorkspaceModel {
     /// A tab asked to close. One with nothing to lose closes now; any
     /// other waits for the prompts.
     pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid) {
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.tab_view.clone();
         if self.close_guards.may_close_tab(&self.workspace_handle, id) {
             self.finish_close_workspace_tab(id, &tab_view);
             return;
@@ -83,9 +83,7 @@ impl WorkspaceModel {
     }
 
     pub(super) fn on_tab_close_decided(&mut self, id: Uuid, approved: bool) {
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.tab_view.clone();
         if approved {
             self.finish_close_workspace_tab(id, &tab_view);
             return;
@@ -96,10 +94,14 @@ impl WorkspaceModel {
         }
     }
 
-    /// Tell the window whether a logout would lose something here, so it
-    /// holds the session back while one would.
-    pub(super) fn refresh_inhibitor(&self) {
-        let dirty = !self.workspace_handle.dirty_tabs().is_empty();
+    /// Mark each tab that closing would lose something in, and tell the
+    /// window whether a logout would, so it holds the session back.
+    pub(super) fn refresh_unsaved(&self) {
+        let unsaved: HashSet<Uuid> = self.workspace_handle.dirty_tabs().iter().map(|tab| tab.id).collect();
+        for (id, tab) in self.workspace_tabs.borrow().iter() {
+            apply_unsaved_icon(tab.page(), unsaved.contains(id));
+        }
+        let dirty = !unsaved.is_empty();
         if self.reported_dirty.replace(Some(dirty)) == Some(dirty) {
             return;
         }
@@ -126,8 +128,9 @@ mod tests {
     use crate::services::active_session::ActiveSession;
     use crate::test_support::{FakeSession, MemorySettings, wait_until};
     use crate::ui::editor::{SqlEditor, SqlEditorInit};
+    use crate::ui::workspace::EditorTabSlot;
+    use crate::ui::workspace::tab_index::TabIndex;
     use crate::ui::workspace::window_tabs::WindowTabs;
-    use crate::ui::workspace::{EditorTabSlot, write_workspace_tab_id};
     use crate::workspace::{TabDirectory, TabEntry};
 
     const WAIT: Duration = Duration::from_secs(10);
@@ -162,19 +165,21 @@ mod tests {
         wait_until(WAIT, || !editor.is_running()).expect("the run to end");
         let view = adw::TabView::new();
         let page = view.append(&editor);
-        page.set_title("• Query 1");
+        page.set_title("Query 1");
         let id = Uuid::new_v4();
-        write_workspace_tab_id(&page, id);
+        let index = Rc::new(TabIndex::default());
+        index.insert(&page, id);
         let tabs: WorkspaceTabs = Rc::new(RefCell::new(HashMap::from([(
             id,
             WorkspaceTab::Editor(EditorTabSlot {
                 editor: editor.clone(),
                 page,
                 draft: DraftId::new(),
+                ordinal: 1,
+                label: crate::ui::workspace::editor_label::EditorLabel::Untitled(1),
             }),
         )])));
-        let directory = WindowTabs::new(tabs.clone());
-        directory.set_view(Some(&view));
+        let directory = WindowTabs::new(tabs.clone(), index, &view);
 
         assert_eq!(
             directory.tabs(),

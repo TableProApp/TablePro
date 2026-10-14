@@ -4,7 +4,6 @@ use std::sync::OnceLock;
 
 use glib::subclass::Signal;
 use gtk4 as gtk;
-use gtk4::gdk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -20,6 +19,8 @@ pub struct BrowseTab {
     #[template_child]
     pub toolbar: TemplateChild<adw::ToolbarView>,
     #[template_child]
+    pub stale_banner: TemplateChild<adw::Banner>,
+    #[template_child]
     pub read_only_banner: TemplateChild<adw::Banner>,
     #[template_child]
     pub no_pk_banner: TemplateChild<adw::Banner>,
@@ -31,6 +32,8 @@ pub struct BrowseTab {
     pub grid_holder: TemplateChild<gtk::Box>,
     #[template_child]
     pub error_page: TemplateChild<adw::StatusPage>,
+    #[template_child]
+    pub retry_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub insert_button: TemplateChild<gtk::Button>,
     #[template_child]
@@ -45,6 +48,12 @@ pub struct BrowseTab {
     pub last_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub paginator_label: TemplateChild<gtk::Label>,
+    #[template_child]
+    pub count_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub count_spinner: TemplateChild<adw::Spinner>,
+    #[template_child]
+    pub count_label: TemplateChild<gtk::Label>,
     #[template_child]
     pub selection_label: TemplateChild<gtk::Label>,
     #[template_child]
@@ -83,7 +92,6 @@ impl ObjectSubclass for BrowseTab {
 
     fn class_init(klass: &mut Self::Class) {
         klass.bind_template();
-        install_bindings(klass);
     }
 
     fn instance_init(object: &glib::subclass::InitializingObject<Self>) {
@@ -91,81 +99,17 @@ impl ObjectSubclass for BrowseTab {
     }
 }
 
-/// The grid's keyboard model. The bindings act only while the focus is
-/// inside this tab, so the editor and the other tabs keep their own.
-fn install_bindings(klass: &mut <BrowseTab as ObjectSubclass>::Class) {
-    let none = gdk::ModifierType::empty();
-    let ctrl = gdk::ModifierType::CONTROL_MASK;
-    let send = |input: fn() -> BrowseTabInput, propagation: glib::Propagation| {
-        move |tab: &super::BrowseTab| {
-            tab.send(input());
-            propagation
-        }
-    };
-    // Esc clears a multi-row selection and lets the key go on, so a
-    // search bar or dialog above still closes on it.
-    klass.add_binding(
-        gdk::Key::Escape,
-        none,
-        send(|| BrowseTabInput::ClearSelection, glib::Propagation::Proceed),
-    );
-    klass.add_binding(
-        gdk::Key::n,
-        ctrl,
-        send(|| BrowseTabInput::InsertRow, glib::Propagation::Stop),
-    );
-    // A cell editor's text field consumes Ctrl+C and Ctrl+V first, so
-    // these only see the grid's own copy and paste.
-    klass.add_binding(
-        gdk::Key::c,
-        ctrl,
-        send(|| BrowseTabInput::CopySelectedRowsAsTsv, glib::Propagation::Stop),
-    );
-    klass.add_binding(
-        gdk::Key::v,
-        ctrl,
-        send(|| BrowseTabInput::PasteNotSupported, glib::Propagation::Stop),
-    );
-    klass.add_binding(
-        gdk::Key::a,
-        ctrl,
-        send(|| BrowseTabInput::SelectAllRows, glib::Propagation::Stop),
-    );
-    // Paging is by offset, so scrolling stops at the page edge; Page Up
-    // and Page Down move between pages instead.
-    klass.add_binding(
-        gdk::Key::Page_Up,
-        none,
-        send(|| BrowseTabInput::PrevPage, glib::Propagation::Stop),
-    );
-    klass.add_binding(
-        gdk::Key::Page_Down,
-        none,
-        send(|| BrowseTabInput::NextPage, glib::Propagation::Stop),
-    );
-    klass.add_binding(
-        gdk::Key::Home,
-        ctrl,
-        send(|| BrowseTabInput::GoToFirstRow, glib::Propagation::Stop),
-    );
-    klass.add_binding(
-        gdk::Key::End,
-        ctrl,
-        send(|| BrowseTabInput::GoToLastRow, glib::Propagation::Stop),
-    );
-}
-
 impl ObjectImpl for BrowseTab {
+    fn constructed(&self) {
+        self.parent_constructed();
+        super::browse_actions::describe_buttons(&self.obj());
+    }
+
     fn signals() -> &'static [Signal] {
         static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
         SIGNALS.get_or_init(|| {
             vec![
                 Signal::builder("state-changed").build(),
-                // Boxed: a GValue string ends at a NUL, and a copied cell
-                // can hold one.
-                Signal::builder("copy-to-clipboard")
-                    .param_types([glib::BoxedAnyObject::static_type()])
-                    .build(),
                 Signal::builder("export-results")
                     .param_types([glib::BoxedAnyObject::static_type()])
                     .build(),
@@ -177,7 +121,11 @@ impl ObjectImpl for BrowseTab {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("save-requested").build(),
+                Signal::builder("loading-changed")
+                    .param_types([bool::static_type()])
+                    .build(),
                 Signal::builder("stop-save-requested").build(),
+                Signal::builder("refresh-requested").build(),
             ]
         })
     }

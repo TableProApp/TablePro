@@ -10,7 +10,4 @@ use super::RowObject;
 pub struct GridContent {
     pub columns: Arc<[ResultColumn]>,
     pub rows: Vec<RowObject>,
-    /// From the read that filled the grid, so Export Results reports the
-    /// same cut the footer does.
-    pub truncated: bool,
 }

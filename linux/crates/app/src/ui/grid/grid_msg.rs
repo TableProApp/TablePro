@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
-use tablepro_core::QueryResult;
-
-use super::{CellPreset, RowObject};
+use super::{CellPreset, RowJsonRequest, RowObject};
 use crate::services::tracker_edit::TrackerEdit;
+use crate::ui::clipboard::{CopyRequest, InClauseRows};
+use crate::ui::export::ExportSource;
 
 /// Where a grid sends its events. The owner holds the grid, so the
 /// closure holds the owner weakly.
@@ -20,11 +20,15 @@ pub enum GridMsg {
         column: usize,
         edit: TrackerEdit,
     },
-    CopyToClipboard(String),
+    /// Rows to copy, which the owner renders off the GTK thread.
+    Copy(CopyRequest),
+    ShowRowJson(RowJsonRequest),
     ShowToast(String),
     CopyRowsAsInsert {
         rows: Vec<RowObject>,
     },
+    /// The owner knows the engine whose literals the list is written in.
+    CopyInClause(InClauseRows),
     /// An intent the tab resolves against the column, so the keyboard
     /// path and the menu reach the same value.
     SetCellValue {
@@ -32,7 +36,7 @@ pub enum GridMsg {
         column: usize,
         preset: CellPreset,
     },
-    ExportResults(QueryResult),
+    ExportResults(ExportSource),
     DeleteRows {
         rows: Vec<RowObject>,
     },

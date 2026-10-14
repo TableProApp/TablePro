@@ -1,8 +1,7 @@
 use crate::column::ResultColumn;
 use crate::value::Value;
 
-use super::value_text::value_text;
-use super::{EncodeError, column_type, finish};
+use super::encoder::{EncodeError, TsvEncoder, encode_rows};
 
 /// A tab, a line break or a quote inside a value would move the following
 /// text into the next column or the next row, so such a value is quoted
@@ -19,16 +18,7 @@ pub fn tsv_writer_builder() -> csv::WriterBuilder {
 }
 
 pub fn render_tsv(columns: &[ResultColumn], rows: &[Vec<Value>], with_headers: bool) -> Result<String, EncodeError> {
-    let mut writer = tsv_writer_builder().from_writer(Vec::new());
-    if with_headers {
-        writer.write_record(columns.iter().map(|column| column.name.as_str()))?;
-    }
-    for row in rows {
-        writer.write_record(row.iter().enumerate().map(|(index, value)| {
-            value_text(value, column_type(columns, index)).unwrap_or_else(|| "NULL".to_string())
-        }))?;
-    }
-    finish(writer)
+    encode_rows(TsvEncoder::new(columns.into(), with_headers), rows)
 }
 
 #[cfg(test)]
@@ -59,6 +49,22 @@ mod tests {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("say \"hi\"".into())]];
         assert_eq!(render_tsv(&columns, &rows, false).unwrap(), "\"say \"\"hi\"\"\"\n");
+    }
+
+    /// A spreadsheet runs a pasted cell that starts like a formula.
+    #[test]
+    fn tsv_neutralises_a_formula_in_free_text() {
+        let columns = cols(&["=sum", "b", "c"]);
+        let rows = vec![vec![
+            Value::Text("=cmd|' /C calc'!A0".into()),
+            Value::Int(-5),
+            Value::Text("-5".into()),
+        ]];
+
+        assert_eq!(
+            render_tsv(&columns, &rows, true).unwrap(),
+            "'=sum\tb\tc\n'=cmd|' /C calc'!A0\t-5\t-5\n"
+        );
     }
 
     #[test]

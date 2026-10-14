@@ -18,9 +18,11 @@ use crate::services::active_session::ActiveSession;
 use crate::services::connection_deletion::ConnectionDeletion;
 use crate::services::history_preferences::HistoryPreferences;
 use crate::services::history_service::HistoryService;
+use crate::services::saved_connection_list::SavedConnectionList;
 use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
 use crate::storage::{AppStorage, SharedStorage};
 use crate::ui::credential_prompt::{GtkCredentialPrompter, PromptQueue};
+use crate::ui::file_reveal::{FileLauncherRevealer, FileRevealer};
 use crate::workspace::OpenSessions;
 
 /// What every window of the application shares. GTK-thread only.
@@ -33,6 +35,10 @@ pub struct AppServices {
     pub settings: Rc<AppSettings>,
     pub storage: SharedStorage,
     pub tasks: Tasks,
+    /// The saved connections every picker shows, following the store.
+    pub saved_connections: Rc<SavedConnectionList>,
+    /// Shows a file selected in the file manager.
+    pub(crate) file_revealer: Rc<dyn FileRevealer>,
     /// Where each session's secrets come from.
     credentials: Rc<dyn CredentialSourceFactory>,
     /// Bound to the application once it exists, which is after this.
@@ -70,6 +76,7 @@ impl AppServices {
         } = parts;
         let application_hold = Rc::new(GioProcessHold::default());
         let open_sessions = OpenSessions::new(storage.workspaces().clone(), application_hold.clone());
+        let saved_connections = SavedConnectionList::follow(storage.connections());
         Self {
             drivers: Arc::new(drivers),
             connector,
@@ -80,6 +87,8 @@ impl AppServices {
             credentials: Rc::new(KeyringSources::new(storage.secrets().clone())),
             storage: Rc::new(storage),
             tasks,
+            saved_connections,
+            file_revealer: Rc::new(FileLauncherRevealer),
             hold: application_hold.clone(),
             application_hold,
             open_sessions,

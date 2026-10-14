@@ -2,6 +2,7 @@ use tablepro_core::WriteKind;
 use uuid::Uuid;
 
 use super::SaveOutcome;
+use crate::services::change_origins::ChangeOrigins;
 use crate::services::change_tracker::StatementSource;
 
 /// A save that ended, after its tracker and the ledger took the outcome
@@ -16,4 +17,6 @@ pub struct SaveSettled {
     /// The name a structure save leaves the table with, when it created
     /// or renamed one.
     pub saved_table_name: Option<String>,
+    /// The rows a row save adds and removes.
+    pub origins: ChangeOrigins,
 }

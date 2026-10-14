@@ -56,6 +56,14 @@ impl<K: Eq + Hash + Copy> RequestSequencer<K> {
         self.current.contains_key(&kind)
     }
 
+    /// Stop the request of this kind still running; its reply is then
+    /// refused.
+    pub fn cancel(&mut self, kind: K) {
+        if let Some((_, cancel)) = self.current.remove(&kind) {
+            cancel.cancel();
+        }
+    }
+
     pub fn cancel_all(&mut self) {
         for (_, (_, cancel)) in self.current.drain() {
             cancel.cancel();
@@ -133,6 +141,20 @@ mod tests {
 
         assert!(!sequencer.accept(Kind::Count, page.stamp));
         assert!(sequencer.is_pending(Kind::Page));
+    }
+
+    #[test]
+    fn cancel_stops_only_its_kind() {
+        let mut sequencer = RequestSequencer::new();
+        let page = sequencer.issue(Kind::Page);
+        let count = sequencer.issue(Kind::Count);
+
+        sequencer.cancel(Kind::Count);
+
+        assert!(count.cancel.is_cancelled());
+        assert!(!sequencer.accept(Kind::Count, count.stamp));
+        assert!(!page.cancel.is_cancelled());
+        assert!(sequencer.accept(Kind::Page, page.stamp));
     }
 
     #[test]

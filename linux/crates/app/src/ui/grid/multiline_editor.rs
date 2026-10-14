@@ -4,6 +4,7 @@ use sourceview5::prelude::*;
 
 use super::edit_commit::{commit_edit, send_commit};
 use super::{EditSnapshot, GridCell};
+use crate::application::{ShortcutOwner, component_trigger, controller_name};
 
 /// A popover with a source view, for text that spans lines or is too
 /// long for a one-line field. Return adds a line, so Save is a button
@@ -65,12 +66,10 @@ impl MultilineEditor {
             }
         });
         let save_shortcut = gtk::ShortcutController::new();
+        save_shortcut.set_name(Some(controller_name(ShortcutOwner::CellEditor)));
         let weak_save = save.downgrade();
         save_shortcut.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gtk::gdk::Key::Return,
-                gtk::gdk::ModifierType::CONTROL_MASK,
-            )),
+            component_trigger("cell-editor.save-text"),
             Some(gtk::CallbackAction::new(move |_, _| {
                 if let Some(save) = weak_save.upgrade() {
                     save.emit_clicked();

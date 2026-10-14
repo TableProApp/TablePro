@@ -6,7 +6,7 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
-use super::change_tracker::{DraftRow, RowKey, RowState, TabChangeTracker, TrackedChanges};
+use super::change_tracker::{DraftRow, ErrorFlash, RowKey, RowState, TabChangeTracker, TrackedChanges};
 use super::save_batch::{SaveBatch, SaveTarget};
 use super::tracker_delta::TrackerDelta;
 use super::tracker_edit::TrackerEdit;
@@ -55,6 +55,14 @@ impl TabTrackerHandle {
         self.0.borrow().pending_count()
     }
 
+    pub fn can_undo(&self) -> bool {
+        self.0.borrow().can_undo()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        self.0.borrow().can_redo()
+    }
+
     pub fn drafts(&self) -> Vec<DraftRow> {
         self.0.borrow().drafts().to_vec()
     }
@@ -84,12 +92,16 @@ impl TabTrackerHandle {
         self.0.borrow_mut().discard()
     }
 
-    pub fn flash_error_row(&self, row_key: RowKey) -> u64 {
+    pub fn flash_error_row(&self, row_key: RowKey) -> ErrorFlash {
         self.0.borrow_mut().flash_error_row(row_key)
     }
 
     pub fn clear_error_row_if(&self, generation: u64) -> bool {
         self.0.borrow_mut().clear_error_row_if(generation)
+    }
+
+    pub fn is_error_row(&self, row_key: &RowKey) -> bool {
+        self.0.borrow().is_error_row(row_key)
     }
 
     /// The table and columns the tab read, which every save is planned

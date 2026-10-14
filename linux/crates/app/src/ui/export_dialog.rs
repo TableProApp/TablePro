@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -5,9 +6,16 @@ use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
 use relm4::{adw, gtk};
 
-use tablepro_core::QueryResult;
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::export::{self, CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote, XLSX_MAX_DATA_ROWS};
+use tablepro_session::Session;
+
+use super::export::{
+    DocumentFormat, ExpectedRows, ExportFormat, ExportJob, ExportLedger, ExportOffer, ExportOrigin, ExportSource,
+    InsertTarget, RowFormat, ScopeChoice, ScopeSource, scope_choices,
+};
+use crate::i18n::gettext_f;
+use crate::ui::format::format_thousands;
 
 /// The table a result can be written back to as `INSERT` statements.
 ///
@@ -16,14 +24,6 @@ use tablepro_core::export::{self, CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOpt
 #[derive(Debug, Clone)]
 pub struct SqlTarget {
     pub table: String,
-}
-
-/// A table to insert into and the spelling of the server the rows came
-/// from. SQL is offered only with both.
-#[derive(Debug, Clone)]
-struct InsertTarget {
-    table: String,
-    dialect: Arc<dyn SqlDialect>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -86,6 +86,34 @@ impl Format {
             Format::Html => "html",
             Format::Xml => "xml",
             Format::Sql => "sql",
+        }
+    }
+
+    /// What a job writes in this format. `None` for SQL without a table
+    /// to insert into, which the dialog never offers.
+    fn job_format(self, csv: CsvOptions, name: &str, target: Option<&InsertTarget>) -> Option<ExportFormat> {
+        Some(match self {
+            Format::Csv => ExportFormat::Rows(RowFormat::Csv(csv)),
+            Format::Json => ExportFormat::Rows(RowFormat::Json),
+            Format::Markdown => ExportFormat::Rows(RowFormat::Markdown),
+            Format::Xlsx => ExportFormat::Document(DocumentFormat::Xlsx { sheet: name.to_owned() }),
+            Format::Html => ExportFormat::Rows(RowFormat::Html { title: name.to_owned() }),
+            Format::Xml => ExportFormat::Rows(RowFormat::Xml),
+            Format::Sql => ExportFormat::Rows(RowFormat::Sql(target?.clone())),
+        })
+    }
+
+    /// Why rows numbering `expected` can't be written in this format,
+    /// told before the export reads them all: a table known to hold
+    /// more rows than an Excel sheet does.
+    fn refusal(self, expected: Option<ExpectedRows>) -> Option<String> {
+        let limit = XLSX_MAX_DATA_ROWS as u64;
+        match (self, expected) {
+            (Format::Xlsx, Some(ExpectedRows::Exact(rows))) if rows > limit => Some(gettext_f(
+                "An Excel sheet holds {limit} rows, and this export has {rows}. Export it as CSV instead.",
+                &[("limit", &format_thousands(limit)), ("rows", &format_thousands(rows))],
+            )),
+            _ => None,
         }
     }
 
@@ -164,15 +192,66 @@ fn combo_row(title: &str, choices: &[&str]) -> adw::ComboRow {
         .build()
 }
 
-pub fn present(
-    parent: &adw::ApplicationWindow,
-    toast_overlay: &adw::ToastOverlay,
-    result: QueryResult,
-    name: String,
-    target: Option<SqlTarget>,
-    dialect: Option<Arc<dyn SqlDialect>>,
-    settings: &Rc<tablepro_storage::AppSettings>,
-) {
+/// What the dialog exports, and where it hands the job.
+pub(crate) struct ExportDialogInit<'a> {
+    pub parent: &'a adw::ApplicationWindow,
+    pub exports: &'a Rc<ExportLedger>,
+    pub offer: ExportOffer,
+    pub dialect: Option<Arc<dyn SqlDialect>>,
+    pub settings: &'a Rc<tablepro_storage::AppSettings>,
+}
+
+/// The Rows list: which rows the export writes, one entry per scope
+/// the origin offers.
+struct ScopeRow {
+    row: adw::ComboRow,
+    choices: Vec<ScopeChoice>,
+}
+
+impl ScopeRow {
+    fn new(origin: &ExportOrigin, can_read: bool) -> Self {
+        let mut choices = scope_choices(origin);
+        // A read of every row goes through the tab's session, and a
+        // window that disconnected has none.
+        choices.retain(|choice| can_read || choice.source == ScopeSource::Shown);
+        let titles: Vec<&str> = choices.iter().map(|choice| choice.title.as_str()).collect();
+        let row = combo_row(&crate::i18n::gettext("Rows"), &titles);
+        let preselected = origin.preselected();
+        let index = choices
+            .iter()
+            .position(|choice| choice.source == preselected)
+            .unwrap_or_default();
+        row.set_selected(u32::try_from(index).unwrap_or_default());
+        row.set_sensitive(choices.len() > 1);
+        let subtitles: Vec<String> = choices.iter().map(|choice| choice.subtitle.clone()).collect();
+        let show_subtitle = move |row: &adw::ComboRow| {
+            let subtitle = subtitles.get(row.selected() as usize).map_or("", String::as_str);
+            row.set_subtitle(subtitle);
+        };
+        show_subtitle(&row);
+        row.connect_selected_notify(show_subtitle);
+        Self { row, choices }
+    }
+
+    fn selected(&self) -> Option<&ScopeChoice> {
+        self.choices.get(self.row.selected() as usize)
+    }
+}
+
+pub(crate) fn present(init: ExportDialogInit<'_>) {
+    let ExportDialogInit {
+        parent,
+        exports,
+        offer,
+        dialect,
+        settings,
+    } = init;
+    let ExportOffer {
+        origin,
+        session,
+        name,
+        target,
+    } = offer;
     let target = target.zip(dialect).map(|(target, dialect)| InsertTarget {
         table: target.table,
         dialect,
@@ -181,15 +260,10 @@ pub fn present(
     let page = adw::PreferencesPage::new();
 
     let format_group = adw::PreferencesGroup::new();
+    let scope = ScopeRow::new(&origin, session.is_some());
+    format_group.add(&scope.row);
     let format_labels: Vec<&str> = formats.iter().map(|f| f.label()).collect();
     let format_row = combo_row(&crate::i18n::gettext("Format"), &format_labels);
-    let rows_label = crate::i18n::ngettext_f(
-        "{n} row",
-        "{n} rows",
-        result.rows.len() as u32,
-        &[("n", &result.rows.len().to_string())],
-    );
-    format_row.set_subtitle(&rows_label);
     format_group.add(&format_row);
     page.add(&format_group);
 
@@ -301,58 +375,114 @@ pub fn present(
     footer.append(&gtk::Box::builder().hexpand(true).build());
     footer.append(&export_button);
 
+    let expected = scope.choices.iter().map(|choice| choice.expected).collect();
+    refuse_what_cannot_fit(&format_row, formats, &scope.row, expected, &export_button);
+
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&adw::HeaderBar::new());
     toolbar.set_content(Some(&page));
     toolbar.add_bottom_bar(&footer);
 
     let dialog = adw::Dialog::builder()
-        .title(crate::i18n::gettext("Export Results"))
+        .title(crate::i18n::gettext("Export Rows"))
         .content_width(480)
         .child(&toolbar)
         .build();
     dialog.set_default_widget(Some(&export_button));
 
+    // One dialog, one export: the rows go to the job rather than being
+    // copied for each click.
+    let unexported = Rc::new(RefCell::new(Some(Unexported { origin, session })));
     let window = parent.clone();
-    let toast_overlay = toast_overlay.clone();
+    let exports = exports.clone();
     let dialog_for_export = dialog.clone();
     export_button.connect_clicked(move |_| {
         let format = pick(formats, format_row.selected());
-        let options = rows.read();
+        let Some(job_format) = format.job_format(rows.read(), &name, target.as_ref()) else {
+            return;
+        };
+        let Some(choice) = scope.selected().cloned() else {
+            return;
+        };
+        if format.refusal(choice.expected).is_some() {
+            return;
+        }
+        let Some(Unexported { origin, session }) = unexported.borrow_mut().take() else {
+            return;
+        };
+        let Some(source) = origin.into_source(choice.source, session) else {
+            return;
+        };
         dialog_for_export.close();
-        save_with_file_dialog(
-            &window,
-            &toast_overlay,
-            Export {
-                format,
-                name: name.clone(),
-                target: target.clone(),
-                result: result.clone(),
-                options,
-            },
-        );
+        let chosen = Chosen {
+            format,
+            job_format,
+            name: name.clone(),
+            source,
+            expected_rows: choice.expected,
+        };
+        glib::spawn_future_local(save_with_file_dialog(window.clone(), exports.clone(), chosen));
     });
 
     dialog.present(Some(parent));
 }
 
-/// One export, as the dialog left it.
-struct Export {
-    format: Format,
-    name: String,
-    target: Option<InsertTarget>,
-    result: QueryResult,
-    options: CsvOptions,
+/// Keeps Export off, with the reason under the format, while the chosen
+/// rows can't be written in the chosen format. `expected` is each scope's
+/// count, in the Rows list's order.
+fn refuse_what_cannot_fit(
+    format_row: &adw::ComboRow,
+    formats: &'static [Format],
+    scope_row: &adw::ComboRow,
+    expected: Vec<Option<ExpectedRows>>,
+    export_button: &gtk::Button,
+) {
+    let refuse = {
+        let format_row = format_row.downgrade();
+        let scope_row = scope_row.downgrade();
+        let export_button = export_button.downgrade();
+        Rc::new(move || {
+            let (Some(format_row), Some(scope_row), Some(export_button)) =
+                (format_row.upgrade(), scope_row.upgrade(), export_button.upgrade())
+            else {
+                return;
+            };
+            let expected = expected.get(scope_row.selected() as usize).copied().flatten();
+            let refusal = pick(formats, format_row.selected()).refusal(expected);
+            format_row.set_subtitle(refusal.as_deref().unwrap_or_default());
+            export_button.set_sensitive(refusal.is_none());
+        })
+    };
+    for row in [format_row, scope_row] {
+        let refuse = refuse.clone();
+        row.connect_selected_notify(move |_| refuse());
+    }
+    refuse();
 }
 
-fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::ToastOverlay, export: Export) {
-    let Export {
+/// What the dialog holds until its one export takes it.
+struct Unexported {
+    origin: ExportOrigin,
+    session: Option<Arc<Session>>,
+}
+
+/// One export, as the dialog left it.
+struct Chosen {
+    format: Format,
+    job_format: ExportFormat,
+    name: String,
+    source: ExportSource,
+    expected_rows: Option<ExpectedRows>,
+}
+
+async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<ExportLedger>, chosen: Chosen) {
+    let Chosen {
         format,
+        job_format,
         name,
-        target,
-        result,
-        options,
-    } = export;
+        source,
+        expected_rows,
+    } = chosen;
     let filter = gtk::FileFilter::new();
     filter.set_name(Some(&crate::i18n::gettext_f(
         "{format} files",
@@ -363,79 +493,90 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     filters.append(&filter);
     let file_dialog = gtk::FileDialog::builder()
-        .title(crate::i18n::gettext("Export Results"))
+        .title(crate::i18n::gettext("Export Rows"))
         .modal(true)
         .initial_name(format!("{name}.{}", format.extension()))
         .default_filter(&filter)
         .filters(&filters)
         .build();
-
-    let parent_for_alert = parent.clone();
-    let toast_overlay = toast_overlay.clone();
-    // The HTML document titles itself after the export, and the
-    // callback outlives this call, so it carries its own copy.
-    let title = name.clone();
-    file_dialog.save(Some(parent), gio::Cancellable::NONE, move |outcome| {
-        let Ok(file) = outcome else { return };
-        // Bytes rather than text, because a workbook is a zip archive.
-        // The text formats hand over their own bytes unchanged.
-        let encoded: Result<Vec<u8>, String> = match format {
-            Format::Csv => export::render_csv(&result.columns, &result.rows, &options)
-                .map(String::into_bytes)
-                .map_err(|e| e.to_string()),
-            Format::Xlsx => {
-                export::render_xlsx(&result.columns, &result.rows, &title).map_err(|error| error.to_string())
-            }
-            Format::Json => Ok(export::render_json(&result.columns, &result.rows).into_bytes()),
-            Format::Markdown => Ok(export::render_markdown(&result.columns, &result.rows).into_bytes()),
-            Format::Html => Ok(export::render_html(&result.columns, &result.rows, &title).into_bytes()),
-            Format::Xml => Ok(export::render_xml(&result.columns, &result.rows).into_bytes()),
-            Format::Sql => match target.as_ref() {
-                Some(target) => {
-                    Ok(
-                        export::render_sql_insert(&*target.dialect, &target.table, &result.columns, &result.rows)
-                            .into_bytes(),
-                    )
-                }
-                // The format is only offered with a target, so this is
-                // unreachable through the dialog.
-                None => Err(crate::i18n::gettext("This result has no table to insert into.")),
-            },
-        };
-        glib::spawn_future_local(async move {
-            let written = match encoded {
-                Ok(bytes) => crate::ui::file_write::replace_file(&file, bytes)
-                    .await
-                    .map_err(|error| error.to_string()),
-                Err(error) => Err(error),
-            };
-            let path = file.parse_name().to_string();
-            match written {
-                Ok(()) => toast_overlay.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
-                    "Exported to {path}",
-                    &[("path", &path)],
-                ))),
-                Err(error) => {
-                    let alert = adw::AlertDialog::new(
-                        Some(&crate::i18n::gettext("Couldn't export")),
-                        Some(&crate::i18n::gettext_f(
-                            "Writing {path} failed: {error}",
-                            &[("path", &path), ("error", &error)],
-                        )),
-                    );
-                    alert.add_response("close", &crate::i18n::gettext("Close"));
-                    alert.set_default_response(Some("close"));
-                    alert.set_close_response("close");
-                    alert.present(Some(&parent_for_alert));
-                }
-            }
-        });
+    // Cancelling the chooser is the only way it fails without a file.
+    let Ok(destination) = file_dialog.save_future(Some(&parent)).await else {
+        return;
+    };
+    // The ledger reports how the job ends, or logs why it never began.
+    let _ = exports.begin(ExportJob {
+        destination,
+        format: job_format,
+        source,
+        expected_rows,
     });
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use tablepro_core::column::{ColumnType, ResultColumn};
+    use tablepro_core::{EditorSession, ResultEvent, Truncation, Value};
+    use tablepro_test_support::{FakeEditorSession, FakeReply, FakeRun, Replies};
+
     use super::*;
+    use crate::test_support::{descendants, first_descendant_of_type, wait_until};
+    use crate::ui::session_window::tests::{TestWindow, editors};
+
+    const WAIT: Duration = Duration::from_secs(20);
+
+    /// A run whose one result the row limit cut short.
+    fn capped_run() -> Replies<FakeRun> {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("text"))].into();
+        let mut runs = Replies::default();
+        runs.always(FakeRun::completed(vec![
+            ResultEvent::ResultSetStarted { columns },
+            ResultEvent::Rows(vec![vec![Value::Int(1)], vec![Value::Int(2)]]),
+            ResultEvent::RowLimitReached { retained: 2 },
+            ResultEvent::ResultSetFinished {
+                retained: 2,
+                total_rows: None,
+                truncation: Truncation::ServerStopped,
+            },
+        ]));
+        runs
+    }
+
+    #[gtk4::test]
+    fn export_all_opens_dialog_with_all_rows_scope_selected() {
+        let fake = Arc::new(FakeEditorSession::new(capped_run()));
+        let test = TestWindow::connected_with("ExportAll", |script| {
+            let editor: Arc<dyn EditorSession> = fake.clone();
+            script.open_editor_session.always(FakeReply::ok(editor));
+        });
+        test.run_in_new_editor_tab();
+        let editor = editors(&test.window).pop().expect("the editor tab");
+        let banner = first_descendant_of_type::<adw::Banner>(&editor).expect("the result's banner");
+        assert!(banner.is_revealed(), "the capped result has no banner");
+
+        banner.emit_by_name::<()>("button-clicked", &[]);
+
+        wait_until(WAIT, || test.window.visible_dialog().is_some()).expect("the export dialog");
+        let dialog = test.window.visible_dialog().expect("the export dialog");
+        assert_eq!(dialog.title(), "Export Rows");
+        let rows = descendants(&dialog)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<adw::ComboRow>().ok())
+            .find(|row| row.title() == "Rows")
+            .expect("the Rows list");
+        let selected = rows
+            .selected_item()
+            .and_downcast::<gtk::StringObject>()
+            .expect("a selected scope");
+        assert_eq!(selected.string(), "All Rows");
+        assert_eq!(
+            rows.subtitle().as_deref(),
+            Some(
+                "Runs the statement again on a separate read-only connection, without this editor's USE or SET changes"
+            )
+        );
+    }
 
     #[test]
     fn every_format_has_a_label_extension_and_type_of_its_own() {
@@ -449,6 +590,49 @@ mod tests {
             list.dedup();
             assert_eq!(list.len(), before, "two formats share an entry: {list:?}");
         }
+    }
+
+    #[test]
+    fn excel_is_refused_for_more_rows_than_a_sheet_holds() {
+        let limit = XLSX_MAX_DATA_ROWS as u64;
+
+        assert!(Format::Xlsx.refusal(Some(ExpectedRows::Exact(limit + 1))).is_some());
+        assert_eq!(Format::Xlsx.refusal(Some(ExpectedRows::Exact(limit))), None);
+        assert_eq!(
+            Format::Xlsx.refusal(Some(ExpectedRows::About(limit * 2))),
+            None,
+            "an estimate can be wrong, so the sheet's own check decides"
+        );
+        assert_eq!(Format::Xlsx.refusal(None), None);
+        assert_eq!(Format::Csv.refusal(Some(ExpectedRows::Exact(limit * 2))), None);
+    }
+
+    #[gtk4::test]
+    fn export_is_off_while_the_rows_cannot_fit_an_excel_sheet() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let formats = Format::offered(None);
+        let at = |format| u32::try_from(formats.iter().position(|f| *f == format).expect("offered")).expect("an index");
+        let labels: Vec<&str> = formats.iter().map(|f| f.label()).collect();
+        let format_row = combo_row("Format", &labels);
+        let scope_row = combo_row("Rows", &["Current Page", "Entire Table"]);
+        let export = gtk::Button::new();
+        let past_a_sheet = XLSX_MAX_DATA_ROWS as u64 + 1;
+        refuse_what_cannot_fit(
+            &format_row,
+            formats,
+            &scope_row,
+            vec![Some(ExpectedRows::Exact(3)), Some(ExpectedRows::Exact(past_a_sheet))],
+            &export,
+        );
+
+        format_row.set_selected(at(Format::Xlsx));
+        assert!(export.is_sensitive(), "a page fits a sheet");
+        scope_row.set_selected(1);
+        assert!(!export.is_sensitive(), "the whole table was let through");
+        assert!(format_row.subtitle().is_some_and(|text| text.contains("Excel")));
+        format_row.set_selected(at(Format::Csv));
+        assert!(export.is_sensitive());
+        assert!(format_row.subtitle().unwrap_or_default().is_empty());
     }
 
     #[test]

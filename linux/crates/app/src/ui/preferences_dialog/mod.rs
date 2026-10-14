@@ -12,6 +12,7 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::AppSettings;
 use tablepro_storage::settings::keys;
 
+use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
 use crate::ui::style_scheme_grid;
 
 glib::wrapper! {
@@ -21,16 +22,17 @@ glib::wrapper! {
 }
 
 impl PreferencesDialog {
-    pub fn new(
+    pub(crate) fn new(
         settings: &Rc<AppSettings>,
         storage: &crate::storage::SharedStorage,
         history: Option<tablepro_storage::QueryHistory>,
         tasks: &Tasks,
+        revealer: Rc<dyn FileRevealer>,
     ) -> Self {
         let dialog: Self = glib::Object::new();
         dialog.imp().settings.replace(Some(settings.clone()));
         dialog.bind(settings, storage);
-        dialog.connect_history_actions(storage, history, tasks);
+        dialog.connect_history_actions(storage, history, tasks, revealer);
         dialog
     }
 
@@ -98,6 +100,7 @@ impl PreferencesDialog {
         storage: &crate::storage::SharedStorage,
         history: Option<tablepro_storage::QueryHistory>,
         tasks: &Tasks,
+        revealer: Rc<dyn FileRevealer>,
     ) {
         let imp = self.imp();
         let history_path = storage.paths().history_database();
@@ -154,19 +157,25 @@ impl PreferencesDialog {
                             crate::i18n::gettext("The query history could not be cleared.")
                         }
                     };
-                    dialog.add_toast(adw::Toast::new(&message));
+                    dialog.add_toast(crate::ui::plain_toast(&message));
                 });
             });
             alert.present(Some(&dialog));
         });
 
-        let dialog = self.clone();
+        let dialog = self.downgrade();
         imp.storage_button.connect_clicked(move |_| {
-            let path = history_path.clone();
-            let directory = path.parent().map(std::path::Path::to_path_buf).unwrap_or(path);
-            let launcher = gtk4::FileLauncher::new(Some(&gio::File::for_path(&directory)));
-            let window = dialog.root().and_downcast::<gtk4::Window>();
-            launcher.launch(window.as_ref(), gio::Cancellable::NONE, |_| {});
+            let Some(shown_from) = dialog.upgrade() else {
+                return;
+            };
+            let revealing = revealer.reveal(gio::File::for_path(&history_path), shown_from.root().and_downcast());
+            let dialog = dialog.clone();
+            glib::spawn_future_local(async move {
+                let revealed = revealing.await;
+                if let (Some(toast), Some(dialog)) = (reveal_failure_toast(&revealed), dialog.upgrade()) {
+                    dialog.add_toast(toast);
+                }
+            });
         });
     }
 }
@@ -176,6 +185,7 @@ mod tests {
     use tablepro_storage::{EditorFont, StoragePaths};
 
     use crate::test_support::{MemorySettings, test_runtime};
+    use crate::ui::file_reveal::RecordingRevealer;
 
     use super::*;
 
@@ -189,7 +199,13 @@ mod tests {
         tasks: &Tasks,
     ) -> PreferencesDialog {
         crate::register_test_resources();
-        PreferencesDialog::new(settings.get(), storage, history, tasks)
+        PreferencesDialog::new(
+            settings.get(),
+            storage,
+            history,
+            tasks,
+            Rc::new(RecordingRevealer::succeeding()),
+        )
     }
 
     fn test_storage(tasks: &Tasks) -> crate::storage::SharedStorage {
@@ -307,6 +323,20 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn preferences_show_in_files_reveals_the_database_file_not_its_folder() {
+        crate::register_test_resources();
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let revealer = Rc::new(RecordingRevealer::succeeding());
+        let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks(), revealer.clone());
+
+        dialog.imp().storage_button.emit_clicked();
+
+        assert_eq!(revealer.revealed(), [storage.paths().history_database()]);
+    }
+
+    #[gtk4::test]
     fn clear_history_is_insensitive_until_the_database_opens() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
@@ -405,12 +435,13 @@ mod tests {
     fn count(runtime: &crate::runtime::AppRuntime, history: &tablepro_storage::QueryHistory) -> usize {
         block_on(
             runtime,
-            history.search(tablepro_storage::query_history::SearchFilter {
-                limit: 100,
-                ..Default::default()
-            }),
+            history.search_page(
+                &tablepro_storage::query_history::HistoryQuery::default(),
+                tablepro_storage::query_history::HistoryPageRequest::first(100),
+            ),
         )
         .expect("search")
+        .entries
         .len()
     }
 

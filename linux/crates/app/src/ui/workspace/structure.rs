@@ -19,6 +19,9 @@ use crate::runtime::DeliverInput;
 use crate::ui::error_text;
 use crate::ui::structure_tab::{StructureMode, StructureTabInput};
 use crate::ui::workspace::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
+
+use super::structure_target::StructureTarget;
+use super::tab_spec::{TabSpec, TablePage};
 use crate::workspace::run_schema_plan;
 
 impl WorkspaceModel {
@@ -37,7 +40,9 @@ impl WorkspaceModel {
             ));
             return;
         }
-        self.append_new_structure_tab(schema);
+        self.open_tab(TabSpec::Structure {
+            target: StructureTarget::NewDraft { schema },
+        });
     }
 
     /// Select the table's Structure tab, or open one. Its Table tab
@@ -51,18 +56,23 @@ impl WorkspaceModel {
             }
             _ => None,
         });
-        if let Some(page) = existing_structure
-            && let Some(tab_view) = self.workspace_tab_view.as_ref()
-        {
-            tab_view.set_selected_page(&page);
+        if let Some(page) = existing_structure {
+            self.tab_view.set_selected_page(&page);
             return;
         }
-        self.append_existing_structure_tab(schema, table);
+        self.open_tab(TabSpec::Structure {
+            target: StructureTarget::Existing(TableRef::new(schema, table)),
+        });
     }
 
     /// Right-click → "Drop Table…", or in-tab destructive button.
     pub(super) fn on_drop_table_prompt(&mut self, schema: Option<String>, table: String) {
-        let title = crate::i18n::gettext_f("Drop {table}?", &[("table", &table)]);
+        // The sidebar lists every schema, so two tables can share a name.
+        let named = match &schema {
+            Some(schema) => format!("{schema}.{table}"),
+            None => table.clone(),
+        };
+        let title = crate::i18n::gettext_f("Drop {table}?", &[("table", &named)]);
         let body = crate::i18n::gettext(
             "All rows and the table definition will be removed. This can't be undone from inside TablePro.",
         );
@@ -141,9 +151,7 @@ impl WorkspaceModel {
     /// pointing at `(schema, table)`. Skips the per-tab pending-changes
     /// dialog because the underlying table is gone.
     pub(super) fn close_tabs_for_table(&mut self, schema: Option<&str>, table: &str) {
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.tab_view.clone();
         let mut targets: Vec<Uuid> = Vec::new();
         for (id, tab) in self.workspace_tabs.borrow().iter() {
             match tab {
@@ -193,18 +201,23 @@ impl WorkspaceModel {
 
         match kind {
             SaveKind::PromoteNewToTable(schema, name) => {
-                if let Some(tab_view) = self.workspace_tab_view.clone() {
-                    self.finish_close_workspace_tab(tab_id, &tab_view);
-                }
+                let tab_view = self.tab_view.clone();
+                self.finish_close_workspace_tab(tab_id, &tab_view);
                 // A table just designed is filled in next.
                 let page_size = u64::from(self.settings.default_page_size());
-                self.append_table_tab(schema.clone(), name.clone(), 0, page_size, None);
+                self.open_tab(TabSpec::Table {
+                    table: TableRef::new(schema.clone(), name.clone()),
+                    page: TablePage::first(page_size),
+                });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,
                     table: Some(name),
                 });
             }
             SaveKind::UpdateInPlace(schema, table) => {
+                if new_table_name.is_some() {
+                    self.retitle_tab(tab_id);
+                }
                 self.send_to_structure_tab(tab_id, StructureTabInput::SaveCompleted { new_table_name });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,
@@ -291,51 +304,13 @@ impl WorkspaceModel {
                 structure.send(StructureTabInput::SchemaChanged);
             }
         }
-        // The catalog watch takes the new list to the sidebar, and logs
-        // the error of one that could not be read.
+        // The catalog watch takes the new list to the sidebar, and a
+        // failure to it as a toast. The default schema's list, which the
+        // editor's completion reads, follows, one read at a time.
         self.context.tasks.spawn_task(async move {
+            let _ = session.refresh_objects(ObjectScope::AllSchemas).await;
             let _ = session.refresh_objects(ObjectScope::DefaultSchema).await;
         });
-    }
-
-    /// The sidebar follows the session's object list. A failed refresh
-    /// keeps it as it was.
-    pub(super) fn on_catalog_changed(&mut self, snapshot: &tablepro_session::ObjectListSnapshot) {
-        self.show_objects(&snapshot.objects);
-    }
-
-    pub(super) fn refresh_structure_tab_dirty(&self, tab_id: Uuid, dirty: bool) {
-        let schemas_count = self.sidebar_schemas_distinct();
-        let tabs = self.workspace_tabs.borrow();
-        let Some(slot) = tabs.get(&tab_id) else {
-            return;
-        };
-        let (page, schema, table_name, combined_dirty) = match slot {
-            WorkspaceTab::Structure(s) => (&s.page, s.schema.as_deref(), s.table.clone(), dirty),
-            WorkspaceTab::Table(s) => {
-                let data = self
-                    .change_trackers
-                    .get(s.id)
-                    .is_some_and(|tracker| tracker.pending_count() > 0);
-                (&s.page, s.schema.as_deref(), s.table.clone(), dirty || data)
-            }
-            _ => return,
-        };
-        let base = if table_name.is_empty() {
-            crate::i18n::gettext("New Table")
-        } else {
-            super::workspace_tabs::qualified_browse_tab_label(schemas_count, schema, &table_name)
-        };
-        let title = if combined_dirty { format!("• {base}") } else { base };
-        page.set_title(&title);
-        let is_selected = self
-            .workspace_tab_view
-            .as_ref()
-            .and_then(|tv| tv.selected_page())
-            .map(|p| &p == page)
-            .unwrap_or(false);
-        page.set_needs_attention(combined_dirty && !is_selected);
-        self.refresh_window_title();
     }
 }
 
@@ -503,5 +478,22 @@ mod tests {
 
         assert!(answered, "the prompt has no Cancel button");
         assert!(visible_alert(&test.window).is_none(), "the prompt stayed open");
+    }
+
+    #[gtk4::test]
+    fn the_drop_prompt_names_the_schema() {
+        use crate::test_support::wait_until;
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use crate::workspace::{answer, visible_alert};
+
+        let test = TestWindow::connected("DropPromptNamesSchema");
+        test.workspace()
+            .with_model(|model| model.on_drop_table_prompt(Some("sales".to_owned()), "orders".to_owned()));
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the drop prompt");
+
+        let heading = visible_alert(&test.window).and_then(|alert| alert.heading());
+
+        assert_eq!(heading.as_deref(), Some("Drop sales.orders?"));
+        assert!(answer(&test.window, "cancel"), "the prompt has no Cancel button");
     }
 }

@@ -261,20 +261,8 @@ fn page_name(index: u32) -> String {
 /// The line's title and icon.
 pub fn entry_title(index: usize, entry: &RunLogEntry) -> (String, &'static str) {
     use crate::ui::icons;
-    let n = (index + 1).to_string();
     match &entry.kind {
-        EntryKind::ResultSet { result, .. } => {
-            let rows = result.row_count();
-            (
-                crate::i18n::ngettext_f(
-                    "Result {n} · {rows} row",
-                    "Result {n} · {rows} rows",
-                    u32::try_from(rows).unwrap_or(u32::MAX),
-                    &[("n", &n), ("rows", &rows.to_string())],
-                ),
-                icons::VIEW_GRID,
-            )
-        }
+        EntryKind::ResultSet(result) => (result.summary.tab_label(index), icons::VIEW_GRID),
         EntryKind::Command {
             rows_affected: Some(rows),
         } => (

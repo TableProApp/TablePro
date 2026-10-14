@@ -16,6 +16,19 @@
       <item>
         <attribute name="label" translatable="yes">Format</attribute>
         <attribute name="action">editor.format</attribute>
+        <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;f</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Find…</attribute>
+        <attribute name="action">editor.find</attribute>
+        <attribute name="accel">&lt;Primary&gt;f</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Find and Replace…</attribute>
+        <attribute name="action">editor.find-replace</attribute>
+        <attribute name="accel">&lt;Primary&gt;h</attribute>
       </item>
     </section>
   </menu>
@@ -55,7 +68,7 @@
             <child>
               <object class="GtkButton" id="stop_button">
                 <property name="label" translatable="yes">Stop</property>
-                <property name="tooltip-text" translatable="yes">Stop the running query (Esc)</property>
+                <property name="tooltip-text" translatable="yes">Stop the running query</property>
                 <property name="visible">false</property>
                 <style>
                   <class name="flat"/>
@@ -65,13 +78,16 @@
             <child>
               <object class="GtkButton" id="run_button">
                 <property name="label" translatable="yes">Run</property>
-                <property name="tooltip-text" translatable="yes">Run the script (Ctrl+Return)</property>
+                <property name="tooltip-text" translatable="yes">Run the script</property>
                 <style>
                   <class name="suggested-action"/>
                 </style>
               </object>
             </child>
           </object>
+        </child>
+        <child type="top">
+          <object class="TableProFindBar" id="find_bar"/>
         </child>
         <property name="content">
           <object class="GtkPaned">

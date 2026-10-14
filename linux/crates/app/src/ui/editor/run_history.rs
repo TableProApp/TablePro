@@ -51,7 +51,7 @@ mod tests {
     }
 
     fn log_of(entries: Vec<EntryKind>, verdict: Verdict) -> RunLog {
-        let mut log = RunLog::new(vec!["SELECT 2".to_owned()], Vec::new());
+        let mut log = RunLog::new(vec![tablepro_core::UserSql::new("SELECT 2")], Vec::new());
         log.apply(RunEvent::Batch(BatchReport {
             batch: 0,
             entries,

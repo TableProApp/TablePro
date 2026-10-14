@@ -141,7 +141,6 @@ impl SessionWindow {
                         "The new location could not be saved.",
                     )));
                 }
-                input.deliver(SessionWindowInput::ReloadConnections);
                 input.deliver(SessionWindowInput::LocatedSaved(Box::new(located)));
             },
         );

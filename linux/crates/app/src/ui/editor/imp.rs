@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::EditorDeps;
 use super::editor_session_slot::EditorSessionSlot;
+use super::find_bar::FindBar;
 use super::results_pane::ResultsPane;
 use super::run_log::RunLog;
 use crate::ui::grid::GridSink;
@@ -34,6 +35,8 @@ pub struct SqlEditor {
     pub stop_button: TemplateChild<gtk4::Button>,
     #[template_child]
     pub run_button: TemplateChild<gtk4::Button>,
+    #[template_child]
+    pub find_bar: TemplateChild<FindBar>,
     #[template_child]
     pub source_view: TemplateChild<sourceview5::View>,
     #[template_child]
@@ -62,6 +65,7 @@ impl ObjectSubclass for SqlEditor {
 
     fn class_init(klass: &mut Self::Class) {
         sourceview5::View::ensure_type();
+        FindBar::ensure_type();
         ResultsPane::ensure_type();
         klass.bind_template();
     }
@@ -82,11 +86,6 @@ impl ObjectImpl for SqlEditor {
                 // No text: the buffer can be megabytes, and a listener
                 // reads only what it needs from it.
                 Signal::builder("content-changed").build(),
-                // Boxed: a GValue string ends at a NUL, and a copied cell
-                // can hold one.
-                Signal::builder("copy-to-clipboard")
-                    .param_types([glib::BoxedAnyObject::static_type()])
-                    .build(),
                 Signal::builder("toast").param_types([String::static_type()]).build(),
                 Signal::builder("undoable-toast")
                     .param_types([String::static_type()])

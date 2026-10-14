@@ -2,11 +2,12 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use relm4::{Component, ComponentController};
 
-use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
+use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, QueryDestination};
 use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit, SavedQueriesDialogOutput};
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
+use crate::ui::plain_toast;
 
 impl WorkspaceModel {
     pub(super) fn show_toast(&self, msg: &str) {
@@ -25,23 +26,21 @@ impl WorkspaceModel {
     }
 
     pub(super) fn on_show_history(&mut self) {
-        let dialog = HistoryDialog::builder()
-            .launch(HistoryDialogInit {
-                history: self.history.clone(),
-                tasks: self.tasks.clone(),
-            })
-            .connect_receiver({
-                let input = self.input.clone();
-                move |_, out| {
-                    input.deliver(match out {
-                        HistoryDialogOutput::OpenInNewTab(text) => WorkspaceInput::OpenHistoryQuery(text),
-                        HistoryDialogOutput::ReplaceCurrentTabQuery(text) => {
-                            WorkspaceInput::ReplaceActiveTabQuery(text)
-                        }
-                    });
-                }
+        let dialog = HistoryDialog::new(HistoryDialogInit {
+            history: self.history.clone(),
+            connections: self.storage.connections().clone(),
+            preferred_connection: self.context.active.metadata().map(|metadata| metadata.id),
+            revealer: self.file_revealer.clone(),
+            tasks: self.tasks.clone(),
+        });
+        let input = self.input.clone();
+        dialog.connect_query_chosen(move |_, destination, text| {
+            input.deliver(match destination {
+                QueryDestination::NewTab => WorkspaceInput::OpenHistoryQuery(text),
+                QueryDestination::CurrentTab => WorkspaceInput::ReplaceActiveTabQuery(text),
             });
-        dialog.model().dialog().present(self.dialog_parent().as_ref());
+        });
+        dialog.present(self.dialog_parent().as_ref());
         self.history_dialog = Some(dialog);
     }
 
@@ -59,7 +58,7 @@ impl WorkspaceModel {
                         SavedQueriesDialogOutput::ReplaceCurrentTabQuery(text) => {
                             WorkspaceInput::ReplaceActiveTabQuery(text)
                         }
-                        SavedQueriesDialogOutput::CopyToClipboard(text) => WorkspaceInput::CopyToClipboard(text),
+                        SavedQueriesDialogOutput::CopyToClipboard(text) => WorkspaceInput::CopyText(text),
                         SavedQueriesDialogOutput::ShowToast(text) => WorkspaceInput::ShowToast(text),
                     });
                 }
@@ -145,14 +144,6 @@ impl WorkspaceModel {
     }
 }
 
-/// Toast text carries file paths and server messages, which an
-/// `&` or `<` would break as markup.
-fn plain_toast(message: &str) -> adw::Toast {
-    let toast = adw::Toast::new(message);
-    toast.set_use_markup(false);
-    toast
-}
-
 /// A name for a query the user has not named, taken from the first
 /// line that is neither blank nor a comment. It is a starting point in
 /// an entry the user can edit, not a final name.
@@ -175,7 +166,7 @@ fn suggested_query_name(query: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{plain_toast, suggested_query_name};
+    use super::suggested_query_name;
     use crate::test_support::{finish_on_main, wait_until};
     use crate::ui::session_window::tests::{TestWindow, WAIT};
 
@@ -208,7 +199,6 @@ mod tests {
     fn a_history_dialog_closed_by_hand_is_not_closed_again_on_disconnect() {
         use gtk4::glib;
         use gtk4::prelude::*;
-        use relm4::ComponentController;
 
         let test = TestWindow::connected("HistoryClosedOnce");
         let dialog = test
@@ -218,7 +208,7 @@ mod tests {
                 model
                     .history_dialog
                     .as_ref()
-                    .map(|dialog| dialog.model().dialog().clone())
+                    .map(|dialog| dialog.clone().upcast::<libadwaita::Dialog>())
             })
             .flatten()
             .expect("the history dialog");
@@ -234,16 +224,6 @@ mod tests {
         glib::log_set_always_fatal(previous);
 
         disconnected.expect("the window back on the picker");
-    }
-
-    #[gtk4::test]
-    fn a_toast_shows_its_text_as_written() {
-        let text = "ssh-keygen could not open /home/a&b/<known_hosts>";
-
-        let toast = plain_toast(text);
-
-        assert!(!toast.uses_markup());
-        assert_eq!(toast.title().as_deref(), Some(text));
     }
 
     #[test]

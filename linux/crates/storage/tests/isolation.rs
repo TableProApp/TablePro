@@ -10,7 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::SystemTime;
 
-use tablepro_storage::query_history::{NewEntry, Outcome, SearchFilter};
+use tablepro_storage::query_history::{HistoryPageRequest, HistoryQuery, NewEntry, Outcome};
 use tablepro_storage::{ConnectionListState, ConnectionStore, QueryHistory, SavedConnection, StoragePaths};
 use uuid::Uuid;
 
@@ -54,15 +54,8 @@ fn connection(name: &str) -> SavedConnection {
     }
 }
 
-fn all_queries(entries: &[tablepro_storage::query_history::Entry]) -> Vec<String> {
-    entries.iter().map(|entry| entry.query.clone()).collect()
-}
-
-fn search_all() -> SearchFilter {
-    SearchFilter {
-        limit: 100,
-        ..SearchFilter::default()
-    }
+fn all_queries(page: &tablepro_storage::query_history::HistoryPage) -> Vec<String> {
+    page.entries.iter().map(|entry| entry.query.clone()).collect()
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -84,7 +77,11 @@ async fn two_history_databases_in_one_process_keep_their_own_rows() -> TestResul
     recorded_left?;
     recorded_right?;
 
-    let (found_left, found_right) = tokio::join!(left.search(search_all()), right.search(search_all()));
+    let everything = HistoryQuery::default();
+    let (found_left, found_right) = tokio::join!(
+        left.search_page(&everything, HistoryPageRequest::first(100)),
+        right.search_page(&everything, HistoryPageRequest::first(100))
+    );
     assert_eq!(all_queries(&found_left?), vec!["SELECT 1".to_owned()]);
     assert_eq!(all_queries(&found_right?), vec!["SELECT 2".to_owned()]);
     assert_ne!(left.path(), right.path());

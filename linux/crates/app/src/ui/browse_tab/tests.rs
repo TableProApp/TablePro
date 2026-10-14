@@ -6,22 +6,23 @@ use gtk4::prelude::*;
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::edit::CellInput;
 use tablepro_core::filter::{FilterOp, FilterRule};
-use tablepro_core::meta::RowIdentity;
+use tablepro_core::meta::{RowCountEstimate, RowIdentity, TableEstimate};
 use tablepro_core::{ColumnInfo, DriverError, FilterSet, LossPhase, QueryResult, Value};
 use tablepro_session::Session;
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
 use super::row_deletion::RowDeletion;
-use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes, format_thousands};
+use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, RowTotal, apply_draft_changes};
 use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{FakeSession, drain_main_context, wait_until};
+use crate::ui::clipboard::InsertRow;
 use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
 
-const WAIT: Duration = Duration::from_secs(10);
+pub(super) const WAIT: Duration = Duration::from_secs(10);
 
 /// A column carrying the server's spelling and the kind it means.
 #[expect(
@@ -63,23 +64,6 @@ fn col_with_default(data_type: &str, default: &str) -> ColumnInfo {
     c
 }
 
-#[test]
-fn format_thousands_handles_common_page_sizes() {
-    assert_eq!(format_thousands(100), "100");
-    assert_eq!(format_thousands(500), "500");
-    assert_eq!(format_thousands(1_000), "1,000");
-    assert_eq!(format_thousands(5_000), "5,000");
-    assert_eq!(format_thousands(10_000), "10,000");
-    assert_eq!(format_thousands(1_000_000), "1,000,000");
-}
-
-#[test]
-fn format_thousands_handles_edges() {
-    assert_eq!(format_thousands(0), "0");
-    assert_eq!(format_thousands(1), "1");
-    assert_eq!(format_thousands(999), "999");
-}
-
 fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
     store.item(position).and_downcast::<RowObject>().expect("a row")
 }
@@ -108,7 +92,7 @@ fn draft_changes_add_and_remove_draft_rows() {
     assert_eq!(index.get(&RowKey::Draft(4)), None);
 }
 
-fn column(name: &str, primary_key: bool) -> ColumnInfo {
+pub(super) fn column(name: &str, primary_key: bool) -> ColumnInfo {
     ColumnInfo {
         name: name.to_owned(),
         column_type: ColumnType::untyped_text("text"),
@@ -121,7 +105,7 @@ fn column(name: &str, primary_key: bool) -> ColumnInfo {
     }
 }
 
-fn rows(names: &[&str]) -> QueryResult {
+pub(super) fn rows(names: &[&str]) -> QueryResult {
     let columns = [column("id", true), column("name", false)];
     QueryResult::new(
         columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
@@ -135,7 +119,7 @@ fn rows(names: &[&str]) -> QueryResult {
 
 /// A connection that serves the table's catalog and count, with the
 /// page left to the test.
-fn serving_table() -> ConnectionScript {
+pub(super) fn serving_table() -> ConnectionScript {
     let mut script = ConnectionScript::default();
     script
         .fetch_columns
@@ -144,31 +128,54 @@ fn serving_table() -> ConnectionScript {
         columns: vec!["id".to_owned()],
     }));
     script.count_rows.always(FakeReply::ok(2));
+    script
+        .table_estimate
+        .always(FakeReply::ok(estimate(RowCountEstimate::Approximate(2))));
     script.probe.always(FakeReply::ok(()));
     script
 }
 
-struct Harness {
-    tab: Option<BrowseTab>,
-    tracker: TabTrackerHandle,
+pub(super) fn estimate(rows: RowCountEstimate) -> TableEstimate {
+    TableEstimate {
+        rows,
+        heap_blocks: None,
+    }
+}
+
+pub(super) struct Harness {
+    pub(super) tab: Option<BrowseTab>,
+    pub(super) tracker: TabTrackerHandle,
     others: Vec<BrowseTab>,
-    session: Arc<Session>,
-    connection: Arc<FakeConnection>,
-    fake: FakeSession,
+    pub(super) session: Arc<Session>,
+    pub(super) connection: Arc<FakeConnection>,
+    pub(super) fake: FakeSession,
     root: tempfile::TempDir,
     runtime: Option<crate::runtime::AppRuntime>,
 }
 
 impl Harness {
-    fn open(script: ConnectionScript, reconnects: impl IntoIterator<Item = FakeEstablish>) -> Self {
+    pub(super) fn open(script: ConnectionScript, reconnects: impl IntoIterator<Item = FakeEstablish>) -> Self {
         Self::open_filtered(script, reconnects, FilterSet::default())
     }
 
     /// The tab opens under `saved`, the filter the table was left with.
-    fn open_filtered(
+    pub(super) fn open_filtered(
         script: ConnectionScript,
         reconnects: impl IntoIterator<Item = FakeEstablish>,
         saved: FilterSet,
+    ) -> Self {
+        Self::open_with(script, reconnects, saved, false)
+    }
+
+    fn open_read_only(script: ConnectionScript) -> Self {
+        Self::open_with(script, [], FilterSet::default(), true)
+    }
+
+    fn open_with(
+        script: ConnectionScript,
+        reconnects: impl IntoIterator<Item = FakeEstablish>,
+        saved: FilterSet,
+        read_only: bool,
     ) -> Self {
         libadwaita::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
@@ -176,7 +183,7 @@ impl Harness {
         let fake = FakeSession::start(script, reconnects, runtime.tasks());
         let root = tempfile::tempdir().expect("tempdir");
         let tracker = TabTrackerHandle::default();
-        let tab = filtered_users_tab(&fake.session, &runtime, &root, saved, tracker.clone());
+        let tab = filtered_users_tab(&fake.session, &runtime, &root, saved, tracker.clone(), read_only);
         Self {
             tab: Some(tab),
             tracker,
@@ -189,12 +196,12 @@ impl Harness {
         }
     }
 
-    fn tab(&self) -> &BrowseTab {
+    pub(super) fn tab(&self) -> &BrowseTab {
         self.tab.as_ref().expect("the tab is open")
     }
 
     /// Another tab on the same table and session.
-    fn open_another(&mut self) -> BrowseTab {
+    pub(super) fn open_another(&mut self) -> BrowseTab {
         let runtime = self.runtime.as_ref().expect("the runtime is running");
         let tab = users_tab(&self.session, runtime, &self.root);
         self.others.push(tab.clone());
@@ -203,7 +210,7 @@ impl Harness {
 
     /// The second cell of each saved row on screen, empty while the
     /// tab shows no page.
-    fn shown(&self) -> Vec<Value> {
+    pub(super) fn shown(&self) -> Vec<Value> {
         self.saved_rows()
             .iter()
             .filter_map(|row| row.cell(1).cloned())
@@ -211,7 +218,7 @@ impl Harness {
     }
 
     /// The saved rows the grid holds for the page on screen.
-    fn saved_rows(&self) -> Vec<RowObject> {
+    pub(super) fn saved_rows(&self) -> Vec<RowObject> {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
         let model = self.tab().imp().model.borrow();
         let Some(selection) = model
@@ -227,19 +234,19 @@ impl Harness {
             .collect()
     }
 
-    fn visible_page(&self) -> Option<String> {
+    pub(super) fn visible_page(&self) -> Option<String> {
         self.tab().imp_stack().visible_child_name().map(|name| name.to_string())
     }
 
     /// The row the grid shows at `position`, drafts included.
-    fn grid_row(&self, position: u32) -> RowObject {
+    pub(super) fn grid_row(&self, position: u32) -> RowObject {
         self.selection()
             .item(position)
             .and_downcast::<RowObject>()
             .expect("a row")
     }
 
-    fn selection(&self) -> gtk4::MultiSelection {
+    pub(super) fn selection(&self) -> gtk4::MultiSelection {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
         self.tab()
             .imp()
@@ -250,7 +257,7 @@ impl Harness {
             .expect("the grid is built")
     }
 
-    fn store(&self) -> gtk4::gio::ListStore {
+    pub(super) fn store(&self) -> gtk4::gio::ListStore {
         self.selection()
             .model()
             .and_downcast::<gtk4::gio::ListStore>()
@@ -268,10 +275,10 @@ impl Harness {
 }
 
 /// The tab in a window, so its grid draws cells.
-struct Shown(gtk4::Window);
+pub(super) struct Shown(pub(super) gtk4::Window);
 
 impl Shown {
-    fn new(tab: &BrowseTab) -> Self {
+    pub(super) fn new(tab: &BrowseTab) -> Self {
         let window = gtk4::Window::new();
         window.set_default_size(600, 400);
         window.set_child(Some(tab));
@@ -287,33 +294,51 @@ impl Drop for Shown {
     }
 }
 
-fn users_tab(session: &Arc<Session>, runtime: &crate::runtime::AppRuntime, root: &tempfile::TempDir) -> BrowseTab {
+pub(super) fn users_tab(
+    session: &Arc<Session>,
+    runtime: &crate::runtime::AppRuntime,
+    root: &tempfile::TempDir,
+) -> BrowseTab {
     filtered_users_tab(
         session,
         runtime,
         root,
         FilterSet::default(),
         TabTrackerHandle::default(),
+        false,
     )
 }
 
-fn filtered_users_tab(
+pub(super) fn filtered_users_tab(
     session: &Arc<Session>,
     runtime: &crate::runtime::AppRuntime,
     root: &tempfile::TempDir,
     saved: FilterSet,
     tracker: TabTrackerHandle,
+    read_only: bool,
+) -> BrowseTab {
+    table_tab(session, runtime, root, "users", saved, tracker, read_only)
+}
+
+pub(super) fn table_tab(
+    session: &Arc<Session>,
+    runtime: &crate::runtime::AppRuntime,
+    root: &tempfile::TempDir,
+    table: &str,
+    saved: FilterSet,
+    tracker: TabTrackerHandle,
+    read_only: bool,
 ) -> BrowseTab {
     let tasks = runtime.tasks();
     let connection_id = uuid::Uuid::new_v4();
     let filter_settings = crate::persistence::FilterSettingsStore::load(root.path().join("filters.json"), &tasks);
-    filter_settings.set_filters(connection_id, None, "users", saved);
+    filter_settings.set_filters(connection_id, None, table, saved);
     BrowseTab::new(BrowseTabInit {
         tracker,
         schema: None,
-        table: "users".to_owned(),
+        table: table.to_owned(),
         connection_id: Some(connection_id),
-        read_only: false,
+        read_only,
         page_size: 100,
         initial_offset: 0,
         initial_sort: None,
@@ -321,6 +346,9 @@ fn filtered_users_tab(
         filter_settings,
         session: session.clone(),
         tasks,
+        deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(
+            tablepro_core::LivenessPolicy::DESKTOP,
+        )),
     })
 }
 
@@ -342,11 +370,11 @@ impl BrowseTab {
     }
 }
 
-fn text(values: &[&str]) -> Vec<Value> {
+pub(super) fn text(values: &[&str]) -> Vec<Value> {
     values.iter().map(|value| Value::Text((*value).to_owned())).collect()
 }
 
-fn not_null(column: &str) -> FilterSet {
+pub(super) fn not_null(column: &str) -> FilterSet {
     FilterSet {
         rules: vec![FilterRule {
             column: column.to_owned(),
@@ -357,7 +385,7 @@ fn not_null(column: &str) -> FilterSet {
     }
 }
 
-fn not_null_name() -> FilterSet {
+pub(super) fn not_null_name() -> FilterSet {
     not_null("name")
 }
 
@@ -464,7 +492,7 @@ fn schema_change_reads_the_columns_again_then_the_page() {
     assert_eq!(CallCounters::get(&counters.fetch_columns), 2);
 }
 
-fn header_titles(tab: &BrowseTab) -> Vec<String> {
+pub(super) fn header_titles(tab: &BrowseTab) -> Vec<String> {
     let Some(view) = crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(tab) else {
         return Vec::new();
     };
@@ -538,32 +566,11 @@ fn a_tab_that_opens_reads_the_columns_the_table_has_now() {
     assert_eq!(CallCounters::get(&harness.connection.counters().fetch_columns), 2);
 }
 
-fn toasts(tab: &BrowseTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
+pub(super) fn toasts(tab: &BrowseTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
     let toasts = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let sink = toasts.clone();
     tab.connect_toast(move |_, text| sink.borrow_mut().push(text));
     toasts
-}
-
-#[gtk4::test]
-fn a_failed_refresh_keeps_the_rows_on_screen() {
-    let mut script = serving_table();
-    script
-        .query_bound
-        .once(FakeReply::ok(rows(&["kept"])))
-        .always(FakeReply::err(DriverError::server("denied")));
-    let harness = Harness::open(script, []);
-    wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
-    let toasts = toasts(harness.tab());
-    let counters = harness.connection.counters();
-
-    harness.tab().send(BrowseTabInput::Refresh);
-    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the failed refresh was not reported");
-
-    assert_eq!(CallCounters::get(&counters.query_bound), 2);
-    assert_eq!(harness.shown(), text(&["kept"]), "the failed refresh dropped the rows");
-    assert_eq!(harness.visible_page().as_deref(), Some("grid"));
-    assert!(toasts.borrow()[0].contains("denied"), "{:?}", toasts.borrow());
 }
 
 #[gtk4::test]
@@ -580,7 +587,11 @@ fn a_failed_page_under_a_new_filter_shows_the_error() {
 
     wait_until(WAIT, || harness.visible_page().as_deref() == Some("error"))
         .expect("rows read without the filter stayed under it");
-    assert!(harness.shown().is_empty());
+    assert_eq!(
+        harness.shown(),
+        text(&["unfiltered"]),
+        "the error page let go of the page the paginator still points back to"
+    );
 }
 
 #[gtk4::test]
@@ -667,20 +678,81 @@ fn export_and_save_reach_the_window_as_signals() {
     let exported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let saved = std::rc::Rc::new(std::cell::Cell::new(0));
     let export_sink = exported.clone();
-    harness.tab().connect_export_results(move |_, request| {
-        export_sink.borrow_mut().push((request.name, request.result.rows.len()));
+    harness.tab().connect_export_results(move |_, offer| {
+        export_sink
+            .borrow_mut()
+            .push((offer.name, offer.origin.shown().row_count()));
     });
     let save_sink = saved.clone();
     harness
         .tab()
         .connect_save_requested(move |_| save_sink.set(save_sink.get() + 1));
 
-    harness.tab().send(BrowseTabInput::ExportCurrentPage);
+    harness.tab().send(BrowseTabInput::Export(None));
     harness.tab().send(BrowseTabInput::InsertRow);
     harness.tab().send(BrowseTabInput::CommitSave);
 
-    assert_eq!(*exported.borrow(), [("users".to_owned(), 2)]);
+    assert_eq!(*exported.borrow(), [("users".to_owned(), Some(2))]);
     assert_eq!(saved.get(), 1);
+}
+
+#[gtk4::test]
+fn current_page_export_includes_pending_edits() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    // The total is read after the page, on its own.
+    wait_until(WAIT, || {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        harness
+            .tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .is_some_and(|model| model.total != RowTotal::Unknown)
+    })
+    .expect("the table's total");
+    harness.apply_delta(&harness.tracker.apply(rename(0, "Ada", "Ada Lovelace")));
+    let offers = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = offers.clone();
+    harness
+        .tab()
+        .connect_export_results(move |_, offer| sink.borrow_mut().push(offer));
+
+    harness.tab().send(BrowseTabInput::Export(None));
+
+    let offers = offers.borrow();
+    let [offer] = offers.as_slice() else {
+        panic!("one export, not {}", offers.len());
+    };
+    let crate::ui::export::ExportOrigin::Browse {
+        page: crate::ui::export::ExportSource::Rows { rows, .. },
+        query: crate::ui::export::ExportQuery::Table(table),
+        total,
+        has_unsaved_changes,
+    } = &offer.origin
+    else {
+        panic!("not a browse page: {:?}", offer.origin);
+    };
+    let names: Vec<Value> = rows.iter().map(|row| row.to_values()[1].clone()).collect();
+    assert_eq!(
+        names,
+        [Value::Text("Ada Lovelace".to_owned()), Value::Text("Grace".to_owned())]
+    );
+    assert!(*has_unsaved_changes, "the pending rename went unmentioned");
+    assert_eq!(table.table.name, "users");
+    assert_eq!(
+        table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        ["id", "name"]
+    );
+    assert_ne!(*total, RowTotal::Unknown, "the table's total was not handed over");
+    assert!(offer.session.is_some(), "a read of every row has no session");
 }
 
 #[gtk4::test]
@@ -837,49 +909,74 @@ fn copy_row_as_insert_uses_row_below_draft() {
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
-    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
 
     harness.tab().send(BrowseTabInput::InsertRow);
     let below_draft = harness.grid_row(1);
-    harness
-        .tab()
-        .send(BrowseTabInput::GridCopyRowsAsInsert(vec![below_draft]));
+    let copied = copied_by(harness.tab(), || {
+        harness
+            .tab()
+            .send(BrowseTabInput::GridCopyRowsAsInsert(vec![below_draft]));
+    });
+
+    assert_eq!(copied, "INSERT INTO \"users\" (\"id\", \"name\") VALUES (0, 'Ada');");
+}
+
+/// MySQL reads a backslash in a string as an escape, so the list is
+/// written in the server's own literals.
+#[gtk4::test]
+fn copy_as_in_clause_writes_the_servers_literals() {
+    let mut script = serving_table();
+    script.dialect = Arc::new(drivers_mysql::MySqlDialect::new(
+        drivers_mysql::MySqlFlavour::MySql,
+        &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+    ));
+    let injected = "\\') OR 1=1 -- ";
+    script.query_bound.always(FakeReply::ok(rows(&[injected])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let row = harness.grid_row(0);
+    let values = crate::ui::clipboard::InClauseRows {
+        columns: [column("id", true), column("name", false)]
+            .iter()
+            .map(ColumnInfo::result_column)
+            .collect(),
+        rows: vec![crate::ui::grid::RowSnapshot::new(
+            row.cells().expect("the row's cells"),
+            Vec::new(),
+        )],
+        column: 1,
+    };
+
+    let copied = copied_by(harness.tab(), || {
+        harness.tab().send(BrowseTabInput::GridCopyInClause(values));
+    });
 
     assert_eq!(
-        *copied.borrow(),
-        ["INSERT INTO \"users\" (\"id\", \"name\") VALUES (0, 'Ada');".to_owned()]
+        copied,
+        format!(
+            "(_utf8mb4 X'{}')",
+            tablepro_core::hex::encode_lower(injected.as_bytes())
+        )
     );
 }
 
-#[gtk4::test]
-fn a_copy_with_a_nul_reaches_the_window_whole() {
-    let mut script = serving_table();
-    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
-    let harness = Harness::open(script, []);
-    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
-    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
-
-    harness
-        .tab()
-        .send(BrowseTabInput::GridCopyToClipboard("a\0b".to_owned()));
-
-    assert_eq!(*copied.borrow(), ["a\0b".to_owned()]);
+/// What the clipboard holds once the copy `copy` starts lands there.
+fn copied_by(tab: &BrowseTab, copy: impl FnOnce()) -> String {
+    const BEFORE: &str = "nothing copied yet";
+    let clipboard = tab.clipboard();
+    clipboard.set_text(BEFORE);
+    copy();
+    let text = || -> Option<String> { clipboard.content()?.value(String::static_type()).ok()?.get().ok() };
+    wait_until(WAIT, || text().is_some_and(|text| text != BEFORE)).expect("the copy to land");
+    text().unwrap_or_default()
 }
 
-fn key(id: i64) -> RowKey {
+pub(super) fn key(id: i64) -> RowKey {
     RowKey::from_pk_values(&[Value::Int(id)]).expect("a key")
 }
 
 /// `names` keyed from `first` on, as the next page of `rows` would be.
-fn rows_from(first: i64, names: &[&str]) -> QueryResult {
+pub(super) fn rows_from(first: i64, names: &[&str]) -> QueryResult {
     let mut page = rows(names);
     for (row, id) in page.rows.iter_mut().zip(first..) {
         row[0] = Value::Int(id);
@@ -963,20 +1060,16 @@ fn page_rows_have_single_owner() {
 fn copy_as_insert_and_duplicate_contain_no_hidden_columns() {
     let harness = Harness::open(partitioned_table(), []);
     wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
-    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
     let rows = harness.saved_rows();
 
-    harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(rows.clone()));
+    let copied = copied_by(harness.tab(), || {
+        harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(rows.clone()));
+    });
     harness.tab().send(BrowseTabInput::DuplicateRows(rows));
 
-    let copied = copied.borrow();
-    assert_eq!(copied.len(), 1);
+    assert_eq!(copied.lines().count(), 2, "{copied}");
     for hidden in ["16401", "(0,1)", "812", "__tablepro"] {
-        assert!(!copied[0].contains(hidden), "{hidden} reached the copy: {}", copied[0]);
+        assert!(!copied.contains(hidden), "{hidden} reached the copy: {copied}");
     }
     let drafts = harness.tracker.drafts();
     assert_eq!(drafts.len(), 2);
@@ -991,6 +1084,30 @@ fn copy_as_insert_and_duplicate_contain_no_hidden_columns() {
 }
 
 #[gtk4::test]
+fn copy_as_insert_shares_saved_rows_and_copies_only_drafts() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let saved = harness.saved_rows();
+    let mut rows = vec![harness.grid_row(0)];
+    rows.extend(saved.iter().cloned());
+
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let model = harness.tab().imp().model.borrow();
+    let insert_rows = model.as_ref().expect("the model").insert_rows(&rows);
+
+    let [InsertRow::Draft(_), InsertRow::Saved(first), InsertRow::Saved(second)] = insert_rows.as_slice() else {
+        panic!("{insert_rows:?}");
+    };
+    for (snapshot, row) in [first, second].into_iter().zip(&saved) {
+        let cells = row.shared_cells().expect("a saved row's cells");
+        assert!(snapshot.shares_cells_with(cells), "a saved row's cells were copied");
+    }
+}
+
+#[gtk4::test]
 fn page_export_snapshot_contains_no_hidden_columns() {
     let harness = Harness::open(partitioned_table(), []);
     wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
@@ -998,24 +1115,24 @@ fn page_export_snapshot_contains_no_hidden_columns() {
     let sink = exported.clone();
     harness
         .tab()
-        .connect_export_results(move |_, request| sink.borrow_mut().push(request.result));
+        .connect_export_results(move |_, offer| sink.borrow_mut().push(offer.origin.shown().clone()));
 
-    harness.tab().send(BrowseTabInput::ExportCurrentPage);
+    harness.tab().send(BrowseTabInput::Export(None));
 
     let exported = exported.borrow();
-    let [result] = exported.as_slice() else {
+    let [crate::ui::export::ExportSource::Rows { columns, rows }] = exported.as_slice() else {
         panic!("one export, not {}", exported.len());
     };
-    let names: Vec<&str> = result.columns.iter().map(|column| column.name.as_str()).collect();
+    let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
     assert_eq!(names, ["id", "name"]);
-    assert_eq!(result.rows.len(), 2);
-    for row in &result.rows {
-        visible_only(row);
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        visible_only(&row.to_values());
     }
 }
 
 /// A browse page served first, then `next` for every page after it.
-fn paging(first: QueryResult, next: QueryResult) -> ConnectionScript {
+pub(super) fn paging(first: QueryResult, next: QueryResult) -> ConnectionScript {
     let mut script = serving_table();
     script.count_rows.always(FakeReply::ok(1_000));
     script
@@ -1026,7 +1143,7 @@ fn paging(first: QueryResult, next: QueryResult) -> ConnectionScript {
 }
 
 /// Rows enough for a full page, so Next has somewhere to go.
-fn full_page(first: i64) -> QueryResult {
+pub(super) fn full_page(first: i64) -> QueryResult {
     let names: Vec<String> = (0..100).map(|n| format!("row {n}")).collect();
     let names: Vec<&str> = names.iter().map(String::as_str).collect();
     rows_from(first, &names)
@@ -1074,10 +1191,9 @@ fn a_page_that_replaces_the_row_being_edited_keeps_the_edit_and_the_focus() {
     wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
     let shown = Shown::new(harness.tab());
     let view = column_view(harness.tab());
-    let name = view
-        .columns()
-        .item(1)
-        .and_downcast::<gtk4::ColumnViewColumn>()
+    let name = crate::ui::grid::data_columns(&view)
+        .into_iter()
+        .nth(1)
         .expect("the name column");
     view.scroll_to(1, Some(&name), gtk4::ListScrollFlags::FOCUS, None);
     view.grab_focus();
@@ -1117,7 +1233,7 @@ fn a_page_that_replaces_the_row_being_edited_keeps_the_edit_and_the_focus() {
     );
 }
 
-fn after_next_frame(window: &gtk4::Window) {
+pub(super) fn after_next_frame(window: &gtk4::Window) {
     let clock = window.frame_clock().expect("the window's frame clock");
     let painted = std::rc::Rc::new(std::cell::Cell::new(false));
     let flag = painted.clone();
@@ -1128,7 +1244,7 @@ fn after_next_frame(window: &gtk4::Window) {
 }
 
 /// The cell showing `column` of the saved row keyed `id`, once drawn.
-fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> GridCell {
+pub(super) fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> GridCell {
     let key = key(id);
     let mut found = None;
     wait_until(WAIT, || {
@@ -1357,6 +1473,46 @@ fn error_flash_sets_and_clears_on_the_failed_row() {
     wait_until(WAIT, || !has_class(&cell, "tp-row-leftmost-error-flash")).expect("the flash never ended");
 }
 
+/// The first flash's timer cannot clear a flash that is no longer its
+/// own, so the second one has to.
+#[gtk4::test]
+fn a_second_failed_row_takes_the_mark_off_the_first() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let first = grid_cell_of(harness.tab(), 1, 0);
+    let row = first.parent().and_then(|cell| cell.parent()).expect("the row widget");
+    let icon = crate::test_support::first_descendant_of_type::<gtk4::Image>(&row).expect("the row's state icon");
+    let fail = |id| {
+        harness
+            .tab()
+            .send(BrowseTabInput::FlashErrorRow(StatementSource::Update {
+                row_key: key(id),
+            }));
+    };
+
+    fail(1);
+    assert_eq!(icon.icon_name().as_deref(), Some("dialog-error-symbolic"));
+    fail(0);
+
+    assert!(
+        first.row().is_some_and(|row| row.key() == Some(&key(1))),
+        "the cell moved to another row"
+    );
+    assert!(has_class(
+        &grid_cell_of(harness.tab(), 0, 0),
+        "tp-row-leftmost-error-flash"
+    ));
+    assert!(!has_class(&first, "tp-row-leftmost-error-flash"));
+    assert_eq!(icon.icon_name(), None, "the first row still reads as not saved");
+    assert!(!gtk4::test_accessible_has_property(
+        &row,
+        gtk4::AccessibleProperty::Description
+    ));
+}
+
 #[gtk4::test]
 fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
     let mut id = col("integer", false);
@@ -1381,11 +1537,6 @@ fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
     )));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
-    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
     let toasts = toasts(harness.tab());
 
     harness.tab().send(BrowseTabInput::InsertRow);
@@ -1400,11 +1551,13 @@ fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
             input: CellInput::Value(Value::Text("x".into())),
         },
     });
-    harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(vec![draft]));
+    let copied = copied_by(harness.tab(), || {
+        harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(vec![draft]));
+    });
 
     assert_eq!(
-        *copied.borrow(),
-        ["INSERT INTO \"users\" (\"name\") VALUES ('x');".to_owned()],
+        copied,
+        "INSERT INTO \"users\" (\"name\") VALUES ('x');",
         "toasts: {:?}",
         toasts.borrow()
     );
@@ -1554,18 +1707,18 @@ fn a_grid_built_for_columns_the_table_lost_takes_no_edits() {
     assert_eq!(harness.visible_page().as_deref(), Some("loading"));
 }
 
-fn delete_action(tab: &BrowseTab) -> gtk4::gio::SimpleAction {
+pub(super) fn delete_action(tab: &BrowseTab) -> gtk4::gio::SimpleAction {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     tab.imp()
         .model
         .borrow()
         .as_ref()
-        .map(|model| model.delete_action.clone())
+        .map(|model| model.actions.delete_rows.clone())
         .expect("the tab has a model")
 }
 
 fn delete_rows(tab: &BrowseTab) {
-    tab.activate_action("tab.delete-rows", None)
+    tab.activate_action("browse.delete-rows", None)
         .expect("the tab has a delete action");
 }
 
@@ -1606,28 +1759,305 @@ fn deleting_a_draft_removes_its_row() {
     );
 }
 
-#[gtk4::test]
-fn the_delete_key_names_the_tab_action() {
-    let harness = Harness::open(serving_table(), []);
-    let controllers = harness.tab().observe_controllers();
-    let named: Vec<String> = (0..controllers.n_items())
-        .filter_map(|index| controllers.item(index).and_downcast::<gtk4::ShortcutController>())
-        .flat_map(|controller| {
-            (0..controller.n_items())
-                .filter_map(move |index| controller.item(index).and_downcast::<gtk4::Shortcut>())
-                .collect::<Vec<_>>()
-        })
-        .filter(|shortcut| {
-            shortcut
-                .trigger()
-                .and_downcast::<gtk4::KeyvalTrigger>()
-                .is_some_and(|trigger| trigger.keyval() == gtk4::gdk::Key::Delete)
-        })
+fn named_actions(controller: &gtk4::ShortcutController) -> Vec<String> {
+    crate::test_support::shortcut_keys::shortcuts(controller)
+        .iter()
         .filter_map(|shortcut| shortcut.action().and_downcast::<gtk4::NamedAction>())
         .map(|action| action.action_name().to_string())
-        .collect();
+        .collect()
+}
 
-    assert_eq!(named, ["tab.delete-rows"]);
+fn table_actions(owner: crate::application::ShortcutOwner) -> Vec<String> {
+    use crate::application::{ACCELERATORS, AcceleratorScope};
+    ACCELERATORS
+        .iter()
+        .filter(|entry| matches!(entry.scope, AcceleratorScope::Local { owner: of, .. } if of == owner))
+        .flat_map(|entry| entry.triggers.iter().map(|_| entry.action.to_owned()))
+        .collect()
+}
+
+/// The grid's keys sit on the column view, so a text field elsewhere in
+/// the tab keeps Ctrl+C, Delete and Escape.
+#[gtk4::test]
+fn browse_grid_shortcuts_live_on_the_column_view() {
+    use crate::application::ShortcutOwner;
+    use crate::test_support::shortcut_keys::{owner_controller, shortcut_controllers};
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let view = column_view(harness.tab());
+
+    let grid = owner_controller(&view, ShortcutOwner::BrowseGrid).expect("the grid's shortcuts");
+    let tab = owner_controller(harness.tab(), ShortcutOwner::BrowseTab).expect("the tab's shortcuts");
+
+    assert_eq!(named_actions(&grid), table_actions(ShortcutOwner::BrowseGrid));
+    assert_eq!(named_actions(&tab), table_actions(ShortcutOwner::BrowseTab));
+    let on_the_tab: Vec<String> = shortcut_controllers(harness.tab())
+        .iter()
+        .flat_map(named_actions)
+        .collect();
+    assert_eq!(on_the_tab, table_actions(ShortcutOwner::BrowseTab), "{on_the_tab:?}");
+}
+
+/// A bubble key on the tab reaches it only when no class on the way up
+/// from the focus binds it first. Text fields keep their own keys, as
+/// Ctrl+Z, by design.
+#[gtk4::test]
+fn browse_tab_keys_are_not_class_bindings_inside_the_tab() {
+    use crate::application::{ACCELERATORS, AcceleratorScope, ShortcutOwner};
+    use crate::test_support::shortcut_keys::{class_keys_on_focus_paths, keystroke};
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+
+    let class_keys = class_keys_on_focus_paths(harness.tab(), |widget| {
+        widget.is::<gtk4::Text>() || widget.is::<gtk4::TextView>()
+    });
+
+    assert!(
+        class_keys.contains(&keystroke("Page_Up")),
+        "the grid's own bindings were not found, so the check reads nothing"
+    );
+    for entry in ACCELERATORS {
+        let AcceleratorScope::Local {
+            owner: ShortcutOwner::BrowseTab,
+            phase,
+        } = entry.scope
+        else {
+            continue;
+        };
+        assert_eq!(phase, gtk4::PropagationPhase::Bubble, "{}", entry.action);
+        for accel in entry.triggers {
+            assert!(
+                !class_keys.contains(&keystroke(accel)),
+                "{accel} of {} never reaches the tab",
+                entry.action
+            );
+        }
+    }
+}
+
+#[gtk4::test]
+fn browse_actions_follow_the_tab() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let activate = |name: &str| {
+        harness
+            .tab()
+            .activate_action(&format!("browse.{name}"), None)
+            .expect("the browse group");
+    };
+
+    assert!(
+        action_enabled(harness.tab(), "insert-row"),
+        "a keyed table refused Ctrl+N"
+    );
+    assert!(!action_enabled(harness.tab(), "save"), "Save with nothing to save");
+    assert!(!action_enabled(harness.tab(), "undo"));
+    assert!(
+        !action_enabled(harness.tab(), "copy-rows"),
+        "Ctrl+C with no rows selected"
+    );
+
+    harness.selection().select_all();
+    assert!(action_enabled(harness.tab(), "copy-rows"));
+    assert!(action_enabled(harness.tab(), "clear-selection"));
+    activate("clear-selection");
+    assert!(
+        !action_enabled(harness.tab(), "clear-selection"),
+        "the selection was not cleared"
+    );
+
+    harness.tab().send(BrowseTabInput::InsertRow);
+    assert!(action_enabled(harness.tab(), "save"));
+    assert!(action_enabled(harness.tab(), "undo"));
+    assert!(!action_enabled(harness.tab(), "redo"));
+    activate("undo");
+    assert_eq!(harness.tracker.pending_count(), 0, "browse.undo did not undo");
+    assert!(action_enabled(harness.tab(), "redo"));
+    assert!(!action_enabled(harness.tab(), "save"));
+}
+
+/// These press real keys on the X display every test shares; nextest runs
+/// them with no other test beside them.
+mod real_keys {
+    use super::*;
+
+    /// A real key press: the field's own undo runs before the tab's, so
+    /// Ctrl+Z in a filter field takes back typing, not a row edit.
+    #[gtk4::test]
+    fn ctrl_z_in_filter_entry_undoes_text_not_rows() {
+        use gtk4::gdk::{Key, ModifierType};
+        // A key reaches a top bar only once its reveal has ended.
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        let mut script = serving_table();
+        script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+        let harness = Harness::open(script, []);
+        wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+        let shown = Shown::new(harness.tab());
+        crate::test_support::KeyInjector::focus_only(&shown.0);
+        wait_until(Duration::from_secs(2), || shown.0.is_active()).expect("the window to take the focus");
+        harness
+            .tab()
+            .send(BrowseTabInput::DeleteRows(vec![harness.grid_row(0)]));
+        assert_eq!(harness.tracker.pending_count(), 1);
+        let strip = {
+            use gtk4::subclass::prelude::ObjectSubclassIsExt;
+            let model = harness.tab().imp().model.borrow();
+            let strip = model.as_ref().and_then(|model| model.filter_strip.as_ref());
+            strip.expect("the filter strip").widget.clone()
+        };
+
+        harness.tab().send(BrowseTabInput::ToggleFilterStrip);
+        let mut field = None;
+        wait_until(Duration::from_secs(2), || {
+            field = gtk4::prelude::GtkWindowExt::focus(&shown.0)
+                .filter(|focus| focus.is_ancestor(&strip))
+                .and_then(|focus| focus.downcast::<gtk4::Text>().ok());
+            field.is_some()
+        })
+        .expect("the strip's field takes the focus");
+        let field = field.expect("the focused field");
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+
+        keys.press(Key::x, ModifierType::empty()).expect("the key press");
+        wait_until(Duration::from_secs(2), || field.text() == "x").expect("the typing to land");
+        keys.press(Key::z, ModifierType::CONTROL_MASK).expect("the key press");
+
+        wait_until(Duration::from_secs(2), || field.text().is_empty()).expect("Ctrl+Z to take back the typing");
+        assert_eq!(harness.tracker.pending_count(), 1, "Ctrl+Z undid the row edit");
+    }
+}
+
+#[gtk4::test]
+fn refresh_asks_the_window_and_filter_opens_the_strip() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let refreshes = crate::test_support::SignalLog::connect(harness.tab(), "refresh-requested", |_| ());
+    let strip_open = || {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        let model = harness.tab().imp().model.borrow();
+        model
+            .as_ref()
+            .and_then(|model| model.filter_strip.as_ref())
+            .is_some_and(crate::ui::filter_strip::FilterStrip::is_revealed)
+    };
+
+    harness
+        .tab()
+        .activate_action("browse.refresh", None)
+        .expect("the browse group");
+    harness
+        .tab()
+        .activate_action("browse.filter", None)
+        .expect("the browse group");
+
+    assert_eq!(refreshes.count(), 1);
+    assert!(strip_open());
+}
+
+#[gtk4::test]
+fn a_read_only_tab_refuses_insert_row() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open_read_only(script);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+
+    assert!(!action_enabled(harness.tab(), "insert-row"));
+    harness.tab().activate_action("browse.insert-row", None).ok();
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "Ctrl+N added a row to a read-only table"
+    );
+
+    harness.tab().send(BrowseTabInput::InsertRow);
+    harness
+        .tab()
+        .send(BrowseTabInput::DuplicateRows(vec![harness.grid_row(0)]));
+    assert_eq!(harness.tracker.pending_count(), 0, "a read-only table took a new row");
+}
+
+#[gtk4::test]
+fn browse_buttons_announce_their_keys() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let imp = harness.tab().imp();
+
+    for (name, button) in [
+        ("insert row", imp.insert_button.get()),
+        ("delete rows", imp.delete_button.get()),
+        ("filter", imp.filter_button.get()),
+        ("previous page", imp.prev_button.get()),
+        ("next page", imp.next_button.get()),
+        ("save", imp.save_button.get()),
+    ] {
+        assert!(
+            gtk4::test_accessible_has_property(&button, gtk4::AccessibleProperty::KeyShortcuts),
+            "the {name} button announces no keys"
+        );
+    }
+}
+
+/// A page splice leaves the selection model without a selection-changed,
+/// so the tab reads the selection again.
+#[gtk4::test]
+fn a_new_page_turns_off_the_selection_keys() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus", "Ken"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    harness.selection().select_range(0, 2, true);
+    assert!(action_enabled(harness.tab(), "copy-rows"));
+    assert!(action_enabled(harness.tab(), "clear-selection"));
+
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.shown() == text(&["Linus", "Ken"])).expect("the next page");
+
+    assert!(
+        harness.selection().selection().is_empty(),
+        "the new page kept a selection"
+    );
+    assert!(
+        !action_enabled(harness.tab(), "copy-rows"),
+        "Ctrl+C stayed on with nothing selected"
+    );
+    assert!(
+        !action_enabled(harness.tab(), "clear-selection"),
+        "Escape stayed on with nothing selected"
+    );
+    assert!(
+        !harness.tab().imp().selection_label.is_visible(),
+        "the footer still counts the rows that left"
+    );
+}
+
+fn action_enabled(tab: &BrowseTab, name: &str) -> bool {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let model = tab.imp().model.borrow();
+    let actions = &model.as_ref().expect("the tab has a model").actions;
+    let action = match name {
+        "save" => &actions.save,
+        "undo" => &actions.undo,
+        "redo" => &actions.redo,
+        "insert-row" => &actions.insert_row,
+        "delete-rows" => &actions.delete_rows,
+        "copy-rows" => &actions.copy_rows,
+        "clear-selection" => &actions.clear_selection,
+        _ => panic!("browse.{name} does not follow the tab"),
+    };
+    action.is_enabled()
 }
 
 #[gtk4::test]
@@ -1667,7 +2097,7 @@ fn menu_gesture(cell: &GridCell) -> gtk4::GestureClick {
         .expect("a cell answers a right-click")
 }
 
-fn column_view(tab: &BrowseTab) -> gtk4::ColumnView {
+pub(super) fn column_view(tab: &BrowseTab) -> gtk4::ColumnView {
     crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(tab).expect("the grid")
 }
 
@@ -2238,7 +2668,7 @@ fn confirming(tab: &BrowseTab) -> Option<(u64, libadwaita::AlertDialog)> {
 /// Every row selected and Delete pressed, which asks before marking.
 fn ask_to_delete_every_row(harness: &Harness) -> libadwaita::AlertDialog {
     wait_until(WAIT, || harness.shown().len() == DOZEN.len()).expect("the first page");
-    harness.tab().send(BrowseTabInput::SelectAllRows);
+    harness.selection().select_all();
     delete_rows(harness.tab());
     let (_, dialog) = confirming(harness.tab()).expect("a bulk delete asks first");
     assert_eq!(harness.tracker.pending_count(), 0);
@@ -2332,10 +2762,10 @@ fn a_bulk_delete_waiting_while_a_column_is_added_marks_its_rows_under_the_new_co
 
 /// What this thread logs, as text.
 #[derive(Clone, Default)]
-struct LogLines(Arc<std::sync::Mutex<Vec<u8>>>);
+pub(super) struct LogLines(Arc<std::sync::Mutex<Vec<u8>>>);
 
 impl LogLines {
-    fn text(&self) -> String {
+    pub(super) fn text(&self) -> String {
         let bytes = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         String::from_utf8_lossy(&bytes).into_owned()
     }
@@ -2431,4 +2861,28 @@ fn insert_row_opens_the_new_rows_first_editable_cell() {
     assert_eq!(cell.column(), 0, "a new row sets its own key first");
     let focus = gtk4::prelude::GtkWindowExt::focus(&shown.0).expect("a focused widget");
     assert_eq!(GridCell::from_focus(&focus).as_ref(), Some(&cell));
+}
+
+#[gtk4::test]
+fn icon_buttons_are_labelled_without_accelerator_hints() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let imp = harness.tab().imp();
+
+    assert_eq!(
+        crate::test_support::unlabelled_icon_buttons(harness.tab()),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        crate::test_support::tooltips_with_keys(harness.tab()),
+        Vec::<String>::new()
+    );
+    for button in [imp.insert_button.get(), imp.next_button.get(), imp.save_button.get()] {
+        assert!(
+            gtk4::test_accessible_has_property(&button, gtk4::AccessibleProperty::KeyShortcuts),
+            "{:?} does not announce its keys",
+            button.tooltip_text()
+        );
+    }
 }

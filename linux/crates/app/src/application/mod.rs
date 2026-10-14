@@ -1,13 +1,24 @@
 //! The GApplication: one process per profile, the actions every window
 //! shares, and the windows themselves.
 
+mod about_dialog;
+mod accelerator;
+mod accelerator_scope;
+mod accelerators;
 mod app_actions;
 mod app_services;
 mod app_window_host;
+mod debug_info;
 mod imp;
+mod legal_section;
 mod open_files;
 mod quit_sequence;
+mod runtime_versions;
 mod session_signals;
+mod shortcut_listing;
+mod shortcut_owner;
+mod shortcut_section;
+mod third_party_licenses;
 mod window_host;
 mod window_launch;
 mod window_registry;
@@ -21,10 +32,21 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use tablepro_session::SessionKey;
 
-pub use app_actions::{APP_ACCELS, install_app_actions};
+pub use accelerator::Accelerator;
+pub use accelerator_scope::AcceleratorScope;
+#[cfg(test)]
+pub(crate) use accelerators::keypad_twins;
+pub use accelerators::{
+    ACCELERATORS, component_matches, component_trigger, controller_name, install_application_accelerators,
+    local_shortcut_controller, menu_item, triggers_for,
+};
+pub use app_actions::install_app_actions;
 pub use app_services::{AppServices, AppServicesParts};
 pub use app_window_host::AppWindowHost;
 pub use quit_sequence::QuitSequence;
+pub use shortcut_listing::ShortcutListing;
+pub use shortcut_owner::ShortcutOwner;
+pub use shortcut_section::ShortcutSection;
 pub use window_host::WindowHost;
 pub use window_launch::WindowLaunch;
 pub(crate) use window_registry::WindowRegistry;

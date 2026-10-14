@@ -3,9 +3,9 @@
 
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::value::{SqlDecimal, Temporal};
-use tablepro_core::{Connection, Value};
+use tablepro_core::{Connection, RowLimit, Value};
 
-use crate::support::{CALL, connect, count, planned, quoted, rows, setup, start, table, unique, within};
+use crate::support::{CALL, connect, count, planned, quoted, rows, setup, start, statement, table, unique, within};
 
 async fn edit(connection: &dyn Connection, name: &str, key: Vec<Value>, column: usize, value: Value) {
     let changes = ChangeSet {
@@ -192,5 +192,46 @@ async fn invalid_utf8_string_key_row_editable_via_unhex() {
     )
     .await;
     assert_eq!((edited, untouched), (1, 1));
+    connection.close().await.expect("a close");
+}
+
+/// Whether `text` holds the JSON key `b` before the key `a`.
+fn b_before_a(text: &str) -> bool {
+    match (text.find("\"b\""), text.find("\"a\"")) {
+        (Some(b), Some(a)) => b < a,
+        _ => false,
+    }
+}
+
+/// A map and a named tuple keep the order the server wrote their keys
+/// in, through the driver and through a JSON export, which a sorted
+/// JSON map would lose.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn map_and_tuple_keep_server_key_order() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+
+    let result = connection
+        .query_bound(
+            &statement("SELECT map('b', 1, 'a', 2) AS m, CAST((1, 2) AS Tuple(b UInt8, a UInt8)) AS t"),
+            RowLimit::EDITOR_DEFAULT,
+            within(CALL),
+        )
+        .await
+        .expect("a read");
+
+    let row = result.rows.first().expect("one row");
+    assert_eq!(row.len(), 2);
+    for value in row {
+        let text = tablepro_core::export::value_to_text(value).expect("the value's text");
+        assert!(b_before_a(&text), "the keys were reordered: {text}");
+    }
+    let json = tablepro_core::export::render_json(&result.columns, &result.rows).expect("the export");
+    let exported: serde_json::Value = serde_json::from_str(&json).expect("the export is JSON");
+    for column in ["m", "t"] {
+        let text = exported[0][column].as_str().unwrap_or_default();
+        assert!(b_before_a(text), "the export reordered {column}: {json}");
+    }
     connection.close().await.expect("a close");
 }

@@ -1,0 +1,27 @@
+# Third-party licenses
+
+TablePro is licensed under the GNU Affero General Public License, version 3 or later, in `LICENSE`. It is built with the Rust crates below, each listed under the license it is used under.
+
+`build-aux/update-third-party-licenses.sh` writes this file from `Cargo.lock`. Do not edit it by hand.
+
+## Overview
+
+{{#each overview}}
+- {{{name}}} ({{{id}}})
+{{/each}}
+
+## License texts
+{{#each licenses}}
+
+### {{{name}}}
+
+Used by:
+
+{{#each used_by}}
+- {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+
+~~~~text
+{{{text}}}
+~~~~
+{{/each}}

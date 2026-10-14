@@ -10,20 +10,25 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::WorkspaceModel;
+use crate::ui::export::ExportOperationsButton;
 
 #[derive(Default, gtk::CompositeTemplate)]
 #[template(resource = "/app/tablepro/TablePro/ui/workspace.ui")]
 pub struct Workspace {
     #[template_child]
-    pub window_title: TemplateChild<adw::WindowTitle>,
+    pub tab_overview: TemplateChild<adw::TabOverview>,
     #[template_child]
-    pub read_only_badge: TemplateChild<gtk::Label>,
+    pub breakpoint_bin: TemplateChild<adw::BreakpointBin>,
     #[template_child]
-    pub row_op_spinner: TemplateChild<adw::Spinner>,
+    pub narrow_breakpoint: TemplateChild<adw::Breakpoint>,
     #[template_child]
-    pub primary_menu_button: TemplateChild<gtk::MenuButton>,
+    pub toast_overlay: TemplateChild<adw::ToastOverlay>,
+    #[template_child]
+    pub split_view: TemplateChild<adw::OverlaySplitView>,
     #[template_child]
     pub sidebar_root: TemplateChild<adw::ToolbarView>,
+    #[template_child]
+    pub sidebar_header: TemplateChild<adw::HeaderBar>,
     #[template_child]
     pub sidebar_title: TemplateChild<adw::WindowTitle>,
     #[template_child]
@@ -33,13 +38,31 @@ pub struct Workspace {
     #[template_child]
     pub table_search: TemplateChild<gtk::SearchEntry>,
     #[template_child]
-    pub sidebar_scroll: TemplateChild<gtk::ScrolledWindow>,
+    pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]
-    pub toast_overlay: TemplateChild<adw::ToastOverlay>,
+    pub content_root: TemplateChild<adw::ToolbarView>,
+    #[template_child]
+    pub content_header: TemplateChild<adw::HeaderBar>,
+    #[template_child]
+    pub sidebar_toggle: TemplateChild<gtk::ToggleButton>,
+    #[template_child]
+    pub new_tab_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub window_title: TemplateChild<adw::WindowTitle>,
+    #[template_child]
+    pub tab_button: TemplateChild<adw::TabButton>,
+    #[template_child]
+    pub export_operations_button: TemplateChild<ExportOperationsButton>,
+    #[template_child]
+    pub row_op_spinner: TemplateChild<adw::Spinner>,
+    #[template_child]
+    pub tab_bar: TemplateChild<adw::TabBar>,
     #[template_child]
     pub reconnect_banner: TemplateChild<adw::Banner>,
     #[template_child]
-    pub workspace_outer_stack: TemplateChild<gtk::Stack>,
+    pub tab_stack: TemplateChild<gtk::Stack>,
+    #[template_child]
+    pub tab_view: TemplateChild<adw::TabView>,
 
     pub(super) model: RefCell<Option<WorkspaceModel>>,
     /// Handles the queued input, and with it every reply the workspace
@@ -51,9 +74,10 @@ pub struct Workspace {
 impl ObjectSubclass for Workspace {
     const NAME: &'static str = "TableProWorkspace";
     type Type = super::Workspace;
-    type ParentType = adw::BreakpointBin;
+    type ParentType = adw::Bin;
 
     fn class_init(klass: &mut Self::Class) {
+        ExportOperationsButton::ensure_type();
         klass.bind_template();
     }
 
@@ -63,6 +87,11 @@ impl ObjectSubclass for Workspace {
 }
 
 impl ObjectImpl for Workspace {
+    fn constructed(&self) {
+        self.parent_constructed();
+        super::shell::describe_buttons(&self.obj());
+    }
+
     fn signals() -> &'static [Signal] {
         static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
         SIGNALS.get_or_init(|| {
@@ -88,4 +117,4 @@ impl ObjectImpl for Workspace {
 }
 
 impl WidgetImpl for Workspace {}
-impl BreakpointBinImpl for Workspace {}
+impl BinImpl for Workspace {}

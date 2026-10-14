@@ -1,5 +1,6 @@
 //! The window actions a workspace adds while it is open, and takes off
-//! the window again when it goes.
+//! the window again when it goes. Their keys are application
+//! accelerators; a tab's own keys belong to the tab.
 
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -21,14 +22,9 @@ const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 /// Each one sends its input through `input`, so one activated after the
 /// workspace is gone is dropped rather than handled.
 pub(super) fn install(window: &adw::ApplicationWindow, input: &WorkspaceSender) -> Vec<&'static str> {
-    let entries: [(&'static str, ActionInput); 11] = [
-        ("open-editor", || WorkspaceInput::NewEditorTab),
-        ("refresh-page", || WorkspaceInput::RefreshPage),
-        ("save-changes", || WorkspaceInput::SaveActiveTab),
-        ("undo-change", || WorkspaceInput::UndoActiveBrowseTab),
-        ("redo-change", || WorkspaceInput::RedoActiveBrowseTab),
+    let entries: [(&'static str, ActionInput); 6] = [
+        ("new-editor-tab", || WorkspaceInput::NewEditorTab),
         ("reopen-closed-tab", || WorkspaceInput::ReopenClosedTab),
-        ("open-filter", || WorkspaceInput::ShowFilterDialog),
         ("save-query", || WorkspaceInput::SaveActiveQuery),
         ("show-history", || WorkspaceInput::ShowHistory),
         ("show-saved-queries", || WorkspaceInput::ShowSavedQueries),
@@ -122,8 +118,8 @@ mod tests {
 
         let names = install(&window, &input);
 
-        assert!(names.contains(&"refresh-page"));
-        WidgetExt::activate_action(&window, "win.open-editor", None).expect("win resolves to the window's own map");
+        assert!(names.contains(&"new-editor-tab"));
+        WidgetExt::activate_action(&window, "win.new-editor-tab", None).expect("win resolves to the window's own map");
         crate::test_support::drain_main_context();
         assert!(matches!(receiver.try_recv(), Ok(WorkspaceInput::NewEditorTab)));
     }

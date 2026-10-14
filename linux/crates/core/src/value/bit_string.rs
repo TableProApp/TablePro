@@ -61,6 +61,11 @@ impl BitString {
         self.bit_len
     }
 
+    /// The bits packed high bit first, the last byte padded with zeros.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
     fn bit(&self, position: u32) -> u8 {
         self.bytes
             .get((position / 8) as usize)

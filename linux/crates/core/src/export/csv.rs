@@ -2,8 +2,9 @@ use crate::column::{ColumnType, ResultColumn};
 use crate::value::Value;
 
 use super::csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+use super::encoder::{CsvEncoder, EncodeError, encode_rows};
 use super::value_text::value_text;
-use super::{EncodeError, column_type, finish};
+use super::{RenderError, finish};
 
 /// A neutralised cell keeps its leading apostrophe as data only when the
 /// field is quoted, so sanitising quotes every field.
@@ -62,7 +63,7 @@ fn collapse_line_breaks(text: String, opts: &CsvOptions) -> String {
     }
 }
 
-fn csv_cell(value: &Value, column: &ColumnType, opts: &CsvOptions) -> String {
+pub(super) fn csv_cell(value: &Value, column: &ColumnType, opts: &CsvOptions) -> String {
     let Some(text) = value_text(value, column) else {
         return if opts.null_to_empty {
             String::new()
@@ -82,7 +83,7 @@ fn csv_cell(value: &Value, column: &ColumnType, opts: &CsvOptions) -> String {
     }
 }
 
-fn csv_header(name: &str, opts: &CsvOptions) -> String {
+pub(super) fn csv_header(name: &str, opts: &CsvOptions) -> String {
     if opts.sanitize_formulas {
         neutralise_formula(&Value::Null, name.to_string(), true)
     } else {
@@ -100,23 +101,12 @@ fn csv_text_field(text: &str, opts: &CsvOptions) -> String {
 }
 
 pub fn render_csv(columns: &[ResultColumn], rows: &[Vec<Value>], opts: &CsvOptions) -> Result<String, EncodeError> {
-    let mut writer = csv_writer_builder(opts).from_writer(Vec::new());
-    if opts.header_row {
-        writer.write_record(columns.iter().map(|column| csv_header(&column.name, opts)))?;
-    }
-    for row in rows {
-        writer.write_record(
-            row.iter()
-                .enumerate()
-                .map(|(index, value)| csv_cell(value, column_type(columns, index), opts)),
-        )?;
-    }
-    finish(writer)
+    encode_rows(CsvEncoder::new(columns.into(), opts.clone()), rows)
 }
 
 /// CSV for records whose fields are all free text, such as exported query
 /// history.
-pub fn render_text_csv(header: &[&str], records: &[Vec<String>], opts: &CsvOptions) -> Result<String, EncodeError> {
+pub fn render_text_csv(header: &[&str], records: &[Vec<String>], opts: &CsvOptions) -> Result<String, RenderError> {
     let mut writer = csv_writer_builder(opts).from_writer(Vec::new());
     if opts.header_row {
         writer.write_record(header.iter().map(|name| csv_header(name, opts)))?;

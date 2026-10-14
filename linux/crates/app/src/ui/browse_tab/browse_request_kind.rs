@@ -6,5 +6,8 @@ pub(crate) enum BrowseRequestKind {
     /// a count are built from them, so both wait for this one.
     Columns,
     Page,
+    /// The server's guess at the table's size.
+    Estimate,
+    /// The exact total, which can scan the whole table.
     Count,
 }

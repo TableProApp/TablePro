@@ -415,6 +415,33 @@ mod tests {
         MySqlDialect::new(flavour, &ServerInfo::new(flavour.product(), "8.4.3", 8, 4, 3))
     }
 
+    /// MySQL and MariaDB read a backslash in a string as an escape
+    /// unless NO_BACKSLASH_ESCAPES is set, so a value that ends in one
+    /// would close the string early.
+    #[test]
+    fn an_in_clause_keeps_a_backslash_inside_its_value() {
+        let values = [
+            Value::Text("\\') OR 1=1 -- ".to_owned()),
+            Value::Text("plain".to_owned()),
+            Value::Float32(0.1),
+        ];
+
+        for flavour in [MySqlFlavour::MySql, MySqlFlavour::MariaDb] {
+            let clause =
+                tablepro_core::export::render_in_clause(&dialect(flavour), &ColumnType::untyped_text("text"), &values)
+                    .expect("the list");
+
+            assert_eq!(
+                clause.sql,
+                format!(
+                    "(_utf8mb4 X'{}', 'plain', {})",
+                    tablepro_core::hex::encode_lower("\\') OR 1=1 -- ".as_bytes()),
+                    f64::from(0.1_f32)
+                )
+            );
+        }
+    }
+
     #[test]
     fn an_sql_export_quotes_with_backticks() {
         let columns = [tablepro_core::column::ResultColumn::new(

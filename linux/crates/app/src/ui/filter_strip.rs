@@ -38,6 +38,8 @@ use libadwaita::prelude::*;
 
 use tablepro_core::{ColumnInfo, Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
 
+use crate::application::{ShortcutOwner, local_shortcut_controller};
+
 /// Closure that rebuilds the rule list. Stored in an Rc<RefCell<>> so
 /// every input handler can call it through one slot, avoiding the
 /// type-complexity hit clippy raises on the raw signature.
@@ -269,9 +271,10 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     apply_btn.add_css_class("suggested-action");
     let close_btn = gtk::Button::builder()
         .icon_name(crate::ui::icons::WINDOW_CLOSE)
-        .tooltip_text(crate::i18n::gettext("Close (Esc)"))
+        .action_name("filter.close")
         .build();
     close_btn.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&close_btn, &crate::i18n::gettext("Close"), Some("filter.close"));
     header.append(&match_revealer);
     header.append(&spacer);
     header.append(&clear_btn);
@@ -455,13 +458,18 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         .build();
     outer.append(&scroller);
 
-    // The buttons and the Esc shortcut sit inside the revealer, so each
-    // holds it weakly.
-    close_btn.connect_clicked(glib::clone!(
+    // The buttons and the close action sit inside the revealer, so each
+    // holds it weakly. Escape closes without applying.
+    let close = gio::SimpleAction::new("close", None);
+    close.connect_activate(glib::clone!(
         #[weak]
         revealer,
-        move |_| revealer.set_reveal_child(false)
+        move |_, _| revealer.set_reveal_child(false)
     ));
+    let actions = gio::SimpleActionGroup::new();
+    actions.add_action(&close);
+    outer.insert_action_group("filter", Some(&actions));
+    outer.add_controller(local_shortcut_controller(ShortcutOwner::FilterStrip));
 
     let on_apply_for_clear = on_apply.clone();
     clear_btn.connect_clicked(glib::clone!(
@@ -483,30 +491,6 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
             revealer.set_reveal_child(false);
         }
     ));
-
-    // Esc inside the strip collapses it without applying. Local
-    // scope so it doesn't compete with cell-editor / search-bar Esc
-    // handlers elsewhere in the BrowseTab.
-    let esc_shortcut = gtk::Shortcut::builder()
-        .trigger(&gtk::KeyvalTrigger::new(
-            gtk::gdk::Key::Escape,
-            gtk::gdk::ModifierType::empty(),
-        ))
-        .action(&gtk::CallbackAction::new(glib::clone!(
-            #[weak]
-            revealer,
-            #[upgrade_or]
-            glib::Propagation::Proceed,
-            move |_, _| {
-                revealer.set_reveal_child(false);
-                glib::Propagation::Stop
-            }
-        )))
-        .build();
-    let esc_controller = gtk::ShortcutController::new();
-    esc_controller.set_scope(gtk::ShortcutScope::Local);
-    esc_controller.add_shortcut(esc_shortcut);
-    outer.add_controller(esc_controller);
 
     FilterStrip {
         widget: revealer,
@@ -730,13 +714,12 @@ fn build_rule_row(
         }
     }
 
-    // Trash button — removes this rule.
     let remove = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
-        .tooltip_text(crate::i18n::gettext("Remove rule"))
         .valign(gtk::Align::Center)
         .build();
     remove.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&remove, &crate::i18n::gettext("Remove Rule"), None);
     let state_for_remove = state.clone();
     let rebuild_for_remove = rebuild.clone();
     remove.connect_clicked(move |_| {
@@ -765,7 +748,9 @@ fn input_purpose_for(column: &ColumnInfo) -> gtk::InputPurpose {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{drain_main_context, first_descendant_of_type};
+    use crate::test_support::{
+        drain_main_context, first_descendant_of_type, tooltips_with_keys, unlabelled_icon_buttons,
+    };
 
     fn rule(column: &str) -> FilterRule {
         FilterRule {
@@ -788,6 +773,27 @@ mod tests {
 
     fn row_count(list: &gtk::ListBox) -> usize {
         std::iter::successors(list.first_child(), |row| row.next_sibling()).count()
+    }
+
+    #[gtk4::test]
+    fn escape_closes_the_strip_through_the_table() {
+        use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
+        let strip = strip_with(vec![rule("a")]);
+        strip.set_revealed(true);
+        let outer = strip.widget.child().expect("the strip's content");
+        let escape = shortcuts(&owner_controller(&outer, ShortcutOwner::FilterStrip).expect("the strip's keys"))
+            .into_iter()
+            .find(|shortcut| {
+                shortcut
+                    .trigger()
+                    .is_some_and(|trigger| trigger_keys(&trigger).contains(&keystroke("Escape")))
+            })
+            .and_then(|shortcut| shortcut.action())
+            .expect("Escape is bound");
+
+        assert!(escape.activate(gtk::ShortcutActionFlags::empty(), &outer, None));
+
+        assert!(!strip.is_revealed());
     }
 
     #[gtk4::test]
@@ -849,6 +855,27 @@ mod tests {
 
         let alive = freed.iter().filter(|entry| entry.upgrade().is_some()).count();
         assert_eq!(alive, 0, "the From and To entries outlived the strip");
+    }
+
+    #[gtk4::test]
+    fn icon_buttons_are_labelled_without_accelerator_hints() {
+        let strip = strip_with(vec![rule("a")]);
+        let remove = crate::test_support::descendants(&strip.widget)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+            .find(|button| {
+                button
+                    .icon_name()
+                    .is_some_and(|icon| icon.as_str() == crate::ui::icons::USER_TRASH)
+            })
+            .expect("the rule's Remove Rule button");
+
+        assert!(gtk::test_accessible_has_property(
+            &remove,
+            gtk::AccessibleProperty::Label
+        ));
+        assert_eq!(unlabelled_icon_buttons(&strip.widget), Vec::<String>::new());
+        assert_eq!(tooltips_with_keys(&strip.widget), Vec::<String>::new());
     }
 
     #[gtk4::test]

@@ -7,6 +7,7 @@ use super::cell_preset::cell_presets;
 use super::context_menu::prepare_menu;
 use super::grid_menus::GridMenus;
 use super::{CellPreset, GridCell, GridMsg, GridSink};
+use crate::application::{ShortcutOwner, component_trigger, controller_name};
 
 pub(super) struct GridKeyboard;
 
@@ -24,40 +25,19 @@ impl GridKeyboard {
         let controller = gtk::ShortcutController::new();
         controller.set_scope(gtk::ShortcutScope::Local);
         controller.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let none = gdk::ModifierType::empty();
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(any_of(&[
-                (gdk::Key::F2, none),
-                (gdk::Key::Return, none),
-                (gdk::Key::ISO_Enter, none),
-                (gdk::Key::KP_Enter, none),
-            ])),
-            Some(on_focused_cell(|_, cell| edit_or_toggle(cell))),
-        ));
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(any_of(&[(gdk::Key::space, none), (gdk::Key::KP_Space, none)])),
-            Some(on_focused_cell(|_, cell| toggle(cell))),
-        ));
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(any_of(&[
-                (gdk::Key::Menu, none),
-                (gdk::Key::F10, gdk::ModifierType::SHIFT_MASK),
-            ])),
-            Some(on_focused_cell(move |widget, cell| show_menu(widget, cell, &menus))),
-        ));
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(any_of(&[(gdk::Key::BackSpace, gdk::ModifierType::CONTROL_MASK)])),
-            Some(on_focused_cell(move |_, cell| set_null(cell, &sink))),
-        ));
+        controller.set_name(Some(controller_name(ShortcutOwner::GridCell)));
+        let add = |action: &str, act: gtk::CallbackAction| {
+            controller.add_shortcut(gtk::Shortcut::new(component_trigger(action), Some(act)));
+        };
+        add("cell.edit", on_focused_cell(|_, cell| edit_or_toggle(cell)));
+        add("cell.toggle", on_focused_cell(|_, cell| toggle(cell)));
+        add(
+            "cell.menu",
+            on_focused_cell(move |widget, cell| show_menu(widget, cell, &menus)),
+        );
+        add("cell.set-null", on_focused_cell(move |_, cell| set_null(cell, &sink)));
         column_view.add_controller(controller);
     }
-}
-
-fn any_of(keys: &[(gdk::Key, gdk::ModifierType)]) -> gtk::ShortcutTrigger {
-    keys.iter()
-        .map(|&(key, modifiers)| gtk::KeyvalTrigger::new(key, modifiers).upcast::<gtk::ShortcutTrigger>())
-        .reduce(|first, second| gtk::AlternativeTrigger::new(first, second).upcast())
-        .unwrap_or_else(|| gtk::NeverTrigger::get().upcast())
 }
 
 fn on_focused_cell(act: impl Fn(&gtk::Widget, &GridCell) -> glib::Propagation + 'static) -> gtk::CallbackAction {
@@ -129,50 +109,32 @@ fn set_null(cell: &GridCell, sink: &GridSink) -> glib::Propagation {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use gtk4::prelude::*;
     use gtk4::{self as gtk, gdk};
     use tablepro_core::Value;
 
-    use crate::application::APP_ACCELS;
+    use crate::application::{ACCELERATORS, AcceleratorScope, ShortcutOwner};
+    use crate::test_support::shortcut_keys::{
+        Keystroke, class_binding_keys, class_keys_on_focus_paths, keystroke, owner_controller, shortcuts, table_keys,
+        trigger_keys,
+    };
     use crate::test_support::{descendants, wait_until};
     use crate::ui::grid::test_grid::{Grid, WAIT, content, edited_rows, key, named, recorder, text, two_text_rows};
-    use crate::ui::grid::{CellPreset, GridCell, GridMsg, RowObject, TabGridContext, begin_edit, build_column_view};
+    use crate::ui::grid::{
+        CellPreset, GridCell, GridMsg, GridSorting, RowObject, TabGridContext, begin_edit, build_column_view,
+    };
 
-    type Accel = (gdk::Key, gdk::ModifierType);
-
-    fn keys_of(trigger: &gtk::ShortcutTrigger, into: &mut Vec<Accel>) {
-        if let Some(keyval) = trigger.downcast_ref::<gtk::KeyvalTrigger>() {
-            into.push((keyval.keyval().to_lower(), keyval.modifiers()));
-        } else if let Some(pair) = trigger.downcast_ref::<gtk::AlternativeTrigger>() {
-            keys_of(&pair.first(), into);
-            keys_of(&pair.second(), into);
-        }
-    }
-
-    fn shortcuts(controller: &gtk::ShortcutController) -> Vec<gtk::Shortcut> {
-        (0..controller.n_items())
-            .filter_map(|position| controller.item(position).and_downcast::<gtk::Shortcut>())
-            .collect()
-    }
-
-    fn accels(shortcut: &gtk::Shortcut) -> Vec<Accel> {
-        let mut keys = Vec::new();
-        if let Some(trigger) = shortcut.trigger() {
-            keys_of(&trigger, &mut keys);
-        }
-        keys
+    fn accels(shortcut: &gtk::Shortcut) -> Vec<Keystroke> {
+        shortcut
+            .trigger()
+            .map(|trigger| trigger_keys(&trigger))
+            .unwrap_or_default()
     }
 
     fn keyboard(view: &gtk::ColumnView) -> gtk::ShortcutController {
-        let controllers = view.observe_controllers();
-        (0..controllers.n_items())
-            .filter_map(|position| controllers.item(position).and_downcast::<gtk::ShortcutController>())
-            .find(|controller| {
-                shortcuts(controller)
-                    .iter()
-                    .any(|shortcut| accels(shortcut).contains(&(gdk::Key::F2, gdk::ModifierType::empty())))
-            })
-            .expect("the grid's keyboard controller")
+        owner_controller(view, ShortcutOwner::GridCell).expect("the grid's keyboard controller")
     }
 
     /// Run what `key` does on the focused cell, as a key press reaching
@@ -190,26 +152,69 @@ mod tests {
         gdk::ModifierType::empty()
     }
 
-    fn parse(accel: &str) -> Accel {
-        let (key, modifiers) = gtk::accelerator_parse(accel).expect("an accelerator GTK can parse");
-        (key.to_lower(), modifiers)
+    #[gtk4::test]
+    fn grid_keyboard_matches_component_entries() {
+        let grid = two_text_rows();
+        let bound: HashSet<Keystroke> = shortcuts(&keyboard(&grid.view)).iter().flat_map(accels).collect();
+
+        assert_eq!(bound, table_keys(ShortcutOwner::GridCell));
+        assert!(bound.contains(&keystroke("<Primary>BackSpace")));
+        assert!(
+            bound.contains(&(gdk::Key::KP_Enter, none())),
+            "the keypad Enter was lost"
+        );
     }
 
+    /// A bubble-phase key on the column view reaches it only when no
+    /// class on the way up from the focused cell binds it first.
     #[gtk4::test]
-    fn grid_accels_do_not_collide_with_app_accels() {
+    fn browse_grid_keys_are_not_class_bindings_inside_the_grid() {
         let grid = two_text_rows();
-        let bound: Vec<Accel> = shortcuts(&keyboard(&grid.view)).iter().flat_map(accels).collect();
-        assert!(bound.contains(&parse("<Primary>BackSpace")));
+        grid.focus(0, 1);
+        let class_keys = class_keys_on_focus_paths(&grid.view, |_| false);
+        assert!(
+            class_keys.contains(&keystroke("<Primary>a")),
+            "the list view's own bindings were not found, so the check reads nothing"
+        );
 
-        let reserved = APP_ACCELS
-            .iter()
-            .flat_map(|(_, accels)| accels.iter())
-            .chain(std::iter::once(&"<Primary>question"));
-        for accel in reserved {
-            assert!(!bound.contains(&parse(accel)), "the grid binds {accel}");
+        for entry in ACCELERATORS {
+            let AcceleratorScope::Local {
+                owner: ShortcutOwner::BrowseGrid,
+                phase,
+            } = entry.scope
+            else {
+                continue;
+            };
+            assert_eq!(phase, gtk::PropagationPhase::Bubble, "{}", entry.action);
+            for accel in entry.triggers {
+                assert!(
+                    !class_keys.contains(&keystroke(accel)),
+                    "{accel} of {} never reaches the column view",
+                    entry.action
+                );
+            }
         }
-        for accel in ["<Primary>q", "<Primary><Shift>n", "<Primary>comma", "<Primary>question"] {
-            assert!(!bound.contains(&parse(accel)), "the grid binds {accel}");
+    }
+
+    /// The table lists these as GtkListBase's own, so the list must bind
+    /// them.
+    #[gtk4::test]
+    fn stock_list_keys_are_list_view_bindings() {
+        let grid = two_text_rows();
+        let list_view = descendants(&grid.view)
+            .into_iter()
+            .find(|widget| widget.is::<gtk::ListView>())
+            .expect("the column view's list");
+        let bound = class_binding_keys(&list_view);
+
+        for entry in ACCELERATORS.iter().filter(|entry| {
+            entry.scope == AcceleratorScope::Stock
+                && entry.action.starts_with("list.")
+                && entry.triggers.iter().all(|accel| !accel.contains("Pointer"))
+        }) {
+            for accel in entry.triggers {
+                assert!(bound.contains(&keystroke(accel)), "the list does not bind {accel}");
+            }
         }
     }
 
@@ -449,8 +454,7 @@ mod tests {
             content(&columns, vec![RowObject::result(vec![Value::Int(7)].into())]),
             &[],
             sink,
-            None,
-            false,
+            GridSorting::Server { initial: None },
             TabGridContext::default(),
         );
         let window = gtk::Window::new();
