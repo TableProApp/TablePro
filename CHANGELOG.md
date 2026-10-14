@@ -137,6 +137,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- Pinned results no longer shift the statement numbers shown for a new script's results or errors.
 - View Value wraps long unbroken values without adding display-only hyphens.
 - Editing a table's structure keeps the Structure label on its tab when unsaved changes are marked.
 - Open Browse tabs reload their rows after Structure changes so grid headers and SQL exports use the current column names.

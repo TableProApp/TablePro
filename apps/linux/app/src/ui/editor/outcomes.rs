@@ -220,7 +220,6 @@ pub(crate) fn summary_label(n_total: usize, n_ok: usize, total_ms: u128, has_err
 
 fn build_outcome_widget(
     o: &StatementOutcome,
-    idx: usize,
     grid_sender: &relm4::Sender<GridMsg>,
     connection_id: Option<uuid::Uuid>,
     database: std::sync::Arc<crate::services::database_service::DatabaseService>,
@@ -240,17 +239,18 @@ fn build_outcome_widget(
         ),
         StatementOutcomeKind::Rows(_) => {
             let ms = o.elapsed_ms.to_string();
+            let number = (o.identity.statement_index + 1).to_string();
             adw::StatusPage::builder()
-                .title(crate::tr!("Statement {n} executed").replace("{n}", &(idx + 1).to_string()))
+                .title(crate::tr!("Statement {n} executed").replace("{n}", &number))
                 .description(crate::tr!("No rows returned · {ms} ms").replace("{ms}", &ms))
                 .icon_name("emblem-default-symbolic")
                 .vexpand(true)
                 .build()
                 .upcast()
         }
-        StatementOutcomeKind::Error(msg) => error_page(idx, msg).upcast(),
+        StatementOutcomeKind::Error(msg) => error_page(o.identity.statement_index, msg).upcast(),
         StatementOutcomeKind::NotRun => adw::StatusPage::builder()
-            .title(crate::tr!("Statement {n} not run").replace("{n}", &(idx + 1).to_string()))
+            .title(crate::tr!("Statement {n} not run").replace("{n}", &(o.identity.statement_index + 1).to_string()))
             .description(crate::tr!("Skipped because an earlier statement failed."))
             .icon_name("media-playback-stop-symbolic")
             .vexpand(true)
@@ -408,11 +408,11 @@ fn statement_subject(sql: &str) -> Option<String> {
     })
 }
 
-fn outcome_tab_label(idx: usize, o: &StatementOutcome) -> String {
+fn outcome_tab_label(o: &StatementOutcome) -> String {
     if o.pinned {
         return pinned_tab_label(o);
     }
-    let n = (idx + 1).to_string();
+    let n = (o.identity.statement_index + 1).to_string();
     let Some(statement) = statement_subject(&o.sql_preview) else {
         return match &o.kind {
             StatementOutcomeKind::Rows(sets) => crate::tr!("Result {n} ({rows})")
@@ -477,11 +477,7 @@ fn build_result_switcher(stack: &adw::ViewStack, outcomes: &[StatementOutcome]) 
 }
 
 fn build_result_drop_down(stack: &adw::ViewStack, outcomes: &[StatementOutcome]) -> gtk::DropDown {
-    let labels: Vec<String> = outcomes
-        .iter()
-        .enumerate()
-        .map(|(idx, outcome)| outcome_tab_label(idx, outcome))
-        .collect();
+    let labels: Vec<String> = outcomes.iter().map(outcome_tab_label).collect();
     let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
     let drop_down = gtk::DropDown::from_strings(&label_refs);
     drop_down.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Statement result"))]);
@@ -521,26 +517,19 @@ pub(crate) fn render_outcomes(
         return;
     }
     if outcomes.len() == 1 {
-        let widget = build_outcome_widget(&outcomes[0], 0, grid_sender, connection_id, database, settings_store);
+        let widget = build_outcome_widget(&outcomes[0], grid_sender, connection_id, database, settings_store);
         holder.append(&widget);
         return;
     }
     let stack = adw::ViewStack::new();
     for (idx, o) in outcomes.iter().enumerate() {
-        let widget = build_outcome_widget(
-            o,
-            idx,
-            grid_sender,
-            connection_id,
-            database.clone(),
-            settings_store.clone(),
-        );
+        let widget = build_outcome_widget(o, grid_sender, connection_id, database.clone(), settings_store.clone());
         let icon = match &o.kind {
             StatementOutcomeKind::Rows(_) => "view-grid-symbolic",
             StatementOutcomeKind::Error(_) => "dialog-error-symbolic",
             StatementOutcomeKind::NotRun => "emblem-synchronizing-symbolic",
         };
-        let page = stack.add_titled_with_icon(&widget, Some(&format!("r{idx}")), &outcome_tab_label(idx, o), icon);
+        let page = stack.add_titled_with_icon(&widget, Some(&format!("r{idx}")), &outcome_tab_label(o), icon);
         if !o.sql_preview.is_empty() {
             widget.set_tooltip_text(Some(&o.sql_preview));
             let _ = page;
@@ -887,7 +876,22 @@ mod tests {
             kind: StatementOutcomeKind::Rows(Vec::new()),
             pinned: true,
         };
-        assert_eq!(super::outcome_tab_label(4, &outcome), "📌 SELECT public.users (0)");
+        assert_eq!(super::outcome_tab_label(&outcome), "📌 SELECT public.users (0)");
+    }
+
+    #[test]
+    fn a_fresh_result_keeps_its_script_number_after_pinned_results_precede_it() {
+        let outcome = super::StatementOutcome {
+            identity: StatementIdentity {
+                statement_index: 1,
+                digest: [0; 32],
+            },
+            sql_preview: "select * from missing_table".into(),
+            elapsed_ms: 0,
+            kind: StatementOutcomeKind::Error("missing table".into()),
+            pinned: false,
+        };
+        assert_eq!(super::outcome_tab_label(&outcome), "2 · SELECT missing_table (error)");
     }
 
     #[test]
