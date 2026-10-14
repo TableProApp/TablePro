@@ -165,6 +165,8 @@ crates/app/src/ui/editor/completion/sql_proposal_imp.rs
 crates/app/src/ui/editor/completion/tests.rs
 crates/app/src/ui/editor/editor_actions.rs
 crates/app/src/ui/editor/editor_session_slot.rs
+crates/app/src/ui/editor/find_bar.rs
+crates/app/src/ui/editor/find_state.rs
 crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
 crates/app/src/ui/editor/mod.rs
@@ -409,6 +411,7 @@ data/resources/ui/connect-dialog.ui
 data/resources/ui/connect-failed-page.ui
 data/resources/ui/connecting-page.ui
 data/resources/ui/export-operations-button.ui
+data/resources/ui/find-bar.ui
 data/resources/ui/picker-page.ui
 data/resources/ui/preferences-dialog.ui
 data/resources/ui/results-pane.ui

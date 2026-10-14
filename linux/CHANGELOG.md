@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
 - Licenses of the third-party crates TablePro is built with, in About TablePro and installed with the app.
 - F9 and the sidebar button show and hide the table sidebar.
+- Find and replace in the SQL editor with Ctrl+F and Ctrl+H, matching case, whole words or regular expressions.
 
 ### Changed
 

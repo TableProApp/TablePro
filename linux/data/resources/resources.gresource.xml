@@ -14,6 +14,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-failed-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connecting-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/export-operations-button.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/find-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/picker-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>

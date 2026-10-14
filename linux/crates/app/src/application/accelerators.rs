@@ -7,7 +7,8 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    BrowseGrid, BrowseTab, CellEditor, FilterStrip, GridCell, HistoryRow, SidebarList, SqlEditor, StructureTab,
+    BrowseGrid, BrowseTab, CellEditor, FilterStrip, GridCell, HistoryRow, SidebarList, SqlEditor, SqlEditorTab,
+    StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, General, TableStructure, Tabs};
 
@@ -222,6 +223,36 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["<Primary>slash"],
         Listed(ShortcutSection::SqlEditor),
     ),
+    // GtkSearchEntry binds Ctrl+G and Ctrl+Shift+G itself, and the find
+    // bar follows its next-match and previous-match signals.
+    local(
+        SqlEditorTab,
+        BUBBLE,
+        "editor.find",
+        &["<Primary>f"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorTab,
+        BUBBLE,
+        "editor.find-replace",
+        &["<Primary>h"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorTab,
+        BUBBLE,
+        "editor.find-next",
+        &["<Primary>g"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorTab,
+        BUBBLE,
+        "editor.find-previous",
+        &["<Primary><Shift>g"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
     application("win.save-query", &["<Primary><Shift>s"], ShortcutSection::SqlEditor),
     local(
         StructureTab,
@@ -287,6 +318,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         GridCell => "tablepro-grid-cell-shortcuts",
         CellEditor => "tablepro-cell-editor-shortcuts",
         SqlEditor => "tablepro-sql-editor-shortcuts",
+        SqlEditorTab => "tablepro-sql-editor-tab-shortcuts",
         StructureTab => "tablepro-structure-tab-shortcuts",
         FilterStrip => "tablepro-filter-strip-shortcuts",
         SidebarList => "tablepro-sidebar-list-shortcuts",

@@ -697,6 +697,260 @@ fn the_editor_menu_shows_the_tables_local_keys() {
     assert!(checked > 0, "no menu item has a local key, so the check reads nothing");
 }
 
+fn find_bar(harness: &Harness) -> find_bar::FindBar {
+    harness.editor.imp().find_bar.get()
+}
+
+/// What `accel` does on the editor tab, as a key reaching the tab's own
+/// controller would.
+fn press_on_tab(harness: &Harness, accel: &str) -> bool {
+    use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
+    let key = keystroke(accel);
+    let controller = owner_controller(&harness.editor, crate::application::ShortcutOwner::SqlEditorTab)
+        .expect("the tab's shortcuts");
+    let action = shortcuts(&controller)
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&key))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("the tab binds the key");
+    action.activate(gtk4::ShortcutActionFlags::empty(), &harness.editor, None)
+}
+
+fn select(buffer: &gtk4::TextBuffer, start: i32, end: i32) {
+    buffer.select_range(&buffer.iter_at_offset(start), &buffer.iter_at_offset(end));
+}
+
+fn selected(buffer: &gtk4::TextBuffer) -> Option<(i32, i32)> {
+    buffer
+        .selection_bounds()
+        .map(|(start, end)| (start.offset(), end.offset()))
+}
+
+/// Open the bar and search for `text`, waiting until the bar shows
+/// what the search counted. The count can be read a moment before the
+/// context says it changed.
+fn search(harness: &Harness, text: &str) -> find_bar::FindBar {
+    assert!(press_on_tab(harness, "<Primary>f"));
+    let bar = find_bar(harness);
+    bar.search_entry().set_text(text);
+    wait_until(WAIT, || !bar.count_text().is_empty()).expect("the search to count");
+    bar
+}
+
+#[gtk4::test]
+fn ctrl_f_reveals_bar_and_prefills_selection() {
+    let harness = editor_with(answering(), "SELECT * FROM orders JOIN orders_lines");
+    let _window = InWindow::new(&harness.editor);
+    let buffer = harness.editor.buffer();
+    select(&buffer, 14, 20);
+
+    assert!(press_on_tab(&harness, "<Primary>f"));
+
+    let bar = find_bar(&harness);
+    assert!(bar.is_open());
+    assert!(!bar.is_replacing());
+    assert_eq!(bar.search_entry().text(), "orders");
+    wait_until(WAIT, || bar.count_text() == "1 of 2").expect("the search to count");
+    assert_eq!(
+        bar.context().map(|context| context.is_highlight()),
+        Some(true),
+        "matches are not highlighted"
+    );
+}
+
+#[gtk4::test]
+fn a_selection_over_lines_is_not_searched_for() {
+    let harness = editor_with(answering(), "SELECT 1;\nSELECT 2;");
+    let _window = InWindow::new(&harness.editor);
+    select(&harness.editor.buffer(), 0, 15);
+
+    assert!(press_on_tab(&harness, "<Primary>f"));
+
+    assert_eq!(find_bar(&harness).search_entry().text(), "");
+}
+
+#[gtk4::test]
+fn next_selects_second_occurrence() {
+    let harness = editor_with(answering(), "orders; orders; orders");
+    let _window = InWindow::new(&harness.editor);
+    let buffer = harness.editor.buffer();
+    select(&buffer, 0, 6);
+    let bar = search(&harness, "orders");
+    wait_until(WAIT, || selected(&buffer) == Some((0, 6))).expect("the first match selected");
+
+    assert!(press_on_tab(&harness, "<Primary>g"));
+    assert_eq!(selected(&buffer), Some((8, 14)));
+    assert_eq!(bar.count_text(), "2 of 3");
+
+    assert!(press_on_tab(&harness, "<Primary><Shift>g"));
+    assert_eq!(selected(&buffer), Some((0, 6)));
+    assert!(press_on_tab(&harness, "<Primary><Shift>g"));
+    assert_eq!(selected(&buffer), Some((16, 22)), "the search did not wrap around");
+}
+
+/// GtkSearchEntry binds Ctrl+G itself, so in the entry the key reaches
+/// the bar as the entry's next-match signal.
+#[gtk4::test]
+fn the_search_entrys_next_match_moves_to_the_next() {
+    let harness = editor_with(answering(), "a; b; a");
+    let _window = InWindow::new(&harness.editor);
+    let buffer = harness.editor.buffer();
+    buffer.place_cursor(&buffer.start_iter());
+    let bar = search(&harness, "a");
+    wait_until(WAIT, || selected(&buffer) == Some((0, 1))).expect("the first match selected");
+
+    bar.search_entry().emit_by_name::<()>("next-match", &[]);
+
+    assert_eq!(selected(&buffer), Some((6, 7)));
+}
+
+#[gtk4::test]
+fn replace_all_is_single_undo_step() {
+    let harness = editor_with(answering(), "x = 1 AND x = 2");
+    let _window = InWindow::new(&harness.editor);
+    let toasts = SignalLog::connect(&harness.editor, "toast", |values| {
+        values[1].get::<String>().expect("a message")
+    });
+    assert!(press_on_tab(&harness, "<Primary>h"));
+    let bar = find_bar(&harness);
+    assert!(bar.is_replacing(), "Ctrl+H did not show the replace row");
+    bar.replace_entry().set_text("y");
+    bar.search_entry().set_text("x");
+    wait_until(WAIT, || bar.count_text().ends_with("of 2")).expect("the search to count");
+
+    WidgetExt::activate_action(&bar, "find.replace-all", None).expect("find.replace-all");
+
+    let buffer = harness.editor.buffer();
+    assert_eq!(toasts.take(), ["Replaced 2 occurrences"]);
+    assert_eq!(buffer_text(&buffer), "y = 1 AND y = 2");
+    buffer.undo();
+    assert_eq!(buffer_text(&buffer), "x = 1 AND x = 2");
+}
+
+#[gtk4::test]
+fn replace_changes_the_selected_match_and_moves_on() {
+    let harness = editor_with(answering(), "x; x; x");
+    let _window = InWindow::new(&harness.editor);
+    let buffer = harness.editor.buffer();
+    select(&buffer, 3, 4);
+    let bar = search(&harness, "x");
+    bar.replace_entry().set_text("yy");
+
+    WidgetExt::activate_action(&bar, "find.replace", None).expect("find.replace");
+
+    assert_eq!(buffer_text(&buffer), "x; yy; x");
+    wait_until(WAIT, || selected(&buffer) == Some((7, 8))).expect("the next match selected");
+}
+
+#[gtk4::test]
+fn nothing_to_replace_leaves_the_buffer_alone() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+    let bar = search(&harness, "orders");
+    assert_eq!(bar.count_text(), "No results");
+
+    let actions = bar.actions().expect("the find actions");
+    assert!(
+        !actions.is_action_enabled("replace-all"),
+        "Replace All is on with nothing to replace"
+    );
+    assert!(!actions.is_action_enabled("replace"));
+    bar.replace_all();
+
+    assert_eq!(buffer_text(&harness.editor.buffer()), "SELECT 1");
+}
+
+#[gtk4::test]
+fn invalid_regex_marks_entry_error() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+    assert!(press_on_tab(&harness, "<Primary>f"));
+    let bar = find_bar(&harness);
+    WidgetExt::activate_action(&bar, "find.regex-enabled", None).expect("find.regex-enabled");
+    let entry = bar.search_entry();
+
+    entry.set_text("(");
+    wait_until(WAIT, || entry.has_css_class("error")).expect("the entry to show the error");
+    assert!(entry.tooltip_text().is_some_and(|text| !text.is_empty()));
+    assert_eq!(bar.count_text(), "");
+
+    entry.set_text("SEL+");
+    wait_until(WAIT, || !entry.has_css_class("error")).expect("the error to clear");
+    assert_eq!(entry.tooltip_text(), None);
+}
+
+#[gtk4::test]
+fn case_sensitive_action_toggles_settings() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+    let bar = find_bar(&harness);
+    assert!(!bar.settings().is_case_sensitive());
+
+    WidgetExt::activate_action(&bar, "find.case-sensitive", None).expect("find.case-sensitive");
+    assert!(bar.settings().is_case_sensitive());
+
+    WidgetExt::activate_action(&bar, "find.at-word-boundaries", None).expect("find.at-word-boundaries");
+    assert!(bar.settings().is_at_word_boundaries());
+}
+
+#[gtk4::test]
+fn escape_hides_bar_and_disables_highlight() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+    let bar = search(&harness, "SEL");
+    let context = bar.context().expect("the search context");
+    assert!(context.is_highlight());
+
+    bar.search_entry().emit_by_name::<()>("stop-search", &[]);
+
+    assert!(!bar.is_open());
+    assert!(!context.is_highlight());
+}
+
+/// A bubble key on the tab reaches it only when no class on the way up
+/// from the focus binds it first. The search entry binds Ctrl+G, which
+/// the bar follows through the entry's own signals.
+#[gtk4::test]
+fn find_keys_are_not_class_bindings_inside_the_tab() {
+    use crate::application::{ACCELERATORS, AcceleratorScope, ShortcutOwner};
+    use crate::test_support::shortcut_keys::{class_keys_on_focus_paths, keystroke};
+    let harness = editor_with(answering(), "SELECT 1");
+    let _window = InWindow::new(&harness.editor);
+
+    let class_keys = class_keys_on_focus_paths(&harness.editor, |widget| {
+        widget.is::<gtk4::Text>() || widget.is::<gtk4::SearchEntry>()
+    });
+
+    assert!(
+        class_keys.contains(&keystroke("<Primary>slash")),
+        "the view's own bindings were not found, so the check reads nothing"
+    );
+    let mut checked = 0;
+    for entry in ACCELERATORS {
+        let AcceleratorScope::Local {
+            owner: ShortcutOwner::SqlEditorTab,
+            phase,
+        } = entry.scope
+        else {
+            continue;
+        };
+        assert_eq!(phase, gtk4::PropagationPhase::Bubble, "{}", entry.action);
+        for accel in entry.triggers {
+            assert!(
+                !class_keys.contains(&keystroke(accel)),
+                "{accel} of {} never reaches the tab",
+                entry.action
+            );
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 4);
+}
+
 /// These press real keys on the X display every test shares; nextest runs
 /// them with no other test beside them.
 mod real_keys {
@@ -720,5 +974,35 @@ mod real_keys {
         wait_until(Duration::from_secs(2), || buffer_text(&buffer) == "-- select 1")
             .expect("Ctrl+/ to comment the line");
         assert!(!buffer.has_selection(), "Ctrl+/ selected the text");
+    }
+
+    /// Real keys, so Ctrl+F meets every handler on its way up from the
+    /// view, and Escape the search entry's own.
+    #[gtk4::test]
+    fn ctrl_f_in_the_view_opens_find_and_escape_returns_to_it() {
+        // The bar slides in, and its entry takes no key until the first
+        // frame of the slide shows it.
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        let harness = editor_with(answering(), "select 1");
+        let _window = InWindow::presented(&harness.editor);
+        let view = harness.editor.imp().source_view.get();
+        view.grab_focus();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+        let bar = find_bar(&harness);
+        let entry = bar.search_entry();
+
+        keys.press(gtk4::gdk::Key::f, gtk4::gdk::ModifierType::CONTROL_MASK)
+            .expect("the key press");
+        wait_until(Duration::from_secs(2), || {
+            bar.is_open() && entry.state_flags().contains(gtk4::StateFlags::FOCUS_WITHIN)
+        })
+        .expect("Ctrl+F to open the find bar with the focus in its entry");
+
+        keys.press(gtk4::gdk::Key::Escape, gtk4::gdk::ModifierType::empty())
+            .expect("the key press");
+        wait_until(Duration::from_secs(2), || !bar.is_open() && view.has_focus())
+            .expect("Escape to close the bar and return to the view");
     }
 }

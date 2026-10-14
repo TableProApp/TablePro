@@ -306,6 +306,30 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="editor-find">
+            <property name="title" translatable="yes">Find</property>
+            <property name="accelerator">&lt;Primary&gt;f</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="editor-find-replace">
+            <property name="title" translatable="yes">Find and replace</property>
+            <property name="accelerator">&lt;Primary&gt;h</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="editor-find-next">
+            <property name="title" translatable="yes">Next match</property>
+            <property name="accelerator">&lt;Primary&gt;g</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="editor-find-previous">
+            <property name="title" translatable="yes">Previous match</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;g</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="win-save-query">
             <property name="title" translatable="yes">Save the query under a name</property>
             <property name="action-name">win.save-query</property>
