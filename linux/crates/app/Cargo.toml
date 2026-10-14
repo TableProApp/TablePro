@@ -66,6 +66,8 @@ libadwaita.workspace = true
 sourceview5.workspace = true
 glib.workspace = true
 relm4.workspace = true
+# CLOCK_BOOTTIME, which std does not expose, tells a suspend apart.
+rustix = { version = "1.1", default-features = false, features = ["std", "time"] }
 secrecy.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }

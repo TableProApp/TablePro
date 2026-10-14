@@ -4,7 +4,7 @@ use tablepro_core::LivenessPolicy;
 use tablepro_session::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
 use tablepro_session::operation::DefaultDeadlines;
 use tablepro_session::runtime::Tasks;
-use tablepro_session::{Session, SessionDeps};
+use tablepro_session::{ConnectRequest, Session, SessionDeps};
 use tablepro_test_support::{ConnectionScript, FakeConnection};
 
 /// A session over a fake connection, and what each reconnect gets.
@@ -22,6 +22,17 @@ impl FakeSession {
         tasks: Tasks,
     ) -> Self {
         let request = FakeConnector::request().expect("a request");
+        Self::start_for(request, script, reconnects, tasks)
+    }
+
+    /// A session opened by `request`, which decides what the network has
+    /// to reach for it.
+    pub(crate) fn start_for(
+        request: ConnectRequest,
+        script: ConnectionScript,
+        reconnects: impl IntoIterator<Item = FakeEstablish>,
+        tasks: Tasks,
+    ) -> Self {
         let (pending, connection) = FakeConnector::pending_session(request, script);
         let connector = FakeConnector::new(reconnects);
         let session = Session::start(

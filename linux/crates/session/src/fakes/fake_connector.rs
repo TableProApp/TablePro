@@ -4,8 +4,11 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use futures::future::BoxFuture;
+use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
-use tablepro_core::{ConfigError, FileEndpoint, LivenessPolicy, WorkspaceSettings};
+use tablepro_core::{
+    ConfigError, Credentials, FileEndpoint, LivenessPolicy, NetworkEndpoint, TlsConfig, WorkspaceSettings,
+};
 use tablepro_test_support::{ConnectionScript, FakeConnection, FakeDriver};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -90,6 +93,28 @@ impl FakeConnector {
             )),
             target: RequestTarget::File(FileEndpoint::open_existing(PathBuf::from("/fake.db"))?),
             workspace_settings: WorkspaceSettings::workspace(false),
+        })
+    }
+
+    /// A request for a server at `host:port`, for tests where the network
+    /// has to reach it.
+    pub fn network_request(host: &str, port: u16) -> Result<ConnectRequest, ConfigError> {
+        Ok(ConnectRequest {
+            target: RequestTarget::Network {
+                endpoint: NetworkEndpoint::new(host, port)?,
+                ssh: None,
+                credentials: Credentials::Password {
+                    username: "app".to_owned(),
+                    password: SecretString::from("secret"),
+                },
+                database: None,
+                tls: TlsConfig::disabled(),
+            },
+            driver: Arc::new(FakeDriver::connecting(
+                &FakeDriver::NETWORK_CAPABILITIES,
+                ConnectionScript::default(),
+            )),
+            ..Self::request()?
         })
     }
 

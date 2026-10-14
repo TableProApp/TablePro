@@ -28,9 +28,7 @@ fn health_banner_text(health: &SessionHealth) -> Option<String> {
             "Connection lost. Reconnecting (attempt {n}).",
             &[("n", &attempt.to_string())],
         )),
-        SessionHealth::Offline => Some(crate::i18n::gettext(
-            "The server cannot be reached. TablePro will keep checking.",
-        )),
+        SessionHealth::Offline => Some(crate::i18n::gettext("Offline. Waiting for the network.")),
         SessionHealth::Failed { cause } => Some(failed_banner_text(*cause)),
     }
 }
@@ -61,7 +59,10 @@ mod tests {
         assert_eq!(health_banner_text(&SessionHealth::Online), None);
         let reconnecting = health_banner_text(&SessionHealth::Reconnecting { attempt: 3 }).expect("a banner");
         assert!(reconnecting.contains('3'), "{reconnecting}");
-        assert!(health_banner_text(&SessionHealth::Offline).is_some());
+        assert_eq!(
+            health_banner_text(&SessionHealth::Offline).as_deref(),
+            Some("Offline. Waiting for the network.")
+        );
     }
 
     #[test]

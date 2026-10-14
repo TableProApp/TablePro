@@ -6,6 +6,7 @@ mod app_services;
 mod app_window_host;
 mod imp;
 mod quit_sequence;
+mod session_signals;
 mod window_host;
 mod window_launch;
 mod window_registry;

@@ -259,6 +259,7 @@ mod tests {
     use super::*;
     use crate::connect::{ConnectRequest, CredentialSource, RefreshedRequest};
     use crate::fakes::{FakeConnector, FakeCredentialSource, FakeEstablish};
+    use crate::health::Reachability;
     use crate::operation::DefaultDeadlines;
     use crate::session::{Session, SessionDeps};
     use crate::test_support::paused_tasks;
@@ -419,6 +420,38 @@ mod tests {
             1,
             "columns read before the reconnect were trusted after it"
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn lost_then_unreachable_offline_then_reachable_reconnects_immediately() {
+        let connector = FakeConnector::new([FakeEstablish::Fail(refused()), FakeEstablish::Fail(refused())])
+            .always(FakeEstablish::Connect(healthy()));
+        let started = start(healthy(), connector);
+        let lost_at = Instant::now();
+
+        started.session.signal(lost());
+        settle().await;
+        started
+            .session
+            .signal(MonitorSignal::Reachability(Reachability::Unreachable));
+        tokio::time::sleep(HealthPolicy::BACKOFF_INITIAL + Duration::from_secs(5)).await;
+        assert_eq!(*started.session.health().borrow(), SessionHealth::Offline);
+        assert_eq!(started.connector.calls().len(), 2);
+
+        let back_at = Instant::now();
+        started
+            .session
+            .signal(MonitorSignal::Reachability(Reachability::Reachable));
+        settle().await;
+
+        let calls = started.connector.calls();
+        assert_eq!(calls.len(), 3, "the network came back and nothing reconnected");
+        assert_eq!(
+            calls[2].at, back_at,
+            "the reconnect waited for the offline recheck instead of the network"
+        );
+        assert!(back_at - lost_at < HealthPolicy::OFFLINE_RECHECK);
+        assert_eq!(*started.session.health().borrow(), SessionHealth::Online);
     }
 
     #[tokio::test(start_paused = true)]
