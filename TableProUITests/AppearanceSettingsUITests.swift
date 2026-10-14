@@ -135,6 +135,7 @@ final class AppearanceSettingsUITests: UITestCase {
         let reset = sheet.buttons["theme-color-reset-editor.background"]
         XCTAssertTrue(reset.waitToExist(timeout: 10), "Every color of a Dracula copy starts overridden")
         XCTAssertEqual(reset.label, "Use Default")
+        XCTAssertTrue(scrollUntilHittable(reset, in: sheet, timeout: 10))
         reset.click()
         XCTAssertTrue(waitForPredicate(timeout: 5) { !reset.exists }, "Use Default should clear the override")
         XCTAssertTrue(

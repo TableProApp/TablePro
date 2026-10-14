@@ -121,8 +121,8 @@ struct TriggerListGridTests {
             TriggerListPane(triggers: triggers, databaseType: .mysql, state: TriggerInspectorState()),
             size: NSSize(width: 700, height: 300)
         )
-        let tableView = try #require(tableView(in: window.contentView))
-        let presented = tableView.tableColumns.filter { $0.identifier != ColumnIdentitySchema.rowNumberIdentifier && !$0.isHidden }
+        let grid = try #require(tableView(in: window.contentView))
+        let presented = grid.tableColumns.filter { $0.identifier != ColumnIdentitySchema.rowNumberIdentifier && !$0.isHidden }
         let minimums = Dictionary(uniqueKeysWithValues: presented.map { ($0.headerCell.stringValue, $0.minWidth) })
 
         let titles = TriggerListColumns.titles(showsEnabled: true)
