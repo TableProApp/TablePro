@@ -20,6 +20,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Ctrl+V pastes tab-separated text from a spreadsheet into grid cells, all or nothing.
 - When a cell belongs to multiple foreign keys, Go to Referenced Row lets you choose the target table.
 - ENUM and SET cells on MySQL and MariaDB, and enum cells on PostgreSQL, are edited from a list of members.
+- The keyboard selection in an ENUM picker starts on the cell's current member.
 - A preference chooses how NULL is displayed in the grid.
 - Browse filters can be saved, applied, renamed and deleted per connection, schema and table.
 - MySQL and MariaDB connections can use a local Unix socket file, saved with the connection and exported in version 3 connection bundles.

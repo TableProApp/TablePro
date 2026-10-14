@@ -290,6 +290,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::choice_editor::tests::enum_picker_selects_the_current_row_for_keyboard_navigation"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::column_jump::tests::stale_picker_cannot_target_a_replacement_grid"
     ],
     [

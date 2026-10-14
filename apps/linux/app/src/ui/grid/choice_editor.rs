@@ -32,6 +32,10 @@ pub(super) fn checked_members(labels: &[String], current: &str) -> Vec<bool> {
     labels.iter().map(|label| members.contains(&label.as_str())).collect()
 }
 
+fn current_enum_choice_index(labels: &[String], current: &str) -> Option<usize> {
+    labels.iter().position(|label| label == current)
+}
+
 #[derive(Clone)]
 struct Picker {
     cell: CellEditor,
@@ -64,12 +68,12 @@ fn shown(label: &str) -> String {
     }
 }
 
-fn enum_content(picker: Picker, labels: Vec<String>, current: &str) -> gtk::Widget {
+fn enum_choice_list(labels: &[String], current: &str) -> gtk::ListBox {
     let list = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::Single)
         .build();
     list.add_css_class("boxed-list");
-    for label in &labels {
+    for label in labels {
         let row = gtk::Label::builder()
             .label(shown(label))
             .xalign(0.0)
@@ -81,6 +85,16 @@ fn enum_content(picker: Picker, labels: Vec<String>, current: &str) -> gtk::Widg
         }
         list.append(&row);
     }
+    if let Some(index) = current_enum_choice_index(labels, current)
+        && let Some(row) = list.row_at_index(index as i32)
+    {
+        list.select_row(Some(&row));
+    }
+    list
+}
+
+fn enum_content(picker: Picker, labels: Vec<String>, current: &str) -> gtk::Widget {
+    let list = enum_choice_list(&labels, current);
     list.connect_row_activated(move |_, row| {
         if let Some(label) = labels.get(row.index() as usize) {
             picker.commit(enum_commit_text(label));
@@ -202,5 +216,23 @@ mod tests {
         assert_eq!(checked_members(&all, "a,c"), [true, false, true]);
         assert_eq!(checked_members(&all, ""), [false, false, false]);
         assert_eq!(checked_members(&all, "b"), [false, true, false]);
+    }
+
+    #[test]
+    fn an_enum_picker_starts_on_the_current_member() {
+        let all = labels(&["queued", "running", "done"]);
+
+        assert_eq!(current_enum_choice_index(&all, "done"), Some(2));
+        assert_eq!(current_enum_choice_index(&all, "removed"), None);
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn enum_picker_selects_the_current_row_for_keyboard_navigation() {
+        relm4::adw::init().unwrap();
+        let all = labels(&["queued", "running", "done"]);
+        let list = enum_choice_list(&all, "done");
+
+        assert_eq!(list.selected_row().map(|row| row.index()), Some(2));
     }
 }
