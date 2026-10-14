@@ -10,7 +10,7 @@ The Cargo compile / CI floor is the Ubuntu 24.04 stack: GTK 4.14, GLib 2.80, lib
 
 The root Meson project declares the higher GNOME 50 library line (GTK 4.22, GLib 2.88, libadwaita 1.9, GtkSourceView 5.18). The released `.deb` has that same runtime baseline. Arch and Omarchy packages track current GNOME. Native installed-package acceptance remains open (PKG-1); Debian and Ubuntu desktop acceptance remains open for the later GNOME target (PKG-2). Neither floor replaces the other.
 
-At the 2026-10-14 review, Arch packaged Rust 1.98.1 while Debian 13 packaged Rust 1.85.1 ([Arch package](https://archlinux.org/packages/extra/x86_64/rust/), [Debian package](https://packages.debian.org/trixie/rust/rustc)). Arch's `rust` package ignores `rust-toolchain.toml`, and Debian 13 is below the workspace MSRV. Use rustup to select the repository's pinned toolchain consistently.
+At the 2026-10-14 review, Arch packaged Rust 1.99.0 while Debian 13 packaged Rust 1.85.1 ([Arch package](https://archlinux.org/packages/extra/x86_64/rust/), [Debian package](https://packages.debian.org/trixie/rust/rustc)). Arch's `rust` package ignores `rust-toolchain.toml`, and Debian 13 is below the workspace MSRV. Use rustup to select the repository's pinned toolchain consistently.
 
 ## Released packages
 
