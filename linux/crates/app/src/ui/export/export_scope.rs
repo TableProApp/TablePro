@@ -103,7 +103,9 @@ fn scope_choices_with(origin: &ExportOrigin, format: impl Fn(u64) -> String) -> 
             },
             ScopeChoice {
                 title: gettext("All Rows"),
-                subtitle: gettext("Runs the statement again on a separate read-only connection"),
+                subtitle: gettext(
+                    "Runs the statement again on a separate read-only connection, without this editor's USE or SET changes",
+                ),
                 source: ScopeSource::Query,
                 expected: None,
             },

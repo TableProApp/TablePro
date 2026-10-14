@@ -517,7 +517,9 @@ mod tests {
         assert_eq!(selected.string(), "All Rows");
         assert_eq!(
             rows.subtitle().as_deref(),
-            Some("Runs the statement again on a separate read-only connection")
+            Some(
+                "Runs the statement again on a separate read-only connection, without this editor's USE or SET changes"
+            )
         );
     }
 
