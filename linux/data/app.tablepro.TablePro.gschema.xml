@@ -58,6 +58,12 @@
       <description>Ask before dropping a table, deleting rows, or discarding pending edits.</description>
     </key>
 
+    <key name="save-query-history" type="b">
+      <default>true</default>
+      <summary>Save query history</summary>
+      <description>Whether the SQL you run is kept in the query history. Statements that contain passwords or connection secrets are never saved. Turning this off keeps the entries already saved.</description>
+    </key>
+
     <key name="history-retention-days" type="u">
       <default>30</default>
       <range min="0" max="365"/>
