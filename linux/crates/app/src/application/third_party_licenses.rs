@@ -84,9 +84,7 @@ pub fn legal_sections(json: &[u8]) -> Result<Vec<LegalSection>, ThirdPartyLicens
         .collect())
 }
 
-/// AdwAboutDialog cannot list its sections back, so the number applied
-/// is what a caller can check.
-pub fn add_legal_sections(dialog: &adw::AboutDialog, sections: &[LegalSection]) -> usize {
+pub fn add_legal_sections(dialog: &adw::AboutDialog, sections: &[LegalSection]) {
     for section in sections {
         dialog.add_legal_section(
             &section.title,
@@ -95,7 +93,6 @@ pub fn add_legal_sections(dialog: &adw::AboutDialog, sections: &[LegalSection]) 
             section.license_markup().as_deref(),
         );
     }
-    sections.len()
 }
 
 /// The licenses GTK can name itself. Any other is shown as its text.
@@ -284,17 +281,14 @@ mod tests {
         }
     }
 
-    #[gtk4::test]
-    fn about_dialog_applies_every_section() {
-        adw::init().expect("libadwaita initialises under the test backend");
+    #[test]
+    fn embedded_licenses_give_one_section_per_license() {
         let ids = embedded_license_ids();
         assert!(ids.contains("MIT"), "{ids:?}");
 
         let sections = embedded_legal_sections().expect("the embedded licenses parse");
+
         assert_eq!(sections.len(), ids.len());
         assert!(sections.iter().all(|section| !section.title.is_empty()));
-
-        let dialog = adw::AboutDialog::new();
-        assert_eq!(add_legal_sections(&dialog, &sections), ids.len());
     }
 }

@@ -23,9 +23,7 @@ pub fn build_about_dialog(drivers: &DriverRegistry) -> adw::AboutDialog {
     dialog.set_debug_info(&debug_info(&RuntimeVersions::current(), drivers));
     dialog.set_debug_info_filename(DEBUG_INFO_FILENAME);
     match third_party_licenses::embedded_legal_sections() {
-        Ok(sections) => {
-            third_party_licenses::add_legal_sections(&dialog, &sections);
-        }
+        Ok(sections) => third_party_licenses::add_legal_sections(&dialog, &sections),
         Err(error) => tracing::warn!(%error, "the About dialog lists no third-party licenses"),
     }
     dialog
