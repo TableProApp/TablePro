@@ -3,7 +3,7 @@
 Approved 2026-09-16. Delivery branch: `linux`; source version 0.1.6-dev (0.1.5 is released); target 0.2.0. Implementation is authorized; no 0.2 release is approved.
 
 
-## 0.2.0 readiness: 2026-10-11
+## 0.2.0 readiness (reviewed 2026-10-14)
 
 The maintainer's current delivery target is the Arch/Hyprland development release in [0.2.0 scope](0.2.0-scope.md). That page owns the blocker list. Broader engine matrices, Debian/GNOME desktop acceptance and Flatpak continue after 0.2.0 in the [backlog](backlog.md). Historical acceptance gaps below stay open without becoming additional release blockers.
 
