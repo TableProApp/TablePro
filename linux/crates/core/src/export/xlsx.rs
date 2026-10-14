@@ -1,6 +1,6 @@
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 
-use super::{EncodeError, cell_text};
+use super::{RenderError, cell_text};
 use crate::column::ResultColumn;
 use crate::value::{Temporal, Value};
 
@@ -15,16 +15,16 @@ const MAX_COLUMNS: usize = 16_384;
 ///
 /// A string cell is never read as a formula, whatever it starts with,
 /// so unlike CSV this needs no formula neutralising.
-pub fn render_xlsx(columns: &[ResultColumn], rows: &[Vec<Value>], sheet_name: &str) -> Result<Vec<u8>, EncodeError> {
+pub fn render_xlsx(columns: &[ResultColumn], rows: &[Vec<Value>], sheet_name: &str) -> Result<Vec<u8>, RenderError> {
     // The header takes a row, so the data has one fewer to fill.
     if rows.len() + 1 > MAX_ROWS {
-        return Err(EncodeError::TooManyRows {
+        return Err(RenderError::TooManyRows {
             got: rows.len(),
             limit: MAX_ROWS - 1,
         });
     }
     if columns.len() > MAX_COLUMNS {
-        return Err(EncodeError::TooManyColumns {
+        return Err(RenderError::TooManyColumns {
             got: columns.len(),
             limit: MAX_COLUMNS,
         });
@@ -66,7 +66,7 @@ fn write_cell(
     value: &Value,
     date: &Format,
     timestamp: &Format,
-) -> Result<(), EncodeError> {
+) -> Result<(), RenderError> {
     match value {
         // A blank cell, not an empty string: Excel's COUNT and AVERAGE
         // read the two differently, and NULL is the absent one.
@@ -165,8 +165,8 @@ fn sheet_title(name: &str) -> String {
     }
 }
 
-fn xlsx_error(error: rust_xlsxwriter::XlsxError) -> EncodeError {
-    EncodeError::Xlsx(error.to_string())
+fn xlsx_error(error: rust_xlsxwriter::XlsxError) -> RenderError {
+    RenderError::Xlsx(error.to_string())
 }
 
 #[cfg(test)]
@@ -276,7 +276,7 @@ mod tests {
 
         let error = render_xlsx(&columns, &[], "Results").expect_err("too wide");
 
-        assert!(matches!(error, EncodeError::TooManyColumns { .. }), "{error:?}");
+        assert!(matches!(error, RenderError::TooManyColumns { .. }), "{error:?}");
     }
 
     #[test]

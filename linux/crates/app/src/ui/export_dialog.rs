@@ -386,8 +386,12 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
             Format::Xlsx => {
                 export::render_xlsx(&result.columns, &result.rows, &title).map_err(|error| error.to_string())
             }
-            Format::Json => Ok(export::render_json(&result.columns, &result.rows).into_bytes()),
-            Format::Markdown => Ok(export::render_markdown(&result.columns, &result.rows).into_bytes()),
+            Format::Json => export::render_json(&result.columns, &result.rows)
+                .map(String::into_bytes)
+                .map_err(|e| e.to_string()),
+            Format::Markdown => export::render_markdown(&result.columns, &result.rows)
+                .map(String::into_bytes)
+                .map_err(|e| e.to_string()),
             Format::Html => Ok(export::render_html(&result.columns, &result.rows, &title).into_bytes()),
             Format::Xml => Ok(export::render_xml(&result.columns, &result.rows).into_bytes()),
             Format::Sql => match target.as_ref() {

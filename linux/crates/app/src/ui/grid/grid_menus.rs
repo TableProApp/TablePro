@@ -286,7 +286,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     };
     let copy_json_action = {
         let cols = columns.clone();
-        copy_action!("copy-json", |rows| GridMsg::CopyToClipboard(
+        copy_action!("copy-json", |rows| clipboard_message(
             tablepro_core::export::render_json(&cols, &rows)
         ))
     };
@@ -309,7 +309,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     };
     let copy_markdown_action = {
         let cols = columns.clone();
-        copy_action!("copy-markdown", |rows| GridMsg::CopyToClipboard(
+        copy_action!("copy-markdown", |rows| clipboard_message(
             tablepro_core::export::render_markdown(&cols, &rows)
         ))
     };

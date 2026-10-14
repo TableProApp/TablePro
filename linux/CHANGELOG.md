@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set Value in a grid cell's menu is Set to Empty, Set to NULL and Set to DEFAULT, each shown only where the column takes it.
 - Set a grid cell to NULL with Ctrl+Backspace instead of Ctrl+Shift+N.
 - Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
+- JSON exports and copies put one row per line, and a value TablePro couldn't read stops the export instead of becoming NULL.
 - Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
 - Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
 - Deleting a connection asks once, offers its window when it is open, and can delete its query history too.
