@@ -9,6 +9,9 @@ use super::state_file::StateFile;
 type Connections = HashMap<String, HashMap<String, HashMap<String, i32>>>;
 type HiddenColumns = HashMap<String, HashMap<String, Vec<String>>>;
 
+pub const MIN_COLUMN_WIDTH: i32 = 24;
+pub const MAX_COLUMN_WIDTH: i32 = 4000;
+
 #[derive(Clone)]
 pub struct ColumnWidthStore {
     file: Arc<StateFile<Connections>>,
@@ -104,6 +107,7 @@ impl ColumnWidthStore {
         self.file
             .read(|map| map.get(&connection_id.to_string())?.get(table)?.get(column).copied())
             .flatten()
+            .map(|width| width.clamp(MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH))
     }
 
     pub fn save(&self, connection_id: Uuid, table: &str, column: &str, width: i32) -> Result<(), String> {
@@ -112,7 +116,7 @@ impl ColumnWidthStore {
                 .or_default()
                 .entry(table.to_string())
                 .or_default()
-                .insert(column.to_string(), width);
+                .insert(column.to_string(), width.clamp(MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH));
         })
     }
 
@@ -252,5 +256,50 @@ mod tests {
         assert!(!may_hide(3, 3));
         assert!(!may_hide(1, 0));
         assert!(!may_hide(0, 0));
+    }
+    #[test]
+    fn a_width_from_a_hand_edited_or_corrupt_file_is_clamped_before_it_reaches_the_toolkit() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = Uuid::new_v4();
+        let widths = [
+            ("negative", -5),
+            ("zero", 0),
+            ("huge", i32::MAX),
+            ("min", i32::MIN),
+            ("fine", 150),
+        ];
+        let entries: Vec<String> = widths
+            .iter()
+            .map(|(name, width)| format!("\"{name}\": {width}"))
+            .collect();
+        std::fs::write(
+            dir.path().join("column_widths.json"),
+            format!("{{\"{id}\": {{\"t\": {{{}}}}}}}", entries.join(", ")),
+        )
+        .unwrap();
+
+        let store = ColumnWidthStore::load_in(dir.path());
+
+        for (name, _) in widths {
+            let width = store.load(id, "t", name).unwrap();
+            assert!(
+                (MIN_COLUMN_WIDTH..=MAX_COLUMN_WIDTH).contains(&width),
+                "{name}: {width}"
+            );
+        }
+        assert_eq!(store.load(id, "t", "fine"), Some(150));
+        assert_eq!(store.load(id, "t", "negative"), Some(MIN_COLUMN_WIDTH));
+        assert_eq!(store.load(id, "t", "huge"), Some(MAX_COLUMN_WIDTH));
+    }
+
+    #[test]
+    fn a_width_is_clamped_when_saved_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ColumnWidthStore::load_in(dir.path());
+        let id = Uuid::new_v4();
+        store.save(id, "t", "c", -40).unwrap();
+        store.save(id, "t", "d", i32::MAX).unwrap();
+        assert_eq!(store.load(id, "t", "c"), Some(MIN_COLUMN_WIDTH));
+        assert_eq!(store.load(id, "t", "d"), Some(MAX_COLUMN_WIDTH));
     }
 }

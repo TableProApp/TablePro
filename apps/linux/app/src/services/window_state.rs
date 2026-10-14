@@ -31,33 +31,85 @@ impl Default for WindowState {
     }
 }
 
+const MIN_WINDOW_WIDTH: i32 = 480;
+const MIN_WINDOW_HEIGHT: i32 = 320;
+const MAX_WINDOW_SIDE: i32 = 16384;
+
+#[derive(Debug, PartialEq, Eq)]
+enum GeometrySync {
+    Nothing,
+    MigrateFileToSettings,
+    WriteStateToSettings,
+}
+
+struct SettingsGeometry {
+    width: i32,
+    height: i32,
+    maximized: bool,
+    migrated: bool,
+}
+
+fn sane(mut state: WindowState) -> WindowState {
+    state.width = state.width.clamp(MIN_WINDOW_WIDTH, MAX_WINDOW_SIDE);
+    state.height = state.height.clamp(MIN_WINDOW_HEIGHT, MAX_WINDOW_SIDE);
+    state
+}
+
+fn reconcile(parsed: Option<WindowState>, settings: Option<SettingsGeometry>) -> (WindowState, GeometrySync) {
+    let unreadable = parsed.is_none();
+    let mut state = parsed.unwrap_or_default();
+    let sync = match settings {
+        None => GeometrySync::Nothing,
+        Some(settings) if !settings.migrated => GeometrySync::MigrateFileToSettings,
+        Some(settings) if unreadable => {
+            state.width = settings.width;
+            state.height = settings.height;
+            state.maximized = settings.maximized;
+            GeometrySync::Nothing
+        }
+        Some(settings)
+            if state.width != settings.width
+                || state.height != settings.height
+                || state.maximized != settings.maximized =>
+        {
+            GeometrySync::WriteStateToSettings
+        }
+        Some(_) => GeometrySync::Nothing,
+    };
+    (sane(state), sync)
+}
+
 fn load_locked() -> WindowState {
     let Some(path) = xdg_config_path("window.json") else {
         return WindowState::default();
     };
-    let bytes = std::fs::read(&path).ok();
-    let mut state = bytes
-        .as_deref()
-        .and_then(|b| serde_json::from_slice(b).ok())
-        .unwrap_or_default();
-    if let Some(settings) = super::preferences::settings() {
-        if !settings.boolean("window-migrated") {
-            if let Err(e) = backup_file_if_exists(&path, &path.with_extension("before-gsettings.json"))
-                .map_err(|e| e.to_string())
-                .and_then(|()| save_geometry_settings(&settings, &state))
-            {
-                tracing::warn!(error = %e, "window_state: GSettings migration deferred");
+    let parsed: Option<WindowState> = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    let settings = super::preferences::settings();
+    let geometry = settings.as_ref().map(|settings| SettingsGeometry {
+        width: settings.int("window-width"),
+        height: settings.int("window-height"),
+        maximized: settings.boolean("window-maximized"),
+        migrated: settings.boolean("window-migrated"),
+    });
+    let (state, sync) = reconcile(parsed, geometry);
+    if let Some(settings) = settings {
+        match sync {
+            GeometrySync::Nothing => {}
+            GeometrySync::MigrateFileToSettings => {
+                if let Err(e) = backup_file_if_exists(&path, &path.with_extension("before-gsettings.json"))
+                    .map_err(|e| e.to_string())
+                    .and_then(|()| save_geometry_settings(&settings, &state))
+                {
+                    tracing::warn!(error = %e, "window_state: GSettings migration deferred");
+                }
             }
-        } else if bytes.is_none() {
-            state.width = settings.int("window-width");
-            state.height = settings.int("window-height");
-            state.maximized = settings.boolean("window-maximized");
-        } else if (state.width != settings.int("window-width")
-            || state.height != settings.int("window-height")
-            || state.maximized != settings.boolean("window-maximized"))
-            && let Err(e) = save_geometry_settings(&settings, &state)
-        {
-            tracing::warn!(error = %e, "window_state: rollback changes not synced to GSettings");
+            GeometrySync::WriteStateToSettings => {
+                if let Err(e) = save_geometry_settings(&settings, &state) {
+                    tracing::warn!(error = %e, "window_state: rollback changes not synced to GSettings");
+                }
+            }
         }
     }
     state
@@ -166,5 +218,74 @@ mod tests {
         assert_eq!(connection_id_to_restore(Some(id), &[]), None);
         assert_eq!(connection_id_to_restore(Some(Uuid::new_v4()), &[id]), None);
         assert_eq!(connection_id_to_restore(Some(id), &[id]), Some(id));
+    }
+    fn state(width: i32, height: i32, maximized: bool) -> WindowState {
+        WindowState {
+            width,
+            height,
+            maximized,
+            last_connection_id: None,
+        }
+    }
+
+    fn settings(width: i32, height: i32, maximized: bool, migrated: bool) -> Option<SettingsGeometry> {
+        Some(SettingsGeometry {
+            width,
+            height,
+            maximized,
+            migrated,
+        })
+    }
+
+    #[test]
+    fn a_corrupt_or_missing_window_file_adopts_the_saved_geometry_and_writes_nothing_back() {
+        let (loaded, sync) = reconcile(None, settings(1500, 900, true, true));
+        assert_eq!((loaded.width, loaded.height, loaded.maximized), (1500, 900, true));
+        assert_eq!(
+            sync,
+            GeometrySync::Nothing,
+            "the default must not be written over the user's geometry"
+        );
+    }
+
+    #[test]
+    fn the_first_run_after_an_upgrade_migrates_the_file_even_when_it_is_unreadable() {
+        let (_, sync) = reconcile(Some(state(1000, 700, false)), settings(1200, 760, false, false));
+        assert_eq!(sync, GeometrySync::MigrateFileToSettings);
+        let (_, sync) = reconcile(None, settings(1200, 760, false, false));
+        assert_eq!(sync, GeometrySync::MigrateFileToSettings);
+    }
+
+    #[test]
+    fn a_readable_file_that_differs_from_the_settings_is_written_to_them() {
+        let (loaded, sync) = reconcile(Some(state(1000, 700, false)), settings(1200, 760, false, true));
+        assert_eq!((loaded.width, loaded.height), (1000, 700));
+        assert_eq!(sync, GeometrySync::WriteStateToSettings);
+        let (_, same) = reconcile(Some(state(1000, 700, false)), settings(1000, 700, false, true));
+        assert_eq!(same, GeometrySync::Nothing);
+        let (_, none) = reconcile(Some(state(1000, 700, false)), None);
+        assert_eq!(none, GeometrySync::Nothing);
+    }
+
+    #[test]
+    fn a_size_from_a_hand_edited_file_or_the_settings_is_clamped_before_it_reaches_the_toolkit() {
+        for (width, height) in [(-7, 99_999_999), (0, 0), (i32::MIN, i32::MAX)] {
+            let (from_file, _) = reconcile(Some(state(width, height, false)), None);
+            let (from_settings, _) = reconcile(None, settings(width, height, false, true));
+            for loaded in [from_file, from_settings] {
+                assert!(
+                    (MIN_WINDOW_WIDTH..=MAX_WINDOW_SIDE).contains(&loaded.width),
+                    "{width}: {}",
+                    loaded.width
+                );
+                assert!(
+                    (MIN_WINDOW_HEIGHT..=MAX_WINDOW_SIDE).contains(&loaded.height),
+                    "{height}: {}",
+                    loaded.height
+                );
+            }
+        }
+        let (ordinary, _) = reconcile(Some(state(1180, 740, false)), None);
+        assert_eq!((ordinary.width, ordinary.height), (1180, 740));
     }
 }
