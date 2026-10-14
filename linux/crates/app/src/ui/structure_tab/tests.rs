@@ -312,6 +312,29 @@ fn drop_asks_the_window_with_the_table_it_shows() {
     assert_eq!(*asked.borrow(), [(None, "users".to_owned())]);
 }
 
+/// The driver refuses the DROP on a read-only connection, so the tab
+/// does not offer it, as the sidebar's table menu does not.
+#[gtk4::test]
+fn a_read_only_connection_offers_no_drop() {
+    let mut script = ConnectionScript {
+        read_only: true,
+        ..ConnectionScript::default()
+    };
+    script.fetch_table_definition.always(FakeReply::ok(definition("id")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    assert!(harness.fake.session.read_only());
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let asked = std::rc::Rc::new(std::cell::Cell::new(0));
+    let sink = asked.clone();
+    harness
+        .tab()
+        .connect_drop_table_requested(move |_, _, _| sink.set(sink.get() + 1));
+
+    assert!(!harness.tab().imp().drop_button.is_visible());
+    harness.tab().send(StructureTabInput::DropTableRequested);
+    assert_eq!(asked.get(), 0, "the tab asked to drop the table");
+}
+
 fn toasts(tab: &StructureTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
     let toasts = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let sink = toasts.clone();
