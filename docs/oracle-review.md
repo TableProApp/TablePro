@@ -79,7 +79,7 @@ Values (from `tests/data/value-contract.json`):
 | Integer | `-9223372036854775808`, `-9007199254740993`, `9007199254740993`, `9223372036854775807` |
 | Float | `0.1`, `1.0000000000000002`, `1e-200`, `1e200` |
 | Decimal | `0.00000001`, `1.23000000` (trailing zeros kept), `99999999999999999999.99999999` |
-| Text | empty string, `NULL` (the word), `O'Brien`, `漢字 😀 é`, `ends in \`, a line break and a tab, and SQL NULL |
+| Text | empty string, `NULL` (the word), `O'Brien`, `漢字 😀 é` (decomposed `e` + U+0301), `ends in \`, a line break and a tab, and SQL NULL |
 
 The three cases people get wrong are worth looking at first: the word `NULL` versus an empty string versus real NULL, a decimal whose trailing zeros must stay, and an integer above 2^53 that must not pass through a float.
 
