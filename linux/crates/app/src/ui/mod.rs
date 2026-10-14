@@ -13,6 +13,7 @@ pub(crate) mod error_text;
 mod export;
 mod export_dialog;
 mod file_read;
+pub(crate) mod file_reveal;
 mod file_write;
 mod filter_strip;
 mod format;

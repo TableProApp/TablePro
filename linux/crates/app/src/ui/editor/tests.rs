@@ -452,11 +452,12 @@ fn recorded_entries(harness: &Harness) -> Vec<tablepro_storage::query_history::E
     let Some(history) = harness.history.as_ref().and_then(HistoryService::store) else {
         return Vec::new();
     };
-    let search = history.search(tablepro_storage::query_history::SearchFilter {
-        limit: 100,
-        ..Default::default()
-    });
-    block_on(&harness.runtime, search).expect("search")
+    let everything = tablepro_storage::query_history::HistoryQuery::default();
+    let search = history.search_page(
+        &everything,
+        tablepro_storage::query_history::HistoryPageRequest::first(100),
+    );
+    block_on(&harness.runtime, search).expect("search").entries
 }
 
 /// A result set of `rows` one-column rows, ended the way `truncation`

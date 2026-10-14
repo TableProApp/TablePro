@@ -102,6 +102,7 @@ pub(crate) struct WorkspaceModel {
     table_search: gtk::SearchEntry,
     /// Removes a changed host key from known_hosts. `None` without ssh.
     ssh: Option<tablepro_ssh::SshServices>,
+    file_revealer: Rc<dyn crate::ui::file_reveal::FileRevealer>,
     /// Held until a Replace's ssh-keygen finishes too, so a second
     /// Replace cannot remove the key the first one's retry wrote.
     reviewing_host_key: bool,
@@ -127,7 +128,7 @@ pub(crate) struct WorkspaceModel {
     exports: Rc<ExportLedger>,
     /// Whether the window was last told there is something to lose.
     reported_dirty: Cell<Option<bool>>,
-    history_dialog: Option<Controller<HistoryDialog>>,
+    history_dialog: Option<HistoryDialog>,
     saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
     import_dialog: Option<Controller<super::import_dialog::ImportCsvDialog>>,
     driver_id: String,
@@ -512,6 +513,7 @@ impl Workspace {
             read_only_badge: imp.read_only_badge.get(),
             table_search: imp.table_search.get(),
             ssh: services.ssh(),
+            file_revealer: services.file_revealer.clone(),
             reviewing_host_key: false,
             workspace_outer_stack: imp.workspace_outer_stack.get(),
             workspace_root: None,
@@ -712,7 +714,7 @@ impl WorkspaceModel {
         self.sidebar_bridge.abort();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
-            close_if_presented(dialog.model().dialog());
+            close_if_presented(dialog.upcast_ref());
         }
         if let Some(dialog) = self.saved_queries_dialog.take() {
             close_if_presented(dialog.model().dialog());

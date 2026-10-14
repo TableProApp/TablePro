@@ -113,7 +113,7 @@ mod tests {
     use tablepro_core::credentials::{SecretError, SecretKind};
     use tablepro_core::{AuthMode, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, TlsConfig};
     use tablepro_session::connect::StoreConnectionWrites;
-    use tablepro_storage::query_history::{NewEntry, Outcome, SearchFilter};
+    use tablepro_storage::query_history::{HistoryPageRequest, HistoryQuery, NewEntry, Outcome};
     use tablepro_storage::saved_queries::NewSavedQuery;
     use tablepro_storage::{ConnectionStore, DraftId, DraftStore, SavedConnection, StorageError, StoragePaths};
     use tablepro_test_support::{Call, FakeSecretVault};
@@ -457,13 +457,10 @@ mod tests {
         assert_eq!(fixture.history_count(fixture.other).await, 1);
         let left = fixture
             .history
-            .search(SearchFilter {
-                needle: Some("users".to_owned()),
-                limit: 10,
-                ..SearchFilter::default()
-            })
+            .search_page(&HistoryQuery::from_input("users"), HistoryPageRequest::first(10))
             .await
-            .expect("search");
+            .expect("search")
+            .entries;
         assert!(left.iter().all(|entry| entry.connection_id == fixture.other));
     }
 

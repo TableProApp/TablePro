@@ -1,6 +1,6 @@
 # State management
 
-The `app` crate's application, windows, workspace and tabs are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)). A few views are still [Relm4](https://relm4.org) components ([decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md)): `WelcomeView`, the `ConnectionRow` and `SidebarRow` factories, and the history, saved-queries and CSV import dialogs. New views are subclasses. This page covers where state lives, the rules every view follows, and the patterns for each kind.
+The `app` crate's application, windows, workspace and tabs are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)). A few views are still [Relm4](https://relm4.org) components ([decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md)): `WelcomeView`, the `ConnectionRow` and `SidebarRow` factories, and the saved-queries and CSV import dialogs. New views are subclasses. This page covers where state lives, the rules every view follows, and the patterns for each kind.
 
 ## Where state lives
 
@@ -74,7 +74,7 @@ A browse or structure tab is a subclass whose model sits in its `imp` struct. `s
 The components that remain follow these conventions until a rewrite turns them into subclasses:
 
 - Input reaches them through `deliver`, and their output reaches the subclass that hosts them through `connect_receiver` or `runtime::relm4_bridge`, which put it on that subclass's queue.
-- Their commands (`sender.command`, `oneshot_command`) run on Relm4's own runtime, not on `Tasks`. The history and saved-queries dialogs still load that way; new work goes through `spawn_and_deliver`.
+- Their commands (`sender.command`, `oneshot_command`) run on Relm4's own runtime, not on `Tasks`. The saved-queries dialog still loads that way; new work goes through `spawn_and_deliver`.
 - They present their dialogs on the window they belong to. `ComponentBuilder::transient_for` is banned, because Relm4 applies it only from `relm4::RelmApp`, which this app does not use.
 
 ## Naming

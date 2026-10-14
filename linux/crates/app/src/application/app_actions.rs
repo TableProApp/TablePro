@@ -32,6 +32,7 @@ fn present_preferences(app: &TableProApplication) {
         &services.storage,
         services.history().store(),
         &services.tasks,
+        services.file_revealer.clone(),
     )
     .present(app.active_window().as_ref());
 }

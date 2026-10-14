@@ -247,12 +247,13 @@ mod tests {
 
     async fn queries(history: &QueryHistory) -> Vec<String> {
         history
-            .search(tablepro_storage::query_history::SearchFilter {
-                limit: 100,
-                ..Default::default()
-            })
+            .search_page(
+                &tablepro_storage::query_history::HistoryQuery::default(),
+                tablepro_storage::query_history::HistoryPageRequest::first(100),
+            )
             .await
             .expect("search")
+            .entries
             .into_iter()
             .map(|entry| entry.query)
             .collect()

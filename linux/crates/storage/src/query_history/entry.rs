@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     pub id: i64,
     pub query: String,

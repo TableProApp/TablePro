@@ -21,6 +21,7 @@ use crate::services::history_service::HistoryService;
 use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
 use crate::storage::{AppStorage, SharedStorage};
 use crate::ui::credential_prompt::{GtkCredentialPrompter, PromptQueue};
+use crate::ui::file_reveal::{FileLauncherRevealer, FileRevealer};
 use crate::workspace::OpenSessions;
 
 /// What every window of the application shares. GTK-thread only.
@@ -33,6 +34,8 @@ pub struct AppServices {
     pub settings: Rc<AppSettings>,
     pub storage: SharedStorage,
     pub tasks: Tasks,
+    /// Shows a file selected in the file manager.
+    pub(crate) file_revealer: Rc<dyn FileRevealer>,
     /// Where each session's secrets come from.
     credentials: Rc<dyn CredentialSourceFactory>,
     /// Bound to the application once it exists, which is after this.
@@ -80,6 +83,7 @@ impl AppServices {
             credentials: Rc::new(KeyringSources::new(storage.secrets().clone())),
             storage: Rc::new(storage),
             tasks,
+            file_revealer: Rc::new(FileLauncherRevealer),
             hold: application_hold.clone(),
             application_hold,
             open_sessions,

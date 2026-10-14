@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saving rows updates a table's total without counting the table again.
 - Row counts and page sizes group digits the way the system locale does.
 - Query History opens with Ctrl+Shift+H.
+- Query History finds any part of a query in any case, and loads more entries as you scroll.
+- Query History filters by any connection with history, under its current name, and starts on the window's own.
+- Deleting from Query History offers Undo instead of asking first.
+- Query History's filters sit under the search bar instead of in a popover, and Today replaces the last 24 hours.
+- Show in Files, in Preferences and Query History, selects the history database in its folder.
 - Previous and next page are Alt+Page Up and Alt+Page Down; Page Up and Page Down move through the rows.
 - Ctrl+S, Ctrl+Z, F5 and Ctrl+F act on the tab that has the focus, so a text field keeps its own undo.
 - Keyboard Shortcuts lists every shortcut, grouped by where it works.
