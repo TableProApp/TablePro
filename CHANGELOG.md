@@ -29,6 +29,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - PostgreSQL TLS verification now trusts the operating system certificate store when no custom authority is configured.
 - MongoDB table browsing now seeks deep pages in `_id` sort order, including collections with mixed key types.
 - MongoDB offset and `_id` keyset pages apply equality, inequality, comparison, range, set-membership, null, `LIKE` and `ILIKE` filters with SQL null behavior.
+- Concurrent MongoDB first-page requests now share one schema census and retain the union of types observed across pages.
 - Saved SSH hops now have stable IDs and credential revisions, with separate Secret Service operations for per-hop passwords and key passphrases. Legacy connections-file v1 data loads and migrates to v2 on save. Connections use those per-hop secrets for transport; editing a jump chain in the form remains disabled until that editor lands.
 - Encrypted connection bundles now write format version 3 with local MySQL socket paths and each versioned SSH hop's password or key passphrase; version 1 and 2 imports remain supported and plaintext bundles still contain no credentials.
 - MongoDB browse long text, binary and structured values use guarded, ObjectId-safe `_id` refetches for full values.
@@ -236,8 +237,6 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - The headless agent now replaces a cached connection after a driver panic or an unusable-connection fault instead of reusing it because its health check still answers.
 
 ### Added
-- Concurrent MongoDB first-page requests now share one schema census and retain the union of types observed across pages.
-
 - Loaded results can be exported as Markdown, HTML, XML, SQL INSERT statements, or an Excel workbook, alongside CSV and JSON. Statement export is offered only for connections whose engine can express SQL literals, and an Excel export exceeding worksheet limits leaves any existing destination untouched. Workbooks preserve fractional seconds, timezone-bearing timestamps and dates outside 1900–9999 as exact text; ordinary supported dates and whole-second times remain native spreadsheet cells. Empty text is refused with CSV/JSON alternatives instead of being silently collapsed into NULL, preserving any existing destination. XML and HTML preserve carriage returns when parsed. XML refuses unsupported XML 1.0 characters and HTML refuses NUL characters with a row/column error instead of replacing or dropping them.
 - Saved queries have a management dialog (Ctrl+Shift+D): search them, open one in a new editor tab, rename it, or delete it. Until now a saved query could only be reached through the quick switcher and could not be removed.
 - A query that runs for 10 seconds or longer shows a desktop notification when it finishes while the window is not focused.
@@ -297,7 +296,6 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A session COMMIT that only succeeded because PostgreSQL had already rolled back an aborted transaction is now audited as rolled back instead of committed.
 - A cancelled or timed-out session COMMIT or ROLLBACK is now audited with a cancelled or timed-out outcome instead of a generic failure.
 - A session COMMIT that fails because the database already ended the transaction, such as a deferred foreign key violation, no longer leaves the session's transaction marked open.
-- Cancelling a connection attempt over the system OpenSSH client now stops its ssh master process and cleans up its private directory, instead of leaving it running in the background.
 - MongoDB nested documents, arrays and uncommon top-level BSON kinds retain their BSON markers as canonical Extended JSON instead of debug text. Nested documents and arrays plus top-level BSON Timestamp, regex and MinKey cells can be edited in the grid and write back as native BSON; canonical Extended JSON imports reconstruct nested Decimal128, date and binary subtypes. Real-server JSON, CSV and XLSX exports and the MCP browse tool preserve those markers.
 - CSV imports into SQLite INTEGER, REAL and NUMERIC affinity columns pass unparseable values as text, allowing SQLite to store them without rejecting valid mixed storage classes.
 - Duplicate Row refuses rows with undecodable cells or a mismatched cell count instead of inserting a silently substituted NULL.
@@ -434,8 +432,6 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Documentation now tracks the stabilization evidence, ignored-test inventory and whole-app gaps through macOS 0.72
 
 ### Added
-- Concurrent MongoDB first-page requests now share one schema census and retain the union of types observed across pages.
-
 - Jump to Column searches browse/result metadata, distinguishes duplicate names by ordinal, and supports Ctrl+Shift+J.
 - BookiE display name and original book icon; new package commands retain legacy aliases.
 - Arch candidates can be built from an explicit local commit SHA and version before publishing a tag.
