@@ -282,6 +282,33 @@ impl QueryHistory {
         Ok(report)
     }
 
+    /// How many queries ran on a connection, pinned ones included.
+    pub async fn count_for_connection(&self, connection: Uuid) -> Result<u64, StorageError> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM history WHERE connection_id = ?")
+            .bind(connection.to_string())
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
+
+    /// Drop every query run on a connection, pinned ones included, for a
+    /// connection the user deleted along with its history.
+    pub async fn delete_for_connection(&self, connection: Uuid) -> Result<u64, StorageError> {
+        let removed = sqlx::query("DELETE FROM history WHERE connection_id = ?")
+            .bind(connection.to_string())
+            .execute(&self.pool)
+            .await?
+            .rows_affected();
+        // As after a prune: the delete triggers leave tombstones in the
+        // index until it is optimized.
+        if removed > 0 {
+            sqlx::query("INSERT INTO history_fts(history_fts) VALUES('optimize')")
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(removed)
+    }
+
     pub async fn known_connections(&self) -> Result<Vec<(Uuid, String)>, StorageError> {
         let rows = sqlx::query(
             "SELECT DISTINCT connection_id, connection_name FROM history ORDER BY connection_name COLLATE NOCASE",
@@ -543,6 +570,44 @@ mod tests {
         assert_eq!(report.over_cap, 3);
         assert_eq!(left.len(), 3, "the pinned row plus the cap");
         assert!(left.iter().any(|entry| entry.pinned), "the pinned row was dropped");
+    }
+
+    #[tokio::test]
+    async fn delete_for_connection_removes_only_that_connections_queries() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let (going, staying) = (Uuid::new_v4(), Uuid::new_v4());
+        for index in 0..3 {
+            let id = history
+                .record(entry(&format!("SELECT widgets {index}"), going))
+                .await
+                .expect("record");
+            if index == 0 {
+                history.set_pinned(id, true).await.expect("pin");
+            }
+        }
+        history
+            .record(entry("SELECT widgets kept", staying))
+            .await
+            .expect("record");
+        assert_eq!(history.count_for_connection(going).await.expect("count"), 3);
+
+        let removed = history.delete_for_connection(going).await.expect("delete");
+
+        assert_eq!(removed, 3, "a pinned query outlived its connection");
+        assert_eq!(history.count_for_connection(going).await.expect("count"), 0);
+        assert_eq!(history.count_for_connection(staying).await.expect("count"), 1);
+        let found = history
+            .search(SearchFilter {
+                needle: Some("widgets".to_owned()),
+                limit: 10,
+                ..SearchFilter::default()
+            })
+            .await
+            .expect("search");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].connection_id, staying);
+        assert_eq!(history.delete_for_connection(going).await.expect("delete"), 0);
     }
 
     #[tokio::test]

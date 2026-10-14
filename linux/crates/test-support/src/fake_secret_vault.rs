@@ -51,6 +51,13 @@ impl FakeSecretVault {
         self.lock().fail_delete_connection = Some(error);
     }
 
+    /// Stop every failure set so far, as a keyring the user unlocked.
+    pub fn clear_failures(&self) {
+        let mut state = self.lock();
+        state.fail_store.clear();
+        state.fail_delete_connection = None;
+    }
+
     pub fn calls(&self) -> Vec<Call> {
         self.lock().calls.clone()
     }
@@ -169,6 +176,18 @@ mod tests {
         vault.delete_connection(id).await.expect("delete");
 
         assert!(vault.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cleared_failures_no_longer_fail() {
+        let vault = FakeSecretVault::new();
+        let id = Uuid::new_v4();
+        vault.fail_delete_connection(SecretError::Locked);
+        assert_eq!(vault.delete_connection(id).await, Err(SecretError::Locked));
+
+        vault.clear_failures();
+
+        assert_eq!(vault.delete_connection(id).await, Ok(()));
     }
 
     #[tokio::test]
