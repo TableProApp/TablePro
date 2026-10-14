@@ -6,6 +6,7 @@
 //! A read that failed is asked again once the session reconnects. A
 //! count is not: it runs only when the estimate or the user asks.
 
+mod browse_actions;
 mod browse_command;
 mod browse_pager;
 mod browse_request_kind;
@@ -37,7 +38,7 @@ use std::sync::Arc;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{gdk, gio, glib};
+use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::dialect::SqlDialect;
@@ -48,6 +49,7 @@ use tablepro_session::operation::DeadlinePolicy;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, Session};
 
+use self::browse_actions::BrowseActions;
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
 use self::browse_pager::BrowsePager;
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
@@ -179,7 +181,7 @@ impl BrowseTab {
                 }
             }
         });
-        let delete_action = tab.install_delete_action();
+        let actions = browse_actions::install_browse_actions(&tab);
 
         // Handled at once: a tracked change redraws the cells bound to its
         // row in place, so the cell that sent it is still there for the
@@ -252,7 +254,8 @@ impl BrowseTab {
             filter_strip: Some(filter_strip),
             insert_button: imp.insert_button.get(),
             delete_button: imp.delete_button.get(),
-            delete_action,
+            actions,
+            saving: Cell::new(false),
             pending_revealer: imp.pending_revealer.get(),
             save_button: imp.save_button.get(),
             discard_button: imp.discard_button.get(),
@@ -406,6 +409,15 @@ impl BrowseTab {
         self.connect_closure("save-requested", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
 
+    /// F5 asked the window to read the tab again.
+    pub fn connect_refresh_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "refresh-requested",
+            false,
+            glib::closure_local!(move |tab: &Self| f(tab)),
+        )
+    }
+
     /// Stop Saving asked the window to stop the tab's save.
     pub fn connect_stop_save_requested<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
@@ -447,6 +459,7 @@ impl BrowseTab {
             BrowseTabOutput::SaveRequested => self.emit_by_name::<()>("save-requested", &[]),
             BrowseTabOutput::StopSaveRequested => self.emit_by_name::<()>("stop-save-requested", &[]),
             BrowseTabOutput::LoadingChanged(loading) => self.emit_by_name::<()>("loading-changed", &[&loading]),
+            BrowseTabOutput::RefreshRequested => self.emit_by_name::<()>("refresh-requested", &[]),
         }
     }
 
@@ -506,7 +519,6 @@ impl BrowseTab {
                 }
             });
         };
-        on_click(&imp.insert_button, || BrowseTabInput::InsertRow);
         on_click(&imp.first_button, || BrowseTabInput::FirstPage);
         on_click(&imp.prev_button, || BrowseTabInput::PrevPage);
         on_click(&imp.next_button, || BrowseTabInput::NextPage);
@@ -524,32 +536,6 @@ impl BrowseTab {
                 tab.send(BrowseTabInput::PageSizeChanged(size));
             }
         });
-    }
-
-    /// `tab.delete-rows`, which the Delete key and the Delete button
-    /// both name. While it is disabled the key goes on to the window.
-    fn install_delete_action(&self) -> gio::SimpleAction {
-        let action = gio::SimpleAction::new("delete-rows", None);
-        action.set_enabled(false);
-        let tab = self.downgrade();
-        action.connect_activate(move |_, _| {
-            let Some(tab) = tab.upgrade() else {
-                return;
-            };
-            let rows = tab.read(BrowseModel::selected_rows).unwrap_or_default();
-            tab.send(BrowseTabInput::DeleteRows(rows));
-        });
-        let group = gio::SimpleActionGroup::new();
-        group.add_action(&action);
-        self.insert_action_group("tab", Some(&group));
-
-        let shortcuts = gtk::ShortcutController::new();
-        shortcuts.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(gdk::Key::Delete, gdk::ModifierType::empty())),
-            Some(gtk::NamedAction::new("tab.delete-rows")),
-        ));
-        self.add_controller(shortcuts);
-        action
     }
 }
 
@@ -691,8 +677,9 @@ pub(crate) struct BrowseModel {
     filter_strip: Option<crate::ui::filter_strip::FilterStrip>,
     insert_button: gtk::Button,
     delete_button: gtk::Button,
-    /// `tab.delete-rows`, enabled while the selection can be deleted.
-    delete_action: gio::SimpleAction,
+    actions: BrowseActions,
+    /// Between the save starting and settling.
+    saving: Cell<bool>,
     pending_revealer: gtk::Revealer,
     save_button: gtk::Button,
     discard_button: gtk::Button,
@@ -723,6 +710,8 @@ pub(crate) enum BrowseTabInput {
     /// Esc. A single selected row stays selected: clearing it would
     /// strand the keyboard focus indicator.
     ClearSelection,
+    /// F5: the window asks first when the tab has unsaved changes.
+    RequestRefresh,
     ToggleFilterStrip,
     /// The strip's rules, or an empty set for "Clear all".
     FilterApplied(tablepro_core::FilterSet),
@@ -792,9 +781,6 @@ pub(crate) enum BrowseTabInput {
     ErrorFlashEnded(RowKey),
     CopySelectedRowsAsTsv,
     PasteNotSupported,
-    SelectAllRows,
-    GoToFirstRow,
-    GoToLastRow,
 }
 
 #[derive(Debug)]
@@ -815,6 +801,8 @@ pub(crate) enum BrowseTabOutput {
     StopSaveRequested,
     /// A read of the tab's rows started or ended, for the tab bar.
     LoadingChanged(bool),
+    /// F5 asked the window to read the tab again.
+    RefreshRequested,
 }
 
 impl BrowseModel {
@@ -915,6 +903,8 @@ impl BrowseModel {
     /// While a save runs, Save and Discard are off, so a double click
     /// cannot send two, and Stop Saving takes their place.
     fn show_saving(&self, saving: bool) {
+        self.saving.set(saving);
+        self.actions.follow_tracker(&self.tracker, saving);
         self.save_button.set_sensitive(!saving);
         self.discard_button.set_sensitive(!saving);
         self.saving_spinner.set_visible(saving);
@@ -960,14 +950,28 @@ impl BrowseModel {
         self.current_selection.as_ref().map(selected_rows).unwrap_or_default()
     }
 
+    /// GtkMultiSelection emits no selection-changed when its rows are
+    /// spliced, so a page that drops the selected rows comes through here.
+    fn sync_selection(&self) {
+        let selected = self
+            .current_selection
+            .as_ref()
+            .map_or(0, |sel| u32::try_from(sel.selection().size()).unwrap_or(u32::MAX));
+        update_selection_chrome(&self.selection_label, selected);
+        self.sync_delete_action();
+    }
+
     /// The rows on screen can change under the selection without it
     /// changing, so this runs on every delta, page and load state too.
+    /// Rows behind an error page count as none.
     fn sync_delete_action(&self) {
         let rows = match self.shown_page() {
             Some(_) => self.selected_rows(),
             None => Vec::new(),
         };
-        show_delete_availability(&self.delete_action, &self.delete_button, &rows, self.read_only);
+        self.actions
+            .follow_selection(u32::try_from(rows.len()).unwrap_or(u32::MAX));
+        show_delete_availability(&self.actions.delete_rows, &self.delete_button, &rows, self.read_only);
     }
 
     /// The page whose rows the grid shows. A failed read of another page
@@ -981,6 +985,7 @@ impl BrowseModel {
     /// title bullet. App hears only real transitions.
     fn sync_pending_chrome(&self, count: usize, fx: &mut Effects) {
         self.refresh_pending_bar(count);
+        self.actions.follow_tracker(&self.tracker, self.saving.get());
         let dirty = count > 0;
         if dirty != self.was_dirty.replace(dirty) {
             fx.output(BrowseTabOutput::DirtyChanged(dirty));
@@ -1212,7 +1217,7 @@ impl BrowseModel {
         {
             store.splice(0, store.n_items(), &rows);
             self.reindex_rows();
-            self.sync_delete_action();
+            self.sync_selection();
             self.refresh_grid_chrome();
             let presentation = self.load.succeed();
             self.present(presentation, fx);
@@ -1248,7 +1253,7 @@ impl BrowseModel {
         if let Some(sel) = self.current_selection.as_ref() {
             let label = self.selection_label.downgrade();
             let button = self.delete_button.downgrade();
-            let action = self.delete_action.clone();
+            let actions = self.actions.clone();
             let read_only = self.read_only;
             sel.connect_selection_changed(move |sel, _, _| {
                 let (Some(label), Some(button)) = (label.upgrade(), button.upgrade()) else {
@@ -1256,13 +1261,14 @@ impl BrowseModel {
                 };
                 let n = u32::try_from(sel.selection().size()).unwrap_or(u32::MAX);
                 update_selection_chrome(&label, n);
-                show_delete_availability(&action, &button, &selected_rows(sel), read_only);
+                actions.follow_selection(n);
+                show_delete_availability(&actions.delete_rows, &button, &selected_rows(sel), read_only);
             });
-            update_selection_chrome(&self.selection_label, 0);
         }
+        browse_actions::install_grid_shortcuts(&column_view);
 
         self.reindex_rows();
-        self.sync_delete_action();
+        self.sync_selection();
 
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&column_view)
@@ -1303,8 +1309,7 @@ impl BrowseModel {
         self.rendered_columns.clear();
         self.row_index = GridRowIndex::default();
         self.pending_restore = None;
-        update_selection_chrome(&self.selection_label, 0);
-        self.sync_delete_action();
+        self.sync_selection();
         let presentation = self.load.drop_content();
         self.present(presentation, fx);
     }
@@ -1341,20 +1346,21 @@ impl BrowseModel {
         let has_pk = self.has_primary_key();
         if self.read_only {
             self.insert_button.set_visible(false);
+            self.actions.insert_row.set_enabled(false);
             return;
         }
         self.insert_button.set_visible(true);
         // No-PK tables don't get inline editing because RowKey can't be
         // formed without a PK. Disable instead of hide so the affordance
         // stays discoverable; the tooltip explains the gate.
-        self.insert_button.set_sensitive(has_columns && has_pk);
+        self.actions.insert_row.set_enabled(has_columns && has_pk);
         if has_columns && !has_pk {
             self.insert_button.set_tooltip_text(Some(&crate::i18n::gettext(
                 "This table has no primary key. Inline editing is disabled.",
             )));
         } else {
             self.insert_button
-                .set_tooltip_text(Some(&crate::i18n::gettext("Insert row (Ctrl+N)")));
+                .set_tooltip_text(Some(&crate::i18n::gettext("Insert row")));
         }
         self.refresh_banner_visibility();
     }
@@ -1365,7 +1371,7 @@ impl BrowseModel {
             self.filter_badge.set_visible(false);
             self.filter_badge.set_label("");
             self.filter_button
-                .set_tooltip_text(Some(&crate::i18n::gettext("Filter rows (Ctrl+F)")));
+                .set_tooltip_text(Some(&crate::i18n::gettext("Filter rows")));
         } else {
             self.filter_badge.set_label(&n.to_string());
             self.filter_badge.set_visible(true);
@@ -1519,6 +1525,7 @@ impl BrowseModel {
                 }
                 sel.unselect_all();
             }
+            BrowseTabInput::RequestRefresh => fx.output(BrowseTabOutput::RefreshRequested),
             BrowseTabInput::ToggleFilterStrip => {
                 if let Some(strip) = self.filter_strip.as_ref() {
                     strip.toggle();
@@ -1571,7 +1578,7 @@ impl BrowseModel {
                 fx.output(BrowseTabOutput::StateChanged);
             }
             BrowseTabInput::DuplicateRows(rows) => {
-                if self.current_columns.is_empty() || self.grid_is_stale() || rows.is_empty() {
+                if self.read_only || self.current_columns.is_empty() || self.grid_is_stale() || rows.is_empty() {
                     return;
                 }
                 let ctx = self.grid_context();
@@ -1600,7 +1607,7 @@ impl BrowseModel {
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::InsertRow => {
-                if self.current_columns.is_empty() {
+                if self.read_only || self.current_columns.is_empty() {
                     return;
                 }
                 let cells = self.current_columns.iter().map(new_draft_cell).collect();
@@ -1664,16 +1671,6 @@ impl BrowseModel {
                     "Pasting rows isn't supported yet",
                 )));
             }
-            BrowseTabInput::SelectAllRows => {
-                if let Some(selection) = self.current_selection.as_ref()
-                    && selection.n_items() > 0
-                    && self.shown_page().is_some()
-                {
-                    selection.select_all();
-                }
-            }
-            BrowseTabInput::GoToFirstRow => self.scroll_to_row(|_| Some(0)),
-            BrowseTabInput::GoToLastRow => self.scroll_to_row(|n| n.checked_sub(1)),
             BrowseTabInput::CommitSave => fx.output(BrowseTabOutput::SaveRequested),
             BrowseTabInput::SaveStarted => self.show_saving(true),
             BrowseTabInput::StopSaving => fx.output(BrowseTabOutput::StopSaveRequested),
@@ -1781,22 +1778,6 @@ impl BrowseModel {
         self.pager.go_to(start);
         self.fetch(BrowseRequestKind::Page, fx);
         fx.output(BrowseTabOutput::StateChanged);
-    }
-
-    fn scroll_to_row(&self, target: impl FnOnce(u32) -> Option<u32>) {
-        let Some(cv) = self.current_column_view.as_ref() else {
-            return;
-        };
-        let n = self.current_selection.as_ref().map(|s| s.n_items()).unwrap_or(0);
-        let Some(position) = target(n).filter(|position| *position < n) else {
-            return;
-        };
-        cv.scroll_to(
-            position,
-            None,
-            gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
-            None,
-        );
     }
 
     /// Mark saved rows for deletion and drop drafts. Nothing leaves the
@@ -2000,7 +1981,7 @@ fn show_delete_availability(action: &gio::SimpleAction, button: &gtk::Button, ro
         DeleteAvailability::Unavailable(block) => block.explanation(),
         DeleteAvailability::Available => None,
     };
-    let tooltip = explanation.unwrap_or_else(|| crate::i18n::gettext("Delete selected rows (Delete)"));
+    let tooltip = explanation.unwrap_or_else(|| crate::i18n::gettext("Delete selected rows"));
     button.set_tooltip_text(Some(&tooltip));
 }
 

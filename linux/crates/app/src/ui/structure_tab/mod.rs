@@ -53,6 +53,7 @@ mod index_object;
 mod indexes;
 mod referential_action_label;
 pub(crate) mod review_dialog;
+mod structure_actions;
 mod structure_command;
 mod structure_fetch;
 mod table_choice_object;
@@ -177,6 +178,7 @@ impl StructureTab {
         let stale_banner = StaleBanner::new(imp.stale_banner.get(), move || {
             sender.input(StructureTabInput::Retry);
         });
+        tab.install_actions();
 
         let context = Rc::new(RefCell::new(StructureContext {
             mode: init.mode,

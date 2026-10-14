@@ -103,7 +103,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     let menu = gio::Menu::new();
     let edit_section = gio::Menu::new();
     let hidden_while_disabled = |label: String, action: &str| {
-        let item = gio::MenuItem::new(Some(&label), Some(action));
+        let item = crate::application::menu_item(&label, action);
         item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
         edit_section.append_item(&item);
     };
@@ -454,4 +454,44 @@ fn simple_action(group: &gio::SimpleActionGroup, name: &str) -> Option<gio::Simp
     group
         .lookup_action(name)
         .and_then(|a| a.downcast::<gio::SimpleAction>().ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn accel_of(menu: &gio::MenuModel, action: &str) -> Option<Option<String>> {
+        for position in 0..menu.n_items() {
+            let named = menu
+                .item_attribute_value(position, "action", None)
+                .and_then(|value| value.get::<String>());
+            if named.as_deref() == Some(action) {
+                return Some(
+                    menu.item_attribute_value(position, "accel", None)
+                        .and_then(|value| value.get::<String>()),
+                );
+            }
+            for link in ["section", "submenu"] {
+                if let Some(found) = menu
+                    .item_link(position, link)
+                    .and_then(|inner| accel_of(&inner, action))
+                {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+
+    #[gtk4::test]
+    fn the_cell_menu_shows_the_cell_keys() {
+        let menu = build_cell_menu(MenuShape::FULL).upcast::<gio::MenuModel>();
+
+        assert_eq!(
+            accel_of(&menu, "cell.set-null"),
+            Some(Some("<Primary>BackSpace".to_owned()))
+        );
+        assert_eq!(accel_of(&menu, "cell.edit"), Some(Some("F2".to_owned())));
+        assert_eq!(accel_of(&menu, "cell.set-empty"), Some(None));
+    }
 }

@@ -1,7 +1,6 @@
 use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
 use relm4::gtk;
 use relm4::gtk::gdk;
-use relm4::gtk::glib;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 
@@ -236,8 +235,27 @@ impl FactoryComponent for SidebarRow {
         let drop_action = gtk::gio::ActionEntry::builder("drop-table")
             .activate(move |_, _, _| sender_drop.deliver(SidebarRowMsg::DropTable))
             .build();
-        group.add_action_entries([open_action, edit_action, show_create_action, import_action, drop_action]);
+        // The keyboard has no pointer position, so the menu points at
+        // the whole row.
+        let popover_for_keys = popover.clone();
+        let menu_action = gtk::gio::ActionEntry::builder("context-menu")
+            .activate(move |_, _, _| {
+                popover_for_keys.set_pointing_to(None);
+                popover_for_keys.popup();
+            })
+            .build();
+        group.add_action_entries([
+            open_action,
+            edit_action,
+            show_create_action,
+            import_action,
+            drop_action,
+            menu_action,
+        ]);
         root.insert_action_group("sidebar-row", Some(&group));
+        root.add_controller(crate::application::local_shortcut_controller(
+            crate::application::ShortcutOwner::SidebarList,
+        ));
 
         // Defence against the factory-clears-row-while-menu-is-open
         // race: if the row is being removed from the view, the menu
@@ -256,23 +274,6 @@ impl FactoryComponent for SidebarRow {
             popover_for_right.popup();
         });
         root.add_controller(right_click);
-
-        // Keyboard Menu key opens the same context menu, anchored to
-        // the row centre (no pointer position).
-        let popover_for_menu = popover;
-        let menu_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(
-                gtk::gdk::Key::Menu,
-                gtk::gdk::ModifierType::empty(),
-            ))
-            .action(&gtk::CallbackAction::new(move |_, _| {
-                popover_for_menu.popup();
-                glib::Propagation::Stop
-            }))
-            .build();
-        let shortcut_controller = gtk::ShortcutController::new();
-        shortcut_controller.add_shortcut(menu_shortcut);
-        root.add_controller(shortcut_controller);
 
         widgets
     }

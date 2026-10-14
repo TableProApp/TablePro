@@ -590,20 +590,13 @@ impl WorkspaceModel {
         self.append_table_tab(schema, name, 0, page_size, None);
     }
 
-    /// Ctrl+F / Filter button: toggle the inline filter strip on the
-    /// active Browse tab.
-    pub(super) fn on_show_filter_dialog(&self) {
-        let Some(id) = self.selected_browse_tab_id() else {
-            self.show_toast(&crate::i18n::gettext("Open a table to filter rows."));
-            return;
-        };
-        self.dispatch_to_tab(id, BrowseTabInput::ToggleFilterStrip);
+    pub(super) fn on_refresh_active_tab(&self) {
+        if let Some(id) = self.selected_browse_tab_id() {
+            self.on_refresh_tab(id);
+        }
     }
 
-    pub(super) fn on_refresh_active_tab(&self) {
-        let Some(id) = self.selected_browse_tab_id() else {
-            return;
-        };
+    pub(super) fn on_refresh_tab(&self, id: Uuid) {
         let dirty = self
             .change_trackers
             .get(id)
@@ -882,12 +875,15 @@ fn build_workspace_chrome(
     // and this button only makes editor tabs.
     let new_query_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::TAB_NEW)
-        .tooltip_text(crate::i18n::gettext("New query (Ctrl+E)"))
+        .action_name("win.new-editor-tab")
         .valign(gtk::Align::Center)
         .build();
     new_query_button.add_css_class("flat");
-    let new_tab_input = input.clone();
-    new_query_button.connect_clicked(move |_| new_tab_input.deliver(WorkspaceInput::NewEditorTab));
+    crate::ui::a11y::describe_icon_button(
+        &new_query_button,
+        &crate::i18n::gettext("New query"),
+        Some("win.new-editor-tab"),
+    );
     tab_bar.set_end_action_widget(Some(&new_query_button));
 
     // A tab with unsaved work asks first, so the workspace finishes the close.
@@ -1206,6 +1202,8 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
     let stop = input.clone();
     browse.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
+    let refresh = input.clone();
+    browse.connect_refresh_requested(move |_| refresh.deliver(WorkspaceInput::RefreshTab(tab_id)));
 }
 
 /// Forward an editor tab's signals into the workspace. The toast

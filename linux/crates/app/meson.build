@@ -53,6 +53,9 @@ test(
 gtk_env = cargo_env
 gtk_env.set('GSK_RENDERER', 'cairo')
 gtk_env.set('GTK_A11Y', 'test')
+# The key tests press real keys through XTEST, which only an X11 display
+# hands to GDK.
+gtk_env.set('GDK_BACKEND', 'x11')
 # gnome.compile_schemas exports GSETTINGS_SCHEMA_DIR to devenv only, so
 # the suite points at the build tree itself.
 gtk_env.set('GSETTINGS_SCHEMA_DIR', meson.project_build_root() / 'data')

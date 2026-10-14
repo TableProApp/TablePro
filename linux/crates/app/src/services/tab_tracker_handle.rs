@@ -55,6 +55,14 @@ impl TabTrackerHandle {
         self.0.borrow().pending_count()
     }
 
+    pub fn can_undo(&self) -> bool {
+        self.0.borrow().can_undo()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        self.0.borrow().can_redo()
+    }
+
     pub fn drafts(&self) -> Vec<DraftRow> {
         self.0.borrow().drafts().to_vec()
     }

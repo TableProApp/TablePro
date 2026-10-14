@@ -234,8 +234,8 @@ impl WorkspaceHandle {
             return self.save_rows(tab, &tracker);
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
-            // Ctrl+S still reaches the window while a review is open, and
-            // the review on screen is the one to answer.
+            // A close that saves its tabs can ask again while the review is
+            // open, and the review on screen is the one to answer.
             let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
                 return SaveStart::Rejected(SaveRejection::InReview);
             };
@@ -376,8 +376,8 @@ impl WorkspaceHandle {
             if review_dialog::confirm(parent, &table, &review, engine).await == ReviewDecision::Cancel {
                 return Err(SaveStart::Rejected(SaveRejection::ReviewDeclined));
             }
-            // Ctrl+Z is a window shortcut too, so the draft can change
-            // under an open review.
+            // The draft and the connection can still change while the
+            // review is open.
             let (_, now) = self.plan_review(tracker)?;
             if now.statements != review.statements {
                 return Err(SaveStart::Rejected(SaveRejection::Unplannable(

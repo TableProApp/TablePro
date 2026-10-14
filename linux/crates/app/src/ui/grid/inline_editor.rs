@@ -190,6 +190,7 @@ mod tests {
     use gtk4::gdk::{Key, ModifierType};
 
     use super::{EditKey, edit_key};
+    use crate::test_support::shortcut_keys::keystroke;
     use crate::ui::grid::edit_navigation::EditDirection;
 
     #[test]
@@ -207,5 +208,24 @@ mod tests {
         assert_eq!(edit_key(Key::Tab, ModifierType::CONTROL_MASK), None);
         assert_eq!(edit_key(Key::Tab, ModifierType::ALT_MASK), None);
         assert_eq!(edit_key(Key::Return, none), None, "Return is the field's activate");
+    }
+
+    /// The editor reads keys itself, to leave them to an open preedit, so
+    /// the table's entries are checked against what it does.
+    #[gtk4::test]
+    fn edit_keys_match_cell_editor_entries() {
+        let expected = [
+            ("cell-editor.cancel", EditKey::Cancel),
+            ("cell-editor.next", EditKey::Move(EditDirection::Forward)),
+            ("cell-editor.previous", EditKey::Move(EditDirection::Backward)),
+        ];
+        for (action, outcome) in expected {
+            let triggers = crate::application::triggers_for(action);
+            assert!(!triggers.is_empty(), "{action} is not in the table");
+            for accel in triggers {
+                let (key, modifiers) = keystroke(accel);
+                assert_eq!(edit_key(key, modifiers), Some(outcome), "{accel}");
+            }
+        }
     }
 }

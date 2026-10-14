@@ -8,6 +8,7 @@ use tablepro_core::{ColumnInfo, Value};
 use super::edit_commit::{commit_edit, send_commit};
 use super::inline_editor::{InlineEditor, InlineOptions};
 use super::{EditSnapshot, GridCell};
+use crate::application::component_matches;
 
 #[derive(Debug, Clone)]
 enum CalendarStart {
@@ -78,8 +79,8 @@ impl CalendarEditor {
         calendar.add_controller(click);
         let keys = gtk::EventControllerKey::new();
         let weak_cell = cell.downgrade();
-        keys.connect_key_released(move |controller, keyval, _, _| {
-            if !matches!(keyval, gtk::gdk::Key::space | gtk::gdk::Key::KP_Space) {
+        keys.connect_key_released(move |controller, keyval, _, state| {
+            if !component_matches("cell-editor.pick-date", keyval, state) {
                 return;
             }
             let Some(calendar) = controller.widget().and_downcast::<gtk::Calendar>() else {

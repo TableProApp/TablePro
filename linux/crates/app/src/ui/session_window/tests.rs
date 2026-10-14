@@ -222,7 +222,7 @@ impl TestWindow {
     /// holds, which opens the tab's own editor session.
     pub(crate) fn run_in_new_editor_tab(&self) {
         let before = editors(&self.window);
-        WidgetExt::activate_action(&self.window, "win.open-editor", None).expect("win.open-editor");
+        WidgetExt::activate_action(&self.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
         wait_until(WAIT, || editors(&self.window).len() == before.len() + 1).expect("a new editor tab");
         let editor = editors(&self.window)
             .into_iter()

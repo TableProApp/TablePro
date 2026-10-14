@@ -253,9 +253,35 @@ fn startup_installs_the_app_actions_and_their_accels() {
     for action in ["new-window", "quit", "preferences", "about"] {
         assert!(test.app.lookup_action(action).is_some(), "app.{action} is missing");
     }
-    for (action, _) in APP_ACCELS {
-        assert!(!test.app.accels_for_action(action).is_empty(), "{action} has no accel");
+}
+
+#[gtk4::test]
+fn installed_application_accels_match_table() {
+    use crate::test_support::shortcut_keys::keystroke;
+    let test = TestApp::started("Accels");
+    let installed = |action: &str| -> Vec<_> {
+        test.app
+            .accels_for_action(action)
+            .iter()
+            .map(|accel| keystroke(accel))
+            .collect()
+    };
+
+    let application: Vec<_> = ACCELERATORS
+        .iter()
+        .filter(|entry| entry.scope == AcceleratorScope::Application)
+        .collect();
+    assert!(application.iter().any(|entry| entry.action == "win.close-current"));
+    for entry in application {
+        let table: Vec<_> = entry.triggers.iter().map(|accel| keystroke(accel)).collect();
+        assert_eq!(installed(entry.action), table, "{}", entry.action);
     }
+    let shortcuts: Vec<_> = triggers_for("app.shortcuts")
+        .iter()
+        .map(|accel| keystroke(accel))
+        .collect();
+    assert_eq!(shortcuts, [keystroke("<Primary>question")]);
+    assert_eq!(installed("app.shortcuts"), shortcuts);
 }
 
 #[gtk4::test]

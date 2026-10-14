@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Count Rows in a table tab's paginator, with the reason on Try Again when a count fails.
 - Exports write in the background, with progress and Stop in the header bar, and a close or quit asks to stop them first.
 - Copy as puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
+- Shift+F10 opens the menu of a sidebar table or a query history entry, as the Menu key does.
+- Screen readers announce the keyboard shortcut of the table, SQL editor and filter buttons that have one.
 
 ### Changed
 
@@ -65,10 +67,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a large table no longer counts its rows: the paginator shows the server's estimate, and Last waits for a count.
 - Saving rows updates a table's total without counting the table again.
 - Row counts and page sizes group digits the way the system locale does.
+- Query History opens with Ctrl+Shift+H.
+- Previous and next page are Alt+Page Up and Alt+Page Down; Page Up and Page Down move through the rows.
+- Ctrl+S, Ctrl+Z, F5 and Ctrl+F act on the tab that has the focus, so a text field keeps its own undo.
+- Keyboard Shortcuts lists every shortcut, grouped by where it works.
 
 ### Removed
 
 - Connection buttons in a connected window's header bar; New Window opens another connection.
+- Ctrl+E for a new SQL editor tab; Ctrl+T opens one.
 
 ### Fixed
 
@@ -160,6 +167,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changing the type of a SQL Server column with a default failed.
 - A bulk delete confirmed after the table's primary key changed marked rows by their old key.
 - Ctrl+Home and Ctrl+End jumped to the first or last tab instead of the start or end of the SQL editor or table.
+- Ctrl+N added a row to a read-only table or a table without a primary key.
 
 ### Security
 

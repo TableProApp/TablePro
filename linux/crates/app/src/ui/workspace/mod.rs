@@ -37,7 +37,7 @@ use tablepro_session::runtime::WatchForwarder;
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
-use super::browse_tab::{BrowseTab, BrowseTabInput};
+use super::browse_tab::BrowseTab;
 use super::editor::SqlEditor;
 use super::export::{ExportLedger, ExportLedgerInit, ExportReporter, ExportSource};
 use super::history_dialog::HistoryDialog;
@@ -361,9 +361,6 @@ pub(crate) enum WorkspaceInput {
     SavesInFlightChanged(usize),
     /// An editor tab's transaction opened or ended.
     EditorTransactionChanged,
-    SaveActiveTab,
-    UndoActiveBrowseTab,
-    RedoActiveBrowseTab,
     ShowAlert {
         title: String,
         body: String,
@@ -401,7 +398,8 @@ pub(crate) enum WorkspaceInput {
         table: Option<String>,
     },
     ReopenClosedTab,
-    ShowFilterDialog,
+    /// A browse tab's F5.
+    RefreshTab(Uuid),
 }
 
 /// Tabs in either registry with unsaved changes.
@@ -759,23 +757,6 @@ impl WorkspaceModel {
             WorkspaceInput::Workspace(event) => self.on_workspace_event(event),
             WorkspaceInput::SavesInFlightChanged(count) => self.on_saves_in_flight_changed(count),
             WorkspaceInput::EditorTransactionChanged => self.refresh_inhibitor(),
-            WorkspaceInput::SaveActiveTab => {
-                if let Some(id) = self.selected_workspace_tab_id() {
-                    self.request_save(id);
-                }
-            }
-            WorkspaceInput::UndoActiveBrowseTab => {
-                // Structure editing has no per-keystroke history: its
-                // undo is Discard, and a field's own text undo is GTK's.
-                if let Some(id) = self.selected_browse_tab_id() {
-                    self.dispatch_to_tab(id, BrowseTabInput::Undo);
-                }
-            }
-            WorkspaceInput::RedoActiveBrowseTab => {
-                if let Some(id) = self.selected_browse_tab_id() {
-                    self.dispatch_to_tab(id, BrowseTabInput::Redo);
-                }
-            }
             WorkspaceInput::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id),
             WorkspaceInput::CloseOtherWorkspaceTabs(id) => self.close_other_workspace_tabs(id),
             WorkspaceInput::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id),
@@ -835,7 +816,7 @@ impl WorkspaceModel {
             }
             WorkspaceInput::CopyText(text) => self.on_copy_text(text),
             WorkspaceInput::ReopenClosedTab => self.on_reopen_closed_tab(),
-            WorkspaceInput::ShowFilterDialog => self.on_show_filter_dialog(),
+            WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),
         }
     }
 }

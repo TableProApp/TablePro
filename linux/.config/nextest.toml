@@ -55,6 +55,13 @@ test-group = 'session'
 filter = 'package(tablepro) & kind(test)'
 test-group = 'app'
 
+# These press real keys on the X display every test shares. A window
+# another test presents takes the focus, and the keys with it, so each
+# runs with no other test beside it.
+[[profile.default.overrides]]
+filter = 'package(tablepro) & test(/::real_keys::/)'
+threads-required = 'num-test-threads'
+
 [profile.ci]
 fail-fast = false
 # A hung test fails with its name after five minutes. Without a bound it

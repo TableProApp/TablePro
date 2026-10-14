@@ -4,6 +4,7 @@
 
 mod buffer_edit;
 mod completion;
+mod editor_actions;
 mod editor_session_slot;
 mod format_plan;
 mod imp;
@@ -103,7 +104,6 @@ impl SqlEditor {
         editor.connect_completion(&buffer);
         editor.connect_buffer(&buffer);
         editor.install_actions();
-        editor.install_shortcuts();
         editor.install_drop_target();
         editor.connect_buttons();
         editor.connect_grid();
@@ -660,65 +660,6 @@ impl SqlEditor {
             .unwrap_or_default()
     }
 
-    fn install_actions(&self) {
-        let actions = gio::SimpleActionGroup::new();
-        let weak = self.downgrade();
-        let open = gio::ActionEntry::builder("open-file")
-            .activate(move |_: &gio::SimpleActionGroup, _, _| {
-                if let Some(editor) = weak.upgrade() {
-                    editor.open_file();
-                }
-            })
-            .build();
-        let weak = self.downgrade();
-        let format = gio::ActionEntry::builder("format")
-            .activate(move |_: &gio::SimpleActionGroup, _, _| {
-                if let Some(editor) = weak.upgrade() {
-                    editor.format();
-                }
-            })
-            .build();
-        actions.add_action_entries([open, format]);
-        self.insert_action_group("editor", Some(&actions));
-    }
-
-    fn install_shortcuts(&self) {
-        let controller = gtk4::ShortcutController::new();
-        let shortcut = |key, modifiers, act: fn(&SqlEditor)| {
-            let weak = self.downgrade();
-            gtk4::Shortcut::builder()
-                .trigger(&gtk4::KeyvalTrigger::new(key, modifiers))
-                .action(&gtk4::CallbackAction::new(move |_, _| {
-                    if let Some(editor) = weak.upgrade() {
-                        act(&editor);
-                    }
-                    glib::Propagation::Stop
-                }))
-                .build()
-        };
-        let control = gtk4::gdk::ModifierType::CONTROL_MASK;
-        let control_shift = control | gtk4::gdk::ModifierType::SHIFT_MASK;
-        controller.add_shortcut(shortcut(gtk4::gdk::Key::Return, control, SqlEditor::run));
-        // Esc stops a running query; the editor is not a dialog, so Esc
-        // is otherwise free, and it is the key a user reaches for when a
-        // query runs away.
-        controller.add_shortcut(shortcut(
-            gtk4::gdk::Key::Escape,
-            gtk4::gdk::ModifierType::empty(),
-            SqlEditor::stop,
-        ));
-        controller.add_shortcut(shortcut(gtk4::gdk::Key::f, control_shift, SqlEditor::format));
-        controller.add_shortcut(shortcut(
-            gtk4::gdk::Key::Return,
-            control_shift,
-            SqlEditor::run_at_cursor,
-        ));
-        controller.add_shortcut(shortcut(gtk4::gdk::Key::slash, control, |editor| {
-            toggle_line_comment(&editor.buffer());
-        }));
-        self.imp().source_view.add_controller(controller);
-    }
-
     fn install_drop_target(&self) {
         let target = gtk4::DropTarget::new(gio::File::static_type(), gtk4::gdk::DragAction::COPY);
         let weak = self.downgrade();
@@ -800,10 +741,10 @@ fn show_cursor_position(label: &gtk4::Label, buffer: &sourceview5::Buffer) {
 fn label_run_button(button: &gtk4::Button, has_selection: bool) {
     if has_selection {
         button.set_label(&crate::i18n::gettext("Run Selection"));
-        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the selected text (Ctrl+Return)")));
+        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the selected text")));
     } else {
         button.set_label(&crate::i18n::gettext("Run"));
-        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the script (Ctrl+Return)")));
+        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the script")));
     }
 }
 
