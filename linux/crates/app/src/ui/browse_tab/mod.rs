@@ -77,7 +77,7 @@ use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
-use crate::ui::clipboard::{CopyKind, CopyRequest, InsertCopy, InsertRow};
+use crate::ui::clipboard::{CopyKind, CopyRequest, InClauseRows, InsertCopy, InsertRow};
 use crate::ui::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
@@ -541,6 +541,7 @@ impl From<GridMsg> for BrowseTabInput {
             GridMsg::ShowRowJson(request) => Self::GridShowRowJson(request),
             GridMsg::ShowToast(text) => Self::GridShowToast(text),
             GridMsg::CopyRowsAsInsert { rows } => Self::GridCopyRowsAsInsert(rows),
+            GridMsg::CopyInClause(values) => Self::GridCopyInClause(values),
             GridMsg::SetCellValue { row, column, preset } => Self::GridSetCellValue { row, column, preset },
             GridMsg::ExportResults(page) => Self::Export(Some(page)),
             GridMsg::DeleteRows { rows } => Self::DeleteRows(rows),
@@ -740,6 +741,7 @@ pub(crate) enum BrowseTabInput {
     /// as the grid holds it.
     Export(Option<ExportSource>),
     GridCopyRowsAsInsert(Vec<RowObject>),
+    GridCopyInClause(InClauseRows),
     DuplicateRows(Vec<RowObject>),
     GridCopy(CopyRequest),
     GridShowRowJson(RowJsonRequest),
@@ -1676,6 +1678,12 @@ impl BrowseModel {
                     self.copy_rows_as_insert(&rows, fx);
                 }
             }
+            BrowseTabInput::GridCopyInClause(values) => match self.session.current_dialect() {
+                Some(dialect) => fx.output(BrowseTabOutput::Copy(CopyRequest::InClause { dialect, values })),
+                None => fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
+                    "Connect to a database first.",
+                ))),
+            },
             BrowseTabInput::GridCopy(request) => fx.output(BrowseTabOutput::Copy(request)),
             BrowseTabInput::GridShowRowJson(request) => fx.output(BrowseTabOutput::ShowRowJson(request)),
             BrowseTabInput::CopySelectedRowsAsTsv => self.copy_selected_rows(fx),

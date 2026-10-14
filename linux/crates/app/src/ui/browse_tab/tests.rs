@@ -897,6 +897,45 @@ fn copy_row_as_insert_uses_row_below_draft() {
     assert_eq!(copied, "INSERT INTO \"users\" (\"id\", \"name\") VALUES (0, 'Ada');");
 }
 
+/// MySQL reads a backslash in a string as an escape, so the list is
+/// written in the server's own literals.
+#[gtk4::test]
+fn copy_as_in_clause_writes_the_servers_literals() {
+    let mut script = serving_table();
+    script.dialect = Arc::new(drivers_mysql::MySqlDialect::new(
+        drivers_mysql::MySqlFlavour::MySql,
+        &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+    ));
+    let injected = "\\') OR 1=1 -- ";
+    script.query_bound.always(FakeReply::ok(rows(&[injected])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let row = harness.grid_row(0);
+    let values = crate::ui::clipboard::InClauseRows {
+        columns: [column("id", true), column("name", false)]
+            .iter()
+            .map(ColumnInfo::result_column)
+            .collect(),
+        rows: vec![crate::ui::grid::RowSnapshot::new(
+            row.cells().expect("the row's cells"),
+            Vec::new(),
+        )],
+        column: 1,
+    };
+
+    let copied = copied_by(harness.tab(), || {
+        harness.tab().send(BrowseTabInput::GridCopyInClause(values));
+    });
+
+    assert_eq!(
+        copied,
+        format!(
+            "(_utf8mb4 X'{}')",
+            tablepro_core::hex::encode_lower(injected.as_bytes())
+        )
+    );
+}
+
 /// What the clipboard holds once the copy `copy` starts lands there.
 fn copied_by(tab: &BrowseTab, copy: impl FnOnce()) -> String {
     const BEFORE: &str = "nothing copied yet";

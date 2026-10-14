@@ -15,7 +15,7 @@ use super::{
     CellPreset, DeleteAvailability, GridCell, GridMsg, GridSink, RowObject, RowSnapshot, TabGridContext,
     delete_availability,
 };
-use crate::ui::clipboard::{CopyKind, CopyRequest};
+use crate::ui::clipboard::{CopyKind, CopyRequest, InClauseRows};
 
 /// Enabled per right-clicked cell. `None` on a read-only grid, which
 /// registers none of them.
@@ -270,7 +270,18 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     let copy_csv_action = copy_action!("copy-csv", |_cell| CopyKind::Csv);
     let copy_csv_headers_action = copy_action!("copy-csv-headers", |_cell| CopyKind::CsvWithHeaders);
     let copy_markdown_action = copy_action!("copy-markdown", |_cell| CopyKind::Markdown);
-    let copy_in_clause_action = copy_action!("copy-in-clause", |cell| CopyKind::InClause(cell.column()));
+    let copy_in_clause_action = {
+        let s = sink.clone();
+        let tab = tab.clone();
+        let columns = columns.clone();
+        rows_action!("copy-in-clause", |cell, rows| {
+            s(GridMsg::CopyInClause(InClauseRows {
+                columns: columns.clone(),
+                rows: snapshots(&tab, &rows),
+                column: cell.column(),
+            }));
+        })
+    };
     let copy_column_name_action = {
         let s = sink.clone();
         let cols = columns.clone();

@@ -47,7 +47,7 @@ use self::result_widgets::PageActions;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
-use super::clipboard::CopyRequest;
+use super::clipboard::{CopyRequest, InClauseRows};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
@@ -628,6 +628,7 @@ impl SqlEditor {
             };
             match message {
                 GridMsg::Copy(request) => editor.copy(request),
+                GridMsg::CopyInClause(values) => editor.copy_in_clause(values),
                 GridMsg::ShowRowJson(request) => {
                     if let Some(tasks) = editor.deps().map(|deps| deps.tasks.clone()) {
                         let parent = editor.clone().upcast();
@@ -660,6 +661,18 @@ impl SqlEditor {
                 editor.emit_by_name::<()>("toast", &[&text]);
             }
         });
+    }
+
+    /// An IN list in the spelling of the server the editor runs on.
+    fn copy_in_clause(&self, values: InClauseRows) {
+        let dialect = self
+            .deps()
+            .and_then(|deps| deps.session.get())
+            .and_then(|session| session.current_dialect());
+        match dialect {
+            Some(dialect) => self.copy(CopyRequest::InClause { dialect, values }),
+            None => self.emit_by_name::<()>("toast", &[&crate::i18n::gettext("Connect to a database first.")]),
+        }
     }
 
     /// Ask the window to export the result on line `index`: the rows

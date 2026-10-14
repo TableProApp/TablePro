@@ -133,6 +133,43 @@ fn copy_insert_uses_visible_columns_only() {
     assert_eq!(payload.rows, 2);
 }
 
+/// MySQL reads a backslash in a string as an escape, so a value ending
+/// in one would close the string and run the rest as SQL.
+#[test]
+fn an_in_clause_copy_is_written_in_the_engines_literals() {
+    let dialect = Arc::new(drivers_mysql::MySqlDialect::new(
+        drivers_mysql::MySqlFlavour::MySql,
+        &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+    ));
+    let injected = "\\') OR 1=1 -- ";
+    let rows = vec![
+        vec![Value::Int(1), Value::Text(injected.into())],
+        vec![Value::Int(2), Value::Null],
+    ];
+
+    let payload = render(CopyRequest::InClause {
+        dialect,
+        values: InClauseRows {
+            columns: columns(&["id", "name"]),
+            rows: snapshots(&rows),
+            column: 1,
+        },
+    })
+    .expect("the copy");
+
+    assert_eq!(
+        payload.text,
+        format!(
+            "(_utf8mb4 X'{}')",
+            tablepro_core::hex::encode_lower(injected.as_bytes())
+        )
+    );
+    assert_eq!(
+        (payload.format, payload.rows, payload.skipped),
+        (ClipboardFormat::Sql, 1, 1)
+    );
+}
+
 #[test]
 fn a_copy_holding_a_nul_is_refused_off_the_gtk_thread() {
     let rows = vec![vec![Value::Int(1), Value::Text("a\0b".into())]];
