@@ -5,6 +5,7 @@
 Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for that development line since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
 
 ### Added
+- PostgreSQL results and edits support `json[]`, `jsonb[]`, `int4range`, `int8range` and `point` values.
 - SQL editors can collapse multiline SQL blocks at the cursor and unfold them from the gutter or toolbar.
 - Pressing Enter in a connection text field now activates Connect.
 - SQL query and pinned result grids can filter loaded rows by a cell's native value without running the SQL again; the grid shows the visible and loaded counts.
@@ -135,6 +136,23 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Fixed
 - Restoring an editor no longer triggers a GTK sidebar layout failure before the window has completed its first layout.
+- PostgreSQL `SELECT ... FOR UPDATE` statements are treated as writes and follow configured approval and read-only rules.
+- PostgreSQL displays `interval` and `timetz` values and formats `float4` values consistently, including inside point and float arrays.
+- PostgreSQL grid filters on real-valued columns compare values using their native type, and stale prepared plans no longer reuse an incompatible result type.
+- PostgreSQL temporal column changes preserve the declared precision and retain the existing default expression.
+- Narrowing a column type from the Structure tab no longer silently truncates stored values.
+- Structure comparisons detect an index or foreign key replaced under the same name, and remove the constraint that owns an index when requested.
+- Adding a primary key or identity to a new column preserves the requested property; toggling either on an existing PostgreSQL column is refused when the operation cannot be applied safely.
+- PostgreSQL XML, OID, `tsvector` and geometric values now decode or write through their exact text forms where the driver supports them.
+- PostgreSQL `json` values retain their original text through result decoding and value carriers.
+- PostgreSQL EXPLAIN runs the statement at the cursor rather than the entire editor buffer.
+- Undoing an edit that reverted a cell restores the earlier pending edit.
+- Draft cells explicitly set to NULL override the database column default.
+- Local text sorting follows the system locale, and sorting a truncated result warns that only loaded rows are included.
+- Spreadsheet paste preserves leading quotes and round-trips copied cell text, including embedded line breaks.
+- A failed cell save no longer allows a second save or a new edit to overwrite its in-flight state.
+- A busy connection pool is reported as busy rather than as a disconnected connection.
+- Corrupt saved window or column sizes are clamped, and invalid geometry no longer overwrites the last valid layout.
 - Exporting query results no longer duplicates the selected file extension when the file chooser adds it automatically.
 - Connection colour tags now paint the workspace tab bar and update when the tag changes.
 - Screen readers can activate the connection form's Driver, Endpoint and TLS selectors and identify its port and timeout inputs.
@@ -146,7 +164,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Identifier quoting keeps control characters in a name instead of removing them, so a statement can no longer target a different table than the one named.
 - PostgreSQL edits that set a cell to NULL, compare an old NULL, leave a column NULL in a new row, or import an empty field into an integer, date, uuid, boolean, numeric, JSON or inet column no longer fail with "expression is of type text".
 - After a table changes (for example a column is added from the Structure tab or another client), `SELECT *` on PostgreSQL shows the new column instead of failing with "cached plan must not change result type" on every refresh.
-- PostgreSQL grid edits, inserts, key lookups and deletes now work for `inet`, `cidr`, `macaddr`, `interval`, `bit` and `varbit` values, which were sent as text and refused by the server, and for padded `char(n)` keys and `json` columns, which reported a false concurrent modification or could not be edited. `xml` and `tsvector` values can be inserted, but editing them still fails because the old value reads back as undecodable (#694).
+- PostgreSQL grid edits, inserts, key lookups and deletes now work for `inet`, `cidr`, `macaddr`, `interval`, `bit`, `varbit`, padded `char(n)` keys and `json` columns. XML and `tsvector` values now decode through text for editing; other text-form scalars remain under investigation (#694).
 - PostgreSQL `EXPLAIN (ANALYSE)` of a write is classified and gated like the write instead of as a read.
 - The `query_to_xml` family, `crosstab`, `pg_notify`, `pg_logical_*`, `pg_replication_*`, `pg_stat_reset*`, `pg_ls_*` and more large-object functions are administrative, so agents are denied and read-only connections refuse them.
 - A constant-true predicate (`WHERE true`, `WHERE 1`, `WHERE 1=1`, `WHERE 2 > 1`, `WHERE id = 1 OR true`) counts as unscoped DML. Predicates that depend on a column (`WHERE id = id`) are not evaluated and stay scoped.
@@ -215,6 +233,15 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A SQLite, PostgreSQL, MySQL or MariaDB connection marked read-only is now read-only in the database engine itself, so a statement the safety checks mistake for a read still cannot change data; a read-only SQLite connection no longer creates a missing file.
 - Importing a connection bundle now refuses a file over 16 MiB, or anything that is not a regular file, before reading it.
 - Driver panic messages are withheld by default. `TABLEPRO_DEBUG_PANICS=1` restores Rust's default hook and may print query text or credentials; keep it unset when using real database data.
+- SSH connections refuse a host key marked revoked in `known_hosts` and ignore a relative configuration directory.
+- Agent token files are created with owner-only permissions, and approval prompts strip bidirectional text controls that could disguise displayed text.
+- Shortened agent-token labels stop at character boundaries and never split a UTF-8 character.
+- Bulk import approval is bound to the requested target, and read-only sessions refuse `BEGIN READ WRITE`.
+- Controlled batch approval interruptions receive a terminal audit outcome.
+- Known transaction errors no longer erase prior successful write effects from the audit record.
+- Agent masking covers PostgreSQL XML serialization results and redacts driver errors that could contain masked values.
+- Administrative PostgreSQL function matching respects qualified names.
+- Constant numeric predicates are evaluated exactly when checking whether a write is scoped.
 
 ## [0.1.5] - 2026-09-27
 - Choosing the system OpenSSH client inside the Flatpak build now stops immediately with a message to use the built-in SSH client.
