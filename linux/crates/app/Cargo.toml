@@ -44,6 +44,7 @@ harness = false
 [[test]]
 name = "open_files"
 path = "tests/open_files.rs"
+harness = false
 
 [[test]]
 name = "application_session_restore"
