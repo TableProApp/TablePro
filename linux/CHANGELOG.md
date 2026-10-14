@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
-- Shift+F10 and the Menu key open the menu of a sidebar table or a query history entry.
+- Shift+F10 opens the menu of a sidebar table or a query history entry, as the Menu key does.
 - Screen readers announce the keyboard shortcut of the table, SQL editor and filter buttons that have one.
 
 ### Changed
