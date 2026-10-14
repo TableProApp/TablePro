@@ -3,8 +3,6 @@
 crates/agentd/src/lib.rs:318:9: replace <impl ConnectionProvider for DaemonProvider>::list_saved_connections -> Result<Vec<SavedConnection>, String> with Ok(vec![])
 crates/agentd/src/lib.rs:326:28: replace == with != in <impl ConnectionProvider for DaemonProvider>::connection
 crates/agentd/src/main.rs:166:53: replace || with && in ask_on_controlling_terminal
-crates/agentd/src/main.rs:173:18: replace match guard answer.trim().eq_ignore_ascii_case("y") with true in ask_on_controlling_terminal
-crates/agentd/src/main.rs:173:18: replace match guard answer.trim().eq_ignore_ascii_case("y") with false in ask_on_controlling_terminal
 crates/agentd/src/main.rs:211:5: replace emit_token -> std::io::Result<()> with Ok(())
 crates/agentd/src/main.rs:218:5: replace build_registry -> DriverRegistry with Default::default()
 crates/agentd/src/main.rs:254:5: replace main -> Result<(), Box<dyn std::error::Error>> with Ok(())

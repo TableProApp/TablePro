@@ -170,8 +170,16 @@ fn ask_on_controlling_terminal(prompt: &str) -> ApprovalOutcome {
     let mut answer = String::new();
     let mut reader = BufReader::new(terminal).take(MAX_TTY_ANSWER_BYTES);
     match reader.read_line(&mut answer) {
-        Ok(_) if answer.trim().eq_ignore_ascii_case("y") => ApprovalOutcome::AllowOnce,
-        _ => ApprovalOutcome::Deny,
+        Ok(_) => outcome_for_answer(&answer),
+        Err(_) => ApprovalOutcome::Deny,
+    }
+}
+
+fn outcome_for_answer(answer: &str) -> ApprovalOutcome {
+    if answer.trim().eq_ignore_ascii_case("y") {
+        ApprovalOutcome::AllowOnce
+    } else {
+        ApprovalOutcome::Deny
     }
 }
 
@@ -309,6 +317,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_single_y_allows_a_terminal_approval() {
+        for allowed in ["y", "Y", "y\n", " y \r\n", "\ty"] {
+            assert_eq!(outcome_for_answer(allowed), ApprovalOutcome::AllowOnce, "{allowed:?}");
+        }
+        for denied in ["", "\n", "n", "yes", "yy", "ny", "y n", "1", "ok", "\u{ff59}"] {
+            assert_eq!(outcome_for_answer(denied), ApprovalOutcome::Deny, "{denied:?}");
+        }
+    }
+
     use super::*;
     use tablepro_core::{AuthMode, Environment};
 
