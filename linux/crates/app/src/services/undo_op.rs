@@ -26,17 +26,15 @@ pub enum UndoOp {
         before_touch: Touch,
         after_touch: Touch,
     },
+    /// One undo removes every draft the insert made.
     Insert {
-        draft: DraftRow,
+        drafts: Vec<DraftRow>,
     },
-    /// One Delete over every saved row it marked, so one undo brings
-    /// them all back.
     Delete {
         steps: Vec<DeleteStep>,
     },
 }
 
-/// One row's delete mark on both sides of a Delete.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeleteStep {
     pub row_key: RowKey,
@@ -89,11 +87,16 @@ impl UndoOp {
                     after_touch: *after_touch,
                 })
             }
-            UndoOp::Insert { draft } => Some(UndoOp::Insert {
-                draft: DraftRow {
-                    cells: layout.draft(&draft.cells).ok()?,
-                    ..draft.clone()
-                },
+            UndoOp::Insert { drafts } => Some(UndoOp::Insert {
+                drafts: drafts
+                    .iter()
+                    .map(|draft| {
+                        Some(DraftRow {
+                            cells: layout.draft(&draft.cells).ok()?,
+                            ..draft.clone()
+                        })
+                    })
+                    .collect::<Option<_>>()?,
             }),
             UndoOp::Delete { steps } => Some(UndoOp::Delete {
                 steps: steps
@@ -111,12 +114,21 @@ impl UndoOp {
         }
     }
 
-    pub fn is_about_draft(&self, draft_id: u64) -> bool {
+    /// Drops what the step says about a draft that is gone, and returns
+    /// whether anything is left of the step.
+    pub fn forget_draft(&mut self, draft_id: u64) -> bool {
+        let gone = RowKey::Draft(draft_id);
         match self {
-            UndoOp::Insert { draft } => draft.draft_id == draft_id,
-            UndoOp::DraftCell { draft_id: id, .. } => *id == draft_id,
-            UndoOp::CellEdit { row_key, .. } => *row_key == RowKey::Draft(draft_id),
-            UndoOp::Delete { steps } => steps.iter().any(|step| step.row_key == RowKey::Draft(draft_id)),
+            UndoOp::Insert { drafts } => {
+                drafts.retain(|draft| draft.draft_id != draft_id);
+                !drafts.is_empty()
+            }
+            UndoOp::DraftCell { draft_id: id, .. } => *id != draft_id,
+            UndoOp::CellEdit { row_key, .. } => *row_key != gone,
+            UndoOp::Delete { steps } => {
+                steps.retain(|step| step.row_key != gone);
+                !steps.is_empty()
+            }
         }
     }
 }

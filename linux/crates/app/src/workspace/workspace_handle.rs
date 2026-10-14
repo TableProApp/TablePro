@@ -592,11 +592,13 @@ mod tests {
         let columns = vec![integer("id", true), integer("n", false)];
         let edited = RowKey::from_pk_values(&[Value::Int(3)]).unwrap();
         let tracker = TabTrackerHandle::default();
-        let _ = tracker.apply(TrackerEdit::InsertDraft {
-            cells: vec![Value::Int(10), Value::Int(1)]
-                .into_iter()
-                .map(CellInput::Value)
-                .collect(),
+        let _ = tracker.apply(TrackerEdit::InsertDrafts {
+            rows: vec![
+                vec![Value::Int(10), Value::Int(1)]
+                    .into_iter()
+                    .map(CellInput::Value)
+                    .collect(),
+            ],
         });
         let _ = tracker.apply(TrackerEdit::Cell {
             row_key: edited.clone(),

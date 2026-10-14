@@ -168,7 +168,7 @@ impl TabChangeTracker {
                 value,
             } => self.track_cell_edit(row_key, col, original, value),
             TrackerEdit::DraftCell { draft_id, col, input } => self.track_draft_cell_edit(draft_id, col, input),
-            TrackerEdit::InsertDraft { cells } => self.track_insert(cells),
+            TrackerEdit::InsertDrafts { rows } => self.track_insert(rows),
         }
     }
 
@@ -185,7 +185,7 @@ impl TabChangeTracker {
                 persisted.iter().any(|(row_key, _)| self.row_in_flight(row_key))
                     || drafts.iter().any(|draft_id| self.draft_in_flight(*draft_id))
             }
-            TrackerEdit::InsertDraft { .. } => false,
+            TrackerEdit::InsertDrafts { .. } => false,
         }
     }
 
@@ -249,15 +249,24 @@ impl TabChangeTracker {
         self.put_cell_edit(&row_key, col, after)
     }
 
-    fn track_insert(&mut self, cells: Vec<CellInput>) -> TrackerDelta {
-        let draft = DraftRow {
-            draft_id: self.next_draft_id,
-            cells,
-            touched: self.touch(),
-        };
-        self.next_draft_id += 1;
-        self.push_undo(UndoOp::Insert { draft: draft.clone() });
-        self.put_draft(draft)
+    fn track_insert(&mut self, rows: Vec<Vec<CellInput>>) -> TrackerDelta {
+        if rows.is_empty() {
+            return self.delta(Vec::new());
+        }
+        let drafts: Vec<DraftRow> = rows
+            .into_iter()
+            .map(|cells| {
+                let draft_id = self.next_draft_id;
+                self.next_draft_id += 1;
+                DraftRow {
+                    draft_id,
+                    cells,
+                    touched: self.touch(),
+                }
+            })
+            .collect();
+        self.push_undo(UndoOp::Insert { drafts: drafts.clone() });
+        self.put_drafts(drafts)
     }
 
     /// Marks the saved rows and drops the drafts. The marks are one undo
@@ -307,8 +316,8 @@ impl TabChangeTracker {
             .retain(|(k, _), _| !matches!(k, RowKey::Draft(id) if *id == draft_id));
         self.deletes
             .retain(|k, _| !matches!(k, RowKey::Draft(id) if *id == draft_id));
-        self.undo.retain(|op| !op.is_about_draft(draft_id));
-        self.redo.retain(|op| !op.is_about_draft(draft_id));
+        self.undo.retain_mut(|op| op.forget_draft(draft_id));
+        self.redo.retain_mut(|op| op.forget_draft(draft_id));
         true
     }
 
@@ -369,20 +378,21 @@ impl TabChangeTracker {
         self.delta(steps.iter().map(|step| step.row_key.clone()).collect())
     }
 
-    fn put_draft(&mut self, draft: DraftRow) -> TrackerDelta {
-        let draft_id = draft.draft_id;
-        self.drafts.push(draft);
+    fn put_drafts(&mut self, drafts: Vec<DraftRow>) -> TrackerDelta {
+        let draft_ids: Vec<u64> = drafts.iter().map(|draft| draft.draft_id).collect();
+        self.drafts.extend(drafts);
         TrackerDelta {
-            inserted_drafts: vec![draft_id],
-            ..self.delta(vec![RowKey::Draft(draft_id)])
+            inserted_drafts: draft_ids.clone(),
+            ..self.delta(draft_ids.into_iter().map(RowKey::Draft).collect())
         }
     }
 
-    fn remove_draft(&mut self, draft_id: u64) -> TrackerDelta {
-        self.drafts.retain(|d| d.draft_id != draft_id);
+    fn remove_drafts(&mut self, drafts: &[DraftRow]) -> TrackerDelta {
+        let draft_ids: Vec<u64> = drafts.iter().map(|draft| draft.draft_id).collect();
+        self.drafts.retain(|d| !draft_ids.contains(&d.draft_id));
         TrackerDelta {
-            removed_drafts: vec![draft_id],
-            ..self.delta(vec![RowKey::Draft(draft_id)])
+            removed_drafts: draft_ids.clone(),
+            ..self.delta(draft_ids.into_iter().map(RowKey::Draft).collect())
         }
     }
 
@@ -416,7 +426,7 @@ impl TabChangeTracker {
                 before_touch,
                 ..
             } => self.put_draft_cell(*draft_id, *col, before.clone(), *before_touch),
-            UndoOp::Insert { draft } => self.remove_draft(draft.draft_id),
+            UndoOp::Insert { drafts } => self.remove_drafts(drafts),
             UndoOp::Delete { steps } => self.put_delete_marks(steps, true),
         };
         self.redo.push_back(op);
@@ -439,7 +449,7 @@ impl TabChangeTracker {
                 after_touch,
                 ..
             } => self.put_draft_cell(*draft_id, *col, after.clone(), *after_touch),
-            UndoOp::Insert { draft } => self.put_draft(draft.clone()),
+            UndoOp::Insert { drafts } => self.put_drafts(drafts.clone()),
             UndoOp::Delete { steps } => self.put_delete_marks(steps, false),
         };
         self.undo.push_back(op);
@@ -568,6 +578,13 @@ impl TabChangeTracker {
                     .map(|input| input.value().cloned().unwrap_or(Value::Null))
                     .collect()
             })
+    }
+
+    pub fn draft_inputs(&self, draft_id: u64) -> Option<Vec<CellInput>> {
+        self.drafts
+            .iter()
+            .find(|draft| draft.draft_id == draft_id)
+            .map(|draft| draft.cells.clone())
     }
 
     pub fn draft_input(&self, draft_id: u64, col: usize) -> Option<CellInput> {
@@ -1051,7 +1068,7 @@ mod tests {
 
     fn insert(t: &mut TabChangeTracker, values: Vec<Value>) -> u64 {
         match t
-            .track_insert(values.into_iter().map(CellInput::Value).collect())
+            .track_insert(vec![values.into_iter().map(CellInput::Value).collect()])
             .inserted_drafts
             .as_slice()
         {
@@ -1152,7 +1169,7 @@ mod tests {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
         t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
-        t.track_insert(vec![Value::Null].into_iter().map(CellInput::Value).collect());
+        t.track_insert(vec![vec![CellInput::Value(Value::Null)]]);
         delete(&mut t, rk(&[Value::Int(2)]), vec![Value::Int(2)]);
         t.discard();
         assert_eq!(t.pending_count(), 0);
@@ -1424,12 +1441,10 @@ mod tests {
                     _ => t.track_cell_edit(rk(&[Value::Int(id)]), 1, text("a"), text("b")),
                 };
             }
-            let _ = t.track_insert(
-                vec![Value::Null, text("draft")]
-                    .into_iter()
-                    .map(CellInput::Value)
-                    .collect(),
-            );
+            let _ = t.track_insert(vec![vec![
+                CellInput::Value(Value::Null),
+                CellInput::Value(text("draft")),
+            ]]);
         };
         let mut first = TabChangeTracker::default();
         let mut second = TabChangeTracker::default();
@@ -1468,12 +1483,10 @@ mod tests {
         let mut t = TabChangeTracker::default();
         let columns = vec![pk_col("id"), data_col("name")];
         let doomed = rk(&[Value::Int(9)]);
-        t.track_insert(
-            vec![Value::Null, Value::Text("draft".into())]
-                .into_iter()
-                .map(CellInput::Value)
-                .collect(),
-        );
+        t.track_insert(vec![vec![
+            CellInput::Value(Value::Null),
+            CellInput::Value(Value::Text("draft".into())),
+        ]]);
         delete(
             &mut t,
             doomed.clone(),
@@ -1525,7 +1538,7 @@ mod tests {
         let columns = vec![pk_col("id"), data_col("name"), stamped];
         let mut cells: Vec<CellInput> = columns.iter().map(new_draft_cell).collect();
         cells[1] = CellInput::Value(Value::Text("draft".into()));
-        let draft_id = match t.track_insert(cells).inserted_drafts.as_slice() {
+        let draft_id = match t.track_insert(vec![cells]).inserted_drafts.as_slice() {
             [draft_id] => *draft_id,
             other => panic!("an insert adds one draft row: {other:?}"),
         };
@@ -1773,6 +1786,41 @@ mod tests {
             (redone.inserted_drafts, redone.removed_drafts),
             (vec![draft_id], Vec::new())
         );
+    }
+
+    #[test]
+    fn a_duplicate_of_more_rows_than_the_history_holds_is_one_undo_step() {
+        let mut t = TabChangeTracker::default();
+        let rows: Vec<Vec<CellInput>> = (0..UNDO_LIMIT + 10)
+            .map(|id| vec![CellInput::Value(Value::Int(i64::try_from(id).unwrap()))])
+            .collect();
+
+        let inserted = t.apply(TrackerEdit::InsertDrafts { rows });
+        let undone = t.undo().expect("the duplicate to undo");
+
+        assert_eq!(inserted.inserted_drafts.len(), UNDO_LIMIT + 10);
+        assert_eq!(undone.removed_drafts, inserted.inserted_drafts);
+        assert!(t.drafts().is_empty(), "the undo left some copies behind");
+        assert!(!t.can_undo());
+        let redone = t.redo().expect("the duplicate to redo");
+        assert_eq!(redone.inserted_drafts, inserted.inserted_drafts);
+    }
+
+    #[test]
+    fn deleting_one_duplicated_draft_leaves_the_others_to_undo() {
+        let mut t = TabChangeTracker::default();
+        let inserted = t.apply(TrackerEdit::InsertDrafts {
+            rows: (1..=3).map(|id| vec![CellInput::Value(Value::Int(id))]).collect(),
+        });
+        let [first, middle, last] = inserted.inserted_drafts[..] else {
+            panic!("three drafts: {:?}", inserted.inserted_drafts);
+        };
+
+        let _ = drop_drafts(&mut t, vec![middle]);
+        let undone = t.undo().expect("the rest of the duplicate to undo");
+
+        assert_eq!(undone.removed_drafts, vec![first, last]);
+        assert!(t.drafts().is_empty());
     }
 
     #[test]

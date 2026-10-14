@@ -1572,26 +1572,28 @@ impl BrowseModel {
                     return;
                 }
                 let ctx = self.grid_context();
-                for row in &rows {
-                    // With its pending edits, since the copy is of the row
-                    // the user is looking at.
-                    let source_cells = ctx.effective_cells(row);
-                    // The duplicate is a new row, so values the database
-                    // owns (key, identity, generated) are left to it.
-                    let cells: Vec<CellInput> = self
-                        .current_columns
-                        .iter()
-                        .enumerate()
-                        .map(|(i, col)| {
-                            if col.primary_key || col.is_auto_increment || col.is_generated {
-                                new_draft_cell(col)
-                            } else {
-                                CellInput::Value(source_cells.get(i).cloned().unwrap_or(Value::Null))
-                            }
-                        })
-                        .collect();
-                    self.apply_edit(TrackerEdit::InsertDraft { cells }, fx);
-                }
+                let copies = rows
+                    .iter()
+                    .map(|row| {
+                        // With its pending edits, since the copy is of the
+                        // row the user is looking at.
+                        let source = ctx.effective_inputs(row);
+                        // The duplicate is a new row, so values the database
+                        // owns (key, identity, generated) are left to it.
+                        self.current_columns
+                            .iter()
+                            .enumerate()
+                            .map(|(i, col)| {
+                                if col.primary_key || col.is_auto_increment || col.is_generated {
+                                    new_draft_cell(col)
+                                } else {
+                                    source.get(i).cloned().unwrap_or(CellInput::Value(Value::Null))
+                                }
+                            })
+                            .collect()
+                    })
+                    .collect();
+                self.apply_edit(TrackerEdit::InsertDrafts { rows: copies }, fx);
                 self.refresh_inner_stack_visibility();
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
@@ -1600,7 +1602,7 @@ impl BrowseModel {
                     return;
                 }
                 let cells = self.current_columns.iter().map(new_draft_cell).collect();
-                self.apply_edit(TrackerEdit::InsertDraft { cells }, fx);
+                self.apply_edit(TrackerEdit::InsertDrafts { rows: vec![cells] }, fx);
                 self.refresh_inner_stack_visibility();
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }

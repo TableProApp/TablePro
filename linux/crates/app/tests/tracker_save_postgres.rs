@@ -107,11 +107,13 @@ async fn replace_by_unique_key_saves() {
         )],
         drafts: Vec::new(),
     });
-    let _ = tracker.apply(TrackerEdit::InsertDraft {
-        cells: vec![Value::Int(2), Value::Text("a".to_owned())]
-            .into_iter()
-            .map(CellInput::Value)
-            .collect(),
+    let _ = tracker.apply(TrackerEdit::InsertDrafts {
+        rows: vec![
+            vec![Value::Int(2), Value::Text("a".to_owned())]
+                .into_iter()
+                .map(CellInput::Value)
+                .collect(),
+        ],
     });
 
     let changes = tracker.change_set(&columns).expect("a change set");

@@ -19,9 +19,8 @@ pub enum TrackerEdit {
         col: usize,
         input: CellInput,
     },
-    InsertDraft {
-        cells: Vec<CellInput>,
-    },
+    /// One undo step however many rows it holds.
+    InsertDrafts { rows: Vec<Vec<CellInput>> },
     /// One Delete: the saved rows are marked, each with the row as it
     /// was read, and the drafts are dropped.
     DeleteRows {
@@ -41,7 +40,7 @@ impl TrackerEdit {
                 .map(|(row_key, _)| row_key.clone())
                 .chain(drafts.iter().map(|draft_id| RowKey::Draft(*draft_id)))
                 .collect(),
-            Self::InsertDraft { .. } => Vec::new(),
+            Self::InsertDrafts { .. } => Vec::new(),
         }
     }
 }

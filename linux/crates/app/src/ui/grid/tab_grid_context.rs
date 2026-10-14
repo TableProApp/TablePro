@@ -57,6 +57,15 @@ impl TabGridContext {
             .collect()
     }
 
+    /// Like `effective_cells`, except a draft's cell left to the server
+    /// stays `Default` rather than reading as NULL.
+    pub(crate) fn effective_inputs(&self, row: &RowObject) -> Vec<CellInput> {
+        if let (GridRowId::Draft(draft_id), Some(tracker)) = (row.id(), self.tracker.as_ref()) {
+            return tracker.draft_inputs(*draft_id).unwrap_or_default();
+        }
+        self.effective_cells(row).into_iter().map(CellInput::Value).collect()
+    }
+
     /// What an editor opens on: a draft's cell as the tracker holds it,
     /// a saved row's pending value, else the value as it was read.
     pub(crate) fn edit_input(&self, row: &RowObject, col: usize) -> CellInput {
@@ -112,8 +121,8 @@ mod tests {
     }
 
     fn insert_draft(tracker: &TabTrackerHandle, values: Vec<Value>) -> u64 {
-        let delta = tracker.apply(TrackerEdit::InsertDraft {
-            cells: values.into_iter().map(CellInput::Value).collect(),
+        let delta = tracker.apply(TrackerEdit::InsertDrafts {
+            rows: vec![values.into_iter().map(CellInput::Value).collect()],
         });
         let Some(draft_id) = delta.inserted_drafts.into_iter().next() else {
             panic!("an insert adds a draft row");
@@ -173,8 +182,8 @@ mod tests {
     #[test]
     fn a_draft_cell_left_to_the_server_opens_as_the_default() {
         let tracker = TabTrackerHandle::default();
-        let delta = tracker.apply(TrackerEdit::InsertDraft {
-            cells: vec![CellInput::Default, CellInput::Value(Value::Null)],
+        let delta = tracker.apply(TrackerEdit::InsertDrafts {
+            rows: vec![vec![CellInput::Default, CellInput::Value(Value::Null)]],
         });
         let draft = RowObject::draft(delta.inserted_drafts[0]);
 

@@ -410,8 +410,8 @@ mod tests {
         }
 
         fn insert_draft(&self) {
-            let delta = self.tracker.apply(TrackerEdit::InsertDraft {
-                cells: vec![CellInput::Value(Value::Null), CellInput::Value(Value::Null)],
+            let delta = self.tracker.apply(TrackerEdit::InsertDrafts {
+                rows: vec![vec![CellInput::Value(Value::Null), CellInput::Value(Value::Null)]],
             });
             let Some(draft_id) = delta.inserted_drafts.into_iter().next() else {
                 panic!("an insert adds a draft row");

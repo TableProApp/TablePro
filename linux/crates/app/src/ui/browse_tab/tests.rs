@@ -792,6 +792,44 @@ fn duplicate_row_copies_pending_edits_of_persisted_row() {
 }
 
 #[gtk4::test]
+fn duplicating_a_draft_leaves_its_defaulted_cells_to_the_server() {
+    let mut level = col_with_default("integer", "0");
+    level.name = "level".to_owned();
+    let (harness, _shown) = one_cell(level, Value::Int(3));
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let draft = harness.grid_row(0);
+    assert!(draft.draft_id().is_some(), "the new row goes on top");
+
+    harness.tab().send(BrowseTabInput::DuplicateRows(vec![draft]));
+
+    let drafts = harness.tracker.drafts();
+    assert_eq!(drafts.len(), 2, "{drafts:?}");
+    assert_eq!(
+        drafts[1].cells[1],
+        CellInput::Default,
+        "the copy wrote NULL where the server fills in"
+    );
+}
+
+#[gtk4::test]
+fn duplicating_a_selection_is_one_undo_step() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+
+    harness.tab().send(BrowseTabInput::DuplicateRows(vec![
+        harness.grid_row(0),
+        harness.grid_row(1),
+    ]));
+    assert_eq!(draft_rows(&harness.store()), 2);
+    harness.tab().send(BrowseTabInput::Undo);
+
+    assert_eq!(draft_rows(&harness.store()), 0, "one undo left copies behind");
+    assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+#[gtk4::test]
 fn copy_row_as_insert_uses_row_below_draft() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
