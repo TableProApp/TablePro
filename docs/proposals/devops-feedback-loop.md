@@ -94,7 +94,7 @@ What the tools are (checked 2026-10-12):
 | [RegreSQL](https://github.com/boringSQL/regresql) | SQL regression tests with expected results and EXPLAIN plan baselines | BSD-2-Clause | pushed 2026-10-04 |
 | Xata | Open-source PostgreSQL branching | see episode | see episode |
 
-All three are PostgreSQL-only. We have six engines, so they help one of them, though it is the main focus.
+All three focus on PostgreSQL, BookiE's most mature engine. They do not address the other drivers.
 
 Where they would pay off for BookiE, in order of value for effort:
 
