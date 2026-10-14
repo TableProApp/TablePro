@@ -54,6 +54,7 @@ impl SessionWindow {
         self.set_title(Some(&crate::i18n::gettext("TablePro")));
         workspace.shutdown();
         drop(workspace);
+        self.withdraw_notifications();
         let key = claim.key().clone();
         drop(claim);
         // A quit freezes the record first, so only a disconnect or a

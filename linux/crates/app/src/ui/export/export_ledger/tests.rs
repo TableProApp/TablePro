@@ -21,7 +21,7 @@ use super::*;
 use crate::test_support::{FakeSession, finish_on_main, first_descendant_of_type, wait_until};
 use crate::ui::export::{AbortOutcome, ExpectedRows, ExportFormat, ExportOperationsButton, RowFormat, TableExport};
 use crate::ui::grid::RowSnapshot;
-use crate::workspace::{InhibitTarget, answer, visible_alert};
+use crate::workspace::{InhibitTarget, WorkOutcome, answer, visible_alert};
 
 const WAIT: Duration = Duration::from_secs(20);
 
@@ -144,6 +144,7 @@ fn job(path: &Path, count: usize) -> ExportJob {
         format: ExportFormat::Rows(RowFormat::Csv(CsvOptions::default())),
         source: ExportSource::Rows { columns, rows },
         expected_rows: Some(ExpectedRows::Exact(count as u64)),
+        tab: None,
     }
 }
 
@@ -218,6 +219,7 @@ fn read_job(path: &Path, session: &FakeSession, query: ExportQuery) -> ExportJob
             query,
         },
         expected_rows: None,
+        tab: None,
     }
 }
 
@@ -578,6 +580,59 @@ fn close_blocker_reports_running_exports_and_stop_waits_for_idle() {
     assert_eq!(harness.ledger.blocking(), None);
     let outcome = harness.finish(handle);
     assert!(matches!(outcome, ExportOutcome::Stopped(_)), "{outcome:?}");
+}
+
+#[gtk4::test]
+fn a_tab_hears_how_its_export_ended_once_it_settled() {
+    let harness = Harness::new();
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let (log, ledger) = (heard.clone(), Rc::downgrade(&harness.ledger));
+    harness.ledger.on_ended(move |tab, outcome| {
+        let running = ledger.upgrade().map(|ledger| ledger.in_flight());
+        log.borrow_mut().push((tab, outcome, running));
+    });
+    let (finished, failed, stopped) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+    let from = |job: ExportJob, tab| ExportJob { tab: Some(tab), ..job };
+
+    harness.finish(
+        harness
+            .ledger
+            .begin(from(job(&harness.path("rows.csv"), 10), finished))
+            .expect("started"),
+    );
+    harness.finish(
+        harness
+            .ledger
+            .begin(from(job(&harness.path("missing").join("rows.csv"), 10), failed))
+            .expect("started"),
+    );
+    let fake = harness.session(FakeReply::UntilStopped, None);
+    let stopping = harness
+        .ledger
+        .begin(from(
+            read_job(&harness.path("users.csv"), &fake, users(by_id())),
+            stopped,
+        ))
+        .expect("started");
+    wait_until(WAIT, || fake.connection.observed_cancels("stream_read").len() == 1).expect("the read to start");
+    harness.ledger.cancel_all();
+    harness.finish(stopping);
+    harness.finish(
+        harness
+            .ledger
+            .begin(job(&harness.path("untold.csv"), 10))
+            .expect("started"),
+    );
+
+    assert_eq!(
+        *heard.borrow(),
+        [
+            (finished, WorkOutcome::Succeeded, Some(0)),
+            (failed, WorkOutcome::Failed, Some(0)),
+            (stopped, WorkOutcome::Cancelled, Some(0)),
+        ],
+        "a job with no tab was told, or one was told before it settled"
+    );
 }
 
 #[gtk4::test]

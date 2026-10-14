@@ -262,7 +262,12 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     let state = input.clone();
     browse.connect_state_changed(move |_| state.deliver(WorkspaceInput::WorkspaceTabsChanged));
     let export = input.clone();
-    browse.connect_export_results(move |_, offer| export.deliver(WorkspaceInput::ExportResults(Box::new(offer))));
+    browse.connect_export_results(move |_, offer| {
+        export.deliver(WorkspaceInput::ExportResults {
+            tab: tab_id,
+            offer: Box::new(offer),
+        });
+    });
     let alert = input.clone();
     browse.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
     let toast = input.clone();
@@ -290,6 +295,10 @@ pub(super) fn connect_editor(
     editor.connect_run_state_changed(move |_, running| {
         run_state.deliver(WorkspaceInput::EditorTabRunStateChanged(tab_id, running));
     });
+    let finished = input.clone();
+    editor.connect_run_finished(move |_, outcome| {
+        finished.deliver(WorkspaceInput::EditorTabRunFinished(tab_id, outcome))
+    });
     let content = input.clone();
     editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
     let transaction = input.clone();
@@ -297,7 +306,12 @@ pub(super) fn connect_editor(
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let export = input.clone();
-    editor.connect_export_results(move |_, offer| export.deliver(WorkspaceInput::ExportResults(Box::new(offer))));
+    editor.connect_export_results(move |_, offer| {
+        export.deliver(WorkspaceInput::ExportResults {
+            tab: tab_id,
+            offer: Box::new(offer),
+        });
+    });
     // The overlay is an ancestor of the editor, so a strong capture
     // would keep both alive once the window lets go of them.
     let toasts = toasts.clone();

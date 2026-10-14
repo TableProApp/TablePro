@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar lists the tables of every schema, a section per schema with the default one first, and a middle click opens one in a new tab.
 - Connect leads a saved connection's menu, which a right click, the Menu key or Shift+F10 opens.
 - Find and replace in the SQL editor with Ctrl+F and Ctrl+H, matching case, whole words or regular expressions.
+- Desktop notification when a query, save or export finishes in a tab you are not looking at; clicking it opens the tab.
 
 ### Changed
 

@@ -4,6 +4,7 @@ use tablepro_session::runtime::TaskFailure;
 use thiserror::Error;
 
 use super::{AbortOutcome, ExportStreamFailure};
+use crate::workspace::WorkOutcome;
 
 /// How an export ended.
 #[derive(Debug)]
@@ -18,6 +19,16 @@ pub(crate) enum ExportOutcome {
         failure: ExportFailure,
         file: Option<AbortOutcome>,
     },
+}
+
+impl From<&ExportOutcome> for WorkOutcome {
+    fn from(outcome: &ExportOutcome) -> Self {
+        match outcome {
+            ExportOutcome::Exported { .. } => Self::Succeeded,
+            ExportOutcome::Stopped(_) => Self::Cancelled,
+            ExportOutcome::Failed { .. } => Self::Failed,
+        }
+    }
 }
 
 #[derive(Debug, Error)]

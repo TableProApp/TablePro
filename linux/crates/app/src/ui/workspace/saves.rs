@@ -9,7 +9,9 @@ use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
 use crate::ui::browse_tab::BrowseTabInput;
 use crate::ui::structure_tab::StructureTabInput;
-use crate::workspace::{CloseScope, DirtyTab, SaveOutcome, SaveSettled, SaveStart, WorkspaceEvent};
+use crate::workspace::{
+    CloseScope, DirtyTab, SaveOutcome, SaveSettled, SaveStart, WorkKind, WorkOutcome, WorkspaceEvent,
+};
 
 impl WorkspaceModel {
     /// Save one tab, from its own Save button or Ctrl+S. A structure
@@ -82,6 +84,7 @@ impl WorkspaceModel {
             saved_table_name,
             origins,
         } = settled;
+        let work = WorkOutcome::from(&outcome);
         match (kind, outcome) {
             (WriteKind::RowChanges, SaveOutcome::Committed { .. }) => {
                 // No Undo button: the save has already committed, and
@@ -121,6 +124,7 @@ impl WorkspaceModel {
                 self.send_to_structure_tab(tab, StructureTabInput::SaveOutcomeUnknown(message));
             }
         }
+        self.report_work(tab, WorkKind::Save, work);
     }
 
     /// The tab's name for a sentence, quoted as the close prompts quote

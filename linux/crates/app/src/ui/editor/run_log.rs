@@ -6,6 +6,7 @@ use tablepro_core::{
 
 use super::script_runner::sql_preview;
 use crate::ui::result_pane::{ResultSetView, ResultSummary};
+use crate::workspace::WorkOutcome;
 
 /// One line of the results list.
 #[derive(Debug, Clone)]
@@ -364,6 +365,18 @@ impl RunLog {
             .any(|entry| matches!(entry.kind, EntryKind::TimedOut { .. }))
     }
 
+    /// How the run went as a whole: one failed or timed out statement
+    /// fails it, as it does in history.
+    pub fn outcome(&self) -> WorkOutcome {
+        if self.entries.iter().any(|entry| entry.kind.is_failure()) {
+            WorkOutcome::Failed
+        } else if self.was_stopped() {
+            WorkOutcome::Cancelled
+        } else {
+            WorkOutcome::Succeeded
+        }
+    }
+
     /// What the run changed or returned, for the history entry: the
     /// rows statements reported changing, else every row the results
     /// had. A result the row limit cut short with no total makes that
@@ -560,12 +573,52 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_anywhere_fails_the_run_and_a_stop_alone_cancels_it() {
+        let outcome = |batches: Vec<(Vec<EntryKind>, Verdict)>| {
+            let mut log = RunLog::new(
+                (0..batches.len()).map(|_| UserSql::new("SELECT 1")).collect(),
+                Vec::new(),
+            );
+            for (batch, (entries, verdict)) in batches.into_iter().enumerate() {
+                log.apply(report(batch, entries, verdict));
+            }
+            log.apply(RunEvent::Finished);
+            log.outcome()
+        };
+        let done = || (vec![EntryKind::Command { rows_affected: None }], Verdict::Completed);
+        let failed = || {
+            (
+                vec![EntryKind::Failed {
+                    message: "boom".to_owned(),
+                    error_char: None,
+                }],
+                Verdict::Failed,
+            )
+        };
+
+        assert_eq!(outcome(vec![done(), done()]), WorkOutcome::Succeeded);
+        assert_eq!(outcome(vec![done(), failed(), done()]), WorkOutcome::Failed);
+        assert_eq!(
+            outcome(vec![(
+                vec![EntryKind::TimedOut { server_cancelled: true }],
+                Verdict::Stopped
+            )]),
+            WorkOutcome::Failed
+        );
+        assert_eq!(
+            outcome(vec![done(), (vec![EntryKind::Cancelled], Verdict::Stopped)]),
+            WorkOutcome::Cancelled
+        );
+    }
+
+    #[test]
     fn a_run_stopped_before_its_first_statement_was_stopped() {
         let mut log = RunLog::new(vec![UserSql::new("SELECT 1"), UserSql::new("SELECT 2")], Vec::new());
 
         log.apply(RunEvent::Finished);
 
         assert!(log.was_stopped());
+        assert_eq!(log.outcome(), WorkOutcome::Cancelled);
     }
 
     #[test]

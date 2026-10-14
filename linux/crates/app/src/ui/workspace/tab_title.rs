@@ -31,7 +31,7 @@ pub(crate) fn resolve_tab_title(identity: &TabIdentity, naming: TableNaming) -> 
             tooltip: None,
         },
         TabIdentity::Editor(EditorLabel::Untitled(ordinal)) => TabTitle {
-            label: crate::i18n::gettext_f("Query {n}", &[("n", &ordinal.to_string())]),
+            label: numbered_query(*ordinal),
             tooltip: None,
         },
         TabIdentity::Editor(EditorLabel::Query { prefix, truncated }) => {
@@ -45,6 +45,10 @@ pub(crate) fn resolve_tab_title(identity: &TabIdentity, naming: TableNaming) -> 
             TabTitle { label, tooltip }
         }
     }
+}
+
+pub(crate) fn numbered_query(ordinal: usize) -> String {
+    crate::i18n::gettext_f("Query {n}", &[("n", &ordinal.to_string())])
 }
 
 /// `schema.table` when the naming asks for it; a bare name has the

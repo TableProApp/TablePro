@@ -105,6 +105,10 @@ impl ObjectImpl for Workspace {
                 Signal::builder("title-changed")
                     .param_types([String::static_type()])
                     .build(),
+                Signal::builder("work-completed")
+                    .param_types([glib::BoxedAnyObject::static_type()])
+                    .build(),
+                Signal::builder("tabs-changed").build(),
             ]
         })
     }

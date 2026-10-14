@@ -8,7 +8,7 @@ use super::session_window_command::SessionWindowCommand;
 use super::sqlite_location_dialog::LocationChoice;
 use crate::services::connection_deletion::DeletionOptions;
 use crate::ui::connect_dialog::ConnectSubmission;
-use crate::workspace::CloseReason;
+use crate::workspace::{CloseReason, CompletedWork};
 
 #[derive(Debug)]
 pub(crate) enum SessionWindowInput {
@@ -64,6 +64,12 @@ pub(crate) enum SessionWindowInput {
     /// The number of saves running in the workspace changed.
     SavesInFlightChanged(usize),
     TitleChanged(String),
+    /// A run, save or export ended in one of the workspace's tabs.
+    WorkCompleted(CompletedWork),
+    /// The tab in front, the open tabs or the window's focus changed.
+    TabsChanged,
+    /// A notification about the tab was clicked.
+    FocusTab(Uuid),
     Command(Box<SessionWindowCommand>),
     /// The answer for a file on a filesystem whose locking SQLite cannot
     /// trust, or ReadWrite when there was nothing to ask.

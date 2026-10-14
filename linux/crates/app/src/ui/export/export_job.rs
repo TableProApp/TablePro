@@ -1,4 +1,5 @@
 use gtk4::gio;
+use uuid::Uuid;
 
 use super::{ExportFormat, ExportSource};
 
@@ -9,6 +10,8 @@ pub(crate) struct ExportJob {
     pub format: ExportFormat,
     pub source: ExportSource,
     pub expected_rows: Option<ExpectedRows>,
+    /// The tab the rows came from, which hears how the export ended.
+    pub tab: Option<Uuid>,
 }
 
 /// Names a running export in its ledger.

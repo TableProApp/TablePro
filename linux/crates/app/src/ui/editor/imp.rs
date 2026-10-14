@@ -83,6 +83,9 @@ impl ObjectImpl for SqlEditor {
                 Signal::builder("run-state-changed")
                     .param_types([bool::static_type()])
                     .build(),
+                Signal::builder("run-finished")
+                    .param_types([crate::workspace::WorkOutcome::static_type()])
+                    .build(),
                 // No text: the buffer can be megabytes, and a listener
                 // reads only what it needs from it.
                 Signal::builder("content-changed").build(),

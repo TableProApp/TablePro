@@ -4,6 +4,7 @@
 
 mod close_flow;
 mod editor_label;
+mod finished_work;
 mod health_banner;
 mod imp;
 mod import;
@@ -356,6 +357,7 @@ pub(crate) enum WorkspaceInput {
     NewEditorTab,
     CloseActiveWorkspaceTab,
     EditorTabRunStateChanged(Uuid, bool),
+    EditorTabRunFinished(Uuid, crate::workspace::WorkOutcome),
     EditorTabContentChanged(Uuid),
     /// The session's saved tabs and their editor text, read off the GTK
     /// thread.
@@ -390,7 +392,15 @@ pub(crate) enum WorkspaceInput {
         approved: bool,
     },
     RefreshPage,
-    ExportResults(Box<ExportOffer>),
+    ExportResults {
+        tab: Uuid,
+        offer: Box<ExportOffer>,
+    },
+    /// An export a tab offered ended.
+    ExportEnded {
+        tab: Uuid,
+        outcome: crate::workspace::WorkOutcome,
+    },
     /// Text to copy as it is, such as a saved query.
     CopyText(String),
     WorkspaceTabClosed(Uuid),
@@ -443,6 +453,8 @@ pub(crate) enum WorkspaceInput {
     ReopenClosedTab,
     /// A browse tab's F5.
     RefreshTab(Uuid),
+    /// Bring the tab to the front, for a notification about it.
+    FocusTab(Uuid),
 }
 
 impl Workspace {
@@ -515,6 +527,8 @@ impl Workspace {
             inhibitor: WindowInhibitor::new(ApplicationInhibit::new(&window)),
         });
         imp.export_operations_button.bind(&exports.jobs());
+        let ended = input.clone();
+        exports.on_ended(move |tab, outcome| ended.deliver(WorkspaceInput::ExportEnded { tab, outcome }));
 
         let sidebar = sidebar::build(&workspace, &input, sidebar::SidebarAffordances::for_session(&session));
         let naming = Rc::new(Cell::new(table_naming::TableNaming::default()));
@@ -880,6 +894,9 @@ impl WorkspaceModel {
             WorkspaceInput::SchemaChanged { schema, table } => self.on_schema_changed(schema, table),
             WorkspaceInput::NewEditorTab => self.open_editor_tab(None),
             WorkspaceInput::EditorTabRunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
+            WorkspaceInput::EditorTabRunFinished(id, outcome) => {
+                self.report_work(id, crate::workspace::WorkKind::Query, outcome);
+            }
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
@@ -899,7 +916,7 @@ impl WorkspaceModel {
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),
-            WorkspaceInput::ExportResults(offer) => {
+            WorkspaceInput::ExportResults { tab, offer } => {
                 if let Some(window) = self.window() {
                     let dialect = self.context.active.get().and_then(|session| session.current_dialect());
                     super::export_dialog::present(super::export_dialog::ExportDialogInit {
@@ -908,12 +925,17 @@ impl WorkspaceModel {
                         offer: *offer,
                         dialect,
                         settings: &self.settings,
+                        tab: Some(tab),
                     });
                 }
+            }
+            WorkspaceInput::ExportEnded { tab, outcome } => {
+                self.report_work(tab, crate::workspace::WorkKind::Export, outcome);
             }
             WorkspaceInput::CopyText(text) => self.on_copy_text(text),
             WorkspaceInput::ReopenClosedTab => self.on_reopen_closed_tab(),
             WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),
+            WorkspaceInput::FocusTab(id) => self.focus_tab(id),
         }
     }
 }

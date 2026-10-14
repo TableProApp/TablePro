@@ -56,3 +56,17 @@ fn new_window_is_a_desktop_action() {
     assert!(actions.contains(&"new-window".to_owned()), "{actions:?}");
     assert!(!name.is_empty());
 }
+
+/// GNOME Settings lists an application under Notifications only when
+/// its entry says it sends them.
+#[test]
+fn notifications_can_be_turned_off_in_settings() {
+    let entry = entry().expect("the desktop entry parses");
+
+    assert!(
+        entry
+            .boolean(MAIN, "X-GNOME-UsesNotifications")
+            .expect("X-GNOME-UsesNotifications"),
+        "TablePro is missing from the Notifications settings"
+    );
+}
