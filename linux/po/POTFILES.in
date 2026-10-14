@@ -317,6 +317,7 @@ crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/saved_queries_dialog.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
+crates/app/src/ui/session_window/connect_failure_view.rs
 crates/app/src/ui/session_window/connect_flow.rs
 crates/app/src/ui/session_window/connecting_page.rs
 crates/app/src/ui/session_window/connections.rs

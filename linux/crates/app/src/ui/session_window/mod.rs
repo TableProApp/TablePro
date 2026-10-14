@@ -4,6 +4,7 @@
 //! and returns to the picker; it never moves to another session.
 
 mod connect_failed_page;
+mod connect_failure_view;
 mod connect_flow;
 mod connecting_page;
 mod connections;
@@ -46,6 +47,7 @@ use tablepro_session::{
 use tablepro_storage::{CredentialDemand, SavedConnection};
 
 pub(super) use self::connect_failed_page::ConnectFailedPage;
+use self::connect_failure_view::ConnectFailureView;
 pub(super) use self::connecting_page::ConnectingPage;
 pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
@@ -387,45 +389,54 @@ impl SessionWindow {
         self.tear_down();
         let imp = self.imp();
         let app = self.application();
-        let (child, toasts): (Option<gtk::Widget>, Option<adw::ToastOverlay>) = match &page {
+        let mut can_edit = false;
+        let (child, toasts, shown): (Option<gtk::Widget>, Option<adw::ToastOverlay>, ShownPage) = match &page {
             SessionPage::Picker => {
                 self.set_title(Some(&crate::i18n::gettext("TablePro")));
                 let picker = imp.picker.get();
                 (
                     picker.map(|picker| picker.clone().upcast()),
                     picker.map(PickerPage::toast_overlay),
+                    ShownPage::Other,
                 )
             }
             SessionPage::Connecting { source, .. } => {
-                let connecting = ConnectingPage::new(&source_name(source), app.as_ref());
+                let connecting = ConnectingPage::new(app.as_ref());
                 let toasts = connecting.toast_overlay();
-                (Some(connecting.upcast()), Some(toasts))
+                (
+                    Some(connecting.clone().upcast()),
+                    Some(toasts),
+                    ShownPage::Connecting(connecting, source_name(source)),
+                )
             }
             SessionPage::ConnectFailed { source, failure, .. } => {
-                let failed = ConnectFailedPage::new(
-                    &failure.message,
-                    edit_label(source, failure).as_deref(),
-                    failure.reenter,
-                    app.as_ref(),
-                );
+                let view = ConnectFailureView::new(failure, source);
+                can_edit = view.can_edit;
+                let failed = ConnectFailedPage::new(&view, &edit_label(failure), failure.reenter, app.as_ref());
                 let toasts = failed.toast_overlay();
-                (Some(failed.upcast()), Some(toasts))
+                (Some(failed.clone().upcast()), Some(toasts), ShownPage::Failed(failed))
             }
-            SessionPage::Workspace { workspace, .. } => {
-                (Some(workspace.clone().upcast()), Some(workspace.toast_overlay()))
-            }
+            SessionPage::Workspace { workspace, .. } => (
+                Some(workspace.clone().upcast()),
+                Some(workspace.toast_overlay()),
+                ShownPage::Other,
+            ),
         };
-        let editable = match &page {
-            SessionPage::ConnectFailed { source, .. } => is_editable(source),
-            _ => false,
-        };
-        window_actions::sync(self.upcast_ref(), &page, editable);
+        window_actions::sync(self.upcast_ref(), &page, can_edit);
         if !matches!(page, SessionPage::Picker) {
             imp.opened_for_file.set(false);
         }
         let left = imp.page.replace(page);
         imp.page_toasts.replace(toasts);
+        // A Cancel or Retry left as the default would take Enter on a
+        // page that no longer shows it.
+        self.set_default_widget(None::<&gtk::Widget>);
         self.set_content(child.as_ref());
+        match shown {
+            ShownPage::Connecting(page, name) => page.show(&name),
+            ShownPage::Failed(page) => page.show(),
+            ShownPage::Other => {}
+        }
         drop(left);
     }
 
@@ -1102,20 +1113,19 @@ fn file_display_name(uri: &str) -> String {
         .map_or_else(|| uri.to_owned(), |name| name.to_string_lossy().into_owned())
 }
 
-/// Only a connection the connect dialog shows can be edited from a
-/// failed connect.
-fn is_editable(source: &ConnectSource) -> bool {
-    matches!(source, ConnectSource::Saved(_) | ConnectSource::Intent(_))
-}
-
 /// The failed page's Edit button: named after the setting that fixes a
 /// TLS failure when there is one.
-fn edit_label(source: &ConnectSource, failure: &ConnectFailure) -> Option<String> {
-    is_editable(source).then(|| {
-        failure
-            .remedy
-            .map_or_else(|| crate::i18n::gettext("Edit Connection…"), |remedy| remedy.label())
-    })
+fn edit_label(failure: &ConnectFailure) -> String {
+    failure
+        .remedy
+        .map_or_else(|| crate::i18n::gettext("Edit Connection…"), |remedy| remedy.label())
+}
+
+/// A page that says what it shows once it is in the window.
+enum ShownPage {
+    Connecting(ConnectingPage, String),
+    Failed(ConnectFailedPage),
+    Other,
 }
 
 fn file_failure_message(uri: &str, error: &FileResolveError) -> String {

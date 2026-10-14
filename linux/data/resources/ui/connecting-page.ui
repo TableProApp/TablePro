@@ -20,7 +20,7 @@
                   </object>
                 </property>
                 <property name="child">
-                  <object class="GtkButton">
+                  <object class="GtkButton" id="cancel_button">
                     <property name="label" translatable="yes">Cancel</property>
                     <property name="action-name">win.cancel-connect</property>
                     <property name="halign">center</property>

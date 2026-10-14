@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connect leads a saved connection's menu, which a right click, the Menu key or Shift+F10 opens.
 - Find and replace in the SQL editor with Ctrl+F and Ctrl+H, matching case, whole words or regular expressions.
 - Edit…, Duplicate and Move to Group in a saved connection's menu; an edit keeps the saved passwords unless you type new ones.
+- Screen readers announce a connect starting and failing, with the reason it failed.
 
 ### Changed
 

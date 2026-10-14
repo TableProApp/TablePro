@@ -12,7 +12,6 @@
             </child>
             <property name="content">
               <object class="AdwStatusPage" id="status_page">
-                <property name="icon-name">dialog-error-symbolic</property>
                 <property name="title" translatable="yes">Could Not Connect</property>
                 <property name="child">
                   <object class="GtkBox">
@@ -58,11 +57,14 @@
                       </object>
                     </child>
                     <child>
-                      <object class="GtkButton">
+                      <!-- The way back rather than a way on, so it does
+                           not compete with the buttons above. -->
+                      <object class="GtkButton" id="choose_button">
                         <property name="label" translatable="yes">Choose Connection</property>
                         <property name="action-name">win.cancel-connect</property>
                         <style>
                           <class name="pill"/>
+                          <class name="flat"/>
                         </style>
                       </object>
                     </child>

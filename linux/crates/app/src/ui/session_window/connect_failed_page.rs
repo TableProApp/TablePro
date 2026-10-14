@@ -1,9 +1,11 @@
 use gtk4 as gtk;
 use gtk4::glib;
+use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use libadwaita::prelude::*;
 use tablepro_core::credentials::SecretKind;
+
+use super::connect_failure_view::ConnectFailureView;
 
 mod imp {
     use super::*;
@@ -24,6 +26,10 @@ mod imp {
         pub retry_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub edit_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub choose_button: TemplateChild<gtk::Button>,
+        #[cfg(test)]
+        pub announced: std::cell::RefCell<Vec<(String, gtk::AccessibleAnnouncementPriority)>>,
     }
 
     #[glib::object_subclass]
@@ -55,19 +61,23 @@ glib::wrapper! {
 }
 
 impl ConnectFailedPage {
-    /// `edit` labels the button that opens the connect dialog, and is
-    /// `None` for a connection the dialog cannot edit, such as a file
-    /// nobody saved. `reenter` is the secret the server refused, which
-    /// the user is offered to type again.
-    pub fn new(message: &str, edit: Option<&str>, reenter: Option<SecretKind>, app: Option<&gtk::Application>) -> Self {
+    /// `edit_label` names the button that opens the connect dialog,
+    /// shown when `view` says the dialog can edit what failed. `reenter`
+    /// is the secret the server refused, which the user is offered to
+    /// type again.
+    pub(crate) fn new(
+        view: &ConnectFailureView,
+        edit_label: &str,
+        reenter: Option<SecretKind>,
+        app: Option<&gtk::Application>,
+    ) -> Self {
         let page: Self = glib::Object::new();
         let imp = page.imp();
         imp.header_bar.pack_end(&crate::ui::shell::primary_menu_button(app));
-        imp.status_page.set_description(Some(message));
-        if let Some(label) = edit {
-            imp.edit_button.set_label(label);
-            imp.edit_button.set_visible(true);
-        }
+        imp.status_page.set_icon_name(Some(crate::ui::icons::NETWORK_ERROR));
+        imp.status_page.set_description(Some(&view.message));
+        imp.edit_button.set_label(edit_label);
+        imp.edit_button.set_visible(view.can_edit);
         if let Some(kind) = reenter {
             imp.reenter_button.set_label(&super::secret_retry::reenter_label(kind));
             imp.reenter_button
@@ -76,6 +86,40 @@ impl ConnectFailedPage {
             imp.retry_button.remove_css_class("suggested-action");
         }
         page
+    }
+
+    /// Say why the connect failed, once the page is in its window: the
+    /// page replaces the window's content without moving the focus, so
+    /// a screen reader hears this rather than what it read before. Enter
+    /// takes the suggested way on.
+    pub fn show(&self) {
+        let imp = self.imp();
+        let heading = imp.status_page.title();
+        if let Some(window) = self.root().and_downcast::<gtk::Window>() {
+            window.set_title(Some(&heading));
+            window.set_default_widget(Some(&self.suggested_button()));
+        }
+        let message = imp.status_page.description().unwrap_or_default();
+        let announcement = format!("{heading}. {message}");
+        let priority = gtk::AccessibleAnnouncementPriority::High;
+        #[cfg(test)]
+        imp.announced.borrow_mut().push((announcement.clone(), priority));
+        // libadwaita's own Accessible impls sit behind a feature left off,
+        // and every widget is one.
+        imp.status_page
+            .upcast_ref::<gtk::Widget>()
+            .announce(&announcement, priority);
+    }
+
+    /// Enter Password when the server refused one, which Retry would
+    /// only send again; Retry otherwise.
+    fn suggested_button(&self) -> gtk::Button {
+        let imp = self.imp();
+        if imp.reenter_button.is_visible() {
+            imp.reenter_button.get()
+        } else {
+            imp.retry_button.get()
+        }
     }
 
     pub fn toast_overlay(&self) -> adw::ToastOverlay {
@@ -92,5 +136,22 @@ impl ConnectFailedPage {
     pub fn reenter_button(&self) -> Option<gtk::Button> {
         let button = self.imp().reenter_button.get();
         button.is_visible().then_some(button)
+    }
+
+    #[cfg(test)]
+    pub fn status_page(&self) -> adw::StatusPage {
+        self.imp().status_page.get()
+    }
+
+    /// Retry, Edit Connection and Choose Connection, in that order.
+    #[cfg(test)]
+    pub fn buttons(&self) -> [gtk::Button; 3] {
+        let imp = self.imp();
+        [imp.retry_button.get(), imp.edit_button.get(), imp.choose_button.get()]
+    }
+
+    #[cfg(test)]
+    pub fn announced(&self) -> Vec<(String, gtk::AccessibleAnnouncementPriority)> {
+        self.imp().announced.borrow().clone()
     }
 }
