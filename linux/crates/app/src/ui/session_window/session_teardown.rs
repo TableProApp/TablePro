@@ -104,6 +104,11 @@ mod tests {
     use tablepro_core::EditorSession;
     use tablepro_test_support::{CallCounters, CloseBehaviour, FakeEditorSession, FakeReply, FakeRun, Replies};
 
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use tablepro_session::RegistryEvent;
+
     use super::*;
     use crate::test_support::wait_until;
     use crate::ui::session_window::SessionWindowInput;
@@ -114,9 +119,34 @@ mod tests {
         let test = TestWindow::connected("OrderedTeardown");
         let workspace = test.workspace().downgrade();
         let key = test.key();
+        wait_until(WAIT, || test.hold.live() == 0).expect("the workspace's opening writes to land");
+        // Each step records what had happened before it. Only the flush
+        // holds the process before the claim goes, and the close's hold
+        // comes after it.
+        let steps = Rc::new(RefCell::new(Vec::new()));
+        let (detached, hold) = (steps.clone(), test.hold.clone());
+        test.workspace()
+            .connect_notify_local(Some("parent"), move |workspace, _| {
+                if workspace.parent().is_none() {
+                    detached.borrow_mut().push(("detached", hold.live() > 0));
+                }
+            });
+        let (released, gone) = (steps.clone(), workspace.clone());
+        let _subscription = test.services.sessions.subscribe(move |event| {
+            if matches!(event, RegistryEvent::Released { .. }) {
+                let shut_down = gone.upgrade().is_none_or(|workspace| workspace.handle().is_none());
+                released.borrow_mut().push(("released", shut_down));
+            }
+        });
 
         test.window.send(SessionWindowInput::Disconnect);
         test.wait_for_page("picker");
+
+        assert_eq!(
+            *steps.borrow(),
+            [("detached", true), ("released", true)],
+            "a step ran before the one it depends on"
+        );
 
         let child = test.window.imp().toast_overlay.child();
         assert!(

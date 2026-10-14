@@ -14,6 +14,7 @@ use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, Fake
 
 use super::*;
 use crate::application::{AppServicesParts, TableProApplication};
+use crate::runtime::Delivery;
 use crate::services::session_context::CredentialSourceFactory;
 use crate::storage::AppStorage;
 use crate::test_support::{MemorySettings, assert_labelled, descendants, drain_main_context, wait_until};
@@ -581,6 +582,7 @@ fn late_show_create_reply_after_disconnect_is_dropped() {
         });
     });
     let counters = test.connection().counters();
+    let workspace = test.workspace().downgrade();
     let input = test.workspace().input().expect("the workspace's input");
     input.deliver(WorkspaceInput::ShowCreateTableForExisting {
         schema: Some("public".to_owned()),
@@ -591,9 +593,18 @@ fn late_show_create_reply_after_disconnect_is_dropped() {
 
     test.window.send(SessionWindowInput::Disconnect);
     test.wait_for_page("picker");
+    drain_main_context();
+    // The reply comes back through the workspace's input, which the
+    // teardown closes before the reply is due.
+    assert_eq!(
+        input.try_deliver(WorkspaceInput::RefreshPage),
+        Delivery::ReceiverGone,
+        "the torn-down workspace still takes input"
+    );
     let _ = wait_until(Duration::from_millis(600), || false);
     drain_main_context();
 
+    assert!(workspace.upgrade().is_none(), "the workspace outlived its teardown");
     assert_eq!(test.window.page_name(), "picker");
     assert!(editors(&test.window).is_empty(), "the late reply opened an editor tab");
 }

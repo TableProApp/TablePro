@@ -30,10 +30,43 @@ fn clipboard_refusal(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::DeliverInput;
+    use crate::test_support::{descendants, drain_main_context};
+    use crate::ui::session_window::tests::TestWindow;
+    use crate::ui::workspace::WorkspaceInput;
 
     #[test]
     fn text_with_a_nul_is_refused() {
         assert!(clipboard_refusal("a\0b").is_some());
         assert_eq!(clipboard_refusal("a\tb\nc"), None);
+    }
+
+    #[gtk4::test]
+    fn a_copy_with_a_nul_says_so_and_leaves_the_clipboard_alone() {
+        let test = TestWindow::connected("CopyNul");
+        let clipboard = test.window.clipboard();
+        clipboard.set_text("before");
+        let input = test.workspace().input().expect("the workspace's input");
+
+        input.deliver(WorkspaceInput::CopyToClipboard("a\0b".to_owned()));
+        drain_main_context();
+
+        assert_eq!(local_text(&clipboard).as_deref(), Some("before"));
+        let refusal = clipboard_refusal("a\0b").expect("a refusal");
+        assert!(
+            descendants(&test.workspace())
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk4::Label>())
+                .any(|label| label.label() == refusal),
+            "no toast said why"
+        );
+
+        input.deliver(WorkspaceInput::CopyToClipboard("a\tb".to_owned()));
+        drain_main_context();
+        assert_eq!(local_text(&clipboard).as_deref(), Some("a\tb"));
+    }
+
+    fn local_text(clipboard: &gtk4::gdk::Clipboard) -> Option<String> {
+        clipboard.content()?.value(String::static_type()).ok()?.get().ok()
     }
 }

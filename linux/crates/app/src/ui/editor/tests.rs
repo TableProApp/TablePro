@@ -292,6 +292,21 @@ fn a_dropped_file_goes_in_at_the_cursor_as_one_undo_step() {
 }
 
 #[gtk4::test]
+fn a_copy_from_a_result_grid_reaches_the_tab_whole() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let copied = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = copied.clone();
+    harness
+        .editor
+        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+    let grid = harness.editor.imp().grid_sink.get().expect("the grid's sink").clone();
+
+    grid(GridMsg::CopyToClipboard("a\0b".to_owned()));
+
+    assert_eq!(*copied.borrow(), ["a\0b".to_owned()]);
+}
+
+#[gtk4::test]
 fn closing_the_tab_closes_its_connection() {
     let harness = editor_with(answering(), "SELECT 1");
     run_and_wait(&harness);
