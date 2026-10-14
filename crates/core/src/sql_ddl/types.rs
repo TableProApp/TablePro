@@ -229,6 +229,10 @@ const FK_ACTIONS_MSSQL: &[&str] = &["NO ACTION", "CASCADE", "SET NULL", "SET DEF
 
 /// Referential actions the engine accepts, in the order the UI should
 /// present them. The first entry is the SQL default.
+pub fn identifiers_fold_case(driver_id: &str) -> bool {
+    !matches!(driver_id, "postgres" | "clickhouse")
+}
+
 pub fn supported_fk_actions(driver_id: &str) -> &'static [&'static str] {
     match driver_id {
         "mssql" => FK_ACTIONS_MSSQL,

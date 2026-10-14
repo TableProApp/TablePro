@@ -49,10 +49,12 @@ use tablepro_core::sql_ddl::{StructureOp, diff_to_ops, materialize_ops};
 mod columns;
 mod fks;
 mod indexes;
+mod validate;
 
 use columns::{build_column_expander_row, default_type_for};
 use fks::build_fk_row;
 use indexes::build_index_row;
+use validate::{SaveDraft, validate_save};
 
 /// Whether the Structure tab is editing an existing table or
 /// drafting a brand-new one.
@@ -449,37 +451,6 @@ fn append_add_button(list: &gtk::ListBox, label: &str, on_activate: impl Fn() + 
     row.add_prefix(&gtk::Image::from_icon_name("list-add-symbolic"));
     row.connect_activated(move |_| on_activate());
     list.append(&row);
-}
-
-/// Validate the model against driver constraints before Save. Returns
-/// the first user-visible error string, or None if all checks pass.
-fn validate_save(table_name: &str, columns: &[DraftColumn], mode: StructureMode) -> Result<(), String> {
-    if matches!(mode, StructureMode::New) && table_name.trim().is_empty() {
-        return Err(crate::tr!("Table name is required."));
-    }
-    // Empty-columns guard applies in BOTH modes. In Edit mode, the
-    // user pressing the trash on every row would otherwise produce
-    // a Save that drops every column — most drivers either reject
-    // this with an opaque error or silently degenerate the table.
-    if columns.is_empty() {
-        return Err(crate::tr!("At least one column is required."));
-    }
-    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for col in columns {
-        if col.name.trim().is_empty() {
-            return Err(crate::tr!("Every column needs a name."));
-        }
-        if !seen.insert(col.name.as_str()) {
-            return Err(crate::tr!("Duplicate column name: {name}").replace("{name}", &col.name));
-        }
-        if col.data_type.trim().is_empty() {
-            return Err(crate::tr!("Column {name} needs a type.").replace("{name}", &col.name));
-        }
-        if col.primary_key && col.nullable {
-            return Err(crate::tr!("Primary key columns must be NOT NULL: {name}").replace("{name}", &col.name));
-        }
-    }
-    Ok(())
 }
 
 impl SimpleComponent for StructureTab {
@@ -992,7 +963,15 @@ impl SimpleComponent for StructureTab {
                 let table = self.table_name.borrow().clone();
                 let mode = *self.mode.borrow();
                 let columns = self.columns.borrow().clone();
-                if let Err(message) = validate_save(&table, &columns, mode) {
+                let indexes = self.indexes.borrow().clone();
+                let draft = SaveDraft {
+                    table_name: &table,
+                    columns: &columns,
+                    indexes: &indexes,
+                    mode,
+                    driver_id: &self.driver_id,
+                };
+                if let Err(message) = validate_save(&draft) {
                     let _ = sender.output(StructureTabOutput::ShowToast(message));
                     return;
                 }

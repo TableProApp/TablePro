@@ -69,7 +69,6 @@ What the application does not do, or does differently from what you might expect
 
 ## Known bugs
 
-- **Structure validation can accept duplicate column names that the database treats as equal** ([#856](https://github.com/cozyGarage/BookiE/issues/856)); the server then rejects the save.
 - **Several UI details remain inconsistent** ([#660](https://github.com/cozyGarage/BookiE/issues/660)): text and bytea NULL values render differently, Structure tab chevrons look inverted, and the catalog kind selector can shift the search field.
 - **PostgreSQL `VOID` results are shown as undecodable** ([#660](https://github.com/cozyGarage/BookiE/issues/660)); they should render as empty values.
 - **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); the cause remains under investigation.
