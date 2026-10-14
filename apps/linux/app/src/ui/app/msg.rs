@@ -61,7 +61,10 @@ pub enum AppMsg {
     ImportBundleConfirmed(crate::ui::connection_bundle::ImportChoice),
     ImportBundleFinished(usize, usize),
     BundleFailed(String),
-    DuplicateConnectionSucceeded(String),
+    DuplicateConnectionSucceeded {
+        copy: SavedConnection,
+        prompt_for_password: bool,
+    },
     DuplicateConnectionFailed,
     ConnectionOrganizationLoaded(ConnectionOrganizationIndex),
     ToggleConnectionFavorite(Uuid),

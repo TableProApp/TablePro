@@ -5,6 +5,7 @@
 Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for that development line since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
 
 ### Added
+- Duplicating a password-authenticated connection with a saved password opens the copy's credential form so its password can be entered before connecting.
 - PostgreSQL results and edits support `json[]`, `jsonb[]`, `int4range`, `int8range` and `point` values.
 - SQL editors can collapse multiline SQL blocks at the cursor and unfold them from the gutter or toolbar.
 - Pressing Enter in a connection text field now activates Connect.

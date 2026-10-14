@@ -16,6 +16,7 @@ pub struct ConnectionPrefill {
     pub ssh_password: Option<SecretString>,
     pub ssh_passphrase: Option<SecretString>,
     pub unreadable_secrets: bool,
+    pub prompt_for_password: bool,
 }
 
 pub fn has_jump_chain(saved: &SavedConnection) -> bool {
@@ -61,6 +62,7 @@ pub async fn load_prefill(saved: SavedConnection) -> ConnectionPrefill {
         ssh_password,
         ssh_passphrase,
         unreadable_secrets,
+        prompt_for_password: false,
     }
 }
 
@@ -130,7 +132,14 @@ impl ConnectDialog {
             self.ssh
                 .prefill(ssh, prefill.ssh_password.as_ref(), prefill.ssh_passphrase.as_ref());
         }
-        let title = crate::tr!("Edit {name}").replace("{name}", &saved.name);
+        if prefill.prompt_for_password {
+            self.password.grab_focus();
+        }
+        let title = if prefill.prompt_for_password {
+            crate::tr!("Enter password for {name}").replace("{name}", &saved.name)
+        } else {
+            crate::tr!("Edit {name}").replace("{name}", &saved.name)
+        };
         root.set_title(&title);
         self.header_title.set_text(&title);
         if prefill.unreadable_secrets {
