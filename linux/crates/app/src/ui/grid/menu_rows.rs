@@ -19,8 +19,7 @@ pub fn menu_rows(selection: &gtk::MultiSelection, clicked: &RowObject, clicked_p
         .collect()
 }
 
-/// The rows a menu opened on `cell` acts on, from the row the cell
-/// shows when the item is chosen.
+/// The rows a menu opened on `cell` acts on, read as it opens.
 pub(super) fn menu_rows_of(column_view: &gtk::ColumnView, cell: &GridCell) -> Vec<RowObject> {
     let Some(row) = cell.row() else {
         return Vec::new();

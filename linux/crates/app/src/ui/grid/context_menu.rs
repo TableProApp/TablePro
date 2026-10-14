@@ -1,26 +1,66 @@
+use std::cell::RefCell;
+use std::collections::HashSet;
+
 use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 
-use super::GridCell;
 use super::grid_menus::GridMenus;
 use super::menu_rows::menu_rows_of;
 use super::selection::select_row_for_menu;
+use super::{GridCell, RowObject};
 
-/// The cell a menu was opened on. The cell holds the menu through its
-/// gesture, so the menu holds the cell weakly, and asks it for its row
-/// only when an item is chosen.
+/// What a menu was opened on, fixed as it opens. A page that lands while
+/// the menu is open rebinds the cell to another row, so an item chosen
+/// then acts on the rows the menu was opened for, or on nothing once
+/// they have left the grid. Everything is held weakly: the cell holds
+/// the menu through its gesture, and a row the grid let go of is gone.
 #[derive(Default)]
 pub(super) struct CellContext {
+    opened_on: RefCell<Option<OpenedOn>>,
+}
+
+struct OpenedOn {
     cell: glib::WeakRef<GridCell>,
+    row: glib::WeakRef<RowObject>,
+    rows: Vec<glib::WeakRef<RowObject>>,
+}
+
+/// The cell, the row it showed and the rows a chosen item acts on.
+pub(super) struct MenuTarget {
+    pub(super) cell: GridCell,
+    pub(super) row: RowObject,
+    pub(super) rows: Vec<RowObject>,
 }
 
 impl CellContext {
-    fn set(&self, cell: &GridCell) {
-        self.cell.set(Some(cell));
+    fn set(&self, cell: &GridCell, rows: &[RowObject]) {
+        let opened_on = cell.row().map(|row| OpenedOn {
+            cell: cell.downgrade(),
+            row: row.downgrade(),
+            rows: rows.iter().map(|row| row.downgrade()).collect(),
+        });
+        self.opened_on.replace(opened_on);
     }
 
-    pub(super) fn cell(&self) -> Option<GridCell> {
-        self.cell.upgrade()
+    /// The target while the grid still shows every row of it.
+    pub(super) fn target(&self, column_view: &gtk::ColumnView) -> Option<MenuTarget> {
+        let opened_on = self.opened_on.borrow();
+        let opened_on = opened_on.as_ref()?;
+        let target = MenuTarget {
+            cell: opened_on.cell.upgrade()?,
+            row: opened_on.row.upgrade()?,
+            rows: opened_on
+                .rows
+                .iter()
+                .map(|row| row.upgrade())
+                .collect::<Option<Vec<_>>>()?,
+        };
+        let model = column_view.model()?;
+        let shown: HashSet<RowObject> = (0..model.n_items())
+            .filter_map(|position| model.item(position).and_downcast::<RowObject>())
+            .collect();
+        let all_shown = shown.contains(&target.row) && target.rows.iter().all(|row| shown.contains(row));
+        all_shown.then_some(target)
     }
 }
 
@@ -28,11 +68,12 @@ impl CellContext {
 /// The cell's lock follows the row bound to it, so the menu is picked
 /// when it opens.
 pub(super) fn prepare_menu(menus: &GridMenus, cell: &GridCell, column_view: &gtk::ColumnView) -> gtk::PopoverMenu {
-    menus.context.set(cell);
     if let Some(position) = cell.position() {
         select_row_for_menu(column_view, position);
     }
-    menus.actions.arm(cell, &menu_rows_of(column_view, cell));
+    let rows = menu_rows_of(column_view, cell);
+    menus.context.set(cell, &rows);
+    menus.actions.arm(cell, &rows);
     match cell.lock() {
         None => menus.editable_popover.clone(),
         Some(_) => menus.readonly_popover.clone(),
@@ -63,4 +104,110 @@ pub(super) fn attach_cell_gesture(cell: &GridCell, column_view: &glib::WeakRef<g
         popover.popup();
     });
     cell.add_controller(gesture);
+}
+
+#[cfg(test)]
+mod tests {
+    use gtk4 as gtk;
+    use gtk4::prelude::*;
+    use tablepro_core::Value;
+
+    use crate::services::change_tracker::RowKey;
+    use crate::test_support::{drain_main_context, wait_until};
+    use crate::ui::grid::test_grid::{Grid, WAIT, key, persisted, two_text_rows};
+    use crate::ui::grid::{GridCell, GridMsg, RowObject};
+
+    fn open_menu(cell: &GridCell) {
+        let controllers = cell.observe_controllers();
+        let gesture = (0..controllers.n_items())
+            .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
+            .find(|gesture| gesture.button() == 3)
+            .expect("a cell answers a right-click");
+        gesture.emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
+    }
+
+    fn choose(grid: &Grid, actions: &[&str]) {
+        for action in actions {
+            grid.view
+                .activate_action(action, None)
+                .unwrap_or_else(|_| panic!("the menu has no {action}"));
+        }
+    }
+
+    /// Each row-changing message the menu sent, by the rows it names.
+    fn acted_on(grid: &Grid) -> Vec<(&'static str, Vec<Option<RowKey>>)> {
+        let keys = |rows: &[RowObject]| rows.iter().map(|row| row.key().cloned()).collect();
+        grid.take_messages()
+            .into_iter()
+            .filter_map(|msg| match msg {
+                GridMsg::SetCellValue { row, .. } => Some(("set", vec![row.key().cloned()])),
+                GridMsg::DeleteRows { rows } => Some(("delete", keys(&rows))),
+                GridMsg::DuplicateRows { rows } => Some(("duplicate", keys(&rows))),
+                GridMsg::CopyRowsAsInsert { rows } => Some(("insert", keys(&rows))),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn page(ids: std::ops::Range<i64>) -> Vec<RowObject> {
+        let rows: Vec<Vec<Value>> = ids
+            .map(|id| vec![Value::Int(id), Value::Text(format!("row {id}"))])
+            .collect();
+        persisted(&rows)
+    }
+
+    #[gtk4::test]
+    fn a_page_that_lands_under_an_open_menu_leaves_its_items_acting_on_nothing() {
+        let grid = two_text_rows();
+        let cell = grid.cell_of(2, 1);
+        open_menu(&cell);
+
+        grid.store.splice(0, grid.store.n_items(), &page(3..5));
+        drain_main_context();
+        choose(
+            &grid,
+            &[
+                "cell.set-null",
+                "cell.delete-row",
+                "cell.duplicate-row",
+                "cell.copy-row-insert",
+            ],
+        );
+
+        assert_eq!(acted_on(&grid), Vec::new(), "the menu acted on a row of the new page");
+    }
+
+    /// The list keeps the widgets of the first row for its focus, so the
+    /// menu opens on a row further down, which scrolling hands on.
+    #[gtk4::test]
+    fn a_cell_scrolled_onto_another_row_leaves_the_menu_on_its_own() {
+        let grid = two_text_rows();
+        grid.store.splice(grid.store.n_items(), 0, &page(3..300));
+        let cell = drawn_cell(&grid, 6, 1);
+        open_menu(&cell);
+
+        grid.view
+            .scroll_to(grid.store.n_items() - 1, None, gtk::ListScrollFlags::NONE, None);
+        wait_until(WAIT, || cell.row().is_some_and(|row| row.key() != Some(&key(6))))
+            .expect("the scroll did not rebind the clicked cell");
+        choose(&grid, &["cell.set-null", "cell.delete-row"]);
+
+        assert_eq!(
+            acted_on(&grid),
+            [("set", vec![Some(key(6))]), ("delete", vec![Some(key(6))])]
+        );
+    }
+
+    fn drawn_cell(grid: &Grid, id: i64, column: usize) -> GridCell {
+        let mut drawn = None;
+        wait_until(WAIT, || {
+            drawn = grid
+                .cells()
+                .into_iter()
+                .find(|cell| cell.column() == column && cell.row().is_some_and(|row| row.key() == Some(&key(id))));
+            drawn.is_some()
+        })
+        .expect("the row's cell is drawn");
+        drawn.expect("a drawn cell")
+    }
 }

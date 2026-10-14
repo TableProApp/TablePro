@@ -8,8 +8,7 @@ use tablepro_core::column::ResultColumn;
 use super::cell_edit::begin_edit;
 use super::cell_editor_kind::CellEditorKind;
 use super::cell_preset::cell_presets;
-use super::context_menu::CellContext;
-use super::menu_rows::menu_rows_of;
+use super::context_menu::{CellContext, MenuTarget};
 use super::row_json_dialog::show_row_json_dialog;
 use super::selection::{export_snapshot, snapshot_result};
 use super::{
@@ -198,15 +197,19 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
 
     let group = gio::SimpleActionGroup::new();
 
-    // The row is the one the cell shows when the item is chosen, which
-    // is still the clicked one after rows above it came or went.
     macro_rules! cell_action {
-        ($name:literal, |$cell:ident, $row:ident| $body:expr) => {{
+        ($name:literal, |$cell:ident, $row:ident, $rows:ident| $body:expr) => {{
             let ctx = context.clone();
+            let view = view.clone();
             gio::ActionEntry::builder($name)
                 .activate(move |_, _, _| {
-                    let Some($cell) = ctx.cell() else { return };
-                    let Some($row) = $cell.row() else { return };
+                    let Some(cv) = view.upgrade() else { return };
+                    let Some(target) = ctx.target(&cv) else { return };
+                    let MenuTarget {
+                        cell: $cell,
+                        row: $row,
+                        rows: $rows,
+                    } = target;
                     let $cell = &$cell;
                     $body;
                 })
@@ -222,17 +225,8 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             )),
         }
     }
-    // The rows each item acts on are read when it is chosen, from the
-    // row the cell shows then.
     macro_rules! rows_action {
-        ($name:literal, |$cell:ident, $rows:ident| $body:expr) => {{
-            let view = view.clone();
-            cell_action!($name, |$cell, _row| {
-                let Some(cv) = view.upgrade() else { return };
-                let $rows = menu_rows_of(&cv, $cell);
-                $body;
-            })
-        }};
+        ($name:literal, |$cell:ident, $rows:ident| $body:expr) => {{ cell_action!($name, |$cell, _row, $rows| $body) }};
     }
     macro_rules! copy_action {
         ($name:literal, |$rows:ident| $message:expr) => {{
@@ -247,11 +241,14 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     macro_rules! send_action {
         ($name:literal, |$cell:ident, $row:ident| $msg:expr) => {{
             let s = sink.clone();
-            cell_action!($name, |$cell, $row| s($msg))
+            cell_action!($name, |$cell, $row, _rows| s($msg))
         }};
     }
 
-    let edit_action = cell_action!("edit", |cell, _row| begin_edit(cell));
+    // Editing opens on the cell, which must still show the row.
+    let edit_action = cell_action!("edit", |cell, row, _rows| if cell.row().as_ref() == Some(&row) {
+        begin_edit(cell)
+    });
     // Plain Copy reads the cell's value, never the widget's text: the
     // widget carries the display form, which is the `<NULL>` sentinel,
     // the `(auto)` placeholder, `<N bytes>` for a blob and a value cut
@@ -353,7 +350,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         let cols = columns.clone();
         let view = view.clone();
         let tab = tab.clone();
-        cell_action!("show-row-json", |_cell, row| {
+        cell_action!("show-row-json", |_cell, row, _rows| {
             let Some(cv) = view.upgrade() else { return };
             let text = tablepro_core::export::row_to_json(&cols, &tab.snapshot(&row).to_values());
             show_row_json_dialog(&cv, text);
