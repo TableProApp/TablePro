@@ -10,7 +10,8 @@ use tablepro_test_support::{CallCounters, FakeReply};
 
 use super::BrowseTabInput;
 use super::tests::{
-    Harness, Shown, WAIT, after_next_frame, column, column_view, header_titles, key, rows, serving_table, text,
+    Harness, Shown, WAIT, after_next_frame, column, column_view, delete_action, header_titles, key, not_null_name,
+    rows, serving_table, text, toasts,
 };
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::grid::GridCell;
@@ -319,4 +320,45 @@ fn page_column_mismatch_refetches_columns_once() {
         "{}",
         error_text(&harness)
     );
+}
+
+/// The page under the new filter could not be read, so the error page
+/// shows. The rows read without the filter are still in the store,
+/// and nothing may act on them from behind it.
+#[gtk4::test]
+fn the_rows_behind_the_error_page_take_no_action() {
+    let mut script = serving_table();
+    script
+        .query_bound
+        .when_sql_contains("IS NOT NULL", FakeReply::err(DriverError::server("denied")))
+        .always(FakeReply::ok(rows(&["unfiltered"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["unfiltered"])).expect("the first page");
+    harness.selection().select_item(0, true);
+    assert!(delete_action(harness.tab()).is_enabled());
+    let exported = Rc::new(RefCell::new(0));
+    let sink = exported.clone();
+    harness
+        .tab()
+        .connect_export_results(move |_, _| *sink.borrow_mut() += 1);
+    let copied = Rc::new(RefCell::new(Vec::new()));
+    let sink = copied.clone();
+    harness
+        .tab()
+        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+    let toasts = toasts(harness.tab());
+
+    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
+    harness.tab().send(BrowseTabInput::ExportCurrentPage);
+    harness.tab().send(BrowseTabInput::CopySelectedRowsAsTsv);
+
+    assert_eq!(*exported.borrow(), 0, "Export wrote rows the filter does not match");
+    assert!(copied.borrow().is_empty(), "{:?}", copied.borrow());
+    assert_eq!(*toasts.borrow(), ["Nothing to export"]);
+    assert!(
+        !delete_action(harness.tab()).is_enabled(),
+        "Delete stayed on for rows behind the error page"
+    );
+    assert_eq!(harness.tab().imp().paginator_label.label(), "");
 }

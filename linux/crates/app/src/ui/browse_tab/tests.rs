@@ -1537,7 +1537,7 @@ fn a_grid_built_for_columns_the_table_lost_takes_no_edits() {
     assert_eq!(harness.visible_page().as_deref(), Some("loading"));
 }
 
-fn delete_action(tab: &BrowseTab) -> gtk4::gio::SimpleAction {
+pub(super) fn delete_action(tab: &BrowseTab) -> gtk4::gio::SimpleAction {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     tab.imp()
         .model

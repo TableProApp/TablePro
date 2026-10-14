@@ -856,7 +856,7 @@ impl BrowseModel {
     /// What the paginator's Export button writes: the grid's rows, so
     /// it matches the context menu's Export Results row for row.
     fn export_payload(&self) -> Option<QueryResult> {
-        let page = self.page.as_ref()?;
+        let page = self.shown_page()?;
         let rows = self
             .current_column_view
             .as_ref()
@@ -943,14 +943,20 @@ impl BrowseModel {
     }
 
     /// The rows on screen can change under the selection without it
-    /// changing, so this runs on every delta and page as well.
+    /// changing, so this runs on every delta, page and load state too.
     fn sync_delete_action(&self) {
-        show_delete_availability(
-            &self.delete_action,
-            &self.delete_button,
-            &self.selected_rows(),
-            self.read_only,
-        );
+        let rows = match self.shown_page() {
+            Some(_) => self.selected_rows(),
+            None => Vec::new(),
+        };
+        show_delete_availability(&self.delete_action, &self.delete_button, &rows, self.read_only);
+    }
+
+    /// The page whose rows the grid shows. A failed read of another page
+    /// leaves the rows it replaced in the store, behind the error page,
+    /// where nothing may export, copy or delete them.
+    fn shown_page(&self) -> Option<&PageState> {
+        self.page.as_ref().filter(|_| self.load.has_content())
     }
 
     /// The footer and the tab's dirty flag, which App turns into the
@@ -1041,6 +1047,8 @@ impl BrowseModel {
             }
         }
         self.stale_banner.show(presentation.stale.as_ref());
+        self.sync_total_chrome();
+        self.sync_delete_action();
         if self.tab_loading != presentation.tab_loading {
             self.tab_loading = presentation.tab_loading;
             fx.output(BrowseTabOutput::LoadingChanged(presentation.tab_loading));
@@ -1354,7 +1362,7 @@ impl BrowseModel {
     }
 
     fn update_paginator_label(&self) {
-        let Some(page) = self.page.as_ref() else {
+        let Some(page) = self.shown_page() else {
             self.paginator_label.set_label("");
             return;
         };
@@ -1651,6 +1659,7 @@ impl BrowseModel {
             BrowseTabInput::SelectAllRows => {
                 if let Some(selection) = self.current_selection.as_ref()
                     && selection.n_items() > 0
+                    && self.shown_page().is_some()
                 {
                     selection.select_all();
                 }
@@ -1931,7 +1940,7 @@ impl BrowseModel {
     /// Same renderer as the context menu's Copy as > Rows: one
     /// selection cannot produce two different clipboard payloads.
     fn copy_selected_rows(&self, fx: &mut Effects) {
-        let Some(selection) = self.current_selection.as_ref() else {
+        let (Some(selection), Some(_)) = (self.current_selection.as_ref(), self.shown_page()) else {
             return;
         };
         let positions = super::grid::selected_positions(selection);

@@ -139,7 +139,7 @@ impl BrowseModel {
 
         let counting = matches!(self.total, RowTotal::Counting { .. });
         self.count_button
-            .set_visible(self.page.is_some() && self.total.exact().is_none());
+            .set_visible(self.shown_page().is_some() && self.total.exact().is_none());
         self.count_button.set_sensitive(!counting);
         self.count_spinner.set_visible(counting);
         let (label, tooltip) = match &self.total {
