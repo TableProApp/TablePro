@@ -5,7 +5,7 @@ use tablepro_core::column::ResultColumn;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::export::{
     self, CsvEncoder, CsvOptions, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RenderError, RowEncoder,
-    SqlInsertEncoder, XmlEncoder,
+    SqlInsertEncoder, XlsxSheetWriter, XmlEncoder,
 };
 
 /// What an export writes.
@@ -13,8 +13,8 @@ use tablepro_core::export::{
 pub(crate) enum ExportFormat {
     /// Encoded a row at a time, as the rows arrive.
     Rows(RowFormat),
-    /// Rendered whole on the blocking pool once the last row is in: a
-    /// workbook is a zip archive.
+    /// Written on the blocking pool as the rows arrive, and handed on
+    /// whole once the last is in: a workbook is a zip archive.
     Document(DocumentFormat),
 }
 
@@ -56,9 +56,30 @@ impl DocumentFormat {
         }
     }
 
-    pub(crate) fn render(&self, columns: &[ResultColumn], rows: &[Vec<Value>]) -> Result<Vec<u8>, RenderError> {
+    /// A document for rows under `columns`, written on the blocking
+    /// pool.
+    pub(crate) fn start(&self, columns: Arc<[ResultColumn]>) -> Result<DocumentWriter, RenderError> {
         match self {
-            Self::Xlsx { sheet } => export::render_xlsx(columns, rows, sheet),
+            Self::Xlsx { sheet } => XlsxSheetWriter::new(columns, sheet).map(DocumentWriter::Xlsx),
+        }
+    }
+}
+
+/// A document part way through, which takes rows a batch at a time.
+pub(crate) enum DocumentWriter {
+    Xlsx(XlsxSheetWriter),
+}
+
+impl DocumentWriter {
+    pub(crate) fn write_rows(&mut self, rows: &[Vec<Value>]) -> Result<(), RenderError> {
+        match self {
+            Self::Xlsx(writer) => writer.write_rows(rows),
+        }
+    }
+
+    pub(crate) fn finish(self) -> Result<Vec<u8>, RenderError> {
+        match self {
+            Self::Xlsx(writer) => writer.finish(),
         }
     }
 }
