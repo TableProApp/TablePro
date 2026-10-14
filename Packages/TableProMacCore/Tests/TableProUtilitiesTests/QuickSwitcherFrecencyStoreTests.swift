@@ -1,26 +1,21 @@
-//
-//  QuickSwitcherFrecencyStoreTests.swift
-//  TableProTests
-//
-
 import Foundation
-@testable import TablePro
+@testable import TableProUtilities
 import Testing
 
-struct QuickSwitcherFrecencyStoreTests {
-    private func makeDefaults() -> UserDefaults {
-        guard let suite = UserDefaults(suiteName: "QuickSwitcherFrecencyTests.\(UUID().uuidString)") else {
-            return .standard
-        }
-        return suite
+final class QuickSwitcherFrecencyStoreTests {
+    private let suiteName = "QuickSwitcherFrecencyTests.\(UUID().uuidString)"
+    private let suite: UserDefaults
+
+    init() throws {
+        suite = try #require(UserDefaults(suiteName: suiteName))
     }
 
-    private func makeStore(
-        connectionId: UUID = UUID(),
-        defaults: UserDefaults? = nil
-    ) -> (store: QuickSwitcherFrecencyStore, defaults: UserDefaults, connectionId: UUID) {
-        let suite = defaults ?? makeDefaults()
-        let id = connectionId
+    deinit {
+        suite.removePersistentDomain(forName: suiteName)
+    }
+
+    private func makeStore() -> (store: QuickSwitcherFrecencyStore, defaults: UserDefaults, connectionId: UUID) {
+        let id = UUID()
         return (QuickSwitcherFrecencyStore(connectionId: id, defaults: suite), suite, id)
     }
 
@@ -116,7 +111,6 @@ struct QuickSwitcherFrecencyStoreTests {
 
     @Test("Legacy MRU list migrates preserving order and removes the old key")
     func legacyMRUMigrates() {
-        let suite = makeDefaults()
         let connectionId = UUID()
         let legacyKey = "QuickSwitcher.mru.\(connectionId.uuidString)"
         suite.set(["newest", "middle", "oldest"], forKey: legacyKey)
@@ -137,7 +131,6 @@ struct QuickSwitcherFrecencyStoreTests {
 
     @Test("Stores for different connections are isolated")
     func storesAreIsolatedPerConnection() {
-        let suite = makeDefaults()
         let storeA = QuickSwitcherFrecencyStore(connectionId: UUID(), defaults: suite)
         let storeB = QuickSwitcherFrecencyStore(connectionId: UUID(), defaults: suite)
         storeA.recordAccess(itemId: "table_users")

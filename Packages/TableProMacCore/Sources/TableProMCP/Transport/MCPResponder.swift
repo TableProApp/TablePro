@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProLogRedaction
 
 public protocol MCPResponderSink: Sendable {
     func writeJson(_ data: Data, status: HttpStatus, extraHeaders: [(String, String)]) async
@@ -95,7 +96,7 @@ public actor MCPResponder {
         do {
             return try JsonRpcCodec.encode(message)
         } catch {
-            Self.logger.error("Encode response failed: \(error.publicLogShape, privacy: .public)")
+            Self.logger.error("Encode response failed: \(LogRedaction.publicDescription(of: error), privacy: .public)")
             let fallback = MCPProtocolError
                 .internalError(detail: "encode failed")
                 .toJsonRpcErrorResponse(id: requestId)

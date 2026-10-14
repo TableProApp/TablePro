@@ -1,14 +1,9 @@
-//
-//  DownloadedBinaryTests.swift
-//  TableProTests
-//
-
 import CryptoKit
 import Darwin
 import Foundation
 import Testing
 
-@testable import TablePro
+@testable import TableProUtilities
 
 struct DownloadedBinaryTests {
     private func makeTempDirectory() throws -> URL {

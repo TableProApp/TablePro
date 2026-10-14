@@ -1,21 +1,16 @@
-//
-//  FileStamp.swift
-//  TablePro
-//
-
 import Foundation
 
-internal struct FileStamp: Codable, Hashable, Sendable {
-    let modificationSeconds: Int
-    let modificationNanoseconds: Int
-    let size: Int64
-    let fileNumber: UInt64
+public struct FileStamp: Codable, Hashable, Sendable {
+    public let modificationSeconds: Int
+    public let modificationNanoseconds: Int
+    public let size: Int64
+    public let fileNumber: UInt64
 
-    var modificationDate: Date {
+    public var modificationDate: Date {
         Date(timeIntervalSince1970: TimeInterval(modificationSeconds) + TimeInterval(modificationNanoseconds) / 1_000_000_000)
     }
 
-    static func read(_ url: URL) -> FileStamp? {
+    public static func read(_ url: URL) -> FileStamp? {
         var status = stat()
         let succeeded = url.withUnsafeFileSystemRepresentation { path -> Bool in
             guard let path else { return false }

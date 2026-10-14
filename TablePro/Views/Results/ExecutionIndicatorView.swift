@@ -5,6 +5,7 @@
 
 import SwiftUI
 import TableProPluginKit
+import TableProUtilities
 
 /// What the query is doing, in the bar under the result it produces.
 ///

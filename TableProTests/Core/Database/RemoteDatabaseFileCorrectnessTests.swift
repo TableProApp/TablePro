@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 struct RemoteDatabaseFileCorrectnessTests {
     private func temporaryDirectory() throws -> URL {

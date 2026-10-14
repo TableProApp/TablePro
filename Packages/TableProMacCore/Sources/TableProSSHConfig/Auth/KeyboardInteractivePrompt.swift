@@ -5,27 +5,33 @@
 
 import Foundation
 
-internal struct KeyboardInteractivePrompt: Sendable, Equatable {
-    let text: String
-    let echo: Bool
+public struct KeyboardInteractivePrompt: Sendable, Equatable {
+    public let text: String
+    public let echo: Bool
 
-    init(text: String, echo: Bool) {
+    public init(text: String, echo: Bool) {
         self.text = text
         self.echo = echo
     }
 
-    init(utf8Bytes: [UInt8], echo: Bool) {
+    public init(utf8Bytes: [UInt8], echo: Bool) {
         let decoded = utf8Bytes.isEmpty
             ? ""
             : String(decoding: utf8Bytes, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
         self.init(text: decoded, echo: echo)
     }
 
-    var isSecure: Bool { !echo }
+    public var isSecure: Bool { !echo }
 }
 
-internal struct KeyboardInteractiveChallenge: Sendable, Equatable {
-    let name: String
-    let instruction: String
-    let prompts: [KeyboardInteractivePrompt]
+public struct KeyboardInteractiveChallenge: Sendable, Equatable {
+    public let name: String
+    public let instruction: String
+    public let prompts: [KeyboardInteractivePrompt]
+
+    public init(name: String, instruction: String, prompts: [KeyboardInteractivePrompt]) {
+        self.name = name
+        self.instruction = instruction
+        self.prompts = prompts
+    }
 }

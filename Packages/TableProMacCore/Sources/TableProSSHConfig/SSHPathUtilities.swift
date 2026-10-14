@@ -5,10 +5,10 @@
 
 import Foundation
 
-enum SSHPathUtilities {
+public enum SSHPathUtilities {
     /// Expand a leading `~` or `~user` the way ssh does for the keywords that name a file.
     /// `setenv()` and the file APIs do not do this for you, unlike a shell.
-    static func expandTilde(_ path: String) -> String {
+    public static func expandTilde(_ path: String) -> String {
         guard path.hasPrefix("~") else { return path }
         return (path as NSString).expandingTildeInPath
     }

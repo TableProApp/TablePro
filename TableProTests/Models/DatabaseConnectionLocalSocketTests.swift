@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHConfig
 import Testing
 
 @testable import TablePro

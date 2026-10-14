@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProUtilities
 
 /// How a query language divides a document into statements.
 ///

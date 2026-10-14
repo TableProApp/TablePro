@@ -1,12 +1,7 @@
-//
-//  SQLChunkDecoderTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
-@testable import TablePro
+@testable import TableProUtilities
 
 struct SQLChunkDecoderTests {
     private func decodeInChunks(_ data: Data, encoding: String.Encoding, chunk size: Int) -> String? {

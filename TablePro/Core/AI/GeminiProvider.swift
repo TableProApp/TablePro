@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 final class GeminiProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "GeminiProvider")

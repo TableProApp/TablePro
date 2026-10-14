@@ -1,10 +1,3 @@
-//
-//  SQLContextAnalyzer.swift
-//  TablePro
-//
-//  Analyzes SQL query text to determine cursor context for autocomplete
-//
-
 import Foundation
 import os
 import TableProSQLGrammar
@@ -19,8 +12,7 @@ private func compileRegex(_ pattern: String, options: NSRegularExpression.Option
     return NSRegularExpression()
 }
 
-/// Type of SQL clause the cursor is in
-enum SQLClauseType {
+public enum SQLClauseType: Sendable {
     case select         // In SELECT list
     case from           // After FROM
     case join           // After JOIN
@@ -53,50 +45,47 @@ enum SQLClauseType {
     case unknown          // Unknown or start of query
 }
 
-/// Represents a table reference with optional alias
-internal struct TableReference: Hashable, Sendable {
-    let tableName: String
-    let alias: String?
-    let schema: String?
-    let derivedColumns: [String]?
+public struct TableReference: Hashable, Sendable {
+    public let tableName: String
+    public let alias: String?
+    public let schema: String?
+    public let derivedColumns: [String]?
 
-    init(tableName: String, alias: String?, schema: String? = nil, derivedColumns: [String]? = nil) {
+    public init(tableName: String, alias: String?, schema: String? = nil, derivedColumns: [String]? = nil) {
         self.tableName = tableName
         self.alias = alias
         self.schema = schema
         self.derivedColumns = derivedColumns
     }
 
-    /// Returns the identifier that should be used to reference this table
-    var identifier: String {
+    public var identifier: String {
         alias ?? tableName
     }
 
     /// A derived table (subquery or CTE) carries its own column list parsed from
     /// the subquery's SELECT list, rather than resolving columns from the schema.
-    var isDerived: Bool {
+    public var isDerived: Bool {
         derivedColumns != nil
     }
 }
 
-/// Result of context analysis
-struct SQLContext {
-    let clauseType: SQLClauseType
-    let prefix: String              // Current word being typed
-    let prefixRange: Range<Int>     // Range of prefix in original text
-    let dotPrefix: String?          // Table/alias before dot (e.g., "u" in "u.name")
-    let tableReferences: [TableReference]  // All tables in scope
-    let isInsideString: Bool        // Inside a string literal
-    let isInsideComment: Bool       // Inside a comment
+public struct SQLContext: Sendable {
+    public let clauseType: SQLClauseType
+    public let prefix: String
+    public let prefixRange: Range<Int>     // In the original text
+    public let dotPrefix: String?          // Table or alias before the dot, "u" in "u.name"
+    public let tableReferences: [TableReference]
+    public let isInsideString: Bool
+    public let isInsideComment: Bool
 
-    let cteNames: [String]          // Common Table Expression names in scope
-    let nestingLevel: Int           // Subquery nesting level (0 = main query)
-    let currentFunction: String?    // If inside function args, the function name
-    let isAfterComma: Bool          // True if immediately after a comma
-    let expectsObjectName: Bool     // Cursor is in the table-operand slot of FROM/JOIN/INTO
-    let comparisonColumn: String?   // Column being compared against, when the cursor is on the value side
+    public let cteNames: [String]
+    public let nestingLevel: Int           // 0 is the main query
+    public let currentFunction: String?    // The function whose arguments hold the cursor
+    public let isAfterComma: Bool
+    public let expectsObjectName: Bool     // Cursor is in the table-operand slot of FROM/JOIN/INTO
+    public let comparisonColumn: String?   // Set when the cursor is on the value side of a comparison
 
-    init(
+    public init(
         clauseType: SQLClauseType,
         prefix: String,
         prefixRange: Range<Int>,
@@ -126,7 +115,7 @@ struct SQLContext {
         self.comparisonColumn = comparisonColumn
     }
 
-    func replacingTableReferences(_ references: [TableReference]) -> SQLContext {
+    public func replacingTableReferences(_ references: [TableReference]) -> SQLContext {
         SQLContext(
             clauseType: clauseType,
             prefix: prefix,
@@ -148,7 +137,7 @@ struct SQLContext {
     /// between the popup seeding itself with statement-start keywords and the first analyzed
     /// request completing. It carries no clause and no tables, so ranking falls back to the
     /// prefix and exact-match bonuses alone rather than not ranking at all.
-    static let unanalyzed = SQLContext(
+    public static let unanalyzed = SQLContext(
         clauseType: .unknown,
         prefix: "",
         prefixRange: 0..<0,
@@ -159,8 +148,7 @@ struct SQLContext {
     )
 }
 
-/// Analyzes SQL query to determine completion context
-final class SQLContextAnalyzer {
+public final class SQLContextAnalyzer {
     // MARK: - UTF-16 Character Constants
 
     private static let singleQuote = UInt16(UnicodeScalar("'").value)
@@ -281,10 +269,11 @@ final class SQLContextAnalyzer {
         ch == space || ch == tab || ch == newline || ch == cr
     }
 
+    public init() {}
+
     // MARK: - Main Analysis
 
-    /// Analyze the query at the given cursor position
-    func analyze(query: String, cursorPosition: Int, grammar: SQLLexicalGrammar) -> SQLContext {
+    public func analyze(query: String, cursorPosition: Int, grammar: SQLLexicalGrammar) -> SQLContext {
         let nsQuery = query as NSString
         let safePosition = min(cursorPosition, nsQuery.length)
 
@@ -645,7 +634,7 @@ final class SQLContextAnalyzer {
             let ch = ns.character(at: idx)
 
             if blockDepth > 0 {
-                // Inside a block comment — look for */
+                // Inside a block comment, look for */
                 if ch == 0x2A /* * */ && idx + 1 < length && ns.character(at: idx + 1) == 0x2F /* / */ {
                     blockDepth -= 1
                     if blockDepth == 0 {

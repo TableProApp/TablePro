@@ -1,16 +1,11 @@
-//
-//  FuzzyMatcher.swift
-//  TablePro
-//
-
 import Foundation
 
-internal struct FuzzyMatch: Equatable, Sendable {
-    let score: Int
-    let matchedIndices: [Int]
+public struct FuzzyMatch: Equatable, Sendable {
+    public let score: Int
+    public let matchedIndices: [Int]
 }
 
-internal enum FuzzyMatcher {
+public enum FuzzyMatcher {
     private enum Weight {
         static let match = 16
         static let consecutive = 24
@@ -29,13 +24,13 @@ internal enum FuzzyMatcher {
     private static let maxScoredQueryLength = 64
     private static let invalid = Int.min / 4
 
-    static func matches(query: String, candidate: String) -> Bool {
+    public static func matches(query: String, candidate: String) -> Bool {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return true }
         return match(query: trimmed, candidate: candidate) != nil
     }
 
-    static func match(query: String, candidate: String) -> FuzzyMatch? {
+    public static func match(query: String, candidate: String) -> FuzzyMatch? {
         let queryChars = Array(query)
         let candidateChars = Array(candidate)
         guard !queryChars.isEmpty, !candidateChars.isEmpty, queryChars.count <= candidateChars.count else {

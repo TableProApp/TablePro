@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import Foundation
 import SwiftUI
+import TableProTestSupport
 import Testing
 @testable import TablePro
 

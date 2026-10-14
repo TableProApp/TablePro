@@ -1,13 +1,8 @@
-//
-//  MCPOutputSchemaConformance.swift
-//  TableProTests
-//
-
 import Foundation
-@testable import TablePro
+import TableProMCP
 
-enum MCPOutputSchemaConformance {
-    static func violations(of value: JsonValue, against schema: JsonValue, at path: String = "$") -> [String] {
+public enum MCPOutputSchemaConformance {
+    public static func violations(of value: JsonValue, against schema: JsonValue, at path: String = "$") -> [String] {
         let types = declaredTypes(of: schema)
         if !types.isEmpty, !types.contains(where: { value.matches(schemaType: $0) }) {
             return ["\(path) is not \(types.joined(separator: " or "))"]

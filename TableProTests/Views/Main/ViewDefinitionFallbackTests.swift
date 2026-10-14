@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+@testable import TableProUtilities
 import Testing
 
 @testable import TablePro

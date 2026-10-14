@@ -9,6 +9,7 @@ import os
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 @Suite("SOCKS proxy manager", .serialized)
 struct SOCKSProxyManagerTests {

@@ -5,6 +5,7 @@
 
 import AppKit
 import TableProPluginKit
+import TableProUtilities
 
 /// Turning the connection's metadata into the rows the outline draws. The three sidebar shapes
 /// differ only in what this builds at the root; everything below the root is shared.

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHConfig
 
 /// Encapsulates all SSH tunnel UI state for the connection form.
 /// Replaces the 23 scattered @State variables in ConnectionFormView.

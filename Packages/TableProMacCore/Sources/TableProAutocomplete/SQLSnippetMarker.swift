@@ -1,21 +1,11 @@
-//
-//  SQLSnippetMarker.swift
-//  TablePro
-//
-//  Cursor-placement marker for SQL favorite keyword expansion. The first
-//  ";;" in a favorite's query marks where the caret lands after the keyword
-//  expands; the marker is stripped from the inserted text. Offsets are
-//  UTF-16 units so the caret resolves correctly after multibyte text.
-//
-
 import Foundation
 
-enum SQLSnippetMarker {
-    static let token = ";;"
+public enum SQLSnippetMarker {
+    public static let token = ";;"
 
     struct Expansion {
         let text: String
-        let cursorOffset: Int
+        let cursorOffset: Int  // UTF-16 units, so the caret lands right after multibyte text
     }
 
     static func expand(_ raw: String) -> Expansion? {

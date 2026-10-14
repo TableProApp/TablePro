@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 internal enum SourceFileDiskChange: Equatable, Sendable {
     case modified(FileStamp)

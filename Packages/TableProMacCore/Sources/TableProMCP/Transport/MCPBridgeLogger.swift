@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProUtilities
 
 public enum MCPBridgeLogLevel: String, Sendable {
     case debug

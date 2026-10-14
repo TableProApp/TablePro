@@ -1,8 +1,3 @@
-//
-//  SQLChunkDecoder.swift
-//  TablePro
-//
-
 import Foundation
 
 /// Turns a file's bytes into text one chunk at a time, holding back whatever runs off the end of
@@ -26,20 +21,20 @@ import Foundation
 /// sequence, so a chunk that will not decode gives its last few bytes back to the next one. How
 /// many is derived from the encoding rather than assumed: only UTF-8 was handled before, so a
 /// character split across a boundary in any other multi-byte encoding failed the import outright.
-struct SQLChunkDecoder {
+public struct SQLChunkDecoder {
     private let declaredEncoding: String.Encoding
     private var resolvedEncoding: String.Encoding?
     private var unitSize = 1
     private var maximumTrim = 0
     private var pendingTail = Data()
 
-    var hasPendingBytes: Bool { !pendingTail.isEmpty }
+    public var hasPendingBytes: Bool { !pendingTail.isEmpty }
 
-    init(encoding: String.Encoding) {
+    public init(encoding: String.Encoding) {
         declaredEncoding = encoding
     }
 
-    mutating func decode(_ rawData: Data) -> String? {
+    public mutating func decode(_ rawData: Data) -> String? {
         var data = pendingTail
         data.append(rawData)
         pendingTail.removeAll(keepingCapacity: true)

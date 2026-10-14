@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProUtilities
 
 extension QueryClassifier {
     /// The plugin evaluates a statement as JavaScript, so no scan of the method names in it can prove

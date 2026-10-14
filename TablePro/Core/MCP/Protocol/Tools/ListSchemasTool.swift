@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct ListSchemasTool: MCPToolImplementation {
     public static let name = "list_schemas"

@@ -1,4 +1,6 @@
 import Foundation
+import TableProMCP
+import TableProMCPTestSupport
 import TableProPluginKit
 @testable import TablePro
 

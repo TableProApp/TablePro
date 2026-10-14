@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProUtilities
 
 internal struct LinkedFavoriteMetadataDialog: View {
     let favorite: LinkedSQLFavorite

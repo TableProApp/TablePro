@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 internal enum ExternalStatementGateError: LocalizedError, Equatable {
     case denied(String)

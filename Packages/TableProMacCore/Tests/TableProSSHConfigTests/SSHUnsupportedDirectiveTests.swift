@@ -7,8 +7,9 @@
 //  word, which leaves a "works in Terminal, fails here" report with nothing to go on.
 //
 
-@testable import TablePro
 import Testing
+
+@testable import TableProSSHConfig
 
 struct SSHUnsupportedDirectiveTests {
     @Test("ProxyCommand is reported")

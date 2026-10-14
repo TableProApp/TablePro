@@ -1,14 +1,6 @@
-//
-//  SQLCompletionItem.swift
-//  TablePro
-//
-//  Model for SQL autocomplete suggestions
-//
-
 import Foundation
 
-/// Category of completion item
-enum SQLCompletionKind: String, CaseIterable {
+public enum SQLCompletionKind: String, CaseIterable, Sendable {
     case keyword
     case table
     case view
@@ -19,8 +11,7 @@ enum SQLCompletionKind: String, CaseIterable {
     case `operator`
     case favorite   // Saved SQL favorite (keyword expansion)
 
-    /// SF Symbol for display
-    var iconName: String {
+    public var iconName: String {
         switch self {
         case .keyword: return "k.circle.fill"
         case .table: return "t.circle.fill"
@@ -34,8 +25,8 @@ enum SQLCompletionKind: String, CaseIterable {
         }
     }
 
-    /// Base sort priority (lower = higher priority in same context)
-    var basePriority: Int {
+    /// Lower sorts first within the same context.
+    public var basePriority: Int {
         switch self {
         case .favorite: return 50
         case .column: return 100
@@ -50,25 +41,24 @@ enum SQLCompletionKind: String, CaseIterable {
     }
 }
 
-/// A single completion suggestion
-struct SQLCompletionItem: Identifiable, Hashable {
-    let id: UUID
-    let label: String
-    let kind: SQLCompletionKind
-    let insertText: String      // Text to insert (may differ from label)
-    let detail: String?         // Type info, e.g., "VARCHAR(255)"
-    let documentation: String?  // Tooltip/description
-    var sortPriority: Int       // For ranking (lower = higher priority)
-    let filterText: String      // Text used for matching
+public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
+    public let id: UUID
+    public let label: String
+    public let kind: SQLCompletionKind
+    public let insertText: String      // May differ from label
+    public let detail: String?         // Type info, e.g., "VARCHAR(255)"
+    public let documentation: String?
+    public var sortPriority: Int       // Lower ranks first
+    public let filterText: String
     /// Whether `label` and `insertText` may follow the typed prefix. Defaults to `.fixed`, so a
     /// vocabulary opts in rather than having to remember to opt out: the kinds carry more than
     /// language keywords, including value literals and `table.*`, and re-casing those is a
     /// correctness bug rather than a style choice.
-    let caseFolding: SQLCompletionCaseFolding
-    var matchedRanges: [Range<Int>] = []
-    var fuzzyPenalty: Int = 0
+    public let caseFolding: SQLCompletionCaseFolding
+    public var matchedRanges: [Range<Int>] = []
+    public var fuzzyPenalty: Int = 0
 
-    init(
+    public init(
         label: String,
         kind: SQLCompletionKind,
         insertText: String? = nil,
@@ -111,20 +101,19 @@ struct SQLCompletionItem: Identifiable, Hashable {
 
     // MARK: - Hashable
 
-    func hash(into hasher: inout Hasher) {
+    public func hash(into hasher: inout Hasher) {
         hasher.combine(label)
         hasher.combine(kind)
     }
 
-    static func == (lhs: SQLCompletionItem, rhs: SQLCompletionItem) -> Bool {
+    public static func == (lhs: SQLCompletionItem, rhs: SQLCompletionItem) -> Bool {
         lhs.label == rhs.label && lhs.kind == rhs.kind
     }
 }
 
 // MARK: - Factory Methods
 
-extension SQLCompletionItem {
-    /// Documentation for common SQL keywords
+public extension SQLCompletionItem {
     private static let keywordDocs: [String: String] = [
         "SELECT": "Retrieve data from one or more tables",
         "FROM": "Specify tables to query data from",
@@ -201,8 +190,6 @@ extension SQLCompletionItem {
         "ON DUPLICATE KEY UPDATE": "Handle duplicate key on insert (MySQL)",
     ]
 
-    /// Create a keyword completion item.
-    ///
     /// The canonical spelling is whatever the caller passes, which every SQL caller writes in
     /// uppercase. It is no longer uppercased here, because the case a keyword is presented and
     /// inserted in belongs to `SQLCompletionCasing` and the typed prefix, neither of which exists
@@ -222,7 +209,6 @@ extension SQLCompletionItem {
         )
     }
 
-    /// Create a table completion item
     static func table(_ name: String, isView: Bool = false) -> SQLCompletionItem {
         SQLCompletionItem(
             label: name,
@@ -232,7 +218,6 @@ extension SQLCompletionItem {
         )
     }
 
-    /// Create a schema-name completion item
     static func schemaName(_ name: String) -> SQLCompletionItem {
         SQLCompletionItem(
             label: name,
@@ -242,7 +227,6 @@ extension SQLCompletionItem {
         )
     }
 
-    /// Create a database-name completion item
     static func databaseName(_ name: String) -> SQLCompletionItem {
         SQLCompletionItem(
             label: name,
@@ -282,7 +266,6 @@ extension SQLCompletionItem {
         )
     }
 
-    /// Create a function completion item
     static func function(
         _ name: String,
         signature: String? = nil,
@@ -300,7 +283,6 @@ extension SQLCompletionItem {
         )
     }
 
-    /// Create an operator completion item
     static func `operator`(
         _ op: String,
         documentation: String? = nil,
@@ -315,7 +297,6 @@ extension SQLCompletionItem {
         )
     }
 
-    /// Create a favorite keyword expansion item
     static func favorite(keyword: String, name: String, query: String) -> SQLCompletionItem {
         SQLCompletionItem(
             label: keyword,

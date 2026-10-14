@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 /// Streamable HTTP to an MCP server somebody else runs.
 ///

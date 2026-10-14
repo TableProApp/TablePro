@@ -1,6 +1,5 @@
 import Foundation
-import TableProPluginKit
-@testable import TablePro
+@testable import TableProMCP
 import Testing
 
 struct MCPResultTests {

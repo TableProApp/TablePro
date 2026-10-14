@@ -14,6 +14,7 @@ import TableProGrammars
 import TableProPluginKit
 import TableProSQLGrammar
 import TableProTextEngine
+@testable import TableProUtilities
 import Testing
 
 @MainActor

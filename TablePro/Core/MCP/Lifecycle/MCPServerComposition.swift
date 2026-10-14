@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 @MainActor
 internal struct MCPServerComposition {

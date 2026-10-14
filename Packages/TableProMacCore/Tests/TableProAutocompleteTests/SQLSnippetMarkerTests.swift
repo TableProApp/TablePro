@@ -1,14 +1,5 @@
-//
-//  SQLSnippetMarkerTests.swift
-//  TableProTests
-//
-//  Tests for SQLSnippetMarker: the ";;" cursor token stripped from a
-//  favorite's query on keyword expansion. Offsets must be UTF-16 units so a
-//  marker after multibyte text still lands the caret correctly.
-//
-
 import Foundation
-@testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct SQLSnippetMarkerTests {

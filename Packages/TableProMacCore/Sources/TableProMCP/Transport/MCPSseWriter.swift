@@ -1,14 +1,14 @@
 import Foundation
 
-actor MCPSseWriter {
-    static let keepAliveInterval: Duration = .seconds(15)
+public actor MCPSseWriter {
+    public static let keepAliveInterval: Duration = .seconds(15)
 
     private let emit: @Sendable (Data) async -> Void
     private let isAlive: @Sendable () async -> Bool
     private var keepAliveTask: Task<Void, Never>?
     private var stopped = false
 
-    init(
+    public init(
         emit: @escaping @Sendable (Data) async -> Void,
         isAlive: @escaping @Sendable () async -> Bool
     ) {
@@ -16,7 +16,7 @@ actor MCPSseWriter {
         self.isAlive = isAlive
     }
 
-    func start() {
+    public func start() {
         guard keepAliveTask == nil, !stopped else { return }
         keepAliveTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -27,17 +27,17 @@ actor MCPSseWriter {
         }
     }
 
-    func writeFrame(_ frame: SseFrame) async {
+    public func writeFrame(_ frame: SseFrame) async {
         guard !stopped else { return }
         await emit(SseEncoder.encode(frame))
     }
 
-    func writeComment(_ text: String) async {
+    public func writeComment(_ text: String) async {
         guard !stopped else { return }
         await emit(Self.commentPayload(text))
     }
 
-    func stop() {
+    public func stop() {
         guard !stopped else { return }
         stopped = true
         keepAliveTask?.cancel()

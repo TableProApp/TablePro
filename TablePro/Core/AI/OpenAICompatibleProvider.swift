@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 final class OpenAICompatibleProvider: ChatTransport {
     private static let logger = Logger(

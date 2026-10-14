@@ -1,24 +1,19 @@
-//
-//  SQLFunctionCallScanner.swift
-//  TablePro
-//
-
 import Foundation
 
-enum SQLFunctionCallScanner {
-    enum Callee: Equatable {
+public enum SQLFunctionCallScanner {
+    public enum Callee: Equatable {
         case unnamed
         case named(String, start: Int)
     }
 
-    struct Call: Equatable {
-        let callee: Callee
-        let parenthesis: Int
+    public struct Call: Equatable {
+        public let callee: Callee
+        public let parenthesis: Int
     }
 
-    static let openParenthesis = UInt16(UnicodeScalar("(").value)
+    public static let openParenthesis = UInt16(UnicodeScalar("(").value)
 
-    static func calls(in source: NSString, code: NSString) -> [Call] {
+    public static func calls(in source: NSString, code: NSString) -> [Call] {
         var calls: [Call] = []
         for index in 0..<code.length where code.character(at: index) == openParenthesis {
             guard let callee = callee(before: index, code: code, source: source) else { continue }
@@ -27,11 +22,11 @@ enum SQLFunctionCallScanner {
         return calls
     }
 
-    static func isBlank(_ unit: UInt16) -> Bool {
+    public static func isBlank(_ unit: UInt16) -> Bool {
         unit == 0x20 || unit == 0x0A || unit == 0x09 || unit == 0x0D || unit == 0x0C || unit == 0x0B
     }
 
-    static func isIdentifierUnit(_ unit: UInt16) -> Bool {
+    public static func isIdentifierUnit(_ unit: UInt16) -> Bool {
         guard let scalar = UnicodeScalar(unit) else { return true }
         return scalar == "_" || scalar == "$" || CharacterSet.alphanumerics.contains(scalar) || unit > 0x7F
     }

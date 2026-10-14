@@ -5,6 +5,7 @@
 
 import CryptoKit
 import Foundation
+import TableProUtilities
 
 internal struct LinkedSQLFavorite: Identifiable, Hashable {
     let id: UUID

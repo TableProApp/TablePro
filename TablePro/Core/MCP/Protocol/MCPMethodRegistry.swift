@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public enum MCPMethodRegistry {
     public static let serverInfo = MCPImplementation(

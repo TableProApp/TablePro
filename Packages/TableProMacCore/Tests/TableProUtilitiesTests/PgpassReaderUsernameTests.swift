@@ -1,12 +1,7 @@
-//
-//  PgpassReaderUsernameTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
-@testable import TablePro
+@testable import TableProUtilities
 
 struct PgpassReaderUsernameTests {
     @Test("A blank username matches ~/.pgpass as the operating system user")

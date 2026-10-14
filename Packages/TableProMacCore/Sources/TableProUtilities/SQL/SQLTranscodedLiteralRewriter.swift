@@ -1,16 +1,11 @@
-//
-//  SQLTranscodedLiteralRewriter.swift
-//  TablePro
-//
-
 import Foundation
 import TableProSQLGrammar
 
-internal enum SQLTranscodedLiteralError: Error, Equatable {
+public enum SQLTranscodedLiteralError: Error, Equatable {
     case unrecoverableBinaryLiteral
 }
 
-internal enum SQLTranscodedLiteralRewriter {
+public enum SQLTranscodedLiteralRewriter {
     private struct Introducer {
         let range: NSRange
         let characterSet: String
@@ -47,7 +42,7 @@ internal enum SQLTranscodedLiteralRewriter {
     private static let serverScopes: Set<String> = ["GLOBAL", "PERSIST", "PERSIST_ONLY"]
     private static let percent = UInt8(ascii: "%")
 
-    internal static func rewritten(
+    public static func rewritten(
         _ statement: String,
         decodedFrom encoding: String.Encoding,
         backslashEscapesAreOn: Bool = true,
@@ -107,7 +102,7 @@ internal enum SQLTranscodedLiteralRewriter {
         return replacements
     }
 
-    internal static func backslashEscapesAreOn(
+    public static func backslashEscapesAreOn(
         after statement: String,
         currently isOn: Bool,
         grammar: SQLLexicalGrammar

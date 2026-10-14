@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct SwitchDatabaseTool: MCPToolImplementation {
     public static let name = "switch_database"

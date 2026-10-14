@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHConfig
 
 struct ConnectionFormEdits: Equatable {
     var name: String

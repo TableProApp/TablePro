@@ -1,6 +1,6 @@
 import Foundation
-import TableProPluginKit
-@testable import TablePro
+@testable import TableProMCP
+import TableProMCPTestSupport
 import XCTest
 
 final class MCPProgressEmitterTests: XCTestCase {

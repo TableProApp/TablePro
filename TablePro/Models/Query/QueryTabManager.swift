@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProUtilities
 
 /// Manager for query tabs
 @MainActor

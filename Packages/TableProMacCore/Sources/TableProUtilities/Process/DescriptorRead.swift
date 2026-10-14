@@ -1,15 +1,10 @@
-//
-//  DescriptorRead.swift
-//  TablePro
-//
-
 import Darwin
 import Foundation
 
-internal enum DescriptorRead {
-    static let pipeCapacity = 65_536
+public enum DescriptorRead {
+    public static let pipeCapacity = 65_536
 
-    static func availableBytes(from descriptor: Int32, upTo limit: Int = pipeCapacity) throws -> Data {
+    public static func availableBytes(from descriptor: Int32, upTo limit: Int = pipeCapacity) throws -> Data {
         var bytes = Data(count: limit)
         let received = try bytes.withUnsafeMutableBytes { buffer in
             try read(descriptor, into: buffer)
@@ -18,7 +13,7 @@ internal enum DescriptorRead {
         return bytes
     }
 
-    static func nextBytes(from descriptor: Int32, upTo limit: Int = pipeCapacity) throws -> Data {
+    public static func nextBytes(from descriptor: Int32, upTo limit: Int = pipeCapacity) throws -> Data {
         while true {
             do {
                 return try availableBytes(from: descriptor, upTo: limit)
@@ -28,7 +23,7 @@ internal enum DescriptorRead {
         }
     }
 
-    static func bufferedBytes(from descriptor: Int32, upTo limit: Int) -> Data {
+    public static func bufferedBytes(from descriptor: Int32, upTo limit: Int) -> Data {
         var buffered = Data()
         while buffered.count < limit, hasInputWithoutWaiting(descriptor) {
             let wanted = min(pipeCapacity, limit - buffered.count)
@@ -38,7 +33,7 @@ internal enum DescriptorRead {
         return buffered
     }
 
-    static func hasInputWithoutWaiting(_ descriptor: Int32) -> Bool {
+    public static func hasInputWithoutWaiting(_ descriptor: Int32) -> Bool {
         var request = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
         guard poll(&request, 1, 0) > 0 else { return false }
         return request.revents & Int16(POLLIN | POLLHUP) != 0

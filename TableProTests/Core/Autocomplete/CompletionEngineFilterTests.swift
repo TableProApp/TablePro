@@ -8,6 +8,7 @@
 
 import Foundation
 @testable import TablePro
+@testable import TableProAutocomplete
 import TableProPluginKit
 import Testing
 

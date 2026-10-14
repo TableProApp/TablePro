@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public enum MCPToolRegistry {
     public static let allTools: [any MCPToolImplementation] = registered

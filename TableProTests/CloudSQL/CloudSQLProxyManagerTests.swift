@@ -9,6 +9,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendable {
     enum Behavior {

@@ -7,6 +7,7 @@ import Foundation
 @testable import TablePro
 import TableProImport
 import TableProPluginKit
+@testable import TableProSSHConfig
 import Testing
 
 @MainActor

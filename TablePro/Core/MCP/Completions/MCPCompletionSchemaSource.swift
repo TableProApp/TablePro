@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct MCPConnectionDescriptor: Sendable, Equatable {
     public let id: UUID

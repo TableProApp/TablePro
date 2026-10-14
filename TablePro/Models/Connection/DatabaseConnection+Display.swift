@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHConfig
 
 extension DatabaseConnection {
     var connectionSubtitle: String {

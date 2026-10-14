@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProMCP
 
 /// Below the built-in server's sections because it is the opposite direction: what TablePro may ask
 /// of an outside server. It works whether or not the built-in server is on.

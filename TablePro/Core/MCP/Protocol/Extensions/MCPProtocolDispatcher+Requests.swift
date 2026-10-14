@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 extension MCPProtocolDispatcher {
     internal func handleRequest(_ request: JsonRpcRequest, exchange: MCPInboundExchange) async {

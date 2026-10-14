@@ -1,6 +1,7 @@
 import Foundation
 import Network
 @testable import TablePro
+import TableProMCP
 import TableProPluginKit
 
 actor StubAlwaysAllowAuthenticator: MCPAuthenticator {

@@ -1,13 +1,9 @@
-//
-//  BridgeStdinTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
+@testable import TableProMCP
+import TableProMCPTestSupport
+import TableProTestSupport
 import Testing
-
-@testable import TablePro
 
 struct BridgeStdinTests {
     private static func everyLine(of stream: AsyncStream<Data>) async -> [Data]? {

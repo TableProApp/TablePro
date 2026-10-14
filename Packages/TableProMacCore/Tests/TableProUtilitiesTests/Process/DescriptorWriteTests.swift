@@ -1,13 +1,9 @@
-//
-//  DescriptorWriteTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
+import TableProTestSupport
 import Testing
 
-@testable import TablePro
+@testable import TableProUtilities
 
 struct DescriptorWriteTests {
     private struct Measured: Sendable {

@@ -1,13 +1,4 @@
-//
-//  SQLContextAnalyzerCaseInsensitiveTests.swift
-//  TableProTests
-//
-//  Regression tests verifying clause detection works case-insensitively
-//  after removal of uppercased() normalization.
-//
-
-import TableProPluginKit
-@testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct SQLContextAnalyzerCaseInsensitiveTests {

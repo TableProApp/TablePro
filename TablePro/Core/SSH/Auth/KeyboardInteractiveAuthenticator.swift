@@ -7,6 +7,7 @@ import Foundation
 import os
 
 import CLibSSH2
+import TableProSSHConfig
 
 /// How a keyboard-interactive prompt should be answered without asking the user.
 ///

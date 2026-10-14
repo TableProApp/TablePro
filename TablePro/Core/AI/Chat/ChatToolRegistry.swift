@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 @MainActor
 final class ChatToolRegistry {

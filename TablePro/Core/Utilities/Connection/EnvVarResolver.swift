@@ -8,6 +8,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSSHConfig
 
 internal enum EnvVarResolver {
     private static let logger = Logger(subsystem: "com.TablePro", category: "EnvVarResolver")

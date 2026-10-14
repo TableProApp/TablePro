@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 /// Who asked for this process to exist. TablePro is a normal app that is also a background server:
 /// the bundled `tablepro-mcp` bridge launches it to answer MCP requests, and that launch opens no

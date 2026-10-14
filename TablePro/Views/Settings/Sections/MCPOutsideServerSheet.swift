@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProMCP
 
 /// Adds or edits one outside MCP server, and says which connections may reach it.
 ///

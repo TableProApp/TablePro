@@ -1,17 +1,8 @@
-//
-//  SQLKeywordsTests.swift
-//  TableProTests
-//
-//  Tests for SQLKeywords catalog
-//
-
 import Foundation
-import TableProPluginKit
+@testable import TableProAutocomplete
 import Testing
-@testable import TablePro
 
 struct SQLKeywordsTests {
-
     @Test("Keywords collection not empty")
     func testKeywordsNotEmpty() {
         #expect(!SQLKeywords.keywords.isEmpty)

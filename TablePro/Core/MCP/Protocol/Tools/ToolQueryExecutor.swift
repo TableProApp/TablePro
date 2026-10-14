@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 enum ToolQueryExecutor {
     /// What one call sends: a statement, or a text that runs as a script where the engine takes one, whose every

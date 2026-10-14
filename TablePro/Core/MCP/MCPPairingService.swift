@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import Foundation
 import os
+import TableProMCP
 
 struct PairingExchangeRecord: Sendable, Equatable {
     let plaintextToken: String

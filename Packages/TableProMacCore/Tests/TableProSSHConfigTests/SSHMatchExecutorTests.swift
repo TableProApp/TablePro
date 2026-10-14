@@ -4,9 +4,9 @@
 //
 
 import Foundation
-import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TableProSSHConfig
 
 struct SSHMatchExecutorTests {
     @Test("Exit 0 matches")

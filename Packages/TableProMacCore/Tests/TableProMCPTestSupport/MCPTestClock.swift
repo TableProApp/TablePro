@@ -1,6 +1,5 @@
 import Foundation
-import TableProPluginKit
-@testable import TablePro
+import TableProMCP
 
 public actor MCPTestClock: MCPClock {
     private var currentDate: Date

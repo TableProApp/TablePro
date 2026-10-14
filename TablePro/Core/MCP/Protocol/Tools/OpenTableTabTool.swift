@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import os
+import TableProMCP
 
 public struct OpenTableTabTool: MCPToolImplementation {
     public static let name = "open_table_tab"

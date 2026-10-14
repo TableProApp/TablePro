@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public enum MCPEraResolution: Sendable {
     case modern(MCPRequestMeta)

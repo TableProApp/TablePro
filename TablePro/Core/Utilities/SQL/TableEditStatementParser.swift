@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 /// One dot-separated part of a name, as the statement wrote it.
 struct SQLNamePart: Equatable, Sendable {

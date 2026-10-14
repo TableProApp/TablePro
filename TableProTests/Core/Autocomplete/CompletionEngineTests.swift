@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProAutocomplete
 import TableProPluginKit
 import Testing
 @testable import TablePro

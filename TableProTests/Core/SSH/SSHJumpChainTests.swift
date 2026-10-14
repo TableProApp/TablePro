@@ -9,6 +9,7 @@
 import Foundation
 import TableProPluginKit
 @testable import TablePro
+@testable import TableProSSHConfig
 import Testing
 
 struct SSHJumpChainTests {

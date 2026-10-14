@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProUtilities
 
 /// Which number leads a row. The panels share a row shape but not a headline: "most run" is about
 /// the count, "slowest" about time, "failures" about how many broke.

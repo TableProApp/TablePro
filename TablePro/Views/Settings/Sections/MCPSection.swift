@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TableProMCP
 
 struct MCPSection: View {
     @Binding var settings: MCPSettings

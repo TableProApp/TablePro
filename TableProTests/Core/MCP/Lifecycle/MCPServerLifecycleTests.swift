@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProMCP
 import XCTest
 
 final class MCPPortAllocatorTests: XCTestCase {

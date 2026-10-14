@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 struct DescribeTableChatTool: ChatTool {
     let name = "describe_table"

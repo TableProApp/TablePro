@@ -1,10 +1,4 @@
-//
-//  SQLFoldScanner.swift
-//  TablePro
-//
-
 import Foundation
-import TableProPluginKit
 import TableProSQLGrammar
 
 /// Finds the foldable regions of a SQL document in a single pass.
@@ -12,8 +6,8 @@ import TableProSQLGrammar
 /// Statements, parenthesised groups, `BEGIN`/`CASE` blocks and multi-line block comments all open frames on one depth
 /// stack, so a nested region always reports a deeper level than the region containing it. Regions that open and close
 /// on the same line are discarded, because there is nothing to hide.
-enum SQLFoldScanner {
-    static func scan(_ text: NSString, grammar: SQLLexicalGrammar) -> SQLFoldStructure {
+public enum SQLFoldScanner {
+    public static func scan(_ text: NSString, grammar: SQLLexicalGrammar) -> SQLFoldStructure {
         guard text.length > 0 else { return .empty }
         var scan = Scan(text: text, grammar: grammar)
         scan.run()

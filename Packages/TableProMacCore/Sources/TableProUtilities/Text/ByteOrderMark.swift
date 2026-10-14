@@ -1,11 +1,6 @@
-//
-//  ByteOrderMark.swift
-//  TablePro
-//
-
 import Foundation
 
-internal enum ByteOrderMark: String, Codable, Sendable {
+public enum ByteOrderMark: String, Codable, Sendable {
     case utf32LittleEndian
     case utf32BigEndian
     case utf8
@@ -16,17 +11,17 @@ internal enum ByteOrderMark: String, Codable, Sendable {
         .utf32LittleEndian, .utf32BigEndian, .utf8, .utf16LittleEndian, .utf16BigEndian
     ]
 
-    static var longestLength: Int { longestFirst.map(\.length).max() ?? 0 }
+    public static var longestLength: Int { longestFirst.map(\.length).max() ?? 0 }
 
-    static func leading(_ bytes: Data) -> ByteOrderMark? {
+    public static func leading(_ bytes: Data) -> ByteOrderMark? {
         longestFirst.first { bytes.starts(with: $0.bytes) }
     }
 
-    static func leading(_ bytes: Data, allowedBy declaredEncoding: String.Encoding) -> ByteOrderMark? {
+    public static func leading(_ bytes: Data, allowedBy declaredEncoding: String.Encoding) -> ByteOrderMark? {
         longestFirst.first { $0.isAllowed(by: declaredEncoding) && bytes.starts(with: $0.bytes) }
     }
 
-    var bytes: [UInt8] {
+    public var bytes: [UInt8] {
         switch self {
         case .utf32LittleEndian: return [0xFF, 0xFE, 0x00, 0x00]
         case .utf32BigEndian: return [0x00, 0x00, 0xFE, 0xFF]
@@ -36,9 +31,9 @@ internal enum ByteOrderMark: String, Codable, Sendable {
         }
     }
 
-    var length: Int { bytes.count }
+    public var length: Int { bytes.count }
 
-    var encoding: String.Encoding {
+    public var encoding: String.Encoding {
         switch self {
         case .utf32LittleEndian, .utf32BigEndian: return .utf32
         case .utf8: return .utf8
@@ -46,7 +41,7 @@ internal enum ByteOrderMark: String, Codable, Sendable {
         }
     }
 
-    var byteOrderedEncoding: String.Encoding {
+    public var byteOrderedEncoding: String.Encoding {
         switch self {
         case .utf32LittleEndian: return .utf32LittleEndian
         case .utf32BigEndian: return .utf32BigEndian
@@ -61,7 +56,7 @@ internal enum ByteOrderMark: String, Codable, Sendable {
     }
 }
 
-internal extension String.Encoding {
+public extension String.Encoding {
     var unmarkedByteOrder: String.Encoding {
         switch self {
         case .utf16: return .utf16BigEndian

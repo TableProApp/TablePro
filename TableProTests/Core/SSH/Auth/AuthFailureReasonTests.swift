@@ -9,6 +9,7 @@
 
 import Foundation
 import TableProPluginKit
+@testable import TableProSSHConfig
 import Testing
 
 @testable import TablePro

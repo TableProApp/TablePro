@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 /// Whether one statement of a batch is the script's own point of no return.
 ///

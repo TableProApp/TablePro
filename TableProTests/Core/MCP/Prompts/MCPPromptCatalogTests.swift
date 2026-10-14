@@ -1,5 +1,7 @@
 import Foundation
 @testable import TablePro
+import TableProMCP
+import TableProMCPTestSupport
 import TableProPluginKit
 import Testing
 

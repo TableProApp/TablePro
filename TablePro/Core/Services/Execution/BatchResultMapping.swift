@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProUtilities
 
 /// Which statement of a batch stands behind each result set it returned, when that can be known.
 ///

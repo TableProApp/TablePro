@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 struct ClaudeAgentToolGrant: Sendable, Equatable {
     let configPath: String

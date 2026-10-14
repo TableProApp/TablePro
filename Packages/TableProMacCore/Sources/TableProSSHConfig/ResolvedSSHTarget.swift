@@ -8,7 +8,7 @@ import Foundation
 /// Where the agent socket a connection will use came from. `agentSocketPath` collapses three
 /// sources into one string, and each is changed somewhere different, so an agent that does not
 /// answer can only be reported usefully alongside the source that named it.
-enum AgentSocketOrigin: Sendable, Hashable, CaseIterable {
+public enum AgentSocketOrigin: Sendable, Hashable, CaseIterable {
     /// The Agent Socket control on the SSH Tunnel pane.
     case agentSocketSetting
     /// An `IdentityAgent` directive matching this host in `~/.ssh/config`.
@@ -17,25 +17,25 @@ enum AgentSocketOrigin: Sendable, Hashable, CaseIterable {
     case environment
 }
 
-struct ResolvedSSHTarget: Sendable, Hashable {
-    let originalHost: String
-    let host: String
-    let port: Int
-    let username: String
-    let identityFiles: [String]
-    let agentSocketPath: String
-    let agentSocketOrigin: AgentSocketOrigin
-    let identitiesOnly: Bool
-    let useKeychain: Bool
-    let addKeysToAgent: Bool
-    let proxyJump: [SSHJumpHost]
+public struct ResolvedSSHTarget: Sendable, Hashable {
+    public let originalHost: String
+    public let host: String
+    public let port: Int
+    public let username: String
+    public let identityFiles: [String]
+    public let agentSocketPath: String
+    public let agentSocketOrigin: AgentSocketOrigin
+    public let identitiesOnly: Bool
+    public let useKeychain: Bool
+    public let addKeysToAgent: Bool
+    public let proxyJump: [SSHJumpHost]
     /// The first `~/.ssh/config` value whose tokens could not be expanded. Resolution keeps going
     /// so the rest of the target is still built, and the connect path reports this instead of
     /// dialling whatever half-resolved string came out. It defaults to nil because most callers,
     /// the tests included, build a target that never went through expansion.
-    var expansionFailure: SSHTokenExpansionError?
+    public var expansionFailure: SSHTokenExpansionError?
 
-    init(
+    public init(
         originalHost: String,
         host: String,
         port: Int,

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import TableProUtilities
 
 public struct MCPClientIdentity: Sendable, Equatable, Hashable, Identifiable {
     public static let unknownClientName = String(localized: "Unknown client")

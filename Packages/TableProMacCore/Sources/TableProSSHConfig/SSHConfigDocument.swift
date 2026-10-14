@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct SSHConfigDocument: Sendable, Hashable {
+public struct SSHConfigDocument: Sendable, Hashable {
     let blocks: [SSHConfigBlock]
     let sourcePaths: [String]
 

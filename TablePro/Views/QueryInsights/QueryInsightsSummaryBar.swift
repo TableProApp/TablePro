@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProUtilities
 
 struct QueryInsightsSummaryBar: View {
     let totals: QueryInsightsTotals

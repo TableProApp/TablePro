@@ -1,8 +1,3 @@
-//
-//  TextPrefixDecoder.swift
-//  TablePro
-//
-
 import Foundation
 
 internal enum TextPrefixDecoder {

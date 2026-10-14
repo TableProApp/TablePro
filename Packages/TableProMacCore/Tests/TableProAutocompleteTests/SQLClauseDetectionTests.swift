@@ -1,16 +1,5 @@
-//
-//  SQLClauseDetectionTests.swift
-//  TableProTests
-//
-//  Full coverage for nearest-clause detection: the cursor's clause is the clause
-//  keyword closest to it, not the highest-priority keyword anywhere in the
-//  statement. Covers the multi-join / multi-clause regressions from #1646 plus
-//  the operand-slot, CASE, parenthesis, quoting, and table-extraction matrix.
-//
-
 import Foundation
-@testable import TablePro
-import TableProPluginKit
+@testable import TableProAutocomplete
 import Testing
 
 struct SQLClauseDetectionTests {

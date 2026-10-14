@@ -1,12 +1,7 @@
-//
-//  LoopbackHostTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
-@testable import TablePro
+@testable import TableProUtilities
 
 struct LoopbackHostTests {
     @Test("The named loopback spellings are loopback")

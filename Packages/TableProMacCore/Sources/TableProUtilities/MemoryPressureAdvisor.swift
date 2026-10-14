@@ -1,15 +1,8 @@
-//
-//  MemoryPressureAdvisor.swift
-//  TablePro
-//
-
 import Foundation
-
 import os
 
-/// Advises on tab eviction budget based on system memory and pressure state.
 @MainActor
-internal enum MemoryPressureAdvisor {
+public enum MemoryPressureAdvisor {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MemoryPressureAdvisor")
 
     /// Current memory pressure level from the OS dispatch source.
@@ -36,12 +29,11 @@ internal enum MemoryPressureAdvisor {
         return source
     }()
 
-    /// Call once at app launch to start monitoring memory pressure.
-    internal static func startMonitoring() {
+    public static func startMonitoring() {
         _ = pressureSource
     }
 
-    internal static func budgetForInactiveTabs() -> Int {
+    public static func budgetForInactiveTabs() -> Int {
         let totalBytes = ProcessInfo.processInfo.physicalMemory
         let gb: UInt64 = 1_073_741_824
 
@@ -59,7 +51,7 @@ internal enum MemoryPressureAdvisor {
         return isUnderPressure ? max(1, baseBudget / 2) : baseBudget
     }
 
-    internal static func estimatedFootprint(rowCount: Int, columnCount: Int) -> Int {
+    public static func estimatedFootprint(rowCount: Int, columnCount: Int) -> Int {
         rowCount * columnCount * 64
     }
 }

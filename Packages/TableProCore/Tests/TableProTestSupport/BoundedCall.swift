@@ -1,11 +1,6 @@
-//
-//  BoundedCall.swift
-//  TableProTests
-//
-
 import Foundation
 
-internal enum BoundedCall {
+public enum BoundedCall {
     private final class FirstArrival<Value: Sendable>: @unchecked Sendable {
         private let lock = NSLock()
         private var continuation: CheckedContinuation<Value?, Never>?
@@ -22,9 +17,9 @@ internal enum BoundedCall {
         }
     }
 
-    static let deadline = Duration.seconds(10)
+    public static let deadline = Duration.seconds(10)
 
-    static func result<Value: Sendable>(
+    public static func result<Value: Sendable>(
         within timeout: Duration = deadline,
         onDeadline: @escaping @Sendable () -> Void = {},
         of work: @escaping @Sendable () async -> Value
@@ -45,7 +40,7 @@ internal enum BoundedCall {
         }
     }
 
-    static func resultOnItsOwnThread<Value: Sendable>(
+    public static func resultOnItsOwnThread<Value: Sendable>(
         within timeout: Duration = deadline,
         onDeadline: @escaping @Sendable () -> Void = {},
         of work: @escaping @Sendable () -> Value

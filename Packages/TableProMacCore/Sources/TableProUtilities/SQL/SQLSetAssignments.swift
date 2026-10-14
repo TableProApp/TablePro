@@ -1,8 +1,3 @@
-//
-//  SQLSetAssignments.swift
-//  TablePro
-//
-
 import Foundation
 
 /// One `name = value` element of a `SET` statement, as it was written.
@@ -10,8 +5,8 @@ import Foundation
 /// `spelledWithAtAt` is load-bearing rather than cosmetic: MySQL reads `SET @@transaction_isolation`
 /// as the next transaction's characteristics and refuses it inside one, while `SET SESSION
 /// transaction_isolation` sets the session variable and is allowed.
-internal struct SQLSetAssignment: Equatable, Sendable {
-    internal enum Scope: Equatable, Sendable {
+public struct SQLSetAssignment: Equatable, Sendable {
+    public enum Scope: Equatable, Sendable {
         case unspecified
         case session
         case local
@@ -20,9 +15,9 @@ internal struct SQLSetAssignment: Equatable, Sendable {
         case persistOnly
     }
 
-    internal let scope: Scope
-    internal let name: String
-    internal let spelledWithAtAt: Bool
+    public let scope: Scope
+    public let name: String
+    public let spelledWithAtAt: Bool
 }
 
 /// Reads the targets of a `SET`, with the cursor positioned just past the `SET` keyword.
@@ -34,7 +29,7 @@ internal struct SQLSetAssignment: Equatable, Sendable {
 ///
 /// MySQL applies the most recent `GLOBAL`/`SESSION` keyword to every following element that carries
 /// no modifier of its own, which is why the scope is carried across the list.
-internal enum SQLSetAssignments {
+public enum SQLSetAssignments {
     private static let scopeKeywords: [String: SQLSetAssignment.Scope] = [
         "SESSION": .session,
         "LOCAL": .local,
@@ -49,7 +44,7 @@ internal enum SQLSetAssignments {
         "GLOBAL": .global
     ]
 
-    internal static func assignments(from cursor: inout SQLTokenCursor, readsList: Bool) -> [SQLSetAssignment] {
+    public static func assignments(from cursor: inout SQLTokenCursor, readsList: Bool) -> [SQLSetAssignment] {
         var head = cursor.next()
         var stopsAtFor = false
         if head?.word == "STATEMENT" {

@@ -1,19 +1,11 @@
-//
-//  BackgroundPipeReader.swift
-//  TableProTests
-//
-
 import Foundation
 
-@testable import TablePro
-
-internal enum BackgroundPipeReader {
-    static func everything(from reader: FileHandle, pausingFirst pause: TimeInterval) async -> Data? {
-        let descriptor = reader.fileDescriptor
-        return await BoundedCall.resultOnItsOwnThread {
+public enum BackgroundPipeReader {
+    public static func everything(from reader: FileHandle, pausingFirst pause: TimeInterval) async -> Data? {
+        await BoundedCall.resultOnItsOwnThread {
             Thread.sleep(forTimeInterval: pause)
             var bytes = Data()
-            while let chunk = try? DescriptorRead.availableBytes(from: descriptor), !chunk.isEmpty {
+            while let chunk = try? reader.read(upToCount: 65_536), !chunk.isEmpty {
                 bytes.append(chunk)
             }
             return bytes

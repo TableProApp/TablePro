@@ -1,23 +1,16 @@
-//
-//  PgpassReader.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
-/// Reads and parses the standard PostgreSQL ~/.pgpass file
-enum PgpassReader {
+public enum PgpassReader {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PgpassReader")
 
-    /// Whether ~/.pgpass exists
-    static func fileExists() -> Bool {
+    public static func fileExists() -> Bool {
         let path = NSHomeDirectory() + "/.pgpass"
         return FileManager.default.fileExists(atPath: path)
     }
 
-    /// Whether ~/.pgpass has correct permissions (0600). libpq silently ignores the file otherwise.
-    static func filePermissionsAreValid() -> Bool {
+    /// libpq silently ignores a ~/.pgpass whose mode is not 0600.
+    public static func filePermissionsAreValid() -> Bool {
         let path = NSHomeDirectory() + "/.pgpass"
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let posixPerms = attrs[.posixPermissions] as? Int
@@ -29,15 +22,12 @@ enum PgpassReader {
 
     /// libpq resolves an unset user to the operating system login name before matching ~/.pgpass,
     /// so a blank username field must resolve the same way here.
-    static func effectiveUsername(_ username: String) -> String {
+    public static func effectiveUsername(_ username: String) -> String {
         username.isEmpty ? NSUserName() : username
     }
 
-    /// Resolve a password from ~/.pgpass per PostgreSQL spec.
-    /// Returns the password from the first matching entry, or nil if no match.
-    /// Format: hostname:port:database:username:password
-    /// Wildcard `*` matches any value in a field. First match wins.
-    static func resolve(host: String, port: Int, database: String, username: String) -> String? {
+    /// libpq's rules: `*` matches any value in a field, and the first matching line wins.
+    public static func resolve(host: String, port: Int, database: String, username: String) -> String? {
         let path = NSHomeDirectory() + "/.pgpass"
         guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else {
             logger.debug("Could not read ~/.pgpass")

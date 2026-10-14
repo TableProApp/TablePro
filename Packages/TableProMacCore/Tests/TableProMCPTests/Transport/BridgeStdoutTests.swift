@@ -1,13 +1,10 @@
-//
-//  BridgeStdoutTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
+@testable import TableProMCP
+import TableProMCPTestSupport
+import TableProTestSupport
+import TableProUtilities
 import Testing
-
-@testable import TablePro
 
 struct BridgeStdoutTests {
     @Test("A line larger than the pipe reaches a non-blocking stdout whole", .timeLimit(.minutes(1)))

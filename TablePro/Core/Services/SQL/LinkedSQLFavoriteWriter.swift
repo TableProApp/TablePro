@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProUtilities
 
 internal enum LinkedSQLFavoriteWriter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedSQLFavoriteWriter")

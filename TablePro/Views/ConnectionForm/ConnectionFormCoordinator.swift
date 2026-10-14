@@ -9,6 +9,7 @@ import os
 import SwiftUI
 import TableProPluginKit
 import TableProRedisCore
+import TableProSSHConfig
 import TableProSyncTransport
 
 @MainActor

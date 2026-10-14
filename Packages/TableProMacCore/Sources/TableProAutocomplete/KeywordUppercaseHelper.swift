@@ -1,10 +1,7 @@
 import Foundation
 
-/// Pure helper functions for SQL keyword auto-uppercase.
-/// Extracted from SQLEditorCoordinator for testability.
-enum KeywordUppercaseHelper {
-    /// Checks if a typed string is a word boundary character (triggers keyword check).
-    static func isWordBoundary(_ string: String) -> Bool {
+public enum KeywordUppercaseHelper {
+    public static func isWordBoundary(_ string: String) -> Bool {
         guard (string as NSString).length == 1, let ch = string.unicodeScalars.first else { return false }
         switch ch {
         case " ", "\t", "\n", "\r", "(", ")", ",", ";":
@@ -102,9 +99,8 @@ enum KeywordUppercaseHelper {
         return inSingleQuote || inDoubleQuote || inBacktick || inLineComment || inBlockComment || inDollarQuote
     }
 
-    /// Extracts the word immediately before `position` in `text` by scanning backwards.
-    /// Returns nil if no word found, the word is not a SQL keyword, or it is already in `targetCase`.
-    static func keywordBeforePosition(
+    /// Nil when the word is not a keyword, sits in a protected context, or is already in the target case.
+    public static func keywordBeforePosition(
         _ text: NSString,
         at position: Int,
         uppercase: Bool = true

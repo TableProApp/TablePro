@@ -11,7 +11,8 @@
 import Foundation
 import Testing
 
-@testable import TablePro
+@testable import TableProSSHConfig
+import TableProTestSupport
 
 struct AgentIdentityPreferenceTests {
     private static let ed25519 = "ssh-ed25519"

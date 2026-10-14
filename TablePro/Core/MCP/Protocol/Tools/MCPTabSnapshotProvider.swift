@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import TableProMCP
 
 struct MCPTabSnapshot {
     let tabId: UUID

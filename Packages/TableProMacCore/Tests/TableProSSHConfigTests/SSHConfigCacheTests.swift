@@ -4,9 +4,9 @@
 //
 
 import Foundation
-import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TableProSSHConfig
 
 struct SSHConfigCacheTests {
     @Test("Returns cached document while file unchanged")

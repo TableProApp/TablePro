@@ -1,9 +1,9 @@
 import Foundation
 
-internal enum MCPPortAllocatorError: Error, LocalizedError {
+public enum MCPPortAllocatorError: Error, LocalizedError {
     case everyCandidateRejected(lastFailure: String)
 
-    internal var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .everyCandidateRejected(let lastFailure):
             return String(
@@ -14,10 +14,10 @@ internal enum MCPPortAllocatorError: Error, LocalizedError {
     }
 }
 
-internal enum MCPPortAllocator {
-    internal static let kernelAssigned: UInt16 = 0
+public enum MCPPortAllocator {
+    public static let kernelAssigned: UInt16 = 0
 
-    internal static func candidates(preferred: Int) -> [UInt16] {
+    public static func candidates(preferred: Int) -> [UInt16] {
         guard let port = UInt16(exactly: preferred), port > 0 else {
             return [kernelAssigned]
         }

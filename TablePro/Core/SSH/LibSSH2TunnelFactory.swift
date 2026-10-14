@@ -8,6 +8,7 @@ import os
 
 import CLibSSH2
 
+import TableProSSHConfig
 import TableProSSHTransport
 
 /// Credentials needed for SSH tunnel creation

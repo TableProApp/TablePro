@@ -1,12 +1,5 @@
-//
-//  DerivedTableParserTests.swift
-//  TableProTests
-//
-//  Tests for derived-table and CTE column extraction.
-//
-
 import Foundation
-@testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct DerivedTableParserTests {

@@ -8,6 +8,7 @@
 import AppKit
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 /// A resolved display order plus the inputs it was resolved from.
 ///

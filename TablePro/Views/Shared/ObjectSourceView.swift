@@ -7,6 +7,7 @@
 
 import AppKit
 import SwiftUI
+import TableProUtilities
 
 /// The one place the app draws an object's source. The Structure tab's trigger inspector and the
 /// object viewer tab both use it, so the font stepper, Copy, Export and Open in Editor behave the

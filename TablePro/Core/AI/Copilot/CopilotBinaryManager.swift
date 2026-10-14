@@ -6,6 +6,7 @@
 import CryptoKit
 import Foundation
 import os
+import TableProUtilities
 
 struct CopilotBinaryDigests: Sendable, Equatable {
     let tarballSHA256: String

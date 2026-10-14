@@ -1,10 +1,4 @@
-//
-//  SQLTokenCursor.swift
-//  TablePro
-//
-
 import Foundation
-import TableProPluginKit
 import TableProSQLGrammar
 
 /// A lazy reader over the head of one statement, in the vocabulary a rule about that statement
@@ -20,20 +14,20 @@ import TableProSQLGrammar
 ///
 /// It is a struct with value semantics, so a rule that needs to look ahead copies it, reads, and
 /// either adopts the copy or drops it.
-internal struct SQLTokenCursor {
-    internal enum Token: Equatable {
+public struct SQLTokenCursor {
+    public enum Token: Equatable {
         case word(String)
         case quotedIdentifier(String)
         case literal
         case symbol(UInt16)
     }
 
-    internal static let equals = UInt16(UnicodeScalar("=").value)
-    internal static let comma = UInt16(UnicodeScalar(",").value)
-    internal static let period = UInt16(UnicodeScalar(".").value)
-    internal static let colon = UInt16(UnicodeScalar(":").value)
-    internal static let openParen = SqlLexer.openParen
-    internal static let closeParen = SqlLexer.closeParen
+    public static let equals = UInt16(UnicodeScalar("=").value)
+    public static let comma = UInt16(UnicodeScalar(",").value)
+    public static let period = UInt16(UnicodeScalar(".").value)
+    public static let colon = UInt16(UnicodeScalar(":").value)
+    public static let openParen = SqlLexer.openParen
+    public static let closeParen = SqlLexer.closeParen
 
     private static let at = UInt16(UnicodeScalar("@").value)
     private static let openBracket = UInt16(UnicodeScalar("[").value)
@@ -44,33 +38,33 @@ internal struct SQLTokenCursor {
     private var index: Int
     private var conditionalDepth = 0
 
-    internal private(set) var parenDepth = 0
-    internal private(set) var tokenStart = 0
+    public private(set) var parenDepth = 0
+    public private(set) var tokenStart = 0
 
-    internal var location: Int { index }
+    public var location: Int { index }
 
-    internal var tokenRange: NSRange {
+    public var tokenRange: NSRange {
         NSRange(location: tokenStart, length: index - tokenStart)
     }
 
     /// The token `next()` returned last as written, for a rule that needs a word's spelling rather
     /// than its uppercased form.
-    internal var lastTokenText: String {
+    public var lastTokenText: String {
         text.substring(with: tokenRange)
     }
 
-    internal init(_ text: NSString, grammar: SQLLexicalGrammar) {
+    public init(_ text: NSString, grammar: SQLLexicalGrammar) {
         self.text = text
         self.grammar = grammar
         length = text.length
         index = 0
     }
 
-    internal init(_ text: String, grammar: SQLLexicalGrammar) {
+    public init(_ text: String, grammar: SQLLexicalGrammar) {
         self.init(text as NSString, grammar: grammar)
     }
 
-    internal mutating func next() -> Token? {
+    public mutating func next() -> Token? {
         while index < length {
             let character = text.character(at: index)
             if SqlLexer.isWhitespace(character) {
@@ -85,7 +79,7 @@ internal struct SQLTokenCursor {
         return nil
     }
 
-    internal func peek() -> Token? {
+    public func peek() -> Token? {
         var lookahead = self
         return lookahead.next()
     }
@@ -172,7 +166,7 @@ internal struct SQLTokenCursor {
     }
 }
 
-internal extension SQLTokenCursor.Token {
+public extension SQLTokenCursor.Token {
     var word: String? {
         guard case .word(let word) = self else { return nil }
         return word

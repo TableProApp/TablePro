@@ -1,10 +1,3 @@
-//
-//  SQLCompletionCasing.swift
-//  TablePro
-//
-//  Presentation case for completion items, decided from the typed prefix.
-//
-
 import Foundation
 
 /// Whether a completion item's spelling may follow the typed prefix.
@@ -13,7 +6,7 @@ import Foundation
 /// tables, columns, schemas, aliases, value literals, saved favorites, MongoDB pipeline stages and
 /// plugin-supplied statement vocabulary. Re-casing any of those changes what the statement means.
 /// Only vocabulary the engine matches case-insensitively opts in.
-enum SQLCompletionCaseFolding {
+public enum SQLCompletionCaseFolding: Sendable {
     case fixed
     case caseInsensitive
 }
@@ -23,15 +16,15 @@ enum SQLCompletionCaseFolding {
 /// The four values are psql's `COMP_KEYWORD_CASE`. The two `matchTyped` values differ only in the
 /// case they fall back to when the prefix carries no cased character, which happens whenever the
 /// popup is invoked on an empty token.
-enum SQLKeywordCase: String, Codable, CaseIterable, Sendable {
+public enum SQLKeywordCase: String, Codable, CaseIterable, Sendable {
     case upper
     case lower
     case matchTypedElseUpper
     case matchTypedElseLower
 
-    static let `default` = SQLKeywordCase.matchTypedElseUpper
+    public static let `default` = SQLKeywordCase.matchTypedElseUpper
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .upper: return String(localized: "UPPERCASE")
         case .lower: return String(localized: "lowercase")
@@ -42,7 +35,7 @@ enum SQLKeywordCase: String, Codable, CaseIterable, Sendable {
 
     /// Whether typed text is rewritten as the user types. Only the two absolute values do; a
     /// `matchTyped` value describes what a completion inserts and never touches what was typed.
-    var rewritesTypedText: Bool {
+    public var rewritesTypedText: Bool {
         switch self {
         case .upper, .lower: return true
         case .matchTypedElseUpper, .matchTypedElseLower: return false
@@ -50,7 +43,7 @@ enum SQLKeywordCase: String, Codable, CaseIterable, Sendable {
     }
 
     /// The case `Format SQL` and the as-you-type rewriter apply, ignoring any typed prefix.
-    var prefersUppercase: Bool {
+    public var prefersUppercase: Bool {
         switch self {
         case .upper, .matchTypedElseUpper: return true
         case .lower, .matchTypedElseLower: return false
@@ -58,7 +51,7 @@ enum SQLKeywordCase: String, Codable, CaseIterable, Sendable {
     }
 }
 
-enum SQLCompletionCasing {
+public enum SQLCompletionCasing {
     /// The case a completion takes for `typedPrefix` under `policy`.
     ///
     /// Decided from the first *cased* scalar of the prefix and nothing else, which is psql's rule
@@ -94,7 +87,7 @@ enum SQLCompletionCasing {
     /// `label` and `insertText` are rewritten together, or the popup would offer one spelling and
     /// commit another. `filterText` is deliberately left alone: it is the canonical lowercase form
     /// every matcher compares against, and `matchedRanges` are offsets into it.
-    static func applied(
+    public static func applied(
         to items: [SQLCompletionItem],
         typedPrefix: String,
         policy: SQLKeywordCase

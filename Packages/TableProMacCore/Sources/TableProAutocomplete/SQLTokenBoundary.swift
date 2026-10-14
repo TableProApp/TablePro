@@ -1,15 +1,7 @@
-//
-//  SQLTokenBoundary.swift
-//  TablePro
-//
-//  Shared identifier-boundary rules for SQL completion. The context analyzer
-//  and the completion adapter must agree on where the token under the cursor
-//  starts, so both resolve it through this single implementation.
-//
-
 import Foundation
 
-enum SQLTokenBoundary {
+// The context analyzer and the completion adapter must agree on where the token under the cursor starts.
+public enum SQLTokenBoundary {
     private static let dot = UInt16(UnicodeScalar(".").value)
     private static let backtick = UInt16(UnicodeScalar("`").value)
     private static let doubleQuote = UInt16(UnicodeScalar("\"").value)
@@ -45,7 +37,7 @@ enum SQLTokenBoundary {
     /// accepted completion overwrites it, but no candidate's filter text carries one, and the
     /// matcher needs every character of the pattern to appear in the target. Leaving the quote in
     /// dropped every candidate, keyword items included, so a quoted identifier completed nothing.
-    static func matchText(of segment: String) -> String {
+    public static func matchText(of segment: String) -> String {
         segment.trimmingCharacters(in: identifierQuotes)
     }
 
@@ -56,7 +48,7 @@ enum SQLTokenBoundary {
     /// The walk steps by composed character sequence rather than by UTF-16 unit, so a surrogate
     /// pair and a base character with its combining marks are each tested and consumed whole.
     /// ASCII input takes the single-unit path and behaves exactly as it did.
-    static func segmentStart(in text: NSString, endingAt cursor: Int) -> Int {
+    public static func segmentStart(in text: NSString, endingAt cursor: Int) -> Int {
         let clamped = min(max(cursor, 0), text.length)
         var start = clamped
         while start > 0 {

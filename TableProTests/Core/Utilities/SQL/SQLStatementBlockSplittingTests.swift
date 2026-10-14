@@ -11,6 +11,7 @@ import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProSQLGrammar
+@testable import TableProUtilities
 import Testing
 
 struct SQLStatementBlockSplittingTests {

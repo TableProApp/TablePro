@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 internal struct ExternalConnectionTrustKey: Hashable, Codable, Sendable {
     internal let databaseType: String

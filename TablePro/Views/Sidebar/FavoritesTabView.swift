@@ -1,6 +1,7 @@
 import SwiftUI
 import TableProImport
 import TableProPluginKit
+import TableProUtilities
 
 internal struct FavoritesTabView: View {
     @ObservedObject private var teamLibrarySync = TeamLibrarySyncCoordinator.shared

@@ -10,11 +10,11 @@ import Foundation
 /// The bridge is recognised by a flag its own mint sets on the token record, never by the token's
 /// name: a pairing request carries the client name it wants, so a name test would let any caller
 /// ask to be the bridge and inherit every grant the bridge had earned.
-enum MCPGrantSubject: Sendable, Equatable {
+public enum MCPGrantSubject: Sendable, Equatable {
     case bridge
     case token(UUID)
 
-    var storageKey: String {
+    public var storageKey: String {
         switch self {
         case .bridge: return "bridge"
         case .token(let id): return id.uuidString
@@ -22,7 +22,7 @@ enum MCPGrantSubject: Sendable, Equatable {
     }
 }
 
-extension MCPPrincipal {
+public extension MCPPrincipal {
     var grantSubject: MCPGrantSubject {
         metadata.isBridgeCredential ? .bridge : .token(tokenId)
     }

@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProUtilities
 
 /// Runs a shell script before establishing a database connection.
 /// Non-zero exit aborts the connection with an error.

@@ -1,7 +1,7 @@
 import Foundation
 
-enum MongoVocabulary {
-    static let databaseMethods: [(name: String, detail: String)] = [
+public enum MongoVocabulary {
+    public static let databaseMethods: [(name: String, detail: String)] = [
         ("getCollectionNames", "Array of collection and view names"),
         ("getCollectionInfos", "Collection and view info documents"),
         ("getCollection", "Collection object for a name that is not a valid identifier"),
@@ -31,7 +31,7 @@ enum MongoVocabulary {
         ("watch", "Open a change stream on the database")
     ]
 
-    static let collectionMethods: [(name: String, detail: String)] = [
+    public static let collectionMethods: [(name: String, detail: String)] = [
         ("find", "Select documents and return a cursor"),
         ("findOne", "Return one matching document, or null"),
         ("aggregate", "Run an aggregation pipeline"),
@@ -69,7 +69,7 @@ enum MongoVocabulary {
     ]
 
     /// What a cursor answers to, which is what `find()` and `aggregate()` return.
-    static let cursorMethods: [(name: String, detail: String)] = [
+    public static let cursorMethods: [(name: String, detail: String)] = [
         ("sort", "Order the results by one or more fields"),
         ("limit", "Return at most this many documents"),
         ("skip", "Skip this many documents first"),
@@ -95,11 +95,11 @@ enum MongoVocabulary {
         ("objsLeftInBatch", "Documents left in the current batch")
     ]
 
-    static let deprecatedCollectionMethods: Set<String> = [
+    public static let deprecatedCollectionMethods: Set<String> = [
         "insert", "update", "remove", "count", "findAndModify", "mapReduce", "reIndex", "ensureIndex"
     ]
 
-    static let queryOperators: [(name: String, detail: String)] = [
+    public static let queryOperators: [(name: String, detail: String)] = [
         ("$eq", "Matches values equal to a specified value"),
         ("$ne", "Matches values not equal to a specified value"),
         ("$gt", "Matches values greater than a specified value"),
@@ -141,7 +141,7 @@ enum MongoVocabulary {
         ("$polygon", "Polygon argument for $geoWithin")
     ]
 
-    static let updateOperators: [(name: String, detail: String)] = [
+    public static let updateOperators: [(name: String, detail: String)] = [
         ("$set", "Sets the value of a field"),
         ("$unset", "Removes the field from the document"),
         ("$setOnInsert", "Sets the field only when the update inserts a document"),
@@ -163,7 +163,7 @@ enum MongoVocabulary {
         ("$bit", "Performs a bitwise and, or, or xor on an integer field")
     ]
 
-    static let updatePipelineStages: [(name: String, detail: String)] = [
+    public static let updatePipelineStages: [(name: String, detail: String)] = [
         ("$set", "Adds or overwrites fields, as an aggregation stage"),
         ("$addFields", "Adds or overwrites fields"),
         ("$unset", "Removes the named fields"),
@@ -172,7 +172,7 @@ enum MongoVocabulary {
         ("$replaceWith", "Promotes a sub-document to the top level")
     ]
 
-    static let pipelineStages: [(name: String, detail: String)] = [
+    public static let pipelineStages: [(name: String, detail: String)] = [
         ("$match", "Filters documents with a query predicate"),
         ("$group", "Groups documents and applies accumulators"),
         ("$project", "Reshapes each document"),
@@ -211,7 +211,7 @@ enum MongoVocabulary {
         ("$listLocalSessions", "Sessions on the current node")
     ]
 
-    static let expressionOperators: [(name: String, detail: String)] = [
+    public static let expressionOperators: [(name: String, detail: String)] = [
         ("$abs", "Absolute value"), ("$add", "Adds numbers or a date and numbers"),
         ("$ceil", "Rounds up to the nearest integer"), ("$divide", "Divides two numbers"),
         ("$exp", "Raises e to the given exponent"), ("$floor", "Rounds down to the nearest integer"),
@@ -307,7 +307,7 @@ enum MongoVocabulary {
         ("$let", "Binds variables for use in an expression")
     ]
 
-    static let accumulators: [(name: String, detail: String)] = [
+    public static let accumulators: [(name: String, detail: String)] = [
         ("$sum", "Sum of the values"), ("$avg", "Average of the values"),
         ("$min", "Smallest value"), ("$max", "Largest value"),
         ("$first", "Value from the first document"), ("$last", "Value from the last document"),
@@ -327,13 +327,13 @@ enum MongoVocabulary {
         ("$covariancePop", "Population covariance"), ("$covarianceSamp", "Sample covariance")
     ]
 
-    static let projectionOperators: [(name: String, detail: String)] = [
+    public static let projectionOperators: [(name: String, detail: String)] = [
         ("$elemMatch", "Projects the first array element matching a condition"),
         ("$slice", "Limits the array elements projected"),
         ("$meta", "Projects per-document metadata")
     ]
 
-    static let systemVariables: [(name: String, detail: String)] = [
+    public static let systemVariables: [(name: String, detail: String)] = [
         ("$$NOW", "Current datetime, identical for the whole pipeline"),
         ("$$CLUSTER_TIME", "Current cluster timestamp"),
         ("$$ROOT", "The root document being processed"),
@@ -345,7 +345,7 @@ enum MongoVocabulary {
         ("$$USER_ROLES", "Roles assigned to the current user")
     ]
 
-    static let bsonConstructors: [(name: String, detail: String)] = [
+    public static let bsonConstructors: [(name: String, detail: String)] = [
         ("ObjectId", "12-byte ObjectId, from a 24-character hex string"),
         ("ISODate", "Date from an ISO 8601 string"),
         ("UUID", "UUID from a 36-character string, BSON binary subtype 4"),
@@ -375,7 +375,7 @@ enum MongoVocabulary {
         ("DBRef", "Reference to a document by collection, _id and database")
     ]
 
-    static let shellCommands: [(name: String, detail: String)] = [
+    public static let shellCommands: [(name: String, detail: String)] = [
         ("use", "Switch the current database"),
         ("show dbs", "List databases"),
         ("show collections", "List collections in the current database"),

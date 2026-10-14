@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import os
+import TableProMCP
 
 public enum MCPHttpServerState: Sendable, Equatable {
     case idle

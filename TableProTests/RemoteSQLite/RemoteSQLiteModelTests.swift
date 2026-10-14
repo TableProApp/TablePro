@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+@testable import TableProSSHConfig
 
 struct RemoteSQLiteModelTests {
     private func sqliteConnection(access: RemoteFileAccess, path: String = "/srv/app.db") -> DatabaseConnection {

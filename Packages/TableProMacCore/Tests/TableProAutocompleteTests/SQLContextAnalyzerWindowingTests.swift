@@ -1,13 +1,4 @@
-//
-//  SQLContextAnalyzerWindowingTests.swift
-//  TableProTests
-//
-//  Regression tests for SQLContextAnalyzer clause detection on large queries.
-//  Ensures windowing optimizations preserve correct clause detection.
-//
-
-import TableProPluginKit
-@testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct SQLContextAnalyzerWindowingTests {
@@ -60,7 +51,7 @@ struct SQLContextAnalyzerWindowingTests {
 
     @Test("Large INSERT with VALUES keyword near cursor detects values context")
     func largeQueryInsertIntoValuesAtEnd() {
-        let padding = String(repeating: "x", count: 4000)
+        let padding = String(repeating: "x", count: 4_000)
         let query = "INSERT INTO users (\(padding)) VALUES ('a', 'b'), "
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .values)

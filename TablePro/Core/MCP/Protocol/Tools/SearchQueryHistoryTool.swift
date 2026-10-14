@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct SearchQueryHistoryTool: MCPToolImplementation {
     public static let name = "search_query_history"

@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 import TableProPluginKit
 @testable import TablePro
 import XCTest

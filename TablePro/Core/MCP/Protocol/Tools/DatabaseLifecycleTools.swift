@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct CreateDatabaseTool: MCPToolImplementation {
     public static let name = "create_database"

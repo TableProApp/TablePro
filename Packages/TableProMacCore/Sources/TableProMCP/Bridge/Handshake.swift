@@ -1,12 +1,12 @@
 import Foundation
 import os
 
-enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
+public enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
     case launchFailed(status: Int32)
     case timeout(lastFailure: String)
     case serverTurnedOff
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .launchFailed(let status):
             return "Failed to launch TablePro (open exit \(status))"
@@ -18,7 +18,7 @@ enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
     }
 }
 
-struct MCPHandshakeAcquirer: Sendable {
+public struct MCPHandshakeAcquirer: Sendable {
     private static let pollInterval: Duration = .milliseconds(200)
     private static let launchUrl = "tablepro://integrations/start-mcp"
 
@@ -28,7 +28,7 @@ struct MCPHandshakeAcquirer: Sendable {
     private let pollTimeout: Duration
     private let launchHostApp: @Sendable (any MCPBridgeLogger) throws -> Void
 
-    init(
+    public init(
         logger: any MCPBridgeLogger,
         supportDirectory: URL = MCPHandshakeLocation.supportDirectory(),
         pollTimeout: Duration = .seconds(10),
@@ -41,7 +41,7 @@ struct MCPHandshakeAcquirer: Sendable {
         self.launchHostApp = launchHostApp
     }
 
-    func acquire() async throws -> MCPHandshakePayload {
+    public func acquire() async throws -> MCPHandshakePayload {
         if let trusted = loadTrusted().payload {
             return trusted
         }
@@ -73,7 +73,7 @@ struct MCPHandshakeAcquirer: Sendable {
     /// `open` hands its own environment to the app it launches, which is how the flag arrives early
     /// enough for the app to stay out of the Dock and the app switcher. Nobody asked for this window
     /// of TablePro: a client did, to answer a question.
-    static func openHostApp(logger: any MCPBridgeLogger) throws {
+    public static func openHostApp(logger: any MCPBridgeLogger) throws {
         logger.log(.info, "No trusted MCP handshake; launching TablePro via \(Self.launchUrl)")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
@@ -108,7 +108,7 @@ struct MCPHandshakeAcquirer: Sendable {
     }
 }
 
-extension MCPHandshakePayload {
+public extension MCPHandshakePayload {
     func credentials() -> MCPUpstreamCredentials? {
         guard let endpoint else { return nil }
         return MCPUpstreamCredentials(endpoint: endpoint, bearerToken: token)

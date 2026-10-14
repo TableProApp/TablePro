@@ -6,9 +6,9 @@
 //
 
 import Foundation
-import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TableProSSHConfig
 
 struct SSHConfigurationTests {
     @Test("Disabled SSH config is always valid")

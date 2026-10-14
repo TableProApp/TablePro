@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 /// Tiering a DynamoDB request by the action it names and what its body asks for.
 ///

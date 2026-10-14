@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 enum AIEndpointStyle: Sendable, CaseIterable {
     case chatCompletions

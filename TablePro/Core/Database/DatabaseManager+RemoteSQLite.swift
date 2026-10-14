@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHConfig
 
 extension DatabaseManager {
     /// Rewrites a SQLite connection to reach its database through a live session on the SSH server.

@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProUtilities
 
 internal enum SidebarFilterTarget: Equatable {
     case databases

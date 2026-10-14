@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 import TableProPluginKit
 
 /// What one query the session ran gave back, in the terms the result column answers in.

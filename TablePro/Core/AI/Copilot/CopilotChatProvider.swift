@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotChatProvider")

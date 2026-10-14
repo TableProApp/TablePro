@@ -8,6 +8,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 /// Stands in for the forwarding process. `.ready` opens a real loopback listener on the port the
 /// manager put in the arguments, which is what the readiness probe is looking for.

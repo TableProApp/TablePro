@@ -10,6 +10,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProUtilities
 
 struct ImportDialog: View {
     @ObservedObject private var pluginManager = PluginManager.shared

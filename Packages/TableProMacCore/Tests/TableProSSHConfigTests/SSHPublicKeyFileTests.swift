@@ -10,32 +10,8 @@
 import Foundation
 import Testing
 
-@testable import TablePro
-
-/// Builds the SSH wire encodings both a `.pub` file and the agent protocol carry, so no fixture
-/// is a hand-typed base64 string that has to be trusted.
-enum SSHPublicKeyFixture {
-    /// An SSH `string`: a big-endian length followed by that many bytes.
-    static func wireString(_ value: String) -> [UInt8] {
-        let bytes = Array(value.utf8)
-        let length = UInt32(bytes.count)
-        return [
-            UInt8(length >> 24 & 0xFF),
-            UInt8(length >> 16 & 0xFF),
-            UInt8(length >> 8 & 0xFF),
-            UInt8(length & 0xFF),
-        ] + bytes
-    }
-
-    /// A public key blob: its type, then whatever stands in for the key material.
-    static func blob(type: String, seed: UInt8) -> Data {
-        Data(wireString(type) + [UInt8](repeating: seed, count: 32))
-    }
-
-    static func line(type: String, seed: UInt8, comment: String = "alice@example.com") -> String {
-        "\(type) \(blob(type: type, seed: seed).base64EncodedString()) \(comment)"
-    }
-}
+@testable import TableProSSHConfig
+import TableProTestSupport
 
 struct SSHPublicKeyFileTests {
     private static let ed25519 = "ssh-ed25519"

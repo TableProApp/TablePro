@@ -1,11 +1,6 @@
-//
-//  QuickSwitcherFrecencyStore.swift
-//  TablePro
-//
-
 import Foundation
 
-internal struct QuickSwitcherFrecencyStore {
+public struct QuickSwitcherFrecencyStore {
     private struct RecencyBucket {
         let maxAge: TimeInterval
         let weight: Double
@@ -29,13 +24,13 @@ internal struct QuickSwitcherFrecencyStore {
     private let key: String
     private let legacyKey: String
 
-    init(connectionId: UUID, defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+    public init(connectionId: UUID, defaults: UserDefaults) {
         self.defaults = defaults
         self.key = Self.keyPrefix + connectionId.uuidString
         self.legacyKey = Self.legacyMRUKeyPrefix + connectionId.uuidString
     }
 
-    func recordAccess(itemId: String, at date: Date = Date()) {
+    public func recordAccess(itemId: String, at date: Date = Date()) {
         var accesses = loadAccesses()
         var samples = accesses[itemId] ?? []
         samples.append(date.timeIntervalSince1970)
@@ -49,18 +44,18 @@ internal struct QuickSwitcherFrecencyStore {
         defaults.set(accesses, forKey: key)
     }
 
-    func scores(now: Date = Date()) -> [String: Double] {
+    public func scores(now: Date = Date()) -> [String: Double] {
         loadAccesses().mapValues { score(for: $0, now: now) }
     }
 
-    func recentItemIds() -> [String] {
+    public func recentItemIds() -> [String] {
         loadAccesses()
             .compactMap { itemId, samples in samples.max().map { (itemId, $0) } }
             .sorted { $0.1 > $1.1 }
             .map(\.0)
     }
 
-    func clearHistory() {
+    public func clearHistory() {
         defaults.removeObject(forKey: key)
         defaults.removeObject(forKey: legacyKey)
     }

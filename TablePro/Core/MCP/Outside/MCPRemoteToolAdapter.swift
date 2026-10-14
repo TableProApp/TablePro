@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 /// One outside server's tool, offered to a session as an ordinary chat tool.
 ///

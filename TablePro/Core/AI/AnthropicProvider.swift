@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 final class AnthropicProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AnthropicProvider")

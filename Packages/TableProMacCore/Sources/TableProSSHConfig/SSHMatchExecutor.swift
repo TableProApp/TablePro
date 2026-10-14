@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProLogRedaction
 
 enum SSHMatchExecutor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHMatchExecutor")
@@ -38,7 +39,7 @@ enum SSHMatchExecutor {
         do {
             try process.run()
         } catch {
-            logger.warning("Match exec failed to start: \(error.publicLogShape, privacy: .public)")
+            logger.warning("Match exec failed to start: \(LogRedaction.publicDescription(of: error), privacy: .public)")
             return false
         }
 

@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 @testable import TablePro
+import TableProMCP
 import Testing
 
 struct MCPTabIdentityTests {

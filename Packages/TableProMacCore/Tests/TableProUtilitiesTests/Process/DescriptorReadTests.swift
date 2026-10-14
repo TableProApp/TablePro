@@ -1,13 +1,9 @@
-//
-//  DescriptorReadTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
+import TableProTestSupport
 import Testing
 
-@testable import TablePro
+@testable import TableProUtilities
 
 struct DescriptorReadTests {
     @Test("A read returns what has arrived without waiting for the rest", .timeLimit(.minutes(1)))

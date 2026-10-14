@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 enum ChatToolMode: Sendable {
     case readOnly

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 struct DatabaseTreeContainerKey: Hashable {
     let database: String

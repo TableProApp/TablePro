@@ -10,6 +10,6 @@ import Foundation
 /// One response per prompt, in the challenge's prompt order. Implementations throw when the user
 /// declines to answer (cancelled), which aborts the authentication chain instead of silently
 /// trying the next method.
-internal protocol KeyboardInteractivePromptProvider: Sendable {
+public protocol KeyboardInteractivePromptProvider: Sendable {
     func provideResponses(for challenge: KeyboardInteractiveChallenge, attempt: Int) throws -> [String]
 }

@@ -1,21 +1,36 @@
 import Foundation
 import os
+import TableProUtilities
 
-struct BridgeDiscovery: Sendable {
+public struct BridgeDiscovery: Sendable {
     let supportedVersions: [String]
     let capabilities: JsonValue
     let serverInfo: JsonValue?
     let instructions: String?
     let instanceId: String?
+
+    public init(
+        supportedVersions: [String],
+        capabilities: JsonValue,
+        serverInfo: JsonValue?,
+        instructions: String?,
+        instanceId: String?
+    ) {
+        self.supportedVersions = supportedVersions
+        self.capabilities = capabilities
+        self.serverInfo = serverInfo
+        self.instructions = instructions
+        self.instanceId = instanceId
+    }
 }
 
-enum MCPBridgeStartupError: Error, LocalizedError {
+public enum MCPBridgeStartupError: Error, LocalizedError {
     case invalidEndpoint
     case discoveryFailed(String)
     case unverifiedInstance
     case unsupportedUpstreamVersion([String])
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidEndpoint:
             return "The MCP handshake does not describe a usable endpoint"
@@ -30,11 +45,11 @@ enum MCPBridgeStartupError: Error, LocalizedError {
     }
 }
 
-enum BridgeUpstreamHandshake {
+public enum BridgeUpstreamHandshake {
     private static let probeTimeout: Duration = .seconds(10)
     private static let probeRequestId = JsonRpcId.string("tablepro-bridge-discover")
 
-    static func verifiedDiscovery(
+    public static func verifiedDiscovery(
         handshake: MCPHandshakePayload,
         credentials: MCPUpstreamCredentials,
         logger: any MCPBridgeLogger
@@ -118,7 +133,7 @@ enum BridgeIdentity {
     }()
 }
 
-actor BridgeProxy {
+public actor BridgeProxy {
     private static let initializeMethod = "initialize"
     private static let initializedNotification = "notifications/initialized"
     private static let pingMethod = "ping"
@@ -132,7 +147,7 @@ actor BridgeProxy {
 
     private var clientInfo: JsonValue?
 
-    init(
+    public init(
         upstream: MCPStreamableHttpClientTransport,
         discovery: BridgeDiscovery,
         logger: any MCPBridgeLogger,
@@ -146,7 +161,7 @@ actor BridgeProxy {
         self.hostLines = BridgeStdin.lines(from: stdin, logger: logger)
     }
 
-    func run() async {
+    public func run() async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.pumpHost() }
             group.addTask { await self.pumpUpstream() }

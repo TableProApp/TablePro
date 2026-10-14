@@ -1,13 +1,8 @@
-//
-//  DescriptorWrite.swift
-//  TablePro
-//
-
 import Darwin
 import Foundation
 
-internal enum DescriptorWrite {
-    static func allBytes(_ bytes: Data, to descriptor: Int32) throws {
+public enum DescriptorWrite {
+    public static func allBytes(_ bytes: Data, to descriptor: Int32) throws {
         try bytes.withUnsafeBytes { buffer in
             guard let start = buffer.baseAddress else { return }
             var offset = 0

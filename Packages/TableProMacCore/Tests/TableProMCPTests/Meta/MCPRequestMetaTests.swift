@@ -1,6 +1,6 @@
 import Foundation
-import TableProPluginKit
-@testable import TablePro
+@testable import TableProMCP
+import TableProMCPTestSupport
 import Testing
 
 struct MCPRequestMetaTests {
@@ -183,7 +183,7 @@ struct MCPRequestMetaTests {
         #expect(MCPRequestMeta.declaresModernProtocol(params: nil) == false)
         #expect(MCPRequestMeta.declaresModernProtocol(params: .object([:])) == false)
         #expect(MCPRequestMeta.declaresModernProtocol(params: .object(["_meta": .object([:])])) == false)
-        let numericVersion = JsonValue.object(["_meta": .object([MCPMetaKeys.protocolVersion: .int(2026)])])
+        let numericVersion = JsonValue.object(["_meta": .object([MCPMetaKeys.protocolVersion: .int(2_026)])])
         #expect(MCPRequestMeta.declaresModernProtocol(params: numericVersion) == false)
     }
 

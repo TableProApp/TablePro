@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import Foundation
 import os
+import TableProUtilities
 
 private let favoritesLogger = Logger(subsystem: "com.TablePro", category: "Favorites")
 

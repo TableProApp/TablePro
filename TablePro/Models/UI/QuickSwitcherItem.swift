@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 /// The type of database object represented by a quick switcher item
 internal enum QuickSwitcherItemKind: String, Hashable, Sendable {

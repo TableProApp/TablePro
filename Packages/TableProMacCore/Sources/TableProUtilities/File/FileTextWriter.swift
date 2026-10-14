@@ -1,27 +1,22 @@
-//
-//  FileTextWriter.swift
-//  TablePro
-//
-
 import Foundation
 
-internal enum FileTextWriter {
-    enum WriteError: Error, Equatable {
+public enum FileTextWriter {
+    public enum WriteError: Error, Equatable {
         case unrepresentable(FileTextEncoding)
     }
 
-    typealias AttributeApplier = (TextEncodingAttribute, URL) throws -> Void
+    public typealias AttributeApplier = (TextEncodingAttribute, URL) throws -> Void
 
     private static let stagingPrefix = ".tablepro-save-"
 
-    static func write(_ text: String, to url: URL, as encoding: FileTextEncoding) throws {
+    public static func write(_ text: String, to url: URL, as encoding: FileTextEncoding) throws {
         guard let bytes = encoding.bytes(of: text) else {
             throw WriteError.unrepresentable(encoding)
         }
         try replaceContents(of: url, with: bytes, attribute: encoding.attribute)
     }
 
-    static func replaceContents(
+    public static func replaceContents(
         of url: URL,
         with bytes: Data,
         attribute: TextEncodingAttribute?,

@@ -7,20 +7,20 @@ import Darwin
 import Foundation
 import os
 
-struct SSHConfigEntry: Identifiable, Hashable {
-    let id = UUID()
-    let host: String
-    let hostname: String?
-    let port: Int?
-    let user: String?
-    let identityFiles: [String]
-    let identityAgent: String?
-    let proxyJump: String?
-    let identitiesOnly: Bool?
-    let addKeysToAgent: Bool?
-    let useKeychain: Bool?
+public struct SSHConfigEntry: Identifiable, Hashable, Sendable {
+    public let id = UUID()
+    public let host: String
+    public let hostname: String?
+    public let port: Int?
+    public let user: String?
+    public let identityFiles: [String]
+    public let identityAgent: String?
+    public let proxyJump: String?
+    public let identitiesOnly: Bool?
+    public let addKeysToAgent: Bool?
+    public let useKeychain: Bool?
 
-    var displayName: String {
+    public var displayName: String {
         if let hostname, hostname != host {
             return "\(host) (\(hostname))"
         }
@@ -28,23 +28,23 @@ struct SSHConfigEntry: Identifiable, Hashable {
     }
 }
 
-enum SSHConfigParser {
+public enum SSHConfigParser {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHConfigParser")
     private static let maxIncludeDepth = 10
 
-    static let defaultConfigPath = FileManager.default.homeDirectoryForCurrentUser
+    public static let defaultConfigPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".ssh/config").path(percentEncoded: false)
 
     // MARK: - Public API
 
-    static func parseDocument(path: String = defaultConfigPath) -> SSHConfigDocument {
+    public static func parseDocument(path: String = defaultConfigPath) -> SSHConfigDocument {
         var visited = Set<String>()
         var sources: [String] = []
         let blocks = parseFile(path: path, visited: &visited, sources: &sources, depth: 0)
         return SSHConfigDocument(blocks: blocks, sourcePaths: sources)
     }
 
-    static func parse(path: String = defaultConfigPath) -> [SSHConfigEntry] {
+    public static func parse(path: String = defaultConfigPath) -> [SSHConfigEntry] {
         flatten(parseDocument(path: path))
     }
 

@@ -3,9 +3,9 @@
 //  TableProTests
 //
 
-import TableProPluginKit
-@testable import TablePro
 import XCTest
+
+@testable import TableProSSHConfig
 
 final class Base32Tests: XCTestCase {
     // MARK: - RFC 4648 Test Vectors

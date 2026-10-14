@@ -7,6 +7,7 @@
 
 import Foundation
 
+import TableProSSHConfig
 import TableProSSHTransport
 
 // MARK: - SSH Tunnel Helper

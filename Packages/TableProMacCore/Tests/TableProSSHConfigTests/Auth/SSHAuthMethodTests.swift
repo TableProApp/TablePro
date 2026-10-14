@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import TablePro
+@testable import TableProSSHConfig
 
 struct SSHAuthMethodTests {
     @Test("None is the only method without two-factor authentication")

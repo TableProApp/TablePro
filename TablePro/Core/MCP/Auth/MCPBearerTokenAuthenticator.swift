@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
 import os
+import TableProMCP
+import TableProUtilities
 
 public struct MCPValidatedToken: Sendable, Equatable {
     public let tokenId: UUID

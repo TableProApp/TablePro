@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public struct PromptsGetHandler: MCPMethodHandler {
     public static let method = "prompts/get"

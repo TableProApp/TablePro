@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProUtilities
 
 struct QueryInsightsView: View {
     @ObservedObject var viewModel: QueryInsightsViewModel

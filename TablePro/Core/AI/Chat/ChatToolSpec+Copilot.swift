@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 extension ChatToolSpec {
     func asCopilotToolInformation() -> CopilotLanguageModelToolInformation {

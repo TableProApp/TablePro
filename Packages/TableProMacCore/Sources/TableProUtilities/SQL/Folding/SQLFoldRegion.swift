@@ -1,13 +1,7 @@
-//
-//  SQLFoldRegion.swift
-//  TablePro
-//
-
 import Foundation
 
-/// A span of SQL that can be collapsed to a single line.
-struct SQLFoldRegion: Sendable, Equatable {
-    enum Kind: Sendable, Equatable {
+public struct SQLFoldRegion: Sendable, Equatable {
+    public enum Kind: Sendable, Equatable {
         case statement
         case parenGroup
         case keywordBlock
@@ -15,21 +9,21 @@ struct SQLFoldRegion: Sendable, Equatable {
         case quotedBody
     }
 
-    let kind: Kind
-    let depth: Int
-    let range: Range<Int>
-    let startLine: Int
-    let endLine: Int
+    public let kind: Kind
+    public let depth: Int
+    public let range: Range<Int>
+    public let startLine: Int
+    public let endLine: Int
 }
 
-/// Every foldable region in a document, indexed by the line its events land on.
-struct SQLFoldStructure: Sendable, Equatable {
-    static let empty = SQLFoldStructure(startsByLine: [:], endsByLine: [:])
+/// Indexed by the line each region's start or end lands on.
+public struct SQLFoldStructure: Sendable, Equatable {
+    public static let empty = SQLFoldStructure(startsByLine: [:], endsByLine: [:])
 
-    let startsByLine: [Int: [SQLFoldRegion]]
-    let endsByLine: [Int: [SQLFoldRegion]]
+    public let startsByLine: [Int: [SQLFoldRegion]]
+    public let endsByLine: [Int: [SQLFoldRegion]]
 
-    var regions: [SQLFoldRegion] {
+    public var regions: [SQLFoldRegion] {
         startsByLine.values.flatMap { $0 }.sorted {
             $0.range.lowerBound == $1.range.lowerBound
                 ? $0.depth < $1.depth

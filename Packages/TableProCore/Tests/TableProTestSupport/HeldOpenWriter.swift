@@ -1,22 +1,17 @@
-//
-//  HeldOpenWriter.swift
-//  TableProTests
-//
-
 import Foundation
 
-internal struct HeldOpenWriter: Sendable {
+public struct HeldOpenWriter: Sendable {
     private let handle: FileHandle
 
-    init(_ handle: FileHandle) {
+    public init(_ handle: FileHandle) {
         self.handle = handle
     }
 
-    func finished<Value: Sendable>(_ work: @escaping @Sendable () async -> Value) async -> Value? {
+    public func finished<Value: Sendable>(_ work: @escaping @Sendable () async -> Value) async -> Value? {
         await BoundedCall.result(onDeadline: closeWriter, of: work)
     }
 
-    func finishedOnItsOwnThread<Value: Sendable>(_ work: @escaping @Sendable () -> Value) async -> Value? {
+    public func finishedOnItsOwnThread<Value: Sendable>(_ work: @escaping @Sendable () -> Value) async -> Value? {
         await BoundedCall.resultOnItsOwnThread(onDeadline: closeWriter, of: work)
     }
 

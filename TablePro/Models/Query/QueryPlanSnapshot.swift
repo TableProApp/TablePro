@@ -12,6 +12,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 /// Where a plan was produced. Two plans from different databases describe different work even when
 /// the statement is spelled the same way.

@@ -1,8 +1,3 @@
-//
-//  DatabaseFileSignature.swift
-//  TablePro
-//
-
 import Foundation
 
 /// The byte patterns a file must carry, at fixed offsets from its start, to be one an engine wrote.
@@ -15,33 +10,33 @@ import Foundation
 ///
 /// Every marker has to match, which is what keeps a short one honest: `DUCK` alone is four bytes
 /// that `SELECT 'DUCK';` also spells at offset 8.
-internal struct DatabaseFileSignature: Sendable, Hashable {
-    internal struct Marker: Sendable, Hashable {
-        internal let offset: Int
-        internal let bytes: [UInt8]
+public struct DatabaseFileSignature: Sendable, Hashable {
+    public struct Marker: Sendable, Hashable {
+        public let offset: Int
+        public let bytes: [UInt8]
     }
 
-    internal let markers: [Marker]
+    public let markers: [Marker]
 
-    internal static func magic(_ ascii: String, at offset: Int = 0) -> DatabaseFileSignature {
+    public static func magic(_ ascii: String, at offset: Int = 0) -> DatabaseFileSignature {
         DatabaseFileSignature(markers: [Marker(offset: offset, bytes: Array(ascii.utf8))])
     }
 
-    internal func andZeroes(at offset: Int, count: Int) -> DatabaseFileSignature {
+    public func andZeroes(at offset: Int, count: Int) -> DatabaseFileSignature {
         DatabaseFileSignature(
             markers: markers + [Marker(offset: offset, bytes: [UInt8](repeating: 0, count: count))]
         )
     }
 
-    internal var requiredPrefixLength: Int {
+    public var requiredPrefixLength: Int {
         markers.reduce(0) { max($0, $1.offset + $1.bytes.count) }
     }
 
-    internal var totalMarkerLength: Int {
+    public var totalMarkerLength: Int {
         markers.reduce(0) { $0 + $1.bytes.count }
     }
 
-    internal func matches(_ prefix: [UInt8]) -> Bool {
+    public func matches(_ prefix: [UInt8]) -> Bool {
         markers.allSatisfy { marker in
             let end = marker.offset + marker.bytes.count
             guard marker.offset >= 0, prefix.count >= end else { return false }

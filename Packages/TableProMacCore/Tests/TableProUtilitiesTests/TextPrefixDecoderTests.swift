@@ -1,10 +1,5 @@
-//
-//  TextPrefixDecoderTests.swift
-//  TableProTests
-//
-
 import Foundation
-@testable import TablePro
+@testable import TableProUtilities
 import Testing
 
 struct TextPrefixDecoderTests {

@@ -1,15 +1,5 @@
-//
-//  SQLTokenBoundaryTests.swift
-//  TableProTests
-//
-//  Tests for SQLTokenBoundary: the shared identifier-boundary rule used by
-//  the context analyzer and the completion adapter. Includes the regression
-//  for accepting a completion with a stale stored range (typing "mess" then
-//  Tab must produce "message", never "memessage").
-//
-
 import Foundation
-@testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct SQLTokenBoundaryTests {

@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
 import os
+import TableProMCP
+import TableProUtilities
 
 final class MCPAuditWriteQueue: @unchecked Sendable {
     static let shared = MCPAuditWriteQueue()

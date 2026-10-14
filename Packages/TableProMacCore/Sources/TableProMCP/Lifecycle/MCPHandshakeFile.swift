@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import os
+import TableProLogRedaction
 
 public struct MCPHandshakePayload: Codable, Sendable, Equatable {
     public static let currentVersion = 2
@@ -265,13 +266,13 @@ public final class MCPServerInstanceIdentity: Sendable {
 }
 
 @MainActor
-internal final class MCPHandshakeFile {
+public final class MCPHandshakeFile {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Handshake")
 
     private let directory: URL
     private let fileManager: FileManager
 
-    internal init(directory: URL, fileManager: FileManager = .default) {
+    public init(directory: URL, fileManager: FileManager = .default) {
         self.directory = directory
         self.fileManager = fileManager
     }
@@ -284,24 +285,24 @@ internal final class MCPHandshakeFile {
         MCPHandshakeLocation.refusalFile(in: directory)
     }
 
-    internal func write(_ payload: MCPHandshakePayload) {
+    public func write(_ payload: MCPHandshakePayload) {
         do {
             try replace(url, with: MCPHandshakeCoding.encoder().encode(payload))
             Self.logger.info("Wrote the MCP handshake file at \(self.url.path, privacy: .private(mask: .hash))")
         } catch {
-            Self.logger.error("Failed to write the MCP handshake file: \(error.publicLogShape, privacy: .public)")
+            Self.logger.error("Failed to write the MCP handshake file: \(LogRedaction.publicDescription(of: error), privacy: .public)")
         }
     }
 
-    internal func writeRefusal(_ refusal: MCPStartRefusal) {
+    public func writeRefusal(_ refusal: MCPStartRefusal) {
         do {
             try replace(refusalUrl, with: MCPHandshakeCoding.encoder().encode(refusal))
         } catch {
-            Self.logger.error("Failed to write the MCP start refusal: \(error.publicLogShape, privacy: .public)")
+            Self.logger.error("Failed to write the MCP start refusal: \(LogRedaction.publicDescription(of: error), privacy: .public)")
         }
     }
 
-    internal func removeRefusal() {
+    public func removeRefusal() {
         remove(refusalUrl)
     }
 
@@ -324,7 +325,7 @@ internal final class MCPHandshakeFile {
         try fileManager.moveItem(at: staging, to: destination)
     }
 
-    internal func removeIfWrittenByThisProcess(instanceId: String) {
+    public func removeIfWrittenByThisProcess(instanceId: String) {
         guard let payload = readWithoutTrustChecks() else { return }
         guard payload.pid == ProcessInfo.processInfo.processIdentifier,
               payload.instanceId == instanceId else {
@@ -334,7 +335,7 @@ internal final class MCPHandshakeFile {
         remove()
     }
 
-    internal func removeIfAbandoned() {
+    public func removeIfAbandoned() {
         guard let payload = readWithoutTrustChecks() else { return }
         let isOwnProcess = payload.pid == ProcessInfo.processInfo.processIdentifier
         let isLive = MCPHandshakeTrust.isRunning(pid: payload.pid)
@@ -353,7 +354,7 @@ internal final class MCPHandshakeFile {
         } catch CocoaError.fileNoSuchFile {
             return
         } catch {
-            Self.logger.error("Failed to delete \(file.lastPathComponent, privacy: .public): \(error.publicLogShape, privacy: .public)")
+            Self.logger.error("Failed to delete \(file.lastPathComponent, privacy: .public): \(LogRedaction.publicDescription(of: error), privacy: .public)")
         }
     }
 

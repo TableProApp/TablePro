@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProSSHConfig
 
 @MainActor
 final class SSHPaneViewModel: ObservableObject {

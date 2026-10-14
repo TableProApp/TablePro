@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 /// Remembers which connections a client may reach. A grant is a decision the user made and belongs
 /// to a `MCPGrantSubject`, so it survives the server teardown that a settings edit triggers, and a

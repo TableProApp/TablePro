@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 internal struct FavoriteTableBrowseScope: Equatable {
     internal let database: String?

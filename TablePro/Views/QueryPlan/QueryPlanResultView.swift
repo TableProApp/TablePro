@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProUtilities
 
 enum QueryPlanViewMode: String, CaseIterable, Identifiable {
     case diagram

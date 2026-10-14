@@ -1,10 +1,5 @@
-//
-//  MCPServerConfigurationTests.swift
-//  TableProTests
-//
-
 import Foundation
-@testable import TablePro
+@testable import TableProMCP
 import Testing
 
 struct MCPServerConfigurationTests {

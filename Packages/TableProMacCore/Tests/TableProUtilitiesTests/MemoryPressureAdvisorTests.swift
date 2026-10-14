@@ -1,11 +1,6 @@
-//
-//  MemoryPressureAdvisorTests.swift
-//  TableProTests
-//
-
-import TableProPluginKit
 import Testing
-@testable import TablePro
+
+@testable import TableProUtilities
 
 @MainActor
 struct MemoryPressureAdvisorTests {
@@ -18,7 +13,7 @@ struct MemoryPressureAdvisorTests {
 
     @Test("memory estimation for typical tab")
     func typicalTabEstimate() {
-        let bytes = MemoryPressureAdvisor.estimatedFootprint(rowCount: 1000, columnCount: 10)
+        let bytes = MemoryPressureAdvisor.estimatedFootprint(rowCount: 1_000, columnCount: 10)
         #expect(bytes == 640_000)
     }
 

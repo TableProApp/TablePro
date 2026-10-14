@@ -7,8 +7,9 @@
 //
 
 import Foundation
-@testable import TablePro
 import Testing
+
+@testable import TableProSSHConfig
 
 struct SSHConfigTokensTests {
     private static let context = SSHTokenContext(

@@ -1,8 +1,3 @@
-//
-//  SQLPreambleNormalizer.swift
-//  TablePro
-//
-
 import Foundation
 
 /// Collapses the options a user typed in front of a statement to one spelling, so
@@ -10,8 +5,8 @@ import Foundation
 ///
 /// Deliberately not `SQLQueryFingerprint`: that one replaces literals with `?`, which would erase
 /// `COSTS off` and `FORMAT JSON`, the very options that decide whether two plans are comparable.
-enum SQLPreambleNormalizer {
-    static func normalize(_ sql: String) -> String {
+public enum SQLPreambleNormalizer {
+    public static func normalize(_ sql: String) -> String {
         var components: [String] = []
         var token = ""
 

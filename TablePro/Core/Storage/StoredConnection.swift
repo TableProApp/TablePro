@@ -6,6 +6,7 @@
 import Foundation
 import TableProConnectionLibrary
 import TableProPluginKit
+import TableProSSHConfig
 
 struct StoredConnection: Codable {
     let id: UUID

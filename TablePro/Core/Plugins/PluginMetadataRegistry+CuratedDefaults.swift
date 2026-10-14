@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 /// What the app knows about a database type before its plugin loads.
 ///

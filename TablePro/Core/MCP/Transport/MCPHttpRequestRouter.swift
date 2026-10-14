@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 struct MCPHttpRequestRouter: Sendable {
     typealias InboundEmitter = @Sendable (MCPInboundExchange) -> AsyncStream<MCPInboundExchange>.Continuation.YieldResult

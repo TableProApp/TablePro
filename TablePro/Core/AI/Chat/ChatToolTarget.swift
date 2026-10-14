@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 internal enum ChatToolTargetError: LocalizedError, Equatable {
     case outsideSession

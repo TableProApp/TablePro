@@ -88,7 +88,10 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProSSHConfigTests",
-            dependencies: ["TableProSSHConfig"],
+            dependencies: [
+                "TableProSSHConfig",
+                .product(name: "TableProTestSupport", package: "TableProCore")
+            ],
             path: "Tests/TableProSSHConfigTests",
             swiftSettings: appModuleSettings
         ),

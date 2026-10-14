@@ -5,8 +5,7 @@
 
 import XCTest
 
-import TableProPluginKit
-@testable import TablePro
+@testable import TableProSSHConfig
 
 final class TOTPGeneratorTests: XCTestCase {
     // MARK: - RFC 6238 SHA1 Test Vectors (8 digits)

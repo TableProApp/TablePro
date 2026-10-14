@@ -6,6 +6,7 @@
 import Darwin
 import Foundation
 @testable import TablePro
+import TableProSSHConfig
 import Testing
 
 @MainActor

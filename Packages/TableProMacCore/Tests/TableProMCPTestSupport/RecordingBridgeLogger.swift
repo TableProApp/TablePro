@@ -1,22 +1,24 @@
 import Foundation
-@testable import TablePro
+import TableProMCP
 
-final class RecordingBridgeLogger: MCPBridgeLogger, @unchecked Sendable {
-    struct Entry: Sendable {
-        let level: MCPBridgeLogLevel
-        let message: String
+public final class RecordingBridgeLogger: MCPBridgeLogger, @unchecked Sendable {
+    public struct Entry: Sendable {
+        public let level: MCPBridgeLogLevel
+        public let message: String
     }
 
     private let lock = NSLock()
     private var storage: [Entry] = []
 
-    var entries: [Entry] {
+    public init() {}
+
+    public var entries: [Entry] {
         lock.lock()
         defer { lock.unlock() }
         return storage
     }
 
-    func log(_ level: MCPBridgeLogLevel, _ message: String) {
+    public func log(_ level: MCPBridgeLogLevel, _ message: String) {
         lock.lock()
         defer { lock.unlock() }
         storage.append(Entry(level: level, message: message))

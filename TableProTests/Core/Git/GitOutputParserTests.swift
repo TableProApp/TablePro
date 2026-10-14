@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+@testable import TableProUtilities
 
 struct GitOutputParserTests {
     private func bytes(_ string: String) -> Data {

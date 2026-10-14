@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct ServerDashboardTool: MCPToolImplementation {
     public static let name = "get_server_dashboard"

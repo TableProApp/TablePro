@@ -6,9 +6,9 @@
 //
 
 import Foundation
-import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TableProSSHConfig
 
 struct SSHJumpHostTests {
     @Test("proxyJumpString formats correctly")

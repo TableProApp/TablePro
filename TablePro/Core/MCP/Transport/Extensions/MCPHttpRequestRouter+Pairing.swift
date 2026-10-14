@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 internal extension MCPHttpRequestRouter {
     func handlePairingExchange(body: Data, context: HttpConnectionContext) async {

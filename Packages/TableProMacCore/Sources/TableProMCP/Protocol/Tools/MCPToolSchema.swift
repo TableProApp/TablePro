@@ -1,6 +1,8 @@
 import Foundation
 
-enum MCPToolSchema {
+public enum MCPToolSchema {}
+
+public extension MCPToolSchema {
     static func object(
         properties: [String: JsonValue],
         required: [String] = [],

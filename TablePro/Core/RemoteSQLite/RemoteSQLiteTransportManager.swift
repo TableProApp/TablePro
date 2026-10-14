@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProSSHConfig
 
 /// The loopback endpoint a remote SQLite connection's driver dials, and the token that admits it.
 struct RemoteSQLiteEndpoint: Sendable {

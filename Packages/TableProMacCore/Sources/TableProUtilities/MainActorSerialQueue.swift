@@ -1,12 +1,12 @@
 import Foundation
 
 @MainActor
-internal final class MainActorSerialQueue {
+public final class MainActorSerialQueue {
     private var tail: Task<Void, Never>?
 
-    nonisolated internal init() {}
+    nonisolated public init() {}
 
-    internal func run<Value: Sendable>(_ operation: @escaping @MainActor () async -> Value) async -> Value {
+    public func run<Value: Sendable>(_ operation: @escaping @MainActor () async -> Value) async -> Value {
         let previous = tail
         let current = Task { @MainActor in
             await previous?.value

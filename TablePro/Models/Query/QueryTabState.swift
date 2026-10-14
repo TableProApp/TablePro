@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 @MainActor
 final class GridSelectionState: ObservableObject {

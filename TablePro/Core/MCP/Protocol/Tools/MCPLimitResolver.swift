@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 enum MCPLimitResolver {
     static func resolveMaxRows(requested: Int?, settings: MCPSettings) -> Int {

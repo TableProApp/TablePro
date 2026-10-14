@@ -6,7 +6,7 @@
 import Foundation
 import os
 
-struct ResolverEnvironment: Sendable {
+public struct ResolverEnvironment: Sendable {
     var runShell: @Sendable (String) -> Bool
     var canonicalize: @Sendable (String, SSHCanonicalizationOptions) -> String?
     var currentLocalUser: @Sendable () -> String
@@ -26,7 +26,7 @@ struct ResolverEnvironment: Sendable {
         self.localHostname = localHostname
     }
 
-    static let live = ResolverEnvironment(
+    public static let live = ResolverEnvironment(
         runShell: SSHMatchExecutor.evaluate,
         canonicalize: { host, options in
             SSHHostnameCanonicalizer.canonicalize(host: host, options: options)
@@ -36,10 +36,10 @@ struct ResolverEnvironment: Sendable {
     )
 }
 
-enum SSHConfigResolver {
+public enum SSHConfigResolver {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHConfigResolver")
 
-    static func resolve(
+    public static func resolve(
         _ config: SSHConfiguration,
         document: SSHConfigDocument,
         env: ResolverEnvironment = .live
@@ -56,7 +56,7 @@ enum SSHConfigResolver {
         )
     }
 
-    static func resolve(
+    public static func resolve(
         _ jumpHost: SSHJumpHost,
         document: SSHConfigDocument,
         env: ResolverEnvironment = .live

@@ -1,12 +1,7 @@
-//
-//  JavaScriptStatementScannerTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
-@testable import TablePro
+@testable import TableProUtilities
 
 struct JavaScriptStatementScannerTests {
     private func texts(_ source: String) -> [String] {

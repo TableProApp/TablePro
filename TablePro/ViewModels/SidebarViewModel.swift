@@ -7,6 +7,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProUtilities
 
 @MainActor
 final class SidebarViewModel: ObservableObject {

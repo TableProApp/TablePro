@@ -1,8 +1,3 @@
-//
-//  JavaScriptStatementScanner.swift
-//  TablePro
-//
-
 import Foundation
 import TableProSQLGrammar
 
@@ -22,17 +17,17 @@ import TableProSQLGrammar
 ///   continues it (`else`, `catch`, `finally`, `while`),
 /// - a newline at depth zero where the next token cannot continue the expression, which is the
 ///   offending-token half of automatic semicolon insertion.
-enum JavaScriptStatementScanner {
-    struct Statement {
-        let text: String
-        let range: NSRange
+public enum JavaScriptStatementScanner {
+    public struct Statement {
+        public let text: String
+        public let range: NSRange
 
-        var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        public var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
         /// Whether the span holds anything to run. A trailing `// note` after a semicolon is a
         /// statement to the scanner and nothing at all to the engine, so counting it adds an empty
         /// result and a gutter control that runs nothing.
-        var hasContent: Bool {
+        public var hasContent: Bool {
             StatementBlank.hasContent(JavaScriptStatementScanner.strippingComments(text))
         }
     }
@@ -46,7 +41,7 @@ enum JavaScriptStatementScanner {
     private static let continuationKeywords: Set<String> = ["else", "catch", "finally", "while"]
 
     /// Comment text never runs, so a span holding only comments is not a statement to execute.
-    static func strippingComments(_ text: String) -> String {
+    public static func strippingComments(_ text: String) -> String {
         let source = text as NSString
         var stripped = ""
         var index = 0
@@ -85,18 +80,17 @@ enum JavaScriptStatementScanner {
 
     // MARK: - Public API
 
-    /// Every statement in the document, including the empty and comment-only stretches, in order.
-    static func locatedStatements(in source: String) -> [Statement] {
+    /// Includes the empty and comment-only stretches.
+    public static func locatedStatements(in source: String) -> [Statement] {
         scan(source)
     }
 
-    /// The statements a run can execute, in order, with their spans.
-    static func executableStatements(in source: String) -> [Statement] {
+    public static func executableStatements(in source: String) -> [Statement] {
         scan(source).filter(\.hasContent)
     }
 
-    /// The statement the caret sits in, or the last one when the caret is past the end.
-    static func statementAtCursor(in source: String, cursorPosition: Int) -> Statement? {
+    /// Past the end, the caret belongs to the last statement.
+    public static func statementAtCursor(in source: String, cursorPosition: Int) -> Statement? {
         let statements = scan(source).filter(\.hasContent)
         guard !statements.isEmpty else { return nil }
         for statement in statements where cursorPosition <= statement.range.upperBound

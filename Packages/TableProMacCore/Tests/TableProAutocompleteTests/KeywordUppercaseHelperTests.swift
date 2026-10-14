@@ -1,10 +1,8 @@
 import Foundation
-import TableProPluginKit
-@testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct KeywordUppercaseHelperTests {
-
     // MARK: - isWordBoundary
 
     @Test("Space is a word boundary")
@@ -286,7 +284,6 @@ struct KeywordUppercaseHelperTests {
 
     @Test("Detects keyword followed by parenthesis")
     func keywordBeforeParen() {
-        let text: NSString = "count("
         // "count" is not a keyword, but "where" is
         let text2: NSString = "where("
         let result2 = KeywordUppercaseHelper.keywordBeforePosition(text2, at: 5)

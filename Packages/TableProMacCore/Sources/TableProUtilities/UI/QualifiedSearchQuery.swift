@@ -1,8 +1,3 @@
-//
-//  QualifiedSearchQuery.swift
-//  TablePro
-//
-
 import Foundation
 
 /// A search that says where an object lives as well as what it is called: `attendance.timesheet`,
@@ -14,13 +9,13 @@ import Foundation
 /// and `` `x` ``, each with its doubled closing character as an escape. A dot inside quotes belongs
 /// to the name. Text with no unquoted dot is not qualified, and neither is text with an empty
 /// container such as `.orders` or `a..b`, so both stay ordinary searches.
-internal struct QualifiedSearchQuery: Equatable, Sendable {
+public struct QualifiedSearchQuery: Equatable, Sendable {
     /// Outermost first: `["shop", "attendance"]` for `shop.attendance.timesheet`.
-    internal let containers: [String]
+    public let containers: [String]
     /// Empty when the text ends in a dot, which asks for everything in the container.
-    internal let name: String
+    public let name: String
 
-    internal init?(_ text: String) {
+    public init?(_ text: String) {
         let segments = Self.segments(of: text)
         guard segments.count > 1, let name = segments.last else { return nil }
         let containers = Array(segments.dropLast())
@@ -33,7 +28,7 @@ internal struct QualifiedSearchQuery: Equatable, Sendable {
     /// left, so `attendance.timesheet` reaches the schema of `[database, schema]` and
     /// `shop.attendance.timesheet` reaches both. Nil when the query names more containers than the
     /// location has, which no match can satisfy.
-    internal func containerPairs(with location: [String]) -> [(query: String, candidate: String)]? {
+    public func containerPairs(with location: [String]) -> [(query: String, candidate: String)]? {
         guard containers.count <= location.count else { return nil }
         return Array(zip(containers, location.suffix(containers.count)))
     }
@@ -42,7 +37,7 @@ internal struct QualifiedSearchQuery: Equatable, Sendable {
     /// even when they share a name: a PostgreSQL database `shop` can hold a schema `shop`, and
     /// `shop.shop.orders` has to reach it. An engine that reports its database as the schema of a
     /// schema-less object still matches `shop.orders`, since the query lines up from the right.
-    internal static func location(database: String?, schema: String?) -> [String] {
+    public static func location(database: String?, schema: String?) -> [String] {
         [database, schema].compactMap { part in
             guard let part, !part.isEmpty else { return nil }
             return part

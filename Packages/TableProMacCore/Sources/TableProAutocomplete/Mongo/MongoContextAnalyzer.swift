@@ -1,6 +1,6 @@
 import Foundation
 
-enum MongoCompletionPosition: Equatable {
+public enum MongoCompletionPosition: Equatable, Sendable {
     case statementStart
     case databaseMember
     case collectionMethod(collection: String)
@@ -15,13 +15,13 @@ enum MongoCompletionPosition: Equatable {
     case suppressed
 }
 
-struct MongoContext: Equatable {
-    let position: MongoCompletionPosition
-    let prefix: String
-    let prefixRange: NSRange
+public struct MongoContext: Equatable, Sendable {
+    public let position: MongoCompletionPosition
+    public let prefix: String
+    public let prefixRange: NSRange
 }
 
-enum MongoContextAnalyzer {
+public enum MongoContextAnalyzer {
     private static let openParen = UInt16(UnicodeScalar("(").value)
     private static let closeParen = UInt16(UnicodeScalar(")").value)
     private static let openBrace = UInt16(UnicodeScalar("{").value)
@@ -53,7 +53,7 @@ enum MongoContextAnalyzer {
         var isInComment = false
     }
 
-    static func analyze(text: NSString, cursor: Int) -> MongoContext {
+    public static func analyze(text: NSString, cursor: Int) -> MongoContext {
         let bounded = max(0, min(cursor, text.length))
         let prefixRange = prefixRange(in: text, endingAt: bounded)
         let prefix = text.substring(with: prefixRange)
@@ -66,7 +66,7 @@ enum MongoContextAnalyzer {
         )
     }
 
-    static func prefixRange(in text: NSString, endingAt offset: Int) -> NSRange {
+    public static func prefixRange(in text: NSString, endingAt offset: Int) -> NSRange {
         var start = max(0, min(offset, text.length))
 
         while start > 0 {

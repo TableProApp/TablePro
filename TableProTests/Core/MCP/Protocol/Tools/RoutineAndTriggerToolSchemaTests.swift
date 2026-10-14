@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProMCP
 import Testing
 
 /// The declared output schema is the contract an MCP client reads. A field the bridge emits but the

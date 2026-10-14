@@ -12,6 +12,7 @@
 
 import Foundation
 @testable import TablePro
+@testable import TableProAutocomplete
 import TableProEditorKit
 import TableProPluginKit
 import TableProTextEngine

@@ -6,8 +6,8 @@
 import CryptoKit
 import Foundation
 
-internal struct TOTPGenerator {
-    enum Algorithm {
+public struct TOTPGenerator: Sendable {
+    public enum Algorithm: Sendable {
         case sha1, sha256, sha512
     }
 
@@ -56,8 +56,7 @@ internal struct TOTPGenerator {
         return period - elapsed
     }
 
-    /// Create a generator from a base32-encoded secret string.
-    static func fromBase32Secret(
+    public static func fromBase32Secret(
         _ secretString: String,
         algorithm: Algorithm = .sha1,
         digits: Int = 6,

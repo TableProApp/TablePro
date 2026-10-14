@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProUtilities
 
 internal enum QuickSwitcherRanking {
     static let maxResults = 200

@@ -1,14 +1,5 @@
-//
-//  SQLCompletionInsertionTests.swift
-//  TableProTests
-//
-//  Tests for SQLCompletionInsertion: the accept-time decision for what text
-//  a completion inserts and where the caret lands. Pins the favorite marker
-//  rule, the function-paren rule, and the end-of-text default.
-//
-
 import Foundation
-@testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct SQLCompletionInsertionTests {

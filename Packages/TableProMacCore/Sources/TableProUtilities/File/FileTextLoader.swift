@@ -1,15 +1,10 @@
-//
-//  FileTextLoader.swift
-//  TablePro
-//
-
 import Foundation
 import TableProTabularIO
 
-internal enum FileTextLoader {
-    struct LoadedText: Sendable {
-        let content: String
-        let textEncoding: FileTextEncoding
+public enum FileTextLoader {
+    public struct LoadedText: Sendable {
+        public let content: String
+        public let textEncoding: FileTextEncoding
         /// What the file was, as of just before this text was read.
         ///
         /// Read here rather than by the caller, because a caller that stats afterwards records a
@@ -17,16 +12,16 @@ internal enum FileTextLoader {
         /// invisible: the tab looks up to date against a file it never read. Taking the stamp first
         /// fails the other way, leaving the baseline older than the text, so the changed-on-disk
         /// notice can fire once too often but never go missing.
-        let stamp: FileStamp?
-        var encoding: String.Encoding { textEncoding.encoding }
-        var isUTF8: Bool { encoding == .utf8 }
+        public let stamp: FileStamp?
+        public var encoding: String.Encoding { textEncoding.encoding }
+        public var isUTF8: Bool { encoding == .utf8 }
     }
 
-    static func load(_ url: URL) -> LoadedText? {
+    public static func load(_ url: URL) -> LoadedText? {
         try? read(url)
     }
 
-    static func read(_ url: URL) throws -> LoadedText {
+    public static func read(_ url: URL) throws -> LoadedText {
         let stamp = FileStamp.read(url)
         if startsWithByteOrderMark(url) {
             return try readByteOrderMarked(url, stamp: stamp)
@@ -56,11 +51,11 @@ internal enum FileTextLoader {
         return LoadedText(content: content, textEncoding: FileTextEncoding(encoding: .isoLatin1), stamp: stamp)
     }
 
-    static func resolvedEncoding(of url: URL) -> String.Encoding? {
+    public static func resolvedEncoding(of url: URL) -> String.Encoding? {
         load(url)?.encoding
     }
 
-    static func load(_ url: URL, as textEncoding: FileTextEncoding) -> LoadedText? {
+    public static func load(_ url: URL, as textEncoding: FileTextEncoding) -> LoadedText? {
         let stamp = FileStamp.read(url)
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard textEncoding.byteOrderMark.map({ data.starts(with: $0.bytes) }) ?? (ByteOrderMark.leading(data) == nil) else {
@@ -78,7 +73,7 @@ internal enum FileTextLoader {
         return detected.foundationEncoding
     }
 
-    static func decode(_ data: Data, declaredEncoding: String.Encoding? = nil) -> String? {
+    public static func decode(_ data: Data, declaredEncoding: String.Encoding? = nil) -> String? {
         if declaredEncoding != nil, ByteOrderMark.leading(data) == nil, let utf8 = String(data: data, encoding: .utf8) {
             return utf8
         }
@@ -86,7 +81,7 @@ internal enum FileTextLoader {
         return TextPrefixDecoder.decode(data, prefixLength: data.count, declaredEncoding: declaredEncoding)?.content
     }
 
-    static func loadHeader(_ url: URL, maxBytes: Int = 4_096) -> LoadedText? {
+    public static func loadHeader(_ url: URL, maxBytes: Int = 4_096) -> LoadedText? {
         let stamp = FileStamp.read(url)
         let attribute = TextEncodingAttribute.read(from: url)
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
@@ -133,7 +128,7 @@ internal enum FileTextLoader {
     }
 }
 
-internal extension String.Encoding {
+public extension String.Encoding {
     init?(coreFoundationEncoding: CFStringEncoding) {
         guard coreFoundationEncoding != kCFStringEncodingInvalidId,
               CFStringIsEncodingAvailable(coreFoundationEncoding) else { return nil }

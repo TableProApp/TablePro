@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public enum MCPCompletionReference: Sendable, Equatable {
     case prompt(name: String)

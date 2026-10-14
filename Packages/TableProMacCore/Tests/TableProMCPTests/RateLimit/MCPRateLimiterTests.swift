@@ -1,16 +1,10 @@
-//
-//  MCPRateLimiterTests.swift
-//  TableProTests
-//
-//  A failure bucket is keyed on the address that is failing, not on what it presented. Keying it
-//  on the credential gave an attacker a fresh bucket for every guess, so the limit never fired.
-//
+// A failure bucket is keyed on the address that is failing, not on what it presented. Keying it
+// on the credential gave an attacker a fresh bucket for every guess, so the limit never fired.
 
 import Foundation
-import TableProPluginKit
+@testable import TableProMCP
+import TableProMCPTestSupport
 import Testing
-
-@testable import TablePro
 
 struct MCPRateLimiterTests {
     private let attacker = MCPRateLimitKey.authFailure(address: .remote("203.0.113.9"))

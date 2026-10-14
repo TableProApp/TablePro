@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct GetConnectionStatusTool: MCPToolImplementation {
     public static let name = "get_connection_status"

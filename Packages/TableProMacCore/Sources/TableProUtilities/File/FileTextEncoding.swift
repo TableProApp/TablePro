@@ -1,21 +1,16 @@
-//
-//  FileTextEncoding.swift
-//  TablePro
-//
-
 import Foundation
 import TableProTabularIO
 
-internal struct FileTextEncoding: Hashable, Sendable {
-    let encoding: String.Encoding
-    let byteOrderMark: ByteOrderMark?
-    let attribute: TextEncodingAttribute?
+public struct FileTextEncoding: Hashable, Sendable {
+    public let encoding: String.Encoding
+    public let byteOrderMark: ByteOrderMark?
+    public let attribute: TextEncodingAttribute?
 
-    static let utf8 = FileTextEncoding(encoding: .utf8)
+    public static let utf8 = FileTextEncoding(encoding: .utf8)
 
     private static let japaneseEncodings: Set<String.Encoding> = [.shiftJIS, .japaneseEUC]
 
-    init(
+    public init(
         encoding: String.Encoding,
         byteOrderMark: ByteOrderMark? = nil,
         attributeOnDisk: TextEncodingAttribute? = nil
@@ -27,11 +22,11 @@ internal struct FileTextEncoding: Hashable, Sendable {
         self.attribute = attributeNamesEncoding ? attributeOnDisk : nil
     }
 
-    var displayName: String {
+    public var displayName: String {
         String.localizedName(of: encoding)
     }
 
-    func bytes(of text: String) -> Data? {
+    public func bytes(of text: String) -> Data? {
         let byteOrderedEncoding = byteOrderMark?.byteOrderedEncoding ?? encoding.unmarkedByteOrder
         let storable = Self.japaneseEncodings.contains(encoding) ? TabularJISRoman.folded(text) : text
         guard let body = storable.data(using: byteOrderedEncoding, allowLossyConversion: false) else { return nil }
@@ -45,7 +40,7 @@ extension FileTextEncoding: Codable {
         case encoding, byteOrderMark, attribute
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             encoding: String.Encoding(rawValue: try container.decode(UInt.self, forKey: .encoding)),
@@ -54,7 +49,7 @@ extension FileTextEncoding: Codable {
         )
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(encoding.rawValue, forKey: .encoding)
         try container.encodeIfPresent(byteOrderMark, forKey: .byteOrderMark)

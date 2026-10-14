@@ -1,13 +1,9 @@
-//
-//  MCPStderrBridgeLoggerTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
+@testable import TableProMCP
+import TableProTestSupport
+import TableProUtilities
 import Testing
-
-@testable import TablePro
 
 struct MCPStderrBridgeLoggerTests {
     private static func fill(_ descriptor: Int32) -> Int {

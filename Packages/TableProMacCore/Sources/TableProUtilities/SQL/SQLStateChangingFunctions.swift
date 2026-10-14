@@ -1,12 +1,7 @@
-//
-//  SQLStateChangingFunctions.swift
-//  TablePro
-//
-
 import Foundation
 
-enum SQLStateChangingFunctions {
-    static func contains(_ name: String) -> Bool {
+public enum SQLStateChangingFunctions {
+    public static func contains(_ name: String) -> Bool {
         names.contains(name.lowercased())
     }
 

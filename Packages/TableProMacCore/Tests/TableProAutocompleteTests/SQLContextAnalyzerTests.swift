@@ -1,13 +1,5 @@
-//
-//  SQLContextAnalyzerTests.swift
-//  TableProTests
-//
-//  Tests for SQL context analysis at cursor position
-//
-
 import Foundation
-@testable import TablePro
-import TableProPluginKit
+@testable import TableProAutocomplete
 import Testing
 
 struct SQLContextAnalyzerTests {

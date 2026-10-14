@@ -1,13 +1,13 @@
 import Foundation
 
 @MainActor
-internal final class MCPServerLifecycleQueue {
+public final class MCPServerLifecycleQueue {
     private var tail: Task<Void, Never>?
 
-    internal init() {}
+    public init() {}
 
     @discardableResult
-    internal func enqueue(_ work: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+    public func enqueue(_ work: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let previous = tail
         let task = Task { @MainActor in
             await previous?.value
@@ -18,7 +18,7 @@ internal final class MCPServerLifecycleQueue {
     }
 
     @discardableResult
-    internal func run<Value: Sendable>(_ work: @escaping @MainActor () async -> Value) async -> Value {
+    public func run<Value: Sendable>(_ work: @escaping @MainActor () async -> Value) async -> Value {
         let previous = tail
         let task = Task { @MainActor in
             await previous?.value
@@ -28,7 +28,7 @@ internal final class MCPServerLifecycleQueue {
         return await task.value
     }
 
-    internal func drain() async {
+    public func drain() async {
         await tail?.value
     }
 }

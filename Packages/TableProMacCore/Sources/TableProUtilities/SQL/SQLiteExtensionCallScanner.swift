@@ -1,8 +1,3 @@
-//
-//  SQLiteExtensionCallScanner.swift
-//  TablePro
-//
-
 import Foundation
 import TableProSQLGrammar
 
@@ -15,14 +10,14 @@ import TableProSQLGrammar
 /// name, such as a quoted identifier in front of a parenthesis, counts as a call it cannot vouch for.
 /// SQLite accepts `"abs"(1)`, `` `abs`(1) ``, `[abs](1)` and a comment between a name and its
 /// parenthesis (measured on 3.53.4), so all of those are recognized as calls.
-enum SQLiteExtensionCallScanner {
-    static func callsOnlyBuiltins(_ sql: String, readings: SQLLexicalReadings) -> Bool {
+public enum SQLiteExtensionCallScanner {
+    public static func callsOnlyBuiltins(_ sql: String, readings: SQLLexicalReadings) -> Bool {
         readings.distinct(for: sql).allSatisfy { grammar in
             callsOnlyBuiltins(sql, grammar: grammar)
         }
     }
 
-    static func callsOnlyBuiltins(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
+    public static func callsOnlyBuiltins(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
         let code = SQLCodeProjection.code(of: sql, grammar: grammar, revealingExecutableComments: true) as NSString
         return SQLFunctionCallScanner.calls(in: sql as NSString, code: code).allSatisfy { call in
             guard case .named(let name, let start) = call.callee else { return false }
@@ -31,7 +26,7 @@ enum SQLiteExtensionCallScanner {
         }
     }
 
-    static func isBuiltinOrSyntax(_ name: String) -> Bool {
+    public static func isBuiltinOrSyntax(_ name: String) -> Bool {
         let lowered = name.lowercased()
         return SQLiteBuiltinNames.functions.contains(lowered)
             || SQLiteBuiltinNames.tableValuedFunctions.contains(lowered)

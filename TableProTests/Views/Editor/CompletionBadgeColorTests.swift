@@ -9,6 +9,7 @@
 
 import AppKit
 @testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct CompletionBadgeColorTests {

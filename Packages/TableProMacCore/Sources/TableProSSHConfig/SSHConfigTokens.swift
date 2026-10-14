@@ -6,6 +6,7 @@
 import CryptoKit
 import Darwin
 import Foundation
+import TableProUtilities
 
 /// Which `%X` tokens a keyword accepts, per the TOKENS section of ssh_config(5). OpenSSH treats a
 /// token outside its keyword's scope as a fatal error rather than passing it through, so the scope
@@ -55,7 +56,7 @@ enum SSHTokenScope: Sendable, Hashable {
     }
 }
 
-enum SSHTokenExpansionError: Error, Hashable, Sendable {
+public enum SSHTokenExpansionError: Error, Hashable, Sendable {
     /// A token the keyword does not accept, which ssh refuses to run at all.
     case unsupportedToken(keyword: String, token: String)
     /// A `%` with no token letter after it.
@@ -65,7 +66,7 @@ enum SSHTokenExpansionError: Error, Hashable, Sendable {
     /// A `${` with no closing brace, which ssh refuses to run on.
     case malformedEnvironmentReference(keyword: String)
 
-    var explanation: String {
+    public var explanation: String {
         switch self {
         case .unsupportedToken(let keyword, let token):
             return String(

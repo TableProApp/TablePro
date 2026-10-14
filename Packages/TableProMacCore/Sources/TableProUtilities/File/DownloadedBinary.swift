@@ -1,18 +1,13 @@
-//
-//  DownloadedBinary.swift
-//  TablePro
-//
-
 import CryptoKit
 import Darwin
 import Foundation
 import os
 
-enum DownloadedBinary {
+public enum DownloadedBinary {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DownloadedBinary")
     private static let hashChunkSize = 1 << 20
 
-    static func sha256Hex(ofFileAt path: String) -> String? {
+    public static func sha256Hex(ofFileAt path: String) -> String? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }
 
@@ -33,7 +28,7 @@ enum DownloadedBinary {
     /// `Contents/MacOS` still quarantined. Gatekeeper reads the flag on the file it is about
     /// to map, and refuses a quarantined bundle with "library load disallowed by system
     /// policy" even inside a process that has `com.apple.security.cs.disable-library-validation`.
-    static func stripQuarantine(at url: URL) {
+    public static func stripQuarantine(at url: URL) {
         stripQuarantineFromSingleItem(at: url)
 
         guard let enumerator = FileManager.default.enumerator(

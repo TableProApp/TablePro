@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHConfig
 import TableProSyncTransport
 import Testing
 

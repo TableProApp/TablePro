@@ -1,8 +1,3 @@
-//
-//  JavaScriptSyntaxChecker.swift
-//  TablePro
-//
-
 import Foundation
 import JavaScriptCore
 
@@ -11,15 +6,14 @@ import JavaScriptCore
 /// `JSCheckScriptSyntax` parses without evaluating, so an editor can underline a mistake with the
 /// same verdict the runtime would give and without touching the database. Reimplementing a
 /// JavaScript parser to do this would disagree with the engine sooner or later; this cannot.
-enum JavaScriptSyntaxChecker {
-    struct Failure {
-        let message: String
+public enum JavaScriptSyntaxChecker {
+    public struct Failure {
+        public let message: String
         /// 1-based, as JavaScriptCore reports it.
-        let line: Int
+        public let line: Int
     }
 
-    /// The first syntax error, or nil when the document parses.
-    static func firstFailure(in source: String) -> Failure? {
+    public static func firstFailure(in source: String) -> Failure? {
         guard let context = JSContext() else { return nil }
         let script = JSStringCreateWithCFString(source as CFString)
         defer { JSStringRelease(script) }

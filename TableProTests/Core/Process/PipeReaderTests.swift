@@ -8,6 +8,8 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
+@testable import TableProUtilities
 
 struct PipeReaderTests {
     private final class Received: @unchecked Sendable {

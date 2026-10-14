@@ -9,6 +9,7 @@ import AppKit
 import Foundation
 import SwiftUI
 import TableProPluginKit
+import TableProSSHConfig
 
 // MARK: - External Access
 

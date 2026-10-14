@@ -8,7 +8,7 @@ import os
 
 /// One public key in the form both an OpenSSH `.pub` file and the agent protocol carry it: the SSH
 /// wire blob, whose leading string names the key type.
-internal struct SSHPublicKeyBlob: Hashable, Sendable {
+public struct SSHPublicKeyBlob: Hashable, Sendable {
     let keyType: String
     let blob: Data
 
@@ -24,7 +24,7 @@ internal struct SSHPublicKeyBlob: Hashable, Sendable {
 /// Naming a `.pub` is the documented way to pick one key out of an agent that holds many, and it
 /// is the whole point of the directive when the private key lives somewhere TablePro cannot read
 /// it, as it does for 1Password and Secretive.
-internal enum SSHPublicKeyFile {
+public enum SSHPublicKeyFile {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHPublicKeyFile")
 
     /// A `.pub` line is a few hundred bytes. The cap is here because the same path may name a
@@ -32,7 +32,7 @@ internal enum SSHPublicKeyFile {
     private static let maximumFileSize = 64 * 1_024
 
     /// Every public key an identity file resolves to, in the order OpenSSH looks for them.
-    static func blobs(atIdentityPath path: String) -> [SSHPublicKeyBlob] {
+    public static func blobs(atIdentityPath path: String) -> [SSHPublicKeyBlob] {
         let expanded = SSHPathUtilities.expandTilde(path)
         guard !expanded.isEmpty else { return [] }
 

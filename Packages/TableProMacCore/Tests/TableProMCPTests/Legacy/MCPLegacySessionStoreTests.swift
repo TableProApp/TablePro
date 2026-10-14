@@ -1,5 +1,6 @@
 import Foundation
-@testable import TablePro
+@testable import TableProMCP
+import TableProMCPTestSupport
 import Testing
 
 struct MCPLegacySessionStoreTests {

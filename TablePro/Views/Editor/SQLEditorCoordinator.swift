@@ -9,6 +9,7 @@
 import AppKit
 import Combine
 import os
+import TableProAutocomplete
 import TableProEditorKit
 import TableProPluginKit
 import TableProSQLGrammar

@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 internal struct FavoriteTableLoadRequest: Equatable {
     internal let database: String?

@@ -8,6 +8,7 @@ import SQLite3
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 struct RemoteDatabaseFileTests {
     // MARK: - Identity

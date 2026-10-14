@@ -1,8 +1,3 @@
-//
-//  MongoShellCommandRecognizer.swift
-//  TablePro
-//
-
 import Foundation
 
 /// Recognises the two mongosh lines that are not JavaScript.
@@ -15,10 +10,10 @@ import Foundation
 /// Deliberately not shared with the driver through TableProPluginKit. A new public symbol there is
 /// missing from every already-shipped app, so a plugin built against it stops loading on the
 /// version most people are running, and the MongoDB plugin ships from the registry ahead of the app.
-enum MongoShellCommandRecognizer {
+public enum MongoShellCommandRecognizer {
     private static let shownTopics: Set<String> = ["dbs", "databases", "collections", "tables"]
 
-    static func isShellCommand(_ statement: String) -> Bool {
+    public static func isShellCommand(_ statement: String) -> Bool {
         let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
         if argument(after: "use", in: trimmed) != nil { return true }
         guard let topic = argument(after: "show", in: trimmed)?.lowercased() else { return false }

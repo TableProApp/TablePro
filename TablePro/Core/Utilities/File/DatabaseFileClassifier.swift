@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 /// Names the database type that wrote a file, from the file's own bytes rather than its name.
 ///

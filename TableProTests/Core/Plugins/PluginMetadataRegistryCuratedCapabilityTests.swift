@@ -10,6 +10,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProUtilities
 import Testing
 
 private final class MockDuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {

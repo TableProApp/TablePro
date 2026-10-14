@@ -8,6 +8,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 /// Fake cloudflared process. Depending on `behavior` it either opens a real
 /// loopback listener (so the manager's readiness probe succeeds), prints a

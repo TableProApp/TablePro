@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public struct SubscriptionsListenHandler: MCPMethodHandler {
     public static let method = "subscriptions/listen"

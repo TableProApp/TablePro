@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 internal extension AutocommitOnlyStatement {
     /// Measured on MySQL 8.4.11 with `gtid_mode = ON` and MariaDB 11.4.13 with the binary log on,

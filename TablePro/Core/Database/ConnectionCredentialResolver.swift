@@ -6,6 +6,7 @@
 import Foundation
 import TableProGoogleCloud
 import TableProPluginKit
+import TableProUtilities
 
 /// The one answer to "what password does this connection sign in with".
 ///

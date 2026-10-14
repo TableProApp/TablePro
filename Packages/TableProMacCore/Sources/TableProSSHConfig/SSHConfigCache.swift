@@ -6,8 +6,8 @@
 import Foundation
 import os
 
-actor SSHConfigCache {
-    static let shared = SSHConfigCache()
+public actor SSHConfigCache {
+    public static let shared = SSHConfigCache()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHConfigCache")
 
@@ -24,7 +24,7 @@ actor SSHConfigCache {
     /// busts the cache). Tracked Include files are checked too. A pre-existing
     /// Include glob that newly matches a file without any main-file edit is
     /// the one residual gap; touching the main file forces a re-parse.
-    func current() -> SSHConfigDocument {
+    public func current() -> SSHConfigDocument {
         if let cached = cachedDocument, mtimesUnchanged() {
             return cached
         }

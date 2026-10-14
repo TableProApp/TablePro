@@ -8,6 +8,7 @@ import Foundation
 import os
 import TableProImport
 import TableProSyncTransport
+import TableProUtilities
 
 internal final class SQLFavoriteManager: @unchecked Sendable {
     static let shared = SQLFavoriteManager()

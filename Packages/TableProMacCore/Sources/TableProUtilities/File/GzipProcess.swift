@@ -1,21 +1,16 @@
-//
-//  GzipProcess.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
 private let logger = Logger(subsystem: "com.TablePro", category: "GzipProcess")
 
-enum GzipProcess {
-    enum GzipError: LocalizedError {
+public enum GzipProcess {
+    public enum GzipError: LocalizedError {
         case executableNotFound
         case compressionFailed(Int32, String)
         case decompressionFailed(Int32, String)
         case destinationCreateFailed
 
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .executableNotFound:
                 return String(localized: "gzip executable not found")
@@ -33,7 +28,7 @@ enum GzipProcess {
         }
     }
 
-    static func compress(source: URL, destination: URL) async throws {
+    public static func compress(source: URL, destination: URL) async throws {
         let gzipPath = "/usr/bin/gzip"
         guard FileManager.default.isExecutableFile(atPath: gzipPath) else {
             throw GzipError.executableNotFound
@@ -83,7 +78,7 @@ enum GzipProcess {
         }
     }
 
-    static func decompress(source: URL, destination: URL) async throws {
+    public static func decompress(source: URL, destination: URL) async throws {
         let gzipPath = "/usr/bin/gzip"
         guard FileManager.default.isExecutableFile(atPath: gzipPath) else {
             throw GzipError.executableNotFound

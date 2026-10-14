@@ -1,14 +1,6 @@
-//
-//  SQLKeywords.swift
-//  TablePro
-//
-//  Static catalogue of SQL keywords, functions, and operators
-//
-
 import Foundation
 
-/// Static catalogue of SQL language elements for autocomplete
-enum SQLKeywords {
+public enum SQLKeywords {
     // MARK: - Keywords
 
     static let keywordSet: Set<String> = Set(keywords.filter { !$0.contains(" ") }.map { $0.lowercased() })
@@ -311,15 +303,13 @@ enum SQLKeywords {
         keywords.map { SQLCompletionItem.keyword($0) }
     }
 
-    /// Get all function completion items
-    static func functionItems() -> [SQLCompletionItem] {
+    public static func functionItems() -> [SQLCompletionItem] {
         allFunctions.map { fn in
             SQLCompletionItem.function(fn.name, signature: fn.signature, documentation: fn.doc)
         }
     }
 
-    /// Get all operator completion items
-    static func operatorItems() -> [SQLCompletionItem] {
+    public static func operatorItems() -> [SQLCompletionItem] {
         operators.map { op in
             SQLCompletionItem.operator(op.symbol, documentation: op.doc)
         }

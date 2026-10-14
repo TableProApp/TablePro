@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProUtilities
 
 @MainActor
 final class ColumnJumpViewModel: ObservableObject {

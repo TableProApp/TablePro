@@ -3,6 +3,7 @@ import Foundation
 import os
 import Security
 import TableProMCP
+import TableProUtilities
 
 enum MCPTokenStoreError: Error, Sendable, Equatable {
     case randomGenerationFailed(OSStatus)

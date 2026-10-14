@@ -1,53 +1,55 @@
 import Foundation
 import TableProMCP
 
-actor RecordingResponderSink: MCPResponderSink {
-    struct WriteJsonRecord {
-        let data: Data
-        let status: HttpStatus
-        let extraHeaders: [(String, String)]
+public actor RecordingResponderSink: MCPResponderSink {
+    public struct WriteJsonRecord: Sendable {
+        public let data: Data
+        public let status: HttpStatus
+        public let extraHeaders: [(String, String)]
     }
 
-    private(set) var jsonWrites: [WriteJsonRecord] = []
-    private(set) var acceptedCount: Int = 0
-    private(set) var sseHeadCount: Int = 0
-    private(set) var sseFrames: [SseFrame] = []
-    private(set) var closed: Bool = false
+    public private(set) var jsonWrites: [WriteJsonRecord] = []
+    public private(set) var acceptedCount: Int = 0
+    public private(set) var sseHeadCount: Int = 0
+    public private(set) var sseFrames: [SseFrame] = []
+    public private(set) var closed: Bool = false
 
     private var clientGone: Bool = false
     private var continuation: CheckedContinuation<Void, Never>?
     private var completed: Bool = false
 
-    func writeJson(_ data: Data, status: HttpStatus, extraHeaders: [(String, String)]) async {
+    public init() {}
+
+    public func writeJson(_ data: Data, status: HttpStatus, extraHeaders: [(String, String)]) async {
         jsonWrites.append(WriteJsonRecord(data: data, status: status, extraHeaders: extraHeaders))
     }
 
-    func writeAccepted() async {
+    public func writeAccepted() async {
         acceptedCount += 1
     }
 
-    func beginSseStream() async {
+    public func beginSseStream() async {
         sseHeadCount += 1
     }
 
-    func writeSseFrame(_ frame: SseFrame) async {
+    public func writeSseFrame(_ frame: SseFrame) async {
         sseFrames.append(frame)
     }
 
-    func closeConnection() async {
+    public func closeConnection() async {
         closed = true
         finish()
     }
 
-    func isClosed() async -> Bool {
+    public func isClosed() async -> Bool {
         clientGone
     }
 
-    func disconnectClient() {
+    public func disconnectClient() {
         clientGone = true
     }
 
-    func waitForCompletion() async {
+    public func waitForCompletion() async {
         if completed { return }
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             if completed {
@@ -58,35 +60,35 @@ actor RecordingResponderSink: MCPResponderSink {
         }
     }
 
-    func firstJsonMessage() throws -> JsonRpcMessage? {
+    public func firstJsonMessage() throws -> JsonRpcMessage? {
         guard let record = jsonWrites.first else { return nil }
         return try JsonRpcCodec.decode(record.data)
     }
 
-    func firstJsonStatus() -> HttpStatus? {
+    public func firstJsonStatus() -> HttpStatus? {
         jsonWrites.first?.status
     }
 
-    func firstJsonBodyText() -> String {
+    public func firstJsonBodyText() -> String {
         guard let record = jsonWrites.first else { return "" }
         return String(data: record.data, encoding: .utf8) ?? ""
     }
 
-    func firstHeaderValue(named name: String) -> String? {
+    public func firstHeaderValue(named name: String) -> String? {
         jsonWrites.first?.extraHeaders.first { $0.0.caseInsensitiveCompare(name) == .orderedSame }?.1
     }
 
-    func successResult() throws -> JsonValue? {
+    public func successResult() throws -> JsonValue? {
         guard case .successResponse(let response)? = try firstJsonMessage() else { return nil }
         return response.result
     }
 
-    func errorEnvelope() throws -> JsonRpcError? {
+    public func errorEnvelope() throws -> JsonRpcError? {
         guard case .errorResponse(let response)? = try firstJsonMessage() else { return nil }
         return response.error
     }
 
-    func sseMessages() throws -> [JsonRpcMessage] {
+    public func sseMessages() throws -> [JsonRpcMessage] {
         try sseFrames.map { try JsonRpcCodec.decode(Data($0.data.utf8)) }
     }
 
@@ -98,24 +100,26 @@ actor RecordingResponderSink: MCPResponderSink {
     }
 }
 
-actor ObservedFlag {
+public actor ObservedFlag {
     private var triggered: Bool = false
     private var count: Int = 0
 
-    func set() {
+    public init() {}
+
+    public func set() {
         triggered = true
         count += 1
     }
 
-    func value() -> Bool {
+    public func value() -> Bool {
         triggered
     }
 
-    func times() -> Int {
+    public func times() -> Int {
         count
     }
 
-    func waitUntilSet(timeout: Duration = .seconds(2)) async -> Bool {
+    public func waitUntilSet(timeout: Duration = .seconds(2)) async -> Bool {
         let deadline = Date().addingTimeInterval(Self.seconds(of: timeout))
         while Date() < deadline {
             if triggered { return true }
@@ -130,23 +134,25 @@ actor ObservedFlag {
     }
 }
 
-actor ObservedValue<Value: Sendable> {
+public actor ObservedValue<Value: Sendable> {
     private var stored: Value?
 
-    func set(_ value: Value) {
+    public init() {}
+
+    public func set(_ value: Value) {
         stored = value
     }
 
-    func value() -> Value? {
+    public func value() -> Value? {
         stored
     }
 }
 
-enum MCPProtocolTestSupport {
-    static let referenceDate = Date(timeIntervalSince1970: 1_700_000_000)
-    static let defaultTokenId = UUID(uuid: (0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11))
+public enum MCPProtocolTestSupport {
+    public static let referenceDate = Date(timeIntervalSince1970: 1_700_000_000)
+    public static let defaultTokenId = UUID(uuid: (0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11))
 
-    static func makePrincipal(
+    public static func makePrincipal(
         fingerprint: String = "test-fp",
         tokenId: UUID? = nil,
         scopes: Set<MCPScope> = [.toolsRead, .toolsWrite],
@@ -162,7 +168,7 @@ enum MCPProtocolTestSupport {
         )
     }
 
-    static func metaFields(
+    public static func metaFields(
         protocolVersion: MCPProtocolVersion = .latest,
         clientName: String? = "TestClient",
         clientVersion: String = "1.0.0",
@@ -189,7 +195,7 @@ enum MCPProtocolTestSupport {
         return fields
     }
 
-    static func modernParams(
+    public static func modernParams(
         _ payload: [String: JsonValue] = [:],
         protocolVersion: MCPProtocolVersion = .latest,
         clientCapabilities: JsonValue = .object([:]),
@@ -204,7 +210,7 @@ enum MCPProtocolTestSupport {
         return .object(fields)
     }
 
-    static func makeMeta(
+    public static func makeMeta(
         protocolVersion: MCPProtocolVersion = .latest,
         clientName: String? = "TestClient",
         clientCapabilities: MCPClientCapabilities = .none,
@@ -220,7 +226,7 @@ enum MCPProtocolTestSupport {
         )
     }
 
-    static func makeRequest(
+    public static func makeRequest(
         id: JsonRpcId = .number(1),
         method: String,
         params: JsonValue? = nil
@@ -228,7 +234,7 @@ enum MCPProtocolTestSupport {
         .request(JsonRpcRequest(id: id, method: method, params: params))
     }
 
-    static func makeModernRequest(
+    public static func makeModernRequest(
         id: JsonRpcId = .number(1),
         method: String,
         payload: [String: JsonValue] = [:],
@@ -248,11 +254,11 @@ enum MCPProtocolTestSupport {
         ))
     }
 
-    static func makeNotification(method: String, params: JsonValue? = nil) -> JsonRpcMessage {
+    public static func makeNotification(method: String, params: JsonValue? = nil) -> JsonRpcMessage {
         .notification(JsonRpcNotification(method: method, params: params))
     }
 
-    static func makeExchange(
+    public static func makeExchange(
         message: JsonRpcMessage,
         principal: MCPPrincipal? = makePrincipal(),
         clientAddress: MCPClientAddress = .loopback,
@@ -278,7 +284,7 @@ enum MCPProtocolTestSupport {
         return (MCPInboundExchange(message: message, context: context, responder: responder), sink)
     }
 
-    static func jsonValue(fromJson text: String) throws -> JsonValue {
+    public static func jsonValue(fromJson text: String) throws -> JsonValue {
         try JSONDecoder().decode(JsonValue.self, from: Data(text.utf8))
     }
 }

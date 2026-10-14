@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+@testable import TableProUtilities
 import Testing
 @testable import TablePro
 
@@ -13,16 +14,24 @@ import Testing
 struct StandardDomainIsolationTests {
     private let appDefaults = AppStorageEnvironment.shared.defaults
 
-    @Test("Quick switcher frecency built with its defaults writes to the app's store")
-    func frecencyFollowsTheStorageEnvironment() {
-        let connectionId = UUID()
-        let store = QuickSwitcherFrecencyStore(connectionId: connectionId)
-        defer { store.clearHistory() }
+    @Test("A table opened from the sidebar records its frecency in the app's store")
+    func sidebarFrecencyFollowsTheStorageEnvironment() {
+        let state = SharedSidebarState()
+        let reader = QuickSwitcherFrecencyStore(connectionId: state.connectionId, defaults: appDefaults)
+        defer {
+            reader.clearHistory()
+            RecentTablesStore.shared.removeEntries(for: state.connectionId)
+        }
 
-        store.recordAccess(itemId: "table_users")
+        state.recordTableOpen(
+            database: nil, schema: nil, name: "users", isView: false, objectType: nil,
+            isPreview: false, connectionSwitchesDatabases: false
+        )
 
-        let reader = QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: appDefaults)
-        #expect(reader.recentItemIds() == ["table_users"])
+        let key = SharedSidebarState.tableFrecencyKey(
+            database: nil, schema: nil, name: "users", connectionSwitchesDatabases: false
+        )
+        #expect(reader.recentItemIds() == [key])
     }
 
     @Test("Recent tables built with their defaults write to the app's store")

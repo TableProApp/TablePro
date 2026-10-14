@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProMCP
 
 @MainActor
 struct MCPServerOffContractTests {

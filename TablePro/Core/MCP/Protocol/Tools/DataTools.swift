@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct BrowseTableTool: MCPToolImplementation {
     public static let name = "browse_table"

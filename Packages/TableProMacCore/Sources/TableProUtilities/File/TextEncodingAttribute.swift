@@ -1,17 +1,12 @@
-//
-//  TextEncodingAttribute.swift
-//  TablePro
-//
-
 import Foundation
 
-internal struct TextEncodingAttribute: Codable, Hashable, Sendable {
+public struct TextEncodingAttribute: Codable, Hashable, Sendable {
     private static let name = "com.apple.TextEncoding"
     private static let separator: Character = ";"
 
-    let value: Data
+    public let value: Data
 
-    var encoding: String.Encoding? {
+    public var encoding: String.Encoding? {
         guard let text = String(data: value, encoding: .utf8) else { return nil }
         let fields = text
             .trimmingCharacters(in: CharacterSet(charactersIn: "\0").union(.whitespaces))
@@ -23,7 +18,7 @@ internal struct TextEncodingAttribute: Codable, Hashable, Sendable {
         return String.Encoding(ianaCharacterSetName: String(ianaName))
     }
 
-    static func read(from url: URL) -> TextEncodingAttribute? {
+    public static func read(from url: URL) -> TextEncodingAttribute? {
         url.withUnsafeFileSystemRepresentation { path -> TextEncodingAttribute? in
             guard let path else { return nil }
             let size = getxattr(path, name, nil, 0, 0, 0)
@@ -35,7 +30,7 @@ internal struct TextEncodingAttribute: Codable, Hashable, Sendable {
         }
     }
 
-    func write(to url: URL) throws {
+    public func write(to url: URL) throws {
         let failure = url.withUnsafeFileSystemRepresentation { path -> POSIXErrorCode? in
             guard let path else { return .ENOENT }
             let status = value.withUnsafeBytes { buffer in

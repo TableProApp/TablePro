@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+@testable import TableProUtilities
 
 private struct ScratchRepository {
     let root: URL

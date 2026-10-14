@@ -7,6 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProRedisCore
 import TableProSQLGrammar
+import TableProUtilities
 
 enum QueryTier: Sendable, Equatable {
     case safe

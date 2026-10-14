@@ -7,9 +7,9 @@
 //
 
 import Foundation
-import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TableProSSHConfig
 
 struct SSHConfigResolverTokenTests {
     private static let env = ResolverEnvironment(

@@ -2,9 +2,9 @@ import Foundation
 import Network
 import os
 
-actor HttpConnectionContext {
-    typealias RequestHandler = @Sendable (HttpParsedRequest) async -> Void
-    typealias ClosedHandler = @Sendable () async -> Void
+public actor HttpConnectionContext {
+    public typealias RequestHandler = @Sendable (HttpParsedRequest) async -> Void
+    public typealias ClosedHandler = @Sendable () async -> Void
 
     private enum ReceiveOutcome: Sendable {
         case chunk(Data?, isComplete: Bool)
@@ -20,7 +20,7 @@ actor HttpConnectionContext {
     private static let receiveChunkSize = 65_536
     private static let rejectionGrace: Duration = .seconds(2)
 
-    nonisolated let id: UUID
+    nonisolated public let id: UUID
 
     private let connection: NWConnection
     private let limits: MCPHttpServerLimits
@@ -42,14 +42,14 @@ actor HttpConnectionContext {
     private var handlerTask: Task<Void, Never>?
     private var idleTask: Task<Void, Never>?
 
-    init(id: UUID, connection: NWConnection, limits: MCPHttpServerLimits) {
+    public init(id: UUID, connection: NWConnection, limits: MCPHttpServerLimits) {
         self.id = id
         self.connection = connection
         self.limits = limits
         parser = HttpRequestStreamParser(limits: limits.parserLimits)
     }
 
-    func start(onRequest: @escaping RequestHandler, onClosed: @escaping ClosedHandler) {
+    public func start(onRequest: @escaping RequestHandler, onClosed: @escaping ClosedHandler) {
         guard !started else { return }
         started = true
         requestHandler = onRequest
@@ -58,7 +58,7 @@ actor HttpConnectionContext {
         connection.start(queue: .global(qos: .userInitiated))
     }
 
-    func rejectOverCapacity() {
+    public func rejectOverCapacity() {
         guard !started else { return }
         started = true
         mode = .reject
@@ -70,7 +70,7 @@ actor HttpConnectionContext {
         }
     }
 
-    func isClosed() -> Bool {
+    public func isClosed() -> Bool {
         closed
     }
 
@@ -78,11 +78,11 @@ actor HttpConnectionContext {
         sseWriter != nil
     }
 
-    func setOrigin(_ value: String?) {
+    public func setOrigin(_ value: String?) {
         origin = value
     }
 
-    func clientAddress() -> MCPClientAddress {
+    public func clientAddress() -> MCPClientAddress {
         guard let endpoint = connection.currentPath?.remoteEndpoint else {
             return .remote("unknown")
         }
@@ -259,7 +259,7 @@ actor HttpConnectionContext {
         await handlePeerClosed()
     }
 
-    func completeResponse() async {
+    public func completeResponse() async {
         guard responseInProgress else { return }
         responseInProgress = false
         headWritten = false
@@ -280,13 +280,13 @@ actor HttpConnectionContext {
         }
     }
 
-    func writeJsonResponse(data: Data, status: HttpStatus, extraHeaders: [(String, String)]) async {
+    public func writeJsonResponse(data: Data, status: HttpStatus, extraHeaders: [(String, String)]) async {
         var headers: [(String, String)] = [("Content-Type", "application/json")]
         headers.append(contentsOf: extraHeaders)
         await writeResponse(status: status, headers: headers, body: data)
     }
 
-    func writeAccepted() async {
+    public func writeAccepted() async {
         await writeResponse(status: .accepted, headers: [], body: Data())
     }
 
@@ -294,11 +294,11 @@ actor HttpConnectionContext {
         await writeResponse(status: .noContent, headers: [], body: nil)
     }
 
-    func writeOptionsPreflight() async {
+    public func writeOptionsPreflight() async {
         await writeResponse(status: .noContent, headers: [("Allow", "POST, OPTIONS")], body: nil)
     }
 
-    func writeMethodNotAllowed() async {
+    public func writeMethodNotAllowed() async {
         let payload = Self.plainErrorBody(
             error: "method_not_allowed",
             description: String(localized: "This HTTP method is not supported.")
@@ -310,17 +310,17 @@ actor HttpConnectionContext {
         )
     }
 
-    func writePlainJsonResponse(status: HttpStatus, body: Data, extraHeaders: [(String, String)] = []) async {
+    public func writePlainJsonResponse(status: HttpStatus, body: Data, extraHeaders: [(String, String)] = []) async {
         await writeJsonResponse(data: body, status: status, extraHeaders: extraHeaders)
     }
 
-    func writePlainJsonError(status: HttpStatus, message: String, extraHeaders: [(String, String)] = []) async {
+    public func writePlainJsonError(status: HttpStatus, message: String, extraHeaders: [(String, String)] = []) async {
         struct ErrorBody: Encodable { let error: String }
         let payload = (try? JSONEncoder().encode(ErrorBody(error: message))) ?? Data()
         await writeJsonResponse(data: payload, status: status, extraHeaders: extraHeaders)
     }
 
-    func writePlainJsonError(
+    public func writePlainJsonError(
         status: HttpStatus,
         error: String,
         errorDescription: String,
@@ -330,7 +330,7 @@ actor HttpConnectionContext {
         await writeJsonResponse(data: payload, status: status, extraHeaders: extraHeaders)
     }
 
-    func beginSseStream() async {
+    public func beginSseStream() async {
         guard !closed, !headWritten else { return }
         headWritten = true
         keepAlive = false
@@ -352,7 +352,7 @@ actor HttpConnectionContext {
         await writer.start()
     }
 
-    func writeSseFrame(_ frame: SseFrame) async {
+    public func writeSseFrame(_ frame: SseFrame) async {
         guard let sseWriter else { return }
         await sseWriter.writeFrame(frame)
     }
@@ -366,7 +366,7 @@ actor HttpConnectionContext {
         await send(data)
     }
 
-    func close() {
+    public func close() {
         markClosed()
     }
 

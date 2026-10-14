@@ -1,8 +1,3 @@
-//
-//  DynamoDBRequestJSON.swift
-//  TablePro
-//
-
 import Foundation
 
 /// The body of a DynamoDB request as the classifier reads it.
@@ -10,7 +5,7 @@ import Foundation
 /// It accepts every document the driver's own strict parser accepts, and a few it would refuse, so a request the
 /// driver runs is never read as unparseable. An object keeps every member in order, repeated keys included, and key
 /// lookups ignore case, so nothing a request spells can hide from a rule that looks for it.
-enum DynamoDBRequestJSON: Sendable, Equatable {
+public enum DynamoDBRequestJSON: Sendable, Equatable {
     case object([Member])
     case array([DynamoDBRequestJSON])
     case string(String)
@@ -18,47 +13,46 @@ enum DynamoDBRequestJSON: Sendable, Equatable {
     case bool(Bool)
     case null
 
-    struct Member: Sendable, Equatable {
-        let key: String
-        let value: DynamoDBRequestJSON
+    public struct Member: Sendable, Equatable {
+        public let key: String
+        public let value: DynamoDBRequestJSON
     }
 
-    var isObject: Bool {
+    public var isObject: Bool {
         if case .object = self { return true }
         return false
     }
 
-    var elements: [DynamoDBRequestJSON] {
+    public var elements: [DynamoDBRequestJSON] {
         guard case .array(let items) = self else { return [] }
         return items
     }
 
-    var memberValues: [DynamoDBRequestJSON] {
+    public var memberValues: [DynamoDBRequestJSON] {
         guard case .object(let members) = self else { return [] }
         return members.map(\.value)
     }
 
-    var stringValue: String? {
+    public var stringValue: String? {
         guard case .string(let value) = self else { return nil }
         return value
     }
 
-    var boolValue: Bool? {
+    public var boolValue: Bool? {
         guard case .bool(let value) = self else { return nil }
         return value
     }
 
-    func values(forKey key: String) -> [DynamoDBRequestJSON] {
+    public func values(forKey key: String) -> [DynamoDBRequestJSON] {
         guard case .object(let members) = self else { return [] }
         return members.filter { $0.key.caseInsensitiveCompare(key) == .orderedSame }.map(\.value)
     }
 
-    func hasMember(_ key: String) -> Bool {
+    public func hasMember(_ key: String) -> Bool {
         !values(forKey: key).isEmpty
     }
 
-    /// Parses the JSON value at the start of `text`, and the text after it.
-    static func parsePrefix(_ text: Substring) -> (value: DynamoDBRequestJSON, remainder: String)? {
+    public static func parsePrefix(_ text: Substring) -> (value: DynamoDBRequestJSON, remainder: String)? {
         var parser = Parser(scalars: Array(text.unicodeScalars))
         guard let value = parser.parseValue(depth: 0) else { return nil }
         var remainder = String.UnicodeScalarView()
