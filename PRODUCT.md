@@ -12,7 +12,7 @@ Alternatives include other desktop database clients, vendor consoles, and comman
 
 ## Vision
 
-Stay a Linux-only native client. Finish BookiE 0.2.0 as a development release for the Arch and Hyprland target, with hotfixes to follow. Keep drivers compiled in. Keep secrets in Secret Service. Keep MCP, the GUI and the headless daemon on one governed SQL path.
+Stay a Linux-only native client. Finish BookiE 0.2.0 as a development release for the Arch and Hyprland target, with hotfixes to follow. Keep drivers compiled in. Store persistent credentials in Secret Service and issue headless MCP tokens once through an explicit output path. Keep MCP, the GUI and the headless daemon on one governed SQL path.
 
 ## Current state (as of 2026-10)
 
