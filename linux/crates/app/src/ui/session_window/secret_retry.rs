@@ -46,11 +46,11 @@ impl SessionWindow {
 /// user can type it in TablePro.
 ///
 /// A key's passphrase counts only when the keyring holds it: without
-/// one, ssh asks for it at each connect anyway. A keyring error names
-/// the secret it could not read, and typing it skips the keyring.
+/// one, ssh asks for it at each connect anyway. A keyring that could
+/// not be read refused nothing, so it is not offered: the retry's
+/// prompt would say the server turned the secret down.
 pub(super) fn refused_secret(error: &ConnectError, saved: &SavedConnection) -> Option<SecretKind> {
     match error {
-        ConnectError::Keyring(error) => Some(error.kind()),
         ConnectError::Driver(DriverError::Auth { .. }) => {
             (saved.auth_mode == AuthMode::Password).then_some(SecretKind::DatabasePassword)
         }
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_keyring_offers_the_secret_it_could_not_read() {
+    fn an_unreadable_keyring_offers_nothing_to_type_again() {
         let unreadable = ConnectError::Keyring(KeyringError::Secret {
             kind: SecretKind::SshPassword,
             error: tablepro_core::credentials::SecretError::Backend {
@@ -184,7 +184,8 @@ mod tests {
 
         assert_eq!(
             refused_secret(&unreadable, &saved(AuthMode::Password, Some(SavedSshAuth::Password))),
-            Some(SecretKind::SshPassword)
+            None,
+            "a keyring read error was offered as a refused password"
         );
     }
 
