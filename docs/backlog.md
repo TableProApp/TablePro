@@ -25,7 +25,7 @@ candidate inventory as a release commitment.
 
 | Row | What |
 |---|---|
-| PERF-2, PERF-7, PERF-8 | Stream results instead of materialising up to three caps; progressive loading in the editor |
+| PERF-2, PERF-7, PERF-8 | Progressively load SQL editor results while keeping the existing budgets. Core, PostgreSQL and PolicyGuard cursor support has landed; editor lifecycle and retained-page behavior remain open. |
 | PERF-3 | MongoDB browse on large collections | Deep unfiltered `_id` keyset seek landed in #493; filtered, sorted, keyless and installed/network acceptance remain |
 | PERF-4 | Server time next to elapsed time |
 | PERF-5, PERF-6 | Idle memory and binary size, accepted for now |
