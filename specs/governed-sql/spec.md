@@ -102,7 +102,7 @@ Audit intent is written before driver execution when `intent_is_required` is tru
 1. Classify the statement. Parser rejection becomes `StatementClass::Unparseable` and is a write.
 2. Evaluate policy for the principal, environment, `read_only` flag and connection-scoped `PolicyConfig`.
 3. If the decision is `Deny`, persist terminal audit `denied` and return. Do not execute.
-4. If the decision is `RequireApproval`, wait for `ApprovalOutcome`. A cancel during the wait writes terminal `cancelled`. Rejection writes `denied`. The sink has no timeout outcome.
+4. If the decision is `RequireApproval`, wait for `ApprovalOutcome` under `OperationControl`. A cancel during the wait writes terminal `cancelled`; a deadline writes `timed_out`; rejection writes `denied`.
 5. Persist audit intent when required. On required-intent failure, return `PolicyDenied` and do not call the driver.
 6. Execute through the inner `Connection`, honouring `OperationControl` cancellation and timeouts.
 7. Apply masking to the result (`apply_masking`).
