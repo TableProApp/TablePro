@@ -109,10 +109,16 @@ impl TestApp {
 
     /// A database file in the test's directory, by the key it opens as.
     fn database(&self, name: &str) -> SessionKey {
+        std::fs::write(self._backing.dir.path().join(name), b"").expect("create the database");
+        self.file_key(name)
+    }
+
+    /// The key a file in the test's directory opens as, whether or not
+    /// it is there.
+    fn file_key(&self, name: &str) -> SessionKey {
         let dir = std::fs::canonicalize(self._backing.dir.path()).expect("the canonical directory");
-        let path = dir.join(name);
-        std::fs::write(&path, b"").expect("create the database");
-        SessionKey::File(glib::filename_to_uri(&path, None).expect("a file URI").to_string())
+        let uri = glib::filename_to_uri(dir.join(name), None).expect("a file URI");
+        SessionKey::File(uri.to_string())
     }
 
     fn record_path(&self) -> std::path::PathBuf {
@@ -133,12 +139,27 @@ impl TestApp {
 
     /// The sessions recorded on disk, once every write has landed.
     fn recorded(&self) -> Vec<SessionKey> {
-        crate::test_support::finish_on_main(WAIT, self.services().open_sessions().flush()).expect("the flush");
+        finish_on_main(WAIT, self.services().open_sessions().settled()).expect("the writes to land");
         let path = self.record_path();
         let bytes = std::fs::read(&path).expect("the record");
         decode_document::<OpenSessionsRecord>(&path, &bytes)
             .expect("a record")
             .keys()
+    }
+
+    /// The window that claims `key`.
+    fn window_for(&self, key: &SessionKey) -> gtk4::ApplicationWindow {
+        let id = self
+            .services()
+            .sessions
+            .window_for(key)
+            .expect("a window claims the key");
+        self.app
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<gtk4::ApplicationWindow>().ok())
+            .find(|window| window.id() == id)
+            .expect("the window")
     }
 
     /// Wait for every key to show its workspace in a window of its own.
@@ -347,16 +368,8 @@ fn quit_keeps_keys_window_close_removes() {
     test.app.activate();
     test.wait_for_sessions(&[closed.clone(), kept.clone()]);
     let services = test.services();
-    let closed_id = services.sessions.window_for(&closed).expect("the window to close");
-    let window = test
-        .app
-        .windows()
-        .into_iter()
-        .filter_map(|window| window.downcast::<gtk4::ApplicationWindow>().ok())
-        .find(|window| window.id() == closed_id)
-        .expect("the window");
 
-    window.close();
+    test.window_for(&closed).close();
     wait_until(WAIT, || services.sessions.window_for(&closed).is_none()).expect("the window to close");
     let decision = finish_on_main(WAIT, QuitSequence::run(test.app.clone())).expect("the quit to finish");
 
@@ -409,6 +422,38 @@ fn cancelled_quit_thaws_to_live_keys() {
     assert_eq!(open.len(), 1, "{open:?}");
     assert_eq!(services.open_sessions().keys(), open);
     assert_eq!(test.recorded(), open);
+}
+
+#[gtk4::test]
+fn an_activate_after_an_approved_quit_restores_its_record() {
+    let test = TestApp::started("QuitThenActivate");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    test.record(&[first.clone(), second.clone()]);
+    test.app.activate();
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+    let services = test.services();
+    // A session still closing keeps the process up once its window is gone.
+    let closing = services.hold().acquire();
+    let decision = finish_on_main(WAIT, QuitSequence::run(test.app.clone())).expect("the quit to finish");
+    assert_eq!(decision, CloseDecision::Approved);
+    assert!(test.app.windows().is_empty());
+
+    test.app.activate();
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+
+    assert_eq!(
+        test.app.windows().len(),
+        2,
+        "a picker opened beside the restored windows"
+    );
+    test.window_for(&first).close();
+    wait_until(WAIT, || services.sessions.window_for(&first).is_none()).expect("the window to close");
+    assert_eq!(
+        test.recorded(),
+        [second],
+        "a window closed after the restore stayed recorded"
+    );
+    drop(closing);
 }
 
 #[gtk4::test]

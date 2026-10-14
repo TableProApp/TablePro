@@ -12,7 +12,7 @@ use super::{OpenSessionsLoad, OpenSessionsRecord, WorkspaceStore};
 ///
 /// A quit freezes the list before it asks the first window, so a window
 /// it closes stays on it; a cancelled quit thaws it to the windows still
-/// open.
+/// open, and an approved one empties it once it is on disk.
 pub struct OpenSessions {
     store: WorkspaceStore,
     /// Each write keeps the process up until it lands, since closing the
@@ -96,6 +96,14 @@ impl OpenSessions {
         self.write();
     }
 
+    /// After an approved quit has written the record, go back to how a
+    /// launch starts: nothing open and nothing frozen, so the next
+    /// restore reads the record from disk.
+    pub fn end_quit(&self) {
+        self.keys.borrow_mut().clear();
+        self.frozen.set(false);
+    }
+
     /// Write the keys as they are now; resolves once they are on disk.
     pub fn flush(&self) -> impl Future<Output = ()> + use<> {
         let scheduled = self.store.schedule_open_sessions(self.record());
@@ -104,6 +112,15 @@ impl OpenSessions {
             if let Err(error) = scheduled.and(written.await) {
                 tracing::warn!(%error, "could not record which sessions are open");
             }
+        }
+    }
+
+    /// Resolves once every write already scheduled is on disk.
+    #[cfg(test)]
+    pub(crate) fn settled(&self) -> impl Future<Output = ()> + use<> {
+        let written = self.store.flush_open_sessions();
+        async move {
+            let _ = written.await;
         }
     }
 

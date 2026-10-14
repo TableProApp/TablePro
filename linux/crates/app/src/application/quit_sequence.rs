@@ -4,6 +4,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
 use super::TableProApplication;
+use super::imp::RestoreState;
 use crate::runtime::{DeliverInput, Delivery};
 use crate::ui::SessionWindowInput;
 use crate::workspace::{CloseDecision, CloseReason};
@@ -19,6 +20,10 @@ use crate::workspace::{CloseDecision, CloseReason};
 /// reopens the windows it closes. The record is written before the
 /// process may end, and a cancelled quit keeps only the windows still
 /// open.
+///
+/// An approved quit can leave the process running with no window while
+/// a session closes, and a second launch then activates it. That
+/// activate restores the record as a new process would.
 pub struct QuitSequence;
 
 impl QuitSequence {
@@ -43,7 +48,14 @@ impl QuitSequence {
         app.imp().quit_asking.set(None);
         if let Some(services) = &services {
             match decision {
-                CloseDecision::Approved => services.open_sessions().flush().await,
+                CloseDecision::Approved => {
+                    services.open_sessions().flush().await;
+                    services.open_sessions().end_quit();
+                    let restore = &app.imp().restore;
+                    if restore.get() == RestoreState::Done {
+                        restore.set(RestoreState::NotAttempted);
+                    }
+                }
                 CloseDecision::Cancelled => services
                     .open_sessions()
                     .thaw(|key| services.sessions.window_for(key).is_some()),
