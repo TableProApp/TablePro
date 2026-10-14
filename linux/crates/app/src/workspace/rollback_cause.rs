@@ -33,4 +33,32 @@ impl RollbackCause {
             ),
         }
     }
+
+    /// A guard found what the save was built from changed after it was
+    /// read: the row, for a row save, or the table, for a structure save.
+    pub fn found_changes(&self) -> bool {
+        matches!(self, Self::Driver(DriverError::RowGuardFailed { .. }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_failed_guard_found_changes() {
+        let guard = RollbackCause::Driver(DriverError::RowGuardFailed {
+            statement_index: 0,
+            expected: 0,
+            actual: 2,
+        });
+        let refused = RollbackCause::Driver(DriverError::RolledBack {
+            statement_index: 0,
+            source: Box::new(DriverError::server("UNIQUE constraint failed")),
+        });
+
+        assert!(guard.found_changes());
+        assert!(!refused.found_changes());
+        assert!(!RollbackCause::NotApplied.found_changes());
+    }
 }

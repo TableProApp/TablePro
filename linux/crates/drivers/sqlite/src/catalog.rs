@@ -17,10 +17,10 @@ use tablepro_core::column::{
 use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 use tablepro_core::value::{SqlDecimal, Value};
 
-pub(crate) use dependents::{SchemaRow, select_dependents};
+pub(crate) use dependents::{SchemaRow, select_dependents, words};
 pub use runtime_version::{SQLITE_MIN_VERSION, SqliteVersion, check_runtime_version};
 pub(crate) use sqlite_column_row::{SqliteColumnRow, TableFacts};
-pub(crate) use table_definition::{InboundKeyRow, foreign_key_name, generated_expressions, inbound_foreign_keys};
+pub(crate) use table_definition::{InboundKeyRow, foreign_key_names, generated_expressions, inbound_foreign_keys};
 
 /// The schema unqualified names resolve to.
 pub(crate) const MAIN_SCHEMA: &str = "main";
@@ -69,9 +69,13 @@ pub(crate) fn dependents_sql(schema_sql: &str) -> String {
     )
 }
 
+/// `child_keys` counts every key of the child, wherever it points, since
+/// the ids number them all.
 pub(crate) fn inbound_keys_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT m.name AS child, f.id AS id, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
+        "SELECT m.name AS child, m.sql AS child_sql, \
+         (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys, \
+         f.id AS id, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
          FROM {schema_sql}.sqlite_schema m, pragma_foreign_key_list(m.name, ?2) f \
          WHERE m.type = 'table' AND f.\"table\" = ?1 COLLATE NOCASE ORDER BY m.name, f.id, f.seq"
     )

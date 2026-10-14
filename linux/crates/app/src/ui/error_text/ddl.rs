@@ -17,6 +17,9 @@ pub fn refusal_text(reason: &RefusalReason) -> String {
             crate::i18n::gettext("The database numbers this column, so it has no default.")
         }
         RefusalReason::NotAnInteger => crate::i18n::gettext("Only an integer column can number itself."),
+        RefusalReason::AlwaysNumbered => crate::i18n::gettext(
+            "The database numbers this column while it is the table's integer primary key. Change its type or the primary key to stop it.",
+        ),
         RefusalReason::UnmodeledAttribute(attribute) => crate::i18n::gettext_f(
             "This column has an attribute TablePro can't restate: {attribute}",
             &[("attribute", attribute)],
@@ -108,5 +111,9 @@ pub fn build_error_text(error: &BuildDdlError) -> String {
             &[("action", action.as_sql())],
         ),
         BuildDdlError::NoTableSource => crate::i18n::gettext("The database gave no CREATE statement for this table."),
+        BuildDdlError::UnreplayableDependent(name) => crate::i18n::gettext_f(
+            "The table can't be rebuilt: the stored statement of {name}, which uses it, can't be run again.",
+            &[("name", name)],
+        ),
     }
 }

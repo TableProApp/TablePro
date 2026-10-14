@@ -67,6 +67,26 @@ A `COMMIT` never crosses a network, so nothing is left to resolve afterwards (`C
 
 The grid names a row by its primary key, then by a unique index whose columns are all `NOT NULL`, then by `rowid`. A `WITHOUT ROWID` table with neither key, or a table with a column named `rowid` that hides the real one, is read-only in the grid.
 
+## Structure changes
+
+`ALTER TABLE` renames a table or a column, adds a column, and drops one. The DDL dialect uses it where SQLite allows the change: an added column with no key, a constant default, and NOT NULL only with a default; a dropped column that has no key or UNIQUE of its own. Every other change rebuilds the table, following the procedure in [lang_altertable.html](https://www.sqlite.org/lang_altertable.html#otheralter), in one batch under `ForeignKeyMode::SuspendedThenVerified`:
+
+1. Drop the views, and the triggers on other tables, that name the table, since the rename in step 5 checks every one of them.
+2. Create `_tablepro_rebuild_<table>` from the stored CREATE TABLE with only the edited parts replaced: a column's type, NULL, DEFAULT and key, the key itself, and the foreign keys added or dropped. A COLLATE, CHECK, generated expression, conflict clause, comment or `WITHOUT ROWID` the edit did not touch stays as it was written. A removed constraint takes the spaces before it but not a newline, which may end a `--` comment.
+3. Copy the rows with `INSERT OR ABORT`, so an `ON CONFLICT IGNORE` or `REPLACE` the table declares fails the save rather than dropping a row. Rowids come along unless the table has none or a copied column becomes the rowid. A generated column is computed again.
+4. With AUTOINCREMENT on both sides, carry the `sqlite_sequence` mark, so a deleted number is not handed out again.
+5. Drop the old table and rename the new one into its place.
+6. Make the indexes, triggers and views again from their stored SQL, in the order the schema first made them.
+7. Rename columns, then the table, natively, so SQLite carries the new names into every index, trigger, view and foreign key.
+
+Before step 1, inside the same transaction, the plan's `DdlPrecondition` counts what differs from the schema the plan was built from: the table's CREATE TABLE, its own indexes and triggers, the views and triggers elsewhere the rebuild makes again, and the key columns of other tables that point at it. Anything but zero refuses the save as `RowGuardFailed`, since the rebuild would write the table again without that change. The Structure tab then reads the table again on Discard.
+
+The foreign key check covers the rebuilt table and every table whose keys point at it, and fails the save only for a violation the save introduced. Where a column becomes the `INTEGER PRIMARY KEY`, its values become the rowids, so the rebuilt table's violations compare by count rather than by rowid. A rebuild refuses to drop a column that a kept index, CHECK, generated column, foreign key, trigger or view still names; in a trigger on another table, `new.x` and `old.x` are that table's columns and do not count. A table whose CREATE TABLE the reader cannot follow, such as a virtual table, keeps the native changes, offers no foreign key or key change, and refuses the rest as `UnreadableDefinition`.
+
+SQLite always numbers its rowid column, a lone `INTEGER PRIMARY KEY` not declared `PRIMARY KEY DESC` on the column itself, and takes AUTOINCREMENT only there. So numbering turns off only together with a change of the column's type or of the key (`AlwaysNumbered` otherwise), and a column that keeps AUTOINCREMENT keeps the type `INTEGER` (`NotAnInteger`).
+
+SQLite's pragmas do not report a foreign key's constraint name, so the definition reads it from the CREATE TABLE text, and a key declared without one is named `fk_<table>_<n>` after its position.
+
 ## Editor sessions
 
 - A script is split where SQLite itself would end a statement, so the semicolons inside a trigger body do not end it. Text the splitter cannot finish, such as an unterminated string, goes to SQLite whole, so the error is SQLite's own. The splitter is tested against `sqlite3_complete` (`tests/script_plan_matches_sqlite3_complete.rs`).

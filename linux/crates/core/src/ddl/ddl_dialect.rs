@@ -21,6 +21,13 @@ pub trait DdlDialect: Send + Sync + std::fmt::Debug {
     /// The dialect that quotes, binds and parses for this engine.
     fn sql_dialect(&self) -> &dyn SqlDialect;
 
+    /// What the engine takes for this table, where that depends on more
+    /// than the engine: the structure tab offers a table-wide control,
+    /// such as adding a foreign key, only where this allows it.
+    fn table_capabilities(&self, _table: &TableDefinition) -> DdlCapabilities {
+        *self.capabilities()
+    }
+
     fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
         ColumnCapabilities::standard(self.capabilities(), table, column)
     }

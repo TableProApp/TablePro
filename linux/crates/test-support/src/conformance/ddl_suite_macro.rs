@@ -26,5 +26,11 @@ macro_rules! ddl_conformance_suite {
             create_table_script_recreates_the_table,
             $crate::conformance::cases::ddl::create_table_script_recreates_the_table::<$engine>
         }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            structure_changes_keep_rows_and_indexes,
+            $crate::conformance::cases::ddl::structure_changes_keep_rows_and_indexes::<$engine>
+        }
     };
 }

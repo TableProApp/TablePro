@@ -363,3 +363,15 @@ fn unterminated_dollar_quote_diagnostic_names_line() {
     assert!(message.contains("dollar-quoted"), "{message}");
     assert!(message.contains("line 7"), "{message}");
 }
+
+#[test]
+fn a_rebuild_refusal_names_the_dependent_rather_than_a_column() {
+    let unreplayable = build_error_text(&tablepro_core::ddl::BuildDdlError::UnreplayableDependent(
+        "big_orders".to_owned(),
+    ));
+    let numbered = refusal_text(&tablepro_core::ddl::RefusalReason::AlwaysNumbered);
+
+    assert!(unreplayable.contains("big_orders"), "{unreplayable}");
+    assert!(!unreplayable.contains("Column"), "{unreplayable}");
+    assert!(numbered.contains("primary key"), "{numbered}");
+}

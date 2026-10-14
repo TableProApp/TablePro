@@ -31,4 +31,8 @@ pub enum BuildDdlError {
     /// server's own text would recreate it faithfully.
     #[error("the server gave no CREATE statement for this table")]
     NoTableSource,
+    /// A view, trigger or index a table rebuild makes again, whose stored
+    /// statement cannot run as it is.
+    #[error("the stored statement of {0}, which the rebuild makes again, cannot run as it is")]
+    UnreplayableDependent(String),
 }

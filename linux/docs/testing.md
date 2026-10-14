@@ -144,6 +144,7 @@ Every case plans through `connection.dialect().ddl()` and runs the plan with `wr
 - `ddl_plans_apply_and_read_back` creates a table with a quoted literal default and an expression default, then adds, renames and drops a column, changes its nullability and default, adds an index and a foreign key, renames the table, which has to stay listed in its own schema, and drops the tables. After each step `fetch_table_definition` has to match the draft. A step the dialect refuses has to be refused by its plan as well, with a reason, so no step is skipped without a check. Once the foreign key exists, the referenced primary key has to read as held by it.
 - `failed_ddl_batch_outcome_matches_ddl_atomicity` sends two plans whose second statement the server rejects, and checks the outcome against `ddl_writes`: `RolledBack` and nothing applied, or `PartiallyApplied` and the first plan applied.
 - `create_table_script_recreates_the_table` drops a table and runs its `create_table_script`, which has to bring back the same column definitions and index keys.
+- `structure_changes_keep_rows_and_indexes` fills an indexed table, then changes a default and a nullability. The rows and the index have to come through, which on SQLite means through the table rebuild.
 
 The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the MySQL target runs it on MariaDB as well. SQLite passes `docker: false`, so its cases run in the unit suite.
 

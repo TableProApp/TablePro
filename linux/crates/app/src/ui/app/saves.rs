@@ -92,7 +92,11 @@ impl App {
                 self.on_structure_save_completed(tab, saved_table_name, sender);
             }
             (WriteKind::SchemaChanges, SaveOutcome::RolledBack(cause)) => {
-                self.send_to_structure_tab(tab, StructureTabInput::SaveFailed(cause.message()));
+                let input = match cause.found_changes() {
+                    true => StructureTabInput::TableChangedBeforeSave,
+                    false => StructureTabInput::SaveFailed(cause.message()),
+                };
+                self.send_to_structure_tab(tab, input);
             }
             (WriteKind::SchemaChanges, SaveOutcome::Unknown(cause)) => {
                 let message = cause.sentence(&self.tab_name(tab));

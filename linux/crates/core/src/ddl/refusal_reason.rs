@@ -18,6 +18,9 @@ pub enum RefusalReason {
     IdentityColumn,
     /// Only an integer column can number itself.
     NotAnInteger,
+    /// The engine numbers the column for as long as it is the table's
+    /// integer key, as SQLite does its rowid column.
+    AlwaysNumbered,
     /// The column carries an attribute this build does not model, which a
     /// restated definition would drop.
     UnmodeledAttribute(String),
@@ -45,6 +48,7 @@ impl fmt::Display for RefusalReason {
             Self::GeneratedColumn => f.write_str("the server computes the column"),
             Self::IdentityColumn => f.write_str("the server numbers the column"),
             Self::NotAnInteger => f.write_str("only an integer column can number itself"),
+            Self::AlwaysNumbered => f.write_str("the engine numbers the column while it is the table's integer key"),
             Self::UnmodeledAttribute(name) => write!(f, "the column has an attribute this app cannot restate: {name}"),
             Self::ColumnInUse(users) => write!(f, "still used by {}", users.join(", ")),
             Self::ReferencedByForeignKeys(keys) => write!(f, "referenced by foreign keys {}", keys.join(", ")),

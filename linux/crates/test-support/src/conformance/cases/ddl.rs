@@ -11,16 +11,19 @@ use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, IndexKey, ObjectKind, ObjectScope};
 use tablepro_core::value::Value;
 use tablepro_core::{
-    Connection, DriverError, ForeignKeyInfo, ForeignKeyMode, TableRef, WriteAtomicity, WriteBatch, WriteKind,
+    Connection, DriverError, ForeignKeyInfo, ForeignKeyMode, RowLimit, TableRef, WriteAtomicity, WriteBatch, WriteKind,
     WriteReport,
 };
 
-use crate::conformance::support::{CALL_DEADLINE, connect, expect, unexpected, unique, within, writable};
+use crate::conformance::support::{
+    CALL_DEADLINE, apply, connect, count, expect, insert_sql, statement, unexpected, unique, within, writable,
+};
 use crate::conformance::{ConformanceDdlEngine, ConformanceFailure};
 
 const APPLY_CASE: &str = "ddl_plans_apply_and_read_back";
 const FAILED_CASE: &str = "failed_ddl_batch_outcome_matches_ddl_atomicity";
 const SCRIPT_CASE: &str = "create_table_script_recreates_the_table";
+const ROWS_CASE: &str = "structure_changes_keep_rows_and_indexes";
 
 /// Case 1: each structure change the engine offers applies and reads
 /// back as drafted, and each one it refuses is refused by the plan
@@ -334,6 +337,97 @@ pub async fn create_table_script_recreates_the_table<E: ConformanceDdlEngine>(
     let (before, after) = (secondary_indexes(&table), secondary_indexes(&recreated));
     expect(case, before == after, || {
         format!("the indexes were {before:?} and came back {after:?}")
+    })?;
+    drop_table(case, connection.as_ref(), ddl, &parent).await?;
+    connection.close().await?;
+    Ok(())
+}
+
+/// Case 4: a table's rows and indexes come through the column changes
+/// the engine offers. SQLite makes these by rebuilding the table, which
+/// copies every row and makes every index again.
+pub async fn structure_changes_keep_rows_and_indexes<E: ConformanceDdlEngine>(
+    engine: E,
+) -> Result<(), ConformanceFailure> {
+    let case = ROWS_CASE;
+    let connection = connect(case, &engine, writable()).await?;
+    let dialect = connection.dialect();
+    let ddl = ddl_of(case, dialect.as_ref())?;
+    let parent = engine.scratch_table(&unique("ddl_rows"));
+    create(
+        case,
+        &engine,
+        connection.as_ref(),
+        ddl,
+        &parent_draft(case, &engine, dialect.as_ref(), &parent)?,
+    )
+    .await?;
+    let mut table = definition(connection.as_ref(), &parent).await?;
+    let step = Step {
+        case,
+        connection: connection.as_ref(),
+        ddl,
+    };
+    let index = IndexInfo {
+        name: format!("{}_label", parent.name),
+        keys: vec![IndexKey::Column {
+            name: "label".to_owned(),
+            descending: false,
+        }],
+        unique: false,
+        primary: false,
+        predicate: None,
+    };
+    step.apply(
+        &mut table,
+        "create index",
+        table_permission(ddl.capabilities().create_index),
+        |draft| draft.indexes.push(index),
+    )
+    .await?;
+    let labels = ["first", "second", "third"];
+    let inserts = (1..)
+        .zip(labels)
+        .map(|(id, label)| insert_sql(dialect.as_ref(), &parent, id, label))
+        .collect();
+    apply(connection.as_ref(), &parent, WriteKind::RowChanges, inserts).await?;
+    let indexes = secondary_indexes(&table);
+
+    let permission = column_permission(ddl, &table, "label", |permissions| permissions.alter_default);
+    step.apply(&mut table, "change default", permission, |draft| {
+        edit_column(draft, "label", |column| {
+            column.default = ColumnDefault::Literal(Value::Text("none".to_owned()));
+        })
+    })
+    .await?;
+    // `created_at` took its default on every row, so none is NULL.
+    let permission = column_permission(ddl, &table, "created_at", |permissions| permissions.alter_nullability);
+    step.apply(&mut table, "change nullability", permission, |draft| {
+        edit_column(draft, "created_at", |column| column.nullable = false)
+    })
+    .await?;
+
+    let rows = count(connection.as_ref(), &parent).await?;
+    expect(case, rows == 3, || format!("{rows} rows are left of 3"))?;
+    let sql = format!(
+        "SELECT {} FROM {} ORDER BY {}",
+        dialect.quote_identifier("label"),
+        dialect.qualify(&parent),
+        dialect.quote_identifier("id")
+    );
+    let read = connection
+        .query_bound(&statement(&sql), RowLimit::EDITOR_DEFAULT, within(CALL_DEADLINE))
+        .await?;
+    let expected: Vec<Vec<Value>> = labels
+        .iter()
+        .map(|label| vec![Value::Text((*label).to_owned())])
+        .collect();
+    expect(case, read.rows == expected, || {
+        format!("the labels read back as {:?}", read.rows)
+    })?;
+    let after = secondary_indexes(&table);
+    expect(case, after == indexes, || {
+        format!("the indexes were {indexes:?} and are {after:?}")
     })?;
     drop_table(case, connection.as_ref(), ddl, &parent).await?;
     connection.close().await?;

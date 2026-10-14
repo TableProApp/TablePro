@@ -1,15 +1,16 @@
-use super::{BuildDdlError, DdlOperation, TableChanges};
+use super::{BuildDdlError, DdlOperation, DdlPrecondition, TableChanges};
 use crate::foreign_key_mode::ForeignKeyMode;
 use crate::meta::TableRef;
-use crate::statement::{GuardedStatement, Statement, StatementBuilder};
+use crate::statement::{GuardedStatement, RowGuard, Statement, StatementBuilder};
 use crate::write_batch::{WriteBatch, WriteKind};
 
-/// The statements a structure change runs, in order, and whether foreign
-/// keys stay on while they do.
+/// The statements a structure change runs, in order, whether foreign
+/// keys stay on while they do, and what the schema has to hold first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DdlPlan {
     pub statements: Vec<Statement>,
     pub foreign_keys: ForeignKeyMode,
+    pub precondition: Option<DdlPrecondition>,
 }
 
 impl DdlPlan {
@@ -26,6 +27,7 @@ impl DdlPlan {
                 })
                 .collect(),
             foreign_keys: ForeignKeyMode::Enforced,
+            precondition: None,
         }
     }
 
@@ -61,9 +63,19 @@ impl DdlPlan {
             .join("\n\n")
     }
 
-    /// Schema statements have no row count to prove.
+    /// Schema statements have no row count to prove. The precondition
+    /// guards the first one, so the write counts it inside its
+    /// transaction before anything runs, and a schema guard that fails
+    /// always means the table changed after the plan read it.
     pub fn into_steps(self) -> Vec<GuardedStatement> {
-        self.statements.into_iter().map(GuardedStatement::unguarded).collect()
+        let mut steps: Vec<GuardedStatement> = self.statements.into_iter().map(GuardedStatement::unguarded).collect();
+        if let (Some(first), Some(precondition)) = (steps.first_mut(), self.precondition) {
+            first.guard = RowGuard::ProbeExactly {
+                probe: precondition.probe,
+                rows: precondition.rows,
+            };
+        }
+        steps
     }
 
     /// `table` is the table as it is named before the plan runs.
@@ -88,6 +100,28 @@ mod tests {
         assert!(batch.foreign_keys.is_enforced());
         assert!(batch.steps.iter().all(|step| step.statement.params().is_empty()));
         assert_eq!(batch.steps[1].statement.sql(), "DROP INDEX i");
+    }
+
+    #[test]
+    fn the_precondition_guards_the_first_statement_only() {
+        let mut builder = StatementBuilder::new();
+        builder.push_sql("SELECT count(*) FROM sqlite_schema WHERE sql <> 'x'");
+        let mut plan = DdlPlan::from_sql(["DROP TABLE t".to_owned(), "ALTER TABLE u RENAME TO t".to_owned()]);
+        plan.precondition = Some(DdlPrecondition {
+            probe: builder.finish(),
+            rows: 0,
+        });
+
+        let steps = plan.into_steps();
+
+        let Some((probe, rows)) = steps[0].guard.probe() else {
+            panic!("the first step is unguarded: {:?}", steps[0].guard);
+        };
+        assert_eq!(
+            (probe.sql(), rows),
+            ("SELECT count(*) FROM sqlite_schema WHERE sql <> 'x'", 0)
+        );
+        assert_eq!(steps[1].guard, RowGuard::None);
     }
 
     #[test]
