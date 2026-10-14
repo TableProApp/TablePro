@@ -671,6 +671,12 @@ impl Workspace {
         self.read(|model| model.exports.clone())
     }
 
+    /// The pending row changes of table tab `tab`.
+    #[cfg(test)]
+    pub(crate) fn row_tracker(&self, tab: Uuid) -> Option<crate::services::tab_tracker_handle::TabTrackerHandle> {
+        self.read(|model| model.change_trackers.get(tab)).flatten()
+    }
+
     /// Have every close of the window ask about `blocker`'s work first.
     pub(crate) fn register_close_blocker(&self, blocker: Rc<dyn CloseBlocker>) {
         self.with_model(|model| model.workspace_handle.register_close_blocker(blocker));

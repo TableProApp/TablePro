@@ -37,24 +37,6 @@ pub(crate) struct CloseGuards {
     /// disconnect or switch. A switch asks again once its connection is
     /// ready, about what changed while it connected, but not about these.
     teardown_acknowledged: RefCell<HashSet<Uuid>>,
-    /// A prompt holds the turn, so the saves it runs are its own.
-    asking: Rc<Cell<bool>>,
-}
-
-/// Marks a prompt as deciding until it ends, or its task is dropped.
-struct Asking(Rc<Cell<bool>>);
-
-impl Asking {
-    fn hold(asking: &Rc<Cell<bool>>) -> Self {
-        asking.set(true);
-        Self(asking.clone())
-    }
-}
-
-impl Drop for Asking {
-    fn drop(&mut self) {
-        self.0.set(false);
-    }
 }
 
 impl CloseGuards {
@@ -65,14 +47,7 @@ impl CloseGuards {
             requests: Cell::new(0),
             waiting: RefCell::new(Vec::new()),
             teardown_acknowledged: RefCell::new(HashSet::new()),
-            asking: Rc::new(Cell::new(false)),
         })
-    }
-
-    /// Whether a prompt is deciding a close now, and with it the saves
-    /// that prompt started, which it reports itself.
-    pub(crate) fn is_asking(&self) -> bool {
-        self.asking.get()
     }
 
     async fn run(
@@ -83,7 +58,6 @@ impl CloseGuards {
         acknowledged: &mut HashSet<Uuid>,
     ) -> CloseDecision {
         let _turn = self.turn.lock().await;
-        let _asking = Asking::hold(&self.asking);
         CloseGuard::run(parent, handle, scope, acknowledged).await
     }
 
@@ -353,22 +327,6 @@ mod tests {
         answer_next(&window, "Save Changes?", "discard", Some(&kept));
 
         wait_until(WAIT, || closes.get() == 1).expect("the approved close to go through");
-    }
-
-    #[gtk4::test]
-    fn a_prompt_is_asking_until_it_is_answered() {
-        let workspace = Workspace::open(ConnectionScript::default());
-        let guards = CloseGuards::new();
-        let (window, _closes) = guarded_window(&guards, &workspace);
-        assert!(!guards.is_asking());
-
-        window.close();
-        wait_until(WAIT, || visible_alert(&window).is_some()).expect("the prompt");
-        assert!(guards.is_asking(), "a prompt on screen is not asking");
-        answer_next(&window, "Save Changes?", "cancel", None);
-
-        wait_until(WAIT, || guards.window.get() == WindowClose::Open).expect("the close to be dropped");
-        assert!(!guards.is_asking(), "the answered prompt still counts as asking");
     }
 
     #[gtk4::test]

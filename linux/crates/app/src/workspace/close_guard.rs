@@ -28,6 +28,7 @@ impl CloseGuard {
         scope: CloseScope,
         acknowledged: &mut HashSet<Uuid>,
     ) -> CloseDecision {
+        let _asking = handle.claim_for_prompt(scope);
         loop {
             match handle.close_step(scope, acknowledged) {
                 CloseStep::Approve => return CloseDecision::Approved,
@@ -226,6 +227,33 @@ mod tests {
         assert_eq!(decided(&decision), CloseDecision::Approved);
         assert_eq!(workspace.tracker.pending_state(), PendingState::Clean);
         assert_eq!(CallCounters::get(&workspace.counters().write_batch), 1);
+        assert_eq!(
+            workspace.settled_in_prompt(),
+            [true],
+            "the prompt's save settled outside it"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_save_left_running_by_keep_open_settles_outside_the_prompt() {
+        let mut script = ConnectionScript::default();
+        script
+            .write_batch
+            .always(FakeReply::StoppedWith(Err(DriverError::RolledBack {
+                statement_index: 0,
+                source: Box::new(DriverError::Cancelled),
+            })));
+        let workspace = Workspace::open(script);
+        let window = window();
+
+        let decision = guard(&window, &workspace.handle, CloseScope::Window);
+        answer_next(&window, "Save Changes?", "save", None);
+        answer_next(&window, "Saving Changes", "keep", None);
+        assert_eq!(decided(&decision), CloseDecision::Cancelled);
+        workspace.handle.stop_saves(CloseScope::Window);
+        workspace.settle();
+
+        assert_eq!(workspace.settled_in_prompt(), [false]);
     }
 
     #[gtk4::test]

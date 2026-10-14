@@ -5,25 +5,30 @@ use std::sync::Arc;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use libadwaita::prelude::AlertDialogExt;
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::export::CsvOptions;
-use tablepro_core::{DriverError, EditorSession, TransactionState, WriteKind};
+use tablepro_core::meta::TableRef;
+use tablepro_core::{DriverError, EditorSession, Value, WriteKind, WriteReport};
 use tablepro_test_support::{FakeEditorSession, FakeReply, FakeRun, Replies};
 use uuid::Uuid;
 
 use super::SessionWindowInput;
+use super::application_notification_sink::ApplicationNotificationSink;
 use super::notification_request::NotificationRequest;
 use super::tests::{TestWindow, WAIT, editors};
 use super::work_notifier::tests::{Notice, RecordingNotificationSink};
 use crate::runtime::DeliverInput;
 use crate::services::change_origins::ChangeOrigins;
+use crate::services::change_tracker::RowKey;
+use crate::services::save_batch::SaveTarget;
+use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::editor::SqlEditor;
 use crate::ui::export::{ExportFormat, ExportJob, ExportSource, RowFormat};
 use crate::ui::workspace::{OpenMode, WorkspaceInput};
-use crate::workspace::{
-    CompletedWork, RollbackCause, SaveOutcome, SaveSettled, WorkKind, WorkOutcome, WorkspaceEvent, visible_alert,
-};
+use crate::workspace::test_workspace::integer;
+use crate::workspace::{RollbackCause, SaveOutcome, SaveSettled, WorkspaceEvent, answer, visible_alert};
 
 /// A connected window counted as the active one, whose notifications
 /// go to a record.
@@ -33,13 +38,16 @@ struct Notified {
 }
 
 /// A connected window counted as the active one, whose every editor run
-/// ends as `run` does.
+/// ends as `run` does and every save commits.
 fn active_window(name: &str, run: FakeRun) -> TestWindow {
     let mut runs = Replies::default();
     runs.always(run);
     let session: Arc<dyn EditorSession> = Arc::new(FakeEditorSession::new(runs));
     let test = TestWindow::connected_with(name, |script| {
         script.open_editor_session.always(FakeReply::ok(session));
+        script
+            .write_batch
+            .always(FakeReply::ok(WriteReport::new(vec![Some(1)])));
     });
     test.window.set_active_for_test(true);
     test
@@ -79,6 +87,27 @@ impl Notified {
 
     fn open_editor_tab(&self) -> (Uuid, SqlEditor) {
         open_editor_tab(&self.test)
+    }
+
+    /// Open table `name` in a tab of its own, which comes to the front.
+    fn open_table_tab(&self, name: &str) -> Uuid {
+        let workspace = self.test.workspace();
+        let before = workspace.selected_tab();
+        workspace
+            .input()
+            .expect("the workspace's input")
+            .deliver(WorkspaceInput::SelectTable {
+                schema: None,
+                name: name.to_owned(),
+                open_mode: OpenMode::NewTab,
+            });
+        let mut table = None;
+        wait_until(WAIT, || {
+            table = workspace.selected_tab().filter(|tab| Some(*tab) != before);
+            table.is_some()
+        })
+        .expect("the table's tab");
+        table.expect("the table's tab")
     }
 
     fn run(&self, editor: &SqlEditor) {
@@ -193,7 +222,7 @@ fn the_window_coming_forward_withdraws_the_tab_in_front() {
     notified.test.window.set_active_for_test(true);
     notified.test.window.notify("is-active");
 
-    assert_eq!(notified.sink.withdrawn(), [notified.id(tab)]);
+    wait_until(WAIT, || notified.sink.withdrawn() == [notified.id(tab)]).expect("the notification to go");
 }
 
 #[gtk4::test]
@@ -234,23 +263,12 @@ fn teardown_withdraws_all() {
 fn a_failed_save_in_a_background_tab_names_only_the_table() {
     let notified = Notified::completing("NotifySave");
     let workspace = notified.test.workspace();
-    let input = workspace.input().expect("the workspace's input");
-    input.deliver(WorkspaceInput::SelectTable {
-        schema: None,
-        name: "orders".to_owned(),
-        open_mode: OpenMode::NewTab,
-    });
-    let mut table = None;
-    wait_until(WAIT, || {
-        table = workspace.selected_tab();
-        table.is_some()
-    })
-    .expect("the table's tab");
-    let table = table.expect("the table's tab");
+    let table = notified.open_table_tab("orders");
     notified.open_editor_tab();
 
-    input.deliver(WorkspaceInput::Workspace(WorkspaceEvent::SaveSettled(Box::new(
-        SaveSettled {
+    let input = workspace.input().expect("the workspace's input");
+    input.deliver(WorkspaceInput::Workspace(WorkspaceEvent::SaveSettled {
+        settled: Box::new(SaveSettled {
             tab: table,
             kind: WriteKind::RowChanges,
             outcome: SaveOutcome::RolledBack(RollbackCause::Driver(DriverError::server(
@@ -259,8 +277,9 @@ fn a_failed_save_in_a_background_tab_names_only_the_table() {
             failing: None,
             saved_table_name: None,
             origins: ChangeOrigins::default(),
-        },
-    ))));
+        }),
+        in_prompt: false,
+    }));
     notified.wait_for_sent(1);
 
     let sent = notified.sink.sent();
@@ -301,32 +320,61 @@ fn an_export_from_a_background_tab_notifies() {
 }
 
 #[gtk4::test]
-fn a_close_prompts_own_saves_are_not_notified() {
-    let notified = Notified::new(
-        "NotifyPromptSaves",
-        FakeRun::completed(Vec::new()).leaving(TransactionState::InTransaction),
-    );
-    let (first, editor) = notified.open_editor_tab();
-    notified.run(&editor);
+fn a_background_tab_saved_by_its_close_prompt_is_not_notified() {
+    let notified = Notified::completing("NotifyPromptSave");
+    let workspace = notified.test.workspace();
+    let table = notified.open_table_tab("orders");
+    let view = workspace.imp().tab_view.get();
+    let page = view.selected_page().expect("the table's page");
+    let tracker = workspace.row_tracker(table).expect("the table's tracker");
+    let _ = tracker.set_target(SaveTarget {
+        table: TableRef::unqualified("orders"),
+        columns: vec![integer("id", true), integer("n", false)],
+    });
+    let _ = tracker.apply(TrackerEdit::Cell {
+        row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"),
+        col: 1,
+        original: Value::Int(1),
+        value: Value::Int(2),
+    });
     notified.open_editor_tab();
-    assert!(notified.sink.sent().is_empty(), "the run in front was notified");
 
-    notified.test.window.close();
-    wait_until(WAIT, || visible_alert(&notified.test.window).is_some()).expect("the close prompt");
-    for kind in [WorkKind::Save, WorkKind::Export] {
-        notified
-            .test
-            .window
-            .send(SessionWindowInput::WorkCompleted(CompletedWork {
-                tab: first,
-                kind,
-                outcome: WorkOutcome::Succeeded,
-            }));
-    }
+    view.close_page(&page);
+    wait_until(WAIT, || {
+        visible_alert(&notified.test.window).is_some_and(|alert| alert.heading().as_deref() == Some("Save Changes?"))
+    })
+    .expect("the close prompt");
+    assert!(answer(&notified.test.window, "save"));
+    wait_until(WAIT, || {
+        workspace.open_tabs().is_some_and(|open| !open.contains(&table))
+    })
+    .expect("the saved tab to close");
+    drain_main_context();
+
+    assert!(notified.sink.notices().is_empty(), "{:?}", notified.sink.notices());
+}
+
+#[gtk4::test]
+fn an_editor_tab_named_by_its_script_is_notified_by_its_number() {
+    let notified = Notified::completing("NotifyScriptTab");
+    let (first, editor) = notified.open_editor_tab();
+    let view = notified.test.workspace().imp().tab_view.get();
+    let page = view.selected_page().expect("the editor's page");
+    notified.open_editor_tab();
+
+    editor
+        .buffer()
+        .set_text("UPDATE users SET password = 'hunter2' WHERE id = 1;");
+    wait_until(WAIT, || page.title().starts_with("UPDATE")).expect("the tab named by its script");
+    notified.run(&editor);
     notified.wait_for_sent(1);
 
-    let titles: Vec<String> = notified.sink.sent().into_iter().map(|sent| sent.title).collect();
-    assert_eq!(titles, ["Export Finished"]);
+    let sent = notified.sink.sent();
+    assert_eq!(
+        (sent[0].tab, sent[0].title.as_str(), sent[0].body.as_str()),
+        (first, "Query Finished", "Query 1 · Fake"),
+        "the notification showed the script"
+    );
 }
 
 #[gtk4::test]
@@ -558,6 +606,8 @@ impl Drop for NotificationServer {
 fn a_notification_reaches_the_desktop_and_a_click_brings_its_tab_forward() {
     let server = NotificationServer::start();
     let test = active_window("NotifyDesktop", FakeRun::completed(Vec::new()));
+    test.window
+        .set_notification_sink(Rc::new(ApplicationNotificationSink::new(test.app.upcast_ref())));
     let app_id = test
         .app
         .application_id()

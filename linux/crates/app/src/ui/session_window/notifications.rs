@@ -8,22 +8,22 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use uuid::Uuid;
 
-use super::application_notification_sink::ApplicationNotificationSink;
 use super::notification_sink::NotificationSink;
 use super::work_notifier::WorkNotifier;
 use super::{SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::ui::workspace::{Workspace, WorkspaceInput};
-use crate::workspace::{CompletedWork, WorkKind};
+use crate::workspace::CompletedWork;
 
 impl SessionWindow {
     /// Called once the window is added to the application, which gives
     /// it the id its notifications name.
-    pub(super) fn install_notifier(&self) {
+    pub(super) fn install_notifier(&self, input: &InputSender<SessionWindowInput>) {
         if let Some(app) = self.application() {
-            self.set_notification_sink(Rc::new(ApplicationNotificationSink::new(&app)));
+            self.set_notification_sink(default_sink(&app));
         }
-        self.connect_is_active_notify(SessionWindow::on_tabs_changed);
+        let changed = input.clone();
+        self.connect_is_active_notify(move |_| changed.deliver(SessionWindowInput::TabsChanged));
     }
 
     pub(super) fn set_notification_sink(&self, sink: Rc<dyn NotificationSink>) {
@@ -61,11 +61,6 @@ impl SessionWindow {
         let Some(label) = workspace.notice_label(work.tab) else {
             return;
         };
-        // The close prompt in front of the user saved those tabs, and
-        // says itself how that went.
-        if work.kind == WorkKind::Save && self.close_guards().is_some_and(|guards| guards.is_asking()) {
-            return;
-        }
         let active = self.window_is_active() && workspace.selected_tab() == Some(work.tab);
         let connection = workspace.connection_name().unwrap_or_default();
         if let Some(notifier) = self.imp().notifier.borrow().as_ref() {
@@ -104,4 +99,18 @@ impl SessionWindow {
             notifier.withdraw_all();
         }
     }
+}
+
+#[cfg(not(test))]
+fn default_sink(app: &gtk4::Application) -> Rc<dyn NotificationSink> {
+    Rc::new(super::application_notification_sink::ApplicationNotificationSink::new(
+        app,
+    ))
+}
+
+/// The tests share a session bus with no notification server on it,
+/// where GLib warns about the first notification it cannot send.
+#[cfg(test)]
+fn default_sink(_: &gtk4::Application) -> Rc<dyn NotificationSink> {
+    Rc::new(super::work_notifier::tests::RecordingNotificationSink::default())
 }

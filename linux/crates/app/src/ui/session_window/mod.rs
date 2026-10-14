@@ -128,7 +128,7 @@ impl SessionWindow {
         }
         crate::ui::window_geometry::restore(self.upcast_ref(), &services.settings);
         window_actions::install(self.upcast_ref(), &input);
-        self.install_notifier();
+        self.install_notifier(&input);
         imp.prompt_presenter
             .replace(Some(crate::ui::credential_prompt::CredentialPromptPresenter::start(
                 prompts, self,

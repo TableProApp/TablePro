@@ -47,7 +47,7 @@ mod tab_entry;
 mod tab_record;
 mod tab_snapshot;
 #[cfg(test)]
-mod test_workspace;
+pub(crate) mod test_workspace;
 mod unknown_cause;
 mod unknown_outcome_dialog;
 mod waiting_dialog;

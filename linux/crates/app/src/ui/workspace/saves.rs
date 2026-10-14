@@ -47,7 +47,7 @@ impl WorkspaceModel {
                 self.dispatch_to_tab(tab, BrowseTabInput::SaveStarted);
                 self.send_to_structure_tab(tab, StructureTabInput::SaveStarted);
             }
-            WorkspaceEvent::SaveSettled(settled) => self.on_save_settled(*settled),
+            WorkspaceEvent::SaveSettled { settled, in_prompt } => self.on_save_settled(*settled, in_prompt),
             WorkspaceEvent::Discarded { tabs, reload } => {
                 for tab in tabs {
                     let browse = match reload {
@@ -75,7 +75,7 @@ impl WorkspaceModel {
         self.refresh_unsaved();
     }
 
-    fn on_save_settled(&mut self, settled: SaveSettled) {
+    fn on_save_settled(&mut self, settled: SaveSettled, in_prompt: bool) {
         let SaveSettled {
             tab,
             kind,
@@ -124,7 +124,11 @@ impl WorkspaceModel {
                 self.send_to_structure_tab(tab, StructureTabInput::SaveOutcomeUnknown(message));
             }
         }
-        self.report_work(tab, WorkKind::Save, work);
+        // The close prompt waited for the save in front of the user, and
+        // goes on to close the tab or asks about it again.
+        if !in_prompt {
+            self.report_work(tab, WorkKind::Save, work);
+        }
     }
 
     /// The tab's name for a sentence, quoted as the close prompts quote
