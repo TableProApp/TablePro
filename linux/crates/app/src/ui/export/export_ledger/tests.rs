@@ -15,7 +15,7 @@ use tablepro_core::{
     Truncation, UserSql, Value,
 };
 use tablepro_session::runtime::CountingHold;
-use tablepro_test_support::{ConnectionScript, FakeReply};
+use tablepro_test_support::{ConnectionScript, FakeReply, StreamEnd};
 
 use super::*;
 use crate::test_support::{FakeSession, finish_on_main, first_descendant_of_type, wait_until};
@@ -89,12 +89,18 @@ impl Harness {
 
     /// A session whose reads stream `events`.
     fn session(&self, events: FakeReply<Vec<ResultEvent>>, dialect: Option<Arc<dyn SqlDialect>>) -> FakeSession {
+        self.scripted(events, |script| {
+            if let Some(dialect) = dialect {
+                script.dialect = dialect;
+            }
+        })
+    }
+
+    fn scripted(&self, events: FakeReply<Vec<ResultEvent>>, adjust: impl FnOnce(&mut ConnectionScript)) -> FakeSession {
         let mut script = ConnectionScript::default();
         script.probe.always(FakeReply::ok(()));
         script.stream_read.always(events);
-        if let Some(dialect) = dialect {
-            script.dialect = dialect;
-        }
+        adjust(&mut script);
         let tasks = self.runtime.as_ref().expect("the runtime").tasks();
         FakeSession::start(script, [], tasks)
     }
@@ -358,6 +364,88 @@ fn editor_all_rows_multiple_result_sets_presents_alert() {
     assert_eq!(alert.heading().as_deref(), Some("Couldn't Export"));
     assert!(alert.body().contains("more than one result"), "{}", alert.body());
     assert!(!path.exists(), "the failed export left its file");
+}
+
+#[gtk4::test]
+fn a_second_result_set_fails_the_export_when_the_read_ends_ok() {
+    let harness = Harness::new();
+    let path = harness.path("rows.csv");
+    let mut events = streamed(1, 3);
+    events.extend(streamed(1, 1));
+    let fake = harness.scripted(FakeReply::ok(events), |script| {
+        script.stream_end = StreamEnd::SummaryWhenStopped;
+    });
+    let query = ExportQuery::Editor {
+        sql: UserSql::new("SELECT * FROM a; SELECT * FROM b"),
+    };
+
+    let outcome = harness.finish(harness.ledger.begin(read_job(&path, &fake, query)).expect("started"));
+
+    assert!(
+        matches!(
+            outcome,
+            ExportOutcome::Failed {
+                failure: ExportFailure::Stream(ExportStreamFailure::MultipleResultSets),
+                file: Some(AbortOutcome::Removed),
+            }
+        ),
+        "{outcome:?}"
+    );
+    assert!(!path.exists(), "the first result's rows were kept as the export");
+}
+
+#[gtk4::test]
+fn a_read_that_fails_after_its_rows_removes_the_file() {
+    let harness = Harness::new();
+    let path = harness.path("users.csv");
+    let failure = DriverError::Server(Box::new(ServerDiagnostics::new(None, "division by zero")));
+    let fake = harness.scripted(FakeReply::ok(streamed(1, 3)), |script| {
+        script.stream_end = StreamEnd::Failed(failure);
+    });
+
+    let outcome = harness.finish(
+        harness
+            .ledger
+            .begin(read_job(&path, &fake, users(by_id())))
+            .expect("started"),
+    );
+
+    let ExportOutcome::Failed {
+        failure: ExportFailure::Table(error),
+        file: Some(AbortOutcome::Removed),
+    } = &outcome
+    else {
+        panic!("{outcome:?}");
+    };
+    assert_eq!(error.category(), Some(ErrorCategory::Server));
+    assert!(!path.exists(), "the failed read left its file");
+}
+
+#[gtk4::test]
+fn a_statement_with_no_result_set_says_it_returned_no_rows() {
+    let harness = Harness::new();
+    let path = harness.path("rows.csv");
+    let fake = harness.session(FakeReply::ok(Vec::new()), None);
+    let query = ExportQuery::Editor {
+        sql: UserSql::new("SET search_path TO app"),
+    };
+
+    let outcome = harness.finish(harness.ledger.begin(read_job(&path, &fake, query)).expect("started"));
+
+    assert!(
+        matches!(
+            outcome,
+            ExportOutcome::Failed {
+                failure: ExportFailure::Stream(ExportStreamFailure::NoResultSet),
+                file: Some(AbortOutcome::Removed),
+            }
+        ),
+        "{outcome:?}"
+    );
+    wait_until(WAIT, || visible_alert(&harness.window).is_some()).expect("the alert");
+    let body = visible_alert(&harness.window).expect("the alert").body();
+    assert!(body.contains("returned no rows to export"), "{body}");
+    assert!(!path.exists(), "the empty export left its file");
 }
 
 #[gtk4::test]

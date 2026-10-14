@@ -306,8 +306,13 @@ async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &E
                 let Some(ended) = until_cancelled(cancel, producer.finish()).await else {
                     return ExportOutcome::Stopped(writer.abort().await);
                 };
+                // A sink that stopped the read on a second result set
+                // says so here, and a driver may still end that read
+                // Ok, as SQL Server's does.
+                if let Some(failure) = sent_failure(&mut received) {
+                    return failed(writer, failure).await;
+                }
                 if let Err(failure) = ended {
-                    let failure = sent_failure(&mut received).unwrap_or(failure);
                     return failed(writer, failure).await;
                 }
                 return match writer.finish().await {
@@ -345,9 +350,9 @@ async fn until_cancelled<T>(cancel: &CancellationToken, work: impl Future<Output
     }
 }
 
-/// The failure a sink sent before its read ended in an error of its
-/// own, which says more: a second result set stops the read, and the
-/// read then reports only that it was stopped.
+/// The failure a sink sent after its result finished. It says more than
+/// the read's own end: a second result set stops the read, which then
+/// reports only that it was stopped, or nothing wrong at all.
 fn sent_failure(received: &mut mpsc::Receiver<ExportMessage>) -> Option<ExportFailure> {
     while let Ok(message) = received.try_recv() {
         if let ExportMessage::Failed(failure) = message {

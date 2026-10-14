@@ -15,7 +15,7 @@ use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::fake_reply::Stop;
-use crate::{CallCounters, CloseBehaviour, ConnectionScript, FakeReply, Replies, lock};
+use crate::{CallCounters, CloseBehaviour, ConnectionScript, FakeReply, Replies, StreamEnd, lock};
 
 /// A `Connection` that answers from a `ConnectionScript`.
 ///
@@ -360,16 +360,27 @@ impl Connection for FakeConnection {
                 TimeoutPhase::Statement,
             )
             .await?;
+        let end = lock(&self.script).stream_end.clone();
         let mut rows = 0_u64;
         for event in events {
             if let tablepro_core::ResultEvent::Rows(batch) = &event {
                 rows += batch.len() as u64;
             }
             if sink.accept(event).await == SinkFlow::ConsumerGone {
-                return Err(DriverError::Cancelled);
+                return match end {
+                    StreamEnd::SummaryWhenStopped => Ok(StreamSummary::new(rows)),
+                    StreamEnd::Summary | StreamEnd::Failed(_) => Err(DriverError::Cancelled),
+                };
             }
         }
-        Ok(StreamSummary::new(rows))
+        match end {
+            StreamEnd::Summary | StreamEnd::SummaryWhenStopped => Ok(StreamSummary::new(rows)),
+            StreamEnd::Failed(error) => {
+                let outcome: Result<StreamSummary, DriverError> = Err(error);
+                self.observe(&outcome);
+                outcome
+            }
+        }
     }
 
     async fn write_batch(&self, batch: &WriteBatch, options: CallOptions) -> Result<WriteReport, DriverError> {
