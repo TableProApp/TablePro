@@ -73,8 +73,10 @@ pub(crate) struct ReplaceFileWriter {
 impl ReplaceFileWriter {
     pub(crate) async fn open(file: &gio::File) -> Result<Self, OpenError> {
         let claim = DestinationClaim::take(file).ok_or(OpenError::InUse)?;
+        // An export holds table rows or query history, so a new file is
+        // the user's alone. A replaced file keeps the mode it had.
         let (stream, strategy) = match file
-            .create_future(gio::FileCreateFlags::NONE, glib::Priority::DEFAULT)
+            .create_future(gio::FileCreateFlags::PRIVATE, glib::Priority::DEFAULT)
             .await
         {
             Ok(stream) => {

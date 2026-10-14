@@ -264,3 +264,33 @@ fn a_dropped_writer_frees_its_file_once_cleaned_up() {
     run(async move { writer.finish().await }).expect("closed");
     assert_eq!(std::fs::read_to_string(&path).expect("read back"), "next");
 }
+
+#[gtk4::test]
+fn a_new_file_is_readable_by_its_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+
+    let writer = write(open(&path), &["a,b\n"]);
+    run(async move { writer.finish().await }).expect("closed");
+
+    let mode = std::fs::metadata(&path).expect("the file").permissions().mode();
+    assert_eq!(mode & 0o777, 0o600, "{mode:o}");
+}
+
+#[gtk4::test]
+fn a_replaced_file_keeps_its_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+    seed(&path, "old");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).expect("a mode");
+
+    let writer = write(open(&path), &["new"]);
+    run(async move { writer.finish().await }).expect("closed");
+
+    let mode = std::fs::metadata(&path).expect("the file").permissions().mode();
+    assert_eq!(mode & 0o777, 0o640, "{mode:o}");
+}
