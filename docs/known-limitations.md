@@ -67,6 +67,7 @@ What the application does not do, or does differently from what you might expect
 ## Known bugs
 
 - **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Intermittent failures remain under investigation; recent failures include an application shutdown with a bad exit status after the scenarios passed. The required consecutive full-run evidence has not been met.
+- **MCP token keyring save can fail after issuance** (UI-43 / [#861](https://github.com/cozyGarage/BookiE/issues/861)): the token is still issued, but the dialog may say it was saved when the keyring write failed.
 
 ## Test and CI limits
 
