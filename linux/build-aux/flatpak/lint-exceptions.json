@@ -1,0 +1,10 @@
+{
+    "app.tablepro.TablePro": [
+        "finish-args-home-filesystem-access",
+        "finish-args-has-socket-ssh-auth"
+    ],
+    "app.tablepro.TablePro.Devel": [
+        "finish-args-home-filesystem-access",
+        "finish-args-has-socket-ssh-auth"
+    ]
+}

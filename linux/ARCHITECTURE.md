@@ -10,7 +10,7 @@ linux/
 ├── Cargo.toml                     workspace manifest
 ├── about.toml                     cargo-about settings for the third-party license notices
 ├── data/                          desktop entry, D-Bus service, AppStream metainfo and screenshots, icons, GResource, licenses
-├── build-aux/flatpak/             Devel Flatpak manifest and krb5.conf
+├── build-aux/flatpak/             Devel Flatpak manifest, lint exceptions and krb5.conf
 ├── build-aux/about/               templates that turn Cargo.lock into data/licenses
 ├── po/                            translation catalogue
 └── crates/

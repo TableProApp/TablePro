@@ -13,9 +13,14 @@
         "--share=network",
         "--socket=fallback-x11",
         "--socket=wayland",
+        "--socket=ssh-auth",
         "--device=dri",
         "--filesystem=home",
-        "--filesystem=/run/.heim_org.h5l.kcm-socket"
+        "--filesystem=/media",
+        "--filesystem=/run/media",
+        "--filesystem=/mnt",
+        "--filesystem=/run/.heim_org.h5l.kcm-socket",
+        "--env=KRB5_CONFIG=/app/etc/krb5.conf"
     ],
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin",
@@ -48,6 +53,8 @@
                     "skip": [
                         ".flatpak-builder",
                         "_build",
+                        "_flatpak",
+                        "repo",
                         "target",
                         "build-aux/flatpak/.flatpak-builder"
                     ]
