@@ -196,7 +196,7 @@ fn a_slower_earlier_copy_gives_way_to_a_later_one() {
     finish_on_main(WAIT, fast)
         .expect("the later copy to end")
         .expect("the later copy");
-    assert_eq!(local_text(&clipboard).as_deref(), Some("-5\t=cmd\n"));
+    assert_eq!(local_text(&clipboard).as_deref(), Some("-5\t'=cmd\n"));
     let landed = clipboard.content();
     finish_on_main(WAIT, slow)
         .expect("the earlier copy to end")
@@ -312,7 +312,7 @@ fn copy_rows_offers_tab_separated_values() {
     );
     assert_eq!(
         local_text(&clipboard).as_deref(),
-        Some("-5\t=cmd\n7\t\"Ada, \"\"the first\"\"\"\n")
+        Some("-5\t'=cmd\n7\t\"Ada, \"\"the first\"\"\"\n")
     );
     assert_eq!(toasts, ["Copied 2 rows"]);
 }
