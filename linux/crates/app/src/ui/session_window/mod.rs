@@ -164,7 +164,10 @@ impl SessionWindow {
             WindowLaunch::Picker => {}
             WindowLaunch::Connect(saved) => input.deliver(SessionWindowInput::OpenSaved(saved)),
             WindowLaunch::OpenFile(file) => input.deliver(SessionWindowInput::OpenFile(file)),
-            WindowLaunch::Restore(key) => input.deliver(SessionWindowInput::Restore(key)),
+            WindowLaunch::Restore(key) => {
+                self.imp().restoring.replace(Some(key.clone()));
+                input.deliver(SessionWindowInput::Restore(key));
+            }
         }
     }
 
@@ -531,6 +534,7 @@ impl SessionWindow {
 
     fn on_file_resolved(&self, resolved: ResolvedFile) {
         let ResolvedFile { uri, target } = resolved;
+        self.end_restore(&SessionKey::File(uri.clone()));
         if !self.page_is(|page| matches!(page, SessionPage::Picker)) {
             if let Some(state) = self.state() {
                 state.host.open_window(WindowLaunch::OpenFile(gio::File::for_uri(&uri)));
@@ -726,6 +730,7 @@ impl SessionWindow {
 
     /// Close the session the window shows, or stop the connect it runs.
     fn release_session(&self) {
+        self.abandon_restore();
         if self.tear_down() {
             return;
         }

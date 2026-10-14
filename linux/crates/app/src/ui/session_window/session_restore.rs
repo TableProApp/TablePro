@@ -2,6 +2,7 @@
 //! and keeping the record of open sessions in step with the window.
 
 use gtk4::glib;
+use gtk4::subclass::prelude::*;
 use tablepro_session::SessionKey;
 use tablepro_storage::SavedConnection;
 use uuid::Uuid;
@@ -45,6 +46,7 @@ impl SessionWindow {
     }
 
     pub(super) fn on_restore_saved(&self, id: Uuid, saved: Option<SavedConnection>) {
+        self.end_restore(&SessionKey::Saved(id));
         match saved {
             Some(saved) => self.on_open_saved(saved),
             None => {
@@ -70,6 +72,23 @@ impl SessionWindow {
     pub(super) fn forget_session(&self, key: &SessionKey) {
         if let Some(state) = self.state() {
             state.services.open_sessions().remove(key);
+        }
+    }
+
+    /// The restore has its answer, and the page the window shows next
+    /// speaks for the key.
+    pub(super) fn end_restore(&self, key: &SessionKey) {
+        let restoring = &self.imp().restoring;
+        if restoring.borrow().as_ref() == Some(key) {
+            restoring.replace(None);
+        }
+    }
+
+    /// A window closed before its restore had an answer holds no claim
+    /// whose release would forget the key.
+    pub(super) fn abandon_restore(&self) {
+        if let Some(key) = self.imp().restoring.take() {
+            self.forget_unclaimed(&key);
         }
     }
 
@@ -245,6 +264,27 @@ mod tests {
         assert!(
             test.connector.calls().is_empty(),
             "a deleted connection was connected to"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_restored_window_closed_before_its_lookup_forgets_the_session() {
+        let test = TestWindow::picker("RestoreClosedEarly");
+
+        let window = test.restored_window(&test.key());
+        window.close();
+
+        assert!(
+            test.recorded().is_empty(),
+            "the closed window's session stayed recorded"
+        );
+        let _ = wait_until(Duration::from_millis(300), || {
+            test.services.sessions.window_for(&test.key()).is_some()
+        });
+        assert_eq!(
+            test.services.sessions.window_for(&test.key()),
+            None,
+            "the closed window connected"
         );
     }
 
