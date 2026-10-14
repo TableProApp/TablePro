@@ -210,6 +210,14 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 - [ ] Save a preset with raw SQL, an empty name, an overlong name and beyond the per-table limit; each is refused with a useful message. **2026-10-12 Hyprland dark:** raw SQL and empty name refused; the name field stops at 48 characters; the per-table limit not run.
 - [ ] Open the preset on a table whose columns changed; the invalid saved rule is not applied silently.
 
+## MongoDB sorted browse
+
+Use a stable collection with enough documents to browse multiple pages. These checks confirm installed behavior; pages outside the ascending `_id` keyset path use offset pagination, so record the collection size and query conditions when noting performance.
+
+- [ ] Sort by a supported field in ascending and descending order; each page follows the selected order.
+- [ ] Apply a filter and sort, then move across several pages; each page keeps the requested order and contains the expected rows.
+- [ ] Repeat with a sort other than ascending `_id` and a deep offset; correct ordering is required, but keyset performance is not implied. Installed Arch/Hyprland and representative-network acceptance remain tracked under [#555](https://github.com/cozyGarage/BookiE/issues/555).
+
 ## Catalog window
 
 Main menu, then Catalog, on a PostgreSQL connection with a few objects of each kind.
