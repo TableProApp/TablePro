@@ -348,6 +348,9 @@ fn build_rule_sql(
 
 fn filter_placeholder(driver_id: &str, col: &ColumnInfo, index: usize) -> String {
     let placeholder = placeholder_for(driver_id, index);
+    if driver_id == "postgres" && matches!(col.data_type.trim().to_ascii_lowercase().as_str(), "real" | "float4") {
+        return format!("{placeholder}::real");
+    }
     let Some(enum_type) = col.enum_type.as_ref().filter(|_| driver_id == "postgres") else {
         if driver_id == "postgres" && matches!(column_kind(col), Kind::Text) {
             return text_cast_placeholder(col, &Value::Text(String::new()), placeholder);

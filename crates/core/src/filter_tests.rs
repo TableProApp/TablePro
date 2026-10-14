@@ -828,3 +828,49 @@ fn ends_with_pattern() {
     let (_, params) = build_filter_where("postgres", &cols, &set).unwrap().unwrap();
     assert_eq!(params, vec![Value::Text("%son".into())]);
 }
+
+#[test]
+fn a_real_column_filter_casts_every_placeholder_so_the_typed_value_meets_the_stored_float4() {
+    for data_type in ["real", "float4", "REAL"] {
+        let columns = [col("v", data_type)];
+        for (op, value, expected) in [
+            (FilterOp::Eq, FilterValue::Single("0.1".into()), "\"v\" = $1::real"),
+            (FilterOp::NotEq, FilterValue::Single("0.1".into()), "\"v\" <> $1::real"),
+            (FilterOp::Lt, FilterValue::Single("0.1".into()), "\"v\" < $1::real"),
+            (FilterOp::GtEq, FilterValue::Single("0.1".into()), "\"v\" >= $1::real"),
+            (
+                FilterOp::Between,
+                FilterValue::Pair("0.1".into(), "0.2".into()),
+                "\"v\" BETWEEN $1::real AND $2::real",
+            ),
+            (
+                FilterOp::In,
+                FilterValue::List(vec!["0.1".into(), "0.2".into()]),
+                "\"v\" IN ($1::real, $2::real)",
+            ),
+        ] {
+            let set = FilterSet {
+                rules: vec![rule("v", op, Some(value))],
+                ..Default::default()
+            };
+            let (clause, _) = build_filter_where("postgres", &columns, &set).unwrap().unwrap();
+            assert_eq!(clause, expected, "{data_type} {op:?}");
+        }
+    }
+}
+
+#[test]
+fn a_double_precision_column_and_other_drivers_are_left_alone() {
+    let set = FilterSet {
+        rules: vec![rule("v", FilterOp::Eq, Some(FilterValue::Single("0.1".into())))],
+        ..Default::default()
+    };
+    let (double, _) = build_filter_where("postgres", &[col("v", "double precision")], &set)
+        .unwrap()
+        .unwrap();
+    assert_eq!(double, "\"v\" = $1");
+    let (mysql, _) = build_filter_where("mysql", &[col("v", "float")], &set)
+        .unwrap()
+        .unwrap();
+    assert!(!mysql.contains("::real"), "{mysql}");
+}

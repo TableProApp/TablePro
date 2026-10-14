@@ -59,3 +59,61 @@ async fn filters_on_native_types_enums_and_domains_match_the_row_they_describe()
         assert_eq!(rows, vec![vec![Value::Int(1)]], "{name}: {sql}");
     }
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn filters_on_a_real_column_find_the_row_whose_value_was_typed() {
+    let (_c, opts) = start_pg().await;
+    let conn = connect(opts).await;
+    conn.execute("CREATE TABLE fr (id int PRIMARY KEY, v real, d double precision)")
+        .await
+        .unwrap();
+    conn.execute("INSERT INTO fr VALUES (1, 0.1, 0.1), (2, 0.2, 0.2), (3, 16777216, 16777216)")
+        .await
+        .unwrap();
+    let columns = conn.fetch_columns(Some("public"), "fr").await.unwrap();
+
+    for column in ["v", "d"] {
+        for (op, value, expected) in [
+            (FilterOp::Eq, FilterValue::Single("0.1".into()), vec![1]),
+            (FilterOp::NotEq, FilterValue::Single("0.1".into()), vec![2, 3]),
+            (FilterOp::Lt, FilterValue::Single("0.15".into()), vec![1]),
+            (FilterOp::GtEq, FilterValue::Single("0.2".into()), vec![2, 3]),
+            (
+                FilterOp::Between,
+                FilterValue::Pair("0.05".into(), "0.15".into()),
+                vec![1],
+            ),
+            (
+                FilterOp::In,
+                FilterValue::List(vec!["0.1".into(), "0.2".into()]),
+                vec![1, 2],
+            ),
+            (FilterOp::Eq, FilterValue::Single("16777216".into()), vec![3]),
+        ] {
+            let set = FilterSet {
+                rules: vec![FilterRule {
+                    column: column.into(),
+                    op,
+                    value: Some(value),
+                }],
+                ..Default::default()
+            };
+            let (clause, params) = build_filter_where("postgres", &columns, &set).unwrap().unwrap();
+            let sql = format!("SELECT id FROM fr WHERE {clause} ORDER BY id");
+            let rows = conn
+                .query_params(&sql, &params)
+                .await
+                .unwrap_or_else(|error| panic!("{column} {op:?}: {sql}\n{error:?}"))
+                .rows;
+            let ids: Vec<i64> = rows
+                .iter()
+                .map(|row| match row[0] {
+                    Value::Int(id) => id,
+                    ref other => panic!("{other:?}"),
+                })
+                .collect();
+            assert_eq!(ids, expected, "{column} {op:?} {sql}");
+        }
+    }
+}
