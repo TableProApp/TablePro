@@ -746,16 +746,36 @@ mod tests {
     fn finishing_an_import_force_closes_the_non_user_closable_progress_dialog() {
         gtk::init().unwrap();
         adw::init().unwrap();
+        gtk::Settings::default().unwrap().set_gtk_enable_animations(false);
         let application = gtk::Application::new(None::<&str>, gtk::gio::ApplicationFlags::NON_UNIQUE);
         application.register(None::<&gtk::gio::Cancellable>).unwrap();
         let window = adw::ApplicationWindow::new(&application);
         window.present();
         let progress = present_progress(&window, "items", 2);
 
-        assert!(progress.dialog.is_mapped());
+        assert!(wait_until(|| progress.dialog.is_mapped()));
+        let closed = std::rc::Rc::new(std::cell::Cell::new(false));
+        let closed_for_signal = closed.clone();
+        progress.dialog.connect_closed(move |_| closed_for_signal.set(true));
         progress.close();
-        assert!(!progress.dialog.is_mapped());
+        assert!(wait_until(|| closed.get()));
         window.close();
+    }
+
+    fn wait_until(predicate: impl Fn() -> bool) -> bool {
+        let context = gtk::glib::MainContext::default();
+        for _ in 0..200 {
+            for _ in 0..64 {
+                if !context.iteration(false) {
+                    break;
+                }
+            }
+            if predicate() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        predicate()
     }
 
     fn column(name: &str) -> ColumnInfo {
