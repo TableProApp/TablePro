@@ -2,6 +2,8 @@
 
 The `tablepro-app` crate (`apps/linux/app`) uses [Relm4](https://relm4.org) on top of gtk4-rs. The choice is recorded in [decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md). This file describes the patterns we follow inside the codebase. Read the official Relm4 book first; this document only covers the conventions specific to BookiE.
 
+GTK-free service modules are moving incrementally into `tablepro-app-services` under [ADR 0018](decisions/0018-headless-app-services-crate.md). The app re-exports those modules from `services` so callers keep their paths; services that own GTK or application wiring stay in the app.
+
 ## When to use which component flavour
 
 | Flavour | Use when |
