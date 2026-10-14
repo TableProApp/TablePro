@@ -1,54 +1,33 @@
 //! The column rows of the Structure tab's Columns page.
 
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
-use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::gio;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_core::ddl::{ColumnCapabilities, DraftColumn, DraftType, Permission};
+use tablepro_core::ddl::{DraftColumn, DraftType, Permission};
 use tablepro_core::dialect::SqlDialect;
 
+use super::context::StructureContext;
+use super::draft_column_object::DraftColumnObject;
 use super::{ColumnField, StructureTabInput, StructureTabSender};
 use crate::ui::error_text::refusal_text;
+use crate::ui::handler_guard::HandlerGuard;
 
-/// What a column row needs beyond the column: which changes the engine
-/// allows on it, and the dialect that checks what the user types.
-pub(super) struct ColumnRowContext {
-    pub permissions: ColumnCapabilities,
-    pub type_suggestions: &'static [&'static str],
-    pub dialect: Option<Arc<dyn SqlDialect>>,
-    /// The default as SQL the user could type back in, or the text they
-    /// typed that did not parse.
-    pub default_text: String,
-    pub default_error: Option<String>,
-    /// Numbering goes off with the key, on an engine that numbers only
-    /// a key column.
-    pub numbering_follows_key: bool,
+/// Sends a row's edits as edits of its column, while the column lives.
+#[derive(Clone)]
+struct ColumnEdits {
+    column: glib::WeakRef<DraftColumnObject>,
+    sender: StructureTabSender,
 }
 
-/// The collapsed row's summary, such as `varchar(255) · NOT NULL ·
-/// Primary key`.
-fn format_column_subtitle(col: &DraftColumn) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    let type_text = col.column_type.text();
-    if !type_text.is_empty() {
-        parts.push(type_text.to_owned());
+impl ColumnEdits {
+    fn send(&self, field: ColumnField) {
+        if let Some(column) = self.column.upgrade() {
+            self.sender.input(StructureTabInput::ColumnEdited { column, field });
+        }
     }
-    parts.push(if col.nullable {
-        crate::i18n::gettext("nullable")
-    } else {
-        crate::i18n::gettext("NOT NULL")
-    });
-    if col.primary_key {
-        parts.push(crate::i18n::gettext("Primary key"));
-    }
-    if col.auto_increment {
-        parts.push(crate::i18n::gettext("auto-increment"));
-    }
-    parts.join(" · ")
 }
 
 /// Turn a control off with the reason, in its tooltip and for screen
@@ -97,33 +76,52 @@ fn mark_invalid(row: &adw::EntryRow, error: Option<&str>) {
     }
 }
 
-/// Whether the engine's parser takes `text` as one type. A catalogue
-/// declaration left as it was is never parsed again.
+/// Whether the engine's parser takes `text` as one type. The
+/// catalogue's own declaration, typed back as it was, is never parsed
+/// again.
 fn type_error(dialect: Option<&dyn SqlDialect>, column: &DraftColumn, text: &str) -> Option<String> {
-    let unchanged = matches!(&column.column_type, DraftType::Catalog(_)) && column.column_type.text() == text;
-    if unchanged {
+    let declared = column
+        .original
+        .as_ref()
+        .is_some_and(|original| DraftType::Catalog(original.info.column_type.clone()).text() == text);
+    if declared {
         return None;
     }
     let dialect = dialect?;
     dialect.parse_type(text).err().map(|error| error.to_string())
 }
 
-/// While `suppress_emit` is set, the signals GTK fires as the initial
-/// values go in are not taken for edits.
-pub(super) fn build_column_expander_row(
-    index: usize,
-    col: &DraftColumn,
-    context: ColumnRowContext,
-    sender: StructureTabSender,
-    suppress_emit: Rc<Cell<bool>>,
-    popover_registry: Rc<RefCell<Vec<gtk::Popover>>>,
+/// Mark the Default field with the error the column holds, now and each
+/// time it changes. The column outlives its row when the list builds
+/// its rows again, so the handler goes with the row.
+fn follow_default_error(column: &DraftColumnObject, row: &adw::EntryRow) {
+    mark_invalid(row, column.default_error().as_deref());
+    let weak_row = row.downgrade();
+    let handler = column.connect_default_error_notify(move |column| {
+        if let Some(row) = weak_row.upgrade() {
+            mark_invalid(&row, column.default_error().as_deref());
+        }
+    });
+    let guard = RefCell::new(Some(HandlerGuard::new(column, handler)));
+    row.connect_destroy(move |_| drop(guard.take()));
+}
+
+/// The row of one column. Each control takes its value from the column
+/// before its handler is connected, so building a row sends no edit.
+pub(super) fn build_column_row(
+    column: &DraftColumnObject,
+    context: &StructureContext,
+    sender: &StructureTabSender,
 ) -> adw::ExpanderRow {
-    let permissions = &context.permissions;
-    let row = adw::ExpanderRow::builder()
-        .title(glib::markup_escape_text(&col.name))
-        .subtitle(glib::markup_escape_text(&format_column_subtitle(col)))
-        .build();
-    row.set_widget_name(&format!("col-row-{index}"));
+    let draft = column.column();
+    let permissions = context.column_permissions(&draft);
+    let edits = ColumnEdits {
+        column: column.downgrade(),
+        sender: sender.clone(),
+    };
+    let row = adw::ExpanderRow::builder().use_markup(false).build();
+    column.bind_property("name", &row, "title").sync_create().build();
+    column.bind_property("summary", &row, "subtitle").sync_create().build();
 
     // On the header, so it shows whether or not the row is expanded.
     let remove_button = gtk::Button::builder()
@@ -132,127 +130,94 @@ pub(super) fn build_column_expander_row(
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
-    remove_button.set_widget_name(&format!("col-remove-{index}"));
+    remove_button.set_widget_name("col-remove");
     gate(&remove_button, &permissions.drop);
+    let column_for_remove = column.downgrade();
     let sender_for_remove = sender.clone();
-    remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveColumn(index)));
+    remove_button.connect_clicked(move |_| {
+        if let Some(column) = column_for_remove.upgrade() {
+            sender_for_remove.input(StructureTabInput::RemoveColumn(column));
+        }
+    });
     row.add_suffix(&remove_button);
 
-    // The expander's title mirrors this entry live, so the collapsed
-    // header always shows what the user typed.
     let name_row = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
-    name_row.set_text(&col.name);
-    name_row.set_widget_name(&format!("col-name-{index}"));
+    name_row.set_text(&draft.name);
+    name_row.set_widget_name("col-name");
     gate(&name_row, &permissions.rename);
-    let sender_for_name = sender.clone();
-    let suppress_for_name = suppress_emit.clone();
-    // The row owns this entry, so the entry holds the row weakly.
-    let row_for_name = row.downgrade();
-    name_row.connect_changed(move |e| {
-        if suppress_for_name.get() {
-            return;
-        }
-        let text = e.text().to_string();
-        if let Some(row) = row_for_name.upgrade() {
-            row.set_title(&glib::markup_escape_text(&text));
-        }
-        sender_for_name.input(StructureTabInput::ColumnEdited {
-            index,
-            field: ColumnField::Name(text),
-        });
-    });
+    let edits_for_name = edits.clone();
+    name_row.connect_changed(move |entry| edits_for_name.send(ColumnField::Name(entry.text().to_string())));
     row.add_row(&name_row);
 
     // Free text, so `decimal(10,2)` or an enum type need no list; the
     // menu only suggests.
     let type_row = adw::EntryRow::builder().title(crate::i18n::gettext("Type")).build();
-    type_row.set_text(col.column_type.text());
-    type_row.set_widget_name(&format!("col-type-{index}"));
-    gate(&type_row, &permissions.alter_type);
+    type_row.set_text(draft.column_type.text());
+    type_row.set_widget_name("col-type");
+    // Before the gate, whose reason the tooltip has to keep.
     mark_invalid(
         &type_row,
-        type_error(context.dialect.as_deref(), col, col.column_type.text()).as_deref(),
+        type_error(context.dialect.as_deref(), &draft, draft.column_type.text()).as_deref(),
     );
-    let sender_for_type = sender.clone();
-    let suppress_for_type = suppress_emit.clone();
+    gate(&type_row, &permissions.alter_type);
+    let edits_for_type = edits.clone();
     let dialect_for_type = context.dialect.clone();
-    let column_for_type = col.clone();
-    type_row.connect_changed(move |e| {
-        if suppress_for_type.get() {
-            return;
-        }
-        let text = e.text().to_string();
-        mark_invalid(
-            e,
-            type_error(dialect_for_type.as_deref(), &column_for_type, &text).as_deref(),
-        );
-        sender_for_type.input(StructureTabInput::ColumnEdited {
-            index,
-            field: ColumnField::Type(text),
-        });
+    type_row.connect_changed(move |entry| {
+        let text = entry.text().to_string();
+        let error = edits_for_type
+            .column
+            .upgrade()
+            .and_then(|column| type_error(dialect_for_type.as_deref(), &column.column(), &text));
+        mark_invalid(entry, error.as_deref());
+        edits_for_type.send(ColumnField::Type(text));
     });
     if type_row.is_sensitive() {
-        let (suggestions_button, suggestions_popover) =
-            build_type_suggestions_button(context.type_suggestions, &type_row);
-        type_row.add_suffix(&suggestions_button);
-        popover_registry.borrow_mut().push(suggestions_popover);
+        type_row.add_suffix(&build_type_suggestions_button(context.type_suggestions(), &type_row));
     }
     row.add_row(&type_row);
 
     let nullable_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Nullable"))
-        .active(col.nullable)
+        .active(draft.nullable)
         .build();
-    nullable_row.set_widget_name(&format!("col-nullable-{index}"));
+    nullable_row.set_widget_name("col-nullable");
     gate(&nullable_row, &permissions.alter_nullability);
-    let sender_for_null = sender.clone();
-    let suppress_for_null = suppress_emit.clone();
-    nullable_row.connect_active_notify(move |s| {
-        if suppress_for_null.get() {
-            return;
-        }
-        sender_for_null.input(StructureTabInput::ColumnEdited {
-            index,
-            field: ColumnField::Nullable(s.is_active()),
-        });
-    });
+    let edits_for_null = edits.clone();
+    nullable_row.connect_active_notify(move |switch| edits_for_null.send(ColumnField::Nullable(switch.is_active())));
     row.add_row(&nullable_row);
 
     // SQL, as the engine's parser reads it: a quoted literal or an
-    // expression. Empty means no DEFAULT clause.
+    // expression. Empty means no DEFAULT clause. Text the parser refused
+    // stays as the user typed it.
     let default_row = adw::EntryRow::builder()
         .title(crate::i18n::gettext("Default value"))
         .build();
-    default_row.set_text(&context.default_text);
-    default_row.set_widget_name(&format!("col-default-{index}"));
+    let default_text = column
+        .unparsed_default()
+        .map_or_else(|| context.default_text(&draft), |unparsed| unparsed.text);
+    default_row.set_text(&default_text);
+    default_row.set_widget_name("col-default");
+    follow_default_error(column, &default_row);
     gate(&default_row, &permissions.alter_default);
-    mark_invalid(&default_row, context.default_error.as_deref());
-    let sender_for_default = sender.clone();
-    let suppress_for_default = suppress_emit.clone();
-    default_row.connect_changed(move |e| {
-        if suppress_for_default.get() {
-            return;
-        }
-        sender_for_default.input(StructureTabInput::ColumnEdited {
-            index,
-            field: ColumnField::Default(e.text().to_string()),
-        });
-    });
+    let edits_for_default = edits.clone();
+    default_row.connect_changed(move |entry| edits_for_default.send(ColumnField::Default(entry.text().to_string())));
     row.add_row(&default_row);
 
     let pk_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Primary key"))
-        .active(col.primary_key)
+        .active(draft.primary_key)
         .build();
-    pk_row.set_widget_name(&format!("col-pk-{index}"));
+    pk_row.set_widget_name("col-pk");
     gate(&pk_row, &permissions.alter_primary_key);
 
     let auto_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Auto increment"))
-        .active(col.auto_increment)
+        .active(draft.auto_increment)
         .build();
-    auto_row.set_widget_name(&format!("col-auto-{index}"));
-    let follows_key = context.numbering_follows_key;
+    auto_row.set_widget_name("col-auto");
+    // Numbering goes off with the key, on an engine that numbers only a
+    // key column.
+    let follows_key = !context.capabilities().auto_increment_outside_primary_key;
     match &permissions.alter_auto_increment {
         Permission::Allowed if follows_key => {
             pk_row
@@ -267,25 +232,18 @@ pub(super) fn build_column_expander_row(
     // A refused nullability change keeps the reason it already shows.
     let hold = permissions.alter_nullability.is_allowed();
     if hold {
-        hold_not_null(&nullable_row, col.primary_key);
+        hold_not_null(&nullable_row, draft.primary_key);
     }
-    let sender_for_pk = sender.clone();
-    let suppress_for_pk = suppress_emit.clone();
+    let edits_for_pk = edits.clone();
     // The row owns both switches, so this holds them weakly.
     let nullable_for_pk = nullable_row.downgrade();
     let auto_for_pk = auto_row.downgrade();
     // Given back when the column leaves the key.
-    let nullable_before_key = Cell::new(col.nullable);
-    pk_row.connect_active_notify(move |s| {
-        if suppress_for_pk.get() {
-            return;
-        }
-        let key = s.is_active();
-        sender_for_pk.input(StructureTabInput::ColumnEdited {
-            index,
-            field: ColumnField::PrimaryKey(key),
-        });
-        // Each switch sends its own edit, so the model holds what the
+    let nullable_before_key = Cell::new(draft.nullable);
+    pk_row.connect_active_notify(move |switch| {
+        let key = switch.is_active();
+        edits_for_pk.send(ColumnField::PrimaryKey(key));
+        // Each switch sends its own edit, so the column holds what the
         // row shows.
         if hold && let Some(nullable) = nullable_for_pk.upgrade() {
             if key {
@@ -305,37 +263,20 @@ pub(super) fn build_column_expander_row(
     });
     row.add_row(&pk_row);
 
-    let sender_for_auto = sender.clone();
-    let suppress_for_auto = suppress_emit.clone();
-    auto_row.connect_active_notify(move |s| {
-        if suppress_for_auto.get() {
-            return;
-        }
-        sender_for_auto.input(StructureTabInput::ColumnEdited {
-            index,
-            field: ColumnField::AutoIncrement(s.is_active()),
-        });
-    });
+    let edits_for_auto = edits.clone();
+    auto_row.connect_active_notify(move |switch| edits_for_auto.send(ColumnField::AutoIncrement(switch.is_active())));
     row.add_row(&auto_row);
 
     // Empty means the column carries no description; clearing one the
     // server had drops it.
     let comment_row = adw::EntryRow::builder().title(crate::i18n::gettext("Comment")).build();
-    comment_row.set_text(col.comment.as_deref().unwrap_or(""));
-    comment_row.set_widget_name(&format!("col-comment-{index}"));
+    comment_row.set_text(draft.comment.as_deref().unwrap_or(""));
+    comment_row.set_widget_name("col-comment");
     gate(&comment_row, &permissions.alter_comment);
-    let sender_for_comment = sender;
-    let suppress_for_comment = suppress_emit;
-    comment_row.connect_changed(move |e| {
-        if suppress_for_comment.get() {
-            return;
-        }
-        let text = e.text().to_string();
+    comment_row.connect_changed(move |entry| {
+        let text = entry.text().to_string();
         let value = if text.is_empty() { None } else { Some(text) };
-        sender_for_comment.input(StructureTabInput::ColumnEdited {
-            index,
-            field: ColumnField::Comment(value),
-        });
+        edits.send(ColumnField::Comment(value));
     });
     row.add_row(&comment_row);
 
@@ -345,12 +286,7 @@ pub(super) fn build_column_expander_row(
 /// A picked type is written into `target`, whose `changed` handler
 /// takes it like typed text. Each button has its own action group, so
 /// two columns' menus never share the `types.apply` action.
-///
-/// The popover comes back too, to be popped down before its row goes.
-fn build_type_suggestions_button(
-    suggestions: &'static [&'static str],
-    target: &adw::EntryRow,
-) -> (gtk::MenuButton, gtk::Popover) {
+fn build_type_suggestions_button(suggestions: &'static [&'static str], target: &adw::EntryRow) -> gtk::MenuButton {
     let action_group = gio::SimpleActionGroup::new();
     let apply_action = gio::SimpleAction::new("apply", Some(&String::static_variant_type()));
     // The entry owns this button and its actions.
@@ -373,10 +309,9 @@ fn build_type_suggestions_button(
         .icon_name(crate::ui::icons::PAN_DOWN)
         .tooltip_text(crate::i18n::gettext("Suggested types"))
         .valign(gtk::Align::Center)
+        .menu_model(&menu)
         .build();
     button.add_css_class("flat");
     button.insert_action_group("types", Some(&action_group));
-    let popover = gtk::PopoverMenu::from_model(Some(&menu));
-    button.set_popover(Some(&popover));
-    (button, popover.upcast())
+    button
 }

@@ -1,12 +1,14 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
-use std::sync::Arc;
-
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use libadwaita::prelude::{ExpanderRowExt, PreferencesRowExt};
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::{
     ColumnAttributes, ColumnDefinition, ColumnKeyRoles, DraftColumn, IdentityStyle, InboundForeignKey,
-    PrimaryKeyConstraint, TableDefinition, TableSource, UnmodeledAttribute,
+    PrimaryKeyConstraint, TableDefinition, TableDraft, TableSource, UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -62,40 +64,20 @@ impl Harness {
             .map(|name| name.to_string())
     }
 
+    fn draft(&self) -> TableDraft {
+        draft(self.tab())
+    }
+
     fn column_names(&self) -> Vec<String> {
-        self.tab()
-            .imp()
-            .model
-            .borrow()
-            .as_ref()
-            .map(|model| {
-                model
-                    .draft
-                    .borrow()
-                    .columns
-                    .iter()
-                    .map(|column| column.name.clone())
-                    .collect()
-            })
-            .unwrap_or_default()
+        self.draft().columns.into_iter().map(|column| column.name).collect()
     }
 
     fn comments(&self) -> Vec<Option<String>> {
-        self.tab()
-            .imp()
-            .model
-            .borrow()
-            .as_ref()
-            .map(|model| {
-                model
-                    .draft
-                    .borrow()
-                    .columns
-                    .iter()
-                    .map(|column| column.comment.clone())
-                    .collect()
-            })
-            .unwrap_or_default()
+        self.draft().columns.into_iter().map(|column| column.comment).collect()
+    }
+
+    fn column(&self, position: u32) -> DraftColumnObject {
+        column_object(self.tab(), position)
     }
 
     fn tracker(&self) -> StructureTrackerHandle {
@@ -117,6 +99,25 @@ impl Drop for Harness {
             runtime.shutdown();
         }
     }
+}
+
+fn draft(tab: &StructureTab) -> TableDraft {
+    tab.imp()
+        .model
+        .borrow()
+        .as_ref()
+        .map(StructureModel::draft)
+        .expect("the tab has a model")
+}
+
+fn column_object(tab: &StructureTab, position: u32) -> DraftColumnObject {
+    tab.imp()
+        .model
+        .borrow()
+        .as_ref()
+        .and_then(|model| model.columns.item(position))
+        .and_downcast()
+        .expect("a column at that position")
 }
 
 fn postgres() -> Arc<dyn SqlDialect> {
@@ -355,11 +356,18 @@ fn a_failed_read_after_a_save_shows_the_error() {
         .expect("a definition from before the save stayed editable");
 }
 
-fn named_widget(tab: &StructureTab, name: &str) -> gtk::Widget {
-    descendants(tab)
+/// The control named `name` in the row the Columns list shows at
+/// `position`.
+fn column_widget(tab: &StructureTab, position: i32, name: &str) -> gtk::Widget {
+    let row = tab
+        .imp()
+        .columns_list
+        .row_at_index(position)
+        .unwrap_or_else(|| panic!("no column row at {position}"));
+    descendants(&row)
         .into_iter()
         .find(|widget| widget.widget_name() == name)
-        .unwrap_or_else(|| panic!("no widget named {name}"))
+        .unwrap_or_else(|| panic!("no widget named {name} in row {position}"))
 }
 
 fn integer_column(name: &str, primary_key: bool) -> ColumnDefinition {
@@ -406,8 +414,8 @@ fn clickhouse_key_column_rename_is_insensitive_with_reason() {
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
     drain_main_context();
 
-    let key_name = named_widget(harness.tab(), "col-name-0");
-    let plain_name = named_widget(harness.tab(), "col-name-1");
+    let key_name = column_widget(harness.tab(), 0, "col-name");
+    let plain_name = column_widget(harness.tab(), 1, "col-name");
 
     assert!(!key_name.is_sensitive(), "a sorting key column could be renamed");
     assert!(
@@ -418,7 +426,7 @@ fn clickhouse_key_column_rename_is_insensitive_with_reason() {
         key_name.tooltip_text()
     );
     assert!(plain_name.is_sensitive());
-    assert!(!named_widget(harness.tab(), "col-remove-0").is_sensitive());
+    assert!(!column_widget(harness.tab(), 0, "col-remove").is_sensitive());
 }
 
 #[gtk4::test]
@@ -446,17 +454,17 @@ fn referenced_primary_key_switch_is_insensitive_with_foreign_key_names() {
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
     drain_main_context();
 
-    for name in ["col-pk-0", "col-pk-1"] {
-        let switch = named_widget(harness.tab(), name);
-        assert!(!switch.is_sensitive(), "{name} could move a referenced key");
+    for position in [0, 1] {
+        let switch = column_widget(harness.tab(), position, "col-pk");
+        assert!(!switch.is_sensitive(), "column {position} could move a referenced key");
         assert!(
             switch.tooltip_text().is_some_and(|tip| tip.contains("orders_user_fk")),
-            "{name}: {:?}",
+            "column {position}: {:?}",
             switch.tooltip_text()
         );
     }
-    assert!(!named_widget(harness.tab(), "col-remove-0").is_sensitive());
-    assert!(named_widget(harness.tab(), "col-remove-1").is_sensitive());
+    assert!(!column_widget(harness.tab(), 0, "col-remove").is_sensitive());
+    assert!(column_widget(harness.tab(), 1, "col-remove").is_sensitive());
 }
 
 #[gtk4::test]
@@ -480,7 +488,7 @@ fn a_computed_column_takes_no_comment_where_the_comment_restates_it() {
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
     drain_main_context();
 
-    let computed = named_widget(harness.tab(), "col-comment-0");
+    let computed = column_widget(harness.tab(), 0, "col-comment");
 
     assert!(!computed.is_sensitive(), "a generated column's comment could be set");
     assert!(
@@ -490,7 +498,7 @@ fn a_computed_column_takes_no_comment_where_the_comment_restates_it() {
         "{:?}",
         computed.tooltip_text()
     );
-    assert!(named_widget(harness.tab(), "col-comment-1").is_sensitive());
+    assert!(column_widget(harness.tab(), 1, "col-comment").is_sensitive());
 }
 
 #[gtk4::test]
@@ -522,7 +530,7 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
     tab.connect_save_requested(move |_| counter.set(counter.get() + 1));
 
     tab.send(StructureTabInput::ColumnEdited {
-        index: 0,
+        column: column_object(&tab, 0),
         field: ColumnField::Default("42".to_owned()),
     });
     let buffer = sql_buffer(&tab);
@@ -538,7 +546,7 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
     ));
 
     tab.send(StructureTabInput::ColumnEdited {
-        index: 0,
+        column: column_object(&tab, 0),
         field: ColumnField::Default("1 +".to_owned()),
     });
     assert!(
@@ -569,7 +577,7 @@ fn stop_saving_shows_only_while_a_save_runs() {
         .tab()
         .connect_stop_save_requested(move |_| stop_sink.set(stop_sink.get() + 1));
     harness.tab().send(StructureTabInput::ColumnEdited {
-        index: 0,
+        column: harness.column(0),
         field: ColumnField::Comment(Some("key".to_owned())),
     });
     let imp = harness.tab().imp();
@@ -585,7 +593,7 @@ fn stop_saving_shows_only_while_a_save_runs() {
     );
     let toasts = toasts(harness.tab());
     harness.tab().send(StructureTabInput::ColumnEdited {
-        index: 0,
+        column: harness.column(0),
         field: ColumnField::Comment(Some("the key".to_owned())),
     });
     assert_eq!(
@@ -622,13 +630,13 @@ fn an_edit_waits_for_the_read_after_a_committed_save() {
     let tracker = harness.tracker();
     let imp = harness.tab().imp();
     harness.tab().send(StructureTabInput::ColumnEdited {
-        index: 0,
+        column: harness.column(0),
         field: ColumnField::Comment(Some("key".to_owned())),
     });
 
     let _saving = tracker.begin_save().expect("a save").expect("the change is pending");
     harness.tab().send(StructureTabInput::ColumnEdited {
-        index: 0,
+        column: harness.column(0),
         field: ColumnField::Comment(Some("before the tab heard".to_owned())),
     });
     harness.tab().send(StructureTabInput::SaveStarted);
@@ -677,7 +685,7 @@ fn renaming_existing_column_enables_save_and_previews_rename() {
     let imp = harness.tab().imp();
     assert!(!imp.save_button.is_sensitive());
 
-    let name = named_widget(harness.tab(), "col-name-1")
+    let name = column_widget(harness.tab(), 1, "col-name")
         .downcast::<adw::EntryRow>()
         .expect("the Name entry");
     assert!(name.is_sensitive(), "an existing column's name could not be edited");
@@ -693,21 +701,15 @@ fn renaming_existing_column_enables_save_and_previews_rename() {
     );
 }
 
-fn switch_row(tab: &StructureTab, name: &str) -> adw::SwitchRow {
-    named_widget(tab, name)
+fn switch_row(tab: &StructureTab, position: i32, name: &str) -> adw::SwitchRow {
+    column_widget(tab, position, name)
         .downcast::<adw::SwitchRow>()
         .expect("a switch row")
 }
 
 impl Harness {
     fn draft_column(&self, index: usize) -> DraftColumn {
-        self.tab()
-            .imp()
-            .model
-            .borrow()
-            .as_ref()
-            .map(|model| model.draft.borrow().columns[index].clone())
-            .expect("the tab has a model")
+        self.draft().columns[index].clone()
     }
 }
 
@@ -727,9 +729,9 @@ fn open_edit(dialect: Arc<dyn SqlDialect>, table: TableDefinition) -> Harness {
 fn the_primary_key_holds_a_column_not_null_until_it_leaves() {
     let harness = open_edit(postgres(), keyed_users());
     let tab = harness.tab();
-    let (key, nullable) = (switch_row(tab, "col-pk-1"), switch_row(tab, "col-nullable-1"));
+    let (key, nullable) = (switch_row(tab, 1, "col-pk"), switch_row(tab, 1, "col-nullable"));
     assert!(
-        !switch_row(tab, "col-nullable-0").is_sensitive(),
+        !switch_row(tab, 0, "col-nullable").is_sensitive(),
         "a key column could take NULL"
     );
     assert!(nullable.is_sensitive() && nullable.is_active());
@@ -764,10 +766,10 @@ fn a_held_nullable_column_joins_the_key_as_it_is() {
     table.columns[1].attributes.unmodeled = vec![UnmodeledAttribute::new("STORAGE EXTERNAL")];
     let harness = open_edit(postgres(), table);
     let tab = harness.tab();
-    let nullable = switch_row(tab, "col-nullable-1");
+    let nullable = switch_row(tab, 1, "col-nullable");
     assert!(!nullable.is_sensitive());
 
-    switch_row(tab, "col-pk-1").set_active(true);
+    switch_row(tab, 1, "col-pk").set_active(true);
     drain_main_context();
 
     assert!(nullable.is_active());
@@ -787,13 +789,13 @@ fn a_postgres_identity_keeps_numbering_outside_the_key() {
     table.columns[0].attributes.identity = IdentityStyle::GeneratedAlways;
     let harness = open_edit(postgres(), table);
     let tab = harness.tab();
-    let auto = switch_row(tab, "col-auto-0");
+    let auto = switch_row(tab, 0, "col-auto");
     assert!(
-        switch_row(tab, "col-auto-1").is_sensitive(),
+        switch_row(tab, 1, "col-auto").is_sensitive(),
         "a column outside the key could not number itself"
     );
 
-    switch_row(tab, "col-pk-0").set_active(false);
+    switch_row(tab, 0, "col-pk").set_active(false);
     drain_main_context();
 
     assert!(auto.is_active() && auto.is_sensitive());
@@ -814,11 +816,11 @@ fn a_mysql_column_stops_numbering_as_it_leaves_the_key() {
     table.columns[0].info.is_auto_increment = true;
     let harness = open_edit(mysql, table);
     let tab = harness.tab();
-    let auto = switch_row(tab, "col-auto-0");
+    let auto = switch_row(tab, 0, "col-auto");
     assert!(auto.is_active());
-    assert!(!switch_row(tab, "col-auto-1").is_sensitive());
+    assert!(!switch_row(tab, 1, "col-auto").is_sensitive());
 
-    switch_row(tab, "col-pk-0").set_active(false);
+    switch_row(tab, 0, "col-pk").set_active(false);
     drain_main_context();
 
     assert!(!auto.is_active() && !auto.is_sensitive());
@@ -866,11 +868,12 @@ fn a_discard_after_a_save_found_the_table_changed_reads_it_again() {
     assert_eq!(reads_after_discard(Some(StructureTabInput::TableChangedBeforeSave)), 2);
 }
 
-/// The titles of the add buttons under `container`.
+/// The titles of the add buttons the tab shows under `container`.
 fn add_buttons(container: &gtk::Box) -> Vec<String> {
     descendants(container)
         .into_iter()
         .filter_map(|widget| widget.downcast::<adw::ButtonRow>().ok())
+        .filter(|row| row.is_visible() && row.parent().is_some_and(|list| list.is_visible()))
         .map(|row| adw::prelude::PreferencesRowExt::title(&row).to_string())
         .collect()
 }
@@ -897,4 +900,194 @@ fn an_unreadable_sqlite_table_offers_no_foreign_key() {
 #[gtk4::test]
 fn a_readable_sqlite_table_offers_a_foreign_key() {
     assert_eq!(sqlite_users("CREATE TABLE users (body text)"), ["Add Foreign Key…"]);
+}
+
+fn column_row(tab: &StructureTab, position: i32) -> adw::ExpanderRow {
+    tab.imp()
+        .columns_list
+        .row_at_index(position)
+        .and_downcast()
+        .unwrap_or_else(|| panic!("no column row at {position}"))
+}
+
+fn column_rows(tab: &StructureTab) -> Vec<gtk::ListBoxRow> {
+    let list = &tab.imp().columns_list;
+    (0..).map_while(|position| list.row_at_index(position)).collect()
+}
+
+fn entry(tab: &StructureTab, position: i32, name: &str) -> adw::EntryRow {
+    column_widget(tab, position, name)
+        .downcast::<adw::EntryRow>()
+        .expect("an entry row")
+}
+
+fn columns_store(tab: &StructureTab) -> gio::ListStore {
+    tab.imp()
+        .model
+        .borrow()
+        .as_ref()
+        .map(|model| model.columns.clone())
+        .expect("the tab has a model")
+}
+
+/// Rows built after an edit used to hold back every signal until the
+/// next idle, so a name typed before then was lost.
+#[gtk4::test]
+fn table_name_edit_is_not_dropped() {
+    let harness = Harness::open(StructureMode::New, postgres_script(), []);
+    let tab = harness.tab();
+    tab.send(StructureTabInput::AddColumn);
+
+    tab.imp().name_entry.set_text("people");
+
+    assert_eq!(harness.draft().table.name, "people");
+    drain_main_context();
+    assert_eq!(harness.draft().table.name, "people");
+    assert!(preview(tab).contains("\"people\""), "{}", preview(tab));
+}
+
+#[gtk4::test]
+fn expanded_row_stays_expanded_after_editing_another_column() {
+    let harness = open_edit(postgres(), keyed_users());
+    let tab = harness.tab();
+    let first = column_row(tab, 0);
+    first.set_expanded(true);
+
+    tab.send(StructureTabInput::AddColumn);
+    entry(tab, 2, "col-name").set_text("points");
+    entry(tab, 1, "col-type").set_text("bigint");
+    drain_main_context();
+
+    assert_eq!(column_row(tab, 0), first, "the expanded row was built again");
+    assert!(first.is_expanded());
+    assert_eq!(harness.column_names(), ["id", "score", "points"]);
+}
+
+#[gtk4::test]
+fn remove_by_identity_after_reorder_removes_right_column() {
+    let harness = open_edit(postgres(), keyed_users());
+    let tab = harness.tab();
+    tab.send(StructureTabInput::AddColumn);
+    let store = columns_store(tab);
+    let added = store.item(2).expect("the added column");
+    store.remove(2);
+    store.insert(0, &added);
+    drain_main_context();
+    assert_eq!(harness.column_names(), ["column_1", "id", "score"]);
+
+    column_widget(tab, 2, "col-remove")
+        .downcast::<gtk::Button>()
+        .expect("the remove button")
+        .emit_clicked();
+
+    assert_eq!(harness.column_names(), ["column_1", "id"]);
+    assert_eq!(column_rows(tab).len(), 2);
+}
+
+#[gtk4::test]
+fn add_column_changes_one_item() {
+    let harness = open_edit(postgres(), keyed_users());
+    let tab = harness.tab();
+    let rows = column_rows(tab);
+    let changes = Rc::new(RefCell::new(Vec::new()));
+    let sink = changes.clone();
+    columns_store(tab).connect_items_changed(move |_, position, removed, added| {
+        sink.borrow_mut().push((position, removed, added));
+    });
+
+    tab.send(StructureTabInput::AddColumn);
+
+    assert_eq!(*changes.borrow(), [(2, 0, 1)]);
+    let after = column_rows(tab);
+    assert_eq!(after.len(), 3);
+    assert_eq!(after[..2], rows[..], "the rows already there were built again");
+    assert_eq!(column_row(tab, 2).title(), "column_1");
+}
+
+/// Building the restored rows sets every control, which is no edit, and
+/// the rows take the user's next edit at once.
+#[gtk4::test]
+fn discard_restores_without_phantom_ops() {
+    let harness = open_edit(postgres(), keyed_users());
+    let tab = harness.tab();
+    let imp = tab.imp();
+    let dirty = Rc::new(RefCell::new(Vec::new()));
+    let sink = dirty.clone();
+    tab.connect_dirty_changed(move |_, value| sink.borrow_mut().push(value));
+    entry(tab, 1, "col-name").set_text("points");
+    entry(tab, 0, "col-comment").set_text("key");
+    tab.send(StructureTabInput::AddColumn);
+    assert_eq!(imp.pending_label.label(), "3 pending changes");
+
+    imp.discard_button.emit_clicked();
+    drain_main_context();
+
+    assert_eq!(harness.column_names(), ["id", "score"]);
+    assert_eq!(harness.comments(), [None, None]);
+    assert!(!imp.save_button.is_sensitive() && !imp.pending_label.is_visible());
+    assert_eq!(preview(tab), "-- No pending changes.");
+    assert_eq!(*dirty.borrow(), [true, false]);
+    assert_eq!(harness.tracker().begin_save(), Ok(None));
+
+    entry(tab, 1, "col-name").set_text("points");
+
+    assert_eq!(harness.column_names(), ["id", "points"]);
+    assert_eq!(imp.pending_label.label(), "1 pending change");
+}
+
+#[gtk4::test]
+fn subtitle_updates_on_type_edit() {
+    let harness = open_edit(postgres(), keyed_users());
+    let tab = harness.tab();
+    let row = column_row(tab, 1);
+    let before = row.subtitle();
+
+    entry(tab, 1, "col-type").set_text("bigint");
+
+    assert_eq!(row.subtitle(), "bigint · nullable", "was {before}");
+    assert!(harness.column(1).summary().starts_with("bigint"));
+}
+
+/// The header shows a name as typed, never as Pango markup.
+#[gtk4::test]
+fn a_column_name_with_markup_characters_shows_as_typed() {
+    let harness = open_edit(postgres(), keyed_users());
+    let tab = harness.tab();
+
+    entry(tab, 1, "col-name").set_text("<b>a & b</b>");
+
+    let shown: Vec<String> = descendants(&column_row(tab, 1))
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .filter(|label| label.is_visible() && label.text() == "<b>a & b</b>")
+        .map(|label| label.text().to_string())
+        .collect();
+    assert_eq!(shown.len(), 1, "the name was not shown as typed");
+}
+
+#[gtk4::test]
+fn a_default_the_parser_refuses_is_marked_until_it_parses() {
+    let harness = open_edit(postgres(), keyed_users());
+    let tab = harness.tab();
+    let default = entry(tab, 1, "col-default");
+
+    default.set_text("1 +");
+
+    assert!(default.has_css_class("error"));
+    assert!(default.tooltip_text().is_some());
+    assert!(!tab.imp().save_button.is_sensitive());
+    assert_eq!(
+        harness
+            .column(1)
+            .unparsed_default()
+            .map(|unparsed| unparsed.text)
+            .as_deref(),
+        Some("1 +")
+    );
+
+    default.set_text("42");
+
+    assert!(!default.has_css_class("error"));
+    assert!(default.tooltip_text().is_none());
+    assert!(tab.imp().save_button.is_sensitive());
 }
