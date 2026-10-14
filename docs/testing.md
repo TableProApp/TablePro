@@ -203,7 +203,7 @@ The tag is advice only and never changes a result. A new infrastructure signatur
 
 ## Measuring how good the tests are
 
-The [September CI audit](archive/ci-audit-2026-09-27.md) distinguishes executed tests, intentional exclusions and packaging-only green runs. Mutation and coverage run on a schedule. The unit-tier line-coverage score has its own ratcheted floor in `baselines/coverage-floor.txt` (59%; 59.41% measured on 2026-10-11). The nightly workflow separately measures Docker suites for PostgreSQL, MySQL, SQLite, MongoDB, Redis and ClickHouse against `baselines/coverage-floors-crates.txt`. Installed GTK is outside both coverage reports. Mutation survivors need investigation. Dated first-run mutation notes are in [testing history](archive/testing-history.md#mutation-first-run-notes-2026-08-22).
+The [September CI audit](archive/ci-audit-2026-09-27.md) distinguishes executed tests, intentional exclusions and packaging-only green runs. Mutation and coverage run on a schedule. The unit-tier line-coverage score has its own ratcheted floor in `baselines/coverage-floor.txt` (59%; 59.41% measured on 2026-10-11). The nightly workflow separately measures Docker suites for PostgreSQL, MySQL, SQLite, MongoDB, Redis and ClickHouse against `baselines/coverage-floors-crates.txt`. Installed GTK is outside both coverage reports. These floors do not measure every crate or prove assertion quality; the current manual measurements and unmeasured areas are recorded in [#782](https://github.com/cozyGarage/BookiE/issues/782). Mutation survivors need investigation. Dated first-run mutation notes are in [testing history](archive/testing-history.md#mutation-first-run-notes-2026-08-22).
 
 ### Mutation testing
 
@@ -228,7 +228,7 @@ Exclude app and fixture tiers so the map does not depend on Docker or a display.
 
 ## Upstream test-suite parity
 
-The [September adoption record](archive/testing-history.md#upstream-test-suite-parity) preserves the original cases and counts. Current case candidates and ownership are in [the scenario survey](archive/b3-test-scenario-survey.md) and the B3/B4 boards. Reproduce a candidate against current source before changing it; a historical claim of zero tests does not establish a current coverage gap.
+The [September adoption record](archive/testing-history.md#upstream-test-suite-parity) preserves the original cases and counts. Current case candidates and ownership are in [the scenario survey](archive/b3-test-scenario-survey.md) and the B3/B4 boards. Competitor issue-derived checks are hypotheses, not confirmed BookiE defects; the open checklist is in [#790](https://github.com/cozyGarage/BookiE/issues/790). Reproduce a candidate against current source before changing it; a historical claim of zero tests does not establish a current coverage gap.
 
 ## File-size guard
 
