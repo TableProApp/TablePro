@@ -5,18 +5,19 @@
 
 ## Context
 
-Each window used to be one Relm4 `App` component that connected, disconnected and switched connections in place. Everything that read the session (tabs, the sidebar, watches, replies still on their way) had to be reset by hand at every switch, and a reply from the old session could land in the new one.
+Each window used to be one Relm4 `App` component that connected, disconnected and switched connections in place. Everything that read the session (tabs, the sidebar, watches, replies still on their way) had to be reset by hand at every switch, and a reply from the old session could land in the new one. `RelmApp::run` opened that one window, and a `flock` on a file in the runtime directory kept a second launch out.
 
 The 2026-09-14 dependency review found Relm4 used by none of the 31 Rust apps in GNOME Core and Circle, and found the plan wrapping its runtime and spawn functions and banning parts of its API to work around it.
 
 ## Decision
 
-A window is a `SessionWindow` that holds at most one connection session: it shows the picker, the connect in progress, the failed connect, then the session's `Workspace`, and a disconnect tears the workspace down and returns to the picker. `SessionWindow` and `Workspace` are gtk-rs subclasses with CompositeTemplate `.ui` files in the GResource, not Relm4 components. Their actions go on the window's own action map through `add_action_entries`, and their input goes through `runtime::input_queue`, handled one message at a time on the GTK thread.
+The process is one `TableProApplication`, an `adw::Application` subclass that owns the windows, the app actions and the record of open sessions, and keeps one process per profile through GApplication's D-Bus uniqueness. A window is a `SessionWindow` that holds at most one connection session: it shows the picker, the connect in progress, the failed connect, then the session's `Workspace`, and a disconnect tears the workspace down and returns to the picker. `SessionWindow` and `Workspace` are gtk-rs subclasses with CompositeTemplate `.ui` files in the GResource, not Relm4 components. Their actions go on the window's own action map through `add_action_entries`, and their input goes through `runtime::input_queue`, handled one message at a time on the GTK thread.
 
 ## Rationale
 
 - A workspace that never changes session has nothing to reset. Its teardown writes what it shows, closes its input queue and drops it before the session closes, so a late reply has nowhere to land.
 - Every connect claims the session's key in the `SessionRegistry` first, so a second window asking for the same database brings the first forward instead of connecting.
+- A second launch forwards an activate, the files it was given or `app.new-window` to the running process over D-Bus, so Open With and `--new-window` reach the windows that already exist, and Quit can ask each window through its own prompts.
 - Subclasses with templates are what GNOME's Rust apps and the gtk-rs book use. The input queue keeps what Relm4 gave: one message at a time, never handled inside the signal or action that sent it, and dropped once the widget is gone.
 
 ## Consequences
@@ -24,6 +25,7 @@ A window is a `SessionWindow` that holds at most one connection session: it show
 - This supersedes [0003](0003-relm4-architecture.md) for windows and the workspace. The Relm4 components that remain follow 0003 until a rewrite turns them into subclasses, so two patterns coexist until then.
 - A message sent to a window or workspace after it shut down is dropped. One that owns something, such as a connection that finished connecting, is closed instead.
 - Ctrl+W and the close prompts belong to the window, so they work on every page, not only while a session is open.
+- Each window records the session it adopts, so a launch can open them again when `restore-session` is on.
 
 ## Alternatives considered
 
@@ -32,3 +34,7 @@ A window is a `SessionWindow` that holds at most one connection session: it show
 **A Relm4 `SessionWindow` component.** Keeps the wrappers the dependency review removes.
 
 **One process-wide session service shared by every window.** Ties every window to one session's lifetime and brings back the reset problem one level up.
+
+**A `relm4::RelmApp` root.** It builds an application of its own around one root component, which knows neither the other windows nor the app actions, so every second window, Quit and D-Bus activation would work around it.
+
+**A `flock` for one instance.** A hand-written gate for what GApplication already does, and it only refuses a second launch: that launch's files and `--new-window` still have to reach the running process.

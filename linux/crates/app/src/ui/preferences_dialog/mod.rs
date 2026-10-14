@@ -431,7 +431,7 @@ mod tests {
         crate::test_support::drain_main_context();
         let alert =
             crate::test_support::first_descendant_of_type::<adw::AlertDialog>(window).expect("the confirmation alert");
-        alert.emit_by_name::<()>("response", &[&"clear"]);
+        crate::test_support::respond(&alert, "clear");
         crate::test_support::drain_main_context();
     }
 }

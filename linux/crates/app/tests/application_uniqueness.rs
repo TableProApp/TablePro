@@ -1,4 +1,4 @@
-//! One TablePro per session: a second launch hands its command line to
+//! One TablePro per session: a second launch forwards its activation to
 //! the running one over D-Bus and exits.
 
 #![expect(

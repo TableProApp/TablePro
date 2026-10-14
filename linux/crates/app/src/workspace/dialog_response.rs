@@ -43,19 +43,7 @@ pub(crate) async fn respond(dialog: &adw::AlertDialog, parent: &gtk::Widget) -> 
 /// button, so the signals come in the order a user's click sends them.
 #[cfg(test)]
 pub(crate) fn answer(window: &impl IsA<gtk::Widget>, response: &str) -> bool {
-    let Some(dialog) = visible_alert(window) else {
-        return false;
-    };
-    let label = dialog.response_label(response);
-    let Some(button) = crate::test_support::descendants(&dialog)
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-        .find(|button| button.label().as_deref() == Some(label.as_str()))
-    else {
-        return false;
-    };
-    button.emit_clicked();
-    true
+    visible_alert(window).is_some_and(|dialog| crate::test_support::click_response(&dialog, response))
 }
 
 /// The alert `window` shows, if any. `window` is an `AdwWindow` or an

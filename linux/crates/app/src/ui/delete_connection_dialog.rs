@@ -157,17 +157,25 @@ mod tests {
     #[gtk4::test]
     fn delete_hands_over_the_history_choice() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let asking = DeleteConnectionDialog::new("Prod");
+        let window = adw::Window::new();
+        window.present();
         let chosen = Rc::new(Cell::new(None));
-        let sink = chosen.clone();
-        asking.connect_delete(move |options| sink.set(Some(options)));
+        let ask = || {
+            let asking = DeleteConnectionDialog::new("Prod");
+            let sink = chosen.clone();
+            asking.connect_delete(move |options| sink.set(Some(options)));
+            asking.dialog.present(Some(&window));
+            asking
+        };
 
-        crate::test_support::respond(&asking.dialog, CANCEL);
+        crate::test_support::respond(&ask().dialog, CANCEL);
         assert_eq!(chosen.get(), None, "Cancel deleted");
+        let asking = ask();
         asking.history.set_active(true);
         crate::test_support::respond(&asking.dialog, DELETE);
 
         assert_eq!(chosen.get(), Some(DeletionOptions { delete_history: true }));
+        window.close();
     }
 
     #[gtk4::test]

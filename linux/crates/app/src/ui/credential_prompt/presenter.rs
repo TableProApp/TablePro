@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::pin::pin;
-use std::rc::Rc;
 
 use adw::prelude::*;
 use futures::future::{Either, select};
@@ -8,7 +6,7 @@ use libadwaita as adw;
 use tablepro_core::credentials::PromptReply;
 use tokio::sync::oneshot;
 
-use super::prompt_form::{CANCEL, PromptForm};
+use super::prompt_form::PromptForm;
 use super::prompter::{PendingPrompt, PromptQueue};
 
 /// Shows queued credential prompts over a window, one at a time.
@@ -57,34 +55,10 @@ async fn response_while_wanted(
     parent: &gtk4::Widget,
     reply: &mut oneshot::Sender<PromptReply>,
 ) -> Option<String> {
-    match select(pin!(ask(dialog, parent)), pin!(reply.closed())).await {
+    match select(pin!(crate::workspace::respond(dialog, parent)), pin!(reply.closed())).await {
         Either::Left((response, _)) => Some(response),
         Either::Right(((), _)) => None,
     }
-}
-
-/// Present the dialog and wait for the response it closes with.
-///
-/// The closed signal answers too, as a cancel: a dialog torn down with
-/// its window never sends a response, and the prompt must still end.
-/// `choose_future` is not used because its callback aborts the process
-/// when the dialog goes away without one.
-async fn ask(dialog: &adw::AlertDialog, parent: &gtk4::Widget) -> String {
-    let (sender, receiver) = oneshot::channel();
-    let sender = Rc::new(RefCell::new(Some(sender)));
-    let on_response = sender.clone();
-    dialog.connect_response(None, move |_, response| {
-        if let Some(sender) = on_response.borrow_mut().take() {
-            let _ = sender.send(response.to_owned());
-        }
-    });
-    dialog.connect_closed(move |_| {
-        if let Some(sender) = sender.borrow_mut().take() {
-            let _ = sender.send(CANCEL.to_owned());
-        }
-    });
-    dialog.present(Some(parent));
-    receiver.await.unwrap_or_else(|_| CANCEL.to_owned())
 }
 
 #[cfg(test)]
@@ -189,6 +163,49 @@ mod tests {
         presenter.abort();
         window.close();
         crate::test_support::drain_main_context();
+    }
+
+    #[gtk4::test]
+    fn connect_hands_over_the_typed_password_with_animations_on_or_off() {
+        use secrecy::ExposeSecret;
+
+        adw::init().expect("libadwaita initialises under the test backend");
+        let settings = gtk4::Settings::default().expect("the default settings");
+        let animations = settings.is_gtk_enable_animations();
+        for enabled in [true, false] {
+            settings.set_gtk_enable_animations(enabled);
+            let window = adw::Window::new();
+            window.present();
+            let (prompter, queue) = GtkCredentialPrompter::new();
+            let presenter = CredentialPromptPresenter::start(queue, &window);
+            let reply = std::rc::Rc::new(std::cell::RefCell::new(None));
+            let asking = prompter.prompt(prompt("accepted"));
+            let sink = reply.clone();
+            glib::spawn_future_local(async move {
+                *sink.borrow_mut() = Some(asking.await);
+            });
+            crate::test_support::wait_until(Duration::from_secs(5), || open_alerts(&window).len() == 1)
+                .expect("the prompt");
+            let rows = open_alerts(&window)[0].extra_child().expect("the prompt's rows");
+            crate::test_support::descendants(&rows)
+                .into_iter()
+                .find_map(|widget| widget.downcast::<adw::PasswordEntryRow>().ok())
+                .expect("the password row")
+                .set_text("hunter2");
+
+            assert!(crate::workspace::answer(&window, super::super::prompt_form::ACCEPT));
+
+            crate::test_support::wait_until(Duration::from_secs(5), || reply.borrow().is_some()).expect("an answer");
+            let answered = reply.borrow_mut().take();
+            let Some(PromptReply::Submitted { values, .. }) = answered else {
+                panic!("Connect answered {answered:?} with animations {enabled}");
+            };
+            assert_eq!(values[0].expose_secret(), "hunter2");
+            presenter.abort();
+            window.close();
+            crate::test_support::drain_main_context();
+        }
+        settings.set_gtk_enable_animations(animations);
     }
 
     #[gtk4::test]

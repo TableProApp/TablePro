@@ -95,8 +95,7 @@ impl WorkspaceModel {
         dialog.set_close_response("cancel");
 
         let input = self.input.clone();
-        dialog.connect_response(None, move |dialog, response| {
-            dialog.close();
+        dialog.connect_response(None, move |_, response| {
             if response != "save" {
                 return;
             }
@@ -203,6 +202,38 @@ mod tests {
             saved.iter().any(|query| query.name == "Orders"),
             "the hold ended before the save"
         );
+    }
+
+    #[gtk4::test]
+    fn a_history_dialog_closed_by_hand_is_not_closed_again_on_disconnect() {
+        use gtk4::glib;
+        use gtk4::prelude::*;
+        use relm4::ComponentController;
+
+        let test = TestWindow::connected("HistoryClosedOnce");
+        let dialog = test
+            .workspace()
+            .with_model(|model| {
+                model.on_show_history();
+                model
+                    .history_dialog
+                    .as_ref()
+                    .map(|dialog| dialog.model().dialog().clone())
+            })
+            .flatten()
+            .expect("the history dialog");
+        wait_until(WAIT, || dialog.parent().is_some()).expect("the dialog to show");
+        libadwaita::prelude::AdwDialogExt::close(&dialog);
+        wait_until(WAIT, || dialog.parent().is_none()).expect("the dialog to close");
+
+        // Closing a dialog that is no longer presented logs a critical,
+        // which this makes abort the test.
+        let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL);
+        test.window.send(crate::ui::SessionWindowInput::Disconnect);
+        let disconnected = wait_until(WAIT, || test.window.page_name() == "picker");
+        glib::log_set_always_fatal(previous);
+
+        disconnected.expect("the window back on the picker");
     }
 
     #[gtk4::test]

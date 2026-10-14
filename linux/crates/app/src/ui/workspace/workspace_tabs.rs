@@ -621,8 +621,7 @@ impl WorkspaceModel {
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
         let workspace_tabs = self.workspace_tabs.clone();
-        dialog.connect_response(None, move |dlg: &adw::AlertDialog, response: &str| {
-            dlg.close();
+        dialog.connect_response(None, move |_, response| {
             if response != "discard" {
                 return;
             }
