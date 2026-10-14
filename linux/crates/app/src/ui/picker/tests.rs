@@ -404,7 +404,9 @@ fn duplicate_focuses_the_new_row() {
         .expect("picker.duplicate");
 
     let copy = picker_row(&test.window, "Fake (Copy)");
-    wait_until(WAIT, || copy.has_focus()).expect("the copy to take the focus");
+    // The focus widget of its window, which may not be the active one
+    // while other tests run.
+    wait_until(WAIT, || copy.is_focus()).expect("the copy to take the focus");
     assert_eq!(test.services.saved_connections.connections().len(), 2);
 }
 
