@@ -492,6 +492,25 @@ fn missing_file_goes_to_connect_failed() {
 }
 
 #[gtk4::test]
+fn a_file_whose_resolve_never_ran_goes_to_connect_failed() {
+    let mut test = TestWindow::picker("ResolveStopped");
+    let database = test._dir.path().join("local.db");
+    // With the runtime gone, the resolve is cancelled before it starts.
+    if let Some(runtime) = test.runtime.take() {
+        runtime.shutdown();
+    }
+
+    test.window
+        .send(SessionWindowInput::OpenFile(gio::File::for_path(&database)));
+    test.wait_for_page("connect-failed");
+
+    assert!(
+        test.connector.calls().is_empty(),
+        "a file nobody resolved was connected to"
+    );
+}
+
+#[gtk4::test]
 fn an_unsaved_file_opens_a_session_of_its_own() {
     let test = TestWindow::picker("File");
     let database = test._dir.path().join("local.db");

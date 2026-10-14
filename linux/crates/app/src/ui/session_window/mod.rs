@@ -494,20 +494,20 @@ impl SessionWindow {
         }
         let path = file.path();
         let uri = file.uri().to_string();
+        let resolving_uri = uri.clone();
         let connections = state.services.storage.connections().clone();
         let resolving = state
             .services
             .tasks
-            .spawn_blocking_task(move || resolve_file_blocking(path, uri, &connections));
+            .spawn_blocking_task(move || resolve_file_blocking(path, resolving_uri, &connections));
         let input = self.input();
         glib::spawn_future_local(async move {
-            match resolving.await {
-                Ok(resolved) => {
-                    if let Some(input) = input {
-                        input.deliver(SessionWindowInput::FileResolved(Box::new(resolved)));
-                    }
-                }
-                Err(failure) => tracing::warn!(%failure, "the file could not be resolved"),
+            let resolved = resolving.await.unwrap_or_else(|failure| ResolvedFile {
+                uri,
+                target: Err(FileResolveError::Interrupted(failure)),
+            });
+            if let Some(input) = input {
+                input.deliver(SessionWindowInput::FileResolved(Box::new(resolved)));
             }
         });
     }
@@ -906,5 +906,12 @@ fn file_failure_message(uri: &str, error: &FileResolveError) -> String {
             &[("file", &name)],
         ),
         FileResolveError::NotFound(_) => crate::i18n::gettext_f("{file} could not be found.", &[("file", &name)]),
+        FileResolveError::Interrupted(failure) => crate::i18n::gettext_f(
+            "{file} could not be opened. {reason}",
+            &[
+                ("file", &name),
+                ("reason", &crate::ui::error_text::task_failure_message(failure)),
+            ],
+        ),
     }
 }

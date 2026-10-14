@@ -17,6 +17,9 @@ pub enum FileResolveError {
     NotLocal,
     #[error("the file could not be found: {0}")]
     NotFound(#[source] std::io::Error),
+    /// The background work that resolves it did not finish.
+    #[error("the file could not be resolved: {0}")]
+    Interrupted(#[source] tablepro_session::runtime::TaskFailure),
 }
 
 /// What a file turned out to open.
