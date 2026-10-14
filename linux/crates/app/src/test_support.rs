@@ -3,6 +3,7 @@ mod alert_response;
 mod fake_clocks;
 mod fake_reachability;
 mod fake_session;
+mod focus_thief;
 mod icon_buttons;
 mod key_injection_error;
 mod key_injector;
@@ -20,6 +21,7 @@ pub(crate) use alert_response::{click_response, respond};
 pub(crate) use fake_clocks::FakeClocks;
 pub(crate) use fake_reachability::{Attached, FakeProbe, attach_remote};
 pub(crate) use fake_session::FakeSession;
+pub(crate) use focus_thief::FocusThief;
 pub(crate) use icon_buttons::{
     ButtonFace, button_face, has_accessible_label, tooltips_with_keys, unlabelled_icon_buttons,
 };

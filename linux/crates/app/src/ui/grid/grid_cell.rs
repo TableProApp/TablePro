@@ -12,7 +12,7 @@ use super::cell_binding::CellBinding;
 use super::cell_focus::return_focus;
 use super::column_drawing::ColumnDrawing;
 use super::grid_columns::GridColumns;
-use super::inline_editor::InlineEditor;
+use super::inline_editor::{InlineEditor, commit_inline};
 use super::{CellLock, EditSnapshot, GridSink, RowObject};
 
 /// Enough for any number, date or short text.
@@ -333,9 +333,12 @@ impl GridCell {
         let held = window
             .as_ref()
             .and_then(gtk::prelude::GtkWindowExt::focus)
-            .is_some_and(|focus| focus.is_ancestor(self) || focus == *self.upcast_ref::<gtk::Widget>());
+            .is_some_and(|focus| self.row_holds(&focus));
         if let Some(window) = window.as_ref().filter(|_| held) {
             gtk::prelude::GtkWindowExt::set_focus(window, None::<&gtk::Widget>);
+            // The focus leaving commits a one-line edit, but a field that
+            // lost it to another window already left and hears nothing.
+            commit_inline(self);
         }
         self.cancel_edit();
         let (Some(window), true) = (window, held) else {
@@ -358,6 +361,17 @@ impl GridCell {
             }
         });
         handler.replace(Some(id));
+    }
+
+    /// Whether `focus` is in this cell's row: in the cell or its editor,
+    /// or on the list's own cell or row widget above it, where the
+    /// keyboard sits while nothing is being edited.
+    fn row_holds(&self, focus: &gtk::Widget) -> bool {
+        if focus == self.upcast_ref::<gtk::Widget>() || focus.is_ancestor(self) {
+            return true;
+        }
+        self.ancestor(gtk::ListView::static_type())
+            .is_some_and(|list| self.is_ancestor(focus) && focus.is_ancestor(&list))
     }
 
     fn is_bound(&self) -> bool {
@@ -404,8 +418,11 @@ mod tests {
 
     use super::GridCell;
     use crate::services::tracker_edit::TrackerEdit;
-    use crate::test_support::{descendants, wait_until};
-    use crate::ui::grid::test_grid::{Grid, WAIT, flag_rows, key, named, recorder, two_text_rows};
+    use crate::test_support::{FocusThief, descendants, drain_main_context, wait_until};
+    use crate::ui::grid::test_grid::{
+        Grid, WAIT, after_next_frame, edited_rows, flag_rows, focus_in_grid, key, named, page, recorder, text,
+        two_text_rows, type_into,
+    };
     use crate::ui::grid::{RowObject, build_result_grid};
 
     fn described(widget: &impl IsA<gtk::Accessible>) -> bool {
@@ -531,6 +548,43 @@ mod tests {
         assert_eq!(above.as_ref(), Some(&cell));
         assert!(GridCell::from_focus(gtk::Label::new(None).upcast_ref()).is_none());
         editor.unparent();
+    }
+
+    /// The keyboard sits on the list's own cell widget, above the cell.
+    /// GTK moves a focus left in a removed row only after the next frame,
+    /// and a window focus-in before then crashed GTK 4.22 on the row.
+    #[gtk4::test]
+    fn a_focus_in_after_a_page_took_the_focused_row_keeps_the_focus_in_the_grid() {
+        let grid = two_text_rows();
+        grid.focus(0, 1);
+        let thief = FocusThief::take_from(&grid.window).expect("another window takes the focus");
+
+        grid.store.splice(0, grid.store.n_items(), &page(3..5));
+        thief.give_back(&grid.window);
+        drain_main_context();
+        after_next_frame(&grid);
+
+        assert!(focus_in_grid(&grid), "the focus left the grid");
+    }
+
+    /// The focus leaving commits an edit whose row a page takes out. A
+    /// field whose window lost the focus to another has already left,
+    /// and its edit is committed all the same.
+    #[gtk4::test]
+    fn a_page_that_takes_an_edited_row_from_an_inactive_window_commits_the_edit() {
+        let grid = two_text_rows();
+        let cell = grid.focus(0, 1);
+        type_into(&cell, "typed");
+        let _thief = FocusThief::take_from(&grid.window).expect("another window takes the focus");
+
+        grid.store.splice(0, grid.store.n_items(), &page(3..5));
+        drain_main_context();
+
+        assert!(!cell.is_editing(), "the edit outlived its row");
+        assert_eq!(
+            edited_rows(&grid.take_messages()),
+            vec![(Some(key(1)), 1, text("typed"))]
+        );
     }
 
     #[gtk4::test]

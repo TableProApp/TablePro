@@ -218,6 +218,32 @@ impl Drop for Grid {
     }
 }
 
+/// GTK moves a focus it finds in a hidden popover or a removed row once
+/// the frame is painted, so the focus is checked after that.
+pub(super) fn after_next_frame(grid: &Grid) {
+    let clock = grid.window.frame_clock().expect("the window's frame clock");
+    let painted = Rc::new(std::cell::Cell::new(false));
+    let flag = painted.clone();
+    let handler = clock.connect_after_paint(move |_| flag.set(true));
+    clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
+    wait_until(WAIT, || painted.get()).expect("the window paints a frame");
+    clock.disconnect(handler);
+}
+
+/// Saved rows keyed `ids`, as a page read from the table is.
+pub(super) fn page(ids: std::ops::Range<i64>) -> Vec<RowObject> {
+    let rows: Vec<Vec<Value>> = ids
+        .map(|id| vec![Value::Int(id), Value::Text(format!("row {id}"))])
+        .collect();
+    persisted(&rows)
+}
+
+/// Whether the window's focus is the grid or inside it.
+pub(super) fn focus_in_grid(grid: &Grid) -> bool {
+    gtk::prelude::GtkWindowExt::focus(&grid.window)
+        .is_some_and(|focus| focus == *grid.view.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&grid.view))
+}
+
 pub(super) fn two_text_rows() -> Grid {
     Grid::open(
         vec![named("id", "integer", true), named("name", "text", false)],

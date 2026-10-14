@@ -35,12 +35,17 @@ impl MonitorMailbox {
     /// are none yet.
     pub async fn next(&self) -> PendingSignals {
         loop {
-            let taken = self.pending.lock().unwrap_or_else(PoisonError::into_inner).take();
-            if !taken.is_empty() {
+            if let Some(taken) = self.try_next() {
                 return taken;
             }
             self.notify.notified().await;
         }
+    }
+
+    /// The signals that have arrived, or `None` without waiting.
+    pub fn try_next(&self) -> Option<PendingSignals> {
+        let taken = self.pending.lock().unwrap_or_else(PoisonError::into_inner).take();
+        (!taken.is_empty()).then_some(taken)
     }
 }
 
