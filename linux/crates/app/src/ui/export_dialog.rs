@@ -7,13 +7,15 @@ use relm4::gtk::{gio, glib};
 use relm4::{adw, gtk};
 
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote, XLSX_MAX_DATA_ROWS};
 use tablepro_session::Session;
 
 use super::export::{
     DocumentFormat, ExpectedRows, ExportFormat, ExportJob, ExportLedger, ExportOffer, ExportOrigin, ExportSource,
     InsertTarget, RowFormat, ScopeChoice, ScopeSource, scope_choices,
 };
+use crate::i18n::gettext_f;
+use crate::ui::format::format_thousands;
 
 /// The table a result can be written back to as `INSERT` statements.
 ///
@@ -99,6 +101,20 @@ impl Format {
             Format::Xml => ExportFormat::Rows(RowFormat::Xml),
             Format::Sql => ExportFormat::Rows(RowFormat::Sql(target?.clone())),
         })
+    }
+
+    /// Why rows numbering `expected` can't be written in this format,
+    /// told before the export reads them all: a table known to hold
+    /// more rows than an Excel sheet does.
+    fn refusal(self, expected: Option<ExpectedRows>) -> Option<String> {
+        let limit = XLSX_MAX_DATA_ROWS as u64;
+        match (self, expected) {
+            (Format::Xlsx, Some(ExpectedRows::Exact(rows))) if rows > limit => Some(gettext_f(
+                "An Excel sheet holds {limit} rows, and this export has {rows}. Export it as CSV instead.",
+                &[("limit", &format_thousands(limit)), ("rows", &format_thousands(rows))],
+            )),
+            _ => None,
+        }
     }
 
     fn mime_type(self) -> &'static str {
@@ -359,6 +375,9 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     footer.append(&gtk::Box::builder().hexpand(true).build());
     footer.append(&export_button);
 
+    let expected = scope.choices.iter().map(|choice| choice.expected).collect();
+    refuse_what_cannot_fit(&format_row, formats, &scope.row, expected, &export_button);
+
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&adw::HeaderBar::new());
     toolbar.set_content(Some(&page));
@@ -385,6 +404,9 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
         let Some(choice) = scope.selected().cloned() else {
             return;
         };
+        if format.refusal(choice.expected).is_some() {
+            return;
+        }
         let Some(Unexported { origin, session }) = unexported.borrow_mut().take() else {
             return;
         };
@@ -403,6 +425,39 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     });
 
     dialog.present(Some(parent));
+}
+
+/// Keeps Export off, with the reason under the format, while the chosen
+/// rows can't be written in the chosen format. `expected` is each scope's
+/// count, in the Rows list's order.
+fn refuse_what_cannot_fit(
+    format_row: &adw::ComboRow,
+    formats: &'static [Format],
+    scope_row: &adw::ComboRow,
+    expected: Vec<Option<ExpectedRows>>,
+    export_button: &gtk::Button,
+) {
+    let refuse = {
+        let format_row = format_row.downgrade();
+        let scope_row = scope_row.downgrade();
+        let export_button = export_button.downgrade();
+        Rc::new(move || {
+            let (Some(format_row), Some(scope_row), Some(export_button)) =
+                (format_row.upgrade(), scope_row.upgrade(), export_button.upgrade())
+            else {
+                return;
+            };
+            let expected = expected.get(scope_row.selected() as usize).copied().flatten();
+            let refusal = pick(formats, format_row.selected()).refusal(expected);
+            format_row.set_subtitle(refusal.as_deref().unwrap_or_default());
+            export_button.set_sensitive(refusal.is_none());
+        })
+    };
+    for row in [format_row, scope_row] {
+        let refuse = refuse.clone();
+        row.connect_selected_notify(move |_| refuse());
+    }
+    refuse();
 }
 
 /// What the dialog holds until its one export takes it.
@@ -535,6 +590,49 @@ mod tests {
             list.dedup();
             assert_eq!(list.len(), before, "two formats share an entry: {list:?}");
         }
+    }
+
+    #[test]
+    fn excel_is_refused_for_more_rows_than_a_sheet_holds() {
+        let limit = XLSX_MAX_DATA_ROWS as u64;
+
+        assert!(Format::Xlsx.refusal(Some(ExpectedRows::Exact(limit + 1))).is_some());
+        assert_eq!(Format::Xlsx.refusal(Some(ExpectedRows::Exact(limit))), None);
+        assert_eq!(
+            Format::Xlsx.refusal(Some(ExpectedRows::About(limit * 2))),
+            None,
+            "an estimate can be wrong, so the sheet's own check decides"
+        );
+        assert_eq!(Format::Xlsx.refusal(None), None);
+        assert_eq!(Format::Csv.refusal(Some(ExpectedRows::Exact(limit * 2))), None);
+    }
+
+    #[gtk4::test]
+    fn export_is_off_while_the_rows_cannot_fit_an_excel_sheet() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let formats = Format::offered(None);
+        let at = |format| u32::try_from(formats.iter().position(|f| *f == format).expect("offered")).expect("an index");
+        let labels: Vec<&str> = formats.iter().map(|f| f.label()).collect();
+        let format_row = combo_row("Format", &labels);
+        let scope_row = combo_row("Rows", &["Current Page", "Entire Table"]);
+        let export = gtk::Button::new();
+        let past_a_sheet = XLSX_MAX_DATA_ROWS as u64 + 1;
+        refuse_what_cannot_fit(
+            &format_row,
+            formats,
+            &scope_row,
+            vec![Some(ExpectedRows::Exact(3)), Some(ExpectedRows::Exact(past_a_sheet))],
+            &export,
+        );
+
+        format_row.set_selected(at(Format::Xlsx));
+        assert!(export.is_sensitive(), "a page fits a sheet");
+        scope_row.set_selected(1);
+        assert!(!export.is_sensitive(), "the whole table was let through");
+        assert!(format_row.subtitle().is_some_and(|text| text.contains("Excel")));
+        format_row.set_selected(at(Format::Csv));
+        assert!(export.is_sensitive());
+        assert!(format_row.subtitle().unwrap_or_default().is_empty());
     }
 
     #[test]
