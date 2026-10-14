@@ -40,6 +40,7 @@ What the application does not do, or does differently from what you might expect
 - **Reusable SSH profiles cannot be edited** (UI-26).
 - **Local socket endpoint differences:** PostgreSQL selects a socket directory plus port; MySQL and MariaDB select the full socket-file path. Both local routes reject TLS and SSH and never fall back to TCP ([#579](https://github.com/cozyGarage/BookiE/issues/579)).
 - **SQL Server with Kerberos** has a Samba AD and verified-TLS fixture that passed the Kerberos selectors; Windows AD interoperability and package acceptance remain open (B4-21).
+- **A timed-out SQL Server query cannot be stopped on the server yet.** Its outcome is unknown and BookiE retires that connection or session; Tiberius 0.13 has a cancellation API, but BookiE has not verified it against the session lifecycle (B4-23 / [#850](https://github.com/cozyGarage/BookiE/issues/850)).
 - **DuckDB read-only flat files** need Linux and a writable directory on the same filesystem as the file (the application pins the file through a private link there). A read-only in-memory DuckDB connection is refused.
 
 ## Interface

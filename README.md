@@ -19,7 +19,7 @@ PostgreSQL is the furthest along: server-confirmed cancellation, certificate hos
 | PostgreSQL | Implemented; PostgreSQL release fixture |
 | MySQL and MariaDB | Implemented; driver and TLS fixtures |
 | SQLite | Implemented; local and GTK tests |
-| Microsoft SQL Server | Implemented; cancellation and authentication limits |
+| Microsoft SQL Server | Implemented; timed-out query cancellation is not available in BookiE yet |
 | ClickHouse | Implemented; driver and TLS fixtures |
 | Redis | Experimental; single host/port endpoint in 0.2.0 |
 | MongoDB | Experimental |
