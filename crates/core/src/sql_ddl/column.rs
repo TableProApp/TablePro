@@ -187,9 +187,14 @@ fn alter_column_postgres(
         if reapply_default {
             stmts.push(format!("ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT", qualified, name));
         }
+        let using = if postgres_type_change_needs_using(column) {
+            format!(" USING {name}::{}", column.data_type)
+        } else {
+            String::new()
+        };
         stmts.push(format!(
-            "ALTER TABLE {} ALTER COLUMN {} TYPE {}{} USING {}::{}",
-            qualified, name, column.data_type, collation, name, column.data_type,
+            "ALTER TABLE {} ALTER COLUMN {} TYPE {}{}{}",
+            qualified, name, column.data_type, collation, using,
         ));
     }
     if changed.nullable {
@@ -215,6 +220,35 @@ fn alter_column_postgres(
         return Err(BuildDdlError::NoChange);
     }
     Ok(stmts)
+}
+
+fn type_base(data_type: &str) -> String {
+    data_type
+        .split('(')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn is_character_type(data_type: &str) -> bool {
+    matches!(
+        type_base(data_type).as_str(),
+        "text" | "varchar" | "char" | "character" | "character varying" | "bpchar"
+    )
+}
+
+fn is_bit_type(data_type: &str) -> bool {
+    matches!(type_base(data_type).as_str(), "bit" | "bit varying" | "varbit")
+}
+
+fn postgres_type_change_needs_using(column: &DraftColumn) -> bool {
+    let old = column
+        .original
+        .as_ref()
+        .map_or("", |original| original.data_type.as_str());
+    let new = column.data_type.as_str();
+    !(is_character_type(new) || (is_bit_type(new) && is_bit_type(old)))
 }
 
 fn postgres_default_statement(

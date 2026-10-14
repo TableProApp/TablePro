@@ -1,5 +1,7 @@
 #[path = "add_column_primary_key.rs"]
 mod add_column_primary_key;
+#[path = "alter_type_no_truncation.rs"]
+mod alter_type_no_truncation;
 #[path = "auth_errors.rs"]
 mod auth_errors;
 #[path = "decoded_text_oracle.rs"]

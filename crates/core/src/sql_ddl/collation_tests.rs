@@ -27,10 +27,7 @@ fn a_postgres_type_change_keeps_the_column_collation() {
 
     assert_eq!(
         statements,
-        vec![
-            "ALTER TABLE \"people\" ALTER COLUMN \"label\" TYPE character varying(80) COLLATE \"C\" USING \"label\"::character varying(80)"
-                .to_string()
-        ]
+        vec!["ALTER TABLE \"people\" ALTER COLUMN \"label\" TYPE character varying(80) COLLATE \"C\"".to_string()]
     );
 }
 
