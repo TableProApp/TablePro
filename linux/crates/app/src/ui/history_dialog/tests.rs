@@ -578,3 +578,34 @@ fn history_dialog_reveal_failure_shows_a_toast() {
     let window: gtk::Widget = harness.window.clone().upcast();
     wait_until(WAIT, || has_label(&window, "Could not show the file in Files")).expect("a toast");
 }
+
+#[gtk4::test]
+fn menu_key_opens_the_menu_of_the_focused_row() {
+    let harness = Harness::new();
+    let first = harness.record("SELECT first");
+    harness.record("SELECT second");
+    let dialog = harness.presented_dialog();
+    wait_until(WAIT, || row_titled(&dialog, "SELECT first").is_some()).expect("the rows");
+    let list_view = dialog.imp().list_view.get();
+    // Newest first, so the older entry is the second row. The scroll
+    // marks the row the list focuses next; the grab carries it there.
+    list_view.scroll_to(1, gtk::ListScrollFlags::FOCUS, None);
+    list_view.grab_focus();
+    let focused_title = || {
+        list_view
+            .focus_child()
+            .and_then(|item| item.first_child())
+            .and_downcast::<HistoryRow>()
+            .map(|row| row.title())
+    };
+    wait_until(WAIT, || focused_title().as_deref() == Some("SELECT first")).expect("the second row focused");
+
+    dialog.activate_action("history-row.menu", None).expect("the action");
+
+    let menu = dialog.imp().parts.get().expect("parts").menu.clone();
+    assert!(menu.is_visible(), "the menu did not open");
+    let model = menu.menu_model().expect("a menu model");
+    let (_, target) = menu_item(&model, "Delete").expect("a Delete item");
+    assert_eq!(target.and_then(|target| target.get::<i64>()), Some(first));
+    menu.popdown();
+}
