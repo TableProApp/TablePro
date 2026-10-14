@@ -36,7 +36,7 @@ candidate inventory as a release commitment.
 |---|---|
 | TEST-2 | Broad mutation audit: policy, core, transport, SSH and storage are measured; survivor triage stays open under [#559](https://github.com/cozyGarage/BookiE/issues/559). Expected-value provenance is tracked separately by [TEST-32](oracle-review.md); see the [transport mutation report](evidence/test-quality-2026-10-11/transport-mutants.md) for one measured package. |
 | AUD-11 consolidation | Finish the single AST walk for classification, masking and blast-radius planning | Behavioural fixes are closed on the current policy suite; shared analysis landed in #506. Structural consolidation follows 0.2.0 |
-| TEST-12 | MongoDB metadata sample consistency |
+| TEST-12 | Verify MongoDB's bounded 128-document metadata sample and page-observed type union against the non-snapshot contract in [ADR 0007](decisions/0007-type-and-value-preservation.md) |
 | UI-21, TEST-28 | Fake connection for the GTK tier, native Ubuntu AT-SPI menu reachability |
 | TEST-30 | Remaining SonarCloud and CodeQL findings | #562 has no Lane set on Project #3 yet, so it is not listed in the lane index. |
 | AUD-5 | About 4,700 comment lines in `src/` to move into docs, file by file |
