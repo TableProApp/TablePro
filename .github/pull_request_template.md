@@ -1,7 +1,11 @@
 <!--
-Title: type(scope): summary, at most 72 characters. It becomes the squash commit subject.
+Title: <type>(<scope>): <description>, with ! before the colon for a breaking change. At most 72 characters, GitHub's " (#123)" not counted. It becomes the squash commit subject.
+Types: feat, fix, refactor, perf, test, docs, build, ci, chore, style, revert. Only the release skill writes "release: v<version>".
+Scopes, when one fits: ai-chat, ai-providers, mcp, copilot, inline-suggest, editor, datagrid, tabs, coordinator, sidebar, connections, connection-form, welcome, settings, toolbar, hig, ssh, ios, windowing, perf, launch, plugins, plugin-<name>, changelog, claude-md, docs, ci, release.
+Platform scopes: ios for the iOS app, linux or linux-<area> for the Linux app. windows is kept for a Windows app, so window management is windowing.
 Body: 80 to 150 words, 250 at most, screenshots aside. Delete these comments and any optional heading you do not use.
 Leave out review history, test lists and counts, the investigation story and file-by-file change logs.
+The PR title check also scans this body against scripts/banned-words.txt.
 -->
 
 ## Why
@@ -14,7 +18,7 @@ Leave out review history, test lists and counts, the investigation story and fil
 
 ## Verified
 
-<!-- One or two lines: the test that fails on main and passes here, and any check on a real build. A user flow without a UI test says why. -->
+<!-- One or two lines: the test that fails on main and passes here, and any check on a real build. Name each existing test this PR changed because it pinned behavior the PR changes on purpose. A new end-to-end flow without a UI test says why. -->
 
 ## Screenshots
 

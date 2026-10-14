@@ -8,7 +8,7 @@
 #
 # Usage:
 #   verify.sh [options] <step> [args]           # a step of the platform, listed below
-#   verify.sh [options] agent-docs              # AGENTS.md, .claude/rules and this skill against the tree
+#   verify.sh [options] agent-docs              # the agent docs (check-doc-symbols.sh lists them) against the tree
 #   verify.sh          tail   <log> [lines]     # re-read a stored log without rerunning
 #   verify.sh          parse  <log>             # re-read the verdict for a stored log
 #
@@ -226,7 +226,7 @@ case "$STEP" in
             note "$(tail -1 "$log")"
         else
             STATUS=FAIL
-            note "$(grep -E '^(CLAUDE|AGENTS|\.claude)' "$log" | sed 's/^/  /' | head -10)"
+            note "$(grep -E '^(CLAUDE|AGENTS|CONTRIBUTING|RELEASING|\.claude|\.github)' "$log" | sed 's/^/  /' | head -10)"
         fi
         emit "$log" $code
         ;;

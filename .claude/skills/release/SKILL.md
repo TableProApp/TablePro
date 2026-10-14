@@ -12,49 +12,54 @@ description: >
 
 # Release
 
-Run the stages in order, and do not start one until the one before it is real: 1 decide the shape,
-2 release (always), 3 plugins (when they changed), 4 to 6 blog post, newsletter and X posts (big
-releases only). A normal release stops after stage 3: the changelog and the docs changelog are its
-announcement. For a big release the blog post is the announcement, and the newsletter and X posts
-are written from the finished post, never from the changelog, so the three cannot disagree.
+- You never push to this repository's `main`. Every push made with the release key (the release
+  commit, a withdrawal) is the user's to run in their own terminal, because that key never enters
+  ssh-agent (`RELEASING.md`, Keys and rulesets). Wait for them to confirm it landed.
+- Tags are always annotated, `-a -m`: the owner's git has `tag.gpgSign=true`, and a plain
+  `git tag <name>` fails with "no tag message?".
+- The release commit holds exactly the four files that Commit, tag, push stages.
+- Once a release run is past **Publish the release**, only **Re-run failed jobs**
+  (`RELEASING.md`, When a release run fails).
 
-House rules this skill relies on and does not repeat: `.claude/rules/changelog.md` (entry shape,
-sections, credits, lead block), `.claude/rules/plugin-system.md` (PluginKit ABI, plugin tags) and the
-commit format in `AGENTS.md` ("Every change", item 7).
+Run the stages in order, starting one only when the one before it is real: 1 decide the shape, 2
+release (always), 3 plugins (when they changed), 4 to 6 blog post, newsletter and X posts (big
+only). A normal release stops after stage 3; the changelog and docs changelog are its announcement.
+A big release's newsletter and X posts come from the finished post, so the three cannot disagree.
+
+House rules relied on, not repeated: `.claude/rules/changelog.md`, `.claude/rules/plugin-system.md`,
+the commit format in the top comment of `.github/pull_request_template.md`, and `RELEASING.md` for
+the pipeline.
 
 ## Stage 1: Decide the shape
 
-The release is **big** when at least one of these holds:
-
-- `### Added` has something a reader would change their behavior over: a new pane or mode, a new way
-  to connect, a new database, a rebuilt surface they will not recognize.
-- Something people rely on was removed or changed under them.
-- A long-standing class of bugs users have asked about is gone.
-
-Otherwise it is **normal**: fixes, small changes, plugin work. The entry count per section is a
-sanity check, not the rule. Say which shape you picked and why before any work. Ask when it is
-borderline: an unwanted newsletter costs an hour, a skipped one costs a launch.
+The release is **big** when `### Added` has something a reader would change their behavior over (a
+new pane or mode, a new way to connect, a new database, a rebuilt surface they will not recognize),
+when something people rely on was removed or changed under them, or when a long-standing class of
+bugs users have asked about is gone. Otherwise it is **normal**: fixes, small changes, plugin work.
+The entry count per section is a sanity check, not the rule. Say which shape you picked and why
+before any work, and ask when it is borderline: an unwanted newsletter costs an hour, a skipped one
+costs a launch.
 
 ## Stage 2: Release
 
 ### Pre-flight
 
-Check each one. If any fails, stop and say what is wrong.
+Check each. If one fails, stop and say what is wrong.
 
-1. The version is semver (`X.Y.Z`, a suffix like `-beta.1` is fine), newer than `MARKETING_VERSION`
-   in `Configs/Version.xcconfig`, and its tag is free (`git tag -l "v<version>"`). Ask if it is missing.
-2. The tree is clean (`git status --porcelain`), or the user says the changes belong in the release.
-   `[Unreleased]` has entries; if not, say the release has no notes.
-3. `swiftlint lint --strict` is clean. Fix findings first, through their own pull request.
-4. If `Plugins/TableProPluginKit/` changed since the last tag, settle the ABI now (stage 3, PluginKit),
-   because a breaking bump publishes plugins before the app tag.
-5. `scripts/export-cloudkit-schema.sh --check` passes. A field in the snapshot but not in Production
-   makes CloudKit reject every record that carries it, so the user deploys it in CloudKit Console
-   before the tag. It needs the cktool management token on this Mac.
-6. Stop when you are not on `main` or it is not `origin/main`. The tag runs no suite: its `Tested on main` job takes, for
-   `macOS Tests` and `iOS and Package Tests` each, the newest `main` commit where that job ran, and
-   fails the release when it is red or when files the suite reads changed after it. Report both
-   verdicts below, and stop when either is a failure.
+1. The version is semver (`X.Y.Z`; a suffix like `-beta.1` is fine), newer than `MARKETING_VERSION`
+   in `Configs/Version.xcconfig`, and its tag is free (`git tag -l "v<version>"`). Ask if missing.
+2. The tree is clean (`git status --porcelain`), or the user says the changes belong in the
+   release. `[Unreleased]` has entries; if not, say the release has no notes.
+3. `swiftlint lint --strict` is clean: the tag's checks do not cover SwiftLint. Fix findings
+   through their own pull request.
+4. If `Plugins/TableProPluginKit/` changed since the last tag, do Stage 3, PluginKit, now, before
+   the tag.
+5. `scripts/export-cloudkit-schema.sh --check` passes; it needs the cktool management token on this
+   Mac. A field in the snapshot but not in Production makes CloudKit reject every record carrying
+   it, so the user deploys it in CloudKit Console before the tag.
+6. After `git fetch origin main`, you are on `main` and it equals `origin/main`. Report both suite
+   verdicts and stop when either is a failure. What the tag's `Tested on main` job checks on top of
+   this: `RELEASING.md`, The release pipeline.
 
    ```bash
    for pair in 'macos-tests.yml|macOS Tests' 'ios-tests.yml|iOS and Package Tests'; do
@@ -69,6 +74,14 @@ Check each one. If any fails, stop and say what is wrong.
    done
    ```
 
+7. The release key exists: `test -f ~/.ssh/tablepro_release`. If not, stop and give the user both
+   commands to run, the first with a passphrase:
+
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/tablepro_release -C "release commit push"
+   gh repo deploy-key add ~/.ssh/tablepro_release.pub --allow-write --title "Release commit push" -R TableProApp/TablePro
+   ```
+
 ### Credit the entries
 
 Do this before rewording anything: the script reads each entry's commit with `git blame`, and a line
@@ -80,15 +93,15 @@ python3 scripts/ci/changelog_credits.py
 ```
 
 An outside contributor's entry ends `(#2905 by @digows)`, a maintainer's ends `(#2905)`. The output
-ends with every contributor and every entry left bare. A bare entry came from a direct push: credit it
-from `git log` or leave it, and never guess a handle. Blame credits the last commit to touch a line, so
-check the contributors against `gh pr list --state merged --search "merged:>=<last release date>"
---json author` and restore any handle a later rewording took. The script is idempotent.
+ends with every contributor and every entry left bare. A bare entry came from a direct push: credit
+it from `git log` or leave it, and never guess a handle. Blame credits the last commit to touch a
+line, so check the contributors against `gh pr list --state merged --search "merged:>=<last release date>" --json author`
+and restore any handle a later rewording took. The script is idempotent.
 
 ### Tighten the entries
 
-Entries arrive one PR at a time and drift long. Measure them without their credit, then look for the
-repair-story tells:
+Entries arrive one PR at a time and drift long. Measure them without their credit, then look for
+the repair-story tells:
 
 ```bash
 awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep '^- ' \
@@ -108,17 +121,18 @@ the `#` references and handles before and after to prove none were dropped.
 ### Bump the version
 
 In `Configs/Version.xcconfig`, set `MARKETING_VERSION` to the new version and add 1 to
-`CURRENT_PROJECT_VERSION`: Sparkle compares the build number, and the release job fails if it did not
-rise. Touch no other version: plugins and PluginKit pin `1.0` in `project.yml`, and the iOS app has
-`Configs/Version-iOS.xcconfig`.
+`CURRENT_PROJECT_VERSION`. Touch no other version: plugin and PluginKit versions live in `project.yml`,
+and the iOS app's in `Configs/Version-iOS.xcconfig`. The release job checks both values
+(`RELEASING.md`, The release pipeline).
 
 ### Finalize CHANGELOG.md
 
 1. Add `## [<version>] - <YYYY-MM-DD>` below `## [Unreleased]`, leaving Unreleased empty. In the
    footer, point `[Unreleased]` at `v<version>...HEAD` and add
    `[<version>]: https://github.com/TableProApp/TablePro/compare/v<old>...v<version>`.
-2. Each `###` heading appears once, in the order Added, Changed, Deprecated, Removed, Fixed, Security.
-   Merge a repeated heading into the first and move an out-of-order block, then check nothing was lost:
+2. Each `###` heading appears once, in the order Added, Changed, Deprecated, Removed, Fixed,
+   Security. Merge a repeated heading into the first and move an out-of-order block, then check
+   nothing was lost:
 
    ```bash
    awk '/^## \[<version>\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep '^### '
@@ -126,9 +140,9 @@ rise. Touch no other version: plugins and PluginKit pin `1.0` in `project.yml`, 
    grep -n '^## \[' CHANGELOG.md | head -5
    ```
 
-3. Write the lead block: two or three lines under the version heading, before the first `###`, naming
-   the `### Added` items a reader would change their behavior over, in the reader's words. The update
-   window and the Sparkle feed show only this block. A release of pure fixes can skip it.
+3. Write the lead block: two or three lines under the version heading, before the first `###`,
+   naming the `### Added` items a reader would change their behavior over, in the reader's words.
+   The update window and the Sparkle feed show only this block. A release of pure fixes can skip it.
 4. Regenerate the in-app notes so **Help > What's New** matches the feed:
    `scripts/generate-whats-new.sh <version>`.
 
@@ -143,46 +157,39 @@ docs are English only, so there is no translated copy.
   ### New Features
 
   - **Feature Name**: what it does for the reader
-
-  ### Bug Fixes
-
-  - Description
 </Update>
 ```
 
-The headings are New Features, Improvements, Removed, Security and Bug Fixes, in that order, each only
-when the version has one. Each line is one CHANGELOG entry written for a reader, and a New Features
+The headings are New Features, Improvements, Removed, Security and Bug Fixes, in that order, each
+only when the version has one. Each line is one CHANGELOG entry written for a reader; a New Features
 line may add one sentence on what the reader does with it. An outside contributor's line ends
 `, by [@user](https://github.com/user)`; a maintainer's carries no credit.
 
 ### Critical update flag
 
 `.github/release-flags.json` holds `criticalUpdate`. Leave it `false`: updates install in the
-background and apply on quit, and the flag is what lets Sparkle interrupt the user. Set it `true` only
-when the release fixes one of these, and say which:
+background and apply on quit, and the flag is what lets Sparkle interrupt the user. Set it `true`
+only when the release fixes one of these, and say which:
 
 - Data loss or corruption of a database, saved connections or persisted tabs.
 - A security issue with a `### Security` entry that users of the old build are exposed to.
 - A crash or hang on a common path, or a failure to launch, connect or update.
 - A regression from the previous release with no workaround.
 
-Nothing else, a handful a year at most. Set it in the release commit and back to `false` in the next
-one: the release job fails when it is `true` and the file is unchanged since the previous tag. A retag
-of the same release never gets it. A bad build is withdrawn (below) and superseded by a corrective
-release with the flag.
+Nothing else; a handful a year at most. Set it in the release commit and back to `false` in the
+next. A retag of the same release never gets it. A bad build is withdrawn (Withdraw a release) and
+superseded by a corrective release with the flag. What the flag makes Sparkle do, and the release
+job's check for a leftover flag: `RELEASING.md`, Staged rollout and critical updates.
 
 ### Commit, tag, push
 
-`main` takes no direct push. The release commit is the one exception: it goes up with the release
-deploy key `~/.ssh/tablepro_release`, the only bypass in main's ruleset. The key has a passphrase and
-is never added to ssh-agent, so you cannot run that push: ask the user to run it in their own
-terminal, wait for them to confirm it landed, then push the tag. The key skips every check, so
-before you hand it over, prove the push carries the release commit and nothing else. Stop if the
-check prints nothing.
+The release key skips every check, so before the user pushes with it, prove the push carries the
+release commit and nothing else; stop if the check prints nothing. Push the docs changelog in the
+same sitting: the docs CI fails while the app's `CHANGELOG.md` carries a version the page does not.
+It goes straight to the docs `main` under the admin bypass, and Mintlify deploys it.
 
 ```bash
-git add Configs/Version.xcconfig CHANGELOG.md .github/release-flags.json \
-    TablePro/Resources/WhatsNew.md
+git add Configs/Version.xcconfig CHANGELOG.md .github/release-flags.json TablePro/Resources/WhatsNew.md
 scripts/check-banned-words.sh --staged
 git commit -m "release: v<version>"
 git fetch origin main
@@ -194,60 +201,37 @@ git tag -a v<version> -m "v<version>"
 # The user runs this one:
 GIT_SSH_COMMAND='ssh -i ~/.ssh/tablepro_release -o IdentitiesOnly=yes' git push origin main
 git push origin v<version>
-```
-
-Then publish the docs changelog. It goes straight to the docs `main` under the admin bypass, and
-Mintlify deploys it:
-
-```bash
+# Then the docs changelog:
 git -C ../tablepro-docs add changelog.mdx
 git -C ../tablepro-docs commit -m "docs(changelog): v<version>"
 git -C ../tablepro-docs push origin main
 ```
 
-The docs CI fails while the app's `CHANGELOG.md` carries a version the page does not, so push it in
-the same sitting as the tag.
-
 - Keep the subject exactly `release: v<version>`.
-- Always `-a -m`: the owner's git has `tag.gpgSign=true`, and a plain `git tag <name>` fails with
-  "no tag message?".
-- Keep the release commit to the four files above. No suite reads them, so its push to `main` skips
-  both suites and the tag takes the verdict of the code it ships. Any other file runs the suites on
-  that push, and the tag waits for them. A lint fix made on the way lands first, through its own
-  pull request.
+- Keep the release commit to the four files above. All four are on the change detector's
+  release-only list (`.claude/rules/ci.md`, Change detector), so the push skips both suites and the
+  tag takes the verdict of the code it ships. Any other file runs the suites on that push, and the tag waits for
+  them. A lint fix made on the way lands first, through its own PR.
 
-The tag runs `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and tar.xz, Sparkle signatures,
-deltas from the previous five releases, the GitHub Release with notes from `CHANGELOG.md`, then
-`appcast.xml`, pushed with `APPCAST_DEPLOY_KEY` from the `release` environment. The release is created
-as a draft holding every asset and published in one step, only when `Tested on main`, both builds and
-`Registry Readiness` pass. The job fails when the tag disagrees with `MARKETING_VERSION`.
+### Confirm it shipped
 
-A published release is immutable: its assets and its tag are locked. When a run fails:
+A pushed tag is not a build: the workflow publishes from its last job. Check the run, the release
+assets and the feed:
 
-- Before **Publish the release**, only a draft exists. Fix forward on `main` through a pull request,
-  then move the tag to the commit it lands as: `git fetch origin main`,
-  `git tag -f -a v<version> -m "v<version>" origin/main`, then `git push origin v<version> --force`.
-  The next run reuses the draft.
-- After it, at the `appcast.xml` push for instance, use **Re-run failed jobs**. The release job finds
-  the same files already published and carries on. **Re-run all jobs** rebuilds, and the release job
-  refuses the new files.
-- A published build that is wrong ships as a new version.
+```bash
+gh run list --workflow build.yml --limit 1
+gh release view v<version> --json tagName,assets -q '"\(.tagName) assets=\(.assets|length)"'
+curl -s https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml | grep -o '<sparkle:shortVersionString>[^<]*' | head -2
+```
+
+That raw URL is the app's `SUFeedURL`; `tablepro.app/appcast.xml` does not exist. `shortVersionString`
+is an element, not an attribute. A failed run: `RELEASING.md`, When a release run fails.
 
 ### Withdraw a release
 
 Only when a build loses data, fails to launch or breaks connecting, and the fix is more than a few
-minutes away. Removing the version from `appcast.xml` is the only way to un-ship a Sparkle release:
-
-```bash
-python3 scripts/ci/pull-release.py <version> --dry-run
-# The user runs this one, for the same reason as the release push:
-GIT_SSH_COMMAND='ssh -i ~/.ssh/tablepro_release -o IdentitiesOnly=yes' \
-    python3 scripts/ci/pull-release.py <version>
-```
-
-It commits and pushes to `main` with the release key. Leave the GitHub Release so direct DMG links
-resolve. Users who already installed the build are reached by the corrective release with
-`criticalUpdate` set.
+minutes away. Commands and effects: `RELEASING.md`, Withdrawing a release; the user runs its push.
+Users already on the build are reached by the corrective release with `criticalUpdate` set.
 
 ## Stage 3: Plugins
 
@@ -259,56 +243,50 @@ python3 .claude/skills/release/scripts/changed-plugins.py
 
 Slugs, tag names and targets come from `.github/plugin-registry.json`, so nothing is mapped by hand.
 `own` counts commits in the plugin's source paths (its folder, plus a package or `Native/` bridge it
-builds from), `kit` counts PluginKit commits. Skip `bundled` rows: their changes ship inside the app,
-which never applies a registry update to a bundled plugin. A row with only `kit` commits
-needs a release only after a breaking bump, through `release-all-plugins.sh`.
+builds from), `kit` counts PluginKit commits. Skip `bundled` rows: their changes ship inside the
+app, which never applies a registry update to a bundled plugin. A row with only `kit` commits needs
+a release only after a breaking bump, through `release-all-plugins.sh`.
 
 Show the user what changed and ask before tagging, suggesting a patch bump from the last tag. Tag
-each approved plugin annotated, for the same signing reason as the app. The tag is the version, so a
-plugin needs no version bump or changelog edit.
+each approved plugin annotated (top of this file). The tag is the version, so a plugin needs no
+version bump or changelog edit.
 
 ```bash
 git tag -a plugin-<slug>-v<version> -m "plugin-<slug>-v<version>"
 git push origin plugin-<slug>-v<version>
 ```
 
-- One tag per push: GitHub sends no push event when one push carries more than three tags, so no build
-  starts. If several went at once, run `gh workflow run build-plugin.yml -f tags="<tag>,<tag>"`.
-- Wait for the app build first (`gh run list --workflow build.yml --limit 1`). Five macOS jobs run at
-  a time, and plugin builds would queue the release's own tests.
-- Confirm a run started for each tag: `gh run list --workflow build-plugin.yml --limit 10`.
-- A published plugin release cannot take a rebuilt binary, and a rebuild never matches the published
-  bytes. A plugin run that fails after its release is published ships as the next patch version.
+- One tag per push: GitHub sends no push event for a push carrying more than three tags, so no
+  build starts. If several went at once, run `gh workflow run build-plugin.yml -f tags="<tag>,<tag>"`.
+- Wait for the app build first (`gh run list --workflow build.yml --limit 1`): plugin builds compete
+  with its `Build` jobs and `Create GitHub Release` for the same macOS runner slots
+  (`.claude/rules/ci.md`, Caches and runner budget). Then confirm a run started for each tag with
+  `gh run list --workflow build-plugin.yml --limit 10`.
+- A published plugin release cannot take a rebuilt binary, and a rebuild never matches the
+  published bytes. A plugin run that fails after its release is published ships as the next patch.
 
 ### PluginKit
 
-If the release touched `Plugins/TableProPluginKit/`, run `scripts/check-pluginkit-abi.sh
-v<previous-version>` before publishing anything, and act on the diff as
-`.claude/rules/plugin-system.md` says. Any diff bumps `currentPluginKitVersion`, once per release
-cycle. A breaking one also raises `minimumCompatiblePluginKitVersion`, and
-`scripts/release-all-plugins.sh <kitVersion>` must publish before the app tag: `registry-readiness`
-blocks the release otherwise, and a silent install would hide drivers that stopped loading. Run the
-bulk release for a breaking bump only: an additive bump leaves published binaries valid, and each
-bulk run uses up a registry retention slot for every plugin.
-
-To get one driver fix to users who have not updated, build it against their release:
+If the release touched `Plugins/TableProPluginKit/`, run `scripts/check-pluginkit-abi.sh v<previous-version>`
+before publishing anything, and act on the diff as `.claude/rules/plugin-system.md` (ABI) says.
+`scripts/release-all-plugins.sh` runs for a breaking bump only: each run uses a registry retention
+slot for every plugin. One driver fix reaches users who have not updated through
 `scripts/release-plugin-for-shipped-app.sh plugin-<slug>-v<version> v<appVersion>`.
 
 ## Stages 4 to 6: Announce (big only)
 
 1. **Blog post**, by `references/blog-post.md`: one file in `resources/blog/` of the marketing site
-   repo (`../tablepro-web` by default; confirm the path). It goes live first, because the newsletter
-   and the X posts link to it. Once it is live, link it from the version's `<Update>` block in
-   `changelog.mdx` of the docs repository, on its own line before the first `###`, and push it as
-   `docs(changelog): link the <version> announcement`:
-   `[Read the announcement](https://tablepro.app/blog/<slug>)`.
+   repo (`../tablepro-web` by default; confirm the path). It goes live first, because the
+   newsletter and the X posts link to it. Once live, link it from the version's `<Update>` block in
+   the docs `changelog.mdx` with `[Read the announcement](https://tablepro.app/blog/<slug>)` on its
+   own line before the first `###`, pushed as `docs(changelog): link the <version> announcement`.
 2. **Newsletter**, by `references/newsletter.md`: 150 to 250 words that name the headline items and
    link the post.
-3. **X posts**, by `references/newsletter.md`: four to six posts plus one standalone, written from the
-   finished post and newsletter.
+3. **X posts**, by `references/newsletter.md`: four to six posts plus one standalone, written from
+   the finished post and newsletter.
 
-Lint each draft, then work `references/fact-checks.md` top to bottom. Its closing blocker list gates
-all three; report blockers separately from the drafts.
+Lint each draft, then work `references/fact-checks.md` top to bottom. Its closing blocker list
+gates all three; report blockers apart from the drafts.
 
 ```bash
 python3 .claude/skills/release/scripts/lint-draft.py --blog <web repo>/resources/blog/<slug>.md
@@ -317,5 +295,5 @@ python3 .claude/skills/release/scripts/lint-draft.py <newsletter-or-x-draft.md>
 
 Newsletter and X drafts go in the session scratchpad, named by version (`newsletter-v0.77.0.md`,
 `x-posts-v0.77.0.md`). Sending is out of scope. If the user asks to send the newsletter, warn them
-first: in the license backend `all` means verified subscribers only, a small fraction of the list, and
-`everyone` is the real list.
+first: in the license backend `all` means verified subscribers only, a small fraction of the list,
+and `everyone` is the real list.

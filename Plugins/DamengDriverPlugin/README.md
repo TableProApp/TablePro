@@ -25,18 +25,6 @@ xcodebuild -project TablePro.xcodeproj -scheme DamengDriver \
 
 Use `scripts/build-dameng.sh arm64` or `x86_64` only for architecture-specific diagnostics. Do not commit generated files under `Libs/` or `target/`.
 
-## Tests
-
-Run protocol, bridge, and Swift tests before submitting a change:
-
-```bash
-(cd Native/DamengBridge && cargo test --locked)
-xcodebuild -project TablePro.xcodeproj -scheme DamengDriverTests \
-  -configuration Debug build-for-testing CODE_SIGNING_ALLOWED=NO
-```
-
-Integration tests require an isolated DM8 server, such as a container running in OrbStack. Set `TABLEPRO_DM8_INTEGRATION=1`, `DM_HOST`, `DM_PORT`, `DM_USER`, and `DM_PASSWORD`, then run the built `DamengDriverTests.xctest` bundle with `xcrun xctest`. Tests create a unique temporary schema and remove it afterward.
-
 ## Security and Limitations
 
 The parameter binder recognizes placeholders only in SQL code, escapes text literals, and encodes bytes with `HEXTORAW`. Response bodies and LOB content are capped at 64 MiB. Native TLS is not available; use SSH, SOCKS, or Cloudflare tunneling for untrusted networks. Native binary and off-row LOB reads remain unsupported by the transport; use `RAWTOHEX` for binary values and cast CLOB values to `VARCHAR`.

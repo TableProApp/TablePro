@@ -4,7 +4,7 @@ This plugin connects TablePro to SAP HANA Cloud and SAP HANA 2.0 through [SAP/go
 
 The Go bridge in `Native/HanaBridge` is built by `scripts/build-hana.sh` into `tablepro-hana-helper`, an executable with no cgo. The plugin carries it in `Contents/MacOS`, starts one helper for each session, stops it when the session closes, and talks to it over stdin and stdout in length-prefixed JSON frames. The metadata connection pool opens drivers of its own, so one connection can run several helpers. A crash in go-hdb ends that driver's session, not TablePro. The helper owns the HANA session and returns JSON, and the Swift side writes every message the user reads.
 
-Xcode copies the helper into the bundle and does not build it. Run `scripts/build-hana.sh` with no argument, which builds a universal arm64 and x86_64 helper, before building `HanaDriver`, `HanaDriverTests` or `AllPlugins`. A thin build, `scripts/build-hana.sh arm64` or `x86_64`, only works in a build of that one architecture. `scripts/build-plugin.sh` signs the helper with Developer ID, the hardened runtime and a timestamp before it signs the plugin.
+Xcode copies the helper into the bundle and does not build it. Run `scripts/build-hana.sh` with no argument, which builds a universal arm64 and x86_64 helper, before building `HanaDriver` or `AllPlugins`. A thin build, `scripts/build-hana.sh arm64` or `x86_64`, only works in a build of that one architecture. `scripts/build-plugin.sh` signs the helper with Developer ID, the hardened runtime and a timestamp before it signs the plugin.
 
 What the plugin does:
 

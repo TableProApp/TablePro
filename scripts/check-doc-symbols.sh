@@ -5,7 +5,8 @@
 # Prose does not fail a build when the code moves underneath it, so a renamed type or a deleted
 # script stays named in the docs until something asks. This asks.
 #
-# Scope: CLAUDE.md, AGENTS.md, and every .md under .claude/rules and .claude/skills.
+# Scope: CLAUDE.md, AGENTS.md, CONTRIBUTING.md, RELEASING.md, .github/pull_request_template.md,
+# and every .md under .claude/rules and .claude/skills.
 #
 # What is checked. Only mechanical claims, because those are the ones that rot silently:
 #   paths    a backticked repo-relative path must exist
@@ -14,6 +15,9 @@
 #   scripts  every .sh named must exist, and be executable unless it is a sourced lib/ file
 #   skills   every Skill(name) and hyphenated $name reference must resolve
 #   counts   a stated plugin-bundle count must match the tree
+#   rows     each AGENTS.md Area rules row must list exactly its rule's paths: globs, a trailing
+#            /**/* or /** dropped, because Codex finds a rule only through that row
+#   globs    each paths: glob must match a file, or the rule never loads
 #
 # Fenced code blocks are stripped first: a claim in prose is a claim, a name inside an example is
 # an example. A placeholder (`SomeType`, `TypeName`) and an absolute or home path are not claims
@@ -28,12 +32,13 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 3
+REPO_REAL="$(pwd -P)"
 
 LIST=0
 [ "${1:-}" = "--list" ] && LIST=1
 
 DOCS=()
-for top in CLAUDE.md AGENTS.md; do
+for top in CLAUDE.md AGENTS.md CONTRIBUTING.md RELEASING.md .github/pull_request_template.md; do
     [ -f "$top" ] && DOCS+=("$top")
 done
 while IFS= read -r f; do DOCS+=("$f"); done < <(
@@ -118,7 +123,7 @@ build_symbol_index() {
         find TablePro Plugins Packages TableProTests TableProUITests TableProMobile \
             -name '*.swift' -type f 2> /dev/null | uncommented_identifiers
         grep -rhoE '\b[A-Za-z][A-Za-z0-9_]{3,}\b' --include='*.h' Plugins 2> /dev/null
-        grep -hoE '^  [A-Za-z][A-Za-z0-9_+-]*:' project.yml 2> /dev/null | tr -d ' :'
+        grep -hoE '^  [A-Za-z][A-Za-z0-9_+-]*:' project.yml TableProMobile/project.yml 2> /dev/null | tr -d ' :'
         printf '%s\n' $HARNESS_TOOLS $ENV_NAMES
         if command -v xcrun > /dev/null 2>&1; then
             xcrun swift-frontend -print-supported-features 2> /dev/null |
@@ -136,6 +141,9 @@ build_symbol_index() {
             # point only when the path ends in a slash.
             find "$frameworks_dir/$fw.framework/Headers/" -name '*.h' -type f 2> /dev/null >> "$WORK/sdk-headers"
         done
+        # XCTest ships in the platform, not the SDK.
+        find "${frameworks_dir%/SDKs/*}/Library/Frameworks/XCTest.framework/Headers/" \
+            -name '*.h' -type f 2> /dev/null >> "$WORK/sdk-headers"
         uncommented_identifiers < "$WORK/sdk-headers" >> "$WORK/symbols.raw"
     fi
     LC_ALL=C sort -u "$WORK/symbols.raw" > "$WORK/symbols"
@@ -203,7 +211,7 @@ check_paths() {
     while IFS= read -r hit; do
         line="${hit%%:*}"; token="${hit#*:}"
         case "$token" in
-            http* | /* | *' '* | *'*'* | *'<'* | *'$'* | *'|'* | *'{'*) continue ;;
+            http* | /* | '~'* | *' '* | *'*'* | *'<'* | *'$'* | *'|'* | *'{'*) continue ;;
         esac
         case "$token" in
             "$DOCS_REPO" | "$DOCS_REPO"/*)
@@ -216,8 +224,16 @@ check_paths() {
                 fi
                 continue
                 ;;
-            # A first segment carrying a dot is a hostname, not a path in this tree.
-            *.*/*) [ "${token%%/*}" != "${token%%.*}" ] && continue ;;
+            # Another repository cloned beside this one, present on some machines only.
+            .. | ../*)
+                skip "$token (sibling checkout)" "$doc:$line"
+                continue
+                ;;
+        esac
+        # A dotted first segment is a hostname (github.com/...), unless the dot leads (.claude/...).
+        case "${token%%/*}" in
+            .*) ;;
+            *.*) continue ;;
         esac
         # Prose reads like a path when it is a pair of lowercase words: if/else, and/or, read/write.
         case "$token" in
@@ -256,6 +272,9 @@ check_symbols() {
         esac
         if grep -qxF "$token" "$WORK/resolved"; then
             pass "$token" "$doc:$line"
+        elif [ -e "$token" ]; then
+            # A top-level folder, as an Area rules row writes `Libs` for Libs/**/*.
+            pass "$token (top-level path)" "$doc:$line"
         elif printf '%s\n' "$token" | grep -qE "$PLACEHOLDER_PATTERN"; then
             skip "$token (placeholder)" "$doc:$line"
         elif is_site_repo_doc "$doc"; then
@@ -324,6 +343,113 @@ check_counts() {
     done
 }
 
+# "<line><TAB><glob>" for each entry of a rule's paths: list, quotes stripped.
+rule_globs() {
+    awk 'NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
+        /^---[[:space:]]*$/ { exit }
+        /^paths:/ { inside = 1; next }
+        /^[^[:space:]-]/ { inside = 0 }
+        inside && /^[[:space:]]*-[[:space:]]/ {
+            glob = $0
+            sub(/^[[:space:]]*-[[:space:]]*/, "", glob)
+            sub(/[[:space:]]+$/, "", glob)
+            gsub(/^["\047]|["\047]$/, "", glob)
+            print NR "\t" glob
+        }' "$1"
+}
+
+# "<line><TAB><first cell><TAB><token>" for every backticked token in the other cells of each row
+# of AGENTS.md's Area rules table, plus one "<line><TAB><first cell><TAB>" line per row.
+agents_rule_rows() {
+    awk '/^## / { inside = ($0 ~ /^## Area rules/); next }
+        inside && /^\|/ {
+            body = substr($0, 2)
+            cut = index(body, "|")
+            if (!cut) next
+            first = substr(body, 1, cut - 1)
+            rest = substr(body, cut + 1)
+            name = ""; names = 0
+            while (match(first, /`[^`]+`/)) {
+                name = substr(first, RSTART + 1, RLENGTH - 2); names++
+                first = substr(first, RSTART + RLENGTH)
+            }
+            if (!names) next
+            if (names > 1) name = "*" names
+            print NR "\t" name "\t"
+            while (match(rest, /`[^`]+`/)) {
+                print NR "\t" name "\t" substr(rest, RSTART + 1, RLENGTH - 2)
+                rest = substr(rest, RSTART + RLENGTH)
+            }
+        }' AGENTS.md
+}
+
+check_rule_rows() {
+    local rule name rows row_line extra missing
+    [ -f AGENTS.md ] || return 0
+    agents_rule_rows > "$WORK/rows"
+    while IFS="$TAB" read -r row_line rows; do
+        report "AGENTS.md:$row_line" "an Area rules row names $rows rules; give each rule its own row"
+    done < <(awk -F'\t' '$3 == "" && $2 ~ /^\*/ { print $1 "\t" substr($2, 2) }' "$WORK/rows")
+    for rule in .claude/rules/*.md; do
+        [ -f "$rule" ] || continue
+        name="${rule##*/}"
+        rows="$(awk -F'\t' -v r="$name" '$2 == r && $3 == "" { print $1 }' "$WORK/rows")"
+        if [ -z "$rows" ]; then
+            report "AGENTS.md" "no Area rules row for $rule, so Codex never reads it"
+            continue
+        fi
+        row_line="$(printf '%s\n' "$rows" | head -1)"
+        if [ "$rows" != "$row_line" ]; then
+            report "AGENTS.md:$row_line" "more than one Area rules row for $rule"
+            continue
+        fi
+        rule_globs "$rule" | cut -f2 | sed -E 's#/\*\*(/\*)?$##' | LC_ALL=C sort -u > "$WORK/want"
+        awk -F'\t' -v r="$name" '$2 == r && $3 != "" { print $3 }' "$WORK/rows" | LC_ALL=C sort -u > "$WORK/have"
+        missing="$(LC_ALL=C comm -23 "$WORK/want" "$WORK/have" | tr '\n' ' ')"
+        extra="$(LC_ALL=C comm -13 "$WORK/want" "$WORK/have" | tr '\n' ' ')"
+        if [ -z "$missing$extra" ]; then
+            pass "row $name equals its paths:" "AGENTS.md:$row_line"
+            continue
+        fi
+        [ -n "$missing" ] && report "AGENTS.md:$row_line" "the $name row lacks paths: globs ${missing% }"
+        [ -n "$extra" ] && report "AGENTS.md:$row_line" "the $name row lists what its paths: does not: ${extra% }"
+    done
+    while IFS="$TAB" read -r row_line name; do
+        [ -f ".claude/rules/$name" ] && continue
+        report "AGENTS.md:$row_line" "an Area rules row names $name, which is not a file in .claude/rules"
+    done < <(awk -F'\t' '$3 == "" && $2 !~ /^\*/ { print $1 "\t" $2 }' "$WORK/rows")
+}
+
+# An untracked file counts, so a rule can name a file the same uncommitted change adds.
+glob_matches_a_file() {
+    local glob="$1" dir target
+    [ -n "$(git ls-files -- ":(glob)$glob" 2> /dev/null | head -1)" ] && return 0
+    [ -n "$(git ls-files --others --exclude-standard -- ":(glob)$glob" 2> /dev/null | head -1)" ] && return 0
+    # git lists a symlinked directory as one entry, so match what is under its target instead.
+    dir="${glob%%[*?[]*}"
+    dir="${dir%/*}"
+    [ -L "$dir" ] && [ -d "$dir" ] || return 1
+    target="$(cd "$dir" && pwd -P)" || return 1
+    case "$target" in
+        "$REPO_REAL"/*) glob_matches_a_file "${target#"$REPO_REAL"/}${glob#"$dir"}" ;;
+        *) return 1 ;;
+    esac
+}
+
+check_rule_globs() {
+    local rule line glob
+    for rule in .claude/rules/*.md; do
+        [ -f "$rule" ] || continue
+        while IFS="$TAB" read -r line glob; do
+            if glob_matches_a_file "$glob"; then
+                pass "$glob (paths: glob)" "$rule:$line"
+            else
+                report "$rule:$line" "paths: glob matches no file, so the rule never loads: $glob"
+            fi
+        done < <(rule_globs "$rule")
+    done
+}
+
 # ------------------------------------------------------------------ run
 
 build_symbol_index
@@ -331,6 +457,8 @@ echo "checking ${#DOCS[@]} documents against the tree"
 [ "$sdk_indexed" -eq 1 ] || echo "no macOS SDK found: SDK names the tree does not use are skipped"
 for doc in "${DOCS[@]}"; do check_doc "$doc"; done
 check_counts
+check_rule_rows
+check_rule_globs
 
 echo
 if [ "$findings" -eq 0 ]; then
