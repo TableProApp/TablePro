@@ -36,7 +36,8 @@ pub enum EntryKind {
     TimedOut {
         server_cancelled: bool,
     },
-    /// Queued behind a failure, so never sent.
+    /// Never sent: a statement before it failed, or the run was
+    /// stopped first.
     NotRun,
 }
 
