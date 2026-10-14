@@ -97,6 +97,16 @@ pub fn present(
     scrolled.set_child(Some(&view));
     toolbar.set_content(Some(&stack));
     window.set_content(Some(&toolbar));
+    let window_for_escape = window.clone();
+    let escape = gtk::EventControllerKey::new();
+    escape.connect_key_pressed(move |_, keyval, _, _| {
+        if keyval == gtk::gdk::Key::Escape {
+            window_for_escape.close();
+            return glib::Propagation::Stop;
+        }
+        glib::Propagation::Proceed
+    });
+    window.add_controller(escape);
     window.present();
 
     let buffer = view.buffer();
