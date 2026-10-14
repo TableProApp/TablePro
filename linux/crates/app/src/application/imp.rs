@@ -27,6 +27,9 @@ pub struct TableProApplication {
     pub(super) session_signals: RefCell<Option<SessionSignals>>,
     /// Only the first activate restores the last session.
     pub(super) restore: Cell<RestoreState>,
+    /// Files handed over while the record is read, opened after the
+    /// windows it restores.
+    pub(super) pending_files: RefCell<Vec<gio::File>>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -96,7 +99,16 @@ impl ApplicationImpl for TableProApplication {
     /// line. GApplication opens them instead of activating, so no picker
     /// window comes with them.
     fn open(&self, files: &[gio::File], _hint: &str) {
-        self.obj().open_files(files);
+        match self.restore.get() {
+            RestoreState::Done => self.obj().open_files(files),
+            // The record is read before a file's window adds to it, or
+            // that write would replace the sessions still to restore.
+            RestoreState::NotAttempted => {
+                self.pending_files.borrow_mut().extend_from_slice(files);
+                self.obj().restore_session();
+            }
+            RestoreState::Loading => self.pending_files.borrow_mut().extend_from_slice(files),
+        }
     }
 
     /// `--new-window` on a second launch opens the window in the running

@@ -19,6 +19,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
+use tablepro_session::SessionKey;
 
 pub use app_actions::{APP_ACCELS, install_app_actions};
 pub use app_services::{AppServices, AppServicesParts};
@@ -90,15 +91,15 @@ impl TableProApplication {
     }
 
     /// Open the windows whose sessions were open when the application
-    /// last quit, or the picker when there were none or the user turned
-    /// restoring off.
+    /// last quit, then any files handed over meanwhile, or the picker
+    /// when that opens nothing.
     fn restore_session(&self) {
         let imp = self.imp();
         let services = match self.services() {
             Some(services) if services.settings.restore_session() => services,
             _ => {
                 imp.restore.set(imp::RestoreState::Done);
-                self.open_window(WindowLaunch::Picker);
+                self.finish_restore(Vec::new());
                 return;
             }
         };
@@ -113,14 +114,20 @@ impl TableProApplication {
                 OpenSessionsLoad::Empty => Vec::new(),
             };
             app.imp().restore.set(imp::RestoreState::Done);
-            if keys.is_empty() {
-                app.open_window(WindowLaunch::Picker);
-            }
-            for key in keys {
-                app.open_window(WindowLaunch::Restore(key));
-            }
+            app.finish_restore(keys);
             drop(hold);
         });
+    }
+
+    fn finish_restore(&self, keys: Vec<SessionKey>) {
+        let files = self.imp().pending_files.take();
+        if keys.is_empty() && files.is_empty() {
+            self.open_window(WindowLaunch::Picker);
+        }
+        for key in keys {
+            self.open_window(WindowLaunch::Restore(key));
+        }
+        self.open_files(&files);
     }
 
     /// Ask every window to close, in turn. While one is asking, another

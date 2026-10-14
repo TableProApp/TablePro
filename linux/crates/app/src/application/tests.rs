@@ -342,6 +342,30 @@ fn second_activate_does_not_restore_again() {
     );
 }
 
+/// A launch for a file skips activate, and the file's window must not
+/// write over the sessions recorded at the last quit.
+#[gtk4::test]
+fn an_open_before_any_activate_restores_the_record_and_keeps_it() {
+    let test = TestApp::started("OpenRestores");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    test.record(std::slice::from_ref(&first));
+    let SessionKey::File(uri) = &second else {
+        unreachable!("a database file opens as a file key");
+    };
+
+    test.app.open(&[gio::File::for_uri(uri)], "");
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+
+    assert_eq!(
+        test.app.windows().len(),
+        2,
+        "a picker opened beside the restored and opened windows"
+    );
+    let mut recorded = test.recorded();
+    recorded.sort_by_key(|key| key == &second);
+    assert_eq!(recorded, [first, second]);
+}
+
 #[gtk4::test]
 fn an_activate_while_the_record_loads_opens_nothing_more() {
     let test = TestApp::started("RestoreLoading");
