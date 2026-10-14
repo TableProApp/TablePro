@@ -17,6 +17,7 @@ mod tests;
 
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use gtk4 as gtk;
@@ -27,7 +28,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_storage::query_history::{
-    Entry, HistoryConnection, HistoryPage, HistoryPageRequest, HistoryQuery, StatusFilter,
+    Entry, HistoryConnection, HistoryCursor, HistoryPage, HistoryPageRequest, HistoryQuery, StatusFilter,
 };
 
 use tablepro_storage::{ConnectionStore, QueryHistory, SavedConnection, StorageError};
@@ -206,6 +207,7 @@ impl HistoryDialog {
                 .sync_create()
                 .build();
             dialog.follow_selection(item, &row);
+            dialog.toggle_on_click(item, &row);
             dialog.attach_row_menu(&row);
             item.set_child(Some(&row));
         });
@@ -261,6 +263,33 @@ impl HistoryDialog {
                 parts.multiple.unselect_item(position);
             }
         });
+    }
+
+    /// In select mode a click on a row toggles it, as its check does.
+    /// The list view's own click would select that row alone, and drop
+    /// the others the user ticked.
+    fn toggle_on_click(&self, item: &gtk::ListItem, row: &HistoryRow) {
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gdk::BUTTON_PRIMARY);
+        let (dialog, item) = (self.downgrade(), item.downgrade());
+        gesture.connect_released(move |gesture, _, _, _| {
+            let (Some(dialog), Some(item), Some(row)) = (dialog.upgrade(), item.upgrade(), gesture.widget()) else {
+                return;
+            };
+            // Shift and Ctrl clicks keep the list view's range and toggle.
+            let modified = gesture
+                .current_event_state()
+                .intersects(gdk::ModifierType::SHIFT_MASK | gdk::ModifierType::CONTROL_MASK);
+            if !dialog.selecting() || modified {
+                return;
+            }
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            let toggle = (item.position(), true, false).to_variant();
+            if let Err(error) = row.activate_action("list.select-item", Some(&toggle)) {
+                tracing::warn!(%error, "could not toggle a history row");
+            }
+        });
+        row.add_controller(gesture);
     }
 
     fn attach_row_menu(&self, row: &HistoryRow) {
@@ -428,10 +457,15 @@ impl HistoryDialog {
         Some((parts.history.clone()?, parts.tasks.clone()))
     }
 
-    /// Run `work` against the history off the GTK thread, then refresh
-    /// the list once it has landed.
-    fn change_then_refresh<W>(&self, what: &'static str, work: impl FnOnce(QueryHistory) -> W + Send + 'static)
-    where
+    /// Run `work` against the history off the GTK thread, then read the
+    /// list and the connections it holds again once it has landed.
+    /// `failed` is what a toast says when the change does not land.
+    fn change_then_refresh<W>(
+        &self,
+        what: &'static str,
+        failed: String,
+        work: impl FnOnce(QueryHistory) -> W + Send + 'static,
+    ) where
         W: Future<Output = Result<(), StorageError>> + Send + 'static,
     {
         let Some((history, tasks)) = self.storage() else {
@@ -442,27 +476,105 @@ impl HistoryDialog {
             &tasks,
             async move { work(history).await },
             move |done| {
+                let Some(dialog) = dialog.upgrade() else {
+                    return;
+                };
                 match done {
                     Ok(Ok(())) => {}
-                    Ok(Err(error)) => tracing::warn!(%error, what, "a query history change failed"),
-                    Err(failure) => tracing::warn!(%failure, what, "a query history task failed"),
+                    Ok(Err(error)) => {
+                        tracing::warn!(%error, what, "a query history change failed");
+                        dialog.add_toast(&failed);
+                    }
+                    Err(failure) => {
+                        tracing::warn!(%failure, what, "a query history task failed");
+                        dialog.add_toast(&failed);
+                    }
                 }
-                if let Some(dialog) = dialog.upgrade() {
-                    dialog.refresh();
-                }
+                dialog.refresh();
+                dialog.reload_connections();
             },
         ));
     }
 
+    /// The row moves to where the history lists it now, and the pages
+    /// read so far stay, with the scroll position and the selection.
     fn toggle_pin(&self, id: i64) {
         let Some(entry) = self.entry_by_id(id) else {
             return;
         };
+        let Some((history, tasks)) = self.storage() else {
+            return;
+        };
         let pinned = !entry.is_pinned();
-        self.change_then_refresh(
-            "pin",
-            move |history| async move { history.set_pinned(id, pinned).await },
-        );
+        let dialog = self.downgrade();
+        drop(spawn_and_deliver(
+            &tasks,
+            async move { history.set_pinned(id, pinned).await },
+            move |done| {
+                let Some(dialog) = dialog.upgrade() else {
+                    return;
+                };
+                let failure = match done {
+                    Ok(Ok(())) => {
+                        dialog.pin_changed(id, pinned);
+                        return;
+                    }
+                    Ok(Err(error)) => error.to_string(),
+                    Err(failure) => failure.to_string(),
+                };
+                tracing::warn!(%failure, pinned, "could not change a query history pin");
+                dialog.add_toast(&if pinned {
+                    gettext("The query could not be pinned.")
+                } else {
+                    gettext("The query could not be unpinned.")
+                });
+            },
+        ));
+    }
+
+    fn pin_changed(&self, id: i64, pinned: bool) {
+        let imp = self.imp();
+        let Some(parts) = imp.parts.get() else {
+            return;
+        };
+        let Some(position) = parts
+            .entries
+            .iter::<HistoryEntryObject>()
+            .position(|object| object.is_ok_and(|object| object.id() == Some(id)))
+        else {
+            return;
+        };
+        let Some(mut entry) = parts
+            .entries
+            .item(position as u32)
+            .and_downcast::<HistoryEntryObject>()
+            .and_then(|object| object.entry().cloned())
+        else {
+            return;
+        };
+        // A refresh that read the row after the change already shows it.
+        if entry.pinned == pinned {
+            return;
+        }
+        entry.pinned = pinned;
+        let selected = self.selected_ids().contains(&id);
+        parts.entries.remove(position as u32);
+        let key = HistoryCursor::after(&entry);
+        // One that now sorts past the pages read comes back with its page.
+        if imp.paging.borrow().covers(key) {
+            let at = parts
+                .entries
+                .iter::<HistoryEntryObject>()
+                .filter_map(Result::ok)
+                .position(|other| other.entry().is_some_and(|other| HistoryCursor::after(other) < key))
+                .unwrap_or(parts.entries.n_items() as usize);
+            parts.entries.insert(at as u32, &HistoryEntryObject::new(entry));
+            if selected {
+                self.reselect(&HashSet::from([id]));
+            }
+        }
+        self.selection_changed();
+        self.show_results();
     }
 
     /// Delete at once and offer Undo, rather than ask first: the entries
@@ -520,6 +632,7 @@ impl HistoryDialog {
         if !imp.paging.borrow().is_loading_more() {
             self.show_results();
         }
+        self.reload_connections();
         if entries.is_empty() {
             return;
         }
@@ -537,7 +650,11 @@ impl HistoryDialog {
         toast.connect_button_clicked(move |_| {
             if let Some(dialog) = dialog.upgrade() {
                 let entries = entries.clone();
-                dialog.change_then_refresh("restore", move |history| async move { history.restore(&entries).await });
+                dialog.change_then_refresh(
+                    "restore",
+                    gettext("The queries could not be restored."),
+                    move |history| async move { history.restore(&entries).await },
+                );
             }
         });
         imp.toast_overlay.add_toast(toast);
@@ -564,7 +681,11 @@ impl HistoryDialog {
             if response == "clear"
                 && let Some(dialog) = dialog.upgrade()
             {
-                dialog.change_then_refresh("clear", |history| async move { history.clear_all().await.map(drop) });
+                dialog.change_then_refresh(
+                    "clear",
+                    gettext("The query history could not be cleared."),
+                    |history| async move { history.clear_all().await.map(drop) },
+                );
             }
         });
         alert.present(Some(self));
@@ -622,9 +743,44 @@ impl HistoryDialog {
         let Some(parts) = self.imp().parts.get() else {
             return;
         };
-        let Some(history) = parts.history.clone() else {
+        if parts.history.is_none() {
             self.connect_filters();
             self.show_unavailable();
+            return;
+        }
+        let preferred = parts.preferred_connection;
+        self.read_connections(move |dialog, connections| {
+            if let Some((listed, saved)) = connections {
+                dialog.fill_connections(&listed, &saved, preferred);
+            }
+            dialog.connect_filters();
+            dialog.refresh();
+        });
+    }
+
+    /// After a change that can add a connection's first entry or drop
+    /// its last. The filter stays on its connection while that one
+    /// still has history.
+    fn reload_connections(&self) {
+        self.read_connections(|dialog, connections| {
+            let (Some((listed, saved)), Some(parts)) = (connections, dialog.imp().parts.get()) else {
+                return;
+            };
+            let current = parts.filters.state().connection;
+            dialog.fill_connections(&listed, &saved, current);
+        });
+    }
+
+    /// `then` gets the connections with history and the saved ones, or
+    /// `None` when the history could not list them.
+    fn read_connections(
+        &self,
+        then: impl FnOnce(&Self, Option<(Vec<HistoryConnection>, Arc<[SavedConnection]>)>) + 'static,
+    ) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        let Some(history) = parts.history.clone() else {
             return;
         };
         let (store, tasks) = (parts.connections.clone(), parts.tasks.clone());
@@ -641,46 +797,24 @@ impl HistoryDialog {
                 let Some(dialog) = dialog.upgrade() else {
                     return;
                 };
-                match loaded {
-                    Ok((listed, saved)) => dialog.connections_loaded(listed, saved),
-                    Err(failure) => tracing::warn!(%failure, "the history connections task failed"),
-                }
-                dialog.connect_filters();
-                dialog.refresh();
+                let connections = match loaded {
+                    Ok((listed, saved)) => connections_read(listed, saved),
+                    Err(failure) => {
+                        tracing::warn!(%failure, "the history connections task failed");
+                        None
+                    }
+                };
+                then(&dialog, connections);
             },
         ));
     }
 
-    fn connections_loaded(
-        &self,
-        listed: Result<Vec<HistoryConnection>, StorageError>,
-        saved: Result<Result<std::sync::Arc<[SavedConnection]>, StorageError>, TaskFailure>,
-    ) {
-        let imp = self.imp();
-        let Some(parts) = imp.parts.get() else {
+    fn fill_connections(&self, listed: &[HistoryConnection], saved: &[SavedConnection], select: Option<Uuid>) {
+        let Some(parts) = self.imp().parts.get() else {
             return;
         };
-        let listed = match listed {
-            Ok(listed) => listed,
-            Err(error) => {
-                tracing::warn!(%error, "could not list the connections in the history");
-                return;
-            }
-        };
-        // Without the saved list the history's own names still serve.
-        let saved = match saved {
-            Ok(Ok(saved)) => saved,
-            Ok(Err(error)) => {
-                tracing::warn!(%error, "could not read the saved connections for the history filter");
-                std::sync::Arc::from([])
-            }
-            Err(failure) => {
-                tracing::warn!(%failure, "the saved connections read failed");
-                std::sync::Arc::from([])
-            }
-        };
-        parts.filters.connections().fill(&listed, &saved);
-        parts.filters.select_connection(parts.preferred_connection);
+        parts.filters.connections().fill(listed, saved);
+        parts.filters.select_connection(select);
     }
 
     fn query_from_filters(&self) -> HistoryQuery {
@@ -870,6 +1004,32 @@ impl HistoryDialog {
         toast.set_use_markup(false);
         self.imp().toast_overlay.add_toast(toast);
     }
+}
+
+/// Without the saved list the history's own names still serve.
+fn connections_read(
+    listed: Result<Vec<HistoryConnection>, StorageError>,
+    saved: Result<Result<Arc<[SavedConnection]>, StorageError>, TaskFailure>,
+) -> Option<(Vec<HistoryConnection>, Arc<[SavedConnection]>)> {
+    let listed = match listed {
+        Ok(listed) => listed,
+        Err(error) => {
+            tracing::warn!(%error, "could not list the connections in the history");
+            return None;
+        }
+    };
+    let saved = match saved {
+        Ok(Ok(saved)) => saved,
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "could not read the saved connections for the history filter");
+            Arc::from([])
+        }
+        Err(failure) => {
+            tracing::warn!(%failure, "the saved connections read failed");
+            Arc::from([])
+        }
+    };
+    Some((listed, saved))
 }
 
 /// Pinned entries form the first section. Every entry within a section

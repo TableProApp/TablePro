@@ -45,6 +45,12 @@ impl HistoryPaging {
         self.loading_more
     }
 
+    /// Whether an entry that sorts at `cursor` falls in the pages read
+    /// so far, rather than in one still to come.
+    pub(super) fn covers(&self, cursor: HistoryCursor) -> bool {
+        self.next.is_none_or(|next| cursor > next)
+    }
+
     /// The generation and cursor for the next page, unless one is on its
     /// way or the last page is in.
     pub(super) fn start_more(&mut self) -> Option<(u64, HistoryCursor)> {
@@ -146,6 +152,19 @@ mod tests {
         assert_eq!(paging.start_more(), None, "a next page read with the old cursor");
         assert!(paging.first_page_arrived(new, Some(cursor(5))));
         assert_eq!(paging.start_more(), Some((new, cursor(5))));
+    }
+
+    #[test]
+    fn covers_what_sorts_above_the_next_page() {
+        let mut paging = HistoryPaging::default();
+        let generation = paging.start_refresh();
+        assert!(paging.first_page_arrived(generation, Some(cursor(10))));
+
+        assert!(paging.covers(cursor(11)));
+        assert!(!paging.covers(cursor(9)));
+
+        assert!(paging.more_arrived(generation, None));
+        assert!(paging.covers(cursor(9)), "the last page is in");
     }
 
     #[test]

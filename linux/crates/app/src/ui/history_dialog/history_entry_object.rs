@@ -6,7 +6,8 @@ use super::history_entry_object_imp as imp;
 
 glib::wrapper! {
     /// One history entry as the dialog's list model holds it. An entry
-    /// never changes in place: a pin or a delete reloads the page.
+    /// never changes in place: a pin puts a new one where the history
+    /// lists it now.
     pub struct HistoryEntryObject(ObjectSubclass<imp::HistoryEntryObject>);
 }
 

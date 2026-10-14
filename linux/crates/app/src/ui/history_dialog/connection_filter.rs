@@ -44,13 +44,24 @@ impl ConnectionFilterModel {
             })
             .collect();
         listed.sort_by_cached_key(|(name, id)| (name.to_lowercase(), *id));
+        let ids: Vec<Option<Uuid>> = std::iter::once(None)
+            .chain(listed.iter().map(|(_, id)| Some(*id)))
+            .collect();
+        let unchanged = *self.ids.borrow() == ids
+            && listed
+                .iter()
+                .zip(1..)
+                .all(|((name, _), position)| self.labels.string(position).is_some_and(|label| label == name.as_str()));
+        // A splice drops the drop-down's selection, so the filter would
+        // move for a list that did not change.
+        if unchanged {
+            return;
+        }
+        // The ids go first: the splice notifies the drop-down, and what
+        // it reads then has to match the labels.
+        self.ids.replace(ids);
         let names: Vec<&str> = listed.iter().map(|(name, _)| name.as_str()).collect();
         self.labels.splice(1, self.labels.n_items().saturating_sub(1), &names);
-        self.ids.replace(
-            std::iter::once(None)
-                .chain(listed.iter().map(|(_, id)| Some(*id)))
-                .collect(),
-        );
     }
 
     /// `None` for All Connections, and for a position past the end.
@@ -121,5 +132,27 @@ mod tests {
         assert_eq!(model.id_at(1), Some(renamed));
         assert_eq!(model.position_of(unsaved), Some(2));
         assert_eq!(model.id_at(3), None);
+    }
+
+    #[gtk4::test]
+    fn filling_with_the_same_connections_leaves_the_labels_alone() {
+        let model = ConnectionFilterModel::new();
+        let listed = [HistoryConnection {
+            id: Uuid::new_v4(),
+            name: "alpha".to_owned(),
+        }];
+        model.fill(&listed, &[]);
+        let changes = std::rc::Rc::new(std::cell::Cell::new(0));
+        let counted = changes.clone();
+        model
+            .labels()
+            .connect_items_changed(move |_, _, _, _| counted.set(counted.get() + 1));
+
+        model.fill(&listed, &[]);
+        assert_eq!(changes.get(), 0, "an unchanged list was spliced");
+
+        model.fill(&listed, &[saved(listed[0].id, "renamed")]);
+        assert_eq!(changes.get(), 1);
+        assert_eq!(labels(&model), ["All Connections", "renamed"]);
     }
 }

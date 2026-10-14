@@ -610,6 +610,27 @@ fn menu_key_opens_the_menu_of_the_focused_row() {
     menu.popdown();
 }
 
+fn select_entry(dialog: &HistoryDialog, id: i64) {
+    let selection = &dialog.imp().parts.get().expect("parts").multiple;
+    let position = (0..selection.n_items())
+        .find(|position| {
+            selection
+                .item(*position)
+                .and_downcast::<HistoryEntryObject>()
+                .and_then(|entry| entry.id())
+                == Some(id)
+        })
+        .expect("the entry on screen");
+    selection.select_item(position, false);
+}
+
+fn scroll_to_end(dialog: &HistoryDialog) {
+    dialog
+        .imp()
+        .scroll
+        .emit_by_name::<()>("edge-reached", &[&gtk::PositionType::Bottom]);
+}
+
 #[gtk4::test]
 fn deleting_every_loaded_row_loads_the_rest() {
     let harness = Harness::new();
@@ -651,4 +672,136 @@ fn deleting_a_row_already_gone_removes_it_without_undo() {
         toast(&harness.window, "1 query deleted").is_none(),
         "Undo offered for nothing deleted"
     );
+}
+
+#[gtk4::test]
+fn undo_that_fails_says_so() {
+    let harness = Harness::new();
+    let gone = harness.record("SELECT gone");
+    let dialog = harness.presented_dialog();
+    wait_until(WAIT, || entries(&dialog).len() == 1).expect("the first page");
+    let entry = block_on(
+        &harness.runtime,
+        harness
+            .store
+            .search_page(&HistoryQuery::default(), HistoryPageRequest::first(10)),
+    )
+    .expect("search")
+    .entries
+    .remove(0);
+    dialog
+        .activate_action("history.delete", Some(&gone.to_variant()))
+        .expect("the action");
+    wait_until(WAIT, || toast(&harness.window, "1 query deleted").is_some()).expect("a toast");
+    // Back under its id before Undo runs, so the restore collides.
+    block_on(&harness.runtime, harness.store.restore(&[entry])).expect("a restore elsewhere");
+
+    toast(&harness.window, "1 query deleted").expect("Undo").emit_clicked();
+
+    let window: gtk::Widget = harness.window.clone().upcast();
+    wait_until(WAIT, || has_label(&window, "The queries could not be restored.")).expect("a toast");
+}
+
+#[gtk4::test]
+fn click_in_select_mode_toggles_the_row() {
+    let harness = Harness::new();
+    let first = harness.record("SELECT 1");
+    harness.record("SELECT 2");
+    let third = harness.record("SELECT 3");
+    let dialog = harness.presented_dialog();
+    dialog.set_selecting(true);
+    wait_until(WAIT, || row_titled(&dialog, "SELECT 1").is_some()).expect("the rows");
+    select_entry(&dialog, third);
+    let click = || {
+        let row = row_titled(&dialog, "SELECT 1").expect("the row");
+        let controllers = row.observe_controllers();
+        let gesture = (0..controllers.n_items())
+            .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
+            .find(|gesture| gesture.button() == gtk::gdk::BUTTON_PRIMARY)
+            .expect("a row answers a click");
+        gesture.emit_by_name::<()>("released", &[&1i32, &4.0f64, &4.0f64]);
+    };
+
+    click();
+    let mut selected = dialog.selected_ids();
+    selected.sort_unstable();
+    assert_eq!(selected, [first, third], "the click replaced the selection");
+
+    click();
+    assert_eq!(dialog.selected_ids(), [third]);
+}
+
+#[gtk4::test]
+fn pin_keeps_the_pages_read_and_the_selection() {
+    let harness = Harness::new();
+    let ids: Vec<i64> = (0..PAGE_SIZE + 30)
+        .map(|index| harness.record(&format!("SELECT {index}")))
+        .collect();
+    let dialog = harness.dialog();
+    wait_until(WAIT, || entries(&dialog).len() == PAGE_SIZE).expect("the first page");
+    scroll_to_end(&dialog);
+    wait_until(WAIT, || entries(&dialog).len() == ids.len()).expect("the next page");
+    dialog.set_selecting(true);
+    select_entry(&dialog, ids[5]);
+
+    dialog
+        .activate_action("history.pin", Some(&ids[10].to_variant()))
+        .expect("the action");
+
+    wait_until(WAIT, || {
+        entries(&dialog).first().map(String::as_str) == Some("SELECT 10")
+    })
+    .expect("the pinned row first");
+    assert_eq!(entries(&dialog).len(), ids.len(), "the pages read were dropped");
+    assert_eq!(dialog.selected_ids(), [ids[5]]);
+}
+
+#[gtk4::test]
+fn unpinned_row_past_the_pages_read_comes_back_with_its_page() {
+    let harness = Harness::new();
+    let oldest = harness.record("SELECT 0");
+    for index in 1..PAGE_SIZE + 30 {
+        harness.record(&format!("SELECT {index}"));
+    }
+    harness.pin(oldest);
+    let dialog = harness.dialog();
+    wait_until(WAIT, || entries(&dialog).len() == PAGE_SIZE).expect("the first page");
+    assert_eq!(entries(&dialog).first().map(String::as_str), Some("SELECT 0"));
+
+    dialog
+        .activate_action("history.pin", Some(&oldest.to_variant()))
+        .expect("the action");
+
+    wait_until(WAIT, || entries(&dialog).len() == PAGE_SIZE - 1).expect("the row to leave");
+    assert!(!entries(&dialog).iter().any(|query| query == "SELECT 0"));
+    scroll_to_end(&dialog);
+    wait_until(WAIT, || entries(&dialog).len() == PAGE_SIZE + 30).expect("the next page");
+    let shown = entries(&dialog);
+    let mut distinct = shown.clone();
+    distinct.sort();
+    distinct.dedup();
+    assert_eq!(distinct.len(), shown.len(), "a row is shown twice");
+    assert_eq!(shown.last().map(String::as_str), Some("SELECT 0"));
+}
+
+#[gtk4::test]
+fn deleting_a_connections_last_query_drops_it_from_the_filter() {
+    let harness = Harness::new();
+    let connection = Uuid::new_v4();
+    let only = harness.record_on("SELECT 1", connection, "Warehouse");
+    let dialog = harness.dialog_for(Some(connection));
+    wait_until(WAIT, || entries(&dialog) == ["SELECT 1"]).expect("the connection's queries");
+    assert_eq!(connection_drop_down(&dialog).selected(), 1);
+
+    dialog
+        .activate_action("history.delete", Some(&only.to_variant()))
+        .expect("the action");
+
+    wait_until(WAIT, || filter_labels(&dialog) == ["All Connections"]).expect("the connection to go");
+    assert_eq!(connection_drop_down(&dialog).selected(), 0);
+    let imp = dialog.imp();
+    wait_until(WAIT, || {
+        imp.stack.visible_child_name().as_deref() == Some("empty") && imp.status_page.title() == "No Queries Yet"
+    })
+    .expect("the empty history, not an empty search");
 }
