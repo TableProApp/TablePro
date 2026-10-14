@@ -376,7 +376,8 @@ async fn script(
 /// Open an editor tab through its window action and run what it holds,
 /// which opens the tab's own editor session.
 async fn run_in_a_new_editor_tab(window: &adw::ApplicationWindow, editor: &FakeEditorSession) -> Result<(), String> {
-    WidgetExt::activate_action(window, "win.open-editor", None).map_err(|error| format!("win.open-editor: {error}"))?;
+    WidgetExt::activate_action(window, "win.new-editor-tab", None)
+        .map_err(|error| format!("win.new-editor-tab: {error}"))?;
     let mut run = None;
     until("the editor's Run button", || {
         run = descendants(window.upcast_ref())

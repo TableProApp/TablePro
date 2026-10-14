@@ -135,7 +135,7 @@
                                        hidden here. -->
                                   <object class="GtkButton">
                                     <property name="label" translatable="yes">Open SQL editor</property>
-                                    <property name="action-name">win.open-editor</property>
+                                    <property name="action-name">win.new-editor-tab</property>
                                     <property name="halign">center</property>
                                     <style>
                                       <class name="suggested-action"/>

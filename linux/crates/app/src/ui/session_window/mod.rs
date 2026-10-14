@@ -53,7 +53,6 @@ use self::session_page::SessionPage;
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
 pub(crate) use self::session_window_input::SessionWindowInput;
 use self::sqlite_location_dialog::FileCheck;
-pub(crate) use self::window_actions::install_window_shortcuts;
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
@@ -122,7 +121,6 @@ impl SessionWindow {
         }
         crate::ui::window_geometry::restore(self.upcast_ref(), &services.settings);
         window_actions::install(self.upcast_ref(), &input);
-        install_window_shortcuts(self.upcast_ref());
         imp.prompt_presenter
             .replace(Some(crate::ui::credential_prompt::CredentialPromptPresenter::start(
                 prompts, self,

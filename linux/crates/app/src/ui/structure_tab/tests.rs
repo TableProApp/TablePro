@@ -1195,3 +1195,56 @@ fn add_foreign_key_from_the_tab_adds_the_key() {
     );
     window.destroy();
 }
+
+/// Ctrl+S saves as the Save button does, and only while the button could.
+#[gtk4::test]
+fn ctrl_s_saves_while_save_is_on() {
+    use crate::application::ShortcutOwner;
+    use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(TableDefinition {
+        columns: vec![integer_column("id", true)],
+        ..definition("id")
+    }));
+    adw::init().expect("libadwaita initialises under the test backend");
+    crate::register_test_resources();
+    let runtime = crate::test_support::test_runtime();
+    let fake = FakeSession::start(script, [], runtime.tasks());
+    let tab = StructureTab::new(StructureTabInit {
+        tracker: StructureTrackerHandle::default(),
+        schema: None,
+        table: "users".to_owned(),
+        mode: StructureMode::Edit,
+        session: fake.session.clone(),
+        tasks: runtime.tasks(),
+    });
+    wait_until(WAIT, || {
+        tab.imp().inner_stack.visible_child_name().as_deref() == Some("editor")
+    })
+    .expect("the structure");
+    let saves = std::rc::Rc::new(std::cell::Cell::new(0));
+    let counter = saves.clone();
+    tab.connect_save_requested(move |_| counter.set(counter.get() + 1));
+    let ctrl_s = shortcuts(&owner_controller(&tab, ShortcutOwner::StructureTab).expect("the tab's keys"))
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&keystroke("<Primary>s")))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("Ctrl+S is bound");
+    let press = || ctrl_s.activate(gtk::ShortcutActionFlags::empty(), &tab, None);
+
+    assert!(!press(), "Ctrl+S was taken with nothing to save");
+    tab.send(StructureTabInput::ColumnEdited {
+        column: column_object(&tab, 0),
+        field: ColumnField::Default("42".to_owned()),
+    });
+    assert!(press());
+
+    assert_eq!(saves.get(), 1);
+    drop(tab);
+    drain_main_context();
+    runtime.shutdown();
+}

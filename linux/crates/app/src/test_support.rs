@@ -5,6 +5,7 @@ mod fake_reachability;
 mod fake_session;
 mod main_loop;
 mod memory_settings;
+pub(crate) mod shortcut_keys;
 mod signal_log;
 mod tests;
 mod unlabelled_widget;

@@ -1,3 +1,4 @@
+mod a11y;
 mod browse_tab;
 mod connect_dialog;
 mod connection_list;
@@ -32,12 +33,6 @@ mod welcome_view;
 mod window_geometry;
 mod workspace;
 
-#[cfg(test)]
-pub(crate) use browse_tab::BrowseTab;
-#[cfg(test)]
-pub(crate) use editor::{SqlEditor, SqlEditorInit};
 pub(crate) use preferences_dialog::PreferencesDialog;
-#[cfg(test)]
-pub(crate) use session_window::install_window_shortcuts;
 pub(crate) use session_window::{SessionWindow, SessionWindowInit, SessionWindowInput};
 pub(crate) use structure_tab::review_dialog;

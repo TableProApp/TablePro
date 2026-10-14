@@ -1,3 +1,6 @@
+crates/app/src/application/accelerator.rs
+crates/app/src/application/accelerator_scope.rs
+crates/app/src/application/accelerators.rs
 crates/app/src/application/app_actions.rs
 crates/app/src/application/app_services.rs
 crates/app/src/application/app_window_host.rs
@@ -6,6 +9,9 @@ crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
 crates/app/src/application/quit_sequence.rs
 crates/app/src/application/session_signals.rs
+crates/app/src/application/shortcut_listing.rs
+crates/app/src/application/shortcut_owner.rs
+crates/app/src/application/shortcut_section.rs
 crates/app/src/application/tests.rs
 crates/app/src/application/window_host.rs
 crates/app/src/application/window_launch.rs
@@ -80,11 +86,16 @@ crates/app/src/test_support/fake_reachability.rs
 crates/app/src/test_support/fake_session.rs
 crates/app/src/test_support/main_loop.rs
 crates/app/src/test_support/memory_settings.rs
+crates/app/src/test_support/shortcut_keys.rs
 crates/app/src/test_support/signal_log.rs
 crates/app/src/test_support/tests.rs
 crates/app/src/test_support/unlabelled_widget.rs
 crates/app/src/test_support/wait_timed_out.rs
 crates/app/src/test_support/widget_lookup.rs
+crates/app/src/ui/a11y/icon_button.rs
+crates/app/src/ui/a11y/key_shortcuts.rs
+crates/app/src/ui/a11y/mod.rs
+crates/app/src/ui/browse_tab/browse_actions.rs
 crates/app/src/ui/browse_tab/browse_command.rs
 crates/app/src/ui/browse_tab/browse_request_kind.rs
 crates/app/src/ui/browse_tab/confirming_delete.rs
@@ -127,6 +138,7 @@ crates/app/src/ui/editor/completion/sql_completion_provider_imp.rs
 crates/app/src/ui/editor/completion/sql_proposal.rs
 crates/app/src/ui/editor/completion/sql_proposal_imp.rs
 crates/app/src/ui/editor/completion/tests.rs
+crates/app/src/ui/editor/editor_actions.rs
 crates/app/src/ui/editor/editor_session_slot.rs
 crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
@@ -251,6 +263,7 @@ crates/app/src/ui/structure_tab/indexes.rs
 crates/app/src/ui/structure_tab/mod.rs
 crates/app/src/ui/structure_tab/referential_action_label.rs
 crates/app/src/ui/structure_tab/review_dialog.rs
+crates/app/src/ui/structure_tab/structure_actions.rs
 crates/app/src/ui/structure_tab/structure_command.rs
 crates/app/src/ui/structure_tab/table_choice_object.rs
 crates/app/src/ui/structure_tab/tests.rs

@@ -95,7 +95,7 @@ One second runtime remains. Relm4 runs a component's commands (`sender.command`,
 `TableProApplication` (`crates/app/src/application/`) is an `adw::Application` subclass. `run()` builds it with the `AppServices` every window shares: the driver registry, the connector and its deadlines, the `SessionRegistry`, the settings, the storage, `Tasks`, the process hold, the open-sessions record and the query history.
 
 - **One process per profile.** GApplication owns the application id on the session bus. A second launch parses its own options, sends the running process an activate, or an open with the files it was given, and exits. With `--new-window` (`-n`), `handle_local_options` sends `app.new-window` instead. The development profile has an id of its own and runs beside the stable app.
-- **Startup**, in the primary process only, adds the app actions (`new-window`, `quit`, `preferences`, `about`) and their accelerators, opens the query history, checks the askpass helper, ends SSH masters a crashed instance left running, and starts `SessionSignals`, which tells every session about network changes and a resume from suspend.
+- **Startup**, in the primary process only, adds the app actions (`new-window`, `quit`, `preferences`, `about`) and installs the application accelerators from the accelerator table, opens the query history, checks the askpass helper, ends SSH masters a crashed instance left running, and starts `SessionSignals`, which tells every session about network changes and a resume from suspend.
 - **Windows.** `open_window` builds a `SessionWindow` for a `WindowLaunch`: the picker, a saved connection, a file, or a session to restore. The application keeps each window in its `WindowRegistry` by window id, and a window reaches the others through its `WindowHost`, which holds the application weakly.
 - **Holds.** A `ProcessHold` keeps the process alive while work that must finish runs: a session closing, a save, a durable write, a file being resolved. The app's `GioProcessHold` is `gio::Application::hold`, so the process ends once the last window and the last hold are gone.
 - **Quit.** `request_quit` runs `QuitSequence`, which asks each window in turn through its close prompts and never calls `g_application_quit`. A second Quit while a window asks brings that window forward. At logout, `query-end` brings forward the first window that holds the session back.
@@ -127,6 +127,17 @@ The application, its windows, the workspace and every view a rewrite has reached
 A few views are still [Relm4](https://relm4.org) components ([ADR 0003](docs/decisions/0003-relm4-architecture.md)): the picker's `WelcomeView` with its `ConnectionRow` factory, the sidebar's `SidebarRow` factory, and the history, saved-queries and CSV import dialogs. Their output reaches the subclass that hosts them through `connect_receiver` or `relm4_bridge`, which put it on that subclass's queue. The two patterns coexist until a rewrite turns each component into a subclass.
 
 See [docs/state-management.md](docs/state-management.md) for the patterns and naming we use.
+
+### Keyboard shortcuts
+
+Every key the app binds or relies on is one `Accelerator` in `ACCELERATORS` (`crates/app/src/application/accelerators.rs`): the action it fires, its triggers, its `AcceleratorScope` and where the shortcuts dialog lists it.
+
+- **Application** keys go in with `set_accels_for_action` at startup. GtkWindow runs them in the capture phase, before the focused widget, so none of them is a key a text field or a list uses.
+- **Local** keys are a `local_shortcut_controller(owner)` on the owner's widget, firing the owner's action group through `NamedAction`: `browse` on a table tab and its column view, `editor` on the SQL editor's source view, `structure`, `filter`, and the sidebar and history rows. A disabled action lets its key go on. Bubble phase leaves a text field inside the owner its own Ctrl+Z and Ctrl+C; the editor's keys run in the capture phase, because GtkTextView binds Ctrl+/ itself.
+- **Component** keys are bound by a component's own controller (the grid cell keys, the cell editors), which reads them from the table through `component_trigger` or `component_matches`.
+- **Stock** keys belong to GTK or libadwaita: GtkListBase's selection and movement, AdwTabView's tab switching, AdwApplication's Ctrl+?. The workspace removes AdwTabView's Ctrl+Home and Ctrl+End pairs so the lists and the editor in its tabs keep them.
+
+`data/resources/shortcuts-dialog.ui` lists every listed entry under an id made from its action, and `shortcuts_dialog_matches_accelerator_table` holds the two in step both ways. Menus show a Local key through `menu_item`, and `describe_icon_button` puts a button's key on its accessible node instead of in its tooltip.
 
 ## Driver layer
 

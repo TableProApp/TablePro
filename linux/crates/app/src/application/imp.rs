@@ -10,7 +10,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::session_signals::SessionSignals;
-use super::{AppServices, WindowLaunch, WindowRegistry, install_app_actions};
+use super::{AppServices, WindowLaunch, WindowRegistry, install_app_actions, install_application_accelerators};
 use crate::workspace::CloseDecision;
 
 pub(super) const NEW_WINDOW_OPTION: &str = "new-window";
@@ -69,6 +69,7 @@ impl ApplicationImpl for TableProApplication {
         self.parent_startup();
         let app = self.obj();
         install_app_actions(&app);
+        install_application_accelerators(&*app);
         if let Some(services) = self.services.get() {
             services.start();
             self.session_signals

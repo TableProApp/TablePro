@@ -51,6 +51,7 @@ mod index_object;
 mod indexes;
 mod referential_action_label;
 pub(crate) mod review_dialog;
+mod structure_actions;
 mod structure_command;
 mod table_choice_object;
 #[cfg(test)]
@@ -168,6 +169,7 @@ impl StructureTab {
             StructureMode::Edit => "loading",
         });
         let name_changed = tab.connect_widgets();
+        tab.install_actions();
 
         let context = Rc::new(RefCell::new(StructureContext {
             mode: init.mode,

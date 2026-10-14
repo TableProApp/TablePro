@@ -915,8 +915,18 @@ impl HistoryDialog {
         let act_del = gio::ActionEntry::builder("delete")
             .activate(move |_, _, _| s_del2.deliver(HistoryDialogInput::Delete(id)))
             .build();
-        row_actions.add_action_entries([act_open, act_replace, act_pin, act_copy, act_del]);
+        let popover_for_keys = popover_menu.clone();
+        let act_menu = gio::ActionEntry::builder("menu")
+            .activate(move |_, _, _| {
+                popover_for_keys.set_pointing_to(None);
+                popover_for_keys.popup();
+            })
+            .build();
+        row_actions.add_action_entries([act_open, act_replace, act_pin, act_copy, act_del, act_menu]);
         row.insert_action_group("history-row", Some(&row_actions));
+        row.add_controller(crate::application::local_shortcut_controller(
+            crate::application::ShortcutOwner::HistoryRow,
+        ));
 
         let gesture = gtk::GestureClick::new();
         gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
@@ -927,24 +937,6 @@ impl HistoryDialog {
             gesture.set_state(gtk::EventSequenceState::Claimed);
         });
         row.add_controller(gesture);
-
-        let menu_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(
-                gtk::gdk::Key::Menu,
-                gtk::gdk::ModifierType::empty(),
-            ))
-            .action(&gtk::CallbackAction::new({
-                let popover = popover_menu.clone();
-                move |_, _| {
-                    popover.popup();
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        let controller = gtk::ShortcutController::new();
-        controller.set_scope(gtk::ShortcutScope::Local);
-        controller.add_shortcut(menu_shortcut);
-        row.add_controller(controller);
 
         (row, popover_menu, select_check)
     }

@@ -224,6 +224,7 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
 - `descendants`, `find_by_action_name` and `first_descendant_of_type` walk a widget tree.
 - `MemorySettings` compiles the schema into a `TempDir` behind the memory backend, so a test never touches the developer's dconf database.
 - `FakeSession` is a session over a fake connection; `FakeClocks` and `FakeProbe` stand in for the suspend clocks and the reachability check.
+- `shortcut_keys` reads the keys a controller or a widget class binds, for the accelerator table's collision tests.
 - `assert_labelled(widget)` checks that a screen reader can name a control:
   - an `adw::PreferencesRow` needs a non-empty title;
   - an `adw::EntryRow` or `adw::PasswordEntryRow` must keep its inner text field labelled by that title;

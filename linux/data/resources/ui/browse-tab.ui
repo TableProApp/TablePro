@@ -68,8 +68,8 @@
             <child type="start">
               <object class="GtkButton" id="insert_button">
                 <property name="icon-name">list-add-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Insert row (Ctrl+N)</property>
-                <property name="sensitive">false</property>
+                <property name="action-name">browse.insert-row</property>
+                <property name="tooltip-text" translatable="yes">Insert row</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -78,8 +78,8 @@
             <child type="start">
               <object class="GtkButton" id="delete_button">
                 <property name="icon-name">list-remove-symbolic</property>
-                <property name="action-name">tab.delete-rows</property>
-                <property name="tooltip-text" translatable="yes">Delete selected rows (Delete)</property>
+                <property name="action-name">browse.delete-rows</property>
+                <property name="tooltip-text" translatable="yes">Delete selected rows</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -102,14 +102,14 @@
                 <child>
                   <object class="GtkButton" id="prev_button">
                     <property name="icon-name">go-previous-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Previous page (Page Up)</property>
+                    <property name="tooltip-text" translatable="yes">Previous page</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
                 <child>
                   <object class="GtkButton" id="next_button">
                     <property name="icon-name">go-next-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Next page (Page Down)</property>
+                    <property name="tooltip-text" translatable="yes">Next page</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
@@ -155,8 +155,8 @@
                    filtering rows, and the search icons mean Ctrl+F's
                    other use. -->
               <object class="GtkButton" id="filter_button">
-                <property name="tooltip-text" translatable="yes">Filter rows (Ctrl+F)</property>
-                <property name="action-name">win.open-filter</property>
+                <property name="tooltip-text" translatable="yes">Filter rows</property>
+                <property name="action-name">browse.filter</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -221,7 +221,7 @@
                 <child type="end">
                   <object class="GtkButton" id="save_button">
                     <property name="label" translatable="yes">Save</property>
-                    <property name="tooltip-text" translatable="yes">Save pending edits (Ctrl+S)</property>
+                    <property name="tooltip-text" translatable="yes">Save pending edits</property>
                     <style>
                       <class name="suggested-action"/>
                     </style>

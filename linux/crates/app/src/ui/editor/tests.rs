@@ -509,3 +509,153 @@ fn export_name_slugs_the_statement() {
 fn export_name_falls_back_when_there_is_no_statement() {
     assert_eq!(export_name_for_query("   \n  "), crate::i18n::gettext("query-results"));
 }
+
+/// The editor in a window. A widget finds its ancestors' action groups
+/// once it is rooted, which a key press always is.
+struct InWindow(gtk4::Window);
+
+impl InWindow {
+    fn new(editor: &SqlEditor) -> Self {
+        let window = gtk4::Window::new();
+        window.set_child(Some(editor));
+        Self(window)
+    }
+}
+
+impl Drop for InWindow {
+    fn drop(&mut self) {
+        self.0.set_child(None::<&gtk4::Widget>);
+        self.0.destroy();
+    }
+}
+
+fn editor_keys(harness: &Harness) -> gtk4::ShortcutController {
+    crate::test_support::shortcut_keys::owner_controller(
+        &harness.editor.imp().source_view.get(),
+        crate::application::ShortcutOwner::SqlEditor,
+    )
+    .expect("the editor's shortcuts")
+}
+
+/// What `accel` does on the source view, as a key reaching the editor's
+/// controller would. `false` when the key goes on.
+fn press(harness: &Harness, accel: &str) -> bool {
+    use crate::test_support::shortcut_keys::{keystroke, shortcuts, trigger_keys};
+    let key = keystroke(accel);
+    let action = shortcuts(&editor_keys(harness))
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&key))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("the editor binds the key");
+    action.activate(
+        gtk4::ShortcutActionFlags::empty(),
+        &harness.editor.imp().source_view.get(),
+        None,
+    )
+}
+
+/// GtkTextView binds Ctrl+/ to select-all, and a bubble controller on
+/// the view runs before that binding only while it was added last, so
+/// every editor key that a class binds too runs in the capture phase.
+#[gtk4::test]
+fn editor_keys_that_the_view_binds_run_in_capture() {
+    use crate::application::{ACCELERATORS, AcceleratorScope, ShortcutOwner};
+    use crate::test_support::shortcut_keys::{class_binding_keys, keystroke};
+    let harness = editor_with(answering(), "SELECT 1");
+    let view = harness.editor.imp().source_view.get();
+    let class_keys = class_binding_keys(&view);
+    let controller = editor_keys(&harness);
+
+    assert!(
+        class_keys.contains(&keystroke("<Primary>slash")),
+        "the view's own bindings were not found, so the check reads nothing"
+    );
+    assert_eq!(controller.propagation_phase(), gtk4::PropagationPhase::Capture);
+    for entry in ACCELERATORS {
+        let AcceleratorScope::Local {
+            owner: ShortcutOwner::SqlEditor,
+            phase,
+        } = entry.scope
+        else {
+            continue;
+        };
+        if entry
+            .triggers
+            .iter()
+            .any(|accel| class_keys.contains(&keystroke(accel)))
+        {
+            assert_eq!(phase, gtk4::PropagationPhase::Capture, "{}", entry.action);
+        }
+    }
+}
+
+#[gtk4::test]
+fn ctrl_slash_toggles_the_comment() {
+    let harness = editor_with(answering(), "select 1");
+    let _window = InWindow::new(&harness.editor);
+
+    assert!(press(&harness, "<Primary>slash"));
+
+    assert_eq!(buffer_text(&harness.editor.buffer()), "-- select 1");
+    assert!(!harness.editor.buffer().has_selection());
+}
+
+#[gtk4::test]
+fn escape_cancels_only_while_a_query_runs() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::until_stopped());
+    let harness = editor_with(runs, "SELECT pg_sleep(60)");
+    let _window = InWindow::new(&harness.editor);
+
+    assert!(!press(&harness, "Escape"), "Escape was taken with nothing running");
+
+    assert!(press(&harness, "<Primary>Return"));
+    assert!(harness.editor.is_running(), "Ctrl+Return did not run");
+    wait_until(WAIT, || !harness.fake.texts().is_empty()).expect("the statement to start");
+    assert!(press(&harness, "Escape"), "Escape did not cancel the run");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+    assert_eq!(harness.fake.stopped_runs(), 1);
+    assert!(!press(&harness, "Escape"), "Escape stayed taken after the run");
+}
+
+/// GtkPopoverMenu shows only application accelerators by itself.
+#[gtk4::test]
+fn the_editor_menu_shows_the_tables_local_keys() {
+    use crate::application::{ACCELERATORS, AcceleratorScope};
+    let harness = editor_with(answering(), "SELECT 1");
+    let menu = harness
+        .editor
+        .imp()
+        .menu_button
+        .menu_model()
+        .expect("the editor's menu");
+    let mut checked = 0;
+    for section in 0..menu.n_items() {
+        let Some(items) = menu.item_link(section, "section") else {
+            continue;
+        };
+        for item in 0..items.n_items() {
+            let Some(action) = items
+                .item_attribute_value(item, "action", None)
+                .and_then(|value| value.get::<String>())
+            else {
+                continue;
+            };
+            let accel = items
+                .item_attribute_value(item, "accel", None)
+                .and_then(|value| value.get::<String>());
+            let entry = ACCELERATORS.iter().find(|entry| entry.action == action);
+            let expected = entry
+                .filter(|entry| matches!(entry.scope, AcceleratorScope::Local { .. }))
+                .and_then(|entry| entry.triggers.first())
+                .map(|accel| (*accel).to_owned());
+            assert_eq!(accel, expected, "{action}");
+            checked += usize::from(expected.is_some());
+        }
+    }
+    assert!(checked > 0, "no menu item has a local key, so the check reads nothing");
+}

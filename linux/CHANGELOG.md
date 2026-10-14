@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
+- Shift+F10 and the Menu key open the menu of a sidebar table or a query history entry.
+- Screen readers announce the keyboard shortcut of the table, SQL editor and filter buttons that have one.
 
 ### Changed
 
@@ -54,10 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Index and Add Foreign Key check the form as you type, and pick the referenced table and columns from the database.
 - Denser grid rows, with numbers aligned right in even-width digits at the precision their column declares.
 - A grid value too long to draw says how many bytes it leaves out, and its tooltip points to Show Row as JSON.
+- Query History opens with Ctrl+Shift+H.
+- Previous and next page are Alt+Page Up and Alt+Page Down; Page Up and Page Down move through the rows.
+- Ctrl+S, Ctrl+Z, F5 and Ctrl+F act on the tab that has the focus, so a text field keeps its own undo.
+- Keyboard Shortcuts lists every shortcut, grouped by where it works.
 
 ### Removed
 
 - Connection buttons in a connected window's header bar; New Window opens another connection.
+- Ctrl+E for a new SQL editor tab; Ctrl+T opens one.
 
 ### Fixed
 
@@ -145,6 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changing the type of a SQL Server column with a default failed.
 - A bulk delete confirmed after the table's primary key changed marked rows by their old key.
 - Ctrl+Home and Ctrl+End jumped to the first or last tab instead of the start or end of the SQL editor or table.
+- Ctrl+N added a row to a read-only table or a table without a primary key.
 
 ### Security
 
