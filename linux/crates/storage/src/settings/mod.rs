@@ -75,6 +75,16 @@ impl AppSettings {
         self.set_boolean(keys::CONFIRM_DESTRUCTIVE, confirm)
     }
 
+    /// Whether runs go into the query history. Off records nothing and
+    /// leaves the entries already there.
+    pub fn save_query_history(&self) -> bool {
+        self.settings.boolean(keys::SAVE_QUERY_HISTORY)
+    }
+
+    pub fn set_save_query_history(&self, save: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SAVE_QUERY_HISTORY, save)
+    }
+
     pub fn history_retention_days(&self) -> u32 {
         self.settings.uint(keys::HISTORY_RETENTION_DAYS)
     }

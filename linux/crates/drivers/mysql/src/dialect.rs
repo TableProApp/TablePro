@@ -11,7 +11,8 @@ use tablepro_core::dialect::{
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    ExpressionSyntaxError, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError, parse_expression, parse_type,
+    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
+    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -179,6 +180,10 @@ impl SqlDialect for MySqlDialect {
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
         let parsed = parse_expression(SqlGrammar::MySql, text, MAX_EXPRESSION_LEN)?;
         Ok(SqlExpression::from_catalog_text(parsed.text))
+    }
+
+    fn history_recording(&self, sql: &str) -> HistoryRecording {
+        classify_for_history(SqlGrammar::MySql, &CREDENTIAL_RULES, sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -363,6 +368,30 @@ fn string_literal(text: &str) -> String {
     }
     format!("'{}'", text.replace('\'', "''"))
 }
+
+/// Statements whose text can hold a password or a connection string. A
+/// FEDERATED or CONNECT table keeps its remote login in `CONNECTION`, and
+/// `PASSWORD()` takes the password it hashes.
+const CREDENTIAL_RULES: CredentialRules = CredentialRules {
+    statement_prefixes: &[
+        &["CREATE", "USER"],
+        &["ALTER", "USER"],
+        &["CREATE", "SERVER"],
+        &["ALTER", "SERVER"],
+        &["SET", "PASSWORD"],
+        &["CHANGE", "MASTER"],
+        &["CHANGE", "REPLICATION", "SOURCE"],
+    ],
+    conditional_prefixes: &[
+        (&["GRANT"], &["IDENTIFIED"]),
+        (&["START", "SLAVE"], &["PASSWORD"]),
+        (&["START", "REPLICA"], &["PASSWORD"]),
+        (&["START", "GROUP_REPLICATION"], &["PASSWORD"]),
+        (&["CREATE"], &["CONNECTION"]),
+        (&["ALTER"], &["CONNECTION"]),
+    ],
+    carriers: &["PASSWORD", "OLD_PASSWORD"],
+};
 
 #[cfg(test)]
 mod tests {
@@ -608,5 +637,48 @@ mod tests {
             })
         );
         assert!(dialect.parse_type("int; DROP TABLE t").is_err());
+    }
+
+    #[test]
+    fn history_withholds_statements_that_carry_credentials() {
+        for sql in [
+            "CREATE USER 'u'@'%' IDENTIFIED BY 'p'",
+            "SET PASSWORD FOR 'u'@'h' = 'x'",
+            "CHANGE REPLICATION SOURCE TO SOURCE_PASSWORD='x'",
+            "CHANGE MASTER TO MASTER_PASSWORD='x'",
+            "GRANT ALL ON *.* TO u IDENTIFIED BY 'p'",
+            "START REPLICA USER='u' PASSWORD='p'",
+            "CREATE TABLE t (id INT) ENGINE=FEDERATED CONNECTION='mysql://u:p@h:3306/d/t'",
+            "UPDATE mysql.user SET authentication_string = PASSWORD('x') WHERE User = 'root'",
+            "SELECT OLD_PASSWORD('x')",
+            "START GROUP_REPLICATION USER='u', PASSWORD='p'",
+            "CREATE TABLE t (id int) /*!50100 ENGINE=FEDERATED CONNECTION='mysql://u:p@h/d/t' */",
+        ] {
+            assert_eq!(
+                dialect(MySqlFlavour::MySql).history_recording(sql),
+                HistoryRecording::Withhold(tablepro_core::sql_syntax::WithholdReason::CredentialStatement),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn history_records_plain_statements_as_they_are() {
+        assert_eq!(
+            tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect(MySqlFlavour::MySql)),
+            Vec::<&str>::new()
+        );
+        for sql in [
+            "CREATE TABLE users (id INT, password VARCHAR(100))",
+            "INSERT INTO users (name, password) VALUES ('a', 'b')",
+            "SELECT start, password FROM sessions",
+            "START TRANSACTION",
+        ] {
+            assert_eq!(
+                dialect(MySqlFlavour::MySql).history_recording(sql),
+                HistoryRecording::Record,
+                "{sql}"
+            );
+        }
     }
 }

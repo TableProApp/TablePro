@@ -11,7 +11,8 @@ use tablepro_core::dialect::{
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    ExpressionSyntaxError, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError, parse_expression, parse_type,
+    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
+    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -144,6 +145,10 @@ impl SqlDialect for PgDialect {
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
         let parsed = parse_expression(SqlGrammar::PostgreSql, text, MAX_EXPRESSION_LEN)?;
         Ok(SqlExpression::from_catalog_text(parsed.text))
+    }
+
+    fn history_recording(&self, sql: &str) -> HistoryRecording {
+        classify_for_history(SqlGrammar::PostgreSql, &CREDENTIAL_RULES, sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -336,6 +341,39 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
 fn quoted(text: &str) -> String {
     escape_literal(text).trim_start().to_owned()
 }
+
+/// Statements whose text can hold a password or a connection string.
+/// `CREATE USER` also covers `CREATE USER MAPPING`, whose options carry
+/// the remote login, and pgcrypto's `crypt` and passphrase functions take
+/// the password itself.
+const CREDENTIAL_RULES: CredentialRules = CredentialRules {
+    statement_prefixes: &[
+        &["CREATE", "ROLE"],
+        &["ALTER", "ROLE"],
+        &["CREATE", "USER"],
+        &["ALTER", "USER"],
+        &["CREATE", "GROUP"],
+        &["ALTER", "GROUP"],
+        &["CREATE", "SERVER"],
+        &["ALTER", "SERVER"],
+        &["CREATE", "SUBSCRIPTION"],
+        &["ALTER", "SUBSCRIPTION"],
+    ],
+    conditional_prefixes: &[(&["ALTER", "SYSTEM"], &["PRIMARY_CONNINFO"])],
+    carriers: &[
+        "dblink",
+        "dblink_connect",
+        "dblink_connect_u",
+        "dblink_exec",
+        "crypt",
+        "pgp_sym_encrypt",
+        "pgp_sym_encrypt_bytea",
+        "pgp_sym_decrypt",
+        "pgp_sym_decrypt_bytea",
+        "pgp_pub_decrypt",
+        "pgp_pub_decrypt_bytea",
+    ],
+};
 
 #[cfg(test)]
 mod tests {
@@ -570,5 +608,38 @@ mod tests {
         );
         assert_eq!(dialect.quote_identifier("a\"b"), "\"a\"\"b\"");
         assert!(dialect.ddl().is_some_and(|ddl| ddl.capabilities().partial_indexes));
+    }
+
+    #[test]
+    fn history_withholds_statements_that_carry_credentials() {
+        for sql in [
+            "CREATE ROLE r LOGIN PASSWORD 'p'",
+            "ALTER USER u WITH PASSWORD $$x$$",
+            "CREATE USER MAPPING FOR u SERVER s OPTIONS (password 'b')",
+            "CREATE SUBSCRIPTION s CONNECTION 'password=x' PUBLICATION p",
+            "SELECT dblink_connect('password=x')",
+            "ALTER SYSTEM SET primary_conninfo = 'password=x'",
+            "SELECT 1; CREATE USER u PASSWORD 'p'",
+            "DO $$ BEGIN CREATE ROLE app LOGIN PASSWORD 'p'; END $$",
+            "DO 'BEGIN CREATE ROLE r PASSWORD ''p''; END'",
+            "CREATE FUNCTION f() RETURNS text AS 'SELECT dblink_connect(''password=x'')' LANGUAGE sql",
+            "SELECT pgp_sym_encrypt('data', 'passphrase')",
+            "SELECT pgp_sym_decrypt(secret, 'passphrase') FROM t",
+            "UPDATE users SET pw = crypt('secret', gen_salt('bf'))",
+        ] {
+            assert_eq!(
+                dialect().history_recording(sql),
+                HistoryRecording::Withhold(tablepro_core::sql_syntax::WithholdReason::CredentialStatement),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn history_records_plain_statements_as_they_are() {
+        assert_eq!(
+            tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect()),
+            Vec::<&str>::new()
+        );
     }
 }

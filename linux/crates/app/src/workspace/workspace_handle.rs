@@ -439,8 +439,9 @@ impl WorkspaceHandle {
     /// the time the answer comes back.
     fn history_entry(&self, session: &Session) -> HistoryEntry {
         HistoryEntry {
-            history: self.0.deps.history.as_ref().and_then(HistoryService::store),
+            history: self.0.deps.history.clone(),
             connection: Some(session.metadata().clone()),
+            dialect: session.current_dialect(),
         }
     }
 }
@@ -454,8 +455,9 @@ impl std::fmt::Debug for WorkspaceHandle {
 }
 
 struct HistoryEntry {
-    history: Option<tablepro_storage::QueryHistory>,
+    history: Option<HistoryService>,
     connection: Option<tablepro_session::ConnectionMetadata>,
+    dialect: Option<std::sync::Arc<dyn tablepro_core::dialect::SqlDialect>>,
 }
 
 /// A save changes the database as surely as a statement typed into the
@@ -467,7 +469,7 @@ async fn record(
     written: &Result<WriteReport, OperationError>,
     resolution: Option<&Result<CommitResolution, OperationError>>,
 ) {
-    let ran = RanStatements::starting(entry.history, entry.connection, statements);
+    let ran = RanStatements::starting(entry.history, entry.connection, entry.dialect, statements);
     let (rows, outcome) = match (written, resolution) {
         (Ok(report), _) => (
             report.total_rows().and_then(|rows| i64::try_from(rows).ok()),

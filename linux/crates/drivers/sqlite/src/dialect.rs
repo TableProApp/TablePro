@@ -7,7 +7,8 @@ use tablepro_core::dialect::{
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
-    ExpressionSyntaxError, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError, parse_expression, parse_type,
+    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
+    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::Value;
@@ -160,6 +161,10 @@ impl SqlDialect for SqliteDialect {
         Ok(SqlExpression::from_catalog_text(parsed.text))
     }
 
+    fn history_recording(&self, sql: &str) -> HistoryRecording {
+        classify_for_history(SqlGrammar::Sqlite, &CREDENTIAL_RULES, sql)
+    }
+
     fn ddl(&self) -> Option<&dyn DdlDialect> {
         Some(self)
     }
@@ -232,6 +237,20 @@ fn value_param(value: Value) -> Result<(Value, ParamType), BindError> {
     };
     Ok((value, param_type))
 }
+
+/// Statements whose text can hold an encryption key, on builds with
+/// SQLCipher or the SQLite Encryption Extension.
+const CREDENTIAL_RULES: CredentialRules = CredentialRules {
+    statement_prefixes: &[],
+    conditional_prefixes: &[
+        (
+            &["PRAGMA"],
+            &["KEY", "REKEY", "HEXKEY", "HEXREKEY", "TEXTKEY", "TEXTREKEY"],
+        ),
+        (&["ATTACH"], &["KEY"]),
+    ],
+    carriers: &[],
+};
 
 #[cfg(test)]
 mod tests {
@@ -421,5 +440,28 @@ mod tests {
             })
         );
         assert!(dialect().ddl().is_some_and(|ddl| ddl.capabilities().partial_indexes));
+    }
+
+    #[test]
+    fn history_withholds_statements_that_carry_credentials() {
+        for sql in [
+            "PRAGMA key = 'x'",
+            "PRAGMA main.rekey = 'x'",
+            "ATTACH DATABASE 'other.db' AS other KEY 'x'",
+        ] {
+            assert_eq!(
+                dialect().history_recording(sql),
+                HistoryRecording::Withhold(tablepro_core::sql_syntax::WithholdReason::CredentialStatement),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn history_records_plain_statements_as_they_are() {
+        assert_eq!(
+            tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect()),
+            Vec::<&str>::new()
+        );
     }
 }

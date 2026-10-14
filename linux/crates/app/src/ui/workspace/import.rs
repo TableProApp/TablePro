@@ -146,8 +146,9 @@ impl WorkspaceModel {
 
         let count = rows.len();
         let table = TableRef::new(import.schema.clone(), import.table.clone());
-        let history = self.history.store();
+        let history = Some(self.history.clone());
         let connection = self.context.active.metadata();
+        let dialect = session.current_dialect();
         let input = self.input.clone();
         drop(self.context.tasks.spawn_task(async move {
             let written = write_import(&session, table, import.columns, rows).await;
@@ -156,7 +157,7 @@ impl WorkspaceModel {
                     // An import changes the database, so it belongs in
                     // the same history as a statement run from the editor.
                     let touched = report.total_rows().and_then(|rows| i64::try_from(rows).ok());
-                    RanStatements::starting(history, connection, sql)
+                    RanStatements::starting(history, connection, dialect, sql)
                         .finished(touched, tablepro_storage::query_history::Outcome::Success)
                         .await;
                     input.deliver(WorkspaceInput::RefreshPage);

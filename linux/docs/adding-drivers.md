@@ -307,6 +307,8 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 `Connection::dialect()` returns the engine's `SqlDialect`, built from `ServerInfo` at connect. Every builder in `tablepro-core` (pages, filters, row edits, exports) goes through it: quoting, placeholders, literals, the page window, keyset comparison, the engine's row address and type parsing. A dialect never reads session state. `SqlDialect::ddl()` returns the engine's `DdlDialect`, or `None` where the app does not edit the engine's structure. Never match on a driver id in core; add a dialect method.
 
+`SqlDialect::history_recording` says whether SQL the user ran may go into the query history. Implement it as `classify_for_history(<grammar>, &CREDENTIAL_RULES, sql)`, with a `CredentialRules` const next to the dialect naming the engine's statements, conditional statements and functions that can carry a password or a connection string, and test each one ([storage.md](storage.md#what-goes-into-the-history)).
+
 ### Structure changes
 
 `DdlDialect` lives in the driver's `src/ddl.rs`, implemented on the dialect type itself, so `ddl()` returns `Some(self)`. It plans every structure change the Structure tab makes, against the `TableDefinition` that `fetch_table_definition` returned:

@@ -10,6 +10,7 @@ pub mod file_location;
 mod file_location_kind;
 pub mod file_resolution;
 pub mod history_availability;
+pub mod history_preferences;
 pub mod history_service;
 pub mod pending_structure;
 pub mod save_batch;

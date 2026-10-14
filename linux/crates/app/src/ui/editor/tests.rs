@@ -8,6 +8,7 @@ use tablepro_session::operation::DefaultDeadlines;
 use tablepro_test_support::{ConnectionScript, FakeEditorSession, FakeReply, FakeRun, Replies};
 
 use super::*;
+use crate::services::history_preferences::HistoryPreferences;
 use crate::test_support::{MemorySettings, SignalLog, wait_until};
 
 const WAIT: Duration = Duration::from_secs(10);
@@ -15,12 +16,17 @@ const WAIT: Duration = Duration::from_secs(10);
 struct Harness {
     editor: SqlEditor,
     fake: Arc<FakeEditorSession>,
+    history: Option<HistoryService>,
+    active: ActiveSession,
     _settings: MemorySettings,
-    _runtime: crate::runtime::AppRuntime,
+    runtime: crate::runtime::AppRuntime,
 }
 
 fn session_with(fake: Arc<FakeEditorSession>, tasks: Tasks) -> Arc<Session> {
-    let mut script = ConnectionScript::default();
+    session_on(fake, tasks, ConnectionScript::default())
+}
+
+fn session_on(fake: Arc<FakeEditorSession>, tasks: Tasks, mut script: ConnectionScript) -> Arc<Session> {
     let editor: Arc<dyn EditorSession> = fake;
     script.open_editor_session.always(FakeReply::ok(editor));
     let request = FakeConnector::request().expect("a request");
@@ -38,27 +44,46 @@ fn session_with(fake: Arc<FakeEditorSession>, tasks: Tasks) -> Arc<Session> {
 }
 
 fn editor_with(runs: Replies<FakeRun>, text: &str) -> Harness {
+    build_editor(runs, text, |_| None)
+}
+
+fn build_editor(runs: Replies<FakeRun>, text: &str, history: impl FnOnce(&Tasks) -> Option<HistoryService>) -> Harness {
     crate::register_test_resources();
     let runtime = crate::test_support::test_runtime();
     let settings = MemorySettings::new();
     let fake = Arc::new(FakeEditorSession::new(runs));
     let active = ActiveSession::new();
     active.replace(session_with(fake.clone(), runtime.tasks()));
+    let history = history(&runtime.tasks());
     let editor = SqlEditor::new(SqlEditorInit {
         initial_query: Some(text.to_owned()),
         settings: settings.get().clone(),
-        history: None,
+        history: history.clone(),
         tasks: runtime.tasks(),
-        session: active,
+        session: active.clone(),
         hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
         close_timeout: Duration::from_secs(5),
     });
     Harness {
         editor,
         fake,
+        history,
+        active,
         _settings: settings,
-        _runtime: runtime,
+        runtime,
     }
+}
+
+/// An editor whose runs go into a real history under `root`.
+fn editor_with_history(root: &tempfile::TempDir, text: &str) -> Harness {
+    let paths = tablepro_storage::StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.TablePro.Devel");
+    build_editor(answering(), text, |tasks| {
+        let preferences = HistoryPreferences {
+            retention_days: tokio::sync::watch::channel(30).1,
+            save: tokio::sync::watch::channel(true).1,
+        };
+        Some(HistoryService::start(paths, preferences, tasks))
+    })
 }
 
 fn answering() -> Replies<FakeRun> {
@@ -328,6 +353,87 @@ fn the_icon_buttons_have_accessible_names() {
         harness.editor.imp().source_view.upcast_ref::<gtk4::Widget>(),
         gtk4::AccessibleProperty::Label
     ));
+}
+
+#[gtk4::test]
+fn a_run_is_recorded_unless_it_carries_a_credential() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let harness = editor_with_history(&root, "CREATE USER u PASSWORD 'p';");
+    run_and_wait(&harness);
+
+    harness.editor.buffer().set_text("SELECT 2;");
+    run_and_wait(&harness);
+
+    wait_until(WAIT, || {
+        recorded(&harness).iter().any(|query| query.contains("SELECT 2"))
+    })
+    .expect("the plain run was never recorded");
+    let recorded = recorded(&harness);
+    assert!(
+        recorded.iter().all(|query| !query.contains("CREATE USER")),
+        "a statement with a password was recorded: {recorded:?}"
+    );
+}
+
+#[gtk4::test]
+fn a_run_is_judged_by_the_engine_it_ran_on() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let harness = editor_with_history(&root, "CREATE USER u PASSWORD 'p';");
+    let ran_on = harness.active.get().expect("the window's session");
+    drop(ran_on.begin_shutdown());
+    assert!(ran_on.current_dialect().is_none(), "the run's engine is still known");
+
+    harness.editor.run();
+    assert!(harness.editor.is_running(), "the run did not start");
+    // SQLite has no logins, so its rules let CREATE USER into the history.
+    let sqlite = ConnectionScript {
+        dialect: Arc::new(drivers_sqlite::SqliteDialect::new(drivers_sqlite::SQLITE_MIN_VERSION)),
+        ..ConnectionScript::default()
+    };
+    let moved_to = Arc::new(FakeEditorSession::new(answering()));
+    harness
+        .active
+        .replace(session_on(moved_to, harness.runtime.tasks(), sqlite));
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+
+    harness.editor.buffer().set_text("SELECT 2;");
+    run_and_wait(&harness);
+
+    wait_until(WAIT, || {
+        recorded(&harness).iter().any(|query| query.contains("SELECT 2"))
+    })
+    .expect("the run on the new engine was never recorded");
+    let recorded = recorded(&harness);
+    assert!(
+        recorded.iter().all(|query| !query.contains("CREATE USER")),
+        "a statement with a password was recorded: {recorded:?}"
+    );
+}
+
+/// What the harness's history holds, newest first.
+fn recorded(harness: &Harness) -> Vec<String> {
+    let Some(history) = harness.history.as_ref().and_then(HistoryService::store) else {
+        return Vec::new();
+    };
+    let search = history.search(tablepro_storage::query_history::SearchFilter {
+        limit: 100,
+        ..Default::default()
+    });
+    block_on(&harness.runtime, search)
+        .expect("search")
+        .into_iter()
+        .map(|entry| entry.query)
+        .collect()
+}
+
+/// The test drives the runtime from outside it, which is the one place
+/// blocking on it cannot deadlock.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a GTK test has no runtime of its own, so it drives the app's from outside"
+)]
+fn block_on<F: std::future::Future>(runtime: &crate::runtime::AppRuntime, future: F) -> F::Output {
+    runtime.tasks().handle().block_on(future)
 }
 
 fn unconnected_editor(settings: &MemorySettings, tasks: Tasks) -> SqlEditor {

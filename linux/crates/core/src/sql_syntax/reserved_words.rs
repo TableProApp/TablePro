@@ -111,7 +111,7 @@ impl SqlGrammar {
         start && chars.all(part) && !folds && !self.is_reserved(name)
     }
 
-    fn is_reserved(self, word: &str) -> bool {
+    pub(crate) fn is_reserved(self, word: &str) -> bool {
         self.reserved_words()
             .split_ascii_whitespace()
             .any(|reserved| reserved.eq_ignore_ascii_case(word))

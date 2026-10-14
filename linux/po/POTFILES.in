@@ -53,6 +53,7 @@ crates/app/src/services/file_location.rs
 crates/app/src/services/file_location_kind.rs
 crates/app/src/services/file_resolution.rs
 crates/app/src/services/history_availability.rs
+crates/app/src/services/history_preferences.rs
 crates/app/src/services/history_service.rs
 crates/app/src/services/mod.rs
 crates/app/src/services/pending_structure.rs

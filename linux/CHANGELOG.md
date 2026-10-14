@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Arrow keys move between grid cells; F2 or Return edits one, Tab carries an edit to the next cell, and Shift+F10 opens the cell menu.
 - Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
+- Save query history in Preferences turns the query history off and keeps the entries already saved.
 
 ### Changed
 
@@ -153,3 +154,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changing a SQL Server column's type or nullability in the Structure tab removed its data mask.
 - A jump host whose ssh_config sets StrictHostKeyChecking to accept-new or no was trusted without the host key dialog.
 - Editor SQL saved by an earlier build stayed on disk in a tab file nothing reads any more.
+- Statements that set a password, an encryption key or a connection secret were saved in the query history.

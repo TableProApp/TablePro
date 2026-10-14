@@ -1,18 +1,22 @@
-use gio::prelude::SettingsExt;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use tablepro_core::dialect::SqlDialect;
+use tablepro_core::sql_syntax::HistoryRecording;
 use tablepro_session::runtime::Tasks;
+use tablepro_storage::query_history::NewEntry;
 use tablepro_storage::{QueryHistory, StoragePaths};
 use tokio::sync::watch;
 
 use super::history_availability::HistoryAvailability;
+use super::history_preferences::HistoryPreferences;
 
 /// How often unpinned history is pruned while the app runs. Startup does
 /// one pass, and this keeps a long session from growing without bound.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 
-/// Opens the query history off the GTK thread and prunes it on a timer.
+/// Opens the query history off the GTK thread, prunes it on a timer and
+/// decides what goes into it.
 ///
 /// Opening runs a migration and a prune, which is too slow to block
 /// startup on, so the app starts and this reports when the database is
@@ -21,31 +25,19 @@ const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 pub struct HistoryService {
     availability: watch::Receiver<HistoryAvailability>,
     store: Arc<Mutex<Option<QueryHistory>>>,
+    save: watch::Receiver<bool>,
     _worker: Arc<tokio_util::task::AbortOnDropHandle<()>>,
-}
-
-/// Mirror the retention preference onto a channel the prune worker can
-/// read.
-///
-/// `gio::Settings` lives on the GTK thread, so the worker cannot hold
-/// it. This keeps the newest value where the worker can see it.
-pub fn publish_retention(settings: &std::rc::Rc<tablepro_storage::AppSettings>) -> watch::Receiver<u32> {
-    let (sender, receiver) = watch::channel(settings.history_retention_days());
-    let settings_for_change = settings.clone();
-    settings.gio().connect_changed(
-        Some(tablepro_storage::settings::keys::HISTORY_RETENTION_DAYS),
-        move |_, _| {
-            sender.send_replace(settings_for_change.history_retention_days());
-        },
-    );
-    receiver
 }
 
 impl HistoryService {
     /// `retention` is read at every tick rather than captured, so a
     /// value the user typed through on the way to another one never
     /// decides what is deleted an hour later.
-    pub fn start(paths: StoragePaths, retention: watch::Receiver<u32>, tasks: &Tasks) -> Self {
+    pub fn start(paths: StoragePaths, preferences: HistoryPreferences, tasks: &Tasks) -> Self {
+        let HistoryPreferences {
+            retention_days: retention,
+            save,
+        } = preferences;
         let (sender, availability) = watch::channel(HistoryAvailability::Starting);
         let store: Arc<Mutex<Option<QueryHistory>>> = Arc::new(Mutex::new(None));
         let store_for_worker = store.clone();
@@ -78,7 +70,43 @@ impl HistoryService {
         Self {
             availability,
             store,
+            save,
             _worker: Arc::new(worker),
+        }
+    }
+
+    /// Record one run once the database is open, unless the user turned
+    /// the history off or the SQL can carry a credential.
+    ///
+    /// `dialect` is the connection's: without it nobody can say which
+    /// statements hold a secret, so nothing is recorded. The setting is
+    /// read now, so a run that ends after the history was turned off is
+    /// not recorded either.
+    pub fn record(
+        &self,
+        entry: NewEntry,
+        dialect: Option<Arc<dyn SqlDialect>>,
+    ) -> impl Future<Output = ()> + Send + use<> {
+        let saving = *self.save.borrow();
+        let store = self.ready_store();
+        async move {
+            if !saving {
+                return;
+            }
+            let Some(dialect) = dialect else {
+                tracing::debug!(connection = %entry.connection_id, "no dialect, so the run is not recorded");
+                return;
+            };
+            if let HistoryRecording::Withhold(reason) = dialect.history_recording(&entry.query) {
+                tracing::debug!(connection = %entry.connection_id, ?reason, "a run was kept out of the history");
+                return;
+            }
+            let Some(history) = store.await else {
+                return;
+            };
+            if let Err(error) = history.record(entry).await {
+                tracing::warn!(%error, "history record failed");
+            }
         }
     }
 
@@ -139,8 +167,13 @@ mod tests {
     use super::*;
     use crate::test_support::paused_tasks;
 
-    fn retention(days: u32) -> watch::Receiver<u32> {
-        watch::channel(days).1
+    /// Preferences that stay as given: a dropped sender leaves the
+    /// receiver on its last value.
+    fn preferences(days: u32, save: bool) -> HistoryPreferences {
+        HistoryPreferences {
+            retention_days: watch::channel(days).1,
+            save: watch::channel(save).1,
+        }
     }
 
     fn paths(root: &tempfile::TempDir) -> StoragePaths {
@@ -162,7 +195,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let tasks = paused_tasks();
 
-        let service = HistoryService::start(paths(&root), retention(30), &tasks);
+        let service = HistoryService::start(paths(&root), preferences(30, true), &tasks);
         let state = wait_for_ready(&service).await;
 
         assert_eq!(state, HistoryAvailability::Ready);
@@ -173,7 +206,7 @@ mod tests {
     async fn ready_store_waits_for_the_open() {
         let root = tempfile::tempdir().expect("tempdir");
 
-        let service = HistoryService::start(paths(&root), retention(30), &paused_tasks());
+        let service = HistoryService::start(paths(&root), preferences(30, true), &paused_tasks());
         assert!(service.store().is_none());
 
         assert!(service.ready_store().await.is_some());
@@ -184,7 +217,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let tasks = paused_tasks();
 
-        let service = HistoryService::start(paths(&root), retention(30), &tasks);
+        let service = HistoryService::start(paths(&root), preferences(30, true), &tasks);
 
         // Nothing has been polled yet, so the worker cannot have run.
         assert!(service.store().is_none());
@@ -228,7 +261,11 @@ mod tests {
     /// A service whose store is open, with its retention channel.
     async fn ready_service(root: &tempfile::TempDir, days: u32) -> (QueryHistory, watch::Sender<u32>) {
         let (retention, receiver) = watch::channel(days);
-        let service = HistoryService::start(paths(root), receiver.clone(), &paused_tasks());
+        let preferences = HistoryPreferences {
+            retention_days: receiver,
+            save: watch::channel(true).1,
+        };
+        let service = HistoryService::start(paths(root), preferences, &paused_tasks());
         let state = wait_for_ready(&service).await;
         assert_eq!(state, HistoryAvailability::Ready, "the history did not open");
         (service.store().expect("the store"), retention)
@@ -286,10 +323,82 @@ mod tests {
         std::fs::write(&paths.state, b"not a directory").expect("seed");
         let tasks = paused_tasks();
 
-        let service = HistoryService::start(paths, retention(30), &tasks);
+        let service = HistoryService::start(paths, preferences(30, true), &tasks);
         let state = wait_for_ready(&service).await;
 
         assert!(state.failure().is_some(), "{state:?}");
         assert!(service.store().is_none());
+    }
+
+    fn run_of(query: &str) -> NewEntry {
+        NewEntry {
+            query: query.to_owned(),
+            driver_id: "postgres".to_owned(),
+            connection_id: uuid::Uuid::new_v4(),
+            connection_name: "local".to_owned(),
+            executed_at: std::time::SystemTime::now(),
+            duration_ms: Some(1),
+            rows_affected: None,
+            outcome: tablepro_storage::query_history::Outcome::Success,
+        }
+    }
+
+    fn fake_dialect() -> Option<Arc<dyn SqlDialect>> {
+        Some(Arc::new(tablepro_test_support::FakeDialect))
+    }
+
+    /// Record `query` through a service built with `save`, and read back
+    /// what the store holds.
+    async fn recorded(save: bool, query: &str, dialect: Option<Arc<dyn SqlDialect>>) -> Vec<String> {
+        let root = tempfile::tempdir().expect("tempdir");
+        let service = HistoryService::start(paths(&root), preferences(30, save), &paused_tasks());
+
+        service.record(run_of(query), dialect).await;
+
+        let history = service.ready_store().await.expect("the store");
+        queries(&history).await
+    }
+
+    #[tokio::test]
+    async fn history_service_skips_when_setting_off() {
+        assert_eq!(recorded(false, "SELECT 1", fake_dialect()).await, Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn history_service_skips_without_dialect() {
+        assert_eq!(recorded(true, "SELECT 1", None).await, Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn history_service_skips_credential_statement() {
+        assert_eq!(
+            recorded(true, "SELECT 1; CREATE USER u PASSWORD 'p'", fake_dialect()).await,
+            Vec::<String>::new()
+        );
+    }
+
+    #[tokio::test]
+    async fn history_service_records_plain_select_unchanged() {
+        let query = "SELECT id FROM users WHERE password IS NULL AND email = 'a@b'  -- kept as typed\n";
+
+        assert_eq!(recorded(true, query, fake_dialect()).await, vec![query.to_owned()]);
+    }
+
+    #[tokio::test]
+    async fn turning_the_history_off_stops_the_next_record() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (save, receiver) = watch::channel(true);
+        let preferences = HistoryPreferences {
+            retention_days: watch::channel(30).1,
+            save: receiver,
+        };
+        let service = HistoryService::start(paths(&root), preferences, &paused_tasks());
+        service.record(run_of("SELECT 'kept'"), fake_dialect()).await;
+
+        save.send_replace(false);
+        service.record(run_of("SELECT 'dropped'"), fake_dialect()).await;
+
+        let history = service.ready_store().await.expect("the store");
+        assert_eq!(queries(&history).await, vec!["SELECT 'kept'".to_owned()]);
     }
 }

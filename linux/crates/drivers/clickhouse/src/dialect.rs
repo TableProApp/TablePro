@@ -10,7 +10,8 @@ use tablepro_core::dialect::{
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
-    ExpressionSyntaxError, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError, parse_expression, parse_type,
+    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
+    TypeSyntaxError, classify_for_history, parse_expression, parse_type,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -153,6 +154,10 @@ impl SqlDialect for ClickHouseDialect {
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
         let parsed = parse_expression(SqlGrammar::ClickHouse, text, MAX_EXPRESSION_LEN)?;
         Ok(SqlExpression::from_catalog_text(parsed.text))
+    }
+
+    fn history_recording(&self, sql: &str) -> HistoryRecording {
+        classify_for_history(SqlGrammar::ClickHouse, &CREDENTIAL_RULES, sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -341,6 +346,62 @@ fn float_literal(value: f64) -> Option<String> {
     None
 }
 
+/// Statements whose text can hold a password or an access key. The
+/// carriers are table functions and engines (`ENGINE = MySQL(...)`)
+/// whose arguments include the remote login; the Kafka, RabbitMQ and
+/// NATS engines and a password-protected backup take theirs as settings.
+const CREDENTIAL_RULES: CredentialRules = CredentialRules {
+    statement_prefixes: &[
+        &["CREATE", "USER"],
+        &["ALTER", "USER"],
+        &["CREATE", "NAMED", "COLLECTION"],
+        &["ALTER", "NAMED", "COLLECTION"],
+    ],
+    conditional_prefixes: &[
+        (&["CREATE", "DICTIONARY"], &["PASSWORD"]),
+        (&["BACKUP"], &["PASSWORD"]),
+        (&["RESTORE"], &["PASSWORD"]),
+        (
+            &["CREATE"],
+            &["KAFKA_SASL_PASSWORD", "RABBITMQ_PASSWORD", "NATS_PASSWORD"],
+        ),
+        (
+            &["ALTER"],
+            &["KAFKA_SASL_PASSWORD", "RABBITMQ_PASSWORD", "NATS_PASSWORD"],
+        ),
+    ],
+    carriers: &[
+        "mysql",
+        "postgresql",
+        "mongodb",
+        "redis",
+        "s3",
+        "s3Cluster",
+        "S3Queue",
+        "azureBlobStorage",
+        "azureBlobStorageCluster",
+        "AzureQueue",
+        "gcs",
+        "remote",
+        "remoteSecure",
+        "MaterializedPostgreSQL",
+        "MaterializedMySQL",
+        "ExternalDistributed",
+        "deltaLake",
+        "deltaLakeCluster",
+        "iceberg",
+        "icebergS3",
+        "icebergS3Cluster",
+        "icebergAzure",
+        "icebergAzureCluster",
+        "hudi",
+        "hudiCluster",
+        "url",
+        "odbc",
+        "jdbc",
+    ],
+};
+
 #[cfg(test)]
 mod tests {
     use clickhouse::sql::Identifier;
@@ -528,5 +589,45 @@ mod tests {
                 signed: false
             }))
         );
+    }
+
+    #[test]
+    fn history_withholds_statements_that_carry_credentials() {
+        for sql in [
+            "CREATE USER u IDENTIFIED WITH sha256_password BY 'p'",
+            "SELECT * FROM mysql('h','d','t','u','p')",
+            "CREATE TABLE t ENGINE = PostgreSQL('h','d','t','u','p')",
+            "SELECT * FROM remoteSecure('h', d.t, 'u', 'p')",
+            "CREATE NAMED COLLECTION c AS password = 'p'",
+            "SELECT * FROM deltaLake('url', 'key', 'secret')",
+            "CREATE TABLE q (m String) ENGINE = Kafka SETTINGS kafka_sasl_password = 'p'",
+            "BACKUP TABLE t TO Disk('backups', 'b.zip') SETTINGS password = 'x'",
+            "RESTORE TABLE t FROM Disk('backups', 'b.zip') SETTINGS password = 'x'",
+            "SELECT * FROM url('http://u:p@h/f.csv', CSV)",
+            "CREATE TABLE t (id Int32) ENGINE = URL('http://u:p@h/f.csv', CSV)",
+            "SELECT * FROM odbc('DSN=d;UID=u;PWD=p', 't')",
+            "SELECT * FROM jdbc('jdbc:mysql://h/?user=u&password=p', 's', 't')",
+        ] {
+            assert_eq!(
+                dialect().history_recording(sql),
+                HistoryRecording::Withhold(tablepro_core::sql_syntax::WithholdReason::CredentialStatement),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn history_records_plain_statements_as_they_are() {
+        assert_eq!(
+            tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect()),
+            Vec::<&str>::new()
+        );
+        for sql in [
+            "SELECT url, domain(url) FROM visits",
+            "CREATE TABLE url (id Int32) ENGINE = Memory",
+            "BACKUP TABLE t TO Disk('backups', 'b.zip')",
+        ] {
+            assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
+        }
     }
 }
