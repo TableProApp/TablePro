@@ -1,6 +1,6 @@
 # Adding a database driver
 
-Reviewed against Linux `d07d8e37e` on 2026-10-14. Drivers are static Rust crates under `crates/drivers/`; see [ADR 0001](decisions/0001-no-plugin-system.md). The [active sprint](bookie-0.2-sprint.md) owns engine scope and sequencing. Use [ADR 0007](decisions/0007-type-and-value-preservation.md) as the common type/value and native proof standard. The [documentation entry point](README.md) identifies the owning boards and selective evidence lookup.
+Reviewed against Linux `dc1a32791` on 2026-10-14. Drivers are static Rust crates under `crates/drivers/`; see [ADR 0001](decisions/0001-no-plugin-system.md). The [active sprint](bookie-0.2-sprint.md) owns engine scope and sequencing. Use [ADR 0007](decisions/0007-type-and-value-preservation.md) as the common type/value and native proof standard. The [documentation entry point](README.md) identifies the owning boards and selective evidence lookup.
 
 ## Contracts and crate boundaries
 
