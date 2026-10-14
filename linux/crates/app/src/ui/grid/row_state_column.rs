@@ -70,7 +70,9 @@ fn show_state(image: &gtk::Image, tab_ctx: &TabGridContext, row: &RowObject) {
     image.set_tooltip_text(shown.as_ref().map(|(_, text)| text.as_str()));
 }
 
-/// The view's columns that show the result's, in the view's order.
+/// The view's columns that show the result's, in the view's order. That
+/// is the order of a row's cells only until a header drag moves one, so
+/// read it as the view is built.
 pub(crate) fn data_columns(view: &gtk::ColumnView) -> Vec<gtk::ColumnViewColumn> {
     let columns = view.columns();
     (0..columns.n_items())
