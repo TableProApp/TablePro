@@ -42,7 +42,7 @@ Other options and why they were rejected.
 | [0003](0003-relm4-architecture.md) | Relm4 for application architecture | Accepted | Typed component state and async message flow. |
 | [0004](0004-libsecret-secret-storage.md) | Secret Service through oo7 | Accepted | Credentials stay in the desktop keyring. |
 | [0005](0005-server-side-cancellation.md) | Cancellation must reach the database | Accepted | Drivers report cancellation only when the engine confirms it; unsupported or unconfirmed operations remain unknown. |
-| [0006](0006-driver-panic-containment.md) | A driver panic is contained, not trusted away | Accepted | The guard converts a driver panic to a typed failure; the app replaces the faulted connection, while MCP and agentd have no monitor to wake. |
+| [0006](0006-driver-panic-containment.md) | A driver panic is contained, not trusted away | Accepted | The guard converts a panic to a typed failure; the GUI wakes its monitor, and agentd retires its cached session for replacement on the next acquisition. |
 | [0007](0007-type-and-value-preservation.md) | Native type and value preservation | Accepted | One outcome, conversion and proof standard across every driver and consumer. |
 | [0008](0008-connection-and-session-ownership.md) | Connection/session ownership and trust | Accepted | Distinct live identities, no pool/replay/security fallback, and scoped uncertainty with durable audit obligations. |
 | [0009](0009-persistence-and-identity-compatibility.md) | Durable identity and recoverable state | Accepted | Stable identifiers, compatible adapters, recoverable migrations and distinct persistence writer contracts. |
