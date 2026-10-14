@@ -1,6 +1,6 @@
 # SSH transport
 
-> Reviewed against source and tests at `f9456ba1` on 2026-10-14, including the host-key refusal and default-path regressions from #783. The transport remains in development; see the active sprint for acceptance status.
+> Reviewed against source and tests at `e802d600` on 2026-10-14, including the host-key refusal and default-path regressions from #783. The transport remains in development; see the active sprint for acceptance status.
 
 **Spec tier:** buildable **Serves:** `Local DBA` **Status:** in-development **Success metric:** A tunnel opens only after the host key is trusted or explicitly learned; TLS still verifies the saved database hostname, not loopback.
 
