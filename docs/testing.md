@@ -178,7 +178,7 @@ bash scripts/test-gtk-safety.sh
 
 Use `cancelled_workbook_export_preserves_existing_file` for the cancellation case. Record the binary's commit/checksum; a prebuilt binary is not evidence for later Rust edits. Omit `TABLEPRO_GTK_BINARY` to build the current release profile.
 
-Each scenario declares its own fixture shape through `environment` and `audit_available` attributes, so a scenario can run against a local or production saved connection.
+Each scenario creates a temporary profile and fixture connection/database. Its `environment` attribute selects the policy environment to exercise, and `audit_available` controls whether the fixture audit journal is present. These tests do not use existing saved connections or a user's production database.
 
 The Open Quickly scenario waits for the filtered result set before invoking its single action; the already-visible favorite is not proof that the debounced row rebuild has completed. It still requires the window to close and usage to be persisted.
 
@@ -190,7 +190,7 @@ On Arch or Omarchy, install the harness dependencies with:
 sudo pacman -S --needed dbus xorg-server-xvfb at-spi2-core python-atspi
 ```
 
-Ubuntu CI uses `dbus-daemon`, `gnome-keyring`, `xvfb`, `xauth`, `at-spi2-core`, `python3-pyatspi`, and `scrot`. The PR smoke job is required. A separate daily workflow runs five retry-free attempts and uploads stdout, stderr, accessibility snapshots, and screenshots on failure. RC promotion requires 30 consecutive attempts across at least six runs. Service-level tests still cover pure state and policy behavior, but they do not replace these cross-layer tests.
+Ubuntu CI uses `dbus-daemon`, `gnome-keyring`, `xvfb`, `xauth`, `at-spi2-core`, `python3-pyatspi`, and `scrot`. The PR smoke job is required. A separate daily workflow runs five retry-free attempts and uploads stdout, stderr, accessibility snapshots, and screenshots on failure. 0.2.0 qualification requires 30 consecutive attempts across at least six runs at the same source SHA. Service-level tests still cover pure state and policy behavior, but they do not replace these cross-layer tests.
 
 The nightly workflow runs in stages (unit-tier coverage, then the Docker-tier coverage and mutation jobs, then the soak and package jobs), two shards at a time, so a red stage is a finding and not a lost runner. Each driver crate is measured with its Docker suite against `baselines/coverage-floors-crates.txt` (`scripts/check-crate-coverage-floors.py`). Mutation results are compared with `baselines/mutants/<package>.txt` by `scripts/check-mutants-baseline.py`: a missed mutant that is not in the baseline fails the run, and baseline lines that a test now catches are listed for deletion. A missing baseline file means no missed mutant is accepted. The soak is three runs of five attempts each per night.
 
