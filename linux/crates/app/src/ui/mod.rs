@@ -38,3 +38,4 @@ pub(crate) use preferences_dialog::PreferencesDialog;
 #[cfg(test)]
 pub(crate) use session_window::install_window_shortcuts;
 pub(crate) use session_window::{SessionWindow, SessionWindowInit, SessionWindowInput};
+pub(crate) use structure_tab::review_dialog;

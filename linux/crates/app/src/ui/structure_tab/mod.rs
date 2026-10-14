@@ -44,6 +44,7 @@ mod foreign_key_object;
 mod imp;
 mod index_object;
 mod indexes;
+pub(crate) mod review_dialog;
 mod structure_command;
 #[cfg(test)]
 mod tests;

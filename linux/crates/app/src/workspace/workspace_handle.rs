@@ -2,6 +2,8 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use gtk4 as gtk;
+use tablepro_core::ddl::{BuildDdlError, ChangeReview};
 use tablepro_core::save::{SavePlan, plan_save};
 use tablepro_core::{CommitResolution, DriverError, WriteKind, WriteReport};
 use tablepro_session::runtime::{ProcessHold, Tasks};
@@ -12,8 +14,9 @@ use uuid::Uuid;
 use super::ran_statements::RanStatements;
 use super::schema_write::run_schema_plan;
 use super::{
-    CloseScope, CloseStep, DirtyKind, DirtyTab, PendingState, RollbackCause, SaveId, SaveLedger, SaveOutcome,
-    SaveRejection, SaveSettled, SaveStart, SaveTicket, TabDirectory, UnknownCause, WorkspaceEvent, next_close_step,
+    CloseScope, CloseStep, DirtyKind, DirtyTab, EngineProfile, PendingState, RollbackCause, SaveId, SaveLedger,
+    SaveOutcome, SaveRejection, SaveSettled, SaveStart, SaveTicket, TabDirectory, UnknownCause, WorkspaceEvent,
+    next_close_step,
 };
 use crate::services::active_session::ActiveSession;
 use crate::services::change_tracker::{StatementSource, TrackedChanges, pk_identity};
@@ -22,6 +25,7 @@ use crate::services::history_service::HistoryService;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
+use crate::ui::review_dialog::{self, ReviewDecision};
 
 /// What a window's workspace saves and closes with.
 pub struct WorkspaceDeps {
@@ -33,6 +37,8 @@ pub struct WorkspaceDeps {
     pub structures: Rc<StructureTrackerRegistry>,
     pub directory: Rc<dyn TabDirectory>,
     pub events: Rc<dyn Fn(WorkspaceEvent)>,
+    /// What a structure save's review says about the session's engine.
+    pub engine: EngineProfile,
 }
 
 /// Starts, stops and settles a window's saves, and says what closing
@@ -85,10 +91,16 @@ impl WorkspaceHandle {
         &self.0.ledger
     }
 
-    /// Save each tab. A tab with nothing pending, or that is not a table
-    /// or structure tab, has nothing to save.
-    pub fn save(&self, tabs: &[Uuid]) -> Vec<SaveStart> {
-        tabs.iter().map(|tab| self.save_tab(*tab)).collect()
+    /// Save each tab, in order. A structure save that needs the user's
+    /// review shows it on `parent` and starts only once they apply it. A
+    /// tab with nothing pending, or that is not a table or structure tab,
+    /// has nothing to save.
+    pub async fn save(&self, parent: &gtk::Widget, tabs: &[Uuid]) -> Vec<SaveStart> {
+        let mut starts = Vec::with_capacity(tabs.len());
+        for tab in tabs {
+            starts.push(self.save_tab(parent, *tab).await);
+        }
+        starts
     }
 
     /// Stop the saves `scope` covers. Each settles when its driver
@@ -163,12 +175,15 @@ impl WorkspaceHandle {
         (self.0.deps.events)(event);
     }
 
-    fn save_tab(&self, tab: Uuid) -> SaveStart {
+    async fn save_tab(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
         if let Some(tracker) = self.0.deps.rows.get(tab) {
             return self.save_rows(tab, &tracker);
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
-            return self.save_structure(tab, &tracker);
+            return match self.review_structure(parent, &tracker).await {
+                Ok(reviewed) => self.save_structure(tab, &tracker, reviewed),
+                Err(start) => start,
+            };
         }
         SaveStart::NothingToSave
     }
@@ -286,7 +301,46 @@ impl WorkspaceHandle {
         SaveStart::Started(id)
     }
 
-    fn save_structure(&self, tab: Uuid, tracker: &StructureTrackerHandle) -> SaveStart {
+    /// What the structure save would run, planned with the session's
+    /// dialect, and agreed to by the user where it loses something or can
+    /// stop halfway. Nothing is taken from the tracker yet.
+    async fn review_structure(
+        &self,
+        parent: &gtk::Widget,
+        tracker: &StructureTrackerHandle,
+    ) -> Result<ChangeReview, SaveStart> {
+        let session = match self.writable_session(tracker.pending_state()) {
+            Ok(Some(session)) => session,
+            Ok(None) => return Err(SaveStart::NothingToSave),
+            Err(rejection) => return Err(SaveStart::Rejected(rejection)),
+        };
+        let pending = match tracker.pending_save() {
+            Ok(Some(pending)) => pending,
+            Ok(None) => return Err(SaveStart::NothingToSave),
+            Err(rejection) => return Err(SaveStart::Rejected(rejection)),
+        };
+        let dialect = session
+            .current_dialect()
+            .ok_or(SaveStart::Rejected(SaveRejection::NoConnection))?;
+        let review = dialect
+            .ddl()
+            .ok_or(BuildDdlError::Unsupported(pending.operation()))
+            .and_then(|ddl| pending.review(ddl))
+            .map_err(|error| SaveStart::Rejected(SaveRejection::Unplannable(error)))?;
+        let engine = &self.0.deps.engine;
+        if review.requires_confirmation(engine.ddl_writes) {
+            let table = pending.table().name;
+            if review_dialog::confirm(parent, &table, &review, engine).await == ReviewDecision::Cancel {
+                return Err(SaveStart::Rejected(SaveRejection::ReviewDeclined));
+            }
+        }
+        Ok(review)
+    }
+
+    /// Runs only the statements reviewed: a draft or a connection that
+    /// changed while the review was open plans others, and the save is
+    /// refused before anything is sent.
+    fn save_structure(&self, tab: Uuid, tracker: &StructureTrackerHandle, reviewed: ChangeReview) -> SaveStart {
         let (session, ticket, pending) =
             match self.begin(tab, WriteKind::SchemaChanges, tracker.pending_state(), || {
                 tracker.begin_save()
@@ -300,7 +354,11 @@ impl WorkspaceHandle {
         let (table, operation) = (pending.table(), pending.operation());
         let work = async move {
             let planned = run_schema_plan(session.clone(), table, operation, &cancel, move |ddl, _| {
-                pending.plan(ddl)
+                let plan = pending.plan(ddl)?;
+                match reviewed.matches(&plan) {
+                    true => Ok(plan),
+                    false => Err(BuildDdlError::NotAsReviewed),
+                }
             })
             .await;
             let (statements, written) = planned.unwrap_or_else(|error| (Vec::new(), Err(error)));
@@ -497,10 +555,7 @@ mod tests {
 
         assert_eq!(settled.outcome, SaveOutcome::RolledBack(RollbackCause::NotApplied));
         assert_eq!(workspace.tracker.pending_state(), PendingState::Unsaved);
-        assert!(matches!(
-            workspace.handle.save(&[workspace.tab]).as_slice(),
-            [SaveStart::Started(_)]
-        ));
+        assert!(matches!(workspace.start().as_slice(), [SaveStart::Started(_)]));
         workspace.settle();
     }
 
@@ -529,10 +584,7 @@ mod tests {
                 workspace.tracker.pending_state(),
                 PendingState::OutcomeUnknown(_)
             ));
-            assert_eq!(
-                workspace.handle.save(&[workspace.tab]),
-                [SaveStart::Rejected(SaveRejection::OutcomeUnknown)]
-            );
+            assert_eq!(workspace.start(), [SaveStart::Rejected(SaveRejection::OutcomeUnknown)]);
             assert_eq!(CallCounters::get(&workspace.counters().write_batch), 1);
             assert!(matches!(
                 workspace.handle.dirty_tabs().as_slice(),
@@ -554,7 +606,7 @@ mod tests {
                 source: Box::new(DriverError::Cancelled),
             })));
         let workspace = Workspace::open(script);
-        let started = workspace.handle.save(&[workspace.tab]);
+        let started = workspace.start();
         assert!(matches!(started.as_slice(), [SaveStart::Started(_)]));
         wait_until(WAIT, || {
             !workspace.fake.connection.observed_cancels("write_batch").is_empty()
@@ -580,10 +632,7 @@ mod tests {
             ..ConnectionScript::default()
         });
 
-        assert_eq!(
-            workspace.handle.save(&[workspace.tab]),
-            [SaveStart::Rejected(SaveRejection::ReadOnly)]
-        );
+        assert_eq!(workspace.start(), [SaveStart::Rejected(SaveRejection::ReadOnly)]);
         assert_eq!(workspace.tracker.pending_state(), PendingState::Unsaved);
         assert_eq!(workspace.handle.ledger().in_flight(), 0);
     }

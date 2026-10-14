@@ -55,14 +55,22 @@ impl CloseGuard {
                         handle.discard(&discard, false);
                         let refused: Vec<(Uuid, SaveRejection)> = save
                             .iter()
-                            .zip(handle.save(&save))
+                            .zip(handle.save(parent, &save).await)
                             .filter_map(|(tab, start)| match start {
                                 SaveStart::Rejected(rejection) => Some((*tab, rejection)),
                                 SaveStart::Started(_) | SaveStart::NothingToSave => None,
                             })
                             .collect();
                         if !refused.is_empty() {
-                            show_refused(parent, &tabs, &refused);
+                            // A declined review is the user keeping the
+                            // window open, not a save that failed.
+                            let failed: Vec<(Uuid, SaveRejection)> = refused
+                                .into_iter()
+                                .filter(|(_, rejection)| *rejection != SaveRejection::ReviewDeclined)
+                                .collect();
+                            if !failed.is_empty() {
+                                show_refused(parent, &tabs, &failed);
+                            }
                             return CloseDecision::Cancelled;
                         }
                     }
@@ -108,17 +116,11 @@ mod tests {
     use super::*;
     use crate::test_support::wait_until;
     use crate::workspace::dialog_response::{answer, visible_alert};
-    use crate::workspace::test_workspace::{WAIT, Workspace};
+    use crate::workspace::test_workspace::{WAIT, Workspace, edited_table, window};
     use crate::workspace::{PendingState, WorkspaceEvent};
 
-    fn window() -> adw::Window {
-        adw::init().expect("libadwaita initialises under the test backend");
-        if let Some(settings) = gtk::Settings::default() {
-            settings.set_gtk_enable_animations(false);
-        }
-        let window = adw::Window::new();
-        window.present();
-        window
+    fn without_n(draft: &mut tablepro_core::ddl::TableDraft) {
+        draft.columns.retain(|column| column.name != "n");
     }
 
     fn guard(window: &adw::Window, handle: &WorkspaceHandle, scope: CloseScope) -> Rc<RefCell<Option<CloseDecision>>> {
@@ -235,10 +237,7 @@ mod tests {
         });
         let workspace = Workspace::open(script);
         let window = window();
-        assert!(matches!(
-            workspace.handle.save(&[workspace.tab]).as_slice(),
-            [SaveStart::Started(_)]
-        ));
+        assert!(matches!(workspace.start().as_slice(), [SaveStart::Started(_)]));
 
         let decision = guard(&window, &workspace.handle, CloseScope::Window);
         wait_until(WAIT, || {
@@ -297,10 +296,7 @@ mod tests {
             })));
         let workspace = Workspace::open(script);
         let window = window();
-        assert!(matches!(
-            workspace.handle.save(&[workspace.tab]).as_slice(),
-            [SaveStart::Started(_)]
-        ));
+        assert!(matches!(workspace.start().as_slice(), [SaveStart::Started(_)]));
 
         let decision = guard(&window, &workspace.handle, CloseScope::Window);
         answer_next(&window, "Saving Changes", "stop", None);
@@ -355,5 +351,40 @@ mod tests {
 
         assert_eq!(decided(&decision), CloseDecision::Approved);
         assert_eq!(workspace.tracker.pending_state(), PendingState::Unsaved);
+    }
+
+    #[gtk4::test]
+    fn close_guard_save_also_reviews() {
+        let mut script = ConnectionScript::default();
+        script.write_batch.always(FakeReply::ok(WriteReport::new(vec![None])));
+        let workspace = Workspace::open_structure(script, edited_table(without_n));
+        let window = window();
+
+        let decision = guard(&window, &workspace.handle, CloseScope::Window);
+        let asked = answer_next(&window, "Save Changes?", "save", None);
+        answer_next(&window, "Apply 1 Change to “t”?", "apply", Some(&asked));
+
+        assert_eq!(decided(&decision), CloseDecision::Approved);
+        assert_eq!(CallCounters::get(&workspace.counters().write_batch), 1);
+        assert_eq!(workspace.structure.pending_state(), PendingState::Clean);
+    }
+
+    #[gtk4::test]
+    fn a_declined_review_keeps_the_window_open_without_an_alert() {
+        let workspace = Workspace::open_structure(ConnectionScript::default(), edited_table(without_n));
+        let window = window();
+
+        let decision = guard(&window, &workspace.handle, CloseScope::Window);
+        let asked = answer_next(&window, "Save Changes?", "save", None);
+        answer_next(&window, "Apply 1 Change to “t”?", "cancel", Some(&asked));
+
+        assert_eq!(decided(&decision), CloseDecision::Cancelled);
+        crate::test_support::drain_main_context();
+        assert!(
+            visible_alert(&window).is_none(),
+            "a declined review was reported as a failure"
+        );
+        assert_eq!(CallCounters::get(&workspace.counters().write_batch), 0);
+        assert_eq!(workspace.structure.pending_state(), PendingState::Unsaved);
     }
 }

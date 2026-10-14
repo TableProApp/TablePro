@@ -1,5 +1,6 @@
 use tablepro_core::ddl::{
-    BuildDdlError, DdlDialect, DdlOperation, DdlPlan, DraftProblem, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, ChangeReview, DdlDialect, DdlOperation, DdlPlan, DraftProblem, TableChanges, TableDefinition,
+    TableDraft,
 };
 use tablepro_core::meta::TableRef;
 
@@ -64,6 +65,15 @@ impl PendingStructure {
             }
             None => ddl.plan_create_table(&self.draft),
         }
+    }
+
+    /// What the save would run and lose, planned as `plan` plans it.
+    pub fn review(&self, ddl: &dyn DdlDialect) -> Result<ChangeReview, BuildDdlError> {
+        let plan = self.plan(ddl)?;
+        Ok(match self.original {
+            Some(_) => ChangeReview::review(&self.changes, &plan),
+            None => ChangeReview::create(&plan),
+        })
     }
 
     /// What a connection without structure editing refuses.

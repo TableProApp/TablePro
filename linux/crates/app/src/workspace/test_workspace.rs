@@ -3,18 +3,26 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use gtk4 as gtk;
+use gtk4::prelude::*;
+use libadwaita as adw;
 use tablepro_core::column::{ColumnDefault, ColumnKind, ColumnType, IntegerKind, IntegerWidth};
+use tablepro_core::ddl::{ColumnAttributes, ColumnDefinition, TableDefinition, TableDraft, TableSource, diff_table};
 use tablepro_core::meta::TableRef;
-use tablepro_core::{ColumnInfo, Value};
+use tablepro_core::{ColumnInfo, Value, WriteAtomicity};
 use tablepro_session::runtime::CountingHold;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 use uuid::Uuid;
 
-use super::{SaveSettled, SaveStart, TabDirectory, TabEntry, WorkspaceDeps, WorkspaceEvent, WorkspaceHandle};
+use super::{
+    EngineProfile, SaveSettled, SaveStart, TabDirectory, TabEntry, WorkspaceDeps, WorkspaceEvent, WorkspaceHandle,
+};
 use crate::services::active_session::ActiveSession;
 use crate::services::change_tracker::RowKey;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
+use crate::services::pending_structure::PendingStructure;
 use crate::services::save_batch::SaveTarget;
+use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_edit::TrackerEdit;
@@ -56,12 +64,60 @@ pub(crate) fn sqlite() -> Arc<dyn tablepro_core::dialect::SqlDialect> {
     )))
 }
 
-/// A workspace with one table tab holding one edited cell, over a fake
-/// connection that writes as its script says.
+/// `t (id INTEGER, n INTEGER)` as SQLite reads it, edited by `edit`.
+pub(crate) fn edited_table(edit: impl FnOnce(&mut TableDraft)) -> PendingStructure {
+    let dialect = sqlite();
+    let column = |name: &str| {
+        ColumnDefinition::new(
+            ColumnInfo {
+                column_type: dialect.parse_type("INTEGER").expect("a SQLite type"),
+                nullable: true,
+                ..integer(name, false)
+            },
+            ColumnAttributes::default(),
+        )
+    };
+    let original = TableDefinition {
+        table: TableRef::unqualified("t"),
+        columns: vec![column("id"), column("n")],
+        primary_key: None,
+        indexes: Vec::new(),
+        foreign_keys: Vec::new(),
+        inbound_foreign_keys: Vec::new(),
+        source: Some(TableSource {
+            create_statement: "CREATE TABLE t (id INTEGER, n INTEGER)".to_owned(),
+            dependents: Vec::new(),
+        }),
+    };
+    let mut draft = TableDraft::from_definition(&original);
+    edit(&mut draft);
+    PendingStructure {
+        changes: diff_table(&original, &draft),
+        original: Some(original),
+        draft,
+        unparsed_defaults: Vec::new(),
+    }
+}
+
+/// A mapped window for a save's review and the close prompts.
+pub(crate) fn window() -> adw::Window {
+    adw::init().expect("libadwaita initialises under the test backend");
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_enable_animations(false);
+    }
+    let window = adw::Window::new();
+    window.present();
+    window
+}
+
+/// A workspace with one tab, over a fake connection that writes as its
+/// script says: a table tab holding one edited cell, or a structure tab
+/// holding a pending structure.
 pub(crate) struct Workspace {
     pub handle: WorkspaceHandle,
     pub tab: Uuid,
     pub tracker: TabTrackerHandle,
+    pub structure: StructureTrackerHandle,
     pub tabs: Rc<Tabs>,
     pub settled: Rc<RefCell<Vec<SaveSettled>>>,
     pub events: Rc<RefCell<Vec<WorkspaceEvent>>>,
@@ -71,7 +127,15 @@ pub(crate) struct Workspace {
 }
 
 impl Workspace {
-    pub(crate) fn open(mut script: ConnectionScript) -> Self {
+    pub(crate) fn open(script: ConnectionScript) -> Self {
+        Self::build(script, None)
+    }
+
+    pub(crate) fn open_structure(script: ConnectionScript, pending: PendingStructure) -> Self {
+        Self::build(script, Some(pending))
+    }
+
+    fn build(mut script: ConnectionScript, structure: Option<PendingStructure>) -> Self {
         script.dialect = sqlite();
         script.probe.always(FakeReply::ok(()));
         let runtime = crate::test_support::test_runtime();
@@ -79,13 +143,24 @@ impl Workspace {
         let active = ActiveSession::new();
         active.replace(fake.session.clone());
         let rows = Rc::new(ChangeTrackerRegistry::default());
+        let structures = Rc::new(StructureTrackerRegistry::default());
         let tab = Uuid::new_v4();
-        let tracker = rows.register(tab);
-        let _ = tracker.set_target(SaveTarget {
-            table: TableRef::unqualified("t"),
-            columns: vec![integer("id", true), integer("n", false)],
-        });
-        edit(&tracker, 2);
+        let (tracker, structure) = match structure {
+            None => {
+                let tracker = rows.register(tab);
+                let _ = tracker.set_target(SaveTarget {
+                    table: TableRef::unqualified("t"),
+                    columns: vec![integer("id", true), integer("n", false)],
+                });
+                edit(&tracker, 2);
+                (tracker, StructureTrackerHandle::default())
+            }
+            Some(pending) => {
+                let structure = structures.register(tab);
+                structure.set_pending(Some(pending));
+                (TabTrackerHandle::default(), structure)
+            }
+        };
         let tabs = Rc::new(Tabs::default());
         tabs.0.borrow_mut().push(TabEntry {
             id: tab,
@@ -103,7 +178,7 @@ impl Workspace {
             hold: Rc::new(hold.clone()),
             history: None,
             rows,
-            structures: Rc::new(StructureTrackerRegistry::default()),
+            structures,
             directory: tabs.clone(),
             events: Rc::new(move |event| {
                 if let WorkspaceEvent::SaveSettled(settled) = &event {
@@ -111,11 +186,16 @@ impl Workspace {
                 }
                 event_sink.borrow_mut().push(event);
             }),
+            engine: EngineProfile {
+                name: "SQLite".to_owned(),
+                ddl_writes: WriteAtomicity::Transactional,
+            },
         });
         Self {
             handle,
             tab,
             tracker,
+            structure,
             tabs,
             settled,
             events,
@@ -136,8 +216,31 @@ impl Workspace {
         id
     }
 
+    /// Ask the tab to save, as its Save button does, for a save that
+    /// needs no review.
+    pub(crate) fn start(&self) -> Vec<SaveStart> {
+        let parent = gtk::Label::new(None).upcast::<gtk::Widget>();
+        let (handle, tab) = (self.handle.clone(), self.tab);
+        crate::test_support::finish_on_main(WAIT, async move { handle.save(&parent, &[tab]).await })
+            .expect("the save to be asked")
+    }
+
+    /// Ask the tab to save with `window` as the review's parent. The
+    /// starts land in the cell once the review, if any, is answered.
+    pub(crate) fn start_on(&self, window: &adw::Window) -> Rc<RefCell<Option<Vec<SaveStart>>>> {
+        let starts = Rc::new(RefCell::new(None));
+        let sink = starts.clone();
+        let (handle, tab) = (self.handle.clone(), self.tab);
+        let parent = window.clone().upcast::<gtk::Widget>();
+        gtk::glib::spawn_future_local(async move {
+            let started = handle.save(&parent, &[tab]).await;
+            sink.replace(Some(started));
+        });
+        starts
+    }
+
     pub(crate) fn save(&self) -> SaveSettled {
-        let started = self.handle.save(&[self.tab]);
+        let started = self.start();
         assert!(matches!(started.as_slice(), [SaveStart::Started(_)]), "{started:?}");
         self.settle()
     }

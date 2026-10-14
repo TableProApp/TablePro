@@ -1,3 +1,4 @@
+use tablepro_core::ddl::BuildDdlError;
 use tablepro_core::dml::BuildSqlError;
 use tablepro_session::OperationError;
 
@@ -25,6 +26,10 @@ pub enum SaveRejection {
     KeyChanged,
     /// The structure cannot be saved as it stands.
     Blocked(SaveBlocker),
+    /// The structure cannot be written as SQL for the review to show.
+    Unplannable(BuildDdlError),
+    /// The user read the review of a structure save and kept it.
+    ReviewDeclined,
     NoConnection,
 }
 
@@ -52,14 +57,17 @@ impl SaveRejection {
                 "The table's primary key changed after these edits were made, so the rows they change can no longer be found. Nothing was saved. Discard the changes and make them again.",
             ),
             Self::Blocked(blocker) => crate::ui::error_text::save_blocker_text(blocker),
+            Self::Unplannable(error) => crate::ui::error_text::build_error_text(error),
+            Self::ReviewDeclined => crate::i18n::gettext("The changes were not applied."),
             Self::NoConnection => crate::i18n::gettext("No active connection."),
         }
     }
 
     /// A Save pressed again while the first runs needs no alert: the tab
-    /// already shows the save running.
+    /// already shows the save running. Nor does a review the user just
+    /// declined.
     pub fn needs_alert(&self) -> bool {
-        !matches!(self, Self::AlreadySaving)
+        !matches!(self, Self::AlreadySaving | Self::ReviewDeclined)
     }
 }
 
@@ -83,6 +91,7 @@ mod tests {
 
         assert!(told.iter().all(SaveRejection::needs_alert));
         assert!(!SaveRejection::AlreadySaving.needs_alert());
+        assert!(!SaveRejection::ReviewDeclined.needs_alert());
     }
 
     #[test]

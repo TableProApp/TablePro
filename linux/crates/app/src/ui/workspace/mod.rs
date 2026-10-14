@@ -432,6 +432,7 @@ impl Workspace {
             structures: structure_trackers.clone(),
             directory: window_tabs.clone(),
             events: Rc::new(move |event| events.deliver(WorkspaceInput::Workspace(event))),
+            engine: crate::workspace::EngineProfile::of(&context.drivers, &session.metadata().driver_id),
         });
         let saves = input.clone();
         workspace_handle

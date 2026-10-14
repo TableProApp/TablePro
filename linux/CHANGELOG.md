@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Delete button in the table grid, with the reason in its tooltip when the selected rows can't be deleted.
 - Set to DEFAULT in a new row's cell menu, for columns the server fills.
 - New Window (Ctrl+Shift+N, or `tablepro --new-window`) opens another window in the running TablePro.
+- Review before a structure save that drops data, rebuilds the table or can stop halfway, with the SQL it runs.
 
 ### Changed
 

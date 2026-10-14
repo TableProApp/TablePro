@@ -41,10 +41,10 @@ impl StructureChangeTracker {
         }
     }
 
-    /// What Save writes, held as in flight until it settles, or `None`
-    /// when there is nothing to. The tab's own checks run here too, so a
-    /// save from a close prompt cannot skip them.
-    pub fn begin_save(&mut self) -> Result<Option<PendingStructure>, SaveRejection> {
+    /// What Save would write, or `None` when there is nothing to. The
+    /// tab's own checks run here too, so a save from a close prompt
+    /// cannot skip them.
+    pub fn pending_save(&self) -> Result<Option<PendingStructure>, SaveRejection> {
         if self.outcome_unknown.is_some() {
             return Err(SaveRejection::OutcomeUnknown);
         }
@@ -55,8 +55,14 @@ impl StructureChangeTracker {
             return Ok(None);
         };
         pending.check().map_err(SaveRejection::Blocked)?;
-        self.saving = true;
         Ok(Some(pending))
+    }
+
+    /// What Save writes, held as in flight until it settles.
+    pub fn begin_save(&mut self) -> Result<Option<PendingStructure>, SaveRejection> {
+        let pending = self.pending_save()?;
+        self.saving = pending.is_some();
+        Ok(pending)
     }
 
     /// A commit leaves nothing pending: the tab reads the table again and
@@ -138,6 +144,17 @@ mod tests {
         assert!(tracker.has_pending());
         tracker.clear();
         assert_eq!(tracker.pending_state(), PendingState::Clean);
+    }
+
+    #[test]
+    fn reading_what_a_save_would_write_takes_nothing() {
+        let mut tracker = StructureChangeTracker::default();
+        tracker.set_pending(Some(new_table(1)));
+
+        assert_eq!(tracker.pending_save(), Ok(Some(new_table(1))));
+        assert_eq!(tracker.pending_state(), PendingState::Unsaved);
+        assert!(matches!(tracker.begin_save(), Ok(Some(_))));
+        assert_eq!(tracker.pending_save(), Err(SaveRejection::AlreadySaving));
     }
 
     #[test]

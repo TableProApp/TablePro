@@ -1,26 +1,38 @@
+use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use uuid::Uuid;
 
 use tablepro_core::WriteKind;
 
-use super::WorkspaceModel;
+use super::{WorkspaceInput, WorkspaceModel};
+use crate::runtime::DeliverInput;
 use crate::ui::browse_tab::BrowseTabInput;
 use crate::ui::structure_tab::StructureTabInput;
 use crate::workspace::{CloseScope, DirtyTab, SaveOutcome, SaveSettled, SaveStart, WorkspaceEvent};
 
 impl WorkspaceModel {
-    /// Save one tab, from its own Save button or Ctrl+S.
+    /// Save one tab, from its own Save button or Ctrl+S. A structure
+    /// save may wait on its review first.
     pub(super) fn request_save(&self, tab: Uuid) {
-        for start in self.workspace_handle.save(&[tab]) {
-            match start {
-                SaveStart::Started(save) => tracing::debug!(?save, %tab, "save started"),
-                SaveStart::Rejected(rejection) if rejection.needs_alert() => {
-                    self.show_error_alert(&crate::i18n::gettext("Cannot Save"), &rejection.message());
+        let Some(parent) = self.dialog_parent() else {
+            return;
+        };
+        let (handle, input) = (self.workspace_handle.clone(), self.input.clone());
+        glib::spawn_future_local(async move {
+            for start in handle.save(&parent, &[tab]).await {
+                match start {
+                    SaveStart::Started(save) => tracing::debug!(?save, %tab, "save started"),
+                    SaveStart::Rejected(rejection) if rejection.needs_alert() => {
+                        input.deliver(WorkspaceInput::ShowAlert {
+                            title: crate::i18n::gettext("Cannot Save"),
+                            body: rejection.message(),
+                        });
+                    }
+                    SaveStart::NothingToSave | SaveStart::Rejected(_) => {}
                 }
-                SaveStart::NothingToSave | SaveStart::Rejected(_) => {}
             }
-        }
+        });
     }
 
     pub(super) fn stop_saving(&self, tab: Uuid) {

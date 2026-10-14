@@ -202,6 +202,7 @@ crates/app/src/ui/structure_tab/imp.rs
 crates/app/src/ui/structure_tab/index_object.rs
 crates/app/src/ui/structure_tab/indexes.rs
 crates/app/src/ui/structure_tab/mod.rs
+crates/app/src/ui/structure_tab/review_dialog.rs
 crates/app/src/ui/structure_tab/structure_command.rs
 crates/app/src/ui/structure_tab/tests.rs
 crates/app/src/ui/structure_tab_dialogs.rs
@@ -234,6 +235,7 @@ crates/app/src/workspace/dialog_response.rs
 crates/app/src/workspace/dirty_kind.rs
 crates/app/src/workspace/dirty_tab.rs
 crates/app/src/workspace/draft_writer.rs
+crates/app/src/workspace/engine_profile.rs
 crates/app/src/workspace/inhibit_reason.rs
 crates/app/src/workspace/legacy_tab_file.rs
 crates/app/src/workspace/mod.rs
@@ -254,6 +256,7 @@ crates/app/src/workspace/save_start.rs
 crates/app/src/workspace/save_ticket.rs
 crates/app/src/workspace/schema_write.rs
 crates/app/src/workspace/sort_record.rs
+crates/app/src/workspace/structure_review_tests.rs
 crates/app/src/workspace/tab_directory.rs
 crates/app/src/workspace/tab_entry.rs
 crates/app/src/workspace/tab_record.rs
