@@ -39,6 +39,7 @@ candidate inventory as a release commitment.
 | TEST-12 | Verify MongoDB's bounded 128-document metadata sample and page-observed type union against the non-snapshot contract in [ADR 0007](decisions/0007-type-and-value-preservation.md) |
 | UI-21, TEST-28 | Fake connection for the GTK tier, native Ubuntu AT-SPI menu reachability |
 | TEST-30 | Remaining SonarCloud and CodeQL findings | #562 has no Lane set on Project #3 yet, so it is not listed in the lane index. |
+| TEST-34 | Import Python coverage for repository tooling into SonarCloud without lowering the coverage gate; #830 added tests but SonarCloud reported 0.0% new-code coverage |
 | AUD-5 | About 4,700 comment lines in `src/` to move into docs, file by file |
 | DOC-3, DOC-5 | Orca and high contrast pass; value comparison with DBeaver and dbx |
 | B4-9, B4-11, B4-17, B4-21 | Route and TLS acceptance evidence, failed-batch rollback on optional MySQL engines and package acceptance, native multi-hop trust flow, SQL Server Kerberos Windows AD interoperability and package acceptance |
