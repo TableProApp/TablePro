@@ -13,13 +13,13 @@ const ROWS_PER_PROGRESS: u64 = 4_096;
 
 /// Keeps a result's rows until the last one is in, then renders the
 /// document on the blocking pool and hands it on as one chunk. A
-/// workbook is a zip archive, and the HTML, XML and SQL writers build
-/// their text in one piece, so none can be written as rows arrive.
+/// workbook is a zip archive, which cannot be written as rows arrive,
+/// and a sheet's row limit bounds what it holds.
 pub(crate) struct DocumentSink {
     messages: mpsc::Sender<ExportMessage>,
     format: DocumentFormat,
-    /// The most rows the document can hold, when it has a most.
-    limit: Option<usize>,
+    /// The most rows the document can hold.
+    limit: usize,
     tasks: Tasks,
     columns: Option<Arc<[ResultColumn]>>,
     rows: Vec<Vec<Value>>,
@@ -60,9 +60,8 @@ impl DocumentSink {
         self.rows.extend(rows);
         // A sheet past its last row is refused at render time anyway,
         // so the read stops here rather than holding the rest.
-        if let Some(limit) = self.limit
-            && self.rows.len() > limit
-        {
+        if self.rows.len() > self.limit {
+            let limit = self.limit;
             return self.fail(ExportStreamFailure::SheetFull { limit }).await;
         }
         let now = self.rows.len() as u64;
@@ -141,10 +140,16 @@ mod tests {
         (0..count).map(|row| vec![Value::Int(row as i64)]).collect()
     }
 
+    fn sheet() -> DocumentFormat {
+        DocumentFormat::Xlsx {
+            sheet: "rows".to_owned(),
+        }
+    }
+
     #[tokio::test]
     async fn a_document_is_rendered_once_its_last_row_is_in() {
         let (messages, mut received) = mpsc::channel(16);
-        let mut sink = DocumentSink::new(messages, DocumentFormat::Xml, paused_tasks());
+        let mut sink = DocumentSink::new(messages, sheet(), paused_tasks());
 
         sink.accept(started()).await;
         sink.accept(ResultEvent::Rows(rows(5_000))).await;
@@ -163,20 +168,15 @@ mod tests {
         else {
             panic!("{seen:?}");
         };
-        let text = String::from_utf8(bytes.clone()).expect("utf-8");
-        assert!(text.contains("4999"), "{}", &text[..80]);
+        assert!(bytes.starts_with(b"PK"), "the workbook is not a zip archive");
     }
 
     #[tokio::test]
     async fn a_sheet_stops_the_read_once_it_is_full() {
         let (messages, mut received) = mpsc::channel(16);
-        let format = DocumentFormat::Xlsx {
-            sheet: "rows".to_owned(),
-        };
-        let mut sink = DocumentSink::new(messages, format, paused_tasks());
-        assert!(sink.limit.is_some(), "a sheet has no limit");
+        let mut sink = DocumentSink::new(messages, sheet(), paused_tasks());
         let limit = 10;
-        sink.limit = Some(limit);
+        sink.limit = limit;
 
         sink.accept(started()).await;
         let flow = sink.accept(ResultEvent::Rows(rows(limit + 1))).await;

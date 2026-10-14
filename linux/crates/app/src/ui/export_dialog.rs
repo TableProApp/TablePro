@@ -95,9 +95,9 @@ impl Format {
             Format::Json => ExportFormat::Rows(RowFormat::Json),
             Format::Markdown => ExportFormat::Rows(RowFormat::Markdown),
             Format::Xlsx => ExportFormat::Document(DocumentFormat::Xlsx { sheet: name.to_owned() }),
-            Format::Html => ExportFormat::Document(DocumentFormat::Html { title: name.to_owned() }),
-            Format::Xml => ExportFormat::Document(DocumentFormat::Xml),
-            Format::Sql => ExportFormat::Document(DocumentFormat::Sql(target?.clone())),
+            Format::Html => ExportFormat::Rows(RowFormat::Html { title: name.to_owned() }),
+            Format::Xml => ExportFormat::Rows(RowFormat::Xml),
+            Format::Sql => ExportFormat::Rows(RowFormat::Sql(target?.clone())),
         })
     }
 

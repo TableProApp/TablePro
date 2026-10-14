@@ -20,7 +20,10 @@ use crate::value::Value;
 
 pub use csv::{FORMULA_LEADS, csv_writer_builder, neutralise_formula, render_csv, render_text_csv};
 pub use csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
-pub use encoder::{CsvEncoder, EncodeError, JsonArrayEncoder, MarkdownEncoder, RowEncoder, TsvEncoder};
+pub use encoder::{
+    CsvEncoder, EncodeError, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RowEncoder, SqlInsertEncoder, TsvEncoder,
+    XmlEncoder,
+};
 pub use html::render_html;
 pub use in_clause::{InClause, render_in_clause};
 pub use json::{render_json, row_to_json};

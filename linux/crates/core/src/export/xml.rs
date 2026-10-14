@@ -12,31 +12,39 @@ use super::value_text::value_text;
 /// every result representable without renaming the user's columns.
 pub fn render_xml(columns: &[ResultColumn], rows: &[Vec<Value>]) -> String {
     let mut out = String::with_capacity(rows.len() * columns.len() * 24);
-    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rows>\n");
+    out.push_str(XML_HEAD);
     for row in rows {
-        out.push_str("  <row>\n");
-        for (index, value) in row.iter().enumerate() {
-            let name = columns
-                .get(index)
-                .map(|column| column.name.as_str())
-                .unwrap_or_default();
-            out.push_str("    <field name=\"");
-            escape_into(&mut out, name);
-            match value_text(value, column_type(columns, index)) {
-                Some(text) => {
-                    out.push_str("\">");
-                    escape_into(&mut out, &text);
-                    out.push_str("</field>\n");
-                }
-                // An empty element with the flag, so a NULL reads
-                // back as one rather than as an empty string.
-                None => out.push_str("\" null=\"true\"/>\n"),
-            }
-        }
-        out.push_str("  </row>\n");
+        xml_row(&mut out, columns, row);
     }
-    out.push_str("</rows>\n");
+    out.push_str(XML_TAIL);
     out
+}
+
+pub(super) const XML_HEAD: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rows>\n";
+
+pub(super) const XML_TAIL: &str = "</rows>\n";
+
+pub(super) fn xml_row<'a>(out: &mut String, columns: &[ResultColumn], row: impl IntoIterator<Item = &'a Value>) {
+    out.push_str("  <row>\n");
+    for (index, value) in row.into_iter().enumerate() {
+        let name = columns
+            .get(index)
+            .map(|column| column.name.as_str())
+            .unwrap_or_default();
+        out.push_str("    <field name=\"");
+        escape_into(out, name);
+        match value_text(value, column_type(columns, index)) {
+            Some(text) => {
+                out.push_str("\">");
+                escape_into(out, &text);
+                out.push_str("</field>\n");
+            }
+            // An empty element with the flag, so a NULL reads back as
+            // one rather than as an empty string.
+            None => out.push_str("\" null=\"true\"/>\n"),
+        }
+    }
+    out.push_str("  </row>\n");
 }
 
 /// Escape for both text and attribute positions, and drop what XML 1.0

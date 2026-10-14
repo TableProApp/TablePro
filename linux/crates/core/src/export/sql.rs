@@ -22,34 +22,55 @@ pub fn render_sql_insert(
     columns: &[ResultColumn],
     rows: &[Vec<Value>],
 ) -> String {
-    if columns.is_empty() {
+    let Some(start) = insert_start(dialect, table, columns) else {
         return String::new();
+    };
+    let mut out = String::with_capacity(rows.len() * columns.len() * 12);
+    for row in rows {
+        insert_row(&mut out, dialect, &start, columns, row);
     }
-    let qualified = dialect.quote_identifier(table);
+    out
+}
+
+/// `INSERT INTO table (columns) VALUES `, which every row's statement
+/// starts with. `None` for a result with no columns, which has no
+/// statement to write.
+pub(super) fn insert_start(dialect: &dyn SqlDialect, table: &str, columns: &[ResultColumn]) -> Option<String> {
+    if columns.is_empty() {
+        return None;
+    }
     let names: Vec<String> = columns
         .iter()
         .map(|column| dialect.quote_identifier(&column.name))
         .collect();
-    let names = names.join(", ");
+    Some(format!(
+        "INSERT INTO {} ({}) VALUES ",
+        dialect.quote_identifier(table),
+        names.join(", ")
+    ))
+}
 
-    let mut out = String::with_capacity(rows.len() * columns.len() * 12);
-    for row in rows {
-        let values: Vec<String> = columns
-            .iter()
-            .enumerate()
-            .map(|(index, column)| match row.get(index) {
-                Some(value) => literal(dialect, value, column),
-                // A row shorter than its header: the cell is absent,
-                // which is as close to unknown as SQL has.
-                None => "NULL".to_owned(),
-            })
-            .collect();
-        out.push_str(&format!(
-            "INSERT INTO {qualified} ({names}) VALUES ({});\n",
-            values.join(", ")
-        ));
-    }
-    out
+pub(super) fn insert_row<'a>(
+    out: &mut String,
+    dialect: &dyn SqlDialect,
+    start: &str,
+    columns: &[ResultColumn],
+    row: impl IntoIterator<Item = &'a Value>,
+) {
+    let mut cells = row.into_iter();
+    let values: Vec<String> = columns
+        .iter()
+        .map(|column| match cells.next() {
+            Some(value) => literal(dialect, value, column),
+            // A row shorter than its header: the cell is absent, which
+            // is as close to unknown as SQL has.
+            None => "NULL".to_owned(),
+        })
+        .collect();
+    out.push_str(start);
+    out.push('(');
+    out.push_str(&values.join(", "));
+    out.push_str(");\n");
 }
 
 /// One row as an `INSERT` the user can paste and run.

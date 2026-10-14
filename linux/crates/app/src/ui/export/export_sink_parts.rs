@@ -28,3 +28,48 @@ impl ExportSinkParts {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use tablepro_core::column::{ColumnType, ResultColumn};
+    use tablepro_core::{ResultEvent, SinkFlow, Value};
+    use tablepro_test_support::FakeDialect;
+
+    use super::*;
+    use crate::test_support::paused_tasks;
+    use crate::ui::export::{InsertTarget, RowFormat};
+
+    #[tokio::test(start_paused = true)]
+    async fn html_xml_and_sql_are_written_before_the_last_row_is_in() {
+        let formats = [
+            RowFormat::Html { title: "t".to_owned() },
+            RowFormat::Xml,
+            RowFormat::Sql(InsertTarget {
+                table: "t".to_owned(),
+                dialect: Arc::new(FakeDialect),
+            }),
+        ];
+        for format in formats {
+            let (messages, mut received) = mpsc::channel(64);
+            let parts = ExportSinkParts {
+                messages,
+                format: ExportFormat::Rows(format.clone()),
+                tasks: paused_tasks(),
+            };
+            let mut sink = parts.sink();
+            let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("a", ColumnType::untyped_text("text"))].into();
+            let rows = (0..200).map(|row| vec![Value::Text(format!("{row:01023}"))]).collect();
+
+            sink.accept(ResultEvent::ResultSetStarted { columns }).await;
+            assert_eq!(sink.accept(ResultEvent::Rows(rows)).await, SinkFlow::Continue);
+
+            let first = received.try_recv();
+            assert!(
+                matches!(first, Ok(ExportMessage::Chunk { .. })),
+                "{format:?} held its rows until the end: {first:?}"
+            );
+        }
+    }
+}

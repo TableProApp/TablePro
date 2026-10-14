@@ -12,37 +12,46 @@ use super::value_text::value_text;
 /// non-ASCII name into mojibake.
 pub fn render_html(columns: &[ResultColumn], rows: &[Vec<Value>], title: &str) -> String {
     let mut out = String::with_capacity(rows.len() * columns.len() * 16);
+    html_head(&mut out, columns, title);
+    for row in rows {
+        html_row(&mut out, columns, row);
+    }
+    out.push_str(HTML_TAIL);
+    out
+}
+
+pub(super) fn html_head(out: &mut String, columns: &[ResultColumn], title: &str) {
     out.push_str("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>");
-    escape_into(&mut out, title);
+    escape_into(out, title);
     out.push_str("</title>\n<style>\n");
     out.push_str(STYLE);
     out.push_str("</style>\n</head>\n<body>\n<table>\n<thead>\n<tr>");
     for column in columns {
         out.push_str("<th>");
-        escape_into(&mut out, &column.name);
+        escape_into(out, &column.name);
         out.push_str("</th>");
     }
     out.push_str("</tr>\n</thead>\n<tbody>\n");
-    for row in rows {
-        out.push_str("<tr>");
-        for (index, value) in row.iter().enumerate() {
-            match value_text(value, column_type(columns, index)) {
-                Some(text) => {
-                    out.push_str("<td>");
-                    escape_into(&mut out, &text);
-                }
-                // A NULL is marked rather than written as the word,
-                // so it is not read back as a row holding the text
-                // "NULL".
-                None => out.push_str("<td class=\"null\">"),
-            }
-            out.push_str("</td>");
-        }
-        out.push_str("</tr>\n");
-    }
-    out.push_str("</tbody>\n</table>\n</body>\n</html>\n");
-    out
 }
+
+pub(super) fn html_row<'a>(out: &mut String, columns: &[ResultColumn], row: impl IntoIterator<Item = &'a Value>) {
+    out.push_str("<tr>");
+    for (index, value) in row.into_iter().enumerate() {
+        match value_text(value, column_type(columns, index)) {
+            Some(text) => {
+                out.push_str("<td>");
+                escape_into(out, &text);
+            }
+            // A NULL is marked rather than written as the word, so it
+            // is not read back as a row holding the text "NULL".
+            None => out.push_str("<td class=\"null\">"),
+        }
+        out.push_str("</td>");
+    }
+    out.push_str("</tr>\n");
+}
+
+pub(super) const HTML_TAIL: &str = "</tbody>\n</table>\n</body>\n</html>\n";
 
 const STYLE: &str = "table { border-collapse: collapse; font-family: sans-serif; font-size: 14px }\n\
 th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top }\n\
