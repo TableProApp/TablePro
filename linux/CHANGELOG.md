@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
 - Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
 - Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
+- Add Index and Add Foreign Key check the form as you type, and pick the referenced table and columns from the database.
 
 ### Removed
 

@@ -4,17 +4,20 @@ use gtk4 as gtk;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
-use tablepro_core::ddl::{Permission, ReferentialAction};
+use tablepro_core::ddl::Permission;
 
 use super::columns::gate;
 use super::foreign_key_object::ForeignKeyObject;
+use super::referential_action_label::action_text;
 use super::{StructureTabInput, StructureTabSender};
 
 /// The subtitle reads the whole relationship at a glance:
-/// `col_a, col_b → other_table (ref_a, ref_b)`.
+/// `col_a, col_b → other_table (ref_a, ref_b)`. `drafted` is a key the
+/// user added in this tab rather than one read from the table.
 pub(super) fn build_fk_row(
     object: &ForeignKeyObject,
     removable: &Permission,
+    drafted: bool,
     sender: &StructureTabSender,
 ) -> adw::ActionRow {
     let fk = object.info();
@@ -27,13 +30,11 @@ pub(super) fn build_fk_row(
         fk.columns.join(", "),
         fk.ref_columns.join(", "),
     );
-    // `None` is an action this build does not know, so it says so rather
-    // than claiming the default it may not be.
     if fk.on_delete.is_some() || fk.on_update.is_some() {
         subtitle.push_str(&format!(
             " · ON DELETE {} · ON UPDATE {}",
-            action_text(fk.on_delete),
-            action_text(fk.on_update),
+            action_text(fk.on_delete, drafted),
+            action_text(fk.on_update, drafted),
         ));
     }
 
@@ -61,22 +62,4 @@ pub(super) fn build_fk_row(
     row.add_suffix(&remove_button);
 
     row
-}
-
-fn action_text(action: Option<ReferentialAction>) -> String {
-    action.map_or_else(
-        || crate::i18n::gettext("not reported"),
-        |action| action.as_sql().to_owned(),
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_unknown_action_says_it_was_not_reported() {
-        assert_eq!(action_text(Some(ReferentialAction::SetNull)), "SET NULL");
-        assert_eq!(action_text(None), "not reported");
-    }
 }
