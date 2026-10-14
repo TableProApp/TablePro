@@ -10,7 +10,6 @@ use gio::prelude::*;
 
 pub use super::file_location_kind::FileLocationKind;
 
-/// Reads which filesystem a path is on.
 pub type LocationClassifier = fn(&Path) -> FileLocationKind;
 
 /// GIO's name for the portal's `user.document-portal.host-path`.
@@ -53,14 +52,26 @@ pub fn kind_for_fs_type(fs_type: &str) -> FileLocationKind {
 /// The filesystem `path` is on. A file that does not exist yet is
 /// classified by its folder's mount.
 pub fn classify_blocking(path: &Path) -> FileLocationKind {
-    match mount_kind_blocking(path) {
+    classify_with(path, mount_kind_blocking)
+}
+
+fn classify_with(path: &Path, mount_kind: impl Fn(&Path) -> FileLocationKind) -> FileLocationKind {
+    let path = follow_links(path);
+    match mount_kind(&path) {
         FileLocationKind::Portal { .. } => FileLocationKind::portal(
-            portal_host_path_blocking(path),
+            portal_host_path_blocking(&path),
             |host| std::fs::symlink_metadata(host).is_ok(),
-            mount_kind_blocking,
+            |host| mount_kind(&follow_links(host)),
         ),
         kind => kind,
     }
+}
+
+/// SQLite opens the file a link points to, while GIO finds the mount
+/// of the link itself. A path that does not resolve, such as a file
+/// not made yet, stays as given, and GIO resolves its folder.
+fn follow_links(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// The filesystem's kind, without asking a portal for the file behind
@@ -265,6 +276,31 @@ mod tests {
             FileLocationKind::Local
         );
         assert_eq!(portal_host_path_blocking(&database), None);
+    }
+
+    #[test]
+    fn a_link_is_classified_by_the_mount_of_the_file_it_points_to() {
+        let share = tempfile::tempdir().expect("share");
+        let home = tempfile::tempdir().expect("home");
+        let share_root = std::fs::canonicalize(share.path()).expect("canonical share");
+        let target = share_root.join("app.db");
+        std::fs::write(&target, b"").expect("seed");
+        let link = home.path().join("app.db");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+        let on_share = |path: &Path| {
+            if path.starts_with(&share_root) {
+                remote("nfs4")
+            } else {
+                FileLocationKind::Local
+            }
+        };
+
+        assert_eq!(classify_with(&link, on_share), remote("nfs4"));
+        assert_eq!(classify_with(&share_root.join("new.db"), on_share), remote("nfs4"));
+        assert_eq!(
+            classify_with(&home.path().join("new.db"), on_share),
+            FileLocationKind::Local
+        );
     }
 
     #[test]
