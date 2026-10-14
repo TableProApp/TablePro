@@ -148,7 +148,7 @@ These traits are the seams that keep engines and UI replaceable. Behaviour detai
 | Trait / type | Crate | Job |
 |---|---|---|
 | `DatabaseDriver` | `core` | Connect and advertise engine capabilities. |
-| `Connection` | `core` | Query, execute, schema, transactions, controlled cancel. |
+| `Connection` | `core` | Query, execute, schema, transactions, controlled cancel and optional forward-only query cursors. |
 | `OperationControl` | `core` | Cancellation token + optional deadline that reach the driver. |
 | `PolicyGuard` | `policy` | Only consumer-facing `Connection`. Classify → decide → approve → mask → execute → audit. |
 | `ApprovalSink` / `AuditSink` | `policy` | Pluggable approval UI and durable journal writes. |
@@ -156,6 +156,8 @@ These traits are the seams that keep engines and UI replaceable. Behaviour detai
 | `ConnectionFaultSink` | `policy` | Optional: app/agentd learn the connection is unusable after panic/desync. |
 
 Adding an engine means implementing `DatabaseDriver` + `Connection` behind those traits, not teaching the UI a new driver id ([ADR 0001](docs/decisions/0001-no-plugin-system.md)).
+
+The optional cursor path is governed by `PolicyGuard`: it accepts one read statement in a read-only session snapshot, masks and audits each fetched page under the same operation, and closes the cursor on terminal outcomes. PostgreSQL is the only driver that supports it today. The SQL editor still uses materialized results and their existing caps ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
 
 ## Governed request pipeline
 
