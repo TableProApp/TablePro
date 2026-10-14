@@ -63,14 +63,14 @@ How to answer a row quickly:
 
 This is the first pass and it is manual, so it belongs with the installed checks before 0.2.0. The point is to see the value the database really stores, without our code in between.
 
-For each engine you can reach (PostgreSQL, MySQL or MariaDB, SQL Server, SQLite, DuckDB, ClickHouse, MongoDB), use its own client and a scratch table or collection:
+For each engine in the 0.2.0 promise that you can reach (PostgreSQL, MySQL or MariaDB, SQL Server, SQLite, DuckDB, ClickHouse, MongoDB and Redis), use its native client and scratch data: a table, collection or key/value entry as appropriate.
 
-1. Create a table with the engine's native types for an integer, a float, a decimal and a text column.
-2. Insert the values below with the native client, so our code is not involved.
+1. Create scratch data with native integer, float, decimal and text values where the engine supports those types. For Redis, seed string keys with text and binary values, and use a counter command for an integer reply.
+2. Seed the applicable values below with the native client, so our code is not involved.
 3. Read them back with the native client and note the exact text it prints.
-4. Open the same table in the app and compare the grid cell, the cell's value dialog and a CSV export to the native text.
-5. Edit one value in the grid, save it, and read it back with the native client. The stored value must be the one you typed.
-6. Record the result next to each line, never blank.
+4. Open the data in the app and compare its value display and CSV export to the native result. Use the grid for tables and the query editor for command-oriented engines.
+5. Change a value through the app path that the engine supports, then read it back with the native client. The stored value must be the one you entered.
+6. Record the engine, value kind and operation beside each result; never leave a result blank.
 
 Values (from `tests/data/value-contract.json`):
 
@@ -83,9 +83,11 @@ Values (from `tests/data/value-contract.json`):
 
 The three cases people get wrong are worth looking at first: the word `NULL` versus an empty string versus real NULL, a decimal whose trailing zeros must stay, and an integer above 2^53 that must not pass through a float.
 
+Redis has no SQL columns or SQL NULL. For its row, compare an empty string, the text `NULL`, Unicode text, a binary string such as `ff 00 41`, a missing-key response and an integer command reply. Run `SET` and `GET` through the app's command editor, export the loaded query result as CSV, then verify the stored bytes with the native client. Do not treat a missing key and an empty value as the same case.
+
 Result record, one row per engine and kind:
 
-| Engine | Kind | Native client printed | App grid showed | CSV export | Edit and save read back | Result | Date and build SHA |
+| Engine | Kind | Native client printed | App showed | CSV export | Write/edit read back | Result | Date and build SHA |
 |---|---|---|---|---|---|---|---|
 | | | | | | | | |
 
