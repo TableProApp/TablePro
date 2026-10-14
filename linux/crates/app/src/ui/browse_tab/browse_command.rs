@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use tablepro_core::ColumnInfo;
-use tablepro_core::meta::RowIdentity;
+use tablepro_core::meta::{RowIdentity, TableEstimate};
 use tablepro_session::OperationError;
 
 use super::page_reply::PageReply;
@@ -22,5 +22,6 @@ pub(crate) struct ColumnsReply {
 pub(crate) enum BrowseCommand {
     Columns(Stamped<Result<ColumnsReply, LoadFailure>>),
     Page(Stamped<Result<PageReply, OperationError>>),
+    Estimate(Stamped<Result<TableEstimate, OperationError>>),
     Count(Stamped<Result<u64, OperationError>>),
 }

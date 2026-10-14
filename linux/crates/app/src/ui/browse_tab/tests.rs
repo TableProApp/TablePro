@@ -6,14 +6,14 @@ use gtk4::prelude::*;
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::edit::CellInput;
 use tablepro_core::filter::{FilterOp, FilterRule};
-use tablepro_core::meta::RowIdentity;
+use tablepro_core::meta::{RowCountEstimate, RowIdentity, TableEstimate};
 use tablepro_core::{ColumnInfo, DriverError, FilterSet, LossPhase, QueryResult, Value};
 use tablepro_session::Session;
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
 use super::row_deletion::RowDeletion;
-use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes, format_thousands};
+use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes};
 use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -61,23 +61,6 @@ fn col_with_default(data_type: &str, default: &str) -> ColumnInfo {
         tablepro_core::column::SqlExpression::from_catalog_text(default),
     );
     c
-}
-
-#[test]
-fn format_thousands_handles_common_page_sizes() {
-    assert_eq!(format_thousands(100), "100");
-    assert_eq!(format_thousands(500), "500");
-    assert_eq!(format_thousands(1_000), "1,000");
-    assert_eq!(format_thousands(5_000), "5,000");
-    assert_eq!(format_thousands(10_000), "10,000");
-    assert_eq!(format_thousands(1_000_000), "1,000,000");
-}
-
-#[test]
-fn format_thousands_handles_edges() {
-    assert_eq!(format_thousands(0), "0");
-    assert_eq!(format_thousands(1), "1");
-    assert_eq!(format_thousands(999), "999");
 }
 
 fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
@@ -144,8 +127,18 @@ pub(super) fn serving_table() -> ConnectionScript {
         columns: vec!["id".to_owned()],
     }));
     script.count_rows.always(FakeReply::ok(2));
+    script
+        .table_estimate
+        .always(FakeReply::ok(estimate(RowCountEstimate::Approximate(2))));
     script.probe.always(FakeReply::ok(()));
     script
+}
+
+pub(super) fn estimate(rows: RowCountEstimate) -> TableEstimate {
+    TableEstimate {
+        rows,
+        heap_blocks: None,
+    }
 }
 
 pub(super) struct Harness {
@@ -325,6 +318,9 @@ pub(super) fn filtered_users_tab(
         filter_settings,
         session: session.clone(),
         tasks,
+        deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(
+            tablepro_core::LivenessPolicy::DESKTOP,
+        )),
     })
 }
 

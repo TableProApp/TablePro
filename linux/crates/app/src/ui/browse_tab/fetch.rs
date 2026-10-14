@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use tablepro_core::browse::{BrowseSqlError, PageLayout, PageRequest, SortKey, build_count, build_page};
-use tablepro_core::meta::{PagePosition, RowIdentity, TableRef};
+use tablepro_core::browse::{BrowseSqlError, PageLayout, PageRequest, SortKey, build_page};
+use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{BuildFilterError, ColumnInfo, FilterSet, QueryResult, RowLimit};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind};
@@ -19,44 +19,47 @@ use crate::ui::tab_load::LoadFailure;
 /// it. The SQL is built inside the operation from the lease it runs on,
 /// so it is spelled for that server even when a reconnect lands first.
 #[derive(Debug, Clone)]
-struct ReadPlan {
-    table: TableRef,
-    columns: Vec<ColumnInfo>,
+pub(super) struct ReadPlan {
+    pub(super) table: TableRef,
+    pub(super) columns: Vec<ColumnInfo>,
     identity: RowIdentity,
-    filter: FilterSet,
+    pub(super) filter: FilterSet,
     sort: Vec<SortKey>,
-    offset: u64,
     limit: u64,
 }
 
 impl BrowseModel {
-    /// Ask for one kind of read. A page or a count waits for the
-    /// columns it is built from.
+    /// Ask for one kind of read. A page, an estimate or a count waits
+    /// for the columns, since the tab reads nothing of a table whose
+    /// columns it could not read.
     pub(super) fn fetch(&mut self, kind: BrowseRequestKind, fx: &mut Effects) {
         match kind {
             BrowseRequestKind::Columns => self.fetch_columns(ColumnFreshness::Cached),
-            BrowseRequestKind::Page | BrowseRequestKind::Count if self.identity.is_none() => {
+            BrowseRequestKind::Page | BrowseRequestKind::Estimate | BrowseRequestKind::Count
+                if self.identity.is_none() =>
+            {
                 self.after_columns.insert(kind);
                 if !self.sequencer.is_pending(BrowseRequestKind::Columns) {
                     self.fetch_columns(ColumnFreshness::Cached);
                 }
             }
             BrowseRequestKind::Page => self.fetch_page(fx),
-            BrowseRequestKind::Count => self.fetch_count(),
+            BrowseRequestKind::Estimate => self.fetch_estimate(),
+            BrowseRequestKind::Count => self.start_count(self.total.estimate(), fx),
         }
     }
 
-    /// Read the columns, then the page and the count built from them.
-    /// No page is asked for before the columns land, since a page is
-    /// built from them, and a failure to read them fails the read at
-    /// once rather than leave the tab waiting.
+    /// Read the columns, then the page built from them and the table's
+    /// estimate. No page is asked for before the columns land, since a
+    /// page is built from them, and a failure to read them fails the read
+    /// at once rather than leave the tab waiting.
     pub(super) fn reload_from_columns(&mut self, freshness: ColumnFreshness) {
         self.after_columns.insert(BrowseRequestKind::Page);
-        self.after_columns.insert(BrowseRequestKind::Count);
+        self.after_columns.insert(BrowseRequestKind::Estimate);
         self.fetch_columns(freshness);
     }
 
-    fn issue(&mut self, kind: BrowseRequestKind) -> RequestTicket {
+    pub(super) fn issue(&mut self, kind: BrowseRequestKind) -> RequestTicket {
         self.issued_on.insert(kind, self.session.link_generation());
         self.sequencer.issue(kind)
     }
@@ -104,10 +107,7 @@ impl BrowseModel {
         let ticket = self.issue(BrowseRequestKind::Page);
         let session = self.session.clone();
         let cancel = ticket.cancel.clone();
-        let position = match plan.offset {
-            0 => PagePosition::First,
-            offset => PagePosition::Offset(offset),
-        };
+        let position = self.pager.position();
         let work = async move {
             let reply_position = position.clone();
             session
@@ -143,37 +143,10 @@ impl BrowseModel {
         self.deliver(ticket, work, BrowseCommand::Page, OperationError::from);
     }
 
-    /// The "of N" total, under the same filter as the page so the two
-    /// agree. The page toasts a filter that cannot be written, so the
-    /// count stays quiet about it.
-    fn fetch_count(&mut self) {
-        let Some(plan) = self.read_plan() else {
-            return;
-        };
-        if self.filter_problem().is_some() {
-            return;
-        }
-        let ticket = self.issue(BrowseRequestKind::Count);
-        let session = self.session.clone();
-        let cancel = ticket.cancel.clone();
-        let work = async move {
-            session
-                .run_cancellable(OperationKind::Count, &cancel, move |lease, options| {
-                    let plan = plan.clone();
-                    async move {
-                        let statement = build_count(&*lease.dialect(), &plan.table, &plan.columns, &plan.filter)?;
-                        Ok(lease.count_rows(&statement, options).await?)
-                    }
-                })
-                .await
-        };
-        self.deliver(ticket, work, BrowseCommand::Count, OperationError::from);
-    }
-
     /// Run `work` on the app runtime and hand its stamped reply back to
     /// the tab on the GTK thread. The delivery holds the tab weakly, so a
     /// tab closed meanwhile is not kept alive by its own reads.
-    fn deliver<T, E, W>(
+    pub(super) fn deliver<T, E, W>(
         &self,
         ticket: RequestTicket,
         work: W,
@@ -194,7 +167,7 @@ impl BrowseModel {
         });
     }
 
-    fn read_plan(&self) -> Option<ReadPlan> {
+    pub(super) fn read_plan(&self) -> Option<ReadPlan> {
         Some(ReadPlan {
             table: self.table_ref(),
             columns: self.current_columns.clone(),
@@ -205,14 +178,13 @@ impl BrowseModel {
                 .map(|(column, ascending)| SortKey { column, ascending })
                 .into_iter()
                 .collect(),
-            offset: self.current_offset,
-            limit: self.page_size,
+            limit: self.pager.page_size(),
         })
     }
 
     /// Why the tab's filter cannot be written for the current server,
     /// if it cannot.
-    fn filter_problem(&self) -> Option<BuildFilterError> {
+    pub(super) fn filter_problem(&self) -> Option<BuildFilterError> {
         let dialect = self.dialect.as_ref()?;
         let mut builder = StatementBuilder::new();
         tablepro_core::build_filter(&mut builder, &**dialect, &self.current_columns, &self.current_filter).err()
@@ -269,21 +241,33 @@ impl BrowseModel {
                     }
                 }
             }
+            BrowseCommand::Estimate(Stamped { stamp, value }) => {
+                if !self.sequencer.accept(BrowseRequestKind::Estimate, stamp) {
+                    return;
+                }
+                self.failed.record(BrowseRequestKind::Estimate, &value);
+                let failed = value.is_err();
+                self.on_estimate(value, fx);
+                if failed {
+                    self.retry_if_link_moved(BrowseRequestKind::Estimate, fx);
+                }
+            }
             BrowseCommand::Count(Stamped { stamp, value }) => {
                 if !self.sequencer.accept(BrowseRequestKind::Count, stamp) {
                     return;
                 }
                 self.failed.record(BrowseRequestKind::Count, &value);
-                match value {
-                    Ok(count) => self.on_row_count_loaded(count, fx),
-                    Err(error) => {
-                        tracing::debug!(
-                            kind = failure_kind(&error),
-                            category = ?error.category(),
-                            "the row count could not be read"
-                        );
-                        self.retry_if_link_moved(BrowseRequestKind::Count, fx);
-                    }
+                if let Err(error) = &value {
+                    tracing::debug!(
+                        kind = failure_kind(error),
+                        category = ?error.category(),
+                        "the row count could not be read"
+                    );
+                }
+                let failed = value.is_err();
+                self.on_count(value, fx);
+                if failed {
+                    self.retry_if_link_moved(BrowseRequestKind::Count, fx);
                 }
             }
         }
@@ -298,7 +282,7 @@ impl BrowseModel {
             .check(&self.current_columns, &reply.result.columns, &reply.layout)
         {
             RecheckAction::Accept => {
-                let offset = reply.offset().unwrap_or(self.current_offset);
+                let offset = reply.offset().unwrap_or(self.pager.start_ordinal());
                 self.on_rows_loaded(offset, reply, fx);
             }
             RecheckAction::Refetch => {

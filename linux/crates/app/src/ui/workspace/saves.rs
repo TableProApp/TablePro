@@ -80,6 +80,7 @@ impl WorkspaceModel {
             outcome,
             failing,
             saved_table_name,
+            origins,
         } = settled;
         match (kind, outcome) {
             (WriteKind::RowChanges, SaveOutcome::Committed { .. }) => {
@@ -91,7 +92,7 @@ impl WorkspaceModel {
                     .timeout(4)
                     .build();
                 self.toast_overlay.add_toast(toast);
-                self.dispatch_to_tab(tab, BrowseTabInput::SaveCommitted);
+                self.dispatch_to_tab(tab, BrowseTabInput::SaveCommitted(origins));
             }
             (WriteKind::RowChanges, SaveOutcome::RolledBack(cause)) => {
                 // The row behind the failing step is flashed before the

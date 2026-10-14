@@ -50,6 +50,12 @@ pub struct BrowseTab {
     #[template_child]
     pub paginator_label: TemplateChild<gtk::Label>,
     #[template_child]
+    pub count_button: TemplateChild<gtk::Button>,
+    #[template_child]
+    pub count_spinner: TemplateChild<adw::Spinner>,
+    #[template_child]
+    pub count_label: TemplateChild<gtk::Label>,
+    #[template_child]
     pub selection_label: TemplateChild<gtk::Label>,
     #[template_child]
     pub export_button: TemplateChild<gtk::Button>,

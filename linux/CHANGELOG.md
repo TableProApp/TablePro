@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
 - Try Again on a table tab's error page, and Retry on a banner over rows or a structure that could not be read again.
 - Table and structure tabs show a spinner in the tab bar while they read.
+- Count Rows in a table tab's paginator, with the reason on Try Again when a count fails.
 
 ### Changed
 
@@ -58,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A grid value too long to draw says how many bytes it leaves out, and its tooltip points to Show Row as JSON.
 - Refresh keeps a table's rows, selection and focused cell on screen while it reads the table again.
 - A structure tab keeps the table's structure on screen while it reads it again, a save included.
+- Opening a large table no longer counts its rows: the paginator shows the server's estimate, and Last waits for a count.
+- Saving rows updates a table's total without counting the table again.
+- Row counts and page sizes group digits the way the system locale does.
 
 ### Removed
 

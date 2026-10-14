@@ -12,6 +12,7 @@ mod export_dialog;
 mod file_read;
 mod file_write;
 mod filter_strip;
+mod format;
 mod grid;
 mod handler_guard;
 mod history_dialog;

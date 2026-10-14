@@ -284,6 +284,7 @@ impl WorkspaceModel {
             filter_settings: self.storage.filter_settings().clone(),
             session,
             tasks: self.context.tasks.clone(),
+            deadlines: self.context.deadlines.clone(),
         });
         connect_browse(&browse, tab_id, &self.input);
 

@@ -6,20 +6,27 @@
 //! A read that failed is asked again once the session reconnects.
 
 mod browse_command;
+mod browse_pager;
 mod browse_request_kind;
 mod column_recheck;
 mod columns_fetch;
 mod confirming_delete;
+mod count_failure_text;
+mod count_policy;
 mod fetch;
 mod imp;
 #[cfg(test)]
 mod load_tests;
 mod page_reply;
 mod page_state;
+mod row_count;
 mod row_deletion;
+mod row_total;
 mod selection_snapshot;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod total_tests;
 
 use std::cell::Cell;
 use std::collections::{BTreeSet, VecDeque};
@@ -35,12 +42,14 @@ use libadwaita::prelude::*;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::{CellInput, EditParseError, parse_edit_text};
 use tablepro_core::export::RenderInsertError;
-use tablepro_core::meta::{RowIdentity, TableRef};
+use tablepro_core::meta::{PagePosition, RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
+use tablepro_session::operation::DeadlinePolicy;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, Session};
 
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
+use self::browse_pager::BrowsePager;
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
 use self::column_recheck::ColumnRecheck;
 use self::columns_fetch::ColumnFreshness;
@@ -48,7 +57,9 @@ use self::confirming_delete::ConfirmingDelete;
 pub(crate) use self::page_reply::PageReply;
 use self::page_state::PageState;
 use self::row_deletion::{RowDeletion, plan_row_deletion};
+use self::row_total::RowTotal;
 use self::selection_snapshot::SelectionSnapshot;
+use super::format::format_thousands;
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
     RowKeyBuilder, RowObject, TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability,
@@ -56,6 +67,7 @@ use super::grid::{
 };
 use super::tab_load::{ContentLoad, ContentPage, LoadFailure, LoadPresentation, StaleBanner};
 use crate::runtime::{FailedRequests, RequestSequencer};
+use crate::services::change_origins::ChangeOrigins;
 use crate::services::change_tracker::{RowKey, StatementSource, new_draft_cell, pk_identity};
 use crate::services::column_relayout::ColumnRelayout;
 use crate::services::save_batch::SaveTarget;
@@ -94,6 +106,8 @@ pub struct BrowseTabInit {
     /// closed before it shuts down.
     pub session: Arc<Session>,
     pub tasks: Tasks,
+    /// The session's deadlines, which a count that ran out names.
+    pub deadlines: Arc<dyn DeadlinePolicy>,
 }
 
 /// Rows the user asked to write to a file, and what to call it.
@@ -198,15 +212,15 @@ impl BrowseTab {
             read_only: init.read_only,
             column_widths: init.column_widths,
             filter_settings: init.filter_settings,
-            current_offset: init.initial_offset,
-            page_size: init.page_size,
+            pager: BrowsePager::new(init.page_size, init.initial_offset),
+            deadlines: init.deadlines,
             current_sort: init.initial_sort,
             current_filter: initial_filter,
             current_columns: Vec::new(),
             page: None,
             shown_view: None,
             current_selection: None,
-            current_total_rows: None,
+            total: RowTotal::Unknown,
             load: ContentLoad::default(),
             tab_loading: false,
             stale_banner,
@@ -223,6 +237,9 @@ impl BrowseTab {
             was_dirty: Cell::new(false),
             pending_restore: None,
             paginator_label: imp.paginator_label.get(),
+            count_button: imp.count_button.get(),
+            count_spinner: imp.count_spinner.get(),
+            count_label: imp.count_label.get(),
             selection_label: imp.selection_label.get(),
             first_button: imp.first_button.get(),
             prev_button: imp.prev_button.get(),
@@ -327,11 +344,11 @@ impl BrowseTab {
     }
 
     pub fn current_offset(&self) -> u64 {
-        self.read(|model| model.current_offset).unwrap_or_default()
+        self.read(|model| model.pager.start_ordinal()).unwrap_or_default()
     }
 
     pub fn page_size(&self) -> u64 {
-        self.read(|model| model.page_size).unwrap_or(DEFAULT_PAGE_SIZE)
+        self.read(|model| model.pager.page_size()).unwrap_or(DEFAULT_PAGE_SIZE)
     }
 
     pub fn current_sort(&self) -> Option<(usize, bool)> {
@@ -488,6 +505,7 @@ impl BrowseTab {
         on_click(&imp.save_button, || BrowseTabInput::CommitSave);
         on_click(&imp.stop_button, || BrowseTabInput::StopSaving);
         on_click(&imp.retry_button, || BrowseTabInput::Refresh);
+        on_click(&imp.count_button, || BrowseTabInput::CountRows);
         let tab = self.downgrade();
         imp.page_size_dropdown.connect_selected_notify(move |dropdown| {
             let index = usize::try_from(dropdown.selected()).unwrap_or(usize::MAX);
@@ -600,8 +618,9 @@ pub(crate) struct BrowseModel {
     column_widths: crate::persistence::ColumnWidthStore,
     filter_settings: crate::persistence::FilterSettingsStore,
 
-    current_offset: u64,
-    page_size: u64,
+    /// Where the page the tab reads starts, and how many rows it holds.
+    pager: BrowsePager,
+    deadlines: Arc<dyn DeadlinePolicy>,
     current_sort: Option<(usize, bool)>,
     /// The WHERE every page and count reads under, kept per connection,
     /// schema and table.
@@ -613,7 +632,8 @@ pub(crate) struct BrowseModel {
     /// that same page again leaves it on screen.
     shown_view: Option<PageView>,
     current_selection: Option<gtk::MultiSelection>,
-    current_total_rows: Option<u64>,
+    /// The table's row count under the filter, as far as the tab knows.
+    total: RowTotal,
     load: ContentLoad,
     /// What the tab bar was last told, so it hears only changes.
     tab_loading: bool,
@@ -645,6 +665,9 @@ pub(crate) struct BrowseModel {
     /// refresh, so the page read again puts them back.
     pending_restore: Option<SelectionSnapshot>,
     paginator_label: gtk::Label,
+    count_button: gtk::Button,
+    count_spinner: adw::Spinner,
+    count_label: gtk::Label,
     selection_label: gtk::Label,
     first_button: gtk::Button,
     prev_button: gtk::Button,
@@ -739,8 +762,11 @@ pub(crate) enum BrowseTabInput {
         ticket: u64,
         confirmed: bool,
     },
-    /// The save landed. Edits made while it ran stay pending.
-    SaveCommitted,
+    /// The save landed, adding and removing these rows. Edits made
+    /// while it ran stay pending.
+    SaveCommitted(ChangeOrigins),
+    /// Count Rows, or Try Again after a count failed.
+    CountRows,
     /// The pending changes stay, so the user can fix the cause and
     /// save again.
     SaveFailed(String),
@@ -985,6 +1011,7 @@ impl BrowseModel {
     fn reload(&mut self, fx: &mut Effects) {
         self.capture_selection();
         self.begin_read(fx);
+        self.stop_count(true);
         self.reload_from_columns(ColumnFreshness::Refetch);
     }
 
@@ -1268,21 +1295,16 @@ impl BrowseModel {
     /// depends on the page but not the column structure.
     fn refresh_grid_chrome(&self) {
         self.refresh_crud_buttons();
-        self.update_paginator_label();
-        let on_first_page = self.current_offset == 0;
-        self.first_button.set_sensitive(!on_first_page);
-        self.prev_button.set_sensitive(!on_first_page);
-        let n_rows = self.page.as_ref().map_or(0, |page| page.row_count as u64);
-        self.next_button.set_sensitive(n_rows == self.page_size);
-        // Last only enables when the total is known and the tab is not
-        // already on the last page.
-        let last_target = self
-            .current_total_rows
-            .filter(|t| *t > 0)
-            .map(|t| (t - 1) / self.page_size * self.page_size);
-        self.last_button
-            .set_sensitive(last_target.is_some_and(|target| self.current_offset != target));
+        self.first_button.set_sensitive(self.pager.first().is_some());
+        self.prev_button.set_sensitive(self.pager.prev().is_some());
+        self.next_button
+            .set_sensitive(self.pager.next(self.rows_on_page()).is_some());
+        self.sync_total_chrome();
         self.suppress_combo_emit.set(false);
+    }
+
+    fn rows_on_page(&self) -> u64 {
+        self.page.as_ref().map_or(0, |page| page.row_count as u64)
     }
 
     fn has_primary_key(&self) -> bool {
@@ -1347,20 +1369,7 @@ impl BrowseModel {
         }
         let start = page.start_ordinal + 1;
         let end = page.start_ordinal + n_rows as u64;
-        let start_s = format_thousands(start);
-        let end_s = format_thousands(end);
-        let label = match self.current_total_rows {
-            Some(total) => crate::i18n::gettext_f(
-                "Rows {start} – {end} of {total}",
-                &[
-                    ("start", &start_s),
-                    ("end", &end_s),
-                    ("total", &format_thousands(total)),
-                ],
-            ),
-            None => crate::i18n::gettext_f("Rows {start} – {end}", &[("start", &start_s), ("end", &end_s)]),
-        };
-        self.paginator_label.set_label(&label);
+        self.paginator_label.set_label(&self.total.paginator_label(start, end));
     }
 
     fn show_loading(&self) {
@@ -1376,7 +1385,7 @@ impl BrowseModel {
     /// are dropped, so nothing past the visible columns reaches a copy
     /// or an export. The tab's drafts stay on top.
     fn on_rows_loaded(&mut self, offset: u64, reply: PageReply, fx: &mut Effects) {
-        self.current_offset = offset;
+        self.pager.go_to(offset);
         let PageReply { result, layout, .. } = reply;
         let QueryResult {
             columns,
@@ -1414,8 +1423,8 @@ impl BrowseModel {
         PageView {
             filter: self.current_filter.clone(),
             sort: self.current_sort,
-            offset: self.current_offset,
-            limit: self.page_size,
+            offset: self.pager.start_ordinal(),
+            limit: self.pager.page_size(),
         }
     }
 
@@ -1452,21 +1461,6 @@ impl BrowseModel {
         self.render_grid_if_ready(fx);
     }
 
-    fn on_row_count_loaded(&mut self, count: u64, fx: &mut Effects) {
-        self.current_total_rows = Some(count);
-        // A saved offset past the end goes back to the last full page,
-        // for rows another session deleted since.
-        if self.current_offset > 0 && count > 0 && self.current_offset >= count {
-            let last_page_offset = count.saturating_sub(1) / self.page_size * self.page_size;
-            if last_page_offset != self.current_offset {
-                self.current_offset = last_page_offset;
-                self.fetch(BrowseRequestKind::Page, fx);
-                fx.output(BrowseTabOutput::StateChanged);
-            }
-        }
-        self.update_paginator_label();
-    }
-
     fn update(&mut self, msg: BrowseTabInput, fx: &mut Effects) {
         match msg {
             BrowseTabInput::Start => {
@@ -1485,6 +1479,7 @@ impl BrowseModel {
             BrowseTabInput::SchemaChanged => {
                 self.capture_selection();
                 self.begin_read(fx);
+                self.stop_count(true);
                 self.reload_from_columns(ColumnFreshness::Cached);
             }
             BrowseTabInput::Refresh => self.reload(fx),
@@ -1520,49 +1515,20 @@ impl BrowseModel {
                         .set_filters(conn_id, self.schema.as_deref(), &self.table, set.clone());
                 }
                 // Filtered counts shift, so back to page 1.
-                self.current_offset = 0;
+                self.pager.go_to(0);
                 self.refresh_filter_chrome();
                 if let Some(strip) = self.filter_strip.as_ref() {
                     strip.update_filter(set);
                 }
+                self.stop_count(false);
                 self.fetch(BrowseRequestKind::Page, fx);
-                self.fetch(BrowseRequestKind::Count, fx);
+                self.fetch(BrowseRequestKind::Estimate, fx);
                 fx.output(BrowseTabOutput::StateChanged);
             }
-            BrowseTabInput::FirstPage => {
-                if self.current_offset > 0 {
-                    self.current_offset = 0;
-                    self.fetch(BrowseRequestKind::Page, fx);
-                    fx.output(BrowseTabOutput::StateChanged);
-                }
-            }
-            BrowseTabInput::PrevPage => {
-                if self.current_offset >= self.page_size {
-                    self.current_offset -= self.page_size;
-                    self.fetch(BrowseRequestKind::Page, fx);
-                    fx.output(BrowseTabOutput::StateChanged);
-                }
-            }
-            BrowseTabInput::NextPage => {
-                self.current_offset += self.page_size;
-                self.fetch(BrowseRequestKind::Page, fx);
-                fx.output(BrowseTabOutput::StateChanged);
-            }
-            BrowseTabInput::LastPage => {
-                // The button stays disabled until the count is known.
-                let Some(total) = self.current_total_rows else {
-                    return;
-                };
-                if total == 0 {
-                    return;
-                }
-                let last_page_offset = (total - 1) / self.page_size * self.page_size;
-                if self.current_offset != last_page_offset {
-                    self.current_offset = last_page_offset;
-                    self.fetch(BrowseRequestKind::Page, fx);
-                    fx.output(BrowseTabOutput::StateChanged);
-                }
-            }
+            BrowseTabInput::FirstPage => self.turn_page(self.pager.first(), fx),
+            BrowseTabInput::PrevPage => self.turn_page(self.pager.prev(), fx),
+            BrowseTabInput::NextPage => self.turn_page(self.pager.next(self.rows_on_page()), fx),
+            BrowseTabInput::LastPage => self.turn_page(self.pager.last(&self.total), fx),
             BrowseTabInput::SortChanged { col_idx, ascending } => {
                 // The sorter notifies twice for one click on a new column
                 // (column, then order), with the same final pair.
@@ -1571,17 +1537,16 @@ impl BrowseModel {
                     return;
                 }
                 self.current_sort = Some(next);
-                self.current_offset = 0;
+                self.pager.go_to(0);
                 self.capture_selection();
                 self.fetch(BrowseRequestKind::Page, fx);
                 fx.output(BrowseTabOutput::StateChanged);
             }
             BrowseTabInput::PageSizeChanged(size) => {
-                if self.suppress_combo_emit.get() || self.page_size == size {
+                if self.suppress_combo_emit.get() || self.pager.page_size() == size {
                     return;
                 }
-                self.page_size = size;
-                self.current_offset = 0;
+                self.pager.resize(size);
                 self.fetch(BrowseRequestKind::Page, fx);
                 fx.output(BrowseTabOutput::StateChanged);
             }
@@ -1732,15 +1697,24 @@ impl BrowseModel {
                     selection.unselect_all();
                 }
             }
-            BrowseTabInput::SaveCommitted => {
+            BrowseTabInput::SaveCommitted(origins) => {
                 self.show_saving(false);
                 // The tracker already let go of what the save wrote. The
                 // reload replaces every row; dropping the saved drafts
                 // from the store first would blank them until it lands.
                 self.sync_pending_chrome(self.tracker.pending_count(), fx);
                 self.capture_selection();
+                // The save says how the total moved, so nothing is
+                // counted again.
+                self.total
+                    .adjust_after_save(origins.inserts, origins.deletes, !self.current_filter.is_empty());
+                self.sync_total_chrome();
                 self.fetch(BrowseRequestKind::Page, fx);
-                self.fetch(BrowseRequestKind::Count, fx);
+            }
+            BrowseTabInput::CountRows => {
+                if self.total.exact().is_none() && !self.sequencer.is_pending(BrowseRequestKind::Count) {
+                    self.start_count(self.total.estimate(), fx);
+                }
             }
             BrowseTabInput::SaveFailed(message) => {
                 self.show_saving(false);
@@ -1774,6 +1748,16 @@ impl BrowseModel {
                 }
             }
         }
+    }
+
+    /// Read the page a paginator move landed on, if it moved.
+    fn turn_page(&mut self, target: Option<(PagePosition, u64)>, fx: &mut Effects) {
+        let Some((_, start)) = target else {
+            return;
+        };
+        self.pager.go_to(start);
+        self.fetch(BrowseRequestKind::Page, fx);
+        fx.output(BrowseTabOutput::StateChanged);
     }
 
     fn scroll_to_row(&self, target: impl FnOnce(u32) -> Option<u32>) {
@@ -2037,23 +2021,6 @@ fn update_selection_chrome(label: &gtk::Label, n: u32) {
         &[("n", &count)],
     ));
     label.set_visible(true);
-}
-
-/// Format a positive integer with thousands separators (1000 → 1,000).
-/// Used for page-size dropdown labels so they read naturally instead
-/// of the abbreviated "1 K" / "5 K" form.
-fn format_thousands(n: u64) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let len = bytes.len();
-    let mut out = String::with_capacity(len + len / 3);
-    for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(*b as char);
-    }
-    out
 }
 
 /// The result-column view of a catalogue column list, for a result the

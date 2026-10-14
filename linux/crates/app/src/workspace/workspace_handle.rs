@@ -20,6 +20,7 @@ use super::{
     next_close_step,
 };
 use crate::services::active_session::ActiveSession;
+use crate::services::change_origins::ChangeOrigins;
 use crate::services::change_tracker::{StatementSource, TrackedChanges, pk_identity};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::history_service::HistoryService;
@@ -311,6 +312,7 @@ impl WorkspaceHandle {
         let inner = self.0.clone();
         let tracker = tracker.clone();
         let (changes, snapshot, id) = (batch.changes, batch.snapshot, ticket.id);
+        let origins = ChangeOrigins::of(&changes.changes);
         let _delivery = crate::runtime::spawn_and_deliver(&self.0.deps.tasks, work, move |finished| {
             let work = finished.unwrap_or_else(|failure| SaveWork::failed(OperationError::from(failure)));
             let failing = failing_step(&work, &changes);
@@ -324,6 +326,7 @@ impl WorkspaceHandle {
                     outcome,
                     failing,
                     saved_table_name: None,
+                    origins,
                 },
             );
         });
@@ -429,6 +432,7 @@ impl WorkspaceHandle {
                     outcome,
                     failing: None,
                     saved_table_name,
+                    origins: ChangeOrigins::default(),
                 },
             );
         });
