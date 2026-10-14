@@ -690,6 +690,18 @@ fn current_page_export_includes_pending_edits() {
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    // The total is read after the page, on its own.
+    wait_until(WAIT, || {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        harness
+            .tab()
+            .imp()
+            .model
+            .borrow()
+            .as_ref()
+            .is_some_and(|model| model.total != RowTotal::Unknown)
+    })
+    .expect("the table's total");
     harness.apply_delta(&harness.tracker.apply(rename(0, "Ada", "Ada Lovelace")));
     let offers = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let sink = offers.clone();
