@@ -4,7 +4,7 @@ Use this page to select checks, hand off work, and review evidence. The executab
 
 ## Current desktop target
 
-The [current continuation](bookie-0.2-sprint.md#current-continuation) orders B3, B4, then Arch/Omarchy/Hyprland native Wayland UI acceptance. GNOME desktop on Debian is the required installed/package phase after Arch; current B3/B4 implementation does not require that VM. GNOME 50 in the layer catalog names GTK/libadwaita development-library requirements, not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
+The [current continuation](bookie-0.2-sprint.md#current-continuation) orders B3, B4, then Arch/Omarchy/Hyprland native Wayland UI acceptance. Debian/GNOME installed-package acceptance follows Arch; current B3/B4 implementation work can proceed before that platform phase. GNOME 50 in the layer catalog names GTK/libadwaita development-library requirements, not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
 
 ## Start here
 
@@ -82,7 +82,7 @@ Missing tools, nonzero exits, timeouts, cancellations and absent required test s
 | `security-policy` | Policy/MCP permissions, allowlists, bounds and audit behavior | Non-GTK dependencies; does not prove every server authorization mode |
 | `supply-chain` | Advisory, license and dependency-source policy | `cargo-deny`, `cargo-audit`, network; repository exceptions remain explicit |
 | `widgets` | Named GTK widget regressions in isolated processes | GNOME 50, Xvfb and private D-Bus |
-| `app-server` | Registered PostgreSQL/MySQL/MongoDB parser, keyed-edit and metadata contracts | GNOME 50 build libraries and Docker; hosted GTK fast job |
+| `app-server` | App parser and grid-edit contracts against PostgreSQL, MySQL, MongoDB and SQL Server | GNOME 50 build libraries and Docker; hosted GTK fast job |
 | `keyring` | Registered Secret Service contracts | Private D-Bus, gnome-keyring and libsecret tools |
 | `ui` | Real application actions and database postconditions via AT-SPI | GNOME 50, Xvfb, PyAT-SPI; X11 automation, not Wayland acceptance |
 | `mssql-kerberos` | SQL Server integrated authentication, SPN refusal and verified TLS against an isolated test domain | Docker Compose with privileged-container support; opt-in local fixture |
