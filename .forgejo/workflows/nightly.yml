@@ -162,7 +162,7 @@ jobs:
         run: |
           cd src
           cargo build --release --locked -p tablepro-app --bin tablepro-app
-          binary="$PWD/target-soak-${{ matrix.run }}/tablepro"
+          binary="$PWD/target-soak-${{ matrix.run }}/usr/bin/tablepro"
           install -Dm755 "$CARGO_TARGET_DIR/release/tablepro-app" "$binary"
           for attempt in 1 2 3 4 5; do
             echo "soak run ${{ matrix.run }} attempt $attempt at $(git rev-parse HEAD)"

@@ -372,6 +372,16 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("-Dsonar.python.coverage.reportPaths=target/sonar/python-coverage.xml", workflow)
 
 
+    def test_arch_package_container_mounts_the_repository_root(self):
+        script = (ROOT / "scripts/test-arch-package-container.sh").read_text()
+        self.assertIn('-v "$PWD:/src:ro"', script)
+        self.assertNotIn('$PWD/..', script)
+
+    def test_nightly_soak_installs_the_binary_under_usr_bin(self):
+        nightly = (ROOT / ".forgejo/workflows/nightly.yml").read_text()
+        soak = nightly.split("\n  gtk-soak:\n", 1)[1].split("\n  arch-package:\n", 1)[0]
+        self.assertIn('binary="$PWD/target-soak-${{ matrix.run }}/usr/bin/tablepro"', soak)
+
     def test_forgejo_workflows_use_no_node_actions_on_host_executors(self):
         for workflow in (ROOT / ".forgejo/workflows").glob("*.yml"):
             self.assertNotIn("uses:", workflow.read_text(), workflow.name)

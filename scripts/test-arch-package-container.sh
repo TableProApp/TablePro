@@ -5,7 +5,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 released_url="${ARCH_RELEASED_URL:-https://github.com/cozyGarage/BookiE/releases/download/linux-v0.1.5/bookie-0.1.5-1-x86_64.pkg.tar.zst}"
 version="${ARCH_CANDIDATE_VERSION:-0.1.6}"
 
-docker run --rm -v "$PWD/..:/src:ro" -e RELEASED_URL="$released_url" -e VERSION="$version" archlinux:latest bash -ceu '
+docker run --rm -v "$PWD:/src:ro" -e RELEASED_URL="$released_url" -e VERSION="$version" archlinux:latest bash -ceu '
   pacman -Syu --noconfirm --needed base-devel git rust pkgconf clang gettext sudo curl \
     gtk4 libadwaita gtksourceview5 libsecret krb5 sqlite openssl desktop-file-utils appstream namcap >/dev/null
   useradd -m builder
