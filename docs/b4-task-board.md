@@ -13,9 +13,9 @@ This page is a pointer. The pre-migration board (release wrap-up, TEST-15 accept
 | 0.2.0 blockers and order | [Sprint](bookie-0.2-sprint.md), [0.2.0 scope](0.2.0-scope.md) |
 | Frozen-candidate TEST-15 selectors | [Archived board](archive/b4-task-board-pre-project-migration-2026-10-12.md#test-15-release-acceptance-list) |
 | Earlier B4 local recheck at `472a50be` | [2026-10-13 results](evidence/b4-current-linux-472a50be-2026-10-13/README.md) |
-| Current-tip PostgreSQL, SSH and audit release checks | [2026-10-13 results](evidence/b4-current-linux-1ff2ff9c-2026-10-13/README.md) |
+| PostgreSQL, SSH and audit release checks at `1ff2ff9c` | [2026-10-13 results](evidence/b4-current-linux-1ff2ff9c-2026-10-13/README.md) |
 | AUD-2 MySQL approval denial and approval workflow | [2026-10-13 results](evidence/aud2-mysql-approval-6c777a0d-2026-10-13/README.md) |
-| B4-11 MySQL-family rollback matrix at current tip | [2026-10-13 manifest](evidence/b4-mysql-atomic-linux-ecdc8568-2026-10-13/manifest.json) |
+| B4-11 MySQL-family rollback matrix at `ecdc8568` | [2026-10-13 manifest](evidence/b4-mysql-atomic-linux-ecdc8568-2026-10-13/manifest.json) |
 | Installed Arch/Hyprland checklist | [Archived board](archive/b4-task-board-pre-project-migration-2026-10-12.md#installed-archhyprland-acceptance-checklist) |
 | Focused release triage | [evidence/b4-release-triage-2026-10-11/triage.md](evidence/b4-release-triage-2026-10-11/triage.md) |
 | Bounded mutation survivor triage | [evidence/b4-mutation-triage-2026-10-12/README.md](evidence/b4-mutation-triage-2026-10-12/README.md) |

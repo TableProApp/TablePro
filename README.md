@@ -10,7 +10,7 @@ Every shipped feature is free to use. BookiE has no account, license, subscripti
 
 ## Status
 
-The Linux client is under active development toward BookiE 0.2.0. B3 type/value and B4 transport/session correctness blockers remain, followed by installed desktop qualification. Workflows include saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, and the headless `bookie-agentd` process. Table browsing fetches bounded pages from the database. Arbitrary SQL editor results are still materialized up to configured caps; progressive server-cursor paging is accepted in [ADR 0011](docs/decisions/0011-paged-query-results.md) but not implemented.
+The Linux client is under active development toward BookiE 0.2.0. B3 type/value and B4 transport/session correctness blockers remain, followed by installed desktop qualification. Workflows include saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, and the headless `bookie-agentd` process. Table browsing fetches bounded pages from the database. Core and PostgreSQL cursor APIs exist, but the policy-governed editor path is not complete, so arbitrary SQL results are still materialized up to configured caps ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8).
 
 PostgreSQL is the furthest along: server-confirmed cancellation, certificate hostname and authority verification, verified TLS through an SSH tunnel, read-only denial, rollback, blocking-lock reporting, and reconnect run as deterministic container checks. MySQL, ClickHouse, Redis, and MongoDB also have driver TLS fixture evidence; those fixtures do not establish full transport or packaging readiness. Packaging is not release-verified. [`ROADMAP.md`](ROADMAP.md) links to current milestone status and the detailed acceptance boards.
 
@@ -126,7 +126,6 @@ bash scripts/preflight.sh
 From the repository root:
 
 ```bash
-./scripts/preflight.sh
 ./scripts/smoke-postgres.sh          # optional smoke against a local PostgreSQL
 ./scripts/test-postgres-socket.sh    # disposable Unix-socket fixture
 ```
@@ -139,7 +138,7 @@ GitHub runs the cheap tier only; merge acceptance is the Forgejo gate (`bash scr
 
 ## Packaging
 
-The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see [the release evidence](docs/archive/release-0.1.4.md) and [apps/linux/packaging/README.md](apps/linux/packaging/README.md). To rebuild the Arch package from a clean commit at the repository root:
+The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see the [0.1.5 release notes](CHANGELOG.md) and [packaging guide](apps/linux/packaging/README.md). To rebuild the Arch package from a clean commit at the repository root:
 
 ```bash
 TABLEPRO_RC_COMMIT="$(git rev-parse HEAD)" TABLEPRO_RC_VERSION=0.1.5 ./scripts/build-arch-rc.sh

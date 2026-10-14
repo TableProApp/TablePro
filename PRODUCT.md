@@ -17,7 +17,7 @@ Stay a Linux-only native client. Finish BookiE 0.2.0 as a development release fo
 ## Current state (as of 2026-10)
 
 - **Live:** saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, `bookie-agentd`. Installable 0.1.5 packages on Debian (GNOME 50 libraries) and Arch. PostgreSQL is the furthest-along engine.
-- **In progress:** B3 type/value consumer coverage, B4 transport and session acceptance, installed desktop qualification, progressive server-cursor paging (accepted in ADR 0011, not implemented).
+- **In progress:** B3 type/value consumer coverage, B4 transport and session acceptance, installed desktop qualification, and progressive server-cursor paging. Core and PostgreSQL cursor support exists; PolicyGuard and editor integration remain ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
 - **Left out of 0.2.0:** Flatpak and Flathub, a web UI, runtime driver plugins, accounts or paid tiers.
 
 ## Users / personas

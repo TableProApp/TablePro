@@ -19,7 +19,7 @@ pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5
 cargo run -p tablepro-app
 ```
 
-Use a short-lived local branch when useful, then open the pull request against `linux`.
+Agents use a lane-named worktree and branch; human contributors may use a local branch. Open pull requests against `linux`.
 
 ## Project layout
 

@@ -1,14 +1,12 @@
 # Testing
 
-The [September 29 regression audit](archive/regression-audit-2026-09-29.md) records the latest findings, added tests, structure changes and execution evidence.
-
-Start with the [validation playbook](validation-playbook.md) for the executable layer catalog, local commands, CI ownership, agent handoffs and regression intake. The shared runner retains reports and logs and fails on incomplete execution.
+The [active sprint](bookie-0.2-sprint.md) owns current acceptance. Start with the [validation playbook](validation-playbook.md) for the executable layer catalog, local commands, CI ownership, agent handoffs and regression intake. Dated audits in [archive](archive/) prove only their recorded source and environment.
 
 ## Executable gates
 
 Command catalogs, layer boundaries and CI ownership live in the [validation playbook](validation-playbook.md). Prefer `python3 scripts/run-test-layer.py --list` and the playbook’s Start here section over copying Cargo invocations from this page.
 
-`scripts/ci-local.sh` remains the shared local/CI entry for full, widgets and integration modes. Registrations for isolated GTK and keyring tests live in `scripts/isolated-tests.json`; zero selected tests is a failure. Every `ci-local.sh` run saves exact-tree evidence under `target/quality/`. Release mode does not certify package installation, Wayland, upgrade/rollback or retry-free candidate soak. See [0.1.4 review actions and evidence](archive/release-0.1.4.md).
+`scripts/ci-local.sh` remains the shared local/CI entry for full, widgets and integration modes. Registrations for isolated GTK and keyring tests live in `scripts/isolated-tests.json`; zero selected tests is a failure. Every `ci-local.sh` run saves exact-tree evidence under `target/quality/`. Release mode does not certify package installation, Wayland, upgrade/rollback or retry-free candidate soak. See the [packaging guide](../apps/linux/packaging/README.md) and [manual checklist](manual-verification-0.2-features.md).
 
 Run from the repository root. Current scope and acceptance are in [the active sprint](bookie-0.2-sprint.md); dated audits stay in [archive](archive/).
 
@@ -210,7 +208,7 @@ Gates are serialised by a host lock and one full run takes 10 to 20 minutes, so 
 
 ### Reading a red run
 
-`scripts/classify-ci-failure.py --run RUN_ID` (or `--log FILE`) tags each failed job from its log. It reads `FORGEJO_API` or derives it from the `forgejo` remote, and the token from `~/.config/forgejo/token`, like `scripts/forgejo-gate.sh`.
+`scripts/classify-ci-failure.py --run RUN_ID` (or `--log FILE`) tags each failed job from its log. It reads the Forgejo endpoint and token from the same configuration as `scripts/forgejo-gate.sh`.
 
 | Tag | Meaning | What to do |
 |---|---|---|

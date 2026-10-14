@@ -45,9 +45,9 @@ candidate inventory as a release commitment.
 | B4-9, B4-11, B4-17, B4-21 | Route and TLS acceptance evidence, failed-batch rollback on optional MySQL engines and package acceptance, native multi-hop trust flow, SQL Server Kerberos Windows AD interoperability and package acceptance |
 | UI-13b | Implement verified snapshot export paths (ADR 0014); unsupported full export is refused |
 
-## Infrastructure
+## Development tooling
 
-- Enable Hyper-Threading on two lab hosts, raise executor sizes, split runners by job class, then allow two gates to overlap.
+- Improve CI feedback time and reliability based on measured workload and available capacity ([#573](https://github.com/cozyGarage/BookiE/issues/573)).
 - Folder layout: done on 2026-10-11 (`crates/`, `apps/linux/`, `tests/`; see [ARCHITECTURE](../ARCHITECTURE.md#repository-layout)). Moving every per-crate integration test out of its crate stays a separate, larger step if wanted.
 
 ## GitHub issues
@@ -78,7 +78,7 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#567](https://github.com/cozyGarage/BookiE/issues/567) | MongoDB metadata sample consistency (TEST-12) |
 | [#571](https://github.com/cozyGarage/BookiE/issues/571) | AUD-11 single-AST-walk consolidation |
 | [#572](https://github.com/cozyGarage/BookiE/issues/572) | Clear NEEDS REVIEW on PRODUCT, personas and capability specs |
-| [#573](https://github.com/cozyGarage/BookiE/issues/573) | Lab runners: Hyper-Threading, sizing, overlapping gates |
+| [#573](https://github.com/cozyGarage/BookiE/issues/573) | CI feedback time and reliability |
 | [#574](https://github.com/cozyGarage/BookiE/issues/574) | PKG-1 Arch / Omarchy / Hyprland Wayland acceptance |
 | [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |
 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant); merged; installed-form acceptance remaining |

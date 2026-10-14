@@ -140,7 +140,6 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - The docked query history panel rebuilds each time it opens, so its connection filter lists connections added, renamed or deleted since it was last shown.
 - PostgreSQL browse pages for tables without a primary key now use the row locator as a stable ordering tie-breaker, preventing duplicates and gaps between static pages.
 - Filtering a PostgreSQL column of type `time`, `timetz`, `interval`, `inet`, `bit`, a range, an enum whose name contains a type word such as `update_kind`, or a domain now builds a valid filter instead of misreading the value or comparing it as text.
-- PostgreSQL grid edits, inserts, key lookups and deletes now work for `inet`, `cidr`, `macaddr`, `interval`, `bit`, `varbit`, `xml` and `tsvector` values, which were sent as text and refused by the server, and for padded `char(n)` keys and `json` columns, which reported a false concurrent modification or could not be edited.
 - CSV import into PostgreSQL reads enum and domain columns, bit strings and ranges as text, so an enum named like `maintenance_status` or a `bit(3)` value no longer fails as "not a whole number".
 - Create table from CSV keeps zip codes, phone numbers and other identifiers with a leading zero or plus as text instead of turning `01234` into `1234`.
 - Identifier quoting keeps control characters in a name instead of removing them, so a statement can no longer target a different table than the one named.

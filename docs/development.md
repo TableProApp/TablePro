@@ -34,7 +34,7 @@ Keep code focused and readable:
 - Keep public crate boundaries typed with `thiserror` errors.
 - Add tests for behavior changes.
 - Keep GTK objects on the GLib main context. Run database and service work through the existing Relm4 and Tokio bridge.
-- Add comments only when they explain a constraint that names and types cannot express.
+- Do not add code comments or doc comments except when an external system requires them; follow [AGENTS.md](../AGENTS.md#principles).
 
 ## Database drivers
 
@@ -48,7 +48,7 @@ Read [docs/storage.md](storage.md) before changing persisted data. Do not put pa
 
 Keep UI state in Relm4 components and move testable rules into pure Rust services. Add unit tests for extracted logic. Safety-sensitive GTK flows need targeted tests when they can run deterministically. The current release blockers are listed in [docs/production-audit.md](archive/production-audit.md).
 
-Include before and after screenshots for visible changes. Test both light and dark themes when colors or contrast change.
+Include before and after screenshots for visible changes. Test both light and dark themes when colors or contrast change. Current release blockers and acceptance live in the [active sprint](bookie-0.2-sprint.md), not in a dated audit.
 
 ## Packaging
 

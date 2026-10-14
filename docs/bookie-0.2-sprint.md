@@ -16,7 +16,7 @@ No 0.2 release is approved. Before a frozen candidate SHA, these stay open (owne
 
 ## Current continuation
 
-The merged baseline is `linux` itself: see `git log` and the [ledger index](known-issues.md) for what has landed (through #630 on 2026-10-12), and [Project #3](https://github.com/users/cozyGarage/projects/3) for open work.
+The merged baseline is the current `linux` branch. Use `git log` for landed changes and [Project #3](https://github.com/users/cozyGarage/projects/3) for open work; this sprint does not maintain a copied pull request count.
 
 Order for 0.2.0: **B3/B4 correctness blockers → installed Arch/Omarchy/Hyprland Wayland → B7 qualification**. Debian/GNOME desktop acceptance follows in 0.2.x. Review may overlap reserved fixtures; a lane pass does not close a milestone. The tip is not release-qualified. Limitations that 0.2.0 accepts stay in [known limitations](known-limitations.md); fixes after 0.2.0 stay in the [backlog](backlog.md).
 

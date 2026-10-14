@@ -93,7 +93,7 @@ Build/package, mutation, coverage and acceptance retain their existing entrypoin
 | Mutation | Linux test quality; [local instructions](testing.md#mutation-testing) | Selected/generated count, caught/missed/timeout/unviable counts and outcomes JSON |
 | Coverage | Linux test quality; [local instructions](testing.md#coverage) | LCOV, exclusions and summary; no score threshold implied |
 | Flatpak | Flatpak Linux (packaging only) | Pull requests build the default profile; push and `workflow_dispatch` also build development; not regression acceptance |
-| Arch / Debian candidate | [Release guide](archive/release-0.1.4.md) and packaging scripts | Immutable SHA, package checksum, validator output |
+| Arch / Debian candidate | [Packaging guide](../apps/linux/packaging/README.md) and packaging scripts | Immutable SHA, package checksum, validator output |
 | GTK soak | GTK Safety Soak | Five independent retry-free attempts at one resolved SHA |
 | Installed acceptance | [Manual feature checklist](manual-verification-0.2-features.md) and sprint gates | VM/desktop version, Wayland session, package checksum, steps, result and screenshots |
 

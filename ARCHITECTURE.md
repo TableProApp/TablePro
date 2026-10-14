@@ -342,7 +342,7 @@ Each engine exports a type implementing `tablepro_core::DatabaseDriver`. Connect
 | Command scope | Component-scoped commands for tab/component lifetime. Detached Relm4 tasks only for independent persistence/cleanup. |
 | Tabs | `AdwTabView` workspaces; Relm4 controllers keyed by tab UUID. |
 | Browse grid | Bounded pages in `RowStore` (`gio::ListModel`); weakly cached `RowObject`s. |
-| SQL editor results | Materialized up to caps. Progressive server-cursor paging accepted in [ADR 0011](docs/decisions/0011-paged-query-results.md), not implemented (PERF-2/PERF-8). |
+| SQL editor results | Core and PostgreSQL cursor APIs exist; the policy-governed editor path is incomplete, so results remain materialized up to caps ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8). |
 | Identity | Sidebar refresh tokens hold a weak session reference. Tab results keep their tab UUID across connection switches. |
 
 ## Persistence
@@ -357,7 +357,7 @@ Default workspace Clippy/unit checks exclude optional DuckDB. GitHub runs the ch
 
 | Limit | Why |
 |---|---|
-| Linux only (today) | One developer; GTK/libadwaita stack. Shared crates stay UI-free so a later platform can reuse them. |
+| Linux only | GTK/libadwaita desktop and Linux packaging are the product target. UI-free crates support the headless daemon and test boundaries; another desktop platform is out of scope. |
 | Static drivers | Compile-time registration; no plugin ABI. |
 | No embedded browser | Native GTK widgets only. |
 | No in-process user scripting | Reduces attack surface beside SQL policy. |
