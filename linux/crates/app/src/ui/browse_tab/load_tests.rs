@@ -362,3 +362,77 @@ fn the_rows_behind_the_error_page_take_no_action() {
     );
     assert_eq!(harness.tab().imp().paginator_label.label(), "");
 }
+
+fn renamed_page() -> QueryResult {
+    let renamed = [column("id", true), column("full_name", false)];
+    QueryResult::new(
+        renamed.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+        vec![vec![Value::Int(0), Value::Text("Ada".to_owned())]],
+    )
+}
+
+/// The columns read again for a page that came back with others failed.
+/// Try Again starts over, so a page that comes back with other columns
+/// then gets its own read of them.
+#[gtk4::test]
+fn try_again_after_a_failed_recheck_reads_the_columns_once_more() {
+    let mut script = serving_table();
+    script.fetch_columns = Default::default();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .once(FakeReply::err(DriverError::server("busy")))
+        .always(FakeReply::ok(vec![column("id", true), column("name", false)]));
+    script
+        .query_bound
+        .once(FakeReply::ok(renamed_page()))
+        .once(FakeReply::ok(renamed_page()))
+        .always(FakeReply::ok(rows(&["back"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || error_text(&harness).contains("busy")).expect("the failed read of the columns");
+
+    harness.tab().imp().retry_button.emit_clicked();
+
+    wait_until(WAIT, || harness.shown() == text(&["back"])).expect("the page after the columns were read again");
+    assert_eq!(CallCounters::get(&harness.connection.counters().fetch_columns), 4);
+}
+
+/// A refresh whose columns failed asked for no page and no estimate. A
+/// later read of the columns, for a page that came back with others,
+/// must not start them.
+#[gtk4::test]
+fn a_failed_column_read_leaves_no_read_for_a_later_one_to_start() {
+    let mut script = serving_table();
+    script.fetch_columns = Default::default();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .once(FakeReply::err(DriverError::server("busy")))
+        .always(FakeReply::ok(vec![column("id", true), column("name", false)]));
+    script
+        .query_bound
+        .once(FakeReply::ok(rows(&["first"])))
+        .once(FakeReply::ok(renamed_page()))
+        .always(FakeReply::ok(rows(&["back"])));
+    let harness = Harness::open(script, []);
+    let counters = harness.connection.counters();
+    wait_until(WAIT, || harness.shown() == text(&["first"])).expect("the first page");
+    wait_until(WAIT, || CallCounters::get(&counters.count_rows) == 1).expect("the count");
+    harness.tab().send(BrowseTabInput::Refresh);
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed refresh");
+
+    harness.tab().send(BrowseTabInput::SortChanged {
+        col_idx: 0,
+        ascending: false,
+    });
+    wait_until(WAIT, || harness.shown() == text(&["back"])).expect("the page after the columns were read again");
+    std::thread::sleep(Duration::from_millis(200));
+    drain_main_context();
+
+    assert_eq!(CallCounters::get(&counters.fetch_columns), 3);
+    assert_eq!(
+        CallCounters::get(&counters.table_estimate),
+        1,
+        "the failed refresh's estimate ran under a later read of the columns"
+    );
+}

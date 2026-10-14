@@ -40,10 +40,21 @@ impl ColumnRecheck {
             self.attempted = false;
             return RecheckAction::Accept;
         }
+        // A failure spends the refetch, so the next mismatch, after Try
+        // Again or a page turn, gets one of its own.
         match std::mem::replace(&mut self.attempted, true) {
             false => RecheckAction::Refetch,
-            true => RecheckAction::Fail,
+            true => {
+                self.attempted = false;
+                RecheckAction::Fail
+            }
         }
+    }
+
+    /// A read of the columns other than the recheck's own, or the end of
+    /// the recheck's own in a failure.
+    pub(crate) fn reset(&mut self) {
+        self.attempted = false;
     }
 }
 
@@ -108,6 +119,29 @@ mod tests {
             RecheckAction::Refetch,
             "a page that matched did not reset the guard"
         );
+    }
+
+    #[test]
+    fn a_failed_recheck_leaves_the_next_mismatch_its_refetch() {
+        let mut recheck = ColumnRecheck::default();
+        let columns = [column("id"), column("name")];
+        let renamed = result(&["id", "full_name"]);
+
+        assert_eq!(recheck.check(&columns, &renamed, &layout(2, 0)), RecheckAction::Refetch);
+        assert_eq!(recheck.check(&columns, &renamed, &layout(2, 0)), RecheckAction::Fail);
+        assert_eq!(recheck.check(&columns, &renamed, &layout(2, 0)), RecheckAction::Refetch);
+    }
+
+    #[test]
+    fn a_reset_leaves_the_next_mismatch_its_refetch() {
+        let mut recheck = ColumnRecheck::default();
+        let columns = [column("id"), column("name")];
+        let renamed = result(&["id", "full_name"]);
+
+        assert_eq!(recheck.check(&columns, &renamed, &layout(2, 0)), RecheckAction::Refetch);
+        recheck.reset();
+
+        assert_eq!(recheck.check(&columns, &renamed, &layout(2, 0)), RecheckAction::Refetch);
     }
 
     #[test]

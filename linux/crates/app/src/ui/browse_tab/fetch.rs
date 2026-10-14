@@ -63,7 +63,14 @@ impl BrowseModel {
         self.sequencer.issue(kind)
     }
 
+    /// A new read of the columns, so the page read under them gets its
+    /// own recheck.
     fn fetch_columns(&mut self, freshness: ColumnFreshness) {
+        self.recheck.reset();
+        self.read_columns(freshness);
+    }
+
+    fn read_columns(&mut self, freshness: ColumnFreshness) {
         let ticket = self.issue(BrowseRequestKind::Columns);
         let session = self.session.clone();
         let table = self.table_ref();
@@ -222,6 +229,13 @@ impl BrowseModel {
                         }
                     }
                     Err(failure) => {
+                        self.recheck.reset();
+                        // What waited on the columns was never asked, so it
+                        // is asked again with them rather than set off by a
+                        // later read of the columns that wanted none of it.
+                        for kind in std::mem::take(&mut self.after_columns) {
+                            self.failed.insert(kind);
+                        }
                         self.on_load_failed(failure, fx);
                         self.retry_if_link_moved(BrowseRequestKind::Columns, fx);
                     }
@@ -285,7 +299,7 @@ impl BrowseModel {
             RecheckAction::Refetch => {
                 tracing::debug!("a page came back with other columns; reading the columns again");
                 self.after_columns.insert(BrowseRequestKind::Page);
-                self.fetch_columns(ColumnFreshness::Refetch);
+                self.read_columns(ColumnFreshness::Refetch);
             }
             RecheckAction::Fail => self.on_load_failed(LoadFailure::ColumnsChanged, fx),
         }

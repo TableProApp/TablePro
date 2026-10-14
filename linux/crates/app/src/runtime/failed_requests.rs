@@ -19,6 +19,12 @@ impl<K: Ord + Copy> FailedRequests<K> {
         };
     }
 
+    /// A request that was never asked, because the one it waited on
+    /// failed first.
+    pub fn insert(&mut self, kind: K) {
+        self.kinds.insert(kind);
+    }
+
     pub fn contains(&self, kind: K) -> bool {
         self.kinds.contains(&kind)
     }

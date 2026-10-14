@@ -595,8 +595,9 @@ pub(crate) struct BrowseModel {
     tasks: Tasks,
     sequencer: RequestSequencer<BrowseRequestKind>,
     failed: FailedRequests<BrowseRequestKind>,
-    /// Reads that wait for the columns, because a page and a count are
-    /// built from them.
+    /// Reads that wait for the columns: a page is built from them, and
+    /// the tab reads nothing else of a table whose columns it could not
+    /// read.
     after_columns: BTreeSet<BrowseRequestKind>,
     recheck: ColumnRecheck,
     /// The connection each running request was issued on. A request
