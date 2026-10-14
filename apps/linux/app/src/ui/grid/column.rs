@@ -87,6 +87,7 @@ pub(super) fn build_column(
                     item,
                     idx,
                     column_name.clone(),
+                    super::full_value_editor::is_text_column(&column_data_type),
                     edit_sender,
                     editor_kind,
                     choices_for_setup.clone(),

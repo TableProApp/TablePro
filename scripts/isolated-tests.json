@@ -255,6 +255,16 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::full_value_editor::tests::applying_empty_text_stages_empty_text_without_converting_it_to_null"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::full_value_editor::tests::set_null_stages_null_and_cancel_stages_nothing"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::find_bar::tests::find_selects_matches_and_replace_all_rewrites_every_occurrence"
     ],
     [

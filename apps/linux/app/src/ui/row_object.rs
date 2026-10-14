@@ -125,7 +125,7 @@ impl RowObject {
         self.with_cell_value(idx, |_| ()).is_some()
     }
 
-    fn with_cell_value<R>(&self, idx: usize, f: impl FnOnce(&Value) -> R) -> Option<R> {
+    pub(crate) fn with_cell_value<R>(&self, idx: usize, f: impl FnOnce(&Value) -> R) -> Option<R> {
         let cells = self.imp().cells.borrow();
         if let Some(value) = cells.get(idx)?.as_ref() {
             return Some(f(value));

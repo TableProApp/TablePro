@@ -202,6 +202,10 @@ impl<K: WidgetDataKey> WidgetSlot<K> {
     pub(super) fn take(&self, widget: &impl IsA<gtk4::Widget>) -> Option<K::Value> {
         unsafe { widget.steal_qdata::<K::Value>(K::quark()) }
     }
+
+    pub(super) fn with<R>(&self, widget: &impl IsA<gtk4::Widget>, f: impl FnOnce(&K::Value) -> R) -> Option<R> {
+        unsafe { widget.qdata::<K::Value>(K::quark()).map(|p| f(p.as_ref())) }
+    }
 }
 
 impl<K: WidgetDataKey> WidgetSlot<K>

@@ -7,6 +7,7 @@ mod context_menu;
 mod display;
 mod editing;
 mod export;
+pub(crate) mod full_value_editor;
 pub(crate) mod local_filter;
 mod local_sort;
 mod presentation;
@@ -44,6 +45,12 @@ pub enum GridMsg {
         /// Primary-key values read when the editor opened. The receiver
         /// rejects the edit if the row now at `row_position` is a
         /// different one.
+        row_key: Vec<tablepro_core::Value>,
+    },
+    CellEditedValue {
+        row_position: u32,
+        col_index: usize,
+        value: tablepro_core::Value,
         row_key: Vec<tablepro_core::Value>,
     },
     CopyToClipboard(String),

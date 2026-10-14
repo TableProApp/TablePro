@@ -246,6 +246,7 @@ pub enum BrowseTabInput {
         row_position: u32,
         col_index: usize,
         new_value: String,
+        value: Option<Value>,
         row_key: Vec<Value>,
     },
     FilterByValue {
@@ -1128,8 +1129,12 @@ impl SimpleComponent for BrowseTab {
                 row_position,
                 col_index,
                 new_value,
+                value,
                 row_key,
-            } => self.handle_grid_cell_edited(row_position, col_index, new_value, row_key, sender),
+            } => match value {
+                Some(value) => self.handle_grid_cell_value_edited(row_position, col_index, value, row_key, sender),
+                None => self.handle_grid_cell_edited(row_position, col_index, new_value, row_key, sender),
+            },
             BrowseTabInput::GridSetCellNull {
                 row_position,
                 col_index,

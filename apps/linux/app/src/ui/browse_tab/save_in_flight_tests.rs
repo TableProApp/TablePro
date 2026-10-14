@@ -105,6 +105,7 @@ fn edit(controller: &relm4::Controller<BrowseTab>, col_index: usize, new_value: 
             row_position: 0,
             col_index,
             new_value: new_value.into(),
+            value: None,
             row_key: vec![Value::Int(1)],
         })
         .unwrap();

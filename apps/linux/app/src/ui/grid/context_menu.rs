@@ -27,6 +27,7 @@ pub(super) struct GridMenus {
     editable_popover: gtk::PopoverMenu,
     readonly_popover: gtk::PopoverMenu,
     edit_action: gio::SimpleAction,
+    edit_full_value_action: gio::SimpleAction,
     reference_action: gio::SimpleAction,
     foreign_key_columns: Rc<std::collections::HashSet<String>>,
 }
@@ -64,6 +65,51 @@ pub(super) fn install_grid_context_menus(
             {
                 enter_edit_mode(&label);
             }
+        });
+    }
+    let edit_full_value_action = gio::SimpleAction::new("edit-full-value", None);
+    {
+        let context = context.clone();
+        let view = column_view.downgrade();
+        let columns = columns.clone();
+        let sender = sender.clone();
+        edit_full_value_action.connect_activate(move |_, _| {
+            let context = context.borrow();
+            let Some(slot) = context.as_ref() else { return };
+            let Some(view) = view.upgrade() else { return };
+            let Some(column) = columns.get(slot.col_index) else {
+                return;
+            };
+            if !super::full_value_editor::is_text_column(&column.data_type) {
+                return;
+            }
+            let Some(row) = row_object_at(&view, position(slot)) else {
+                return;
+            };
+            let (_, row_key) = cell_row_identity(&slot.widget);
+            if row.draft_id().is_none() && !has_persisted_row_key(&row_key) {
+                return;
+            }
+            let initial_text = match full_text_seed(&slot.widget, &row, slot.col_index) {
+                TextSeed::Value(text) => text,
+                TextSeed::TooLarge => {
+                    super::full_value_editor::present_too_large(&view);
+                    return;
+                }
+                TextSeed::Unsupported => return,
+            };
+            super::full_value_editor::present(
+                &view,
+                &slot.column_name,
+                &initial_text,
+                super::full_value_editor::EditContext {
+                    row_position: position(slot),
+                    col_index: slot.col_index,
+                    row_key,
+                    nullable: column.nullable,
+                    sender: sender.clone(),
+                },
+            );
         });
     }
     let copy_value_action = {
@@ -344,6 +390,7 @@ pub(super) fn install_grid_context_menus(
             .build()
     };
     group.add_action(&edit_action);
+    group.add_action(&edit_full_value_action);
     group.add_action_entries([
         copy_value_action,
         copy_column_name_action,
@@ -409,6 +456,7 @@ pub(super) fn install_grid_context_menus(
         editable_popover,
         readonly_popover,
         edit_action,
+        edit_full_value_action,
         reference_action,
         foreign_key_columns: Rc::new(options.foreign_key_columns),
     }
@@ -427,6 +475,9 @@ fn build_menu(
         let item = gio::MenuItem::new(Some(&crate::tr!("Edit cell")), Some("cell.edit"));
         item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
         section.append_item(&item);
+        let full_value = gio::MenuItem::new(Some(&crate::tr!("Edit Full Value…")), Some("cell.edit-full-value"));
+        full_value.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
+        section.append_item(&full_value);
         menu.append_section(None, &section);
     }
     let copy_as = gio::Menu::new();
@@ -577,15 +628,27 @@ where
         .build()
 }
 
+pub(super) struct CellGestureOptions {
+    pub(super) idx: usize,
+    pub(super) column_name: String,
+    pub(super) is_editable: bool,
+    pub(super) is_text_editable: bool,
+    pub(super) supports_full_value: bool,
+}
+
 pub(super) fn attach_cell_gesture(
     widget: &gtk::Widget,
     column_view: &gtk::ColumnView,
-    idx: usize,
-    column_name: String,
-    is_editable: bool,
-    is_text_editable: bool,
+    options: CellGestureOptions,
     menus: &GridMenus,
 ) {
+    let CellGestureOptions {
+        idx,
+        column_name,
+        is_editable,
+        is_text_editable,
+        supports_full_value,
+    } = options;
     let popover = if is_editable {
         menus.editable_popover.clone()
     } else {
@@ -595,6 +658,7 @@ pub(super) fn attach_cell_gesture(
     let view = column_view.clone();
     let context = menus.context.clone();
     let edit_action = menus.edit_action.clone();
+    let edit_full_value_action = menus.edit_full_value_action.clone();
     let reference_action = menus.reference_action.clone();
     let foreign_key_columns = menus.foreign_key_columns.clone();
     let gesture_popover = popover.clone();
@@ -612,6 +676,15 @@ pub(super) fn attach_cell_gesture(
             column_name: gesture_name.clone(),
         });
         edit_action.set_enabled(edit_enabled_for(&gesture_widget, is_text_editable));
+        edit_full_value_action.set_enabled(
+            supports_full_value
+                && row_has_full_text_value(
+                    &view,
+                    &gesture_widget,
+                    POSITION_SLOT.get(&gesture_widget).unwrap_or(0),
+                    idx,
+                ),
+        );
         reference_action.set_enabled(
             foreign_key_columns.contains(&gesture_name)
                 && row_at(&view, POSITION_SLOT.get(&gesture_widget).unwrap_or(0))
@@ -631,6 +704,7 @@ pub(super) fn attach_cell_gesture(
     let key_view = column_view.clone();
     let key_context = menus.context.clone();
     let key_action = menus.edit_action.clone();
+    let key_full_value_action = menus.edit_full_value_action.clone();
     let shortcut = gtk::Shortcut::builder()
         .trigger(&crate::ui::shortcut::parse(CELL_MENU_TRIGGER))
         .action(&gtk::CallbackAction::new(move |_, _| {
@@ -641,6 +715,15 @@ pub(super) fn attach_cell_gesture(
                 column_name: column_name.clone(),
             });
             key_action.set_enabled(edit_enabled_for(&key_widget, is_text_editable));
+            key_full_value_action.set_enabled(
+                supports_full_value
+                    && row_has_full_text_value(
+                        &key_view,
+                        &key_widget,
+                        POSITION_SLOT.get(&key_widget).unwrap_or(0),
+                        idx,
+                    ),
+            );
             popover.set_pointing_to(
                 key_widget
                     .compute_bounds(&key_view)
@@ -673,6 +756,50 @@ fn edit_enabled_for(widget: &gtk::Widget, fallback: bool) -> bool {
 fn position(slot: &CellContext) -> u32 {
     POSITION_SLOT.get(&slot.widget).unwrap_or(0)
 }
+
+enum TextSeed {
+    Value(String),
+    TooLarge,
+    Unsupported,
+}
+
+fn full_text_seed(widget: &gtk::Widget, row: &crate::ui::row_object::RowObject, column: usize) -> TextSeed {
+    if IS_NULL_SLOT.get(widget).unwrap_or(false) {
+        return TextSeed::Value(String::new());
+    }
+    if let Some(size) = FULL_EDIT_TEXT_SLOT.with(widget, String::len) {
+        if !super::full_value_editor::within_edit_budget(size) {
+            return TextSeed::TooLarge;
+        }
+        return FULL_EDIT_TEXT_SLOT
+            .cloned(widget)
+            .map(TextSeed::Value)
+            .unwrap_or(TextSeed::Unsupported);
+    }
+    row.with_cell_value(column, |value| match value {
+        Value::Text(text) if super::full_value_editor::within_edit_budget(text.len()) => TextSeed::Value(text.clone()),
+        Value::Text(_) => TextSeed::TooLarge,
+        Value::Null => TextSeed::Value(String::new()),
+        _ => TextSeed::Unsupported,
+    })
+    .unwrap_or(TextSeed::Unsupported)
+}
+
+fn row_has_full_text_value(view: &gtk::ColumnView, widget: &gtk::Widget, position: u32, column: usize) -> bool {
+    let Some(row) = row_object_at(view, position) else {
+        return false;
+    };
+    let (_, row_key) = cell_row_identity(widget);
+    (row.draft_id().is_some() || has_persisted_row_key(&row_key))
+        && row
+            .with_cell_value(column, |value| matches!(value, Value::Text(_) | Value::Null))
+            .unwrap_or(false)
+}
+
+fn has_persisted_row_key(row_key: &[Value]) -> bool {
+    crate::services::change_tracker::RowKey::from_pk_values(row_key).is_some()
+}
+
 fn cell_row_identity(widget: &gtk::Widget) -> (u32, Vec<Value>) {
     (
         POSITION_SLOT.get(widget).unwrap_or(0),
@@ -848,6 +975,13 @@ mod tests {
             complete_rows([Some(vec![Value::Int(1)])].into_iter()),
             Some(vec![vec![Value::Int(1)]])
         );
+    }
+
+    #[test]
+    fn full_value_edit_requires_a_persisted_key_or_a_draft_identity() {
+        assert!(!has_persisted_row_key(&[]));
+        assert!(!has_persisted_row_key(&[Value::Undecodable("text".into())]));
+        assert!(has_persisted_row_key(&[Value::Int(7)]));
     }
 
     #[test]

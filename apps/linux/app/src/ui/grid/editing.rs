@@ -31,6 +31,7 @@ pub(super) fn setup_editable_cell(
     item: &gtk::ListItem,
     idx: usize,
     column_name: String,
+    supports_full_value: bool,
     sender: relm4::Sender<GridMsg>,
     editor_kind: CellEditorKind,
     choices: super::ChoiceMap,
@@ -53,10 +54,13 @@ pub(super) fn setup_editable_cell(
         attach_cell_gesture(
             label.upcast_ref(),
             column_view,
-            idx,
-            column_name.clone(),
-            true,
-            true,
+            super::context_menu::CellGestureOptions {
+                idx,
+                column_name: column_name.clone(),
+                is_editable: true,
+                is_text_editable: true,
+                supports_full_value,
+            },
             menus,
         );
     }
@@ -82,7 +86,18 @@ pub(super) fn setup_bool_cell(
     item.set_child(Some(&checkbox));
 
     if let Some(menus) = menus {
-        attach_cell_gesture(checkbox.upcast_ref(), column_view, idx, column_name, true, false, menus);
+        attach_cell_gesture(
+            checkbox.upcast_ref(),
+            column_view,
+            super::context_menu::CellGestureOptions {
+                idx,
+                column_name,
+                is_editable: true,
+                is_text_editable: false,
+                supports_full_value: false,
+            },
+            menus,
+        );
     }
     checkbox.connect_toggled(move |cb| {
         if !cb.is_sensitive() || SUPPRESS_SLOT.get(cb).unwrap_or(false) {
@@ -120,7 +135,18 @@ pub(super) fn setup_readonly_cell(
         .build();
     item.set_child(Some(&label));
     if let Some(menus) = menus {
-        attach_cell_gesture(label.upcast_ref(), column_view, idx, column_name, false, false, menus);
+        attach_cell_gesture(
+            label.upcast_ref(),
+            column_view,
+            super::context_menu::CellGestureOptions {
+                idx,
+                column_name,
+                is_editable: false,
+                is_text_editable: false,
+                supports_full_value: false,
+            },
+            menus,
+        );
     }
 }
 

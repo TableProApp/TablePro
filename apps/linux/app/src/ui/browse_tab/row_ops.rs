@@ -302,6 +302,54 @@ impl BrowseTab {
         });
     }
 
+    pub(super) fn handle_grid_cell_value_edited(
+        &mut self,
+        row_position: u32,
+        col_index: usize,
+        value: Value,
+        row_key: Vec<Value>,
+        sender: ComponentSender<Self>,
+    ) {
+        if self.reject_stale_row_edit(row_position, &row_key, &sender) {
+            return;
+        }
+        let row_obj = self.row_object_at(row_position);
+        let allowed = self
+            .current_columns
+            .get(col_index)
+            .zip(row_obj.as_ref())
+            .is_some_and(|(column, row)| {
+                row.with_cell_value(col_index, |current| {
+                    crate::ui::grid::full_value_editor::can_stage_text_value(column, current, &value)
+                })
+                .unwrap_or(false)
+            });
+        if !allowed {
+            self.refresh_row(row_position);
+            return;
+        }
+        if let Some(row) = &row_obj
+            && let Some(draft_id) = row.draft_id()
+        {
+            crate::services::change_tracker::with_tab(self.tab_id, |tracker| {
+                tracker.track_draft_cell_edit(draft_id, col_index, value.clone());
+            });
+            row.set_cell(col_index, value);
+            return;
+        }
+        let Some((key, row)) = self.row_key_at(row_position) else {
+            self.report_unreadable_row_key(row_position, &sender);
+            return;
+        };
+        let Some(original) = row.get(col_index).cloned() else {
+            self.refresh_row(row_position);
+            return;
+        };
+        crate::services::change_tracker::with_tab(self.tab_id, |tracker| {
+            tracker.track_cell_edit(key, col_index, original, value);
+        });
+    }
+
     /// Tell the user why an edit on a row the tracker cannot key was
     /// dropped. Silence here reads as a saved change that never happens.
     fn report_unreadable_row_key(&mut self, row_position: u32, sender: &ComponentSender<Self>) {
