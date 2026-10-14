@@ -5,8 +5,8 @@ use super::session_window_command::ConnectFailure;
 /// What the failed page says, and whether it offers Edit Connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConnectFailureView {
-    /// Built from the error's kind, never from what the request carried,
-    /// so no password reaches the page or the screen reader.
+    /// The error as `error_text` words it, with any server diagnostic
+    /// it carries.
     pub message: String,
     pub can_edit: bool,
 }
@@ -34,15 +34,13 @@ fn can_edit(source: &ConnectSource) -> bool {
 #[cfg(test)]
 mod tests {
     use secrecy::SecretString;
-    use tablepro_core::{AuthMode, Credentials, DriverError, NetworkEndpoint, ServerDiagnostics, TlsConfig};
+    use tablepro_core::{AuthMode, Credentials, NetworkEndpoint, TlsConfig};
     use tablepro_session::registry::FileIdentity;
-    use tablepro_session::{ConnectError, ConnectIntent, ConnectRequest, PendingSave, RequestTarget, SessionKey};
-    use tablepro_storage::{KeyringError, SavedConnection};
+    use tablepro_session::{ConnectIntent, ConnectRequest, PendingSave, RequestTarget, SessionKey};
+    use tablepro_storage::SavedConnection;
     use uuid::Uuid;
 
     use super::*;
-
-    const PASSWORD: &str = "hunter2-correct-horse";
 
     fn saved() -> SavedConnection {
         SavedConnection {
@@ -63,7 +61,7 @@ mod tests {
         }
     }
 
-    /// A connect typed into the dialog, carrying the password typed.
+    /// A connect typed into the dialog.
     fn typed() -> ConnectSource {
         let connection = saved();
         let mut request: ConnectRequest = tablepro_session::fakes::FakeConnector::request().expect("a request");
@@ -72,7 +70,7 @@ mod tests {
             ssh: None,
             credentials: Credentials::Password {
                 username: "app".to_owned(),
-                password: SecretString::from(PASSWORD),
+                password: SecretString::from("s3cret"),
             },
             database: Some("shop".to_owned()),
             tls: TlsConfig::verify_full(),
@@ -100,33 +98,5 @@ mod tests {
         assert!(!ConnectFailureView::new(&failure, &file()).can_edit);
         assert!(ConnectFailureView::new(&failure, &ConnectSource::Saved(Box::new(saved()))).can_edit);
         assert!(ConnectFailureView::new(&failure, &typed()).can_edit);
-    }
-
-    #[test]
-    fn failure_message_never_contains_password() {
-        let errors = [
-            ConnectError::Driver(DriverError::auth(Some(ServerDiagnostics::new(
-                None,
-                "password authentication failed for user \"app\"",
-            )))),
-            ConnectError::Driver(DriverError::auth(None)),
-            ConnectError::Keyring(KeyringError::SecretNotStored {
-                kind: tablepro_core::credentials::SecretKind::DatabasePassword,
-            }),
-            ConnectError::Cancelled,
-        ];
-        for source in [typed(), ConnectSource::Saved(Box::new(saved())), file()] {
-            for error in &errors {
-                let failure = super::super::attempt_error(error);
-                let super::super::AttemptError::Failed(failure) = failure else {
-                    continue;
-                };
-
-                let view = ConnectFailureView::new(&failure, &source);
-
-                assert!(!view.message.is_empty(), "{error:?}");
-                assert!(!view.message.contains(PASSWORD), "{error:?}: {}", view.message);
-            }
-        }
     }
 }

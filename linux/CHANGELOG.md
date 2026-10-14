@@ -51,7 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connect leads a saved connection's menu, which a right click, the Menu key or Shift+F10 opens.
 - Find and replace in the SQL editor with Ctrl+F and Ctrl+H, matching case, whole words or regular expressions.
 - Edit…, Duplicate and Move to Group in a saved connection's menu; an edit keeps the saved passwords unless you type new ones.
-- Screen readers announce a connect starting and failing, with the reason it failed.
 
 ### Changed
 
@@ -68,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
 - JSON exports and copies put one row per line, and a value TablePro couldn't read stops the export instead of becoming NULL.
 - Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
-- Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
+- Connecting shows in the window with Cancel, and a failed connect says why with Retry and Edit Connection; screen readers hear both.
 - Deleting a connection asks once, offers its window when it is open, and can delete its query history too.
 - SQLite files shared through the document portal show their own path instead of the portal's.
 - Add Index and Add Foreign Key check the form as you type, and pick the referenced table and columns from the database.

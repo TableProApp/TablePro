@@ -713,11 +713,17 @@ fn edit_connection_opens_edit_dialog_and_retries_on_save() {
     let dialog = shown.expect("the dialog");
     assert_eq!(dialog.editing().map(|saved| saved.id), Some(test.saved.id));
     assert_eq!(test.connector.calls().len(), 1);
+    dialog.imp().port_row.set_value(6543.0);
 
     dialog.imp().connect_button.emit_clicked();
 
     test.wait_for_page("workspace");
-    assert_eq!(test.connector.calls().len(), 2, "Save did not connect again");
+    let calls = test.connector.calls();
+    assert_eq!(calls.len(), 2, "Save did not connect again");
+    let tablepro_session::RequestTarget::Network { endpoint, .. } = &calls[1].request.target else {
+        panic!("expected a network target");
+    };
+    assert_eq!(endpoint.port(), 6543, "the retry connected to the entry as it was");
     assert_eq!(test.window.visible_dialog(), None, "the dialog stayed open");
 }
 
