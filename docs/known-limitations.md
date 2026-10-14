@@ -58,7 +58,7 @@ What the application does not do, or does differently from what you might expect
 - No foreign-key value picker or estimated row counts (UI-19 / [#549](https://github.com/cozyGarage/BookiE/issues/549)). Enum and set pickers and tab-separated row paste are implemented.
 - PostgreSQL schemas can be hidden from the sidebar per connection ([#580](https://github.com/cozyGarage/BookiE/issues/580)); this display filter does not reduce catalog query work. Many-schema performance and restricted-role metadata remain open under B6.
 - No database snapshots or restore (SNAP-1 accepted the feature for 0.2.x; build is SNAP-2 to SNAP-4 / [#547](https://github.com/cozyGarage/BookiE/issues/547)).
-- Accessibility with Orca, keyboard-only order and high contrast has not been verified (DOC-3).
+- Accessibility is not fully verified with Orca, keyboard-only navigation or high contrast (DOC-3). Concrete gaps are tracked in [#658](https://github.com/cozyGarage/BookiE/issues/658): some connection controls and text fields are missing names or actions in the accessibility tree, and grid menu items are not exposed consistently.
 
 ## Platforms and packaging
 
@@ -72,6 +72,9 @@ What the application does not do, or does differently from what you might expect
 - **The filter strip offers text operators for some numeric and time columns** ([#854](https://github.com/cozyGarage/BookiE/issues/854)), including MySQL `MEDIUMINT` and PostgreSQL `time without time zone`.
 - **SQL completion can choose the wrong statement context** when a semicolon appears inside a comment or dollar-quoted string ([#855](https://github.com/cozyGarage/BookiE/issues/855)).
 - **Structure validation can accept duplicate column names that the database treats as equal** ([#856](https://github.com/cozyGarage/BookiE/issues/856)); the server then rejects the save.
+- **The CSV import progress dialog can remain open after the import completes**, and Cancel may not close it ([#655](https://github.com/cozyGarage/BookiE/issues/655)).
+- **Several UI details remain inconsistent** ([#660](https://github.com/cozyGarage/BookiE/issues/660)): the ENUM picker may not highlight the current member, text and bytea NULL values render differently, Structure tab chevrons look inverted, and the catalog kind selector can shift the search field.
+- **PostgreSQL `VOID` results are shown as undecodable** ([#660](https://github.com/cozyGarage/BookiE/issues/660)); they should render as empty values.
 - **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); the cause remains under investigation.
 - **Debug panic output can expose sensitive panic text** (SEC-10 / [#849](https://github.com/cozyGarage/BookiE/issues/849)): setting `TABLEPRO_DEBUG_PANICS=1` currently leaves Rust's default hook active, which may print the raw panic payload. Avoid enabling it until the fix lands.
 - **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Intermittent failures remain under investigation; recent failures include an application shutdown with a bad exit status after the scenarios passed. The required consecutive full-run evidence has not been met.
