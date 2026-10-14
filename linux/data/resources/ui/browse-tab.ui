@@ -85,7 +85,6 @@
               <object class="GtkButton" id="insert_button">
                 <property name="icon-name">list-add-symbolic</property>
                 <property name="action-name">browse.insert-row</property>
-                <property name="tooltip-text" translatable="yes">Insert row</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -95,7 +94,6 @@
               <object class="GtkButton" id="delete_button">
                 <property name="icon-name">list-remove-symbolic</property>
                 <property name="action-name">browse.delete-rows</property>
-                <property name="tooltip-text" translatable="yes">Delete selected rows</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -111,28 +109,24 @@
                 <child>
                   <object class="GtkButton" id="first_button">
                     <property name="icon-name">go-first-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">First page</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
                 <child>
                   <object class="GtkButton" id="prev_button">
                     <property name="icon-name">go-previous-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Previous page</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
                 <child>
                   <object class="GtkButton" id="next_button">
                     <property name="icon-name">go-next-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Next page</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
                 <child>
                   <object class="GtkButton" id="last_button">
                     <property name="icon-name">go-last-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Last page</property>
                     <property name="sensitive">false</property>
                   </object>
                 </child>
@@ -185,7 +179,6 @@
             <child type="end">
               <object class="GtkButton" id="export_button">
                 <property name="icon-name">document-save-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Export…</property>
                 <style>
                   <class name="flat"/>
                 </style>

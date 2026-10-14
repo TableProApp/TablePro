@@ -101,9 +101,8 @@ fn job_row(item: &ExportJobItem) -> gtk::Widget {
     text.append(&progress);
     text.append(&subtitle);
 
-    let stop = gtk::Button::from_icon_name("process-stop-symbolic");
-    stop.set_tooltip_text(Some(&gettext("Stop Export")));
-    stop.update_property(&[gtk::accessible::Property::Label(&gettext("Stop Export"))]);
+    let stop = gtk::Button::from_icon_name(crate::ui::icons::PROCESS_STOP);
+    crate::ui::a11y::describe_icon_button(&stop, &gettext("Stop Export"), None);
     stop.set_valign(gtk::Align::Center);
     stop.add_css_class("flat");
     stop.add_css_class("circular");

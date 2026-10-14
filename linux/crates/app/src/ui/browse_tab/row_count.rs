@@ -148,7 +148,7 @@ impl BrowseModel {
         let last = self.pager.last(&self.total).is_some();
         self.last_button.set_sensitive(last);
         let last_tooltip = match self.total.exact() {
-            Some(_) => crate::i18n::gettext("Last page"),
+            Some(_) => crate::i18n::gettext("Last Page"),
             None => crate::i18n::gettext("Count rows to go to the last page"),
         };
         self.last_button.set_tooltip_text(Some(&last_tooltip));

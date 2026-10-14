@@ -1417,3 +1417,61 @@ fn ctrl_s_saves_while_save_is_on() {
     drain_main_context();
     runtime.shutdown();
 }
+
+#[gtk4::test]
+fn icon_buttons_are_labelled_without_accelerator_hints() {
+    let table = TableDefinition {
+        table: TableRef::unqualified("users"),
+        columns: vec![integer_column("id", true), integer_column("team_id", false)],
+        primary_key: Some(PrimaryKeyConstraint {
+            name: Some("users_pkey".to_owned()),
+            columns: vec!["id".to_owned()],
+        }),
+        indexes: vec![tablepro_core::IndexInfo {
+            name: "users_team_idx".to_owned(),
+            keys: vec![tablepro_core::meta::IndexKey::Column {
+                name: "team_id".to_owned(),
+                descending: false,
+            }],
+            unique: false,
+            primary: false,
+            predicate: None,
+        }],
+        foreign_keys: vec![tablepro_core::ForeignKeyInfo {
+            name: "users_team_fk".to_owned(),
+            columns: vec!["team_id".to_owned()],
+            ref_schema: None,
+            ref_table: "teams".to_owned(),
+            ref_columns: vec!["id".to_owned()],
+            on_delete: None,
+            on_update: None,
+        }],
+        inbound_foreign_keys: Vec::new(),
+        source: None,
+    };
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(table));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    drain_main_context();
+    let tab = harness.tab();
+    for row in descendants(tab)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::ExpanderRow>().ok())
+    {
+        row.set_expanded(true);
+    }
+    let removes = descendants(tab)
+        .into_iter()
+        .filter(|widget| ["col-remove", "index-remove", "fk-remove"].contains(&widget.widget_name().as_str()))
+        .count();
+    let suggestions = descendants(tab)
+        .into_iter()
+        .filter(|widget| widget.is::<gtk::MenuButton>())
+        .count();
+
+    assert_eq!(removes, 4, "a column, index or foreign key row is missing");
+    assert!(suggestions > 0, "no column offers its suggested types");
+    assert_eq!(crate::test_support::unlabelled_icon_buttons(tab), Vec::<String>::new());
+    assert_eq!(crate::test_support::tooltips_with_keys(tab), Vec::<String>::new());
+}

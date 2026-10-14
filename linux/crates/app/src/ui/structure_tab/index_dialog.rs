@@ -59,13 +59,10 @@ impl IndexDialog {
         let add_key_button = gtk::MenuButton::builder()
             .icon_name(crate::ui::icons::LIST_ADD)
             .menu_model(&add_key_menu)
-            .tooltip_text(crate::i18n::gettext("Add Key Column"))
             .valign(gtk::Align::Center)
             .build();
         add_key_button.add_css_class("flat");
-        add_key_button.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext(
-            "Add Key Column",
-        ))]);
+        crate::ui::a11y::describe_icon_button(&add_key_button, &crate::i18n::gettext("Add Key Column"), None);
         let keys_group = adw::PreferencesGroup::builder()
             .title(crate::i18n::gettext("Key Columns"))
             .header_suffix(&add_key_button)
@@ -222,11 +219,10 @@ impl Inner {
         let button = gtk::MenuButton::builder()
             .icon_name(crate::ui::icons::VIEW_MORE)
             .menu_model(&menu)
-            .tooltip_text(crate::i18n::gettext("Key Options"))
             .valign(gtk::Align::Center)
             .build();
         button.add_css_class("flat");
-        button.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Key Options"))]);
+        crate::ui::a11y::describe_icon_button(&button, &crate::i18n::gettext("Key Options"), None);
         row.add_suffix(&button);
 
         let actions = gio::SimpleActionGroup::new();

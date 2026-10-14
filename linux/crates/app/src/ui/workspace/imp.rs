@@ -87,6 +87,11 @@ impl ObjectSubclass for Workspace {
 }
 
 impl ObjectImpl for Workspace {
+    fn constructed(&self) {
+        self.parent_constructed();
+        super::shell::describe_buttons(&self.obj());
+    }
+
     fn signals() -> &'static [Signal] {
         static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
         SIGNALS.get_or_init(|| {

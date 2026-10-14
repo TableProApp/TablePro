@@ -2759,3 +2759,27 @@ fn insert_row_opens_the_new_rows_first_editable_cell() {
     let focus = gtk4::prelude::GtkWindowExt::focus(&shown.0).expect("a focused widget");
     assert_eq!(GridCell::from_focus(&focus).as_ref(), Some(&cell));
 }
+
+#[gtk4::test]
+fn icon_buttons_are_labelled_without_accelerator_hints() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let imp = harness.tab().imp();
+
+    assert_eq!(
+        crate::test_support::unlabelled_icon_buttons(harness.tab()),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        crate::test_support::tooltips_with_keys(harness.tab()),
+        Vec::<String>::new()
+    );
+    for button in [imp.insert_button.get(), imp.next_button.get(), imp.save_button.get()] {
+        assert!(
+            gtk4::test_accessible_has_property(&button, gtk4::AccessibleProperty::KeyShortcuts),
+            "{:?} does not announce its keys",
+            button.tooltip_text()
+        );
+    }
+}

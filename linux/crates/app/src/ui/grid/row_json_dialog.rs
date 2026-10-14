@@ -112,7 +112,7 @@ fn row_json_dialog(json: RowJson) -> adw::Dialog {
     let scrolled = gtk::ScrolledWindow::builder().child(&view).vexpand(true).build();
 
     let copy_button = gtk::Button::from_icon_name(crate::ui::icons::EDIT_COPY);
-    copy_button.set_tooltip_text(Some(&crate::i18n::gettext("Copy")));
+    crate::ui::a11y::describe_icon_button(&copy_button, &crate::i18n::gettext("Copy"), None);
     let payload = ClipboardPayload {
         text: full,
         format: ClipboardFormat::Json,

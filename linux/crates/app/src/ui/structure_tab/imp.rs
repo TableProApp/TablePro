@@ -93,6 +93,11 @@ impl ObjectSubclass for StructureTab {
 }
 
 impl ObjectImpl for StructureTab {
+    fn constructed(&self) {
+        self.parent_constructed();
+        crate::ui::a11y::describe_icon_button(&self.copy_sql_button.get(), &crate::i18n::gettext("Copy SQL"), None);
+    }
+
     fn signals() -> &'static [Signal] {
         static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
         SIGNALS.get_or_init(|| {

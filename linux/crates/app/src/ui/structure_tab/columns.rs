@@ -12,6 +12,7 @@ use tablepro_core::dialect::SqlDialect;
 use super::context::StructureContext;
 use super::draft_column_object::DraftColumnObject;
 use super::{ColumnField, StructureTabInput, StructureTabSender};
+use crate::ui::a11y::describe_icon_button;
 use crate::ui::error_text::refusal_text;
 use crate::ui::handler_guard::HandlerGuard;
 
@@ -126,10 +127,10 @@ pub(super) fn build_column_row(
     // On the header, so it shows whether or not the row is expanded.
     let remove_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
-        .tooltip_text(crate::i18n::gettext("Remove column"))
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
+    describe_icon_button(&remove_button, &crate::i18n::gettext("Remove Column"), None);
     remove_button.set_widget_name("col-remove");
     gate(&remove_button, &permissions.drop);
     let column_for_remove = column.downgrade();
@@ -307,11 +308,11 @@ fn build_type_suggestions_button(suggestions: &'static [&'static str], target: &
 
     let button = gtk::MenuButton::builder()
         .icon_name(crate::ui::icons::PAN_DOWN)
-        .tooltip_text(crate::i18n::gettext("Suggested types"))
         .valign(gtk::Align::Center)
         .menu_model(&menu)
         .build();
     button.add_css_class("flat");
+    describe_icon_button(&button, &crate::i18n::gettext("Suggested Types"), None);
     button.insert_action_group("types", Some(&action_group));
     button
 }

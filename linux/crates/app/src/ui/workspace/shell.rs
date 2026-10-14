@@ -39,14 +39,10 @@ impl ShellHandles {
     }
 }
 
-pub(super) fn install(
-    workspace: &Workspace,
-    window: &adw::ApplicationWindow,
-    factory: &Rc<TabFactory>,
-) -> ShellHandles {
+/// Run as the workspace is built, so its buttons are named before any
+/// window holds it.
+pub(super) fn describe_buttons(workspace: &Workspace) {
     let imp = workspace.imp();
-    let app = window.application();
-    imp.sidebar_header.pack_end(&primary_menu_button(app.as_ref()));
     describe_icon_button(
         &imp.table_search_toggle.get(),
         &crate::i18n::gettext("Search Tables"),
@@ -63,6 +59,16 @@ pub(super) fn install(
         Some("win.new-editor-tab"),
     );
     describe_icon_button(&imp.tab_button.get(), &crate::i18n::gettext("View Open Tabs"), None);
+}
+
+pub(super) fn install(
+    workspace: &Workspace,
+    window: &adw::ApplicationWindow,
+    factory: &Rc<TabFactory>,
+) -> ShellHandles {
+    let imp = workspace.imp();
+    let app = window.application();
+    imp.sidebar_header.pack_end(&primary_menu_button(app.as_ref()));
 
     window.add_action(&gio::PropertyAction::new(
         SHOW_SIDEBAR,

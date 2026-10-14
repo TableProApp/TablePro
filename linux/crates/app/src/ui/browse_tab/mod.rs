@@ -1378,7 +1378,7 @@ impl BrowseModel {
             )));
         } else {
             self.insert_button
-                .set_tooltip_text(Some(&crate::i18n::gettext("Insert row")));
+                .set_tooltip_text(Some(&crate::i18n::gettext("Insert Row")));
         }
         self.refresh_banner_visibility();
     }
@@ -1982,7 +1982,7 @@ fn show_delete_availability(action: &gio::SimpleAction, button: &gtk::Button, ro
         DeleteAvailability::Unavailable(block) => block.explanation(),
         DeleteAvailability::Available => None,
     };
-    let tooltip = explanation.unwrap_or_else(|| crate::i18n::gettext("Delete selected rows"));
+    let tooltip = explanation.unwrap_or_else(|| crate::i18n::gettext("Delete Selected Rows"));
     button.set_tooltip_text(Some(&tooltip));
 }
 

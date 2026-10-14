@@ -255,7 +255,6 @@
                                         <property name="end-widget">
                                           <object class="GtkButton" id="copy_sql_button">
                                             <property name="icon-name">edit-copy-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Copy SQL to clipboard</property>
                                             <property name="valign">center</property>
                                             <style>
                                               <class name="flat"/>

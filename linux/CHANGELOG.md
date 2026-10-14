@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen readers announce the keyboard shortcut of the table, SQL editor and filter buttons that have one.
 - An icon beside each table row with a pending change, and bold text in edited cells, so a change reads without colour.
 - Screen readers tell a NULL cell from the text NULL, and name a check box cell by its column.
+- Screen readers name the icon-only buttons of table and structure tabs, filters and dialogs.
 - Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
 - Licenses of the third-party crates TablePro is built with, in About TablePro and installed with the app.
 - F9 and the sidebar button show and hide the table sidebar.

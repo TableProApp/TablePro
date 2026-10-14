@@ -5,7 +5,9 @@ use gtk4::subclass::prelude::*;
 
 use super::{BrowseModel, BrowseTab, BrowseTabInput};
 use crate::application::{ShortcutOwner, local_shortcut_controller};
+use crate::i18n::gettext;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
+use crate::ui::a11y::{announce_key_shortcuts, describe_icon_button};
 
 /// The `browse` actions whose state follows the tab. A disabled one lets
 /// its key go on, and greys out the button that names it.
@@ -96,17 +98,31 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
     }
     tab.insert_action_group("browse", Some(&group));
     tab.add_controller(local_shortcut_controller(ShortcutOwner::BrowseTab));
-    for (button, action) in [
-        (&imp.insert_button, "browse.insert-row"),
-        (&imp.delete_button, "browse.delete-rows"),
-        (&imp.filter_button, "browse.filter"),
-        (&imp.prev_button, "browse.previous-page"),
-        (&imp.next_button, "browse.next-page"),
-        (&imp.save_button, "browse.save"),
-    ] {
-        crate::ui::a11y::announce_key_shortcuts(&button.get(), action);
-    }
     actions
+}
+
+/// Names the icon buttons and gives every button the keys of its action.
+/// Run as the tab is built, so the names never wait on its actions.
+pub(super) fn describe_buttons(tab: &BrowseTab) {
+    let imp = tab.imp();
+    for (button, label, action) in [
+        (&imp.insert_button, gettext("Insert Row"), Some("browse.insert-row")),
+        (
+            &imp.delete_button,
+            gettext("Delete Selected Rows"),
+            Some("browse.delete-rows"),
+        ),
+        (&imp.first_button, gettext("First Page"), None),
+        (&imp.prev_button, gettext("Previous Page"), Some("browse.previous-page")),
+        (&imp.next_button, gettext("Next Page"), Some("browse.next-page")),
+        (&imp.last_button, gettext("Last Page"), None),
+        (&imp.export_button, gettext("Export Rows…"), None),
+    ] {
+        describe_icon_button(&button.get(), &label, action);
+    }
+    for (button, action) in [(&imp.filter_button, "browse.filter"), (&imp.save_button, "browse.save")] {
+        announce_key_shortcuts(&button.get(), action);
+    }
 }
 
 pub(super) fn install_grid_shortcuts(view: &gtk::ColumnView) {

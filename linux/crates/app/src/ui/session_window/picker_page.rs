@@ -38,7 +38,16 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for PickerPage {}
+    impl ObjectImpl for PickerPage {
+        fn constructed(&self) {
+            self.parent_constructed();
+            crate::ui::a11y::describe_icon_button(
+                &self.new_connection_button.get(),
+                &crate::i18n::gettext("New Connection"),
+                None,
+            );
+        }
+    }
     impl WidgetImpl for PickerPage {}
     impl BinImpl for PickerPage {}
 }
@@ -58,11 +67,6 @@ impl PickerPage {
         let imp = page.imp();
         imp.welcome_slot.set_child(Some(welcome));
         imp.header_bar.pack_end(&crate::ui::shell::primary_menu_button(app));
-        crate::ui::a11y::describe_icon_button(
-            &imp.new_connection_button.get(),
-            &crate::i18n::gettext("New Connection"),
-            None,
-        );
         page
     }
 

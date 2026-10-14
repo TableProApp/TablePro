@@ -45,7 +45,7 @@ use history_export::{ExportKind, history_export_failure_text, save_export, show_
 use connection_filter::ConnectionFilterModel;
 pub(crate) use history_entry_object::HistoryEntryObject;
 use history_filters::HistoryFilters;
-use history_row::HistoryRow;
+pub(super) use history_row::HistoryRow;
 
 /// Several screens of rows, so the edge is reached rarely, and few
 /// enough that the first page is quick on a large history.
