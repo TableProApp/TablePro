@@ -1,19 +1,24 @@
 //! The GApplication: one process per profile, the actions every window
 //! shares, and the windows themselves.
 
+mod about_dialog;
 mod accelerator;
 mod accelerator_scope;
 mod accelerators;
 mod app_actions;
 mod app_services;
 mod app_window_host;
+mod debug_info;
 mod imp;
+mod legal_section;
 mod open_files;
 mod quit_sequence;
+mod runtime_versions;
 mod session_signals;
 mod shortcut_listing;
 mod shortcut_owner;
 mod shortcut_section;
+mod third_party_licenses;
 mod window_host;
 mod window_launch;
 mod window_registry;

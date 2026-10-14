@@ -8,8 +8,10 @@ TablePro Linux is a layered Rust workspace with strict, one-directional dependen
 linux/
 ├── meson.build                    build entry point; owns install and the build-time config
 ├── Cargo.toml                     workspace manifest
-├── data/                          desktop entry, D-Bus service, AppStream metainfo, icons, GResource
+├── about.toml                     cargo-about settings for the third-party license notices
+├── data/                          desktop entry, D-Bus service, AppStream metainfo, icons, GResource, licenses
 ├── build-aux/flatpak/             Devel Flatpak manifest and krb5.conf
+├── build-aux/about/               templates that turn Cargo.lock into data/licenses
 ├── po/                            translation catalogue
 └── crates/
     ├── app/                       binary, the GTK application, its windows and views

@@ -10,13 +10,14 @@
 # A term matches case-insensitively at the start of a word, so a capitalized or suffixed form is a
 # hit and a word that only ends in a term is not. A term that starts with punctuation, the em dash,
 # matches anywhere. Each hit prints as file:line: term. Exits 1 on a hit, 0 when clean and 2 on a
-# usage error.
+# usage error. A diff skips linux/data/licenses/, which reproduces third-party license text verbatim.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 LIST="$SCRIPT_DIR/banned-words.txt"
 LIST_PATH_IN_REPO="scripts/banned-words.txt"
+VERBATIM_DIR_IN_REPO="linux/data/licenses/"
 
 usage() {
     sed -n "5,8s/^#   //p" "${BASH_SOURCE[0]}"
@@ -75,7 +76,7 @@ in_header && /^\+\+\+ / {
     file = substr($0, 5)
     sub(/^b\//, "", file)
     sub(/\t$/, "", file)
-    if (file == "/dev/null" || file == skip) {
+    if (file == "/dev/null" || file == skip || index(file, verbatim) == 1) {
         file = ""
     }
     next
@@ -110,7 +111,7 @@ check_diff() {
     }
     git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --diff-filter=ACMR \
         --src-prefix=a/ --dst-prefix=b/ "$@" |
-        LC_ALL=C awk -v skip="$LIST_PATH_IN_REPO" "$MATCHER$DIFF_READER"
+        LC_ALL=C awk -v skip="$LIST_PATH_IN_REPO" -v verbatim="$VERBATIM_DIR_IN_REPO" "$MATCHER$DIFF_READER"
 }
 
 check_files() {

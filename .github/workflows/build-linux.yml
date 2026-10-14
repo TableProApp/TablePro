@@ -156,6 +156,33 @@ jobs:
       - name: Dist
         run: meson dist -C _build --no-tests --formats xztar
 
+  licenses:
+    name: Third-party licenses
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98
+        with:
+          toolchain: "1.98"
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-about@0.9.2
+      - name: Regenerate the notices from Cargo.lock
+        run: build-aux/update-third-party-licenses.sh
+      - name: The committed notices cover every shipped crate
+        # A crate added to or bumped in Cargo.lock changes the regenerated
+        # files, and so does one whose license text changed.
+        run: |
+          if ! git diff --exit-code -- data/licenses; then
+            echo "::error::data/licenses does not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
+            exit 1
+          fi
+
   i18n:
     name: Translations
     runs-on: ubuntu-24.04

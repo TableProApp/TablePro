@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy as puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
 - Shift+F10 opens the menu of a sidebar table or a query history entry, as the Menu key does.
 - Screen readers announce the keyboard shortcut of the table, SQL editor and filter buttons that have one.
+- Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
+- Licenses of the third-party crates TablePro is built with, in About TablePro and installed with the app.
 
 ### Changed
 
@@ -71,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Previous and next page are Alt+Page Up and Alt+Page Down; Page Up and Page Down move through the rows.
 - Ctrl+S, Ctrl+Z, F5 and Ctrl+F act on the tab that has the focus, so a text field keeps its own undo.
 - Keyboard Shortcuts lists every shortcut, grouped by where it works.
+- About TablePro links to the website, documentation and issue tracker, and shows a release's notes.
 
 ### Removed
 
