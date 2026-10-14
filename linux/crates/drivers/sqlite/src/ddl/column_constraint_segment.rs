@@ -17,6 +17,10 @@ pub(crate) enum ColumnConstraintKind {
     Name(String),
     PrimaryKey {
         autoincrement: bool,
+        /// `PRIMARY KEY DESC` on the column itself, which keeps an
+        /// INTEGER column from being the rowid (lang_createtable.html,
+        /// "ROWIDs and the INTEGER PRIMARY KEY").
+        descending: bool,
     },
     NotNull,
     Null,

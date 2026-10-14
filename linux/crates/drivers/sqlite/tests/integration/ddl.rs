@@ -783,3 +783,158 @@ async fn a_rebuild_planned_before_another_change_is_refused() {
         connection.close().await.unwrap();
     }
 }
+
+/// The copy runs as INSERT OR ABORT, so a conflict clause the table
+/// declares cannot quietly drop a row the new type makes a duplicate.
+#[tokio::test]
+async fn a_conflict_clause_in_the_table_cannot_drop_rows_in_the_copy() {
+    for create in [
+        "CREATE TABLE kept (code TEXT UNIQUE ON CONFLICT IGNORE, note TEXT)",
+        "CREATE TABLE kept (code TEXT PRIMARY KEY ON CONFLICT REPLACE, note TEXT)",
+    ] {
+        let file = TestFile::new().await;
+        let connection = file.open().await;
+        apply(
+            connection.as_ref(),
+            &[create, "INSERT INTO kept VALUES ('1', 'one'), ('01', 'zero one')"],
+        )
+        .await
+        .unwrap();
+        let before = read(connection.as_ref(), &kept()).await;
+
+        let outcome = save(connection.as_ref(), &kept(), |draft| retype(draft, "code", "INTEGER")).await;
+
+        let Err(DriverError::RolledBack { source, .. }) = &outcome else {
+            panic!("{create}: {outcome:?}");
+        };
+        assert!(source.to_string().contains("UNIQUE"), "{create}: {source}");
+        assert_eq!(read(connection.as_ref(), &kept()).await, before, "{create}");
+        let count = query(connection.as_ref(), "SELECT count(*) FROM kept").await;
+        assert_eq!(count.rows[0][0], Value::Int(2), "{create}");
+        connection.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a_default_written_after_a_line_comment_reads_back() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id INTEGER PRIMARY KEY, a TEXT -- note\n NOT NULL, b TEXT)",
+            "INSERT INTO kept VALUES (1, 'x', 'y')",
+        ],
+    )
+    .await
+    .unwrap();
+
+    save(connection.as_ref(), &kept(), |draft| {
+        let a = column(draft, "a");
+        a.nullable = true;
+        a.default = ColumnDefault::Literal(text("dflt"));
+    })
+    .await
+    .unwrap();
+    apply(connection.as_ref(), &["INSERT INTO kept (id) VALUES (2)"])
+        .await
+        .unwrap();
+
+    let after = read(connection.as_ref(), &kept()).await;
+    assert!(after.columns[1].info.nullable);
+    assert_eq!(after.columns[1].info.default, ColumnDefault::Literal(text("dflt")));
+    assert!(
+        create_statement(&after).contains("-- note\n"),
+        "{}",
+        create_statement(&after)
+    );
+    let rows = query(connection.as_ref(), "SELECT a, b FROM kept ORDER BY id").await;
+    assert_eq!(rows.rows, [vec![text("x"), text("y")], vec![text("dflt"), Value::Null]]);
+    connection.close().await.unwrap();
+}
+
+/// A column that becomes the INTEGER PRIMARY KEY gives its rows its own
+/// values as rowids, so an orphan already there keeps no rowid to be
+/// recognised by. It is still the file's, not the save's.
+#[tokio::test]
+async fn a_new_rowid_key_keeps_an_orphan_the_save_did_not_make() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE parents (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE kept (id INTEGER NOT NULL, parent INTEGER REFERENCES parents (id))",
+            "CREATE TABLE loose (id INTEGER NOT NULL, parent INTEGER)",
+            "INSERT INTO parents VALUES (1)",
+            "INSERT INTO loose VALUES (10, 99)",
+        ],
+    )
+    .await
+    .unwrap();
+    unchecked(connection.as_ref(), &["INSERT INTO kept VALUES (10, 1), (20, 99)"]).await;
+
+    let kept_outcome = save(connection.as_ref(), &kept(), |draft| {
+        column(draft, "id").primary_key = true;
+    })
+    .await;
+    let loose_outcome = save(connection.as_ref(), &named("loose"), |draft| {
+        column(draft, "id").primary_key = true;
+        draft.foreign_keys.push(ForeignKeyInfo {
+            name: "loose_parent".to_owned(),
+            columns: vec!["parent".to_owned()],
+            ref_schema: None,
+            ref_table: "parents".to_owned(),
+            ref_columns: vec!["id".to_owned()],
+            on_delete: None,
+            on_update: None,
+        });
+    })
+    .await;
+
+    assert!(kept_outcome.is_ok(), "{kept_outcome:?}");
+    let rows = query(connection.as_ref(), "SELECT rowid, id, parent FROM kept ORDER BY id").await;
+    assert_eq!(
+        rows.rows,
+        [
+            vec![Value::Int(10), Value::Int(10), Value::Int(1)],
+            vec![Value::Int(20), Value::Int(20), Value::Int(99)]
+        ]
+    );
+    let Err(DriverError::RolledBack { source, .. }) = &loose_outcome else {
+        panic!("a violation the save made was let through: {loose_outcome:?}");
+    };
+    assert!(source.to_string().contains("1 rows of loose"), "{source}");
+    connection.close().await.unwrap();
+}
+
+/// `INTEGER PRIMARY KEY DESC` on the column is not the rowid, so the
+/// rebuild carries the rowids across on their own.
+#[tokio::test]
+async fn a_descending_integer_key_keeps_its_rowids_through_a_rebuild() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id INTEGER PRIMARY KEY DESC, v TEXT)",
+            "INSERT INTO kept (rowid, id, v) VALUES (5, 1, 'a'), (9, 2, 'b')",
+        ],
+    )
+    .await
+    .unwrap();
+
+    save(connection.as_ref(), &kept(), |draft| retype(draft, "v", "BLOB"))
+        .await
+        .unwrap();
+
+    let rows = query(connection.as_ref(), "SELECT rowid, id, v FROM kept ORDER BY rowid").await;
+    assert_eq!(
+        rows.rows,
+        [
+            vec![Value::Int(5), Value::Int(1), text("a")],
+            vec![Value::Int(9), Value::Int(2), text("b")]
+        ]
+    );
+    connection.close().await.unwrap();
+}

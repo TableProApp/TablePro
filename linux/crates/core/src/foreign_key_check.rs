@@ -12,18 +12,31 @@ use crate::meta::TableRef;
 pub struct ForeignKeyCheck {
     pub before: Option<TableRef>,
     pub after: TableRef,
+    /// The batch gives the table's rows new rowids, as a SQLite rebuild
+    /// does when it makes a column the INTEGER PRIMARY KEY. A row is then
+    /// known by a different rowid on each side, so the violations in it
+    /// compare by count.
+    pub rowids_renumbered: bool,
 }
 
 impl ForeignKeyCheck {
     pub fn new(before: Option<TableRef>, after: TableRef) -> Self {
-        Self { before, after }
+        Self {
+            before,
+            after,
+            rowids_renumbered: false,
+        }
     }
 
     /// A table that keeps its name through the batch.
     pub fn same_table(table: TableRef) -> Self {
+        Self::new(Some(table.clone()), table)
+    }
+
+    pub fn renumbered(self) -> Self {
         Self {
-            before: Some(table.clone()),
-            after: table,
+            rowids_renumbered: true,
+            ..self
         }
     }
 }

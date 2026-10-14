@@ -230,7 +230,15 @@ impl<'a> CreateTableSource<'a> {
             column
                 .segments
                 .iter()
-                .any(|segment| matches!(segment.kind, ColumnConstraintKind::PrimaryKey { autoincrement: true }))
+                .any(|segment| {
+                    matches!(
+                        segment.kind,
+                        ColumnConstraintKind::PrimaryKey {
+                            autoincrement: true,
+                            ..
+                        }
+                    )
+                })
                 .then_some(column.name.as_str())
         });
         inline.or_else(|| {
@@ -614,10 +622,14 @@ impl Reader<'_, '_> {
         }
         if self.eat("PRIMARY") {
             self.expect("KEY")?;
+            let descending = self.at("DESC");
             self.eat_any(&["ASC", "DESC"]);
             self.conflict()?;
             let autoincrement = self.eat("AUTOINCREMENT");
-            return Ok(ColumnConstraintKind::PrimaryKey { autoincrement });
+            return Ok(ColumnConstraintKind::PrimaryKey {
+                autoincrement,
+                descending,
+            });
         }
         // NOT NULL and NOT DEFERRABLE share their first word.
         if self.at("NOT") && self.is_word(1, "NULL") {
@@ -921,7 +933,10 @@ mod tests {
 
         assert_eq!(
             kinds(column(&source, "id")),
-            [&ColumnConstraintKind::PrimaryKey { autoincrement: true }]
+            [&ColumnConstraintKind::PrimaryKey {
+                autoincrement: true,
+                descending: true
+            }]
         );
         assert_eq!(
             segment_texts(&source, column(&source, "a")),

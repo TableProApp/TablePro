@@ -348,8 +348,8 @@ fn type_change_builds_rebuild_with_rowid_copy() {
         sql(plan),
         [
             "CREATE TABLE \"_tablepro_rebuild_notes\" (title TEXT, body BLOB)",
-            "INSERT INTO \"_tablepro_rebuild_notes\" (rowid, \"title\", \"body\") SELECT rowid, \"title\", \"body\" \
-             FROM \"notes\"",
+            "INSERT OR ABORT INTO \"_tablepro_rebuild_notes\" (rowid, \"title\", \"body\") SELECT rowid, \
+             \"title\", \"body\" FROM \"notes\"",
             "DROP TABLE \"notes\"",
             "ALTER TABLE \"_tablepro_rebuild_notes\" RENAME TO \"notes\"",
         ]
@@ -401,13 +401,13 @@ fn rebuild_preserves_dependents_and_checks_children() {
             "CREATE TABLE \"_tablepro_rebuild_orders\" (\n  id INTEGER PRIMARY KEY,\n  customer INTEGER NOT NULL \
              REFERENCES customers (id),\n  total NUMERIC DEFAULT 0 CHECK (total >= 0),\n  note TEXT COLLATE \
              NOCASE\n)",
-            "INSERT INTO \"_tablepro_rebuild_orders\" (\"id\", \"customer\", \"total\", \"note\") SELECT \"id\", \
-             \"customer\", \"total\", \"note\" FROM \"orders\"",
+            "INSERT OR ABORT INTO \"_tablepro_rebuild_orders\" (\"id\", \"customer\", \"total\", \"note\") \
+             SELECT \"id\", \"customer\", \"total\", \"note\" FROM \"orders\"",
             "DROP TABLE \"orders\"",
             "ALTER TABLE \"_tablepro_rebuild_orders\" RENAME TO \"orders\"",
             "CREATE INDEX orders_by_customer ON orders (customer)",
-            "CREATE TRIGGER orders_stamp AFTER INSERT ON orders BEGIN UPDATE orders SET note = 'new' WHERE id = new.id; \
-             END",
+            "CREATE TRIGGER orders_stamp AFTER INSERT ON orders BEGIN UPDATE orders SET note = 'new' WHERE id = \
+             new.id; END",
             "CREATE VIEW big_orders AS SELECT id, total FROM orders WHERE total > 100",
             "CREATE TRIGGER customers_cleanup AFTER DELETE ON customers BEGIN DELETE FROM orders WHERE customer = \
              old.id; END",
@@ -479,7 +479,7 @@ fn rebuild_keeps_check_collate_generated_verbatim() {
         [
             "CREATE TABLE \"_tablepro_rebuild_m\" (a BIGINT CHECK (a > 0) COLLATE BINARY, b TEXT COLLATE NOCASE, c \
              REAL GENERATED ALWAYS AS (a * 2) STORED, CHECK (b <> ''))",
-            "INSERT INTO \"_tablepro_rebuild_m\" (rowid, \"a\", \"b\") SELECT rowid, \"a\", \"b\" FROM \"m\"",
+            "INSERT OR ABORT INTO \"_tablepro_rebuild_m\" (rowid, \"a\", \"b\") SELECT rowid, \"a\", \"b\" FROM \"m\"",
         ]
     );
 }
@@ -647,7 +647,7 @@ fn primary_key_change_writes_the_key_again() {
         [
             "CREATE TABLE \"_tablepro_rebuild_tags\" (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT \
              NULL)",
-            "INSERT INTO \"_tablepro_rebuild_tags\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"tags\"",
+            "INSERT OR ABORT INTO \"_tablepro_rebuild_tags\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"tags\"",
         ]
     );
     assert_eq!(
@@ -997,6 +997,78 @@ fn a_rebuild_counts_what_changed_since_its_read_and_a_native_plan_does_not() {
     }
     assert!(rebuild.into_steps()[0].guard.probe().is_some());
     assert_eq!(native.precondition, None);
+}
+
+#[test]
+fn a_constraint_removed_after_a_line_comment_keeps_the_comment_on_its_line() {
+    let kept = table(
+        "kept",
+        vec![
+            rowid_alias("id"),
+            not_null(column("a", "TEXT", false)),
+            column("b", "TEXT", false),
+        ],
+        "CREATE TABLE kept (id INTEGER PRIMARY KEY, a TEXT -- note\n NOT NULL, b TEXT)",
+    );
+
+    let statements = sql(alter(&kept, |draft| {
+        draft.columns[1].nullable = true;
+        draft.columns[1].default = ColumnDefault::Literal(Value::Text("dflt".to_owned()));
+    }));
+
+    assert_eq!(
+        statements[0],
+        "CREATE TABLE \"_tablepro_rebuild_kept\" (id INTEGER PRIMARY KEY, a TEXT -- note\n DEFAULT 'dflt', b TEXT)"
+    );
+}
+
+#[test]
+fn a_descending_integer_key_keeps_its_rows_rowids() {
+    let descending = table(
+        "t",
+        vec![column("id", "INTEGER", true), column("v", "TEXT", false)],
+        "CREATE TABLE t (id INTEGER PRIMARY KEY DESC, v TEXT)",
+    );
+    let table_key = table(
+        "t",
+        vec![column("id", "INTEGER", true), column("v", "TEXT", false)],
+        "CREATE TABLE t (id INTEGER, v TEXT, PRIMARY KEY (id DESC))",
+    );
+
+    let kept = sql(alter(&descending, |draft| retype(draft, "v", "BLOB")));
+    let alias = sql(alter(&table_key, |draft| retype(draft, "v", "BLOB")));
+
+    assert_eq!(
+        kept[1],
+        "INSERT OR ABORT INTO \"_tablepro_rebuild_t\" (rowid, \"id\", \"v\") SELECT rowid, \"id\", \"v\" FROM \"t\""
+    );
+    assert_eq!(
+        alias[1],
+        "INSERT OR ABORT INTO \"_tablepro_rebuild_t\" (\"id\", \"v\") SELECT \"id\", \"v\" FROM \"t\""
+    );
+}
+
+#[test]
+fn a_column_that_becomes_the_rowid_renumbers_the_rows() {
+    let loose = table(
+        "kept",
+        vec![
+            not_null(column("id", "INTEGER", false)),
+            column("parent", "INTEGER", false),
+        ],
+        "CREATE TABLE kept (id INTEGER NOT NULL, parent INTEGER)",
+    );
+
+    let keyed = alter(&loose, |draft| draft.columns[0].primary_key = true);
+    let retyped = alter(&orders(), |draft| retype(draft, "total", "NUMERIC"));
+    let copied = alter(&loose, |draft| retype(draft, "parent", "TEXT"));
+
+    assert_eq!(
+        checks(&keyed)[0],
+        ForeignKeyCheck::same_table(TableRef::unqualified("kept")).renumbered()
+    );
+    assert!(!checks(&retyped)[0].rowids_renumbered);
+    assert!(!checks(&copied)[0].rowids_renumbered);
 }
 
 #[test]

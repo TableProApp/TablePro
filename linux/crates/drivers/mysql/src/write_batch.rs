@@ -318,10 +318,7 @@ mod tests {
     #[test]
     fn non_sqlite_drivers_reject_suspension() {
         let suspended = ForeignKeyMode::SuspendedThenVerified {
-            checks: vec![ForeignKeyCheck {
-                before: None,
-                after: TableRef::unqualified("t"),
-            }],
+            checks: vec![ForeignKeyCheck::new(None, TableRef::unqualified("t"))],
         };
 
         assert_eq!(

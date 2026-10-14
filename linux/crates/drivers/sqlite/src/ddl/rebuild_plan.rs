@@ -343,7 +343,11 @@ impl Rebuild<'_> {
     /// table.
     fn checks(&self, target: &TableRef) -> Vec<ForeignKeyCheck> {
         let table = &self.original.table;
-        let mut checks = vec![ForeignKeyCheck::new(Some(table.clone()), target.clone())];
+        let rebuilt = ForeignKeyCheck::new(Some(table.clone()), target.clone());
+        let mut checks = vec![match self.rowids_renumbered() {
+            true => rebuilt.renumbered(),
+            false => rebuilt,
+        }];
         for key in &self.original.inbound_foreign_keys {
             let child = &key.table;
             let known = same_table(child, table)
@@ -475,7 +479,7 @@ impl Rebuild<'_> {
         }
         let autoincrement = match key.as_slice() {
             [only] if self.numbers_itself(only) => {
-                if !self.declared_type(only)?.trim().eq_ignore_ascii_case("INTEGER") {
+                if !is_integer(&self.declared_type(only)?) {
                     return Err(BuildDdlError::Refused {
                         column: only.clone(),
                         operation: DdlOperation::AlterAutoIncrement,
@@ -763,12 +767,17 @@ impl Rebuild<'_> {
         Ok(splice.render(self.source.sql()))
     }
 
-    /// `range` with the whitespace before it, so a removed constraint
-    /// leaves no gap.
+    /// `range` with the spaces before it on its own line, so a removed
+    /// constraint leaves no gap. The newline stays: it may end a `--`
+    /// comment, which would otherwise run on over what follows.
     fn with_space_before(&self, range: Range<usize>, floor: usize) -> Range<usize> {
         let bytes = self.source.sql().as_bytes();
         let mut start = range.start;
-        while start > floor && bytes.get(start - 1).is_some_and(u8::is_ascii_whitespace) {
+        while start > floor
+            && bytes
+                .get(start - 1)
+                .is_some_and(|byte| byte.is_ascii_whitespace() && *byte != b'\n')
+        {
             start -= 1;
         }
         start..range.end
@@ -792,28 +801,26 @@ impl Rebuild<'_> {
             return Err(BuildDdlError::Unsupported(DdlOperation::AlterTable));
         }
         let list = columns.join(", ");
+        // OR ABORT overrides an ON CONFLICT IGNORE or REPLACE the kept
+        // text declares, which would drop a row the new table refuses
+        // rather than fail the save.
         Ok(format!(
-            "INSERT INTO {} ({list}) SELECT {list} FROM {}",
+            "INSERT OR ABORT INTO {} ({list}) SELECT {list} FROM {}",
             self.dialect.qualify(temporary),
             self.dialect.qualify(&self.original.table)
         ))
     }
 
-    /// A name for the rowid that no column of either table hides.
+    /// A name for the rowid that no column of either table hides, unless
+    /// a copied column is the new table's rowid.
     fn rowid_name(&self) -> Option<&'static str> {
         if self.source.without_rowid {
             return None;
         }
-        let alias_copied = match self.final_key().as_slice() {
-            [only] => {
-                self.kept(only).is_some()
-                    && self
-                        .declared_type(only)
-                        .is_ok_and(|declared| declared.trim().eq_ignore_ascii_case("INTEGER"))
-            }
-            _ => false,
-        };
-        if alias_copied {
+        if self
+            .rowid_alias_after()
+            .is_some_and(|alias| self.kept(&alias).is_some())
+        {
             return None;
         }
         let taken: HashSet<String> = self
@@ -827,6 +834,85 @@ impl Rebuild<'_> {
             .into_iter()
             .find(|name| !taken.contains(*name))
     }
+
+    /// The column that is the new table's rowid, by its final name: a
+    /// lone INTEGER PRIMARY KEY, unless the kept text declares it
+    /// `PRIMARY KEY DESC` on the column itself.
+    fn rowid_alias_after(&self) -> Option<String> {
+        if self.source.without_rowid {
+            return None;
+        }
+        let [only] = self.final_key().try_into().ok()?;
+        if !self.declared_type(&only).is_ok_and(|declared| is_integer(&declared)) {
+            return None;
+        }
+        let descending = self.key == Key::Kept
+            && self
+                .kept(&only)
+                .is_some_and(|column| self.declared_descending(column.name()));
+        (!descending).then_some(only)
+    }
+
+    /// The column that is the old table's rowid.
+    fn rowid_alias_before(&self) -> Option<&str> {
+        if self.source.without_rowid {
+            return None;
+        }
+        let key: Vec<&ColumnDefinition> = match &self.original.primary_key {
+            Some(key) => key
+                .columns
+                .iter()
+                .filter_map(|name| self.original.column(name))
+                .collect(),
+            None => self
+                .original
+                .columns
+                .iter()
+                .filter(|column| column.info.primary_key)
+                .collect(),
+        };
+        let [only] = key.as_slice() else {
+            return None;
+        };
+        let declared = only
+            .info
+            .column_type
+            .catalog
+            .as_ref()
+            .map_or("", |catalog| catalog.declaration.as_sql());
+        (is_integer(declared) && !self.declared_descending(only.name())).then_some(only.name())
+    }
+
+    fn declared_descending(&self, column: &str) -> bool {
+        self.source
+            .columns()
+            .filter(|(_, source)| source.name.eq_ignore_ascii_case(column))
+            .flat_map(|(_, source)| &source.segments)
+            .any(|segment| matches!(segment.kind, ColumnConstraintKind::PrimaryKey { descending: true, .. }))
+    }
+
+    /// Whether the copy gives the rows new rowids: a kept column that
+    /// was not the rowid becomes it, or no name reaches the old one.
+    fn rowids_renumbered(&self) -> bool {
+        if self.source.without_rowid {
+            return false;
+        }
+        let copied_alias = self
+            .rowid_alias_after()
+            .and_then(|alias| self.kept(&alias))
+            .map(ColumnDefinition::name);
+        match copied_alias {
+            Some(alias) => !self
+                .rowid_alias_before()
+                .is_some_and(|before| before.eq_ignore_ascii_case(alias)),
+            None => self.rowid_name().is_none(),
+        }
+    }
+}
+
+/// The one declared type that makes a lone primary key column the rowid.
+fn is_integer(declared: &str) -> bool {
+    declared.trim().eq_ignore_ascii_case("INTEGER")
 }
 
 /// Edits to one stretch of the source, applied in order.

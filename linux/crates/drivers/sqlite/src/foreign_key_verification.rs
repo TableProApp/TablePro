@@ -18,7 +18,7 @@ use crate::errors::{SQLITE_CONSTRAINT, SQLITE_CONSTRAINT_FOREIGNKEY};
 pub(crate) struct Violation {
     pub table: String,
     /// `None` for a WITHOUT ROWID child table, which has no rowid to
-    /// name the row by.
+    /// name the row by, and for one whose rows the batch renumbers.
     pub rowid: Option<i64>,
     pub parent: String,
 }
@@ -47,8 +47,8 @@ pub(crate) fn renamed(baseline: Vec<Violation>, renames: &HashMap<String, String
 }
 
 /// The rows of `after` that `before` does not account for, compared as
-/// multisets. Rows without a rowid are all alike, so for a WITHOUT
-/// ROWID table it is the count per child and parent that compares.
+/// multisets. Rows without a rowid are all alike, so for them it is the
+/// count per child and parent that compares.
 pub(crate) fn introduced(before: &[Violation], after: &[Violation]) -> Vec<IntroducedViolations> {
     let mut remaining: HashMap<(String, Option<i64>, String), usize> = HashMap::new();
     for violation in before {

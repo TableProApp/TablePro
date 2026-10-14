@@ -305,7 +305,7 @@ async fn baseline(connection: &mut SqlxConnection, checks: &[ForeignKeyCheck]) -
         let Some(before) = &check.before else {
             continue;
         };
-        found.extend(violations(connection, before).await?);
+        found.extend(violations(connection, before, check.rowids_renumbered).await?);
         renames.insert(before.name.to_lowercase(), check.after.name.clone());
     }
     Ok(renamed(found, &renames))
@@ -317,14 +317,19 @@ async fn violations_after(
 ) -> Result<Vec<Violation>, DriverError> {
     let mut found = Vec::new();
     for check in checks {
-        found.extend(violations(connection, &check.after).await?);
+        found.extend(violations(connection, &check.after, check.rowids_renumbered).await?);
     }
     Ok(found)
 }
 
 /// `foreign_key_check` for one child table: the rows whose parent row
-/// is missing.
-async fn violations(connection: &mut SqlxConnection, table: &TableRef) -> Result<Vec<Violation>, DriverError> {
+/// is missing. A rowid the batch changes names no row on the other side
+/// of it, so it is left out and the rows compare by count.
+async fn violations(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+    rowids_renumbered: bool,
+) -> Result<Vec<Violation>, DriverError> {
     let schema = table
         .schema
         .as_deref()
@@ -338,9 +343,10 @@ async fn violations(connection: &mut SqlxConnection, table: &TableRef) -> Result
         .map_err(map_error)?;
     rows.iter()
         .map(|row| {
+            let rowid: Option<i64> = row.try_get("rowid").map_err(map_error)?;
             Ok(Violation {
                 table: row.try_get("table").map_err(map_error)?,
-                rowid: row.try_get("rowid").map_err(map_error)?,
+                rowid: rowid.filter(|_| !rowids_renumbered),
                 parent: row.try_get("parent").map_err(map_error)?,
             })
         })
