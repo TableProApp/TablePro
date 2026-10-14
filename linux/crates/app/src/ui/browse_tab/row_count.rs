@@ -121,19 +121,24 @@ impl BrowseModel {
         self.sync_total_chrome();
     }
 
-    /// Take a new total. Only an exact one says where the table ends, so
-    /// only an exact one moves a page left past the end back to the last
-    /// page.
     pub(super) fn set_total(&mut self, total: RowTotal, fx: &mut Effects) {
         self.total = total;
-        if let Some(rows) = self.total.exact()
-            && let Some((_, start)) = self.pager.clamp(rows)
-        {
-            self.pager.go_to(start);
+        if self.clamp_to_total(fx) {
             self.fetch(BrowseRequestKind::Page, fx);
-            fx.output(BrowseTabOutput::StateChanged);
         }
         self.sync_total_chrome();
+    }
+
+    /// Only an exact total says where the table ends, so only an exact
+    /// one moves a page left past the end back to the last page. Says
+    /// whether it moved, for the caller to read that page.
+    pub(super) fn clamp_to_total(&mut self, fx: &mut Effects) -> bool {
+        let Some((_, start)) = self.total.exact().and_then(|rows| self.pager.clamp(rows)) else {
+            return false;
+        };
+        self.pager.go_to(start);
+        fx.output(BrowseTabOutput::StateChanged);
+        true
     }
 
     /// The paginator's label, the Count Rows button and Last, which only

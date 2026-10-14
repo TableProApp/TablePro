@@ -1715,9 +1715,11 @@ impl BrowseModel {
                 self.sync_pending_chrome(self.tracker.pending_count(), fx);
                 self.capture_selection();
                 // The save says how the total moved, so nothing is
-                // counted again.
+                // counted again. A delete that emptied the last page
+                // leaves an exact total that moves the tab back a page.
                 self.total
                     .adjust_after_save(origins.inserts, origins.deletes, !self.current_filter.is_empty());
+                self.clamp_to_total(fx);
                 self.sync_total_chrome();
                 self.fetch(BrowseRequestKind::Page, fx);
             }

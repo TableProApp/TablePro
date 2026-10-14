@@ -321,6 +321,38 @@ fn a_failed_count_does_not_run_again_after_a_reconnect() {
     assert_eq!(count_calls(&harness), 1);
 }
 
+/// Deleting the only row on the last page leaves the table one page
+/// shorter, which the exact total says, so the tab moves to the page
+/// that is now the last.
+#[gtk4::test]
+fn saving_away_the_last_page_moves_to_the_new_last_page() {
+    let mut script = paging(full_page(0), rows_from(100, &["Linus"]));
+    script.count_rows = Default::default();
+    script.count_rows.always(FakeReply::ok(101));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || paginator(&harness) == "Rows 1 – 100 of 101").expect("the exact total");
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.shown() == text(&["Linus"])).expect("the last page");
+    let queries = CallCounters::get(&harness.connection.counters().query_bound);
+
+    harness
+        .tab()
+        .send(BrowseTabInput::SaveCommitted(ChangeOrigins { inserts: 0, deletes: 1 }));
+    wait_until(WAIT, || {
+        CallCounters::get(&harness.connection.counters().query_bound) == queries + 1
+    })
+    .expect("the page read after the save");
+    settle();
+
+    assert_eq!(harness.tab().current_offset(), 0, "the tab stayed past the end");
+    assert_eq!(
+        CallCounters::get(&harness.connection.counters().query_bound),
+        queries + 1,
+        "the save read a page twice"
+    );
+    assert_eq!(count_calls(&harness), 1);
+}
+
 /// The estimate can land after the user asked for a count. The count
 /// gives the total, so it keeps running and keeps its spinner.
 #[gtk4::test]
