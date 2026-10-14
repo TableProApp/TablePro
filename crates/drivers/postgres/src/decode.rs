@@ -66,56 +66,40 @@ fn decode_interval(bytes: &[u8]) -> Option<String> {
 }
 
 fn format_interval(months: i32, days: i32, microseconds: i64) -> String {
-    let explicit_sign = months < 0 || days < 0 || microseconds < 0;
-    let years = months / 12;
-    let months = months % 12;
-    let mut parts = Vec::new();
-    push_counted(&mut parts, years, "year", "years", explicit_sign);
-    push_counted(&mut parts, months, "mon", "mons", explicit_sign);
-    push_counted(&mut parts, days, "day", "days", explicit_sign);
-    if microseconds != 0 || parts.is_empty() {
-        parts.push(format_interval_time(microseconds, explicit_sign));
+    let mut text = String::new();
+    let mut is_zero = true;
+    let mut is_before = false;
+    for (count, unit) in [(months / 12, "year"), (months % 12, "mon"), (days, "day")] {
+        if count == 0 {
+            continue;
+        }
+        if !is_zero {
+            text.push(' ');
+        }
+        if is_before && count > 0 {
+            text.push('+');
+        }
+        let plural = if count == 1 { "" } else { "s" };
+        text.push_str(&format!("{count} {unit}{plural}"));
+        is_before = count < 0;
+        is_zero = false;
     }
-    parts.join(" ")
-}
-
-fn push_counted(parts: &mut Vec<String>, count: i32, singular: &str, plural: &str, explicit_sign: bool) {
-    if count == 0 {
-        return;
+    if microseconds != 0 || is_zero {
+        if !is_zero {
+            text.push(' ');
+        }
+        if microseconds < 0 {
+            text.push('-');
+        } else if is_before {
+            text.push('+');
+        }
+        if microseconds == i64::MIN {
+            text.push_str("9223372036854.775808 seconds");
+        } else {
+            text.push_str(&crate::temporal::clock_text(microseconds.unsigned_abs()));
+        }
     }
-    let label = if count.unsigned_abs() == 1 { singular } else { plural };
-    let sign = if explicit_sign && count.is_positive() { "+" } else { "" };
-    parts.push(format!("{sign}{count} {label}"));
-}
-
-fn format_interval_time(microseconds: i64, explicit_sign: bool) -> String {
-    let negative = microseconds < 0;
-    let magnitude = microseconds.unsigned_abs();
-    let hours = magnitude / 3_600_000_000;
-    let sign = if negative {
-        "-"
-    } else if explicit_sign {
-        "+"
-    } else {
-        ""
-    };
-    if hours > i32::MAX as u64 {
-        return format!("{sign}{}.{:06} seconds", magnitude / 1_000_000, magnitude % 1_000_000);
-    }
-    let remainder = magnitude % 3_600_000_000;
-    let minutes = remainder / 60_000_000;
-    let remainder = remainder % 60_000_000;
-    let seconds = remainder / 1_000_000;
-    let micros = remainder % 1_000_000;
-    if micros == 0 {
-        format!("{sign}{hours:02}:{minutes:02}:{seconds:02}")
-    } else {
-        let fraction = format!("{micros:06}");
-        format!(
-            "{sign}{hours:02}:{minutes:02}:{seconds:02}.{}",
-            fraction.trim_end_matches('0')
-        )
-    }
+    text
 }
 
 fn decode_inet(bytes: &[u8], force_prefix: bool) -> Option<String> {
@@ -353,11 +337,11 @@ mod tests {
     #[test]
     fn value_contract_interval_extremes_and_mixed_signs_are_unambiguous() {
         for (months, days, micros, expected) in [
-            (-1, 2, 3, "-1 mon +2 days +00:00:00.000003"),
-            (1, -2, 3, "+1 mon -2 days +00:00:00.000003"),
-            (1, 2, -3, "+1 mon +2 days -00:00:00.000003"),
+            (-1, 2, 3, "-1 mons +2 days 00:00:00.000003"),
+            (1, -2, 3, "1 mon -2 days +00:00:00.000003"),
+            (1, 2, -3, "1 mon 2 days -00:00:00.000003"),
             (0, 0, i64::MIN, "-9223372036854.775808 seconds"),
-            (0, 0, i64::MAX, "9223372036854.775807 seconds"),
+            (0, 0, i64::MAX, "2562047788:00:54.775807"),
             (0, 0, i64::from(i32::MAX) * 3_600_000_000, "2147483647:00:00"),
         ] {
             assert_eq!(

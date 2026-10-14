@@ -40,20 +40,31 @@ pub(crate) fn decode_time(bytes: &[u8], with_zone: bool) -> Option<Value> {
     if west <= -OFFSET_LIMIT || west >= OFFSET_LIMIT {
         return None;
     }
-    let text = match time {
-        Value::Time(time) => time.to_string(),
-        Value::Text(text) => text,
-        _ => return None,
-    };
     let east = -west;
     let sign = if east < 0 { '-' } else { '+' };
     let offset = east.unsigned_abs();
-    Some(Value::Text(format!(
-        "{text}{sign}{:02}:{:02}:{:02}",
-        offset / 3_600,
-        offset % 3_600 / 60,
-        offset % 60
-    )))
+    let (hours, minutes, seconds) = (offset / 3_600, offset % 3_600 / 60, offset % 60);
+    let zone = match (minutes, seconds) {
+        (0, 0) => format!("{sign}{hours:02}"),
+        (_, 0) => format!("{sign}{hours:02}:{minutes:02}"),
+        _ => format!("{sign}{hours:02}:{minutes:02}:{seconds:02}"),
+    };
+    Some(Value::Text(format!("{}{zone}", clock_text(micros.unsigned_abs()))))
+}
+
+pub(crate) fn clock_text(microseconds: u64) -> String {
+    let hours = microseconds / 3_600_000_000;
+    let minutes = microseconds % 3_600_000_000 / 60_000_000;
+    let seconds = microseconds % 60_000_000 / 1_000_000;
+    let fraction = microseconds % 1_000_000;
+    if fraction == 0 {
+        format!("{hours:02}:{minutes:02}:{seconds:02}")
+    } else {
+        format!(
+            "{hours:02}:{minutes:02}:{seconds:02}.{}",
+            format!("{fraction:06}").trim_end_matches('0')
+        )
+    }
 }
 
 pub(crate) fn decode_temporal(bytes: &[u8], type_name: &str) -> Option<Value> {
@@ -209,7 +220,7 @@ mod tests {
             Some(Value::Text("24:00:00".into()))
         );
         for (west, expected) in [
-            (0, "00:00:00+00:00:00"),
+            (0, "00:00:00+00"),
             (-20_712, "00:00:00+05:45:12"),
             (20_712, "00:00:00-05:45:12"),
             (-57_599, "00:00:00+15:59:59"),
@@ -219,7 +230,7 @@ mod tests {
         }
         assert_eq!(
             decode_time(&wire(MICROS_PER_DAY, 0), true),
-            Some(Value::Text("24:00:00+00:00:00".into()))
+            Some(Value::Text("24:00:00+00".into()))
         );
     }
 
