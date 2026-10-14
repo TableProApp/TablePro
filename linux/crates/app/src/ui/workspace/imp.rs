@@ -10,6 +10,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::WorkspaceModel;
+use crate::ui::export::ExportOperationsButton;
 
 #[derive(Default, gtk::CompositeTemplate)]
 #[template(resource = "/app/tablepro/TablePro/ui/workspace.ui")]
@@ -22,6 +23,8 @@ pub struct Workspace {
     pub row_op_spinner: TemplateChild<adw::Spinner>,
     #[template_child]
     pub primary_menu_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
+    pub export_operations_button: TemplateChild<ExportOperationsButton>,
     #[template_child]
     pub sidebar_root: TemplateChild<adw::ToolbarView>,
     #[template_child]
@@ -54,6 +57,7 @@ impl ObjectSubclass for Workspace {
     type ParentType = adw::BreakpointBin;
 
     fn class_init(klass: &mut Self::Class) {
+        ExportOperationsButton::ensure_type();
         klass.bind_template();
     }
 

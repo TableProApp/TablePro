@@ -5,6 +5,7 @@ use crate::column::{ColumnKind, ResultColumn};
 use crate::value::Value;
 
 use super::column_type;
+use super::encoder::{EncodeError, JsonArrayEncoder, encode_rows};
 use super::json_field_names::json_field_names;
 use super::value_text::{element_kind, kind_text};
 
@@ -41,9 +42,9 @@ impl Serialize for JsonRow<'_> {
 /// Numbers go out as the digits the server sent rather than through a
 /// float: `18446744073709551615` and `1.0000000000` both lose their
 /// value on the way through one.
-struct JsonCell<'a> {
-    value: &'a Value,
-    kind: &'a ColumnKind,
+pub(super) struct JsonCell<'a> {
+    pub(super) value: &'a Value,
+    pub(super) kind: &'a ColumnKind,
 }
 
 impl Serialize for JsonCell<'_> {
@@ -113,17 +114,8 @@ pub fn row_to_json(columns: &[ResultColumn], row: &[Value]) -> String {
     serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_owned())
 }
 
-pub fn render_json(columns: &[ResultColumn], rows: &[Vec<Value>]) -> String {
-    let names = json_field_names(columns);
-    let values: Vec<JsonRow<'_>> = rows
-        .iter()
-        .map(|row| JsonRow {
-            names: &names,
-            columns,
-            row,
-        })
-        .collect();
-    serde_json::to_string_pretty(&values).unwrap_or_else(|_| "[]".to_owned())
+pub fn render_json(columns: &[ResultColumn], rows: &[Vec<Value>]) -> Result<String, EncodeError> {
+    encode_rows(JsonArrayEncoder::new(columns.into()), rows)
 }
 
 #[cfg(test)]
@@ -326,6 +318,6 @@ mod tests {
     fn render_json_empty_rows_is_empty_array() {
         let columns = cols(&["a"]);
 
-        assert_eq!(render_json(&columns, &[]), "[]");
+        assert_eq!(render_json(&columns, &[]).expect("the array"), "[]");
     }
 }

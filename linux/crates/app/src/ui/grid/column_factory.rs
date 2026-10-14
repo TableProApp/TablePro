@@ -33,7 +33,6 @@ pub fn build_column_view(
     let GridContent {
         columns: result_columns,
         rows,
-        truncated,
     } = content;
     let store = gtk4::gio::ListStore::new::<RowObject>();
     store.splice(0, 0, &rows);
@@ -53,7 +52,6 @@ pub fn build_column_view(
         column_view: &column_view,
         sink: sink.clone(),
         columns: result_columns.clone(),
-        truncated,
         tab_ctx: tab_ctx.clone(),
     });
     GridKeyboard::install(&column_view, grid_menus.clone(), sink.clone());

@@ -33,6 +33,9 @@
               </object>
             </child>
             <child type="end">
+              <object class="TableProExportOperationsButton" id="export_operations_button"/>
+            </child>
+            <child type="end">
               <object class="AdwSpinner" id="row_op_spinner">
                 <property name="visible">false</property>
                 <property name="margin-end">6</property>

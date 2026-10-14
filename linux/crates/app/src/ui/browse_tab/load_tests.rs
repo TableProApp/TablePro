@@ -341,20 +341,26 @@ fn the_rows_behind_the_error_page_take_no_action() {
     harness
         .tab()
         .connect_export_results(move |_, _| *sink.borrow_mut() += 1);
-    let copied = Rc::new(RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+    const BEFORE: &str = "nothing copied yet";
+    let clipboard = harness.tab().clipboard();
+    clipboard.set_text(BEFORE);
+    let clipboard_text = || -> Option<String> { clipboard.content()?.value(String::static_type()).ok()?.get().ok() };
     let toasts = toasts(harness.tab());
 
     harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
     harness.tab().send(BrowseTabInput::ExportCurrentPage);
     harness.tab().send(BrowseTabInput::CopySelectedRowsAsTsv);
+    let _ = wait_until(std::time::Duration::from_millis(500), || {
+        clipboard_text().as_deref() != Some(BEFORE)
+    });
 
     assert_eq!(*exported.borrow(), 0, "Export wrote rows the filter does not match");
-    assert!(copied.borrow().is_empty(), "{:?}", copied.borrow());
+    assert_eq!(
+        clipboard_text().as_deref(),
+        Some(BEFORE),
+        "Copy reached rows behind the error page"
+    );
     assert_eq!(*toasts.borrow(), ["Nothing to export"]);
     assert!(
         !delete_action(harness.tab()).is_enabled(),

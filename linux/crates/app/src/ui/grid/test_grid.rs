@@ -85,7 +85,6 @@ pub(super) fn content(columns: &[ColumnInfo], rows: Vec<RowObject>) -> GridConte
     GridContent {
         columns: columns.iter().map(ColumnInfo::result_column).collect(),
         rows,
-        truncated: false,
     }
 }
 

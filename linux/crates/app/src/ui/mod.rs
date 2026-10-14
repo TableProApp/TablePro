@@ -1,4 +1,5 @@
 mod browse_tab;
+pub(crate) mod clipboard;
 mod connect_dialog;
 mod connection_list;
 mod connection_list_banner;
@@ -8,6 +9,7 @@ mod delete_connection_dialog;
 mod editor;
 mod editor_font_provider;
 pub(crate) mod error_text;
+mod export;
 mod export_dialog;
 mod file_read;
 mod file_write;

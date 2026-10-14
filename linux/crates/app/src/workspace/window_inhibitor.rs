@@ -167,6 +167,10 @@ mod tests {
             InhibitReason::SavingChanges.flags(),
             gtk::ApplicationInhibitFlags::LOGOUT | gtk::ApplicationInhibitFlags::SUSPEND
         );
+        assert_eq!(
+            InhibitReason::Exporting.flags(),
+            gtk::ApplicationInhibitFlags::LOGOUT | gtk::ApplicationInhibitFlags::SUSPEND
+        );
     }
 
     #[gtk4::test]

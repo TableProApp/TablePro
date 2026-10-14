@@ -263,15 +263,15 @@ impl Sandbox {
 
     /// Write the files as the sessions open at the last quit.
     fn record(&self, uris: &[&str]) -> Result<(), String> {
-        let sessions: Vec<serde_json::Value> = uris
+        let sessions: Vec<String> = uris
             .iter()
-            .map(|uri| serde_json::json!({ "kind": "file", "uri": uri }))
+            .map(|uri| format!(r#"{{"kind":"file","uri":{}}}"#, serde_json::Value::from(*uri)))
             .collect();
-        let record = serde_json::json!({ "version": 1, "sessions": sessions });
+        let record = format!(r#"{{"version":1,"sessions":[{}]}}"#, sessions.join(","));
         let path = self.record_path();
         let parent = path.parent().ok_or("the record has no directory")?;
         std::fs::create_dir_all(parent).map_err(|error| format!("could not create {}: {error}", parent.display()))?;
-        std::fs::write(&path, record.to_string()).map_err(|error| format!("could not write the record: {error}"))
+        std::fs::write(&path, record).map_err(|error| format!("could not write the record: {error}"))
     }
 
     /// The file URIs recorded, in order.

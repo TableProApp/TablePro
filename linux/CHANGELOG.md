@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Try Again on a table tab's error page, and Retry on a banner over rows or a structure that could not be read again.
 - Table and structure tabs show a spinner in the tab bar while they read.
 - Count Rows in a table tab's paginator, with the reason on Try Again when a count fails.
+- Exports write in the background, with progress and Stop in the header bar, and a close or quit asks to stop them first.
+- Copy as puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
 
 ### Changed
 
@@ -50,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set Value in a grid cell's menu is Set to Empty, Set to NULL and Set to DEFAULT, each shown only where the column takes it.
 - Set a grid cell to NULL with Ctrl+Backspace instead of Ctrl+Shift+N.
 - Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
+- JSON exports and copies put one row per line, and a value TablePro couldn't read stops the export instead of becoming NULL.
 - Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
 - Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
 - Deleting a connection asks once, offers its window when it is open, and can delete its query history too.
@@ -73,6 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Format could split `+=`, `b'01'` or `@@version`, or detach a MySQL function from its parenthesis, and change the statement.
 - Opening a SQL, CSV or connections file from a pipe or a device never finished, or read past its size limit.
 - Exporting results or query history, or opening the connect dialog, froze the window on a slow disk or network folder.
+- A failed query history export said nothing.
+- Copying many rows, or showing a row with a long value as JSON, froze the window.
 - A query saved just before quitting could be lost.
 - The sidebar's table search button had no name for screen readers.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.

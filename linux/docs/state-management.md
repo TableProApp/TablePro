@@ -11,6 +11,7 @@ The `app` crate's application, windows, workspace and tabs are gtk-rs subclasses
 | The connection | `Session`, shared by the window's page and its workspace | the page, until the teardown closes it |
 | Schemas, objects and columns | the session's `SchemaCatalog` | the session |
 | Tabs, pending edits, running saves | the `Workspace`: `ChangeTrackerRegistry`, `StructureTrackerRegistry`, `WorkspaceHandle` with its `SaveLedger` | the workspace |
+| Running exports | the workspace's `ExportLedger` | the workspace |
 | A tab's rows, filter and requests | the tab's model, in its `imp` struct | the tab |
 
 Windows share nothing but `AppServices`. CI fails on a `thread_local!` under `crates/app/src/services`, since a registry shared that way would show one window's unsaved edits in every other window.
@@ -35,7 +36,7 @@ Windows share nothing but `AppServices`. CI fails on a `thread_local!` under `cr
 
 **Saves go through the workspace.** `WorkspaceHandle` starts, stops and settles every save. Its `SaveLedger` records each running save with its tab, its kind, a cancel token and a process hold, and refuses a second save of the same kind for the same tab. Stop Saving, or a close that chose to stop, cancels the token, which reaches the driver through `run_cancellable`; the save settles when the driver answers.
 
-**Closing asks through the window's prompts.** `CloseGuards` runs one `CloseGuard` at a time per window, so a tab's close and the window's never ask about the same tab at once. A guard reads the workspace again after every answer and every settled save: it offers to save, waits for or stops running saves, asks about a save whose outcome is unknown, and confirms open transactions. A disconnect asks the same prompts before the teardown.
+**Closing asks through the window's prompts.** `CloseGuards` runs one `CloseGuard` at a time per window, so a tab's close and the window's never ask about the same tab at once. A guard reads the workspace again after every answer and every settled save: it offers to save, waits for or stops running saves, asks about a save whose outcome is unknown, and confirms open transactions. Before any of that, a close of the whole window asks each `CloseBlocker` the workspace registered, such as its `ExportLedger`, and either keeps the window or stops that work and waits for it. A disconnect asks the same prompts before the teardown.
 
 ## Windows and the workspace
 

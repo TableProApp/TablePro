@@ -13,7 +13,6 @@ pub fn entry_widget(entry: &RunLogEntry, grid_sink: &GridSink, go_to_error: impl
             let content = GridContent {
                 columns: result.columns.clone(),
                 rows: result.rows.iter().cloned().map(RowObject::result).collect(),
-                truncated: result.truncated,
             };
             let (column_view, _selection) =
                 build_column_view(content, &[], grid_sink.clone(), None, false, TabGridContext::default());

@@ -19,6 +19,7 @@ use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{FakeSession, drain_main_context, wait_until};
+use crate::ui::clipboard::InsertRow;
 use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
 
 pub(super) const WAIT: Duration = Duration::from_secs(10);
@@ -651,7 +652,9 @@ fn export_and_save_reach_the_window_as_signals() {
     let saved = std::rc::Rc::new(std::cell::Cell::new(0));
     let export_sink = exported.clone();
     harness.tab().connect_export_results(move |_, request| {
-        export_sink.borrow_mut().push((request.name, request.result.rows.len()));
+        export_sink
+            .borrow_mut()
+            .push((request.name, request.source.row_count()));
     });
     let save_sink = saved.clone();
     harness
@@ -820,41 +823,27 @@ fn copy_row_as_insert_uses_row_below_draft() {
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
-    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
 
     harness.tab().send(BrowseTabInput::InsertRow);
     let below_draft = harness.grid_row(1);
-    harness
-        .tab()
-        .send(BrowseTabInput::GridCopyRowsAsInsert(vec![below_draft]));
+    let copied = copied_by(harness.tab(), || {
+        harness
+            .tab()
+            .send(BrowseTabInput::GridCopyRowsAsInsert(vec![below_draft]));
+    });
 
-    assert_eq!(
-        *copied.borrow(),
-        ["INSERT INTO \"users\" (\"id\", \"name\") VALUES (0, 'Ada');".to_owned()]
-    );
+    assert_eq!(copied, "INSERT INTO \"users\" (\"id\", \"name\") VALUES (0, 'Ada');");
 }
 
-#[gtk4::test]
-fn a_copy_with_a_nul_reaches_the_window_whole() {
-    let mut script = serving_table();
-    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
-    let harness = Harness::open(script, []);
-    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
-    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
-
-    harness
-        .tab()
-        .send(BrowseTabInput::GridCopyToClipboard("a\0b".to_owned()));
-
-    assert_eq!(*copied.borrow(), ["a\0b".to_owned()]);
+/// What the clipboard holds once the copy `copy` starts lands there.
+fn copied_by(tab: &BrowseTab, copy: impl FnOnce()) -> String {
+    const BEFORE: &str = "nothing copied yet";
+    let clipboard = tab.clipboard();
+    clipboard.set_text(BEFORE);
+    copy();
+    let text = || -> Option<String> { clipboard.content()?.value(String::static_type()).ok()?.get().ok() };
+    wait_until(WAIT, || text().is_some_and(|text| text != BEFORE)).expect("the copy to land");
+    text().unwrap_or_default()
 }
 
 pub(super) fn key(id: i64) -> RowKey {
@@ -946,20 +935,16 @@ fn page_rows_have_single_owner() {
 fn copy_as_insert_and_duplicate_contain_no_hidden_columns() {
     let harness = Harness::open(partitioned_table(), []);
     wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
-    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
     let rows = harness.saved_rows();
 
-    harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(rows.clone()));
+    let copied = copied_by(harness.tab(), || {
+        harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(rows.clone()));
+    });
     harness.tab().send(BrowseTabInput::DuplicateRows(rows));
 
-    let copied = copied.borrow();
-    assert_eq!(copied.len(), 1);
+    assert_eq!(copied.lines().count(), 2, "{copied}");
     for hidden in ["16401", "(0,1)", "812", "__tablepro"] {
-        assert!(!copied[0].contains(hidden), "{hidden} reached the copy: {}", copied[0]);
+        assert!(!copied.contains(hidden), "{hidden} reached the copy: {copied}");
     }
     let drafts = harness.tracker.drafts();
     assert_eq!(drafts.len(), 2);
@@ -974,6 +959,30 @@ fn copy_as_insert_and_duplicate_contain_no_hidden_columns() {
 }
 
 #[gtk4::test]
+fn copy_as_insert_shares_saved_rows_and_copies_only_drafts() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let saved = harness.saved_rows();
+    let mut rows = vec![harness.grid_row(0)];
+    rows.extend(saved.iter().cloned());
+
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let model = harness.tab().imp().model.borrow();
+    let insert_rows = model.as_ref().expect("the model").insert_rows(&rows);
+
+    let [InsertRow::Draft(_), InsertRow::Saved(first), InsertRow::Saved(second)] = insert_rows.as_slice() else {
+        panic!("{insert_rows:?}");
+    };
+    for (snapshot, row) in [first, second].into_iter().zip(&saved) {
+        let cells = row.shared_cells().expect("a saved row's cells");
+        assert!(snapshot.shares_cells_with(cells), "a saved row's cells were copied");
+    }
+}
+
+#[gtk4::test]
 fn page_export_snapshot_contains_no_hidden_columns() {
     let harness = Harness::open(partitioned_table(), []);
     wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
@@ -981,19 +990,19 @@ fn page_export_snapshot_contains_no_hidden_columns() {
     let sink = exported.clone();
     harness
         .tab()
-        .connect_export_results(move |_, request| sink.borrow_mut().push(request.result));
+        .connect_export_results(move |_, request| sink.borrow_mut().push(request.source));
 
     harness.tab().send(BrowseTabInput::ExportCurrentPage);
 
     let exported = exported.borrow();
-    let [result] = exported.as_slice() else {
+    let [crate::ui::export::ExportSource::Rows { columns, rows }] = exported.as_slice() else {
         panic!("one export, not {}", exported.len());
     };
-    let names: Vec<&str> = result.columns.iter().map(|column| column.name.as_str()).collect();
+    let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
     assert_eq!(names, ["id", "name"]);
-    assert_eq!(result.rows.len(), 2);
-    for row in &result.rows {
-        visible_only(row);
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        visible_only(&row.to_values());
     }
 }
 
@@ -1364,11 +1373,6 @@ fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
     )));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
-    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
-    harness
-        .tab()
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
     let toasts = toasts(harness.tab());
 
     harness.tab().send(BrowseTabInput::InsertRow);
@@ -1383,11 +1387,13 @@ fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
             input: CellInput::Value(Value::Text("x".into())),
         },
     });
-    harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(vec![draft]));
+    let copied = copied_by(harness.tab(), || {
+        harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(vec![draft]));
+    });
 
     assert_eq!(
-        *copied.borrow(),
-        ["INSERT INTO \"users\" (\"name\") VALUES ('x');".to_owned()],
+        copied,
+        "INSERT INTO \"users\" (\"name\") VALUES ('x');",
         "toasts: {:?}",
         toasts.borrow()
     );

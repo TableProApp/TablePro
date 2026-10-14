@@ -33,9 +33,9 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sourceview5::prelude::*;
+use tablepro_core::RowLimit;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::{QueryResult, RowLimit};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
@@ -44,7 +44,9 @@ use self::imp::RunningScript;
 use self::run_log::{RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
-use super::grid::{GridMsg, GridSink};
+use super::clipboard::CopyRequest;
+use super::export::ExportSource;
+use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
@@ -272,16 +274,6 @@ impl SqlEditor {
         )
     }
 
-    pub fn connect_copy_to_clipboard<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
-        self.connect_closure(
-            "copy-to-clipboard",
-            false,
-            glib::closure_local!(move |editor: &Self, text: glib::BoxedAnyObject| {
-                f(editor, text.borrow::<String>().clone());
-            }),
-        )
-    }
-
     pub fn connect_toast<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "toast",
@@ -299,13 +291,16 @@ impl SqlEditor {
         )
     }
 
-    pub fn connect_export_results<F: Fn(&Self, QueryResult, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+    pub(crate) fn connect_export_results<F: Fn(&Self, ExportSource, String) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
         self.connect_closure(
             "export-results",
             false,
             glib::closure_local!(move |editor: &Self, payload: glib::BoxedAnyObject| {
-                let (result, name) = payload.borrow::<(QueryResult, String)>().clone();
-                f(editor, result, name);
+                let (source, name) = payload.borrow::<(ExportSource, String)>().clone();
+                f(editor, source, name);
             }),
         )
     }
@@ -619,19 +614,39 @@ impl SqlEditor {
                 return;
             };
             match message {
-                GridMsg::CopyToClipboard(text) => {
-                    editor.emit_by_name::<()>("copy-to-clipboard", &[&glib::BoxedAnyObject::new(text)]);
+                GridMsg::Copy(request) => editor.copy(request),
+                GridMsg::ShowRowJson(request) => {
+                    if let Some(tasks) = editor.deps().map(|deps| deps.tasks.clone()) {
+                        let parent = editor.clone().upcast();
+                        glib::spawn_future_local(async move {
+                            present_row_json(parent, tasks, request).await;
+                        });
+                    }
                 }
                 GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
-                GridMsg::ExportResults(result) => {
+                GridMsg::ExportResults(source) => {
                     let name = export_name_for_query(&editor.selected_preview());
-                    let payload = glib::BoxedAnyObject::new((result, name));
+                    let payload = glib::BoxedAnyObject::new((source, name));
                     editor.emit_by_name::<()>("export-results", &[&payload]);
                 }
                 _ => {}
             }
         });
         let _ = self.imp().grid_sink.set(sink);
+    }
+
+    /// Render a copy from a result grid off the GTK thread, and toast
+    /// how it went.
+    fn copy(&self, request: CopyRequest) {
+        let Some(tasks) = self.deps().map(|deps| deps.tasks.clone()) else {
+            return;
+        };
+        let editor = self.downgrade();
+        crate::ui::clipboard::copy_rows(self, &tasks, request, move |text| {
+            if let Some(editor) = editor.upgrade() {
+                editor.emit_by_name::<()>("toast", &[&text]);
+            }
+        });
     }
 
     /// The statement behind the result on screen, to name its export.

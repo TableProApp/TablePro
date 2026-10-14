@@ -1190,11 +1190,9 @@ fn follow_loading(page: &adw::TabPage, loading: bool) -> impl Fn(bool) + 'static
 fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     let state = input.clone();
     browse.connect_state_changed(move |_| state.deliver(WorkspaceInput::WorkspaceTabsChanged));
-    let clipboard = input.clone();
-    browse.connect_copy_to_clipboard(move |_, text| clipboard.deliver(WorkspaceInput::CopyToClipboard(text)));
     let export = input.clone();
-    browse.connect_export_results(move |_, ExportRequest { result, name, target }| {
-        export.deliver(WorkspaceInput::ExportResults { result, name, target });
+    browse.connect_export_results(move |_, ExportRequest { source, name, target }| {
+        export.deliver(WorkspaceInput::ExportResults { source, name, target });
     });
     let alert = input.clone();
     browse.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
@@ -1227,14 +1225,12 @@ fn connect_editor(
     editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
     let transaction = input.clone();
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
-    let clipboard = input.clone();
-    editor.connect_copy_to_clipboard(move |_, text| clipboard.deliver(WorkspaceInput::CopyToClipboard(text)));
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let export = input.clone();
-    editor.connect_export_results(move |_, result, name| {
+    editor.connect_export_results(move |_, source, name| {
         export.deliver(WorkspaceInput::ExportResults {
-            result,
+            source,
             name,
             target: None,
         });

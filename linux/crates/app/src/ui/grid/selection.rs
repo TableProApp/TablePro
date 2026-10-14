@@ -1,10 +1,5 @@
-use std::sync::Arc;
-
 use gtk4 as gtk;
 use gtk4::prelude::*;
-
-use tablepro_core::QueryResult;
-use tablepro_core::column::ResultColumn;
 
 use super::{RowObject, RowSnapshot, TabGridContext};
 
@@ -49,10 +44,4 @@ pub(crate) fn export_snapshot(column_view: &gtk::ColumnView, ctx: &TabGridContex
         .filter_map(|position| row_at(column_view, position))
         .map(|row| ctx.snapshot(&row))
         .collect()
-}
-
-/// Rows for an encoder that takes owned cells, under the columns the
-/// grid shows.
-pub(crate) fn snapshot_result(columns: Arc<[ResultColumn]>, rows: &[RowSnapshot], truncated: bool) -> QueryResult {
-    QueryResult::new(columns, rows.iter().map(RowSnapshot::to_values).collect()).truncated(truncated)
 }

@@ -62,6 +62,7 @@ tablepro-driver-mssql = { path = "../drivers/mssql" }
 tablepro-driver-mysql = { path = "../drivers/mysql" }
 tablepro-driver-postgres = { path = "../drivers/postgres" }
 tablepro-driver-sqlite = { path = "../drivers/sqlite" }
+async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
 serde.workspace = true

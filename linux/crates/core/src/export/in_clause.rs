@@ -29,11 +29,16 @@ pub struct InClause {
     pub skipped: usize,
 }
 
-pub fn render_in_clause(rows: &[Vec<Value>], col_index: usize) -> InClause {
-    let values: Vec<&Value> = rows.iter().filter_map(|row| row.get(col_index)).collect();
-    let literals: Vec<String> = values.iter().filter_map(|v| in_clause_literal(v)).collect();
+/// One column's values, from the rows a user picked, as an IN list.
+pub fn render_in_clause<'a>(values: impl IntoIterator<Item = &'a Value>) -> InClause {
+    let mut count = 0;
+    let literals: Vec<String> = values
+        .into_iter()
+        .inspect(|_| count += 1)
+        .filter_map(in_clause_literal)
+        .collect();
     InClause {
-        skipped: values.len() - literals.len(),
+        skipped: count - literals.len(),
         sql: if literals.is_empty() {
             String::new()
         } else {
@@ -48,14 +53,14 @@ mod tests {
 
     #[test]
     fn in_clause_reports_the_values_it_skips() {
-        let rows = vec![
-            vec![Value::Text("O'Brien".into())],
-            vec![Value::Null],
-            vec![Value::Int(5)],
-            vec![Value::Bool(true)],
+        let values = vec![
+            Value::Text("O'Brien".into()),
+            Value::Null,
+            Value::Int(5),
+            Value::Bool(true),
         ];
 
-        let out = render_in_clause(&rows, 0);
+        let out = render_in_clause(&values);
 
         assert_eq!(out.sql, "('O''Brien', 5, TRUE)");
         assert_eq!(out.skipped, 1);
@@ -63,18 +68,18 @@ mod tests {
 
     #[test]
     fn in_clause_writes_a_real_as_the_double_it_compares_as() {
-        let rows = vec![vec![Value::Float32(0.1)]];
+        let values = vec![Value::Float32(0.1)];
 
-        let out = render_in_clause(&rows, 0);
+        let out = render_in_clause(&values);
 
         assert_eq!(out.sql, format!("({})", f64::from(0.1_f32)));
     }
 
     #[test]
     fn in_clause_is_empty_rather_than_invalid_when_all_skipped() {
-        let rows = vec![vec![Value::Null], vec![Value::Bytes(vec![1, 2])]];
+        let values = vec![Value::Null, Value::Bytes(vec![1, 2])];
 
-        let out = render_in_clause(&rows, 0);
+        let out = render_in_clause(&values);
 
         assert_eq!(out.sql, "");
         assert_eq!(out.skipped, 2);

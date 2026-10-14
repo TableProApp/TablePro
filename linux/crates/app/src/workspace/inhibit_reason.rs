@@ -6,6 +6,9 @@ pub enum InhibitReason {
     UnsavedChanges,
     /// A write is running. Suspending would cut it off mid-commit.
     SavingChanges,
+    /// An export is writing a file, which a logout or suspend would
+    /// leave unfinished.
+    Exporting,
 }
 
 impl InhibitReason {
@@ -22,7 +25,9 @@ impl InhibitReason {
     pub fn flags(self) -> gtk::ApplicationInhibitFlags {
         match self {
             Self::UnsavedChanges => gtk::ApplicationInhibitFlags::LOGOUT,
-            Self::SavingChanges => gtk::ApplicationInhibitFlags::LOGOUT | gtk::ApplicationInhibitFlags::SUSPEND,
+            Self::SavingChanges | Self::Exporting => {
+                gtk::ApplicationInhibitFlags::LOGOUT | gtk::ApplicationInhibitFlags::SUSPEND
+            }
         }
     }
 
@@ -31,6 +36,7 @@ impl InhibitReason {
         match self {
             Self::UnsavedChanges => crate::i18n::gettext("There are unsaved changes"),
             Self::SavingChanges => crate::i18n::gettext("Saving changes"),
+            Self::Exporting => crate::i18n::gettext("Exporting data"),
         }
     }
 }
