@@ -1,9 +1,11 @@
 use std::time::Duration;
 
-use testcontainers::core::wait::HttpWaitStrategy;
-use testcontainers::core::{IntoContainerPort, WaitFor};
+use testcontainers::core::IntoContainerPort;
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt};
+use testcontainers::{ContainerAsync, ContainerRequest, GenericImage, ImageExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::time::Instant;
 
 use crate::container_file::with_files;
 use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, PkiFile, TestNetwork, TestPki};
@@ -11,10 +13,11 @@ use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, Fixture
 const HTTP_PORT: u16 = ClickHouseFixture::HTTP_PORT;
 const HTTPS_PORT: u16 = ClickHouseFixture::HTTPS_PORT;
 const PASSWORD_USER: &str = "tablepro";
-/// The image starts the server once to create CLICKHOUSE_DB, stops it and
-/// starts it again before /ping answers; on a busy CI runner that has
-/// taken longer than testcontainers' default of one minute.
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(180);
+const DATABASE: &str = "tablepro";
+const READY_TIMEOUT: Duration = Duration::from_secs(60);
+// A connection that is accepted and never answered must not use up the deadline.
+const READY_ATTEMPT: Duration = Duration::from_secs(5);
+const READY_RETRY: Duration = Duration::from_millis(250);
 
 pub struct ClickHouseFixture {
     container: ContainerAsync<GenericImage>,
@@ -40,19 +43,16 @@ impl ClickHouseFixture {
         Self::launch(Some(network)).await
     }
 
+    // No CLICKHOUSE_DB: the image would start, stop and restart the server
+    // to create it. One HTTP CREATE DATABASE is both that and the readiness check.
     async fn launch(network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
         let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
-        let ready = HttpWaitStrategy::new("/ping")
-            .with_port(HTTP_PORT.tcp())
-            .with_expected_status_code(200_u16);
-        let mut request = FixtureImage::CLICKHOUSE
+        let mut request: ContainerRequest<GenericImage> = FixtureImage::CLICKHOUSE
             .generic()
             .with_exposed_port(HTTP_PORT.tcp())
             .with_exposed_port(HTTPS_PORT.tcp())
-            .with_wait_for(WaitFor::http(ready))
-            .with_startup_timeout(STARTUP_TIMEOUT)
-            .with_env_var("CLICKHOUSE_DB", "tablepro");
+            .into();
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
         if let (Some(network), Some(alias)) = (network, &network_alias) {
             request = request.with_network(network.name()).with_container_name(alias);
@@ -61,7 +61,7 @@ impl ClickHouseFixture {
         let host = container.get_host().await?.to_string();
         let http_port = container.get_host_port_ipv4(HTTP_PORT).await?;
         let https_port = container.get_host_port_ipv4(HTTPS_PORT).await?;
-        Ok(Self {
+        let fixture = Self {
             container,
             pki,
             password,
@@ -69,7 +69,9 @@ impl ClickHouseFixture {
             http_port,
             https_port,
             network_alias,
-        })
+        };
+        fixture.create_database().await?;
+        Ok(fixture)
     }
 
     pub fn files(pki: &TestPki, password: &str) -> Result<Vec<ContainerFile>, FixtureError> {
@@ -144,5 +146,79 @@ impl ClickHouseFixture {
 
     pub async fn exec(&self, command: &[&str]) -> Result<ExecOutput, FixtureError> {
         ExecOutput::run(&self.container, command).await
+    }
+
+    async fn create_database(&self) -> Result<(), FixtureError> {
+        let request = query_request(
+            &self.host,
+            &self.password_credentials(),
+            &format!("CREATE DATABASE IF NOT EXISTS {DATABASE}"),
+        );
+        let deadline = Instant::now() + READY_TIMEOUT;
+        while Instant::now() < deadline {
+            let attempt = exchange(&self.host, self.http_port, &request);
+            if let Ok(Ok(reply)) = tokio::time::timeout(READY_ATTEMPT, attempt).await
+                && status_code(&reply) == Some(200)
+            {
+                return Ok(());
+            }
+            tokio::time::sleep(READY_RETRY).await;
+        }
+        Err(FixtureError::NotReady {
+            service: "clickhouse",
+            seconds: READY_TIMEOUT.as_secs(),
+        })
+    }
+}
+
+fn query_request(host: &str, credentials: &FixtureCredentials, query: &str) -> String {
+    format!(
+        "POST / HTTP/1.0\r\n\
+         Host: {host}\r\n\
+         X-ClickHouse-User: {}\r\n\
+         X-ClickHouse-Key: {}\r\n\
+         Content-Length: {}\r\n\
+         \r\n\
+         {query}",
+        credentials.username,
+        credentials.password,
+        query.len(),
+    )
+}
+
+async fn exchange(host: &str, port: u16, request: &str) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect((host, port)).await?;
+    stream.write_all(request.as_bytes()).await?;
+    let mut reply = Vec::new();
+    stream.read_to_end(&mut reply).await?;
+    Ok(String::from_utf8_lossy(&reply).into_owned())
+}
+
+fn status_code(reply: &str) -> Option<u16> {
+    let status_line = reply.lines().next()?;
+    let mut parts = status_line.split_whitespace();
+    parts.next().filter(|version| version.starts_with("HTTP/"))?;
+    parts.next()?.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_query_request_carries_the_credentials_and_the_body_length() {
+        let request = query_request("localhost", &FixtureCredentials::new("tablepro", "secret"), "SELECT 1");
+
+        assert!(request.starts_with("POST / HTTP/1.0\r\nHost: localhost\r\n"));
+        assert!(request.contains("\r\nX-ClickHouse-User: tablepro\r\nX-ClickHouse-Key: secret\r\n"));
+        assert!(request.ends_with("\r\nContent-Length: 8\r\n\r\nSELECT 1"));
+    }
+
+    #[test]
+    fn only_an_http_status_line_yields_a_status() {
+        assert_eq!(status_code("HTTP/1.0 200 OK\r\n\r\n"), Some(200));
+        assert_eq!(status_code("HTTP/1.1 516 Unknown\r\n\r\nCode: 516."), Some(516));
+        assert_eq!(status_code("SSH-2.0-OpenSSH_10.3\r\n"), None);
+        assert_eq!(status_code(""), None);
     }
 }

@@ -291,6 +291,26 @@ async fn clickhouse_https_fixture_serves_the_generated_certificate() -> TestResu
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn clickhouse_fixture_starts_the_server_once_with_the_database() -> TestResult {
+    let fixture = ClickHouseFixture::start().await?;
+    let log = "/var/log/clickhouse-server/clickhouse-server.log";
+    let query = "SELECT name FROM system.databases WHERE name = 'tablepro'";
+
+    let starts = fixture.exec(&["grep", "-c", "Starting ClickHouse", log]).await?;
+    let databases = fixture.exec(&["clickhouse-client", "--query", query]).await?;
+
+    assert_eq!(starts.stdout_text().trim(), "1", "{}", starts.stderr_text());
+    assert_eq!(
+        databases.stdout_text().trim(),
+        "tablepro",
+        "{}",
+        databases.stderr_text()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn pgbouncer_fixture_runs_select_1_through_the_upstream() -> TestResult {
     let fixture = PgBouncerFixture::start(PoolMode::Transaction).await?;
     let upstream = fixture.upstream();
