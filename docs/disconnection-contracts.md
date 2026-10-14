@@ -24,7 +24,7 @@ MySQL and SQL Server sessions follow the same rule. MySQL must not reacquire a r
 Run the six Docker-backed driver suites, including ignored fixtures, with:
 
 ```sh
-rtk python3 scripts/run-test-layer.py drivers
+python3 scripts/run-test-layer.py drivers
 ```
 
 The runner invokes `scripts/ci-local.sh integration`, which executes the full PostgreSQL, MySQL, SQL Server, ClickHouse, Redis and MongoDB integration targets with `--include-ignored --test-threads=1`. The focused connection-loss, mid-stream, restart and server-cancellation cases are included in those targets.
@@ -32,14 +32,14 @@ The runner invokes `scripts/ci-local.sh integration`, which executes the full Po
 Redis cancellation uses a local RESP fixture in the separate `cancellation` integration target. It is owned by the sandbox layer:
 
 ```sh
-rtk python3 scripts/run-test-layer.py sandbox
+python3 scripts/run-test-layer.py sandbox
 ```
 
 That layer runs `scripts/test-sandbox.sh`, which invokes the Redis cancellation target explicitly after the sandbox crate tests. MongoDB's cancellation and same-client recovery cases can be run individually:
 
 ```sh
-rtk cargo test --locked -p tablepro-driver-mongodb --test integration a_lost_mongodb_server_is_reported_as_disconnected -- --ignored --exact --test-threads=1
-rtk cargo test --locked -p tablepro-driver-mongodb --test integration a_cancelled_mongodb_read_leaves_the_client_usable -- --ignored --exact --test-threads=1
+cargo test --locked -p tablepro-driver-mongodb --test integration a_lost_mongodb_server_is_reported_as_disconnected -- --ignored --exact --test-threads=1
+cargo test --locked -p tablepro-driver-mongodb --test integration a_cancelled_mongodb_read_leaves_the_client_usable -- --ignored --exact --test-threads=1
 ```
 
 These suites are separate from the strict shared value-contract filter. A green value layer alone does not prove disconnect, cancellation, or reconnect behavior.
