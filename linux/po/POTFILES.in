@@ -193,6 +193,7 @@ crates/app/src/workspace/dirty_kind.rs
 crates/app/src/workspace/dirty_tab.rs
 crates/app/src/workspace/draft_writer.rs
 crates/app/src/workspace/inhibit_reason.rs
+crates/app/src/workspace/legacy_tab_file.rs
 crates/app/src/workspace/mod.rs
 crates/app/src/workspace/open_transaction_dialog.rs
 crates/app/src/workspace/pending_state.rs
