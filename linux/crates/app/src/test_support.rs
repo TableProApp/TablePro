@@ -12,7 +12,7 @@ mod wait_timed_out;
 mod widget_lookup;
 
 pub(crate) use accessible_label::assert_labelled;
-pub(crate) use alert_response::respond;
+pub(crate) use alert_response::{click_response, respond};
 pub(crate) use fake_clocks::FakeClocks;
 pub(crate) use fake_reachability::{Attached, FakeProbe, attach_remote};
 pub(crate) use fake_session::FakeSession;
