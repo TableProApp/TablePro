@@ -94,7 +94,7 @@ Build/package, mutation, coverage and acceptance retain their existing entrypoin
 | Coverage | Linux test quality; [local instructions](testing.md#coverage) | LCOV, exclusions and summary; this report has no threshold. Forgejo nightly separately enforces the unit-tier and per-crate floors. |
 | Flatpak | Flatpak Linux (packaging only) | Pull requests build the default profile; push and `workflow_dispatch` also build development; not regression acceptance |
 | Arch / Debian candidate | [Packaging guide](../apps/linux/packaging/README.md) and packaging scripts | Immutable SHA, package checksum, validator output |
-| GTK soak | GTK Safety Soak | Five independent retry-free attempts at one resolved SHA |
+| GTK soak | GTK Safety Soak | Five independent retry-free attempts per run at one resolved SHA; 0.2.0 qualification requires 30 consecutive attempts across at least six runs at that SHA |
 | Installed acceptance | [Manual feature checklist](manual-verification-0.2-features.md) and sprint gates | VM/desktop version, Wayland session, package checksum, steps, result and screenshots |
 
 ## Hosted checks
