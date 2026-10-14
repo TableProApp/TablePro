@@ -1,6 +1,6 @@
 # Known limitations of BookiE 0.2
 
-What the application does not do, or does differently from what you might expect, and the bugs we know about. Each entry names its ledger row. Draft of 2026-10-11, for the maintainer; an entry is removed when the row closes.
+What the application does not do, or does differently from what you might expect, and the bugs we know about. Each entry names its ledger row. Reviewed 2026-10-14; an entry is removed when the limitation no longer applies.
 
 ## Data and values
 
@@ -63,7 +63,7 @@ What the application does not do, or does differently from what you might expect
 
 ## Known bugs
 
-- **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): accessibility timeouts under capacity pressure, and a separate startup restore abort when GTK logs an `AdwBin` width near minus two billion under `G_DEBUG=fatal-criticals`. It is not yet known whether the layout abort can happen outside that test setup, where GTK only warns.
+- **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Intermittent failures remain under investigation; recent failures include an application shutdown with a bad exit status after the scenarios passed. The required consecutive full-run evidence has not been met.
 
 ## Test and CI limits
 

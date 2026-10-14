@@ -30,7 +30,7 @@ These failed or incomplete runs stay open until re-proven on a current SHA:
 | AUD-9 named outer alias and #461 plan behavior | B4 / AUD-9 | Outer-alias leak is fixed in #537 and has a dedicated native test; plan output remains redacted by #461. The frozen-candidate PostgreSQL release layer remains the acceptance gate |
 | Forgejo run 88 GTK waits: `open_editor`, `audit_failure_denies` | UX | Cause unclassified; run 88 predates #451/#452 |
 | TEST-28 native Ubuntu AT-SPI grid / Columns UI | UX | The Debian 13 and Ubuntu 24.04 containers expose and activate the grid menu (a menu-reachability scenario passes on both once it clicks the cell by its extents, [#646](https://github.com/cozyGarage/BookiE/pull/646)); the native Ubuntu host remains ([#560](https://github.com/cozyGarage/BookiE/issues/560)) |
-| TEST-31 intermittent Forgejo GTK / distro-floor timeouts | UX / lab | Executor capacity 3→2 on Debian hosts; next ten full runs decide; tip green alone is not enough. Runs 234 to 272: 28 passed, 10 failed, none on the accessibility timeouts; the recurring infrastructure failures are fixture startup and image pull timeouts under load ([#556](https://github.com/cozyGarage/BookiE/issues/556)) |
+| TEST-31 intermittent Forgejo GTK / distro-floor failures | UX / lab | The startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). The issue remains open for intermittent failures and the required consecutive full-run evidence; inspect its latest updates before qualifying a candidate ([#556](https://github.com/cozyGarage/BookiE/issues/556)) |
 | Build Linux on `c2f3f78b9`: Docker Hub `toomanyrequests` | lab | Auth wired (#476); treat as infra retest if anonymous pull returns |
 
 
