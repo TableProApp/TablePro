@@ -8,7 +8,7 @@ use crate::test_support::{
 };
 use crate::ui::{
     PreferencesDialog, SessionWindow, browse_tab, connect_dialog, editor, export, history_dialog, session_window,
-    ssh_section, structure_tab, workspace,
+    ssh_section, structure_tab, welcome_view, workspace,
 };
 
 /// Every class the app's templates build. A template whose class is
@@ -29,6 +29,7 @@ fn template_classes() -> Vec<glib::Type> {
         SessionWindow::static_type(),
         ssh_section::SshSection::static_type(),
         structure_tab::StructureTab::static_type(),
+        welcome_view::WelcomeView::static_type(),
         workspace::Workspace::static_type(),
     ]
 }
