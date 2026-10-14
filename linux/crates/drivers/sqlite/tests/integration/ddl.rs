@@ -27,6 +27,20 @@ async fn read(connection: &dyn Connection, table: &TableRef) -> TableDefinition 
     connection.fetch_table_definition(table, call()).await.unwrap()
 }
 
+fn plan(
+    connection: &dyn Connection,
+    before: &TableDefinition,
+    edit: impl FnOnce(&mut TableDraft),
+) -> Result<tablepro_core::ddl::DdlPlan, BuildDdlError> {
+    let mut draft = TableDraft::from_definition(before);
+    edit(&mut draft);
+    let dialect = connection.dialect();
+    dialect
+        .ddl()
+        .unwrap()
+        .plan_alter_table(before, &diff_table(before, &draft))
+}
+
 /// Plan the edit against the table as read and run it as the structure
 /// tab saves.
 async fn save(
@@ -35,14 +49,7 @@ async fn save(
     edit: impl FnOnce(&mut TableDraft),
 ) -> Result<WriteReport, DriverError> {
     let before = read(connection, table).await;
-    let mut draft = TableDraft::from_definition(&before);
-    edit(&mut draft);
-    let dialect = connection.dialect();
-    let plan = dialect
-        .ddl()
-        .unwrap()
-        .plan_alter_table(&before, &diff_table(&before, &draft))
-        .unwrap();
+    let plan = plan(connection, &before, edit).unwrap();
     connection
         .write_batch(&plan.into_write_batch(table.clone()), call())
         .await
@@ -712,4 +719,67 @@ async fn dropping_a_column_a_view_needs_is_refused_before_anything_runs() {
         })
     );
     connection.close().await.unwrap();
+}
+
+/// The tab plans against the table as it read it. Whatever changed the
+/// table, its dependents or the keys pointing at it since then, the
+/// rebuild refuses before it runs a statement, rather than writing the
+/// table again without it.
+#[tokio::test]
+async fn a_rebuild_planned_before_another_change_is_refused() {
+    let changes: [&[&str]; 4] = [
+        &[
+            "ALTER TABLE kept ADD COLUMN important TEXT",
+            "UPDATE kept SET important = 'keep me'",
+            "CREATE INDEX kept_by_important ON kept (important)",
+        ],
+        &["CREATE INDEX kept_by_v ON kept (v)"],
+        &[
+            "DROP VIEW kept_values",
+            "CREATE VIEW kept_values AS SELECT id, v FROM kept",
+        ],
+        &["CREATE TABLE children (kept_id INTEGER REFERENCES kept (id))"],
+    ];
+    for change in changes {
+        let file = TestFile::new().await;
+        let connection = file.open().await;
+        apply(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE kept (id INTEGER PRIMARY KEY, v TEXT)",
+                "CREATE VIEW kept_values AS SELECT v FROM kept",
+                "INSERT INTO kept VALUES (1, 'a')",
+            ],
+        )
+        .await
+        .unwrap();
+        let before = read(connection.as_ref(), &kept()).await;
+        let stale = plan(connection.as_ref(), &before, |draft| retype(draft, "v", "BLOB")).unwrap();
+        apply(connection.as_ref(), change).await.unwrap();
+        let changed = read(connection.as_ref(), &kept()).await;
+        let rows_sql = "SELECT * FROM kept ORDER BY id";
+        let rows = query(connection.as_ref(), rows_sql).await.rows;
+
+        let outcome = connection.write_batch(&stale.into_write_batch(kept()), call()).await;
+
+        assert!(
+            matches!(
+                outcome,
+                Err(DriverError::RowGuardFailed {
+                    statement_index: 0,
+                    expected: 0,
+                    ..
+                })
+            ),
+            "{change:?}: {outcome:?}"
+        );
+        assert_eq!(read(connection.as_ref(), &kept()).await, changed, "{change:?}");
+        assert_eq!(query(connection.as_ref(), rows_sql).await.rows, rows, "{change:?}");
+        let fresh = save(connection.as_ref(), &kept(), |draft| retype(draft, "v", "BLOB")).await;
+        assert!(
+            fresh.is_ok(),
+            "{change:?}: a plan read after the change was refused: {fresh:?}"
+        );
+        connection.close().await.unwrap();
+    }
 }

@@ -28,7 +28,9 @@
 //!
 //! The tab reads the table's definition itself, one request at a time,
 //! and reads it again once the session reconnects if the last read
-//! failed.
+//! failed. A change to the table from elsewhere reads it again too,
+//! unless the draft has edits: then Discard reads it, and a plan that
+//! writes the table again from the old definition refuses to save.
 
 mod columns;
 mod fks;
@@ -197,6 +199,7 @@ impl StructureTab {
             column_popovers: Rc::new(RefCell::new(Vec::new())),
             refetching: false,
             definition_shown: false,
+            definition_stale: false,
             _theme_handler: theme_handler,
         };
         imp.model.replace(Some(model));
@@ -440,6 +443,10 @@ pub(crate) struct StructureModel {
     /// The editor shows a definition the draft still started from, so a
     /// read of it that fails can leave it on screen.
     definition_shown: bool,
+    /// The table changed after `definition` was read, while the draft
+    /// had edits that a read would replace. Discard reads it again
+    /// rather than restoring it.
+    definition_stale: bool,
     /// The SQL preview follows the desktop theme through the app-wide
     /// style manager, which would keep the handler past the tab.
     _theme_handler: HandlerGuard,
@@ -470,6 +477,9 @@ pub(crate) enum StructureTabInput {
         new_table_name: Option<String>,
     },
     SaveFailed(String),
+    /// The save found the table changed since the tab read it, and left
+    /// it as it was.
+    TableChangedBeforeSave,
     /// The save may have landed; the tracker refuses to save again until
     /// the table is read again or the draft is discarded.
     SaveOutcomeUnknown(String),
@@ -846,6 +856,7 @@ impl StructureModel {
         self.invalid_defaults.clear();
         self.inner_stack.set_visible_child_name("editor");
         self.definition_shown = true;
+        self.definition_stale = false;
         // The definition is current again, so the diff counts.
         self.refetching = false;
         self.sync_editable();
@@ -930,9 +941,12 @@ impl StructureModel {
             StructureTabInput::LinkChanged(generation) => self.on_link_changed(generation, fx),
             StructureTabInput::SchemaChanged => {
                 // Reading the table again replaces the draft, so a tab
-                // with edits of its own keeps them.
-                if self.mode == StructureMode::Edit && !self.last_dirty {
-                    self.fetch_definition();
+                // with edits of its own keeps them until Discard.
+                if self.mode == StructureMode::Edit {
+                    match self.last_dirty {
+                        true => self.definition_stale = true,
+                        false => self.fetch_definition(),
+                    }
                 }
             }
             StructureTabInput::Retry => {
@@ -1032,6 +1046,10 @@ impl StructureModel {
             StructureTabInput::Discard => {
                 // This also lets go of a save whose outcome was unknown.
                 self.tracker.clear();
+                if self.mode == StructureMode::Edit && self.definition_stale {
+                    fx.input(StructureTabInput::Reload);
+                    return;
+                }
                 // New mode clears everything, since a new table starts
                 // empty.
                 let restored = match (self.mode, &self.definition) {
@@ -1064,6 +1082,17 @@ impl StructureModel {
                 fx.output(StructureTabOutput::ShowAlert {
                     title: crate::i18n::gettext("Save failed"),
                     body: message,
+                });
+            }
+            StructureTabInput::TableChangedBeforeSave => {
+                self.definition_stale = true;
+                self.show_saving(false);
+                self.recompute_dirty_state(fx);
+                fx.output(StructureTabOutput::ShowAlert {
+                    title: crate::i18n::gettext("Save failed"),
+                    body: crate::i18n::gettext(
+                        "The table changed after this tab read it, so nothing was saved. Discard the changes to read the table again, then make them again.",
+                    ),
                 });
             }
             StructureTabInput::SaveOutcomeUnknown(message) => {

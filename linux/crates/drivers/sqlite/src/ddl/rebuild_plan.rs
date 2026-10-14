@@ -16,13 +16,14 @@ use std::ops::Range;
 
 use tablepro_core::ddl::ddl_sql::{column_list, default_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnAlteration, ColumnDefinition, ColumnRename, DdlOperation, DdlPlan, DraftColumn, RefusalReason,
-    SchemaObjectKind, SchemaObjectSource, TableChanges, TableDefinition, order_renames,
+    BuildDdlError, ColumnAlteration, ColumnDefinition, ColumnRename, DdlOperation, DdlPlan, DdlPrecondition,
+    DraftColumn, RefusalReason, SchemaObjectKind, SchemaObjectSource, TableChanges, TableDefinition, order_renames,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
+use tablepro_core::statement::{Statement, StatementBuilder};
 use tablepro_core::{ForeignKeyCheck, ForeignKeyMode};
 
 use super::column_constraint_segment::ColumnConstraintKind;
@@ -247,7 +248,94 @@ impl Rebuild<'_> {
         plan.foreign_keys = ForeignKeyMode::SuspendedThenVerified {
             checks: self.checks(&target),
         };
+        plan.precondition = Some(DdlPrecondition {
+            probe: self.unchanged_probe(),
+            rows: 0,
+        });
         Ok(plan)
+    }
+
+    /// A count of what differs between the schema the plan was built
+    /// from and the one there now: the table's CREATE TABLE, its own
+    /// indexes and triggers, the views and triggers elsewhere the rebuild
+    /// makes again, and the key columns of other tables that point at it.
+    /// A view or trigger that came since and names the table makes the
+    /// rename refuse on its own.
+    ///
+    /// Every name but the table's own was read from the catalogue, so
+    /// they compare exactly. The table's is matched without regard to
+    /// case, as SQLite matches it, and left out of the comparison.
+    fn unchanged_probe(&self) -> Statement {
+        let table = &self.original.table;
+        let catalogue = self
+            .dialect
+            .qualify(&TableRef::new(table.schema.clone(), "sqlite_schema"));
+        let name = text_literal(&table.name);
+        let create = self
+            .original
+            .source
+            .as_ref()
+            .map_or("", |source| source.create_statement.as_str());
+        let mut objects = vec![format!("('table', '', {})", text_literal(create))];
+        objects.extend(self.dependents.iter().map(|object| {
+            let kind = match object.kind {
+                SchemaObjectKind::Index => "index",
+                SchemaObjectKind::Trigger => "trigger",
+                SchemaObjectKind::View => "view",
+            };
+            format!(
+                "('{kind}', {}, {})",
+                text_literal(&object.name),
+                text_literal(&object.sql)
+            )
+        }));
+        let elsewhere: Vec<String> = self
+            .dependents
+            .iter()
+            .filter(|object| !self.owned(object))
+            .map(|object| text_literal(&object.name))
+            .collect();
+        let mut scope = format!(
+            "(type = 'table' AND name = {name} COLLATE NOCASE) OR (type IN ('index', 'trigger') AND tbl_name = \
+             {name} COLLATE NOCASE AND sql IS NOT NULL)"
+        );
+        if !elsewhere.is_empty() {
+            scope.push_str(&format!(
+                " OR (type IN ('view', 'trigger') AND name IN ({}))",
+                elsewhere.join(", ")
+            ));
+        }
+        let objects_now =
+            format!("SELECT type, CASE type WHEN 'table' THEN '' ELSE name END, sql FROM {catalogue} WHERE {scope}");
+
+        let schema = table
+            .schema
+            .as_deref()
+            .filter(|schema| !schema.is_empty())
+            .unwrap_or(MAIN_SCHEMA);
+        let children_now = format!(
+            "SELECT m.name, f.\"from\" FROM {catalogue} m, pragma_foreign_key_list(m.name, {}) f WHERE m.type = \
+             'table' AND f.\"table\" = {name} COLLATE NOCASE",
+            text_literal(schema)
+        );
+        let children: Vec<String> = self
+            .original
+            .inbound_foreign_keys
+            .iter()
+            .flat_map(|key| {
+                key.columns
+                    .iter()
+                    .map(|column| format!("({}, {})", text_literal(&key.table.name), text_literal(column)))
+            })
+            .collect();
+
+        let mut builder = StatementBuilder::new();
+        builder.push_sql(&format!(
+            "SELECT {} + {}",
+            differences(&objects_now, &objects),
+            differences(&children_now, &children)
+        ));
+        builder.finish()
     }
 
     /// The rebuilt table under both its names, and every table whose
@@ -843,6 +931,17 @@ fn replayable(dialect: &SqliteDialect, sql: &str, schema: Option<&str>) -> Optio
         dialect.quote_identifier(schema),
         sql.get(name.range.start..)?
     ))
+}
+
+/// How many rows `now` and `rows` do not share, each a parenthesised
+/// VALUES row. `EXCEPT` compares rows as distinct, which names in a
+/// schema are.
+fn differences(now: &str, rows: &[String]) -> String {
+    if rows.is_empty() {
+        return format!("(SELECT count(*) FROM ({now}))");
+    }
+    let read = format!("VALUES {}", rows.join(", "));
+    format!("((SELECT count(*) FROM ({now} EXCEPT {read})) + (SELECT count(*) FROM ({read} EXCEPT {now})))")
 }
 
 fn unreadable(column: &str, operation: DdlOperation) -> BuildDdlError {

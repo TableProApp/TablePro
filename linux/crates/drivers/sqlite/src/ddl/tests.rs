@@ -974,6 +974,32 @@ fn foreign_keys_rebuild_and_comments_stay_refused() {
 }
 
 #[test]
+fn a_rebuild_counts_what_changed_since_its_read_and_a_native_plan_does_not() {
+    let orders = orders();
+
+    let rebuild = alter(&orders, |draft| retype(draft, "total", "NUMERIC")).expect("the rebuild plans");
+    let native = alter(&orders, |draft| draft.columns[3].name = "memo".to_owned()).expect("the rename plans");
+
+    let Some(precondition) = &rebuild.precondition else {
+        panic!("a rebuild without a precondition");
+    };
+    assert_eq!(precondition.rows, 0);
+    let probe = precondition.probe.sql();
+    for read in [
+        "('table', '', 'CREATE TABLE orders (\n  id INTEGER PRIMARY KEY,",
+        "('index', 'orders_by_customer', 'CREATE INDEX orders_by_customer ON orders (customer)')",
+        "('view', 'big_orders',",
+        "('trigger', 'customers_cleanup',",
+        "('lines', 'order_id')",
+        "name IN ('big_orders', 'customers_cleanup')",
+    ] {
+        assert!(probe.contains(read), "{read} is not in {probe}");
+    }
+    assert!(rebuild.into_steps()[0].guard.probe().is_some());
+    assert_eq!(native.precondition, None);
+}
+
+#[test]
 fn every_type_suggestion_parses() {
     let dialect = dialect();
 

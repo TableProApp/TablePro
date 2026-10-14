@@ -824,3 +824,44 @@ fn a_mysql_column_stops_numbering_as_it_leaves_the_key() {
     assert!(!auto.is_active() && !auto.is_sensitive());
     assert!(!harness.draft_column(0).auto_increment);
 }
+
+/// Edit the table, let `change` say it changed meanwhile, then Discard,
+/// and count the reads of the table.
+fn reads_after_discard(change: Option<StructureTabInput>) -> usize {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(definition("id")));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    let counters = harness.fake.connection.counters();
+    harness.tab().send(StructureTabInput::AddColumn);
+    let read_again = change.is_some();
+    if let Some(change) = change {
+        harness.tab().send(change);
+    }
+
+    harness.tab().send(StructureTabInput::Discard);
+
+    if read_again {
+        wait_until(WAIT, || CallCounters::get(&counters.fetch_table_definition) == 2)
+            .expect("Discard restored the definition read before the change");
+        wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure read again");
+    }
+    drain_main_context();
+    assert_eq!(harness.column_names(), ["id"]);
+    CallCounters::get(&counters.fetch_table_definition)
+}
+
+#[gtk4::test]
+fn a_plain_discard_restores_the_definition_it_read() {
+    assert_eq!(reads_after_discard(None), 1);
+}
+
+#[gtk4::test]
+fn a_discard_after_a_change_elsewhere_reads_the_table_again() {
+    assert_eq!(reads_after_discard(Some(StructureTabInput::SchemaChanged)), 2);
+}
+
+#[gtk4::test]
+fn a_discard_after_a_save_found_the_table_changed_reads_it_again() {
+    assert_eq!(reads_after_discard(Some(StructureTabInput::TableChangedBeforeSave)), 2);
+}
