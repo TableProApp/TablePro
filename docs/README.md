@@ -45,7 +45,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | Crates, request pipeline, where new code goes, DAG, rename boundary, CI gate split | [Architecture](../ARCHITECTURE.md) (Mermaid map, trait boundaries, ownership table) | Match the manifests and [AGENTS.md](../AGENTS.md); cheap vs Forgejo detail stays in the [validation playbook](validation-playbook.md#ci-tiers) |
 | A user-visible change | The [changelog](../CHANGELOG.md) | One line of user impact; no test or evidence notes |
 | What a user can do and how | The [user guide](user-guide.md) | Update with the feature that changes it |
-| Run-specific proof (manifests, focused logs) | `evidence/<topic>-<YYYY-MM-DD>/` | A `manifest.json` plus small text logs; link it from the owning row or board |
+| Run-specific proof (manifests, focused logs) | `evidence/<topic>[-<sha>]-<YYYY-MM-DD>/` | A `manifest.json` or concise `README.md`, with only the artifacts needed to check the claim; link it from the owning row or board |
 | A finished review, audit or long history | [archive/](archive/) | Dated file name; never edited after archiving except for broken links |
 
 ## Adding a document
@@ -53,7 +53,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 - Look for the owner in the table above first; most new facts are a row, a section or an ADR, not a new file.
 - A new reference document goes in `docs/` with a lowercase, hyphenated name and a line in the audience table above. Keep it under about 3,000 words; split by concern before it grows past that.
 - Number ADRs sequentially (`decisions/NNNN-title.md`) and add them to the ADR index with their status.
-- Evidence directories are named `<topic>-<YYYY-MM-DD>` and hold only what a reviewer needs to check a claim. Large or raw logs stay in the PR or CI run.
+- Evidence directories are named `<topic>[-<sha>]-<YYYY-MM-DD>` and hold only what a reviewer needs to check a claim. Use a manifest for structured evidence or a concise README for a focused local report. Large or raw logs stay in the PR or CI run.
 - When a document stops being current, move it to `archive/` with its date in the name, update links (`scripts/check-doc-links.py` finds the broken ones) and leave its open items on Project #3.
 - Do not move or rename a current document casually: scripts, CI and other lanes link to these paths.
 
