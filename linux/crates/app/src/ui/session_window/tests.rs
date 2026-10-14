@@ -316,6 +316,27 @@ fn cancel_connect_discards_late_attempt() {
 }
 
 #[gtk4::test]
+fn a_connect_that_lands_after_its_window_closed_is_closed() {
+    let test = TestWindow::picker("LandsAfterClose");
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("connecting");
+    // The connect ends on the runtime while the main loop waits, so its
+    // answer reaches the window only after the window is gone.
+    let deadline = std::time::Instant::now() + WAIT;
+    while test.connector.connections().is_empty() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+
+    test.window.destroy();
+    let connection = test.connection();
+    wait_until(WAIT, || connection.is_closed()).expect("the late connection to close");
+
+    assert_eq!(test.services.sessions.live_count(), 0);
+}
+
+#[gtk4::test]
 fn a_failed_connect_shows_why_and_choose_connection_returns_to_the_picker() {
     let test = TestWindow::with_script(
         "Failed",

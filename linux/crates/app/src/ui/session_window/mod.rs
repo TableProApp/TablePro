@@ -31,6 +31,7 @@ use relm4::prelude::*;
 
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::registry::FileIdentity;
+use tablepro_session::runtime::ProcessHold;
 use tablepro_session::{
     ClaimError, ConnectError, ConnectIntent, ConnectSource, MonitorSignal, PendingSession, Session, SessionClaim,
     SessionKey,
@@ -425,20 +426,10 @@ impl SessionWindow {
         workspace.connect_title_changed(move |_, title| input.deliver(SessionWindowInput::TitleChanged(title)));
     }
 
-    /// Throw away a connection nobody adopted, closing it under the
-    /// close deadline while the process stays alive for it.
     fn discard_pending(&self, pending: PendingSession) {
-        let Some(state) = self.state() else {
-            return;
-        };
-        let hold = state.services.hold().acquire();
-        let closing = state.services.tasks.spawn_task(pending.discard());
-        glib::spawn_future_local(async move {
-            if let Ok(report) = closing.await {
-                tracing::debug!(?report, "closed a connection that was not adopted");
-            }
-            drop(hold);
-        });
+        if let Some(state) = self.state() {
+            discard_pending(pending, &state.services.tasks, &*state.services.hold());
+        }
     }
 
     /// Claim the key, then connect, so a second window asking for the
@@ -587,17 +578,26 @@ impl SessionWindow {
         let work = connect_work(state, &source, cancel);
         self.show_page(SessionPage::Connecting { claim, source });
         let input = self.input();
+        let (tasks, hold) = (state.services.tasks.clone(), state.services.hold());
         crate::runtime::spawn_and_deliver(&state.services.tasks, work, move |outcome| {
             let result = outcome.unwrap_or_else(|failure| {
                 Err(AttemptError::Failed(ConnectFailure::new(
                     crate::ui::error_text::task_failure_message(&failure),
                 )))
             });
-            if let Some(input) = input {
-                input.deliver(SessionWindowInput::Command(Box::new(SessionWindowCommand::Attempt {
-                    generation,
-                    result,
-                })));
+            let attempt = SessionWindowCommand::Attempt { generation, result };
+            let Some(input) = input else {
+                return;
+            };
+            // A connect that lands after its window went is closed, not
+            // dropped, so the server sees it end.
+            if let Err(unsent) = input.send(SessionWindowInput::Command(Box::new(attempt)))
+                && let SessionWindowInput::Command(command) = unsent.0
+                && let SessionWindowCommand::Attempt {
+                    result: Ok(connected), ..
+                } = *command
+            {
+                discard_pending(connected.pending, &tasks, &*hold);
             }
         });
     }
@@ -694,6 +694,19 @@ impl SessionWindow {
     pub(crate) fn page_name(&self) -> &'static str {
         self.imp().page.borrow().name()
     }
+}
+
+/// Throw away a connection nobody adopted, closing it under the close
+/// deadline while the process stays alive for it.
+fn discard_pending(pending: PendingSession, tasks: &tablepro_session::runtime::Tasks, hold: &dyn ProcessHold) {
+    let hold = hold.acquire();
+    let closing = tasks.spawn_task(pending.discard());
+    glib::spawn_future_local(async move {
+        if let Ok(report) = closing.await {
+            tracing::debug!(?report, "closed a connection that was not adopted");
+        }
+        drop(hold);
+    });
 }
 
 /// Supersede the connect in flight, not only cancel it: a driver
