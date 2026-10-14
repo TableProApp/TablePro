@@ -647,10 +647,10 @@ GLib.MainLoop().run()
             f"colour chooser has no accessible click action:\n{ui.accessible_snapshot()}"
         )
         ui.invoke(chooser)
-        option = ui.wait_for_node(name="blue", role=pyatspi.ROLE_PUSH_BUTTON)
+        option = ui.wait_for_node(name="Blue", role=pyatspi.ROLE_PUSH_BUTTON)
         ui.invoke(option)
         ui.wait_for_node(name="No colour", role=pyatspi.ROLE_PUSH_BUTTON, present=False)
-        ui.wait_for_node(name="blue", role=pyatspi.ROLE_PUSH_BUTTON)
+        ui.wait_for_node(name="Blue", role=pyatspi.ROLE_PUSH_BUTTON)
 
     def alt_arrows_jump_between_statements(database, base):
         sql = "select 1;\nselect 2;\nselect 3"

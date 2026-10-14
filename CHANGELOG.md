@@ -52,6 +52,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A failed statement in the SQL editor offers a Copy error button.
 - Selecting several rows and opening the selection badge shows each numeric column's count, sum, average, min and max, with NULLs skipped and a Copy summary button.
 - A connection's colour tag now also paints a strip above its workspace tabs, so a window shows which connection it belongs to.
+- The connection colour picker shows translated, title-case colour names.
 - PostgreSQL shows unsupported built-in ranges explicitly; supported empty ranges stay distinct from SQL NULL.
 - MongoDB and Redis browse pages use native fetches when available; MongoDB cursor values remain visible until refresh, and approved edits preserve sibling fields.
 - Result column headers show the column type and mark primary-key and foreign-key columns.

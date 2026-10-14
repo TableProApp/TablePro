@@ -337,8 +337,22 @@ fn secret(password: &secrecy::SecretString) -> &str {
 /// without any free-form colour string reaching storage.
 fn color_choice_labels() -> Vec<String> {
     let mut labels = vec![crate::tr!("No colour")];
-    labels.extend(CONNECTION_COLORS.iter().map(|name| crate::tr!(*name)));
+    labels.extend(CONNECTION_COLORS.iter().map(|name| color_choice_label(name)));
     labels
+}
+
+fn color_choice_label(color: &str) -> String {
+    match color {
+        "blue" => crate::tr!("Blue"),
+        "teal" => crate::tr!("Teal"),
+        "green" => crate::tr!("Green"),
+        "yellow" => crate::tr!("Yellow"),
+        "orange" => crate::tr!("Orange"),
+        "red" => crate::tr!("Red"),
+        "purple" => crate::tr!("Purple"),
+        "brown" => crate::tr!("Brown"),
+        _ => color.to_owned(),
+    }
 }
 
 fn color_choice_index(color: Option<&str>) -> u32 {
@@ -418,7 +432,20 @@ mod tests {
 
     #[test]
     fn the_picker_offers_no_colour_plus_the_whole_palette() {
-        assert_eq!(color_choice_labels().len(), CONNECTION_COLORS.len() + 1);
+        assert_eq!(
+            color_choice_labels(),
+            vec![
+                crate::tr!("No colour"),
+                crate::tr!("Blue"),
+                crate::tr!("Teal"),
+                crate::tr!("Green"),
+                crate::tr!("Yellow"),
+                crate::tr!("Orange"),
+                crate::tr!("Red"),
+                crate::tr!("Purple"),
+                crate::tr!("Brown"),
+            ]
+        );
     }
 
     #[test]

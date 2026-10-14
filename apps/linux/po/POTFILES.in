@@ -37,6 +37,7 @@ apps/linux/app/src/ui/browse_tab/selection.rs
 apps/linux/app/src/ui/browse_tab/value_parse.rs
 apps/linux/app/src/ui/catalog_dialog.rs
 apps/linux/app/src/ui/connect_dialog/browse.rs
+apps/linux/app/src/ui/connect_dialog/controls.rs
 apps/linux/app/src/ui/connect_dialog/form.rs
 apps/linux/app/src/ui/connect_dialog/mod.rs
 apps/linux/app/src/ui/connect_dialog/prefill.rs
