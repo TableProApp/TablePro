@@ -35,7 +35,9 @@ use std::rc::Rc;
 use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 
-use tablepro_core::{ColumnInfo, Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
+use tablepro_core::{
+    ColumnInfo, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, FilterValueKind, filter_value_kind,
+};
 
 /// Closure that rebuilds the rule list. Stored in an Rc<RefCell<>> so
 /// every input handler can call it through one slot, avoiding the
@@ -64,48 +66,19 @@ enum ValueShape {
     List,
 }
 
-/// Allowlist of operators per type kind. The dialog narrows the Op
-/// dropdown to this set when the user picks a column. Mirrors the
-/// per-driver classifier in `core::filter::classify` but maps to UI
-/// labels instead of SQL.
-fn operators_for(data_type: &str) -> &'static [OpEntry] {
-    let lower = data_type.to_ascii_lowercase();
-    if lower == "tinyint(1)" || lower == "boolean" || lower == "bool" {
-        return &OPS_BOOL;
+fn operators_for(column: &ColumnInfo) -> &'static [OpEntry] {
+    match filter_value_kind(column) {
+        FilterValueKind::Bool => &OPS_BOOL,
+        FilterValueKind::Uuid | FilterValueKind::Json => &OPS_UUID,
+        FilterValueKind::Int
+        | FilterValueKind::Float
+        | FilterValueKind::Decimal
+        | FilterValueKind::Date
+        | FilterValueKind::Time
+        | FilterValueKind::DateTime
+        | FilterValueKind::TimestampTz => &OPS_NUMERIC,
+        FilterValueKind::Text | FilterValueKind::Bytes => &OPS_TEXT,
     }
-    if lower == "uuid" {
-        return &OPS_UUID;
-    }
-    if lower == "jsonb" || lower == "json" {
-        return &OPS_UUID; // identity-only set, same shape
-    }
-    if lower.contains("with time zone") || lower.contains("timestamptz") {
-        return &OPS_NUMERIC;
-    }
-    if lower.contains("timestamp") || lower.contains("datetime") {
-        return &OPS_NUMERIC;
-    }
-    if lower.contains("date") {
-        return &OPS_NUMERIC;
-    }
-    if lower == "time" || lower.starts_with("time(") {
-        return &OPS_NUMERIC;
-    }
-    if lower.contains("decimal") || lower.contains("numeric") || lower.contains("double") {
-        return &OPS_NUMERIC;
-    }
-    if lower.contains("real") || lower.contains("float") {
-        return &OPS_NUMERIC;
-    }
-    if lower.starts_with("int")
-        || lower.starts_with("bigint")
-        || lower.starts_with("smallint")
-        || lower.starts_with("tinyint")
-        || lower.contains("serial")
-    {
-        return &OPS_NUMERIC;
-    }
-    &OPS_TEXT
 }
 
 const OPS_TEXT: [OpEntry; 14] = [
@@ -685,7 +658,7 @@ fn build_rule_row(
             // Reset the operator to the first valid one for the new
             // column type — text-only ops on a new int column would
             // produce SQL the driver rejects at fetch time.
-            let ops = operators_for(&new_col.data_type);
+            let ops = operators_for(new_col);
             rule.op = ops[0].op;
             rule.value = match ops[0].shape {
                 ValueShape::None => None,
@@ -718,7 +691,7 @@ fn build_rule_row(
             enum_type: None,
             domain_type: None,
         });
-    let ops = operators_for(&col.data_type);
+    let ops = operators_for(&col);
     let op_labels: Vec<&str> = ops.iter().map(|e| e.label).collect();
     let op_dd = gtk::DropDown::from_strings(&op_labels);
     op_dd.set_valign(gtk::Align::Center);
@@ -756,7 +729,7 @@ fn build_rule_row(
                 enum_type: None,
                 domain_type: None,
             });
-        let ops = operators_for(&col.data_type);
+        let ops = operators_for(&col);
         if let Some(entry) = ops.get(new_idx) {
             rule.op = entry.op;
             rule.value = match entry.shape {
@@ -926,8 +899,45 @@ fn input_purpose_for(data_type: &str) -> gtk::InputPurpose {
 mod tests {
     use std::rc::Rc;
 
-    use super::{FilterOp, FilterRule, FilterSet, FilterValue, build};
+    use super::{ColumnInfo, FilterOp, FilterRule, FilterSet, FilterValue, build, operators_for};
     use relm4::{gtk, gtk::prelude::*};
+
+    fn column(data_type: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: "value".into(),
+            data_type: data_type.into(),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
+            comment: None,
+            collation: None,
+            enum_type: None,
+            domain_type: None,
+        }
+    }
+
+    #[test]
+    fn integer_and_time_columns_offer_comparisons_instead_of_text_matching() {
+        for data_type in [
+            "mediumint",
+            "mediumint(8) unsigned",
+            "int unsigned",
+            "time without time zone",
+            "time(3) without time zone",
+        ] {
+            let ops = operators_for(&column(data_type));
+            assert!(ops.iter().any(|entry| entry.op == FilterOp::Gt), "{data_type}");
+            assert!(!ops.iter().any(|entry| entry.op == FilterOp::Contains), "{data_type}");
+        }
+    }
+
+    #[test]
+    fn text_columns_keep_text_matching() {
+        let ops = operators_for(&column("character varying(20)"));
+        assert!(ops.iter().any(|entry| entry.op == FilterOp::Contains));
+    }
 
     #[test]
     #[ignore = "requires isolated GTK display"]

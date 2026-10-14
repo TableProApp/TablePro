@@ -874,3 +874,33 @@ fn a_double_precision_column_and_other_drivers_are_left_alone() {
         .unwrap();
     assert!(!mysql.contains("::real"), "{mysql}");
 }
+
+#[test]
+fn every_integer_and_precision_time_name_filters_as_its_value_kind() {
+    for data_type in ["mediumint", "mediumint(8) unsigned", "int unsigned", "bigint"] {
+        assert_eq!(
+            filter_value_kind(&col("value", data_type)),
+            FilterValueKind::Int,
+            "{data_type}"
+        );
+    }
+    for data_type in ["time", "time without time zone", "time(3) without time zone"] {
+        assert_eq!(
+            filter_value_kind(&col("value", data_type)),
+            FilterValueKind::Time,
+            "{data_type}"
+        );
+    }
+}
+
+#[test]
+fn a_mediumint_filter_binds_an_integer() {
+    let set = FilterSet {
+        rules: vec![rule("value", FilterOp::Gt, Some(FilterValue::Single("5".into())))],
+        ..Default::default()
+    };
+    let (_, params) = build_filter_where("mysql", &[col("value", "mediumint")], &set)
+        .unwrap()
+        .unwrap();
+    assert_eq!(params, vec![Value::Int(5)]);
+}

@@ -352,7 +352,7 @@ fn filter_placeholder(driver_id: &str, col: &ColumnInfo, index: usize) -> String
         return format!("{placeholder}::real");
     }
     let Some(enum_type) = col.enum_type.as_ref().filter(|_| driver_id == "postgres") else {
-        if driver_id == "postgres" && matches!(column_kind(col), Kind::Text) {
+        if driver_id == "postgres" && matches!(filter_value_kind(col), FilterValueKind::Text) {
             return text_cast_placeholder(col, &Value::Text(String::new()), placeholder);
         }
         return placeholder;
@@ -418,49 +418,49 @@ fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
-fn column_kind(col: &ColumnInfo) -> Kind {
+pub fn filter_value_kind(col: &ColumnInfo) -> FilterValueKind {
     if col.enum_type.is_some() || col.domain_type.is_some() {
-        return Kind::Text;
+        return FilterValueKind::Text;
     }
     classify(&col.data_type.to_ascii_lowercase())
 }
 
 fn parse_value_for(col: &ColumnInfo, text: &str) -> Result<Value, BuildFilterError> {
-    let kind = column_kind(col);
+    let kind = filter_value_kind(col);
     let trimmed = text.trim();
     match kind {
-        Kind::Text | Kind::Json => Ok(Value::Text(text.to_string())),
-        Kind::Bytes => Err(BuildFilterError::InvalidValue {
+        FilterValueKind::Text | FilterValueKind::Json => Ok(Value::Text(text.to_string())),
+        FilterValueKind::Bytes => Err(BuildFilterError::InvalidValue {
             column: col.name.clone(),
             message: "bytes columns can't be filtered by text input".into(),
         }),
-        Kind::Bool => parse_bool(trimmed)
+        FilterValueKind::Bool => parse_bool(trimmed)
             .map(Value::Bool)
             .ok_or_else(|| invalid(col, "boolean", trimmed)),
-        Kind::Int => trimmed
+        FilterValueKind::Int => trimmed
             .parse::<i64>()
             .map(Value::Int)
             .map_err(|_| invalid(col, "integer", trimmed)),
-        Kind::Float => crate::parse_float_input(trimmed)
+        FilterValueKind::Float => crate::parse_float_input(trimmed)
             .map(Value::Float)
             .map_err(|_| invalid(col, "number", trimmed)),
-        Kind::Decimal => Decimal::from_str_exact(trimmed)
+        FilterValueKind::Decimal => Decimal::from_str_exact(trimmed)
             .map(Value::Decimal)
             .map_err(|_| invalid(col, "decimal", trimmed)),
-        Kind::Date => NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+        FilterValueKind::Date => NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
             .map(Value::Date)
             .map_err(|_| invalid(col, "YYYY-MM-DD", trimmed)),
-        Kind::Time => NaiveTime::parse_from_str(trimmed, "%H:%M:%S")
+        FilterValueKind::Time => NaiveTime::parse_from_str(trimmed, "%H:%M:%S")
             .or_else(|_| NaiveTime::parse_from_str(trimmed, "%H:%M:%S%.f"))
             .map(Value::Time)
             .map_err(|_| invalid(col, "HH:MM:SS", trimmed)),
-        Kind::DateTime => parse_naive_datetime(trimmed)
+        FilterValueKind::DateTime => parse_naive_datetime(trimmed)
             .map(Value::DateTime)
             .ok_or_else(|| invalid(col, "YYYY-MM-DD HH:MM:SS", trimmed)),
-        Kind::TimestampTz => DateTime::parse_from_rfc3339(trimmed)
+        FilterValueKind::TimestampTz => DateTime::parse_from_rfc3339(trimmed)
             .map(|d| Value::TimestampTz(d.with_timezone(&Utc)))
             .map_err(|_| invalid(col, "RFC 3339 timestamp", trimmed)),
-        Kind::Uuid => Uuid::parse_str(trimmed)
+        FilterValueKind::Uuid => Uuid::parse_str(trimmed)
             .map(Value::Uuid)
             .map_err(|_| invalid(col, "UUID", trimmed)),
     }
@@ -507,7 +507,7 @@ fn invalid(col: &ColumnInfo, expected: &str, got: &str) -> BuildFilterError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
+pub enum FilterValueKind {
     Text,
     Bool,
     Int,
@@ -526,9 +526,9 @@ enum Kind {
 /// but lives here so core's filter builder doesn't reach back into
 /// the app crate. Both classifiers must stay in sync; the type-name
 /// landscape they cover is identical.
-fn classify(lower: &str) -> Kind {
+fn classify(lower: &str) -> FilterValueKind {
     if lower == "tinyint(1)" || lower == "boolean" || lower == "bool" {
-        return Kind::Bool;
+        return FilterValueKind::Bool;
     }
     let is_timetz = lower.starts_with("time") && !lower.starts_with("timestamp") && lower.contains("with time zone");
     if is_timetz
@@ -537,47 +537,48 @@ fn classify(lower: &str) -> Kind {
         || lower.ends_with("range")
         || lower.contains("multirange")
     {
-        return Kind::Text;
+        return FilterValueKind::Text;
     }
     if lower == "time without time zone" {
-        return Kind::Time;
+        return FilterValueKind::Time;
     }
     if lower == "uuid" {
-        return Kind::Uuid;
+        return FilterValueKind::Uuid;
     }
     if lower == "jsonb" || lower == "json" {
-        return Kind::Json;
+        return FilterValueKind::Json;
     }
     if lower.contains("with time zone") || lower.contains("timestamptz") {
-        return Kind::TimestampTz;
+        return FilterValueKind::TimestampTz;
     }
     if lower.contains("timestamp") || lower.contains("datetime") {
-        return Kind::DateTime;
+        return FilterValueKind::DateTime;
     }
     if lower.contains("date") {
-        return Kind::Date;
+        return FilterValueKind::Date;
     }
     if lower == "time" || lower.starts_with("time(") {
-        return Kind::Time;
+        return FilterValueKind::Time;
     }
     if lower.contains("decimal") || lower.contains("numeric") {
-        return Kind::Decimal;
+        return FilterValueKind::Decimal;
     }
     if lower.contains("double") || lower.contains("real") || lower.contains("float") {
-        return Kind::Float;
+        return FilterValueKind::Float;
     }
     if lower.starts_with("int")
         || lower.starts_with("bigint")
         || lower.starts_with("smallint")
         || lower.starts_with("tinyint")
+        || lower.starts_with("mediumint")
         || lower.contains("serial")
     {
-        return Kind::Int;
+        return FilterValueKind::Int;
     }
     if lower.contains("bytea") || lower.contains("blob") {
-        return Kind::Bytes;
+        return FilterValueKind::Bytes;
     }
-    Kind::Text
+    FilterValueKind::Text
 }
 
 fn parse_bool(s: &str) -> Option<bool> {
