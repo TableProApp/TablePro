@@ -33,6 +33,9 @@ mod schema_introspection;
 #[path = "shared/mysql_atomic.rs"]
 mod mysql_atomic;
 
+#[path = "shared/mysql_trigger_statement_error.rs"]
+mod mysql_trigger_statement_error;
+
 #[path = "shared/mysql_atomic_assertions.rs"]
 mod mysql_atomic_assertions;
 
