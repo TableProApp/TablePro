@@ -318,7 +318,7 @@ impl SessionWindow {
                 SessionWindowCommand::Attempt { generation, result } => self.on_attempt(generation, result),
             },
             SessionWindowInput::LocationChosen { generation, choice } => self.on_location_chosen(generation, choice),
-            SessionWindowInput::FileLocated(path) => self.on_file_located(path),
+            SessionWindowInput::FileLocated { id, path } => self.on_file_located(id, path),
             SessionWindowInput::LocatedSaved(located) => self.on_located_saved(*located),
             SessionWindowInput::ReloadConnections => self.on_reload_connections(),
             SessionWindowInput::ConnectionsLoaded(connections) => self.on_connections_loaded(connections),
@@ -402,12 +402,12 @@ impl SessionWindow {
             Err(AttemptError::Failed(failure)) => {
                 tracing::warn!(error = %failure.message, "connect failed");
                 let missing = match &source {
-                    ConnectSource::Saved(_) => failure.missing_file.clone(),
+                    ConnectSource::Saved(saved) => failure.missing_file.clone().map(|missing| (saved.id, missing)),
                     _ => None,
                 };
                 self.show_page(SessionPage::ConnectFailed { claim, source, failure });
-                if let Some(missing) = missing {
-                    self.offer_locate(missing);
+                if let Some((id, missing)) = missing {
+                    self.offer_locate(id, missing);
                 }
             }
         }

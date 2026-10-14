@@ -222,6 +222,23 @@ fn saved_connection(database: &std::path::Path) -> SavedConnection {
     }
 }
 
+/// The connect dialog's Connect on a new entry for the file `endpoint`.
+pub(crate) fn dialog_submission(endpoint: tablepro_core::FileEndpoint) -> ConnectSubmission {
+    let mut request = FakeConnector::request().expect("a request");
+    let mut connection = saved_connection(endpoint.path());
+    connection.id = request.metadata.id;
+    request.target = tablepro_session::RequestTarget::File(endpoint);
+    ConnectSubmission {
+        request,
+        pending_save: tablepro_session::PendingSave {
+            connection,
+            secrets: Vec::new(),
+            forget: Vec::new(),
+            is_new: true,
+        },
+    }
+}
+
 fn refused() -> FakeEstablish {
     FakeEstablish::Fail(ConnectError::Driver(DriverError::Auth { diagnostics: None }))
 }

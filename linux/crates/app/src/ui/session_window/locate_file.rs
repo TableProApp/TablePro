@@ -15,6 +15,7 @@ use libadwaita::prelude::*;
 use tablepro_session::ConnectSource;
 use tablepro_session::connect::{ConnectionWrites, StoreConnectionWrites};
 use tablepro_storage::SavedConnection;
+use uuid::Uuid;
 
 use super::session_page::SessionPage;
 use super::{SessionWindow, SessionWindowInput};
@@ -34,7 +35,11 @@ struct FileDialogChooser;
 impl LocateChooser for FileDialogChooser {
     fn choose(&self, parent: &gtk::Window, missing: &Path) -> LocalBoxFuture<'static, Option<PathBuf>> {
         let dialog = crate::ui::connect_dialog::sqlite_file_dialog(&crate::i18n::gettext("Locate Database File"));
-        dialog.set_initial_file(Some(&gio::File::for_path(missing)));
+        // An initial file is read synchronously, which hangs on a dead
+        // mount; a folder is only stored.
+        if let Some(folder) = missing.parent() {
+            dialog.set_initial_folder(Some(&gio::File::for_path(folder)));
+        }
         let parent = parent.clone();
         async move {
             dialog
@@ -69,7 +74,7 @@ impl SessionWindow {
     /// Offer to find the file a saved connection lost. The failed page
     /// stays behind the question, so Cancel leaves Retry and Edit
     /// Connection.
-    pub(super) fn offer_locate(&self, missing: PathBuf) {
+    pub(super) fn offer_locate(&self, id: Uuid, missing: PathBuf) {
         let dialog = not_found_dialog(&missing);
         let window = self.downgrade();
         glib::spawn_future_local(async move {
@@ -87,7 +92,7 @@ impl SessionWindow {
                 .unwrap_or_else(|| Rc::new(FileDialogChooser));
             let chosen = chooser.choose(window.upcast_ref(), &missing).await;
             if let Some(path) = chosen {
-                window.send(SessionWindowInput::FileLocated(path));
+                window.send(SessionWindowInput::FileLocated { id, path });
             }
         });
     }
@@ -95,18 +100,24 @@ impl SessionWindow {
     /// Save the file's new path on the connection the failed page is
     /// about, then connect to it once the write lands, so the entry and
     /// the open session name the same file.
-    pub(super) fn on_file_located(&self, path: PathBuf) {
+    pub(super) fn on_file_located(&self, id: Uuid, path: PathBuf) {
         let saved = match &*self.imp().page.borrow() {
             SessionPage::ConnectFailed {
                 source: ConnectSource::Saved(saved),
                 ..
-            } => (**saved).clone(),
+            } if saved.id == id => (**saved).clone(),
             _ => return,
         };
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
-        let mut located = self.saved_as_stored(&saved).unwrap_or(saved);
+        // Deleted in another window while the question was open: writing
+        // the page's copy back would bring it back without its secrets.
+        let Some(mut located) = self.saved_as_stored(&saved) else {
+            self.show_page(SessionPage::Picker);
+            self.show_toast(&crate::i18n::gettext("The connection was deleted."));
+            return;
+        };
         located.database = path.display().to_string();
         let writes = StoreConnectionWrites::new(
             state.services.storage.connections().clone(),
@@ -158,11 +169,11 @@ impl SessionWindow {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::DriverError;
+    use tablepro_core::{DriverError, FileEndpoint};
     use tablepro_session::fakes::FakeEstablish;
     use tablepro_session::{ConnectError, RequestTarget};
 
-    use super::super::tests::{Script, TestWindow, WAIT};
+    use super::super::tests::{Script, TestWindow, WAIT, dialog_submission};
     use super::*;
     use crate::test_support::wait_until;
     use crate::workspace::{answer, visible_alert};
@@ -174,6 +185,15 @@ mod tests {
         fn choose(&self, _parent: &gtk::Window, _missing: &Path) -> LocalBoxFuture<'static, Option<PathBuf>> {
             let path = self.0.clone();
             async move { Some(path) }.boxed_local()
+        }
+    }
+
+    fn not_found() -> Script {
+        Script {
+            establish: vec![FakeEstablish::Fail(ConnectError::Driver(DriverError::FileNotFound {
+                path: PathBuf::from("/srv/gone.db"),
+            }))],
+            ..Script::default()
         }
     }
 
@@ -189,15 +209,7 @@ mod tests {
 
     #[gtk4::test]
     fn file_not_found_offers_locate_and_retries_with_new_path() {
-        let test = TestWindow::with_script(
-            "Locate",
-            Script {
-                establish: vec![FakeEstablish::Fail(ConnectError::Driver(DriverError::FileNotFound {
-                    path: PathBuf::from("/srv/gone.db"),
-                }))],
-                ..Script::default()
-            },
-        );
+        let test = TestWindow::with_script("Locate", not_found());
         let moved = tempfile::tempdir().expect("tempdir");
         let found = moved.path().join("moved.db");
         std::fs::write(&found, b"").expect("seed");
@@ -236,15 +248,7 @@ mod tests {
 
     #[gtk4::test]
     fn cancel_leaves_the_failed_page_and_saves_nothing() {
-        let test = TestWindow::with_script(
-            "LocateCancel",
-            Script {
-                establish: vec![FakeEstablish::Fail(ConnectError::Driver(DriverError::FileNotFound {
-                    path: PathBuf::from("/srv/gone.db"),
-                }))],
-                ..Script::default()
-            },
-        );
+        let test = TestWindow::with_script("LocateCancel", not_found());
 
         test.window
             .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
@@ -289,6 +293,102 @@ mod tests {
 
         test.window
             .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+        test.wait_for_page("connect-failed");
+        crate::test_support::drain_main_context();
+
+        assert!(visible_alert(&test.window).is_none());
+    }
+
+    #[gtk4::test]
+    fn locate_after_the_entry_was_deleted_returns_to_the_picker_and_saves_nothing() {
+        let test = TestWindow::with_script("LocateDeleted", not_found());
+        let moved = tempfile::tempdir().expect("tempdir");
+        test.window
+            .imp()
+            .locate_chooser
+            .replace(Some(Rc::new(ChosenFile(moved.path().join("moved.db")))));
+        let store = test.services.storage.connections().clone();
+
+        test.window
+            .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+        test.wait_for_page("connect-failed");
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the not found question");
+        store.remove_blocking(test.saved.id).expect("delete the entry");
+        assert!(answer(&test.window, LOCATE));
+        test.wait_for_page("picker");
+        crate::test_support::drain_main_context();
+
+        assert_eq!(test.connector.calls().len(), 1);
+        assert_eq!(test.services.sessions.window_for(&test.key()), None);
+        let stored = store.load_blocking().expect("the connection list");
+        assert!(
+            stored.iter().all(|entry| entry.id != test.saved.id),
+            "the deleted entry came back"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_file_located_for_another_connection_is_ignored() {
+        let test = TestWindow::with_script("LocateOtherId", not_found());
+        let moved = tempfile::tempdir().expect("tempdir");
+        test.window
+            .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+        test.wait_for_page("connect-failed");
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the not found question");
+        assert!(answer(&test.window, CANCEL));
+
+        test.window.send(SessionWindowInput::FileLocated {
+            id: Uuid::new_v4(),
+            path: moved.path().join("moved.db"),
+        });
+
+        assert!(
+            wait_until(std::time::Duration::from_millis(500), || test.connector.calls().len()
+                > 1)
+            .is_err(),
+            "connected to a file located for another connection"
+        );
+        assert_eq!(test.window.page_name(), "connect-failed");
+        let stored = test
+            .services
+            .storage
+            .connections()
+            .load_blocking()
+            .expect("the connection list");
+        assert_eq!(
+            stored
+                .iter()
+                .find(|entry| entry.id == test.saved.id)
+                .map(|entry| &entry.database),
+            Some(&test.saved.database)
+        );
+    }
+
+    #[gtk4::test]
+    fn a_file_handed_over_that_is_not_found_offers_no_locate() {
+        let test = TestWindow::with_script("LocateFileSource", not_found());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let database = dir.path().join("app.db");
+        std::fs::write(&database, b"").expect("seed");
+
+        test.window
+            .send(SessionWindowInput::OpenFile(gio::File::for_path(&database)));
+        test.wait_for_page("connect-failed");
+        crate::test_support::drain_main_context();
+
+        assert!(visible_alert(&test.window).is_none());
+    }
+
+    #[gtk4::test]
+    fn a_dialog_connect_that_is_not_found_offers_no_locate() {
+        let test = TestWindow::with_script("LocateIntent", not_found());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let endpoint = FileEndpoint::open_existing(dir.path().join("app.db")).expect("an endpoint");
+
+        test.window
+            .send(SessionWindowInput::ConnectFromDialog(Box::new(dialog_submission(
+                endpoint,
+            ))));
         test.wait_for_page("connect-failed");
         crate::test_support::drain_main_context();
 

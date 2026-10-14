@@ -57,8 +57,11 @@ pub(crate) enum SessionWindowInput {
         generation: tablepro_session::connect::AttemptGeneration,
         choice: LocationChoice,
     },
-    /// The user found the file a saved connection lost.
-    FileLocated(std::path::PathBuf),
+    /// The user found the file the saved connection `id` lost.
+    FileLocated {
+        id: Uuid,
+        path: std::path::PathBuf,
+    },
     /// The located file's path is saved; connect to it.
     LocatedSaved(Box<SavedConnection>),
     ReloadConnections,
