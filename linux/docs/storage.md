@@ -116,8 +116,9 @@ A connection open or connecting in a window is not deleted; the dialog
 offers that window instead. The delete claims the connection's key while it
 runs, so a connect started meanwhile from a picker that still lists it is
 refused, and opening it from such a picker afterwards says it was deleted.
-The window holds the process until the delete ends, as it does for every
-other write to the connection list.
+The purge waits for the drafts a just-closed workspace is still writing
+(`WorkspaceStore::writes_in_flight`). The window holds the process until the
+delete ends, as it does for every other write to the connection list.
 
 ## Where files go
 

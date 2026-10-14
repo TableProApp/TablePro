@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
+use futures::future::Either;
 use tablepro_session::SessionKey;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::document::{decode_document, encode_document};
@@ -12,6 +13,7 @@ use tablepro_storage::{DraftScope, DraftStore, StorageError};
 use tokio::sync::{mpsc, oneshot};
 
 use super::write_job::WriteJob;
+use super::writes_in_flight::{OutsideWrites, WritesInFlight};
 use super::{WorkspaceFileName, WorkspaceLoad, WorkspaceLoadError, WorkspaceRecord, WorkspaceSaveError};
 
 type WriteFile = dyn Fn(&Path, &[u8]) -> Result<(), StorageError> + Send + Sync;
@@ -37,6 +39,7 @@ struct StoreInner {
     writer: mpsc::UnboundedSender<WriteJob>,
     blocked: RefCell<HashSet<SessionKey>>,
     moved_aside: RefCell<HashSet<SessionKey>>,
+    outside: Rc<OutsideWrites>,
 }
 
 impl WorkspaceStore {
@@ -63,6 +66,7 @@ impl WorkspaceStore {
                 writer,
                 blocked: RefCell::default(),
                 moved_aside: RefCell::default(),
+                outside: Rc::default(),
             }),
         }
     }
@@ -160,22 +164,41 @@ impl WorkspaceStore {
         }
     }
 
+    /// Note writes for `key` that run outside the store, such as the
+    /// drafts of a workspace being closed. A purge of `key` waits for
+    /// them until the returned value drops.
+    pub fn writes_in_flight(&self, key: &SessionKey) -> WritesInFlight {
+        self.inner.outside.begin(key)
+    }
+
     /// Delete everything kept for a session whose connection is gone:
     /// its saved tabs, any copy of them Reset moved aside, and its
     /// drafts. A record still queued for it is never written.
     ///
     /// It goes through the writer, so a write queued before it cannot
-    /// land after it and bring the file back.
+    /// land after it and bring the file back. It also waits for the
+    /// session's writes in flight outside the store, or a draft landing
+    /// late would bring its directory back.
     pub fn purge(&self, key: &SessionKey) -> impl Future<Output = Result<(), WorkspaceSaveError>> + use<> {
         self.inner.blocked.borrow_mut().remove(key);
         self.inner.moved_aside.borrow_mut().remove(key);
-        let (purged, receiver) = oneshot::channel();
-        let _ = self.inner.writer.send(WriteJob::Purge {
-            path: self.inner.path(key),
-            drafts: WorkspaceFileName::for_key(key).draft_scope(),
-            purged,
-        });
-        async move { receiver.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped)) }
+        let path = self.inner.path(key);
+        let drafts = WorkspaceFileName::for_key(key).draft_scope();
+        let purging = match self.inner.outside.landing(key) {
+            // Queued at once, so a record scheduled before the purge is
+            // dropped in the same round rather than written.
+            None => Either::Left(queue_purge(&self.inner.writer, path, drafts)),
+            Some(landing) => {
+                let writer = self.inner.writer.clone();
+                Either::Right(async move {
+                    // A store that went drops the sender, which ends the
+                    // wait just the same.
+                    let _ = landing.await;
+                    queue_purge(&writer, path, drafts).await
+                })
+            }
+        };
+        async move { purging.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped)) }
     }
 
     pub fn is_blocked(&self, key: &SessionKey) -> bool {
@@ -208,6 +231,16 @@ impl StoreInner {
 }
 
 type Reply = oneshot::Sender<Result<(), WorkspaceSaveError>>;
+
+fn queue_purge(
+    writer: &mpsc::UnboundedSender<WriteJob>,
+    path: PathBuf,
+    drafts: DraftScope,
+) -> oneshot::Receiver<Result<(), WorkspaceSaveError>> {
+    let (purged, receiver) = oneshot::channel();
+    let _ = writer.send(WriteJob::Purge { path, drafts, purged });
+    receiver
+}
 
 /// The jobs that arrived while the writer was busy. Only the newest
 /// record per file is kept, and every waiter is answered after the
@@ -740,6 +773,29 @@ mod tests {
         assert!(
             !written.lock().expect("the log").contains(&path),
             "the queued record was written and then removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_purge_waits_for_drafts_still_landing() {
+        let fixture = Fixture::new();
+        let key = key();
+        let store = drafts(fixture.root.path());
+        let scope = WorkspaceFileName::for_key(&key).draft_scope();
+        let closing = fixture.store.writes_in_flight(&key);
+
+        let mut purging = Box::pin(fixture.store.purge(&key));
+        let early = tokio::time::timeout(std::time::Duration::from_millis(50), &mut purging).await;
+        assert!(early.is_err(), "the purge ran with a draft still landing");
+        store
+            .write_blocking(&scope, DraftId::new(), "SELECT 1")
+            .expect("the late draft");
+        drop(closing);
+        purging.await.expect("purged");
+
+        assert!(
+            !store.root().join(scope.as_str()).exists(),
+            "a draft that landed late outlived the purge"
         );
     }
 

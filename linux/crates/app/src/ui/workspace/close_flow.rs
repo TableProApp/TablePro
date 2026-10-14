@@ -32,6 +32,9 @@ impl WorkspaceModel {
         let hold = self.context.hold.acquire();
         let column_widths = self.storage.column_widths().flush();
         let filter_settings = self.storage.filter_settings().flush();
+        // The key is free once the window lets go of it, which is before
+        // these land; a delete of the connection waits for them.
+        let drafts_landing = self.storage.workspaces().writes_in_flight(&self.key);
         let editor_drafts = self.drafts.flush_all();
         let writer = self.drafts.clone();
         let tabs = self.workspace.detach();
@@ -41,6 +44,7 @@ impl WorkspaceModel {
             for failure in editor_drafts.await {
                 tracing::warn!(failure, "an editor draft was not saved");
             }
+            drop(drafts_landing);
             writer.release_closed();
             if let Some(tabs) = tabs
                 && let Err(error) = tabs.await
