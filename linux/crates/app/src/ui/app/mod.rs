@@ -37,20 +37,17 @@ use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 
 pub(crate) use connection::{ConnectRetry, ReadySession};
 
-/// What `run()` hands the root component: the session services and the
-/// settings it opened before GTK started.
+/// What the application hands each window it opens.
 pub struct AppInit {
-    pub context: std::rc::Rc<SessionContext>,
-    /// Credential prompts waiting for a window to show them in.
-    pub prompts: crate::ui::credential_prompt::PromptQueue,
-    pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
-    pub storage: crate::storage::SharedStorage,
-    pub tasks: tablepro_session::runtime::Tasks,
-    pub history: crate::services::history_service::HistoryService,
+    pub services: std::rc::Rc<crate::application::AppServices>,
+    pub host: std::rc::Rc<dyn crate::application::WindowHost>,
+    pub launch: crate::application::WindowLaunch,
 }
 
 pub struct App {
     context: std::rc::Rc<SessionContext>,
+    /// Reaches the application's other windows.
+    host: std::rc::Rc<dyn crate::application::WindowHost>,
     /// The adopted session's claim and watchers. Dropping it releases
     /// the registry key and stops the banner and sidebar updates.
     session_links: Option<connection::SessionLinks>,
@@ -374,8 +371,8 @@ pub enum AppMsg {
         approved: bool,
     },
     RefreshPage,
-    ShowAbout,
-    ShowPreferences,
+    /// The application asks the window to close.
+    CloseRequested(crate::workspace::CloseReason),
     ExportResults {
         result: QueryResult,
         name: String,
@@ -495,6 +492,28 @@ fn dirty_tabs(changes: &ChangeTrackerRegistry, structures: &StructureTrackerRegi
 impl App {
     pub(super) fn dirty_tabs(&self) -> Vec<Uuid> {
         dirty_tabs(&self.change_trackers, &self.structure_trackers)
+    }
+
+    /// Whether the window holds logout back now.
+    pub(crate) fn is_inhibiting(&self) -> bool {
+        self.inhibitor.is_held()
+    }
+
+    /// A test session has no session manager to grant an inhibition.
+    #[cfg(test)]
+    pub(crate) fn set_inhibitor(&mut self, inhibitor: crate::workspace::WindowInhibitor) {
+        self.inhibitor = inhibitor;
+    }
+
+    fn on_close_requested(&self, reason: crate::workspace::CloseReason) {
+        match reason {
+            crate::workspace::CloseReason::Quit(reply) => {
+                self.close_guards.request_window_close(&self.window, move |decision| {
+                    // A quit that went away no longer needs the answer.
+                    let _ = reply.send(decision);
+                });
+            }
+        }
     }
 }
 
@@ -650,14 +669,12 @@ impl SimpleComponent for App {
     }
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        let AppInit {
-            context,
-            prompts,
-            settings,
-            storage,
-            tasks,
-            history,
-        } = init;
+        let AppInit { services, host, launch } = init;
+        let (context, prompts) = services.window_context();
+        let settings = services.settings.clone();
+        let storage = services.storage.clone();
+        let tasks = services.tasks.clone();
+        let history = services.history();
         let drafts = crate::workspace::DraftWriter::new(
             tablepro_storage::DraftStore::new(storage.paths().drafts_dir()),
             tasks.clone(),
@@ -933,7 +950,7 @@ impl SimpleComponent for App {
         workspace_outer_stack.add_named(&workspace_empty_page, Some("empty"));
         workspace_outer_stack.set_visible_child_name("empty");
 
-        let actions = install_window_actions(&widgets.window, sender.clone());
+        let actions = install_window_actions(&widgets.window, sender.input_sender());
         let history_gate = spawn_history_gate(
             vec![actions.show_history.clone(), actions.show_saved_queries.clone()],
             history.availability(),
@@ -956,6 +973,7 @@ impl SimpleComponent for App {
         let prompt_presenter = crate::ui::credential_prompt::CredentialPromptPresenter::start(prompts, &root);
         let model = App {
             context,
+            host,
             session_links: None,
             prompt_presenter,
             connect_attempts,
@@ -1011,6 +1029,10 @@ impl SimpleComponent for App {
         };
         sender.deliver(AppMsg::ReloadConnections);
         model.show_welcome_page(sender.clone());
+        match launch {
+            crate::application::WindowLaunch::Picker => {}
+            crate::application::WindowLaunch::Connect(saved) => sender.deliver(AppMsg::OpenSaved(*saved)),
+        }
 
         widgets
             .new_connection_button
@@ -1192,14 +1214,7 @@ impl SimpleComponent for App {
                 }
             }
             AppMsg::RefreshPage => self.on_refresh_active_tab(),
-            AppMsg::ShowAbout => self.on_show_about(),
-            AppMsg::ShowPreferences => super::preferences_dialog::PreferencesDialog::new(
-                &self.settings,
-                &self.storage,
-                self.history.store(),
-                &self.tasks,
-            )
-            .present(Some(&self.window)),
+            AppMsg::CloseRequested(reason) => self.on_close_requested(reason),
             AppMsg::ExportResults { result, name, target } => {
                 let dialect = self.context.active.get().and_then(|session| session.current_dialect());
                 super::export_dialog::present(
@@ -1232,6 +1247,9 @@ fn qualified_label(schema: Option<&str>, table: &str) -> String {
 
 fn primary_menu_model() -> gio::Menu {
     let menu = gio::Menu::new();
+    let window_section = gio::Menu::new();
+    window_section.append(Some(&crate::i18n::gettext("New Window")), Some("app.new-window"));
+    menu.append_section(None, &window_section);
     let connection_section = gio::Menu::new();
     let disconnect_item = gio::MenuItem::new(Some(&crate::i18n::gettext("Disconnect")), Some("win.disconnect"));
     disconnect_item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
@@ -1255,12 +1273,12 @@ fn primary_menu_model() -> gio::Menu {
     );
     menu.append_section(None, &connections_section);
     let prefs_section = gio::Menu::new();
-    prefs_section.append(Some(&crate::i18n::gettext("Preferences")), Some("win.preferences"));
+    prefs_section.append(Some(&crate::i18n::gettext("Preferences")), Some("app.preferences"));
     menu.append_section(None, &prefs_section);
     let app_section = gio::Menu::new();
     app_section.append(Some(&crate::i18n::gettext("Keyboard Shortcuts")), Some("app.shortcuts"));
-    app_section.append(Some(&crate::i18n::gettext("About TablePro")), Some("win.about"));
-    app_section.append(Some(&crate::i18n::gettext("Quit")), Some("win.quit"));
+    app_section.append(Some(&crate::i18n::gettext("About TablePro")), Some("app.about"));
+    app_section.append(Some(&crate::i18n::gettext("Quit")), Some("app.quit"));
     menu.append_section(None, &app_section);
     menu
 }
@@ -1298,31 +1316,22 @@ struct WindowActions {
     show_saved_queries: gio::SimpleAction,
 }
 
-fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSender<App>) -> WindowActions {
-    let group = gio::SimpleActionGroup::new();
-
-    // Twelve identical action wrappers were inlined here before; the macro
-    // keeps the tuple-list intent obvious and removes 36 lines of boilerplate.
+/// The window's actions go on the window's own action map, which GTK
+/// already exports as `win`: a second group inserted under that name
+/// would hide it from the application's accelerators and from D-Bus.
+fn install_window_actions(window: &adw::ApplicationWindow, sender: &relm4::Sender<AppMsg>) -> WindowActions {
     macro_rules! input_action {
         ($name:expr, $msg:expr) => {{
             let s = sender.clone();
-            gio::ActionEntry::builder($name)
+            gio::ActionEntry::<adw::ApplicationWindow>::builder($name)
                 .activate(move |_, _, _| s.deliver($msg))
                 .build()
         }};
     }
 
-    let window_for_quit = window.clone();
-    let quit = gio::ActionEntry::builder("quit")
-        .activate(move |_, _, _| window_for_quit.close())
-        .build();
-
-    group.add_action_entries([
-        input_action!("about", AppMsg::ShowAbout),
-        quit,
+    window.add_action_entries([
         input_action!("open-editor", AppMsg::NewEditorTab),
         input_action!("close-current", AppMsg::CloseActiveWorkspaceTab),
-        input_action!("preferences", AppMsg::ShowPreferences),
         input_action!("refresh-page", AppMsg::RefreshPage),
         input_action!("save-changes", AppMsg::SaveActiveTab),
         input_action!("undo-change", AppMsg::UndoActiveBrowseTab),
@@ -1338,7 +1347,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
     let sender_for_disconnect = sender.clone();
     disconnect.connect_activate(move |_, _| sender_for_disconnect.deliver(AppMsg::Disconnect));
     disconnect.set_enabled(false);
-    group.add_action(&disconnect);
+    window.add_action(&disconnect);
 
     // The history database opens on a background task, so the menu item
     // and Ctrl+H stay insensitive until `HistoryService` reports Ready.
@@ -1346,7 +1355,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
     let sender_for_history = sender.clone();
     show_history.connect_activate(move |_, _| sender_for_history.deliver(AppMsg::ShowHistory));
     show_history.set_enabled(false);
-    group.add_action(&show_history);
+    window.add_action(&show_history);
 
     // Saved queries live in the same database, so they are reachable
     // exactly when it is.
@@ -1354,10 +1363,8 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
     let sender_for_saved = sender.clone();
     show_saved_queries.connect_activate(move |_, _| sender_for_saved.deliver(AppMsg::ShowSavedQueries));
     show_saved_queries.set_enabled(false);
-    group.add_action(&show_saved_queries);
+    window.add_action(&show_saved_queries);
 
-    window.insert_action_group("win", Some(&group));
-    tracing::info!(enabled = disconnect.is_enabled(), "registered win.disconnect");
     WindowActions {
         disconnect,
         show_history,
@@ -1365,13 +1372,14 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
     }
 }
 
-fn install_window_shortcuts(window: &adw::ApplicationWindow) {
+/// Quit, New Window and Preferences are application accelerators, which
+/// GTK runs before these, so none of their keys is bound here.
+pub(crate) fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     use gtk::gdk::{Key, ModifierType};
     let primary = ModifierType::CONTROL_MASK;
     let primary_shift = ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK;
     let controller = gtk::ShortcutController::new();
     controller.set_scope(gtk::ShortcutScope::Global);
-    controller.add_shortcut(make_shortcut(Key::q, primary, "win.quit"));
     controller.add_shortcut(make_shortcut(Key::w, primary, "win.close-current"));
     controller.add_shortcut(make_shortcut(Key::e, primary, "win.open-editor"));
     // Ctrl+T mirrors Ctrl+E for the browser/IDE muscle memory ("new
@@ -1380,7 +1388,6 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut(Key::t, primary, "win.open-editor"));
     controller.add_shortcut(make_shortcut(Key::F5, ModifierType::empty(), "win.refresh-page"));
     controller.add_shortcut(make_shortcut(Key::f, primary, "win.open-filter"));
-    controller.add_shortcut(make_shortcut(Key::comma, primary, "win.preferences"));
     controller.add_shortcut(make_shortcut(Key::h, primary, "win.show-history"));
     controller.add_shortcut(make_shortcut(Key::s, primary, "win.save-changes"));
     controller.add_shortcut(make_shortcut(Key::z, primary, "win.undo-change"));
@@ -1422,20 +1429,43 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn window_actions_exclude_shortcuts() {
-        let app = adw::Application::builder()
-            .application_id(crate::config::APP_ID)
-            .build();
-        let window = adw::ApplicationWindow::new(&app);
+    fn window_shortcuts_leave_the_application_keys_alone() {
+        let window = adw::ApplicationWindow::builder().build();
 
         install_window_shortcuts(&window);
         let names = shortcut_action_names(&window);
 
-        assert!(names.iter().any(|name| name == "win.quit"), "{names:?}");
+        assert!(names.iter().any(|name| name == "win.close-current"), "{names:?}");
+        for owned_by_the_application in ["win.quit", "win.preferences", "win.shortcuts"] {
+            assert!(
+                !names.iter().any(|name| name == owned_by_the_application),
+                "{owned_by_the_application} is an application action now: {names:?}"
+            );
+        }
+    }
+
+    #[gtk4::test]
+    fn window_actions_live_on_the_windows_own_map() {
+        let window = adw::ApplicationWindow::builder().build();
+        let (sender, receiver) = relm4::channel::<AppMsg>();
+
+        let actions = install_window_actions(&window, &sender);
+
+        assert!(window.lookup_action("open-editor").is_some());
         assert!(
-            !names.iter().any(|name| name == "win.shortcuts"),
-            "AdwApplication owns app.shortcuts now: {names:?}"
+            window
+                .lookup_action("disconnect")
+                .is_some_and(|action| !action.is_enabled())
         );
+        for moved in ["quit", "about", "preferences"] {
+            assert!(
+                window.lookup_action(moved).is_none(),
+                "win.{moved} is still on the window"
+            );
+        }
+        WidgetExt::activate_action(&window, "win.open-editor", None).expect("win resolves to the window's own map");
+        assert!(matches!(receiver.recv_sync(), Some(AppMsg::NewEditorTab)));
+        drop(actions);
     }
 
     #[gtk4::test]

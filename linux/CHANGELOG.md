@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save Changes dialog on close that lists every tab with unsaved changes and saves only the ones left checked.
 - Logout waits while there are unsaved changes, and logout and suspend wait while a save is running.
 - Auto-increment on and off for PostgreSQL columns in the Structure tab, numbering on from the largest existing value.
+- New Window (Ctrl+Shift+N, or `tablepro --new-window`) opens another window in the running TablePro.
 
 ### Changed
 
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structure tab sets a column NOT NULL when it joins the primary key, and gives its nullability back when it leaves.
 - Auto increment in the Structure tab no longer needs the primary key on PostgreSQL and SQL Server.
 - Set a grid cell to NULL with Ctrl+Backspace instead of Ctrl+Shift+N.
+- Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
 
 ### Fixed
 
@@ -39,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
 - Stop could not end a SQLite statement waiting for another connection's lock.
+- Launching TablePro while it was running did nothing instead of showing the open window.
 - A SQLite save that failed in a way SQLite rolls back itself closed the connection and its temporary tables.
 - A SQLite script ending in an unclosed comment showed later results under the first statement's columns.
 - SQLite text containing a NUL character exported as SQL that SQLite cannot read.

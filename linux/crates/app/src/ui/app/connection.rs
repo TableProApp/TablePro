@@ -298,11 +298,13 @@ impl App {
         } = ready;
         let claim = match self.context.sessions.claim(key.clone(), self.window.id()) {
             Ok(claim) => claim,
-            Err(ClaimError::AlreadyOpen { .. }) => {
+            Err(ClaimError::AlreadyOpen { window_id }) => {
                 self.discard_pending(pending);
-                self.show_toast(&crate::i18n::gettext(
-                    "This connection is already open in another window.",
-                ));
+                if !self.host.present_window(window_id) {
+                    self.show_toast(&crate::i18n::gettext(
+                        "This connection is already open in another window.",
+                    ));
+                }
                 return;
             }
         };
@@ -770,6 +772,13 @@ impl App {
         let key = SessionKey::Saved(saved.id);
         if self.session_links.as_ref().is_some_and(|links| links.key == key) {
             self.show_toast(&crate::i18n::gettext("This connection is already open."));
+            return;
+        }
+        // One window per connection: the one that has it comes forward.
+        if let Some(owner) = self.context.sessions.window_for(&key)
+            && owner != self.window.id()
+            && self.host.present_window(owner)
+        {
             return;
         }
         if self.context.active.is_connected() {

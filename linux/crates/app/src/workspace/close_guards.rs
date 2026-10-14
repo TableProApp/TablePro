@@ -9,6 +9,9 @@ use uuid::Uuid;
 
 use super::{CloseDecision, CloseGuard, CloseScope, CloseStep, WorkspaceHandle};
 
+/// Hears how the window's close ended.
+type CloseWaiter = Box<dyn FnOnce(CloseDecision)>;
+
 /// Where the window's own close stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WindowClose {
@@ -25,6 +28,11 @@ enum WindowClose {
 pub(crate) struct CloseGuards {
     turn: futures::lock::Mutex<()>,
     window: Cell<WindowClose>,
+    /// Close requests that reached the window's handler, so a caller can
+    /// tell when a dialog over the window took one instead.
+    requests: Cell<u64>,
+    /// Callers waiting to hear how the window's close ended.
+    waiting: RefCell<Vec<CloseWaiter>>,
     /// Open transactions the user agreed to lose in the current
     /// disconnect or switch. A switch asks again once its connection is
     /// ready, about what changed while it connected, but not about these.
@@ -36,6 +44,8 @@ impl CloseGuards {
         Rc::new(Self {
             turn: futures::lock::Mutex::new(()),
             window: Cell::new(WindowClose::Open),
+            requests: Cell::new(0),
+            waiting: RefCell::new(Vec::new()),
             teardown_acknowledged: RefCell::new(HashSet::new()),
         })
     }
@@ -62,12 +72,41 @@ impl CloseGuards {
     ) {
         let guards = self.clone();
         window.connect_close_request(move |window| {
+            guards.requests.set(guards.requests.get() + 1);
             if !guards.window_may_close(window.upcast_ref(), &handle) {
                 return glib::Propagation::Stop;
             }
             on_close(window);
+            guards.settle(CloseDecision::Approved);
             glib::Propagation::Proceed
         });
+    }
+
+    /// Close the window through its prompts and tell `decided` how it
+    /// ended. A prompt already on screen answers for this request too.
+    pub(crate) fn request_window_close(
+        &self,
+        window: &impl IsA<gtk::Window>,
+        decided: impl FnOnce(CloseDecision) + 'static,
+    ) {
+        self.waiting.borrow_mut().push(Box::new(decided));
+        if self.window.get() == WindowClose::Asking {
+            return;
+        }
+        let before = self.requests.get();
+        window.close();
+        if self.requests.get() == before {
+            // libadwaita takes a close request over one of its dialogs as
+            // dismissing the dialog, and the window stays open.
+            self.settle(CloseDecision::Cancelled);
+        }
+    }
+
+    fn settle(&self, decision: CloseDecision) {
+        let waiting = self.waiting.take();
+        for decided in waiting {
+            decided(decision);
+        }
     }
 
     fn window_may_close(self: &Rc<Self>, window: &gtk::Window, handle: &WorkspaceHandle) -> bool {
@@ -90,7 +129,10 @@ impl CloseGuards {
                     guards.window.set(WindowClose::Approved);
                     window.close();
                 }
-                CloseDecision::Cancelled => guards.window.set(WindowClose::Open),
+                CloseDecision::Cancelled => {
+                    guards.window.set(WindowClose::Open);
+                    guards.settle(CloseDecision::Cancelled);
+                }
             }
         });
         false
@@ -266,6 +308,83 @@ mod tests {
         answer_next(&window, "Save Changes?", "discard", Some(&kept));
 
         wait_until(WAIT, || closes.get() == 1).expect("the approved close to go through");
+    }
+
+    #[gtk4::test]
+    fn a_requested_close_of_a_clean_window_is_approved_at_once() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        workspace.handle.discard(&[workspace.tab], false);
+        let guards = CloseGuards::new();
+        let (window, closes) = guarded_window(&guards, &workspace);
+        let (decision, sink) = decision_sink();
+
+        guards.request_window_close(&window, sink);
+
+        assert_eq!(decision.get(), Some(CloseDecision::Approved));
+        assert_eq!(closes.get(), 1);
+    }
+
+    #[gtk4::test]
+    fn a_requested_close_hears_the_prompts_answer() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        let guards = CloseGuards::new();
+        let (window, closes) = guarded_window(&guards, &workspace);
+
+        let (kept, sink) = decision_sink();
+        guards.request_window_close(&window, sink);
+        let first = answer_next(&window, "Save Changes?", "cancel", None);
+        wait_until(WAIT, || kept.get().is_some()).expect("a decision");
+        assert_eq!(kept.get(), Some(CloseDecision::Cancelled));
+        assert!(window.is_visible() && closes.get() == 0);
+
+        let (approved, sink) = decision_sink();
+        guards.request_window_close(&window, sink);
+        answer_next(&window, "Save Changes?", "discard", Some(&first));
+        wait_until(WAIT, || approved.get().is_some()).expect("a decision");
+        assert_eq!(approved.get(), Some(CloseDecision::Approved));
+        assert_eq!(closes.get(), 1);
+    }
+
+    /// A request that arrives while the user's own close is asking is
+    /// answered by that prompt, rather than dismissing it.
+    #[gtk4::test]
+    fn a_request_during_the_prompt_waits_for_its_answer() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        let guards = CloseGuards::new();
+        let (window, closes) = guarded_window(&guards, &workspace);
+        window.close();
+        wait_until(WAIT, || visible_alert(&window).is_some()).expect("the prompt");
+        let shown = visible_alert(&window);
+
+        let (decision, sink) = decision_sink();
+        guards.request_window_close(&window, sink);
+        drain_main_context();
+        assert_eq!(visible_alert(&window), shown, "the request dismissed the prompt");
+        assert_eq!(decision.get(), None);
+        answer_next(&window, "Save Changes?", "discard", None);
+
+        wait_until(WAIT, || decision.get().is_some()).expect("a decision");
+        assert_eq!(decision.get(), Some(CloseDecision::Approved));
+        assert_eq!(closes.get(), 1);
+    }
+
+    #[gtk4::test]
+    fn a_close_a_dialog_takes_is_reported_cancelled() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        workspace.handle.discard(&[workspace.tab], false);
+        let guards = CloseGuards::new();
+        let (window, closes) = guarded_window(&guards, &workspace);
+        let other = adw::AlertDialog::new(Some("Elsewhere"), None);
+        other.add_response("close", "Close");
+        other.present(Some(&window));
+        wait_until(WAIT, || visible_alert(&window).is_some()).expect("the dialog");
+
+        let (decision, sink) = decision_sink();
+        guards.request_window_close(&window, sink);
+
+        assert_eq!(decision.get(), Some(CloseDecision::Cancelled));
+        assert_eq!(closes.get(), 0);
+        assert!(window.is_visible());
     }
 
     #[gtk4::test]

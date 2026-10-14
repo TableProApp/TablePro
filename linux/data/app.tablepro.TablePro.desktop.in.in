@@ -11,3 +11,8 @@ Type=Application
 Categories=Development;Database;
 DBusActivatable=true
 StartupNotify=true
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=tablepro --new-window

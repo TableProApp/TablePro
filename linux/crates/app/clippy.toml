@@ -34,11 +34,20 @@ disallowed-methods = [
     # Blocking the GTK main loop freezes every window, and quitting from
     # under it skips the shutdown that flushes pending writes.
     { path = "gtk4::glib::MainContext::block_on", reason = "await in glib::spawn_future_local instead of blocking the main loop" },
-    { path = "gio::prelude::ApplicationExt::quit", reason = "close the window so shutdown runs; run() shuts the runtime down after" },
+    { path = "gio::prelude::ApplicationExt::quit", reason = "use TableProApplication::request_quit, which closes each window through its prompts" },
 
     # A window can close while work it started is still on its way back.
     # These panic on a component that has shut down; deliver drops the
     # message instead.
     { path = "relm4::ComponentSender::input", reason = "use crate::runtime::DeliverInput::deliver" },
     { path = "relm4::FactorySender::input", reason = "use crate::runtime::DeliverInput::deliver" },
+
+    # TableProApplication owns the windows and the app actions. Relm4's
+    # own application builds a second one that knows neither.
+    { path = "relm4::RelmApp::run", reason = "open windows with TableProApplication::open_window" },
+    { path = "relm4::main_application", reason = "take the application from the window or its WindowHost" },
+    { path = "relm4::main_adw_application", reason = "take the application from the window or its WindowHost" },
+    { path = "relm4::actions::RelmActionGroup::register_for_main_application", reason = "add actions with add_action_entries on the window or the application" },
+    { path = "relm4::ComponentBuilder::transient_for", reason = "relm4 applies it only from RelmApp; present dialogs on their parent window" },
+    { path = "relm4::ComponentBuilder::transient_for_native", reason = "relm4 applies it only from RelmApp; present dialogs on their parent window" },
 ]

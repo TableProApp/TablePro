@@ -76,9 +76,9 @@ fn compiled_schema_dir() -> Result<PathBuf, ()> {
 /// schema is installed would be answered by their machine instead of
 /// by the code.
 ///
-/// The single-instance lock lives under `XDG_RUNTIME_DIR`, so a TablePro
-/// the developer has open would otherwise hold it, and the binary under
-/// test would exit at once without printing or reporting anything.
+/// `XDG_RUNTIME_DIR` is the test's own, so nothing the binary leaves
+/// there, such as SSH control sockets, lands beside a TablePro the
+/// developer has open.
 fn tablepro(sandbox: &Sandbox<'_>) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_tablepro"));
     command

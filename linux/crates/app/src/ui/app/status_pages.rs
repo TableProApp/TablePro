@@ -1,5 +1,5 @@
 use relm4::adw::prelude::*;
-use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
+use relm4::{Component, ComponentController, ComponentSender, adw};
 
 use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
 use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit, SavedQueriesDialogOutput};
@@ -174,26 +174,6 @@ impl App {
                 })
                 .drop_on_shutdown()
         });
-    }
-
-    pub(super) fn on_show_about(&self) {
-        let dialog = adw::AboutDialog::builder()
-            .application_name(crate::i18n::gettext("TablePro"))
-            .application_icon(crate::config::APP_ID)
-            .developer_name(crate::i18n::gettext("TablePro Authors"))
-            .version(crate::config::VERSION)
-            .website("https://github.com/TableProApp/TablePro")
-            .issue_url("https://github.com/TableProApp/TablePro/issues")
-            .support_url("https://github.com/TableProApp/TablePro/discussions")
-            .copyright(crate::i18n::gettext("© 2025–2026 TablePro Authors"))
-            .license_type(gtk::License::Agpl30)
-            .comments(crate::i18n::gettext(
-                "A native Linux database client built with GTK4 + libadwaita.",
-            ))
-            .build();
-        dialog.set_developers(&["TablePro Authors https://github.com/TableProApp/TablePro"]);
-        dialog.set_translator_credits(&crate::i18n::gettext("translator-credits"));
-        dialog.present(Some(&self.window));
     }
 }
 

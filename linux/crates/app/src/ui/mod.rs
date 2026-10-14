@@ -28,4 +28,11 @@ mod style_scheme_resolver;
 mod welcome_view;
 mod window_geometry;
 
-pub use app::{App, AppInit};
+#[cfg(test)]
+pub(crate) use app::install_window_shortcuts;
+pub use app::{App, AppInit, AppMsg};
+#[cfg(test)]
+pub(crate) use browse_tab::BrowseTab;
+#[cfg(test)]
+pub(crate) use editor::{SqlEditor, SqlEditorInit};
+pub(crate) use preferences_dialog::PreferencesDialog;

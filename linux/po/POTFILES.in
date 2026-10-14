@@ -1,3 +1,13 @@
+crates/app/src/application/app_actions.rs
+crates/app/src/application/app_services.rs
+crates/app/src/application/app_window_host.rs
+crates/app/src/application/imp.rs
+crates/app/src/application/mod.rs
+crates/app/src/application/quit_sequence.rs
+crates/app/src/application/tests.rs
+crates/app/src/application/window_host.rs
+crates/app/src/application/window_launch.rs
+crates/app/src/application/window_registry.rs
 crates/app/src/config.rs
 crates/app/src/i18n.rs
 crates/app/src/lib.rs
@@ -33,7 +43,6 @@ crates/app/src/services/save_batch.rs
 crates/app/src/services/secret_labels.rs
 crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
-crates/app/src/services/single_instance.rs
 crates/app/src/services/structure_tracker.rs
 crates/app/src/services/structure_tracker_handle.rs
 crates/app/src/services/structure_tracker_registry.rs
@@ -186,6 +195,7 @@ crates/app/src/ui/window_geometry.rs
 crates/app/src/workspace/close_decision.rs
 crates/app/src/workspace/close_guard.rs
 crates/app/src/workspace/close_guards.rs
+crates/app/src/workspace/close_reason.rs
 crates/app/src/workspace/close_scope.rs
 crates/app/src/workspace/close_step.rs
 crates/app/src/workspace/dialog_response.rs

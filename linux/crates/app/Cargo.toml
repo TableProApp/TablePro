@@ -28,6 +28,18 @@ name = "logging"
 path = "tests/logging.rs"
 harness = false
 
+# Both start the application, which GTK allows only on the process's
+# main thread, so they run without the test harness.
+[[test]]
+name = "application_uniqueness"
+path = "tests/application_uniqueness.rs"
+harness = false
+
+[[test]]
+name = "application_lifecycle"
+path = "tests/application_lifecycle.rs"
+harness = false
+
 [features]
 default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]
