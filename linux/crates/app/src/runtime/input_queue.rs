@@ -21,22 +21,57 @@ pub fn input_queue<M>() -> (InputSender<M>, UnboundedReceiver<M>) {
 /// the widget while it is in the middle of handling another message.
 pub fn pump_inputs<T, M>(
     object: &T,
-    mut receiver: UnboundedReceiver<M>,
+    receiver: UnboundedReceiver<M>,
     handle: impl Fn(&T, M) + 'static,
 ) -> glib::JoinHandle<()>
 where
     T: IsA<glib::Object>,
     M: 'static,
 {
+    pump_inputs_with_leftovers(object, receiver, handle, drop)
+}
+
+/// As [`pump_inputs`], and once the pump stops, aborted or with `object`
+/// gone, every message still queued goes to `leftover` rather than being
+/// dropped, for one that owns something that has to be closed.
+pub fn pump_inputs_with_leftovers<T, M>(
+    object: &T,
+    receiver: UnboundedReceiver<M>,
+    handle: impl Fn(&T, M) + 'static,
+    leftover: impl FnMut(M) + 'static,
+) -> glib::JoinHandle<()>
+where
+    T: IsA<glib::Object>,
+    M: 'static,
+{
     let weak = object.downgrade();
+    let mut queue = Leftovers { receiver, leftover };
     glib::spawn_future_local(async move {
-        while let Some(message) = receiver.recv().await {
+        while let Some(message) = queue.receiver.recv().await {
             let Some(object) = weak.upgrade() else {
+                (queue.leftover)(message);
                 return;
             };
             handle(&object, message);
         }
     })
+}
+
+/// The pump's end of the queue. It drains when the pump's future drops.
+struct Leftovers<M, F: FnMut(M)> {
+    receiver: UnboundedReceiver<M>,
+    leftover: F,
+}
+
+impl<M, F: FnMut(M)> Drop for Leftovers<M, F> {
+    fn drop(&mut self) {
+        // Closed first, so a sender gets its message back instead of
+        // adding to a queue nobody reads.
+        self.receiver.close();
+        while let Ok(message) = self.receiver.try_recv() {
+            (self.leftover)(message);
+        }
+    }
 }
 
 /// A relm4 sender whose messages land in `input`, for a relm4 child that
@@ -92,6 +127,37 @@ mod tests {
         drain_main_context();
 
         assert_eq!(sender.try_deliver(1), Delivery::ReceiverGone);
+    }
+
+    #[gtk4::test]
+    fn messages_still_queued_when_the_pump_stops_go_to_leftover() {
+        let object = glib::Object::new::<glib::Object>();
+        let (sender, receiver) = input_queue::<u8>();
+        let (handled, left) = (Rc::new(RefCell::new(Vec::new())), Rc::new(RefCell::new(Vec::new())));
+        let (handled_sink, left_sink) = (handled.clone(), left.clone());
+        let pump = pump_inputs_with_leftovers(
+            &object,
+            receiver,
+            move |_, message| handled_sink.borrow_mut().push(message),
+            move |message| left_sink.borrow_mut().push(message),
+        );
+        sender.deliver(1);
+        drain_main_context();
+
+        sender.deliver(2);
+        sender.deliver(3);
+        pump.abort();
+        drop(pump);
+        drain_main_context();
+
+        assert_eq!(*handled.borrow(), [1]);
+        assert_eq!(*left.borrow(), [2, 3]);
+        assert_eq!(sender.try_deliver(4), Delivery::ReceiverGone);
+        assert_eq!(
+            *left.borrow(),
+            [2, 3],
+            "a message sent after the pump stopped was taken"
+        );
     }
 
     #[gtk4::test]

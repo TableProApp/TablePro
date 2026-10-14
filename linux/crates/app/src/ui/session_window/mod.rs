@@ -98,10 +98,17 @@ impl SessionWindow {
         let (context, prompts) = services.window_context();
         let (input, receiver) = crate::runtime::input_queue::<SessionWindowInput>();
         let _ = imp.input.set(input.clone());
-        imp.pump
-            .replace(Some(crate::runtime::pump_inputs(self, receiver, |window, message| {
-                window.handle_input(message)
-            })));
+        let (tasks, hold) = (services.tasks.clone(), services.hold());
+        imp.pump.replace(Some(crate::runtime::pump_inputs_with_leftovers(
+            self,
+            receiver,
+            |window, message| window.handle_input(message),
+            move |message| {
+                if let Some(pending) = unadopted(message) {
+                    discard_pending(pending, &tasks, &*hold);
+                }
+            },
+        )));
         if crate::config::profile() == crate::config::Profile::Development {
             self.add_css_class("devel");
         }
@@ -590,15 +597,10 @@ impl SessionWindow {
             let Some(input) = input else {
                 return;
             };
-            // A connect that lands after its window went is closed, not
-            // dropped, so the server sees it end.
             if let Err(unsent) = input.send(SessionWindowInput::Command(Box::new(attempt)))
-                && let SessionWindowInput::Command(command) = unsent.0
-                && let SessionWindowCommand::Attempt {
-                    result: Ok(connected), ..
-                } = *command
+                && let Some(pending) = unadopted(unsent.0)
             {
-                discard_pending(connected.pending, &tasks, &*hold);
+                discard_pending(pending, &tasks, &*hold);
             }
         });
     }
@@ -703,6 +705,17 @@ impl SessionWindow {
     #[cfg(test)]
     pub(crate) fn page_name(&self) -> &'static str {
         self.imp().page.borrow().name()
+    }
+}
+
+/// The connection a message carries that its window will never adopt
+/// now. It is closed rather than dropped, so the server sees it end.
+fn unadopted(message: SessionWindowInput) -> Option<PendingSession> {
+    match message {
+        SessionWindowInput::Command(command) => match *command {
+            SessionWindowCommand::Attempt { result, .. } => result.ok().map(|connected| connected.pending),
+        },
+        _ => None,
     }
 }
 

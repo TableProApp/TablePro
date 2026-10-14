@@ -337,6 +337,26 @@ fn a_connect_that_lands_after_its_window_closed_is_closed() {
 }
 
 #[gtk4::test]
+fn a_connect_still_queued_when_its_window_shuts_down_is_closed() {
+    let test = TestWindow::picker("QueuedAtShutdown");
+    let request = FakeConnector::request().expect("a request");
+    let (pending, connection) = FakeConnector::pending_session(request, ConnectionScript::default());
+    let attempt = SessionWindowCommand::Attempt {
+        generation: tablepro_session::connect::AttemptGeneration::FIRST,
+        result: Ok(Connected {
+            pending,
+            saved: None,
+            warnings: Vec::new(),
+        }),
+    };
+
+    test.window.send(SessionWindowInput::Command(Box::new(attempt)));
+    test.window.shutdown();
+
+    wait_until(WAIT, || connection.is_closed()).expect("the queued connection to close");
+}
+
+#[gtk4::test]
 fn a_failed_connect_shows_why_and_choose_connection_returns_to_the_picker() {
     let test = TestWindow::with_script(
         "Failed",

@@ -27,8 +27,8 @@ pub struct SessionWindow {
     /// What the application handed the window, set once it is added.
     pub(super) state: OnceCell<WindowState>,
     pub(super) input: OnceCell<InputSender<SessionWindowInput>>,
-    /// Handles the queued input. Aborted at shutdown, which drops every
-    /// reply still on its way.
+    /// Handles the queued input. Aborted at shutdown, which closes a
+    /// connect still queued and drops every other reply.
     pub(super) pump: RefCell<Option<glib::JoinHandle<()>>>,
     /// Ends the credential prompt loop with the window.
     pub(super) prompt_presenter: RefCell<Option<glib::JoinHandle<()>>>,

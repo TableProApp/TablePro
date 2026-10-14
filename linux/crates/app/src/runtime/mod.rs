@@ -14,7 +14,7 @@ pub use deliver::spawn_and_deliver;
 pub use deliver_input::{DeliverInput, Delivery};
 pub use failed_requests::FailedRequests;
 pub use gio_process_hold::GioProcessHold;
-pub use input_queue::{InputSender, input_queue, pump_inputs, relm4_bridge};
+pub use input_queue::{InputSender, input_queue, pump_inputs, pump_inputs_with_leftovers, relm4_bridge};
 pub use request_sequencer::RequestSequencer;
 pub use request_stamp::RequestStamp;
 pub use request_ticket::RequestTicket;
