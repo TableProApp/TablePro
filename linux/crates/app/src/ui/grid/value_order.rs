@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::str::FromStr;
 
 use tablepro_core::Value;
-use tablepro_core::value::{SqlDecimal, Temporal, TimeWithOffset};
+use tablepro_core::value::{SqlDecimal, SqlInterval, Temporal, TimeWithOffset};
 
 /// The order a header click puts a column's values in, for every kind
 /// but text, which `GtkStringSorter` collates in the user's locale.
@@ -110,9 +110,7 @@ fn same_rank(a: &Value, b: &Value) -> Ordering {
         }
         (Value::Time(_), Value::TimeTz(_)) => Ordering::Less,
         (Value::TimeTz(_), Value::Time(_)) => Ordering::Greater,
-        (Value::Interval(a), Value::Interval(b)) => {
-            (a.months, a.days, a.microseconds).cmp(&(b.months, b.days, b.microseconds))
-        }
+        (Value::Interval(a), Value::Interval(b)) => interval_span(a).cmp(&interval_span(b)),
         _ if sort_text(a).is_some() => sort_text(a).cmp(&sort_text(b)),
         (Value::Uuid(a), Value::Uuid(b)) => a.as_bytes().cmp(b.as_bytes()),
         (Value::Bits(a), Value::Bits(b)) => a
@@ -128,6 +126,15 @@ fn same_rank(a: &Value, b: &Value) -> Ordering {
             .unwrap_or_else(|| a.len().cmp(&b.len())),
         _ => Ordering::Equal,
     }
+}
+
+/// An interval's length the way PostgreSQL compares two: a month is 30
+/// days and a day 24 hours, so `1 mon` equals `30 days` and sorts
+/// before `40 days`.
+fn interval_span(interval: &SqlInterval) -> i128 {
+    const MICROS_PER_DAY: i128 = 86_400_000_000;
+    let days = i128::from(interval.months) * 30 + i128::from(interval.days);
+    days * MICROS_PER_DAY + i128::from(interval.microseconds)
 }
 
 fn is_number(value: &Value) -> bool {
@@ -371,6 +378,23 @@ mod tests {
             order(&Value::TimestampTz(Temporal::Infinity), &noon_utc),
             Ordering::Greater
         );
+    }
+
+    #[test]
+    fn intervals_compare_by_their_length() {
+        let interval = |months, days, microseconds| {
+            Value::Interval(SqlInterval {
+                months,
+                days,
+                microseconds,
+            })
+        };
+        let hour = 3_600_000_000;
+
+        assert_eq!(order(&interval(1, 0, 0), &interval(0, 40, 0)), Ordering::Less);
+        assert_eq!(order(&interval(1, 0, 0), &interval(0, 30, 0)), Ordering::Equal);
+        assert_eq!(order(&interval(0, 1, 0), &interval(0, 0, 25 * hour)), Ordering::Less);
+        assert_eq!(order(&interval(0, -1, 0), &interval(0, 0, -hour)), Ordering::Less);
     }
 
     #[test]
