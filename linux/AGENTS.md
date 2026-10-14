@@ -1,6 +1,6 @@
 # TablePro for Linux
 
-The native Linux app: Rust, GTK 4 and libadwaita through Relm4, built with Meson and Cargo. The platform floor is GNOME 50 (GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88). It shares no code with the macOS app.
+The native Linux app: Rust, GTK 4 and libadwaita through gtk-rs, built with Meson and Cargo. The platform floor is GNOME 50 (GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88). It shares no code with the macOS app.
 
 This is the guide for work under `linux/`. The root `AGENTS.md` describes the macOS and iOS apps; of it, only the principles named below, "Writing style" and the commit rules apply here. Claude Code loads this file through `linux/CLAUDE.md` once a file under `linux/` is read; Codex reads it when started in `linux/`, so otherwise read it yourself.
 
@@ -18,7 +18,7 @@ This is the guide for work under `linux/`. The root `AGENTS.md` describes the ma
 
 ## Map
 
-- `crates/app`: the binary and every Relm4 component. `crates/core`: domain types and traits, no GUI. `crates/storage`: secrets, settings and files. `crates/session`, `crates/net`, `crates/ssh`: sessions, the network layer and the OpenSSH transport. `crates/drivers/*`: one crate per engine. `crates/test-fixtures` and `crates/test-support`: test-only.
+- `crates/app`: the binary, the GTK application, its windows and views. `crates/core`: domain types and traits, no GUI. `crates/storage`: secrets, settings and files. `crates/session`, `crates/net`, `crates/ssh`: sessions, the network layer and the OpenSSH transport. `crates/drivers/*`: one crate per engine. `crates/test-fixtures` and `crates/test-support`: test-only.
 - `data/`: desktop entry, D-Bus service, metainfo, GSettings schema, icons and GResource. `po/`: translations. `build-aux/flatpak/`: the Flatpak manifest.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md` and `docs/` (testing, storage, error handling, state management, adding a driver, decisions) are the reference. Read the one for the area you touch.
 

@@ -219,9 +219,11 @@ GTK code is tested with `#[gtk4::test]`, which runs each test on a single GTK th
 
 Helpers live in `crates/app/src/test_support`, compiled only for tests:
 
-- `drain_main_context()` runs pending main-loop sources. `wait_until(timeout, condition)` iterates the main loop until the condition holds or the timeout passes, so a missing signal fails the test instead of hanging it.
+- `drain_main_context()` runs pending main-loop sources. `wait_until(timeout, condition)` iterates the main loop until the condition holds or the timeout passes, so a missing signal fails the test instead of hanging it. `finish_on_main(timeout, future)` runs a future on the main context and gives it up at the timeout.
 - `SignalLog::connect(object, signal, extract)` records emissions and disconnects when dropped.
 - `descendants`, `find_by_action_name` and `first_descendant_of_type` walk a widget tree.
+- `MemorySettings` compiles the schema into a `TempDir` behind the memory backend, so a test never touches the developer's dconf database.
+- `FakeSession` is a session over a fake connection; `FakeClocks` and `FakeProbe` stand in for the suspend clocks and the reachability check.
 - `assert_labelled(widget)` checks that a screen reader can name a control:
   - an `adw::PreferencesRow` needs a non-empty title;
   - an `adw::EntryRow` or `adw::PasswordEntryRow` must keep its inner text field labelled by that title;
@@ -230,15 +232,67 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
 
 CI sets `GTK_A11Y=test` so results never depend on an AT-SPI bus. With `GTK_A11Y=none`, GTK records no accessible properties and `assert_labelled` returns `TestBackendMissing` instead of a wrong verdict.
 
+Two harnesses build the app's real objects over fakes:
+
+- `TestWindow` (`ui/session_window/tests.rs`) starts a `TableProApplication` with one window on the picker, a saved connection in its list and a `FakeConnector`. `TestWindow::connected` opens that connection and waits for its workspace. Each test registers an application id of its own, so it never meets another test, or a TablePro the developer has open, on the session bus. `test.hold` is the application's `CountingHold`.
+- `workspace::test_workspace::Workspace` builds a `WorkspaceHandle` with one tab over a scripted connection, for the save and close prompt tests.
+
+Both turn GTK animations off, so a dialog or a page change finishes before the next line runs.
+
+### Background work and time
+
+A `#[gtk4::test]` has no tokio runtime. `test_runtime()` builds an `AppRuntime` the test owns, and its `tasks()` go to the code under test. A `#[tokio::test]` gets the `Tasks` of its own runtime from `paused_tasks()`, and with `start_paused = true` tokio's clock stands still and jumps to the next timer whenever every task is waiting, so a test of a deadline, a backoff or a debounce runs in no time and never flakes on a slow runner. The session crate's tests use the same pattern for the health monitor, the catalog and the operation runner.
+
+### Holds
+
+`CountingHold` (`tablepro_session::runtime`) is the test `ProcessHold`: it counts live tokens. A test that work holds the process checks that `live()` is 1 while the work runs and 0 once it ends, and that the work's effect is in place before the count drops.
+
+### Dialogs
+
+- `workspace::answer(window, response)` clicks the button of the alert `window` shows, so the alert closes itself and emits its response in the order a user's click does. `workspace::visible_alert(window)` returns that alert.
+- `test_support::respond(dialog, response)` emits a response on a dialog the test holds, then force-closes it.
+
+A test that a step logs no GLib critical turns criticals fatal around that step and restores the old mask after:
+
+```rust
+let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL);
+let answered = crate::workspace::answer(&test.window, "reset");
+crate::test_support::drain_main_context();
+glib::log_set_always_fatal(previous);
+```
+
+A critical then aborts the test process, and the runner reports the test as failed with the message, for example libadwaita's "Trying to close AdwAlertDialog ... that's not presented".
+
+### Fakes
+
+`tablepro-test-support` holds the driver contract's fakes, which every crate's tests share: `FakeDriver`, `FakeConnection` scripted through `ConnectionScript`, `FakeEditorSession` with `FakeRun`, `FakeSecretVault`, `FakePrompter` and `FaultTransport`. A `FakeReply` answers at once, after a delay unless the deadline or cancel comes first, late whatever the caller asked, only once stopped, or never. `CallCounters` counts the calls a connection received after it was handed over. `tablepro_session::fakes` adds `FakeConnector` and `FakeCredentialSource` behind the session crate's `fakes` feature, which only the app's dev-dependencies turn on.
+
+### Application tests
+
+The tests in `crates/app/tests` that start TablePro run without the test harness (`harness = false` in `crates/app/Cargo.toml`): GTK allows one application per process, on its main thread. Each binary has its own `main` and runs TablePro in child processes. The ones that talk to it over D-Bus give it a private session bus through `gio::TestDBus`, so a TablePro the developer has open never answers.
+
+| Test | What it checks |
+|---|---|
+| `application_uniqueness` | a second launch hands its command line to the running instance and exits without opening a window, and `--new-window` opens one there |
+| `application_lifecycle` | Quit waits for a session's close within the close timeout and gives up on a close that hangs, a cancelled close keeps the app running, and an editor session's close holds the process |
+| `application_session_restore` | the windows open at quit open again at the next launch, and a window closed first does not |
+| `open_files` | a file handed over D-Bus opens a window on it, the same file brings that window forward, and another file opens a second window |
+| `startup`, `i18n_catalog`, `logging` | the command-line options, a missing schema, the translation catalogue and the log setup |
+
+They need a display and a session bus, so run them the way CI does:
+
+```bash
+xvfb-run -a dbus-run-session -- meson test -C _build --suite gtk --print-errorlogs
+```
+
+or one at a time, `xvfb-run -a dbus-run-session -- meson devenv -C _build cargo test -p tablepro --test application_lifecycle`. `startup` needs the build Meson configures, so it fails under plain Cargo. cargo-nextest asks each test binary to list its tests, which a harness-free binary does not do, so run these with `cargo test`.
+
 Policy:
 
 - Pure logic: extract to `app::services::<thing>` and write plain unit tests.
 - Widgets the app builds: a `#[gtk4::test]` that constructs the widget, drives it through its actions or signals, checks the result, and runs `assert_labelled` on the controls a user reaches.
+- A flow across windows or launches: an application test.
 - UI changes still carry before and after screenshots in the PR description.
-
-## End-to-end test
-
-There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` through its registered `gtk::Application` actions is the intended shape when we add one.
 
 ## CI
 
@@ -255,6 +309,6 @@ Tracked with `cargo-llvm-cov` once the codebase has substance. No hard coverage 
 
 ## Mocking
 
-Avoid mock objects. We do not mock drivers, the filesystem, or `tokio::time`. Either use a real implementation (testcontainers, `tempfile`, `tokio::time::pause`) or extract the logic to a pure function and test that.
+Avoid mock objects. We do not mock drivers, the filesystem, or `tokio::time`. Either use a real implementation (testcontainers, `tempfile`, `tokio::time::pause`) or extract the logic to a pure function and test that. The fakes in `tablepro-test-support` are not mocks: they implement the driver contract and keep its rules, so the code under test meets what a conforming driver does, and each real driver runs the conformance suites against its own server.
 
 If a test cannot be written without a mock, the design is wrong. Refactor before writing the mock.

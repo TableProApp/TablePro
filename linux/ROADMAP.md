@@ -12,7 +12,7 @@ This is **past demo-grade**, but still **not beta-shippable**. The gap between "
 |---|---|
 | Type system | Done. `Value` covers Null/Bool/Int/Float/Text/Bytes/Date/Time/DateTime/TimestampTz/Decimal/Uuid/Json |
 | Result scaling | Streams via sqlx `fetch` with `MAX_QUERY_ROWS` cap; full result still held in the grid model |
-| Connection management | `DatabaseService` + `AdwTabView` workspace tabs done; one active connection at a time, multi-window still open |
+| Connection management | Done. One window per connection session, each with its own `AdwTabView` workspace; the sessions open at quit open again at launch |
 | Network security | SSH tunnelling + TLS toggle present; cert-path / verify-mode UI still thin |
 | Distribution | Flatpak manifest + metainfo + desktop + icon present; never built end-to-end on CI |
 | Internationalization | gettext through `crates/app/src/i18n.rs` + `po/` template; extraction reaches every call site and `POTFILES.in` matches the tree. The committed template still predates that fix and needs regenerating on gettext 0.24 or newer |
@@ -86,13 +86,14 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [ ] Memory-bounded grid: drop rows outside viewport (GTK virtualizes paint; model still holds all loaded rows)
 - [ ] Cancellation: drop the stream when user navigates away
 
-### Multi-connection / multi-tab architecture (partial)
+### Multi-connection / multi-tab architecture ✅
 
-- [x] `DatabaseService` owning active connection(s)
+- [x] A `Session` per window, claimed in the `SessionRegistry` so one database opens in one window
 - [x] `AdwTabView` for multiple open tables / queries within one connection
-- [x] Workspace tab persistence (`workspace_state.json`)
-- [ ] Switch the active connection without reconnecting (`DatabaseService` has no `set_active`)
-- [ ] Multi-window: each window holds its own active connection via `gtk::Application::add_window`
+- [x] Workspace tab persistence, one file per session under `$XDG_STATE_HOME/tablepro/workspaces/`
+- [x] Multi-window: each `SessionWindow` holds its own session, and another connection opens in another window rather than replacing it ([ADR 0012](docs/decisions/0012-window-per-session.md))
+- [x] Session restore: the windows open at quit open again at the next launch, behind the `restore-session` preference
+- [x] Open With: a database file from the file manager opens in a window of its own, or brings forward the window that has it open
 
 ### Security baseline (partial)
 
@@ -363,7 +364,7 @@ This is a separate undertaking and is not blocking any phase. It moves only afte
 | Stage | Effort | Calendar |
 |---|---|---|
 | Phase 0 + 1 | done | done |
-| Phase 2 remainder (streaming backpressure, driver-side query cancel, multi-window, TLS UI polish) | ~2 weeks FT | next |
+| Phase 2 remainder (streaming backpressure, driver-side query cancel, TLS UI polish) | ~2 weeks FT | next |
 | Phase 3 remainder — Beta release | ~3 weeks FT | following |
 | Phase 4 — Beta polish | 3 weeks FT | after Beta |
 | **Beta on Flathub** | **~8 weeks FT from this revision** | **after Phase 4** |
