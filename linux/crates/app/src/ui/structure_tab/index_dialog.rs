@@ -11,10 +11,15 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::IndexInfo;
 
-use super::form_dialog::{FormDialog, mark_invalid, menu_label};
+use super::form_dialog::{FormDialog, give_state, mark_invalid, menu_label};
 use super::index_draft::{DraftKey, IndexDraft, IndexDraftError};
 
-pub(super) struct IndexDialog(Rc<Inner>);
+/// The dialog, which owns the form's state (`give_state`).
+pub(super) struct IndexDialog {
+    dialog: adw::Dialog,
+    #[cfg(test)]
+    inner: Rc<Inner>,
+}
 
 struct Inner {
     form: FormDialog,
@@ -40,7 +45,7 @@ struct Inner {
 
 impl IndexDialog {
     pub(super) fn new(columns: Vec<String>, existing: Vec<String>, on_add: impl Fn(IndexInfo) + 'static) -> Self {
-        let form = FormDialog::new(&crate::i18n::gettext("Add Index"), &crate::i18n::gettext("_Add"));
+        let (form, dialog) = FormDialog::new(&crate::i18n::gettext("Add Index"), &crate::i18n::gettext("_Add"));
         let details = adw::PreferencesGroup::new();
         let name_row = FormDialog::entry_row(&crate::i18n::gettext("Name"));
         let unique_row = adw::SwitchRow::builder()
@@ -94,7 +99,7 @@ impl IndexDialog {
             }
         });
         actions.add_action(&add_key);
-        inner.form.dialog.insert_action_group("index", Some(&actions));
+        dialog.insert_action_group("index", Some(&actions));
 
         let weak = Rc::downgrade(&inner);
         name_row.connect_changed(move |row| {
@@ -117,11 +122,16 @@ impl IndexDialog {
             }
         });
         inner.refresh();
-        Self(inner)
+        give_state(&dialog, inner.clone());
+        Self {
+            dialog,
+            #[cfg(test)]
+            inner,
+        }
     }
 
     pub(super) fn present(&self, parent: &gtk::Widget) {
-        self.0.form.present(parent);
+        self.dialog.present(Some(parent));
     }
 }
 
@@ -130,7 +140,7 @@ impl Inner {
         let valid = self.draft.borrow().validate(&self.existing);
         if let Ok(index) = valid {
             (self.on_add)(index);
-            self.form.dialog.close();
+            self.form.close();
         }
     }
 
@@ -296,10 +306,8 @@ mod tests {
     }
 
     fn add_key(dialog: &IndexDialog, column: &str) {
-        let inner = &dialog.0;
         assert!(
-            inner
-                .form
+            dialog
                 .dialog
                 .activate_action("index.add-key", Some(&column.to_variant()))
                 .is_ok(),
@@ -309,7 +317,7 @@ mod tests {
 
     fn key_titles(dialog: &IndexDialog) -> Vec<String> {
         dialog
-            .0
+            .inner
             .key_rows
             .borrow()
             .iter()
@@ -322,17 +330,17 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         let added = Rc::new(RefCell::new(Vec::new()));
         let dialog = dialog(&added);
-        let submit = dialog.0.form.submit.clone();
+        let submit = dialog.inner.form.submit.clone();
 
         assert!(!submit.is_sensitive());
-        dialog.0.name_row.set_text("by_email");
+        dialog.inner.name_row.set_text("by_email");
         assert!(!submit.is_sensitive(), "an index without keys can be added");
         add_key(&dialog, "email");
         assert!(submit.is_sensitive());
-        dialog.0.name_row.set_text("USERS_PKEY");
+        dialog.inner.name_row.set_text("USERS_PKEY");
         assert!(!submit.is_sensitive(), "a name the table already has can be added");
         assert_eq!(
-            dialog.0.form.caption().as_deref(),
+            dialog.inner.form.caption().as_deref(),
             Some("The table already has an index with this name.")
         );
     }
@@ -342,15 +350,15 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         let added = Rc::new(RefCell::new(Vec::new()));
         let dialog = dialog(&added);
-        let name_row = dialog.0.name_row.clone();
+        let name_row = dialog.inner.name_row.clone();
 
         assert!(!name_row.has_css_class("error"), "an untouched form opens marked wrong");
-        assert_eq!(dialog.0.form.caption(), None);
+        assert_eq!(dialog.inner.form.caption(), None);
         name_row.set_text("by_email");
         name_row.set_text("");
 
         assert!(name_row.has_css_class("error"));
-        assert_eq!(dialog.0.form.caption().as_deref(), Some("Index name is required."));
+        assert_eq!(dialog.inner.form.caption().as_deref(), Some("Index name is required."));
         name_row.set_text("by_email");
         assert!(!name_row.has_css_class("error"));
     }
@@ -361,7 +369,7 @@ mod tests {
         let added = Rc::new(RefCell::new(Vec::new()));
         let dialog = dialog(&added);
         let labels = |dialog: &IndexDialog| -> Vec<String> {
-            let menu = &dialog.0.add_key_menu;
+            let menu = &dialog.inner.add_key_menu;
             (0..menu.n_items())
                 .filter_map(|item| menu.item_attribute_value(item, "label", Some(glib::VariantTy::STRING)))
                 .filter_map(|label| label.str().map(str::to_owned))
@@ -374,7 +382,7 @@ mod tests {
         add_key(&dialog, "created_at");
 
         assert!(labels(&dialog).is_empty());
-        assert!(!dialog.0.add_key_button.is_sensitive());
+        assert!(!dialog.inner.add_key_button.is_sensitive());
     }
 
     #[gtk4::test]
@@ -385,17 +393,17 @@ mod tests {
         dialog.present(window.upcast_ref());
         add_key(&dialog, "email");
         add_key(&dialog, "created_at");
-        let second = dialog.0.key_rows.borrow()[1].clone();
+        let second = dialog.inner.key_rows.borrow()[1].clone();
 
         assert!(second.activate_action("key.move-up", None).is_ok());
         drain_main_context();
-        let first = dialog.0.key_rows.borrow()[0].clone();
+        let first = dialog.inner.key_rows.borrow()[0].clone();
         assert!(first.activate_action("key.descending", None).is_ok());
         drain_main_context();
 
         assert_eq!(key_titles(&dialog), ["created_at", "email"]);
-        dialog.0.name_row.set_text("by_created");
-        dialog.0.form.submit.emit_clicked();
+        dialog.inner.name_row.set_text("by_created");
+        dialog.inner.form.submit.emit_clicked();
         let index = added.borrow().first().cloned().expect("the index was added");
         assert_eq!(
             index
@@ -405,7 +413,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [("created_at".to_owned(), true), ("email".to_owned(), false)]
         );
-        let first = dialog.0.key_rows.borrow()[0].clone();
+        let first = dialog.inner.key_rows.borrow()[0].clone();
         assert_eq!(first.subtitle().as_deref(), Some("Descending"));
     }
 
@@ -414,17 +422,17 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         let added = Rc::new(RefCell::new(Vec::new()));
         let dialog = dialog(&added);
-        dialog.0.name_row.set_text("by_email");
+        dialog.inner.name_row.set_text("by_email");
         add_key(&dialog, "email");
-        let row = dialog.0.key_rows.borrow()[0].clone();
+        let row = dialog.inner.key_rows.borrow()[0].clone();
 
         assert!(row.activate_action("key.remove", None).is_ok());
         drain_main_context();
 
         assert!(key_titles(&dialog).is_empty());
-        assert!(!dialog.0.form.submit.is_sensitive());
+        assert!(!dialog.inner.form.submit.is_sensitive());
         assert_eq!(
-            dialog.0.keys_group.description().as_deref(),
+            dialog.inner.keys_group.description().as_deref(),
             Some("Add the columns the index sorts by.")
         );
     }
@@ -435,7 +443,7 @@ mod tests {
         let added = Rc::new(RefCell::new(Vec::new()));
         let dialog = dialog(&added);
         dialog.present(window.upcast_ref());
-        let name_row = dialog.0.name_row.clone();
+        let name_row = dialog.inner.name_row.clone();
         wait_until(WAIT, || name_row.is_mapped()).expect("the form never appeared");
         name_row.set_text("by_email");
         add_key(&dialog, "email");
@@ -452,7 +460,7 @@ mod tests {
         let added = Rc::new(RefCell::new(Vec::new()));
         let dialog = dialog(&added);
         dialog.present(window.upcast_ref());
-        let name_row = dialog.0.name_row.clone();
+        let name_row = dialog.inner.name_row.clone();
         wait_until(WAIT, || name_row.is_mapped()).expect("the form never appeared");
         name_row.set_text("by_email");
 

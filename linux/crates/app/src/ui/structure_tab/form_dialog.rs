@@ -8,20 +8,27 @@
 //! nothing until then; the first problem the user can act on shows
 //! under the fields.
 
+use std::rc::Rc;
+
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
 pub(super) struct FormDialog {
-    pub dialog: adw::Dialog,
+    /// Weak, since the dialog owns the state the form lives in
+    /// (`give_state`), and a strong reference back would keep both.
+    dialog: glib::WeakRef<adw::Dialog>,
     pub page: adw::PreferencesPage,
     pub submit: gtk::Button,
     caption: gtk::Label,
 }
 
 impl FormDialog {
-    pub(super) fn new(title: &str, submit_label: &str) -> Self {
+    /// The form, and the dialog it is drawn in, which nothing else holds
+    /// until it is presented.
+    pub(super) fn new(title: &str, submit_label: &str) -> (Self, adw::Dialog) {
         let dialog = adw::Dialog::builder()
             .title(title)
             .content_width(420)
@@ -66,12 +73,13 @@ impl FormDialog {
                 dialog.close();
             }
         });
-        Self {
-            dialog,
+        let form = Self {
+            dialog: dialog.downgrade(),
             page,
             submit,
             caption,
-        }
+        };
+        (form, dialog)
     }
 
     /// An entry row that submits the form on Enter. A name typed into it
@@ -101,9 +109,20 @@ impl FormDialog {
         self.caption.is_visible().then(|| self.caption.label().to_string())
     }
 
-    pub(super) fn present(&self, parent: &gtk::Widget) {
-        self.dialog.present(Some(parent));
+    pub(super) fn close(&self) {
+        if let Some(dialog) = self.dialog.upgrade() {
+            dialog.close();
+        }
     }
+}
+
+/// The dialog keeps `state` until GTK lets the dialog go, once it closes
+/// or with its window. The form's handlers hold the state weakly, and
+/// the row that opens a form keeps nothing, so without this every
+/// control would stop answering as soon as the form opened.
+pub(super) fn give_state<T: 'static>(dialog: &adw::Dialog, state: Rc<T>) {
+    // Never disconnected: it runs once, as the dialog is disposed.
+    let _owner = dialog.add_weak_ref_notify_local(move || drop(state));
 }
 
 /// The `error` style on a field the problem shown is about.
@@ -152,12 +171,54 @@ pub(super) mod tests {
         assert_eq!(menu_label("account_id"), "account__id");
     }
 
+    /// A form handed to its dialog as the add dialogs hand theirs: the
+    /// state holds the form, and the form its dialog.
+    fn open_form(window: &adw::Window) -> (glib::WeakRef<adw::Dialog>, std::rc::Weak<FormDialog>) {
+        let (form, dialog) = FormDialog::new("Add Index", "_Add");
+        let state = Rc::new(form);
+        let held = Rc::downgrade(&state);
+        give_state(&dialog, state);
+        dialog.present(Some(window.upcast_ref::<gtk::Widget>()));
+        crate::test_support::drain_main_context();
+        (dialog.downgrade(), held)
+    }
+
+    #[gtk4::test]
+    fn an_open_form_keeps_its_state_until_it_closes() {
+        let window = window();
+        let (dialog, held) = open_form(&window);
+
+        assert!(held.upgrade().is_some(), "the state went while the form was open");
+        dialog.upgrade().expect("the open form").force_close();
+
+        crate::test_support::wait_until(WAIT, || held.upgrade().is_none()).expect("a closed form kept its state");
+        assert!(dialog.upgrade().is_none(), "a closed form stayed alive");
+    }
+
+    #[gtk4::test]
+    fn a_form_lets_go_of_its_state_with_its_window() {
+        let window = window();
+        let (dialog, held) = open_form(&window);
+
+        // AdwWindow lets its dialogs go as it is finalized, not as it is
+        // destroyed, so the test's own reference has to go too.
+        window.destroy();
+        drop(window);
+
+        crate::test_support::wait_until(WAIT, || held.upgrade().is_none())
+            .expect("a form torn down with its window kept its state");
+        assert!(
+            dialog.upgrade().is_none(),
+            "a form torn down with its window stayed alive"
+        );
+    }
+
     #[gtk4::test]
     fn a_form_dialog_starts_with_submit_off_and_as_its_default() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let form = FormDialog::new("Add Index", "_Add");
+        let (form, dialog) = FormDialog::new("Add Index", "_Add");
 
-        assert_eq!(form.dialog.default_widget().as_ref(), Some(form.submit.upcast_ref()));
+        assert_eq!(dialog.default_widget().as_ref(), Some(form.submit.upcast_ref()));
         assert!(!form.submit.is_sensitive());
         assert_eq!(form.caption(), None);
         form.show_state(false, Some("Index name is required.".to_owned()));

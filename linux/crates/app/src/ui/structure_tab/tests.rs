@@ -4,14 +4,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
-use libadwaita::prelude::{ExpanderRowExt, PreferencesRowExt};
+use libadwaita::prelude::{ActionRowExt, AdwWindowExt, ComboRowExt, ExpanderRowExt, PreferencesRowExt};
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::{
     ColumnAttributes, ColumnDefinition, ColumnKeyRoles, DraftColumn, IdentityStyle, InboundForeignKey,
     PrimaryKeyConstraint, TableDefinition, TableDraft, TableSource, UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::meta::TableRef;
+use tablepro_core::meta::{ObjectInfo, ObjectKind, TableRef};
 use tablepro_core::{ColumnInfo, DriverError, LossPhase, ServerInfo};
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
@@ -1090,4 +1090,108 @@ fn a_default_the_parser_refuses_is_marked_until_it_parses() {
     assert!(!default.has_css_class("error"));
     assert!(default.tooltip_text().is_none());
     assert!(tab.imp().save_button.is_sensitive());
+}
+
+/// The tab in a window of its own, which the add rows open their forms
+/// on.
+fn in_window(harness: &Harness) -> adw::Window {
+    let window = super::form_dialog::tests::window();
+    window.set_content(Some(harness.tab()));
+    window
+}
+
+fn shown_form(window: &adw::Window) -> adw::Dialog {
+    let mut shown = None;
+    wait_until(WAIT, || {
+        shown = window.visible_dialog();
+        shown.is_some()
+    })
+    .expect("the form");
+    shown.expect("the form")
+}
+
+fn rows_titled<T: IsA<adw::PreferencesRow> + IsA<gtk::Widget>>(form: &adw::Dialog, title: &str) -> Option<T> {
+    descendants(form)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<T>().ok())
+        .find(|row| row.title() == title)
+}
+
+/// The tab keeps nothing of a form it opens, so a form that does not
+/// keep its own state stops answering here.
+#[gtk4::test]
+fn add_index_from_the_tab_adds_the_index() {
+    let harness = open_edit(postgres(), keyed_users());
+    let window = in_window(&harness);
+
+    harness.tab().imp().add_index_row.emit_by_name::<()>("activated", &[]);
+    let form = shown_form(&window);
+    let name: adw::EntryRow = rows_titled(&form, "Name").expect("the Name row");
+    wait_until(WAIT, || name.is_mapped()).expect("the form on screen");
+    name.set_text("by_score");
+    assert!(
+        form.activate_action("index.add-key", Some(&"score".to_variant()))
+            .is_ok()
+    );
+    super::form_dialog::tests::press_enter(&name);
+
+    wait_until(WAIT, || harness.draft().indexes.len() == 1).expect("the index to be added");
+    let index = harness.draft().indexes[0].clone();
+    assert_eq!(index.name, "by_score");
+    assert_eq!(
+        index
+            .keys
+            .iter()
+            .map(|key| key.column_name().unwrap_or_default().to_owned())
+            .collect::<Vec<_>>(),
+        ["score"]
+    );
+    assert!(harness.tab().imp().save_button.is_sensitive());
+    window.destroy();
+}
+
+#[gtk4::test]
+fn add_foreign_key_from_the_tab_adds_the_key() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(keyed_users()));
+    script.list_objects.always(FakeReply::ok(vec![ObjectInfo {
+        schema: Some("public".to_owned()),
+        name: "accounts".to_owned(),
+        kind: ObjectKind::Table,
+    }]));
+    script
+        .fetch_columns
+        .always(FakeReply::ok(vec![integer_column("id", true).info]));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    drain_main_context();
+    let window = in_window(&harness);
+
+    harness.tab().imp().add_fk_row.emit_by_name::<()>("activated", &[]);
+    let form = shown_form(&window);
+    let name: adw::EntryRow = rows_titled(&form, "Name").expect("the Name row");
+    wait_until(WAIT, || name.is_mapped()).expect("the form on screen");
+    name.set_text("fk_account");
+    let table: adw::ComboRow = rows_titled(&form, "Referenced Table").expect("the table row");
+    wait_until(WAIT, || table.is_sensitive()).expect("the tables to be read");
+    table.set_selected(1);
+    let id: adw::ActionRow = rows_titled(&form, "id").expect("the id check row");
+    id.activatable_widget()
+        .and_downcast::<gtk::CheckButton>()
+        .expect("the id check")
+        .set_active(true);
+    wait_until(WAIT, || {
+        rows_titled::<adw::ComboRow>(&form, "id references").is_some_and(|pair| pair.is_sensitive())
+    })
+    .expect("the columns of accounts to be read");
+    super::form_dialog::tests::press_enter(&name);
+
+    wait_until(WAIT, || harness.draft().foreign_keys.len() == 1).expect("the key to be added");
+    let key = harness.draft().foreign_keys[0].clone();
+    assert_eq!((key.name.as_str(), key.ref_table.as_str()), ("fk_account", "accounts"));
+    assert_eq!(
+        (key.columns, key.ref_columns),
+        (vec!["id".to_owned()], vec!["id".to_owned()])
+    );
+    window.destroy();
 }

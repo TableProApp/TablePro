@@ -18,7 +18,7 @@ use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_session::{OperationError, Session};
 
 use super::foreign_key_draft::{ForeignKeyDraft, ForeignKeyDraftError};
-use super::form_dialog::{FormDialog, mark_invalid};
+use super::form_dialog::{FormDialog, give_state, mark_invalid};
 use super::referential_action_label::{action_at, action_labels};
 use super::table_choice_object::{TableChoiceObject, table_choices};
 
@@ -33,7 +33,12 @@ pub(super) struct ForeignKeyDialogInit {
     pub tasks: Tasks,
 }
 
-pub(super) struct ForeignKeyDialog(Rc<Inner>);
+/// The dialog, which owns the form's state (`give_state`).
+pub(super) struct ForeignKeyDialog {
+    dialog: adw::Dialog,
+    #[cfg(test)]
+    inner: Rc<Inner>,
+}
 
 /// The pair rows as built: the key's columns and the referenced table's,
 /// once read. A pair chosen in a row changes neither.
@@ -75,7 +80,7 @@ impl ForeignKeyDialog {
             session,
             tasks,
         } = init;
-        let form = FormDialog::new(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("_Add"));
+        let (form, dialog) = FormDialog::new(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("_Add"));
         let details = adw::PreferencesGroup::new();
         let name_row = FormDialog::entry_row(&crate::i18n::gettext("Name"));
         details.add(&name_row);
@@ -207,11 +212,16 @@ impl ForeignKeyDialog {
         });
         inner.load_tables();
         inner.refresh();
-        Self(inner)
+        give_state(&dialog, inner.clone());
+        Self {
+            dialog,
+            #[cfg(test)]
+            inner,
+        }
     }
 
     pub(super) fn present(&self, parent: &gtk::Widget) {
-        self.0.form.present(parent);
+        self.dialog.present(Some(parent));
     }
 }
 
@@ -220,7 +230,7 @@ impl Inner {
         let valid = self.draft.borrow().validate(&self.existing);
         if let Ok(key) = valid {
             (self.on_add)(key);
-            self.form.dialog.close();
+            self.form.close();
         }
     }
 
@@ -489,7 +499,7 @@ mod tests {
         }
 
         fn inner(&self) -> &Rc<Inner> {
-            &self.dialog.as_ref().expect("the dialog is open").0
+            &self.dialog.as_ref().expect("the dialog is open").inner
         }
 
         fn wait_for_tables(&self) {
@@ -521,7 +531,9 @@ mod tests {
 
     impl Drop for Harness {
         fn drop(&mut self) {
-            self.dialog.take();
+            if let Some(dialog) = self.dialog.take() {
+                dialog.dialog.force_close();
+            }
             drain_main_context();
             if let Some(runtime) = self.runtime.take() {
                 runtime.shutdown();
