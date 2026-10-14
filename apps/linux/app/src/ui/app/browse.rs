@@ -253,7 +253,11 @@ impl App {
                     let control = crate::services::operation_control::bounded_with(timeout_secs, token);
                     match conn.fetch_columns_controlled(schema.as_deref(), &table, &control).await {
                         Ok(_) | Err(_) if control.cancellation_token().is_cancelled() => {}
-                        Ok(columns) => sender_clone.input(AppMsg::ColumnsLoaded(tab_id, columns)),
+                        Ok(columns) => sender_clone.input(AppMsg::ColumnsLoaded(
+                            tab_id,
+                            columns,
+                            control.cancellation_token().clone(),
+                        )),
                         Err(error) => sender_clone.input(AppMsg::LoadFailed(
                             Some(tab_id),
                             BrowseLoadFailure {
@@ -369,8 +373,12 @@ impl App {
         &self,
         tab_id: Uuid,
         columns: Vec<ColumnInfo>,
+        request: tokio_util::sync::CancellationToken,
         sender: ComponentSender<Self>,
     ) {
+        if !columns_read_is_current(&request) {
+            return;
+        }
         let targets = crate::ui::browse_tab::scalar_enum_columns(&columns);
         self.dispatch_to_tab(tab_id, BrowseTabInput::ColumnsLoaded(columns));
         sender.input(AppMsg::FetchBrowseForeignKeys(tab_id));
@@ -628,6 +636,10 @@ impl App {
     }
 }
 
+fn columns_read_is_current(request: &tokio_util::sync::CancellationToken) -> bool {
+    !request.is_cancelled()
+}
+
 fn browse_cell_value_query(
     schema: Option<&str>,
     table: &str,
@@ -715,8 +727,21 @@ fn page_fetcher_factory(
 
 #[cfg(test)]
 mod tests {
-    use super::{browse_cell_value_query, row_count_from_result, single_cell_value};
+    use super::{browse_cell_value_query, columns_read_is_current, row_count_from_result, single_cell_value};
+    use crate::services::read_scopes::{ReadScope, ReadScopes};
     use tablepro_core::{ColumnInfo, QueryResult, Value};
+    use uuid::Uuid;
+
+    #[test]
+    fn a_late_column_read_after_a_newer_schema_refresh_is_discarded() {
+        let mut reads = ReadScopes::default();
+        let tab = Uuid::new_v4();
+        let old = reads.start(tab, ReadScope::Columns);
+        let current = reads.start(tab, ReadScope::Columns);
+
+        assert!(!columns_read_is_current(&old));
+        assert!(columns_read_is_current(&current));
+    }
 
     fn scalar_result(row: Option<Value>) -> QueryResult {
         QueryResult {

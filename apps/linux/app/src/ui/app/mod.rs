@@ -694,7 +694,9 @@ impl SimpleComponent for App {
                 self.on_open_referenced_row(schema, table, filter, sender)
             }
             AppMsg::ChooseReferencedRow(targets) => self.on_choose_referenced_row(targets, sender),
-            AppMsg::ColumnsLoaded(tab_id, columns) => self.on_browse_columns_loaded(tab_id, columns, sender),
+            AppMsg::ColumnsLoaded(tab_id, columns, request) => {
+                self.on_browse_columns_loaded(tab_id, columns, request, sender)
+            }
             AppMsg::FetchBrowseForeignKeys(tab_id) => self.fetch_browse_foreign_keys(tab_id, sender),
             AppMsg::FetchBrowseEnumLabels(tab_id, targets) => self.fetch_browse_enum_labels(tab_id, targets, sender),
             AppMsg::EnumLabelsLoaded(tab_id, labels) => {
