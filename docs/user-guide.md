@@ -63,7 +63,8 @@ To collapse a multiline SQL block, place the cursor inside it and press **Ctrl+S
   file. Separator, header row and column mapping are detected and can be changed.
   For an existing table, use **Remember mapping** and **Restore mapping** to reuse
   the destination choices for that connection and table. Auto-increment and generated
-  columns stay on Skip; the database supplies their values.
+  columns stay on Skip; the database supplies their values. Explicit values for
+  auto-increment columns cannot currently be imported ([known limitations](known-limitations.md#data-and-values)).
   PostgreSQL `timestamptz` values should include an explicit zone; unzoned values are
   currently treated as UTC. See [known limitations](known-limitations.md#data-and-values).
 

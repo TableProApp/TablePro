@@ -34,6 +34,7 @@ What the application does not do, or does differently from what you might expect
   literal, because the instant cannot be known.
 - **SQLite real numbers:** negative zero and NaN cannot be bound as parameters.
 - **SQLite JSON aggregate output** can differ across system SQLite versions (TEST-25).
+- **CSV import cannot restore explicit auto-increment values** ([#634](https://github.com/cozyGarage/BookiE/issues/634)). Auto-increment columns are fixed to Skip along with generated columns, so imported rows receive new IDs; references to the source IDs may no longer match. Generated columns remain database-owned.
 - **Unzoned PostgreSQL `timestamptz` CSV values** are currently interpreted as UTC. [PostgreSQL](https://www.postgresql.org/docs/current/datatype-datetime.html) normally interprets unzoned timestamp input in the session time zone; the import rule is awaiting a decision ([#857](https://github.com/cozyGarage/BookiE/issues/857)). Include an explicit zone in the CSV to avoid ambiguity.
 - **MongoDB:** browse pages are separate observations, not one point-in-time view (TEST-12); a column with mixed types is read-only. Compatible `_id` pages can use keyset seeking ([#493](https://github.com/cozyGarage/BookiE/pull/493)), and supported sort requests run server-side ([#837](https://github.com/cozyGarage/BookiE/pull/837)). Sorted pages outside the compatible `_id` keyset path and keyless deep pages still use offset pagination. Installed and representative-network acceptance remain open (PERF-3 / [#555](https://github.com/cozyGarage/BookiE/issues/555)).
 - **MySQL failed batches:** rollback of a failed batch is verified for InnoDB and a Docker matrix that includes MyISAM, MEMORY, CSV, ARCHIVE, `MRG_MyISAM`, BLACKHOLE, Aria and related side effects; optional or vendor engines and package acceptance remain open (B4-11).
@@ -68,6 +69,10 @@ What the application does not do, or does differently from what you might expect
 
 ## Known bugs
 
+- **The filter strip offers text operators for some numeric and time columns** ([#854](https://github.com/cozyGarage/BookiE/issues/854)), including MySQL `MEDIUMINT` and PostgreSQL `time without time zone`.
+- **SQL completion can choose the wrong statement context** when a semicolon appears inside a comment or dollar-quoted string ([#855](https://github.com/cozyGarage/BookiE/issues/855)).
+- **Structure validation can accept duplicate column names that the database treats as equal** ([#856](https://github.com/cozyGarage/BookiE/issues/856)); the server then rejects the save.
+- **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); the cause remains under investigation.
 - **Debug panic output can expose sensitive panic text** (SEC-10 / [#849](https://github.com/cozyGarage/BookiE/issues/849)): setting `TABLEPRO_DEBUG_PANICS=1` currently leaves Rust's default hook active, which may print the raw panic payload. Avoid enabling it until the fix lands.
 - **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Intermittent failures remain under investigation; recent failures include an application shutdown with a bad exit status after the scenarios passed. The required consecutive full-run evidence has not been met.
 - **MCP token keyring save can fail after issuance** (UI-43 / [#861](https://github.com/cozyGarage/BookiE/issues/861)): the token is still issued, but the dialog may say it was saved when the keyring write failed.
