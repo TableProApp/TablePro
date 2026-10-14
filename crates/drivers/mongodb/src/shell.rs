@@ -8,7 +8,7 @@ pub(super) struct FindQuery {
     pub(super) filter: Document,
     pub(super) skip: u64,
     pub(super) limit: i64,
-    pub(super) sort_by_id: bool,
+    pub(super) sort: Document,
 }
 
 pub(super) struct AggregateQuery {
@@ -51,7 +51,7 @@ pub(super) fn parse_find_shell(input: &str) -> Option<FindQuery> {
         filter,
         skip,
         limit,
-        sort_by_id: false,
+        sort: Document::new(),
     })
 }
 

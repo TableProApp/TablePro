@@ -312,7 +312,7 @@ impl Connection for MongodbConnection {
                     filter,
                     skip: 0,
                     limit: MAX_QUERY_ROWS as i64,
-                    sort_by_id: false,
+                    sort: Document::new(),
                 })
                 .await;
         }
@@ -340,7 +340,7 @@ impl Connection for MongodbConnection {
                     filter,
                     skip: page.offset,
                     limit: page.limit,
-                    sort_by_id: true,
+                    sort: page.sort,
                 })
                 .await;
         }
@@ -518,8 +518,8 @@ impl MongodbConnection {
         let (mut columns, _) = self.columns_and_page(&q.collection, None).await?;
         let coll = self.db().collection::<Document>(&q.collection);
         let mut find = coll.find(q.filter).skip(q.skip).limit(q.limit);
-        if q.sort_by_id {
-            find = find.sort(doc! { "_id": 1 });
+        if !q.sort.is_empty() {
+            find = find.sort(q.sort);
         }
         let mut cursor = find.await.map_err(map_mongo_error)?;
         let mut docs = Vec::new();
