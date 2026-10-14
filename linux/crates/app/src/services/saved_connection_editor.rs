@@ -15,9 +15,10 @@ use super::secret_labels::secret_label;
 /// edit from the connect dialog, a copy, a move to another group.
 ///
 /// The keyring goes first, as in a delete: a refusal there stops before
-/// the list changes, so the user can try again, and a secret written for
-/// an entry that did not land is taken back. Every write publishes the
-/// list, which every picker follows.
+/// the list changes, so the user can try again. When the entry does not
+/// land, each secret the edit changed is put back as it was, and a copy's
+/// secrets are deleted. Every write publishes the list, which every
+/// picker follows.
 ///
 /// Run it on the app runtime, which the Secret Service client needs.
 #[derive(Clone)]
@@ -46,19 +47,14 @@ impl SavedConnectionEditor {
         let original = self.find(id).await?;
         let mut connection = connection;
         changes.settle_passphrase(&mut connection, &original);
+        let mut changed = Vec::new();
         for kind in SecretKind::ALL {
-            let label = secret_label(kind, &connection);
-            match changes.get(kind) {
-                SecretChange::Replace(secret) => self.secrets.store(id, kind, secret, &label).await?,
-                SecretChange::Remove => self.secrets.delete_kind(id, kind).await?,
-                // A label only names the secret in Seahorse, so one the
-                // keyring will not rename is no reason to refuse the edit.
-                SecretChange::Keep if label != secret_label(kind, &original) => {
-                    if let Err(error) = self.secrets.relabel(id, kind, &label).await {
-                        tracing::warn!(%error, ?kind, "a kept secret still has its old label");
-                    }
-                }
-                SecretChange::Keep => {}
+            if let Err(error) = self
+                .change_secret(&original, &connection, kind, changes.get(kind), &mut changed)
+                .await
+            {
+                self.put_back(&original, changed).await;
+                return Err(error.into());
             }
         }
         let written = self
@@ -79,7 +75,64 @@ impl SavedConnectionEditor {
                 self.forget_secrets(id).await;
                 Err(SavedConnectionError::NotFound(id))
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                self.put_back(&original, changed).await;
+                Err(error)
+            }
+        }
+    }
+
+    /// Apply `change` to the secret of `kind`, recording in `changed`
+    /// what the keyring held before, to put back if the entry does not
+    /// land.
+    async fn change_secret(
+        &self,
+        original: &SavedConnection,
+        connection: &SavedConnection,
+        kind: SecretKind,
+        change: &SecretChange,
+        changed: &mut Vec<(SecretKind, SecretLookup)>,
+    ) -> Result<(), SecretError> {
+        let id = connection.id;
+        let label = secret_label(kind, connection);
+        match change {
+            SecretChange::Replace(secret) => {
+                let before = self.secrets.load(id, kind).await?;
+                self.secrets.store(id, kind, secret, &label).await?;
+                changed.push((kind, before));
+            }
+            SecretChange::Remove => {
+                let before = self.secrets.load(id, kind).await?;
+                self.secrets.delete_kind(id, kind).await?;
+                changed.push((kind, before));
+            }
+            // A label only names the secret in Seahorse, so one the
+            // keyring will not rename is no reason to refuse the edit.
+            SecretChange::Keep if label != secret_label(kind, original) => {
+                if let Err(error) = self.secrets.relabel(id, kind, &label).await {
+                    tracing::warn!(%error, ?kind, "a kept secret still has its old label");
+                }
+            }
+            SecretChange::Keep => {}
+        }
+        Ok(())
+    }
+
+    /// Give back the secrets an edit changed before its entry failed to
+    /// land, so the entry still logs in the way it did.
+    async fn put_back(&self, original: &SavedConnection, changed: Vec<(SecretKind, SecretLookup)>) {
+        for (kind, before) in changed.into_iter().rev() {
+            let restored = match before {
+                SecretLookup::Found(secret) => {
+                    self.secrets
+                        .store(original.id, kind, &secret, &secret_label(kind, original))
+                        .await
+                }
+                SecretLookup::NotStored => self.secrets.delete_kind(original.id, kind).await,
+            };
+            if let Err(error) = restored {
+                tracing::warn!(%error, ?kind, "a secret of an edit that was not saved was not put back");
+            }
         }
     }
 
@@ -470,6 +523,62 @@ mod tests {
         assert!(matches!(refused, Err(SavedConnectionError::Secret(_))), "{refused:?}");
         assert_eq!(stored(&fixture.store), vec![fixture.saved.clone()]);
         assert_eq!(fixture.store.snapshot().revision, revision);
+    }
+
+    #[tokio::test]
+    async fn a_refused_second_secret_puts_the_first_back() {
+        let fixture = fixture().await;
+        let id = fixture.saved.id;
+        fixture.vault.fail_store(SecretKind::SshPassword, SecretError::Locked);
+        let changes = SecretChanges {
+            database_password: SecretChange::Replace(SecretString::from("n3w")),
+            ssh_password: SecretChange::Replace(SecretString::from("tunnel")),
+            ssh_passphrase: SecretChange::Keep,
+        };
+
+        let refused = fixture.editor.update(fixture.saved.clone(), changes).await;
+
+        assert!(
+            matches!(refused, Err(SavedConnectionError::Secret(SecretError::Locked))),
+            "{refused:?}"
+        );
+        assert_eq!(
+            fixture.vault.stored_secret(id, SecretKind::DatabasePassword).as_deref(),
+            Some("s3cret"),
+            "the refused edit kept its new password"
+        );
+        assert_eq!(fixture.vault.stored_secret(id, SecretKind::SshPassword), None);
+    }
+
+    #[tokio::test]
+    async fn a_list_that_cannot_be_written_puts_the_secrets_back() {
+        let fixture = fixture().await;
+        let id = fixture.saved.id;
+        let list_file =
+            StoragePaths::under(fixture._root.path(), "tablepro-test", "app.tablepro.Test").connections_file();
+        std::fs::remove_file(&list_file).expect("the list file");
+        std::fs::create_dir(&list_file).expect("a directory where the list goes");
+        let edited = SavedConnection {
+            host: "db2.example.com".to_owned(),
+            ..fixture.saved.clone()
+        };
+        let changes = SecretChanges {
+            database_password: SecretChange::Replace(SecretString::from("n3w")),
+            ..SecretChanges::default()
+        };
+
+        let refused = fixture.editor.update(edited, changes).await;
+
+        assert!(matches!(refused, Err(SavedConnectionError::Storage(_))), "{refused:?}");
+        assert_eq!(
+            fixture.vault.stored_secret(id, SecretKind::DatabasePassword).as_deref(),
+            Some("s3cret"),
+            "the unsaved edit kept its new password"
+        );
+        assert_eq!(
+            fixture.vault.stored_label(id, SecretKind::DatabasePassword),
+            Some(secret_label(SecretKind::DatabasePassword, &fixture.saved))
+        );
     }
 
     #[tokio::test]
