@@ -317,7 +317,7 @@ flowchart LR
     local -->|dial| driver["driver"]
 ```
 
-PostgreSQL uses the socket form so the certificate is checked against the real database hostname while traffic crosses the bastion. Unsupported combinations fail closed. See [connections.md](docs/connections.md) and B4 C6.
+PostgreSQL uses the socket form so the certificate is checked against the real database hostname while traffic crosses the bastion. Unsupported combinations fail closed. See [connections.md](docs/connections.md) and the [current B4 acceptance board](docs/b4-task-board.md).
 
 ## Driver contract
 

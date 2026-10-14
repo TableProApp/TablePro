@@ -51,7 +51,7 @@ Gained:
 
 - Stop and query timeouts stop the statement rather than only the client's interest in it.
 - A cancelled or timed-out operation no longer disables governed writes for the session on the engines that implement it.
-- The connection is returned to the pool when the outcome is known and hard-closed when it is not, so an unconfirmed statement cannot be handed to the next caller.
+- Drivers report `Cancelled` or `TimedOut` only after the server confirms the abort. An unconfirmed result stays `OperationOutcomeUnknown`; stateful connections are discarded where required, and `PolicyGuard` blocks governed writes after an ambiguous write.
 
 ## Alternatives considered
 
