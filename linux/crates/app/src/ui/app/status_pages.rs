@@ -5,6 +5,7 @@ use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogO
 use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit, SavedQueriesDialogOutput};
 
 use super::{App, AppMsg};
+use crate::runtime::DeliverInput;
 
 impl App {
     pub(super) fn show_welcome_page(&self, _sender: ComponentSender<Self>) {
@@ -32,7 +33,7 @@ impl App {
         // take the whole connect timeout, so it can be stopped here.
         toast.set_button_label(Some(&crate::i18n::gettext("Cancel")));
         let cancel = sender.clone();
-        toast.connect_button_clicked(move |_| cancel.input(AppMsg::CancelConnect));
+        toast.connect_button_clicked(move |_| cancel.deliver(AppMsg::CancelConnect));
         self.toast_overlay.add_toast(toast.clone());
         self.connect_progress_toast = Some(toast);
     }
@@ -169,7 +170,7 @@ impl App {
                             crate::i18n::gettext("Could not save that query.")
                         }
                     };
-                    sender_for_result.input(AppMsg::ShowToast(message));
+                    sender_for_result.deliver(AppMsg::ShowToast(message));
                 })
                 .drop_on_shutdown()
         });

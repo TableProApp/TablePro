@@ -15,6 +15,7 @@ use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::import_dialog::{CsvImport, MAX_CSV_FILE_BYTES};
 
 use super::{App, AppMsg};
+use crate::runtime::DeliverInput;
 use crate::workspace::RanStatements;
 
 /// How many of an import's statements go into the log line that
@@ -152,8 +153,8 @@ impl App {
                     RanStatements::starting(history, connection, sql)
                         .finished(touched, tablepro_storage::query_history::Outcome::Success)
                         .await;
-                    sender.input(AppMsg::RefreshPage);
-                    sender.input(AppMsg::ShowToast(crate::i18n::ngettext_f(
+                    sender.deliver(AppMsg::RefreshPage);
+                    sender.deliver(AppMsg::ShowToast(crate::i18n::ngettext_f(
                         "Imported {n} row.",
                         "Imported {n} rows.",
                         u32::try_from(count).unwrap_or(u32::MAX),
@@ -162,7 +163,7 @@ impl App {
                 }
                 Err(error) => {
                     let message = crate::ui::error_text::operation_error_message(&error);
-                    sender.input(AppMsg::ShowAlert {
+                    sender.deliver(AppMsg::ShowAlert {
                         title: crate::i18n::gettext("Couldn't import"),
                         body: message,
                     });

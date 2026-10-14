@@ -29,6 +29,7 @@ use super::editor::SqlEditor;
 use super::history_dialog::HistoryDialog;
 use super::sidebar_row::{SidebarRow, SidebarRowOutput};
 use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
+use crate::runtime::DeliverInput;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::from_session::FromSession;
 use crate::services::session_context::SessionContext;
@@ -529,7 +530,7 @@ impl SimpleComponent for App {
                     pack_start = &gtk::Button {
                         set_icon_name: crate::ui::icons::LIST_ADD,
                         set_tooltip_text: Some(crate::i18n::gettext("New connection").as_str()),
-                        connect_clicked => AppMsg::OpenConnect,
+                        connect_clicked[sender] => move |_| sender.deliver(AppMsg::OpenConnect),
                     },
 
                     #[name = "saved_connections_button"]
@@ -758,7 +759,7 @@ impl SimpleComponent for App {
             let name = row.widget_name().to_string();
             let idx = row.index() as usize;
             let schema = schemas_for_activate.borrow().get(idx).cloned().unwrap_or(None);
-            activate_sender.input(AppMsg::SelectTable {
+            activate_sender.deliver(AppMsg::SelectTable {
                 schema,
                 name,
                 open_mode: OpenMode::SwitchOrAppend,
@@ -855,7 +856,7 @@ impl SimpleComponent for App {
             let schema_for_button = current.clone();
             let header_box =
                 sidebar_section_header::sidebar_section_header(current.as_deref(), can_create_table, move || {
-                    sender_for_button.input(AppMsg::NewTableTab {
+                    sender_for_button.deliver(AppMsg::NewTableTab {
                         schema: schema_for_button.clone(),
                     });
                 });
@@ -1008,7 +1009,7 @@ impl SimpleComponent for App {
                 CLOSED_TABS_CAPACITY,
             ))),
         };
-        sender.input(AppMsg::ReloadConnections);
+        sender.deliver(AppMsg::ReloadConnections);
         model.show_welcome_page(sender.clone());
 
         widgets
@@ -1023,12 +1024,12 @@ impl SimpleComponent for App {
 
         let banner_sender = sender.clone();
         widgets.reconnect_banner.connect_button_clicked(move |_| {
-            banner_sender.input(AppMsg::RetryConnection);
+            banner_sender.deliver(AppMsg::RetryConnection);
         });
 
         let list_banner_sender = sender.clone();
         widgets.connection_list_banner.connect_button_clicked(move |_| {
-            list_banner_sender.input(AppMsg::ResetConnectionList);
+            list_banner_sender.deliver(AppMsg::ResetConnectionList);
         });
 
         ComponentParts { model, widgets }
@@ -1306,7 +1307,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         ($name:expr, $msg:expr) => {{
             let s = sender.clone();
             gio::ActionEntry::builder($name)
-                .activate(move |_, _, _| s.input($msg))
+                .activate(move |_, _, _| s.deliver($msg))
                 .build()
         }};
     }
@@ -1335,7 +1336,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
     ]);
     let disconnect = gio::SimpleAction::new("disconnect", None);
     let sender_for_disconnect = sender.clone();
-    disconnect.connect_activate(move |_, _| sender_for_disconnect.input(AppMsg::Disconnect));
+    disconnect.connect_activate(move |_, _| sender_for_disconnect.deliver(AppMsg::Disconnect));
     disconnect.set_enabled(false);
     group.add_action(&disconnect);
 
@@ -1343,7 +1344,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
     // and Ctrl+H stay insensitive until `HistoryService` reports Ready.
     let show_history = gio::SimpleAction::new("show-history", None);
     let sender_for_history = sender.clone();
-    show_history.connect_activate(move |_, _| sender_for_history.input(AppMsg::ShowHistory));
+    show_history.connect_activate(move |_, _| sender_for_history.deliver(AppMsg::ShowHistory));
     show_history.set_enabled(false);
     group.add_action(&show_history);
 
@@ -1351,7 +1352,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
     // exactly when it is.
     let show_saved_queries = gio::SimpleAction::new("show-saved-queries", None);
     let sender_for_saved = sender.clone();
-    show_saved_queries.connect_activate(move |_, _| sender_for_saved.input(AppMsg::ShowSavedQueries));
+    show_saved_queries.connect_activate(move |_, _| sender_for_saved.deliver(AppMsg::ShowSavedQueries));
     show_saved_queries.set_enabled(false);
     group.add_action(&show_saved_queries);
 

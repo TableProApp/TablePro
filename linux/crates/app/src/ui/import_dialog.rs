@@ -9,6 +9,8 @@ use tablepro_core::ColumnInfo;
 use tablepro_core::export::CsvDelimiter;
 use tablepro_core::import::{CsvImportOptions, CsvSheet, MAX_PREVIEW_ROWS, read_csv, suggest_mapping};
 
+use crate::runtime::DeliverInput;
+
 /// The most a CSV may be before the import refuses it.
 ///
 /// Every row becomes an INSERT in one transaction, so the file's size
@@ -107,7 +109,7 @@ impl Component for ImportCsvDialog {
         let import_button = gtk::Button::builder().label(crate::i18n::gettext("Import")).build();
         import_button.add_css_class("suggested-action");
         let sender_for_import = sender.clone();
-        import_button.connect_clicked(move |_| sender_for_import.input(ImportCsvDialogInput::Import));
+        import_button.connect_clicked(move |_| sender_for_import.deliver(ImportCsvDialogInput::Import));
         header.pack_end(&import_button);
         toolbar.add_top_bar(&header);
 
@@ -158,11 +160,11 @@ impl Component for ImportCsvDialog {
         root.set_child(Some(&toolbar));
 
         let sender_for_header = sender.clone();
-        header_row.connect_active_notify(move |_| sender_for_header.input(ImportCsvDialogInput::Reread));
+        header_row.connect_active_notify(move |_| sender_for_header.deliver(ImportCsvDialogInput::Reread));
         let sender_for_delimiter = sender.clone();
-        delimiter_row.connect_selected_notify(move |_| sender_for_delimiter.input(ImportCsvDialogInput::Reread));
+        delimiter_row.connect_selected_notify(move |_| sender_for_delimiter.deliver(ImportCsvDialogInput::Reread));
         let sender_for_null = sender.clone();
-        null_row.connect_changed(move |_| sender_for_null.input(ImportCsvDialogInput::MappingChanged));
+        null_row.connect_changed(move |_| sender_for_null.deliver(ImportCsvDialogInput::MappingChanged));
 
         let mut model = ImportCsvDialog {
             root: root.clone(),
@@ -269,7 +271,7 @@ impl ImportCsvDialog {
                 .build();
             row.set_selected(field.map_or(0, |index| index as u32 + 1));
             let sender = sender.clone();
-            row.connect_selected_notify(move |_| sender.input(ImportCsvDialogInput::MappingChanged));
+            row.connect_selected_notify(move |_| sender.deliver(ImportCsvDialogInput::MappingChanged));
             self.mapping_group.add(&row);
             self.mapping_rows.borrow_mut().push(row);
         }

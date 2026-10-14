@@ -12,6 +12,8 @@ use tablepro_storage::query_history::{Entry, SearchFilter};
 
 use uuid::Uuid;
 
+use crate::runtime::DeliverInput;
+
 pub struct HistoryDialog {
     history: Option<QueryHistory>,
     tasks: Tasks,
@@ -189,7 +191,7 @@ impl Component for HistoryDialog {
 
         for combo in [&filter_connection, &filter_status, &filter_window] {
             let s = sender.clone();
-            combo.connect_selected_notify(move |_| s.input(HistoryDialogInput::FiltersChanged));
+            combo.connect_selected_notify(move |_| s.deliver(HistoryDialogInput::FiltersChanged));
         }
 
         header.pack_start(&filter_button);
@@ -200,7 +202,7 @@ impl Component for HistoryDialog {
             .build();
         let s_select = sender.clone();
         select_button.connect_toggled(move |btn| {
-            s_select.input(HistoryDialogInput::ToggleSelectMode(btn.is_active()));
+            s_select.deliver(HistoryDialogInput::ToggleSelectMode(btn.is_active()));
         });
         header.pack_start(&select_button);
 
@@ -227,23 +229,23 @@ impl Component for HistoryDialog {
         let action_group = gio::SimpleActionGroup::new();
         let export_sql_sender = sender.clone();
         let export_sql = gio::ActionEntry::builder("export-sql")
-            .activate(move |_, _, _| export_sql_sender.input(HistoryDialogInput::ExportSelectedSql))
+            .activate(move |_, _, _| export_sql_sender.deliver(HistoryDialogInput::ExportSelectedSql))
             .build();
         let export_csv_sender = sender.clone();
         let export_csv = gio::ActionEntry::builder("export-csv")
-            .activate(move |_, _, _| export_csv_sender.input(HistoryDialogInput::ExportSelectedCsv))
+            .activate(move |_, _, _| export_csv_sender.deliver(HistoryDialogInput::ExportSelectedCsv))
             .build();
         let delete_sender = sender.clone();
         let delete = gio::ActionEntry::builder("delete-selected")
-            .activate(move |_, _, _| delete_sender.input(HistoryDialogInput::DeleteSelected))
+            .activate(move |_, _, _| delete_sender.deliver(HistoryDialogInput::DeleteSelected))
             .build();
         let clear_sender = sender.clone();
         let clear_all = gio::ActionEntry::builder("clear-all")
-            .activate(move |_, _, _| clear_sender.input(HistoryDialogInput::ClearAllRequested))
+            .activate(move |_, _, _| clear_sender.deliver(HistoryDialogInput::ClearAllRequested))
             .build();
         let storage_sender = sender.clone();
         let show_storage = gio::ActionEntry::builder("show-storage")
-            .activate(move |_, _, _| storage_sender.input(HistoryDialogInput::OpenStorageLocation))
+            .activate(move |_, _, _| storage_sender.deliver(HistoryDialogInput::OpenStorageLocation))
             .build();
         action_group.add_action_entries([export_sql, export_csv, delete, clear_all, show_storage]);
 
@@ -252,7 +254,7 @@ impl Component for HistoryDialog {
             .hexpand(true)
             .build();
         let s = sender.clone();
-        search.connect_search_changed(move |_| s.input(HistoryDialogInput::SearchChanged));
+        search.connect_search_changed(move |_| s.deliver(HistoryDialogInput::SearchChanged));
 
         let search_bar = gtk::SearchBar::builder()
             .child(&search)
@@ -351,7 +353,7 @@ impl Component for HistoryDialog {
         let delete_button = gtk::Button::builder().label(crate::i18n::gettext("Delete")).build();
         delete_button.add_css_class("destructive-action");
         let s_del_bar = sender.clone();
-        delete_button.connect_clicked(move |_| s_del_bar.input(HistoryDialogInput::DeleteSelected));
+        delete_button.connect_clicked(move |_| s_del_bar.deliver(HistoryDialogInput::DeleteSelected));
 
         let selection_bar_inner = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -403,7 +405,7 @@ impl Component for HistoryDialog {
         };
 
         model.load_connections(&sender);
-        sender.input(HistoryDialogInput::Refresh);
+        sender.deliver(HistoryDialogInput::Refresh);
 
         ComponentParts { model, widgets: () }
     }
@@ -447,7 +449,7 @@ impl Component for HistoryDialog {
                         tracing::warn!(error = %e, "history set_pinned failed");
                     }
                 });
-                sender.input(HistoryDialogInput::Refresh);
+                sender.deliver(HistoryDialogInput::Refresh);
             }
 
             HistoryDialogInput::Delete(id) => {
@@ -460,7 +462,7 @@ impl Component for HistoryDialog {
                         tracing::warn!(error = %e, "history delete failed");
                     }
                 });
-                sender.input(HistoryDialogInput::Refresh);
+                sender.deliver(HistoryDialogInput::Refresh);
             }
 
             HistoryDialogInput::ToggleSelected(id, on) => {
@@ -519,7 +521,7 @@ impl Component for HistoryDialog {
                 dialog.connect_response(None, move |d, response| {
                     d.close();
                     if response == "delete" {
-                        s.input(HistoryDialogInput::DeleteSelectedConfirmed);
+                        s.deliver(HistoryDialogInput::DeleteSelectedConfirmed);
                     }
                 });
                 dialog.present(Some(&self.root));
@@ -538,7 +540,7 @@ impl Component for HistoryDialog {
                         tracing::warn!(error = %e, "history delete_many failed");
                     }
                 });
-                sender.input(HistoryDialogInput::Refresh);
+                sender.deliver(HistoryDialogInput::Refresh);
             }
 
             HistoryDialogInput::ExportSelectedSql => self.export_selected("sql", sender),
@@ -560,7 +562,7 @@ impl Component for HistoryDialog {
                 dialog.connect_response(None, move |d, response| {
                     d.close();
                     if response == "clear" {
-                        s.input(HistoryDialogInput::ClearAllConfirmed);
+                        s.deliver(HistoryDialogInput::ClearAllConfirmed);
                     }
                 });
                 dialog.present(Some(&self.root));
@@ -617,7 +619,7 @@ impl Component for HistoryDialog {
             HistoryDialogCmd::Loaded(entries) => self.render_entries(entries, &sender),
             HistoryDialogCmd::Cleared => {
                 self.selected_ids.clear();
-                sender.input(HistoryDialogInput::Refresh);
+                sender.deliver(HistoryDialogInput::Refresh);
             }
             HistoryDialogCmd::ExportReady(content, suggested_name) => self.save_export(content, suggested_name),
             HistoryDialogCmd::ExportFailed(msg) => {
@@ -643,7 +645,7 @@ impl HistoryDialog {
             &self.tasks,
             async move { history.known_connections().await },
             move |listed| match listed {
-                Ok(Ok(connections)) => sender.input(HistoryDialogInput::ConnectionsLoaded(connections)),
+                Ok(Ok(connections)) => sender.deliver(HistoryDialogInput::ConnectionsLoaded(connections)),
                 Ok(Err(error)) => tracing::warn!(%error, "could not list the connections in the history"),
                 Err(failure) => tracing::warn!(%failure, "the history connections task failed"),
             },
@@ -655,7 +657,7 @@ impl HistoryDialog {
     fn run_search(&self, sender: ComponentSender<Self>) {
         let filter = self.build_filter();
         let Some(history) = self.history.clone() else {
-            sender.input(HistoryDialogInput::Refresh);
+            sender.deliver(HistoryDialogInput::Refresh);
             return;
         };
         sender.command(move |out, shutdown| {
@@ -685,7 +687,7 @@ impl HistoryDialog {
         let slot = self.filter_debounce.clone();
         let id = gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
             slot.borrow_mut().take();
-            s.input(HistoryDialogInput::Refresh);
+            s.deliver(HistoryDialogInput::Refresh);
         });
         *self.filter_debounce.borrow_mut() = Some(id);
     }
@@ -828,7 +830,7 @@ impl HistoryDialog {
         let id_for_check = entry.id;
         let s_check = sender.clone();
         select_check.connect_toggled(move |btn| {
-            s_check.input(HistoryDialogInput::ToggleSelected(id_for_check, btn.is_active()));
+            s_check.deliver(HistoryDialogInput::ToggleSelected(id_for_check, btn.is_active()));
         });
         row.add_prefix(&select_check);
 
@@ -847,7 +849,7 @@ impl HistoryDialog {
         }
         let id = entry.id;
         let s = sender.clone();
-        pin_btn.connect_clicked(move |_| s.input(HistoryDialogInput::TogglePin(id)));
+        pin_btn.connect_clicked(move |_| s.deliver(HistoryDialogInput::TogglePin(id)));
         row.add_suffix(&pin_btn);
 
         let delete_btn = gtk::Button::builder()
@@ -858,11 +860,11 @@ impl HistoryDialog {
         delete_btn.add_css_class("flat");
         delete_btn.add_css_class("destructive-action");
         let s_del = sender.clone();
-        delete_btn.connect_clicked(move |_| s_del.input(HistoryDialogInput::Delete(id)));
+        delete_btn.connect_clicked(move |_| s_del.deliver(HistoryDialogInput::Delete(id)));
         row.add_suffix(&delete_btn);
 
         let s_act = sender.clone();
-        row.connect_activated(move |_| s_act.input(HistoryDialogInput::Activate(id)));
+        row.connect_activated(move |_| s_act.deliver(HistoryDialogInput::Activate(id)));
 
         let menu = gio::Menu::new();
         let nav_section = gio::Menu::new();
@@ -894,15 +896,15 @@ impl HistoryDialog {
         let row_actions = gio::SimpleActionGroup::new();
         let s_open = sender.clone();
         let act_open = gio::ActionEntry::builder("open")
-            .activate(move |_, _, _| s_open.input(HistoryDialogInput::Activate(id)))
+            .activate(move |_, _, _| s_open.deliver(HistoryDialogInput::Activate(id)))
             .build();
         let s_replace = sender.clone();
         let act_replace = gio::ActionEntry::builder("replace")
-            .activate(move |_, _, _| s_replace.input(HistoryDialogInput::ReplaceCurrent(id)))
+            .activate(move |_, _, _| s_replace.deliver(HistoryDialogInput::ReplaceCurrent(id)))
             .build();
         let s_pin = sender.clone();
         let act_pin = gio::ActionEntry::builder("pin")
-            .activate(move |_, _, _| s_pin.input(HistoryDialogInput::TogglePin(id)))
+            .activate(move |_, _, _| s_pin.deliver(HistoryDialogInput::TogglePin(id)))
             .build();
         let query_for_copy = entry.query.clone();
         let row_for_copy = row.clone();
@@ -913,7 +915,7 @@ impl HistoryDialog {
             .build();
         let s_del2 = sender.clone();
         let act_del = gio::ActionEntry::builder("delete")
-            .activate(move |_, _, _| s_del2.input(HistoryDialogInput::Delete(id)))
+            .activate(move |_, _, _| s_del2.deliver(HistoryDialogInput::Delete(id)))
             .build();
         row_actions.add_action_entries([act_open, act_replace, act_pin, act_copy, act_del]);
         row.insert_action_group("history-row", Some(&row_actions));

@@ -10,6 +10,7 @@ use super::workspace_persistence::{WorkspacePersistence, WorkspaceTabs};
 use super::{App, AppMsg, WorkspaceTab, connection};
 use tablepro_session::runtime::ProcessHold;
 
+use crate::runtime::DeliverInput;
 use crate::services::active_session::ActiveSession;
 use crate::services::session_context::SessionContext;
 use crate::workspace::{CloseDecision, InhibitReason};
@@ -118,7 +119,7 @@ impl App {
         }
         self.close_guards
             .ask_close_tab(self.window.upcast_ref(), &self.workspace_handle, id, move |decision| {
-                sender.input(AppMsg::TabCloseDecided {
+                sender.deliver(AppMsg::TabCloseDecided {
                     id,
                     approved: decision == CloseDecision::Approved,
                 });
@@ -148,13 +149,13 @@ impl App {
     pub(super) fn close_workspace_then(&self, proceed: AppMsg, sender: ComponentSender<Self>) {
         self.close_guards.begin_teardown();
         if self.close_guards.may_tear_down(&self.workspace_handle) {
-            sender.input(proceed);
+            sender.deliver(proceed);
             return;
         }
         self.close_guards
             .ask_tear_down(self.window.upcast_ref(), &self.workspace_handle, move |decision| {
                 if decision == CloseDecision::Approved {
-                    sender.input(proceed);
+                    sender.deliver(proceed);
                 }
             });
     }

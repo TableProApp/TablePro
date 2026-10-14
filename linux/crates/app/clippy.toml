@@ -35,4 +35,10 @@ disallowed-methods = [
     # under it skips the shutdown that flushes pending writes.
     { path = "gtk4::glib::MainContext::block_on", reason = "await in glib::spawn_future_local instead of blocking the main loop" },
     { path = "gio::prelude::ApplicationExt::quit", reason = "close the window so shutdown runs; run() shuts the runtime down after" },
+
+    # A window can close while work it started is still on its way back.
+    # These panic on a component that has shut down; deliver drops the
+    # message instead.
+    { path = "relm4::ComponentSender::input", reason = "use crate::runtime::DeliverInput::deliver" },
+    { path = "relm4::FactorySender::input", reason = "use crate::runtime::DeliverInput::deliver" },
 ]
