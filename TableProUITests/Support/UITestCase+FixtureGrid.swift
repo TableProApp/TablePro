@@ -1,8 +1,8 @@
 import SQLite3
 import XCTest
 
-// A plain cell publishes as static text and a cell with a picker as a combo box, so a cell is found by
-// the position its label opens with, whatever its type.
+// AppKit wraps each cell view in an AXCell that repeats its label and carries no value, so a cell is the
+// cell view, matched by its identifier whatever its type: static text, a combo box for a picker.
 internal struct FixtureGrid {
     internal let element: XCUIElement
     internal let app: XCUIApplication
@@ -10,6 +10,7 @@ internal struct FixtureGrid {
 
     internal func cell(row: Int, column: Int) -> XCUIElement {
         element.descendants(matching: .any)
+            .matching(identifier: "DataGridCellAccessibilityView")
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Row \(row), column \(column): "))
             .firstMatch
     }

@@ -102,6 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server Edit View Definition template creating the view in the default schema instead of the view's own.
 - Oracle view DDL losing the view's column names, and cut off after 4000 bytes without saying so.
 - Trino materialized views left out of SQL exports.
+- Return in Switch Connection reopening the current connection after typing another connection's name.
 
 ### Security
 

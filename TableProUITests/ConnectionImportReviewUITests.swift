@@ -85,10 +85,11 @@ final class ConnectionImportReviewUITests: UITestCase {
         )
     }
 
-    // XCUITest reports a mixed checkbox as NSControl.StateValue.mixed (-1), not the AXValue of 2.
+    // Runner images have reported a mixed checkbox as NSControl.StateValue.mixed (-1) and as its raw AXValue (2).
     private func isMixed(_ checkbox: XCUIElement) -> Bool {
-        if let number = checkbox.value as? Int { return number == NSControl.StateValue.mixed.rawValue }
-        return (checkbox.value as? String) == String(NSControl.StateValue.mixed.rawValue)
+        let mixedValues = [NSControl.StateValue.mixed.rawValue, 2]
+        if let number = checkbox.value as? Int { return mixedValues.contains(number) }
+        return mixedValues.map(String.init).contains((checkbox.value as? String) ?? "")
     }
 
     private static func text(_ string: String) -> NSPredicate {

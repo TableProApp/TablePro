@@ -11,7 +11,8 @@ final class InspectorEditReachesGridUITests: UITestCase {
         grid.clickCell(row: 1, column: 2)
         app.typeShortcut(.toggleInspector)
 
-        let labelField = window.textFields.matching(NSPredicate(format: "value == %@", "First")).firstMatch
+        // A SQLite TEXT column opens the multi-line editor, which is a text view.
+        let labelField = window.textViews.matching(NSPredicate(format: "value == %@", "First")).firstMatch
         XCTAssertTrue(waitUntilHittable(labelField, timeout: 30), "The inspector must show row 1's label field")
         labelField.click()
         app.typeText("Zq7")

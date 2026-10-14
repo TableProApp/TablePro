@@ -16,10 +16,9 @@ final class SQLiteFirstTableLoadUITests: UITestCase {
             "The first table opened after connecting must finish loading"
         )
 
-        // The strip lists its tabs only while there are two or more.
         launch.app.typeShortcut(.closeTab)
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { self.editorTabCount(in: window) == 0 && editor.exists },
+            waitForPredicate(timeout: 20) { self.tabsTitled("album", in: window).count == 0 && editor.exists },
             "Command W must close the table tab and leave the query tab in front"
         )
         launch.app.typeShortcut(.closeTab)
