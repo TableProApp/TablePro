@@ -35,9 +35,11 @@ Meson is the build system; Cargo stays the Rust compiler.
 - `data/meson.build` owns the desktop entry, the D-Bus service file, the
   AppStream metainfo and the icons. The desktop and metainfo templates are
   `.in.in`: `configure_file` substitutes the application ID, then
-  `i18n.merge_file` merges the translations. `crates/app/build.rs`
-  renders the metainfo template with the same values into the GResource,
-  without translations, and the About dialog reads it from there.
+  `i18n.merge_file` merges the translations. The About dialog reads the
+  metainfo from the GResource: the cargo target and the `gtk` suite pass
+  the merged file as `TABLEPRO_METAINFO` and `crates/app/build.rs` embeds
+  it. Without that variable, as under `meson devenv`, `build.rs` renders
+  the template with the same values, without translations.
 - Tests run through `meson test`, grouped into the `unit`, `gtk` and
   `data` suites. The `data` suite runs `desktop-file-validate` and
   `appstreamcli validate`, which is what Flathub checks.

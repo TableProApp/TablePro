@@ -23,13 +23,35 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// The About dialog reads the metainfo from the GResource. Meson renders
-/// the installed copy from the same template with the same values, so a
-/// cargo build embeds what a Meson build installs, less translations.
+/// The About dialog reads the metainfo from the GResource. A Meson build
+/// passes the copy it installs, translations merged; a plain cargo build
+/// renders the template with the same values, untranslated.
 fn render_metainfo() -> Result<PathBuf, String> {
+    println!("cargo::rerun-if-env-changed=TABLEPRO_METAINFO");
+    let out_dir = env::var_os("OUT_DIR").ok_or("OUT_DIR is not set")?;
+    let rendered = match env::var_os("TABLEPRO_METAINFO") {
+        Some(merged) => {
+            let merged = PathBuf::from(merged);
+            println!("cargo::rerun-if-changed={}", merged.display());
+            fs::read_to_string(&merged).map_err(|error| format!("could not read {}: {error}", merged.display()))?
+        }
+        None => render_template()?,
+    };
+
+    let dir = PathBuf::from(out_dir).join("metainfo");
+    fs::create_dir_all(&dir).map_err(|error| format!("could not create {}: {error}", dir.display()))?;
+    let path = dir.join("metainfo.xml");
+    // A rewrite, even of the same bytes, makes cargo run this script and
+    // rebuild the crate on every later build.
+    if fs::read_to_string(&path).ok().as_deref() != Some(rendered.as_str()) {
+        fs::write(&path, rendered).map_err(|error| format!("could not write {}: {error}", path.display()))?;
+    }
+    Ok(dir)
+}
+
+fn render_template() -> Result<String, String> {
     println!("cargo::rerun-if-changed={METAINFO_TEMPLATE}");
     println!("cargo::rerun-if-env-changed=TABLEPRO_APP_ID");
-    let out_dir = env::var_os("OUT_DIR").ok_or("OUT_DIR is not set")?;
     let app_id = env::var("TABLEPRO_APP_ID").unwrap_or_else(|_| DEFAULT_APP_ID.to_owned());
     let package = env::var("CARGO_PKG_NAME").map_err(|error| format!("CARGO_PKG_NAME: {error}"))?;
     let template = fs::read_to_string(METAINFO_TEMPLATE)
@@ -42,16 +64,7 @@ fn render_metainfo() -> Result<PathBuf, String> {
             "{METAINFO_TEMPLATE} uses @{name}@, which build.rs does not fill"
         ));
     }
-
-    let dir = PathBuf::from(out_dir).join("metainfo");
-    fs::create_dir_all(&dir).map_err(|error| format!("could not create {}: {error}", dir.display()))?;
-    let path = dir.join("metainfo.xml");
-    // A rewrite, even of the same bytes, makes cargo run this script and
-    // rebuild the crate on every later build.
-    if fs::read_to_string(&path).ok().as_deref() != Some(rendered.as_str()) {
-        fs::write(&path, rendered).map_err(|error| format!("could not write {}: {error}", path.display()))?;
-    }
-    Ok(dir)
+    Ok(rendered)
 }
 
 /// The name of a Meson `@name@` placeholder still in `text`.

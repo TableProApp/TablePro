@@ -16,6 +16,11 @@ endif
 
 cargo_built = cargo_target_dir / cargo_profile_dir
 
+# The About dialog embeds the metainfo Meson installs, with its
+# translations, rather than build.rs rendering the template untranslated.
+app_env = cargo_env
+app_env.set('TABLEPRO_METAINFO', metainfo_file.full_path())
+
 cargo_build_command = ' '.join(
   [cargo.full_path(), 'build', '-p', 'tablepro', '-p', 'tablepro-ssh'] + cargo_options,
 )
@@ -26,7 +31,8 @@ custom_target(
   build_by_default: true,
   console: true,
   output: ['tablepro', 'tablepro-askpass'],
-  env: cargo_env,
+  env: app_env,
+  depends: metainfo_file,
   command: [
     'sh',
     '-c',
@@ -50,7 +56,7 @@ test(
   timeout: 3600,
 )
 
-gtk_env = cargo_env
+gtk_env = app_env
 gtk_env.set('GSK_RENDERER', 'cairo')
 gtk_env.set('GTK_A11Y', 'test')
 # gnome.compile_schemas exports GSETTINGS_SCHEMA_DIR to devenv only, so
@@ -62,7 +68,7 @@ test(
   cargo,
   args: ['test'] + cargo_options + ['-p', 'tablepro'],
   env: gtk_env,
-  depends: compiled_schemas,
+  depends: [compiled_schemas, metainfo_file],
   suite: 'gtk',
   is_parallel: false,
   timeout: 3600,

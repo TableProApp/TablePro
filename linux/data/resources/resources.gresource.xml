@@ -2,7 +2,7 @@
 <gresources>
   <gresource prefix="/app/tablepro/TablePro">
     <file compressed="true">style.css</file>
-    <!-- Rendered from the metainfo template by crates/app/build.rs. -->
+    <!-- Written by crates/app/build.rs, from the metainfo Meson merges or else the template. -->
     <file compressed="true" preprocess="xml-stripblanks">metainfo.xml</file>
     <!-- Written by build-aux/update-third-party-licenses.sh. -->
     <file compressed="true" alias="licenses/third-party.json">../licenses/third-party.json</file>
