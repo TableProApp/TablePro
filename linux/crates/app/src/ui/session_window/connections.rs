@@ -11,13 +11,16 @@ use libadwaita::prelude::*;
 use relm4::ComponentController;
 
 use tablepro_session::connect::StoreConnectionWrites;
-use tablepro_session::{ConnectSource, PendingSave, RequestTarget};
+use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
 use tablepro_storage::{ConnectionListState, SavedConnection};
 use uuid::Uuid;
 
 use super::{SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
+use crate::services::connection_deletion::DeletionOptions;
+use crate::services::deletion_error::DeletionError;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill, FormField};
+use crate::ui::delete_connection_dialog::{self, DeleteConnectionDialog};
 use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::ssh_inputs::SshEnvironment;
 
@@ -216,49 +219,106 @@ impl SessionWindow {
             .cloned()
     }
 
+    /// The name a dialog or toast calls a saved connection by.
+    fn connection_name(&self, id: Uuid) -> String {
+        self.saved_connection(id)
+            .map_or_else(|| crate::i18n::gettext("this connection"), |saved| saved.name)
+    }
+
+    /// Ask before deleting: the delete takes the keyring secrets with it
+    /// and has no undo, so it asks whatever the preferences say.
     pub(super) fn on_delete_connection(&self, id: Uuid) {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
-        // The delete takes the keyring secrets with it and has no undo,
-        // so it asks whatever the preferences say.
-        let connection_name = self
-            .saved_connection(id)
-            .map_or_else(|| crate::i18n::gettext("this connection"), |saved| saved.name);
-        let title = crate::i18n::gettext_f("Delete {name}?", &[("name", &connection_name)]);
-        let body = crate::i18n::gettext(
-            "The saved entry, any stored passwords and the queries saved under this connection \
-             will be removed. This cannot be undone.",
-        );
-        let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
-        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
-        dialog.add_response("delete", &crate::i18n::gettext("Delete"));
-        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
-        dialog.set_default_response(Some("cancel"));
-        dialog.set_close_response("cancel");
-
-        let storage = state.services.storage.clone();
+        let name = self.connection_name(id);
+        if self.offer_open_window(id, &name) {
+            return;
+        }
+        let asking = DeleteConnectionDialog::new(&name);
+        let history = state.services.history();
         let tasks = state.services.tasks.clone();
-        let saved_queries = state.services.history().store().map(|history| history.saved_queries());
-        dialog.connect_response(None, move |dialog, response| {
-            dialog.close();
-            if response != "delete" {
+        let counting = asking.clone();
+        glib::spawn_future_local(async move {
+            let Some(store) = history.ready_store().await else {
                 return;
+            };
+            match tasks
+                .spawn_task(async move { store.count_for_connection(id).await })
+                .await
+            {
+                Ok(Ok(count)) => counting.show_history_count(count),
+                Ok(Err(error)) => tracing::warn!(%error, "could not count the connection's query history"),
+                Err(failure) => tracing::warn!(%failure, "the query history count did not finish"),
             }
-            // Nothing can reach these once the entry is gone, so they
-            // go with it rather than accumulating in the state files.
-            storage.column_widths().forget_connection(id);
-            storage.filter_settings().forget_connection(id);
-            execute_delete_connection(
-                storage.connections().clone(),
-                storage.secrets().clone(),
-                tasks.clone(),
-                saved_queries.clone(),
-                id,
-                input.clone(),
-            );
+        });
+        asking.connect_delete(move |options| input.deliver(SessionWindowInput::ConfirmDelete(id, options)));
+        asking.dialog.present(Some(self));
+    }
+
+    /// A connection open in a window, or connecting in one, is not
+    /// deleted from under it: the user is offered that window instead.
+    /// True when it is open.
+    fn offer_open_window(&self, id: Uuid, name: &str) -> bool {
+        let Some(state) = self.state() else {
+            return false;
+        };
+        let Some(owner) = state.context.sessions.window_for(&SessionKey::Saved(id)) else {
+            return false;
+        };
+        let dialog = delete_connection_dialog::is_open_dialog(name);
+        let host = state.host.clone();
+        dialog.connect_response(Some(delete_connection_dialog::SHOW), move |_, _| {
+            if !host.present_window(owner) {
+                tracing::warn!(owner, "the window holding the connection is gone");
+            }
         });
         dialog.present(Some(self));
+        true
+    }
+
+    /// Delete a saved connection the user confirmed, under a hold so a
+    /// quit right after it does not cut it off between the keyring and
+    /// the list.
+    pub(super) fn on_confirm_delete(&self, id: Uuid, options: DeletionOptions) {
+        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+            return;
+        };
+        let name = self.connection_name(id);
+        // It may have been opened since the dialog asked.
+        if self.offer_open_window(id, &name) {
+            return;
+        }
+        let services = state.services.clone();
+        let hold = services.hold().acquire();
+        glib::spawn_future_local(async move {
+            let history = services.history().ready_store().await;
+            match services.connection_deletion(history).run(id, options).await {
+                Ok(report) if report.is_complete() => {}
+                Ok(report) => {
+                    for failure in &report.purge_failures {
+                        tracing::warn!(%failure, "kept something stored for a deleted connection");
+                    }
+                    input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext_f(
+                        "“{name}” was deleted, but some saved tabs or settings could not be removed",
+                        &[("name", &name)],
+                    )));
+                }
+                Err(DeletionError::Secrets(error)) => {
+                    tracing::warn!(%error, "could not delete the connection's secrets; keeping the entry");
+                    input.deliver(SessionWindowInput::SecretDeleteFailed(id, options));
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "could not delete the connection");
+                    input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext_f(
+                        "“{name}” could not be deleted",
+                        &[("name", &name)],
+                    )));
+                }
+            }
+            drop(hold);
+            input.deliver(SessionWindowInput::ReloadConnections);
+        });
     }
 
     /// Copy a saved connection so a second database on the same server
@@ -462,8 +522,9 @@ impl SessionWindow {
     }
 
     /// The keyring refused, so the entry stays and the user is offered
-    /// another go rather than being left with orphaned secrets.
-    pub(super) fn on_secret_delete_failed(&self, id: Uuid) {
+    /// another go rather than being left with orphaned secrets. Retry
+    /// runs the delete they already confirmed.
+    pub(super) fn on_secret_delete_failed(&self, id: Uuid, options: DeletionOptions) {
         let Some(input) = self.input() else {
             return;
         };
@@ -471,7 +532,7 @@ impl SessionWindow {
             "The stored passwords could not be deleted, so the connection was kept.",
         ));
         toast.set_button_label(Some(&crate::i18n::gettext("Retry")));
-        toast.connect_button_clicked(move |_| input.deliver(SessionWindowInput::DeleteConnection(id)));
+        toast.connect_button_clicked(move |_| input.deliver(SessionWindowInput::ConfirmDelete(id, options)));
         self.add_toast(toast);
     }
 
@@ -560,40 +621,6 @@ async fn copy_secrets(
     carried
 }
 
-fn execute_delete_connection(
-    connections: tablepro_storage::ConnectionStore,
-    secrets: Arc<dyn tablepro_core::credentials::SecretVault>,
-    tasks: tablepro_session::runtime::Tasks,
-    saved_queries: Option<tablepro_storage::SavedQueries>,
-    id: Uuid,
-    input: InputSender<SessionWindowInput>,
-) {
-    let spawner = tasks.clone();
-    drop(spawner.spawn_task(async move {
-        // Secrets first: an entry with no secrets is recoverable, a
-        // secret with no entry is orphaned in the keyring.
-        if let Err(error) = secrets.delete_connection(id).await {
-            tracing::warn!(%error, "could not delete the connection secrets; keeping the entry");
-            input.deliver(SessionWindowInput::SecretDeleteFailed(id));
-            return;
-        }
-        let removed = tasks.spawn_blocking_task(move || connections.remove_blocking(id)).await;
-        if let Ok(Err(error)) = removed {
-            tracing::warn!(%error, "could not remove the saved connection");
-        }
-        // The queries saved here name tables only this database has, so
-        // they go with it. A failure leaves them listed under the
-        // connection's last name, which the user can still delete one
-        // by one.
-        if let Some(saved_queries) = saved_queries
-            && let Err(error) = saved_queries.delete_for_connection(id).await
-        {
-            tracing::warn!(%error, "could not remove the connection's saved queries");
-        }
-        input.deliver(SessionWindowInput::ReloadConnections);
-    }));
-}
-
 fn ask_where_to_export(window: &SessionWindow, bytes: Vec<u8>, input: InputSender<SessionWindowInput>) {
     let dialog = gtk::FileDialog::builder()
         .title(crate::i18n::gettext("Export Connections"))
@@ -655,10 +682,13 @@ fn json_filters() -> gio::ListStore {
 mod tests {
     use std::time::Duration;
 
+    use secrecy::SecretString;
+    use tablepro_core::credentials::{SecretError, SecretKind, SecretVault};
     use tablepro_storage::ConnectionColor;
+    use tablepro_test_support::Call;
 
     use super::*;
-    use crate::test_support::wait_until;
+    use crate::test_support::{finish_on_main, respond, wait_until};
     use crate::ui::session_window::tests::{TestWindow, WAIT};
 
     fn read(path: &std::path::Path) -> Result<Vec<u8>, String> {
@@ -705,9 +735,129 @@ mod tests {
         assert_eq!(read(&path).as_deref(), Ok(&br#"{"connections":[]}"#[..]));
     }
 
-    /// The picker lists the test's connection, which its menu acts on.
+    fn open_alert(window: &SessionWindow) -> Option<adw::AlertDialog> {
+        window
+            .dialogs()
+            .iter::<glib::Object>()
+            .filter_map(|item| item.ok()?.downcast::<adw::AlertDialog>().ok())
+            .next()
+    }
+
+    fn wait_for_alert(window: &SessionWindow) -> adw::AlertDialog {
+        let mut shown = None;
+        wait_until(WAIT, || {
+            shown = open_alert(window);
+            shown.is_some()
+        })
+        .expect("a dialog");
+        shown.expect("the dialog")
+    }
+
+    /// The picker lists the test's connection, which names it in the
+    /// dialogs.
     fn wait_for_list(window: &SessionWindow) {
         wait_until(WAIT, || !window.imp().saved_connections.borrow().is_empty()).expect("the connection list");
+    }
+
+    fn listed(test: &TestWindow, id: Uuid) -> bool {
+        test.services
+            .storage
+            .connections()
+            .load_blocking()
+            .expect("the list")
+            .iter()
+            .any(|saved| saved.id == id)
+    }
+
+    fn store_password(test: &TestWindow) {
+        let (vault, id) = (test.vault.clone(), test.saved.id);
+        finish_on_main(WAIT, async move {
+            vault
+                .store(id, SecretKind::DatabasePassword, &SecretString::from("s3cret"), "label")
+                .await
+        })
+        .expect("the store to end")
+        .expect("the password stored");
+    }
+
+    #[gtk4::test]
+    fn open_connection_shows_is_open_dialog() {
+        let test = TestWindow::connected("DeleteOpen");
+        let other = test
+            .app
+            .open_window(crate::application::WindowLaunch::Picker)
+            .and_then(|window| window.downcast::<SessionWindow>().ok())
+            .expect("a second window");
+        wait_until(WAIT, || other.page_name() == "picker").expect("the second window's picker");
+        wait_for_list(&other);
+        test.window.set_visible(false);
+
+        other.send(SessionWindowInput::DeleteConnection(test.saved.id));
+        let alert = wait_for_alert(&other);
+        assert_eq!(alert.heading().as_deref(), Some("“Fake” Is Open"));
+        respond(&alert, delete_connection_dialog::SHOW);
+        wait_until(WAIT, || test.window.is_visible()).expect("the owner to come forward");
+
+        assert!(listed(&test, test.saved.id), "an open connection was deleted");
+        assert!(
+            !test.vault.calls().contains(&Call::DeleteConnection(test.saved.id)),
+            "an open connection's secrets were deleted"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_confirmed_delete_removes_the_entry_and_its_secrets() {
+        let test = TestWindow::picker("DeleteConfirmed");
+        wait_for_list(&test.window);
+        store_password(&test);
+
+        test.window.send(SessionWindowInput::DeleteConnection(test.saved.id));
+        let alert = wait_for_alert(&test.window);
+        assert_eq!(alert.heading().as_deref(), Some("Delete “Fake”?"));
+        let switch = crate::test_support::descendants(&alert.extra_child().expect("the dialog's rows"))
+            .into_iter()
+            .find_map(|widget| widget.downcast::<adw::SwitchRow>().ok())
+            .expect("the history switch");
+        assert!(!switch.is_active(), "the history would go by default");
+        respond(&alert, delete_connection_dialog::DELETE);
+
+        wait_until(WAIT, || !listed(&test, test.saved.id)).expect("the entry to go");
+        assert!(test.vault.is_empty(), "the secrets outlived the entry");
+        wait_until(WAIT, || test.window.imp().saved_connections.borrow().is_empty())
+            .expect("the picker to drop the entry");
+    }
+
+    #[gtk4::test]
+    fn retry_toast_reruns_deletion() {
+        let test = TestWindow::picker("DeleteRetry");
+        wait_for_list(&test.window);
+        store_password(&test);
+        test.vault.fail_delete_connection(SecretError::Locked);
+
+        test.window.send(SessionWindowInput::DeleteConnection(test.saved.id));
+        respond(&wait_for_alert(&test.window), delete_connection_dialog::DELETE);
+        let mut retry = None;
+        wait_until(WAIT, || {
+            retry = test
+                .window
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .find(|toast| toast.button_label().is_some())
+                .cloned();
+            retry.is_some()
+        })
+        .expect("a toast offering Retry");
+        assert!(listed(&test, test.saved.id), "the entry went while its secrets stayed");
+        assert!(!test.vault.is_empty());
+        test.vault.clear_failures();
+
+        retry.expect("the toast").emit_by_name::<()>("button-clicked", &[]);
+
+        wait_until(WAIT, || !listed(&test, test.saved.id)).expect("the retried delete");
+        assert!(test.vault.is_empty());
+        assert!(open_alert(&test.window).is_none(), "Retry asked again");
     }
 
     #[gtk4::test]
@@ -730,9 +880,15 @@ mod tests {
         test.window.on_duplicate_connection(test.saved.clone());
         assert_eq!(test.hold.live(), 1, "the copy was written without a hold");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
-        assert!(
-            stored().iter().any(|saved| saved.id != id),
-            "the copy, written before the hold ended"
-        );
+        let copy = stored()
+            .iter()
+            .find(|saved| saved.id != id)
+            .cloned()
+            .expect("the copy, written before the hold ended");
+
+        test.window.on_confirm_delete(copy.id, DeletionOptions::default());
+        assert_eq!(test.hold.live(), 1, "the delete ran without a hold");
+        wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
+        assert!(!listed(&test, copy.id), "the hold ended before the delete");
     }
 }

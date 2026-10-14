@@ -35,6 +35,9 @@ crates/app/src/services/cell_overlay.rs
 crates/app/src/services/change_tracker.rs
 crates/app/src/services/change_tracker_registry.rs
 crates/app/src/services/column_relayout.rs
+crates/app/src/services/connection_deletion.rs
+crates/app/src/services/deletion_error.rs
+crates/app/src/services/deletion_report.rs
 crates/app/src/services/file_resolution.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_service.rs
@@ -57,6 +60,7 @@ crates/app/src/services/undo_op.rs
 crates/app/src/storage.rs
 crates/app/src/test_support.rs
 crates/app/src/test_support/accessible_label.rs
+crates/app/src/test_support/alert_response.rs
 crates/app/src/test_support/fake_session.rs
 crates/app/src/test_support/main_loop.rs
 crates/app/src/test_support/memory_settings.rs
@@ -94,6 +98,7 @@ crates/app/src/ui/credential_prompt/presenter.rs
 crates/app/src/ui/credential_prompt/prompt_form.rs
 crates/app/src/ui/credential_prompt/prompt_text.rs
 crates/app/src/ui/credential_prompt/prompter.rs
+crates/app/src/ui/delete_connection_dialog.rs
 crates/app/src/ui/editor/buffer_edit.rs
 crates/app/src/ui/editor/completion/catalog_read.rs
 crates/app/src/ui/editor/completion/completion_scope.rs

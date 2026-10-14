@@ -94,6 +94,24 @@ it cannot depends on whether someone is there to answer:
 - A typed secret lives in a `SecretString`, and the prompt clears its rows
   as it hands the answer over.
 
+## Deleting a connection
+
+`ConnectionDeletion::run` removes a saved connection in an order that
+leaves nothing unreachable behind when a step fails:
+
+1. The keyring secrets. If the keyring refuses, nothing else runs and the
+   entry stays: an entry with no secrets only asks for them again, while a
+   secret with no entry is orphaned in the keyring.
+2. The entry in `connections.json`.
+3. Everything kept for it: column widths, filters, the saved tabs with any
+   copy Reset moved aside, the editor drafts (`WorkspaceStore::purge`), the
+   saved queries, and the query history when the user turned that on. A
+   failure here is reported and does not bring the entry back.
+
+A connection open or connecting in a window is not deleted; the dialog
+offers that window instead. The window holds the process until the delete
+ends, as it does for every other write to the connection list.
+
 ## Where files go
 
 `tablepro_storage::StoragePaths` resolves every directory once at startup

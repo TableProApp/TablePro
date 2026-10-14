@@ -27,7 +27,11 @@ impl AppStorage {
         let connections = ConnectionStore::new(&paths);
         let column_widths = ColumnWidthStore::load(paths.column_widths_file(), tasks);
         let filter_settings = FilterSettingsStore::load(paths.filter_settings_file(), tasks);
-        let workspaces = WorkspaceStore::start(paths.workspaces_dir(), tasks);
+        let workspaces = WorkspaceStore::start(
+            paths.workspaces_dir(),
+            tablepro_storage::DraftStore::new(paths.drafts_dir()),
+            tasks,
+        );
         let state = paths.state.clone();
         drop(tasks.spawn_blocking_task(move || match remove_legacy_tab_file(&state) {
             Ok(true) => tracing::info!("removed the tab file an older build left"),

@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use super::resolve_file_identity::ResolvedFile;
 use super::session_window_command::SessionWindowCommand;
+use crate::services::connection_deletion::DeletionOptions;
 use crate::ui::connect_dialog::ConnectSubmission;
 use crate::workspace::CloseReason;
 
@@ -58,8 +59,13 @@ pub(crate) enum SessionWindowInput {
     ConnectionsLoaded(Vec<SavedConnection>),
     ConnectionListUnavailable,
     ResetConnectionList,
-    SecretDeleteFailed(Uuid),
+    /// The keyring kept a deleted connection's secrets, so the entry
+    /// was kept too. The toast's Retry runs the same delete again.
+    SecretDeleteFailed(Uuid, DeletionOptions),
+    /// Ask whether to delete a saved connection.
     DeleteConnection(Uuid),
+    /// The user confirmed the delete.
+    ConfirmDelete(Uuid, DeletionOptions),
     DuplicateConnection(Box<SavedConnection>),
     /// A colour picked from a connection row's menu, or `None` when the
     /// user cleared it.

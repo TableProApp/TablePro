@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use tablepro_session::SessionKey;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::StorageError;
 use tablepro_storage::document::{decode_document, encode_document};
+use tablepro_storage::{DraftScope, DraftStore, StorageError};
 use tokio::sync::{mpsc, oneshot};
 
 use super::write_job::WriteJob;
@@ -40,15 +40,22 @@ struct StoreInner {
 }
 
 impl WorkspaceStore {
-    pub fn start(dir: PathBuf, tasks: &Tasks) -> Self {
-        Self::start_with(dir, tasks, Arc::new(tablepro_storage::fs::write_private_blocking))
+    /// `drafts` is where the editor tabs of these workspaces keep their
+    /// text, which a purge deletes with the workspace.
+    pub fn start(dir: PathBuf, drafts: DraftStore, tasks: &Tasks) -> Self {
+        Self::start_with(
+            dir,
+            drafts,
+            tasks,
+            Arc::new(tablepro_storage::fs::write_private_blocking),
+        )
     }
 
-    fn start_with(dir: PathBuf, tasks: &Tasks, write: Arc<WriteFile>) -> Self {
+    fn start_with(dir: PathBuf, drafts: DraftStore, tasks: &Tasks, write: Arc<WriteFile>) -> Self {
         let (writer, jobs) = mpsc::unbounded_channel();
         // Detached, so the last store going closes the channel and the
         // task ends once what it was handed is written.
-        drop(tasks.spawn_task(run_writer(jobs, tasks.clone(), write)));
+        drop(tasks.spawn_task(run_writer(jobs, tasks.clone(), drafts, write)));
         Self {
             inner: Rc::new(StoreInner {
                 dir,
@@ -153,6 +160,24 @@ impl WorkspaceStore {
         }
     }
 
+    /// Delete everything kept for a session whose connection is gone:
+    /// its saved tabs, any copy of them Reset moved aside, and its
+    /// drafts. A record still queued for it is never written.
+    ///
+    /// It goes through the writer, so a write queued before it cannot
+    /// land after it and bring the file back.
+    pub fn purge(&self, key: &SessionKey) -> impl Future<Output = Result<(), WorkspaceSaveError>> + use<> {
+        self.inner.blocked.borrow_mut().remove(key);
+        self.inner.moved_aside.borrow_mut().remove(key);
+        let (purged, receiver) = oneshot::channel();
+        let _ = self.inner.writer.send(WriteJob::Purge {
+            path: self.inner.path(key),
+            drafts: WorkspaceFileName::for_key(key).draft_scope(),
+            purged,
+        });
+        async move { receiver.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped)) }
+    }
+
     pub fn is_blocked(&self, key: &SessionKey) -> bool {
         self.inner.blocked.borrow().contains(key)
     }
@@ -182,13 +207,18 @@ impl StoreInner {
     }
 }
 
+type Reply = oneshot::Sender<Result<(), WorkspaceSaveError>>;
+
 /// The jobs that arrived while the writer was busy. Only the newest
 /// record per file is kept, and every waiter is answered after the
 /// writes it queued behind.
 #[derive(Default)]
 struct Round {
     records: BTreeMap<PathBuf, WorkspaceRecord>,
-    waiting: Vec<(PathBuf, oneshot::Sender<Result<(), WorkspaceSaveError>>)>,
+    /// A purge wins over a record queued for its file in the same
+    /// round, whichever came first.
+    purges: Vec<(PathBuf, DraftScope, Reply)>,
+    waiting: Vec<(PathBuf, Reply)>,
 }
 
 impl Round {
@@ -198,11 +228,17 @@ impl Round {
                 self.records.insert(path, record);
             }
             WriteJob::Flush { path, written } => self.waiting.push((path, written)),
+            WriteJob::Purge { path, drafts, purged } => self.purges.push((path, drafts, purged)),
         }
     }
 }
 
-async fn run_writer(mut jobs: mpsc::UnboundedReceiver<WriteJob>, tasks: Tasks, write: Arc<WriteFile>) {
+async fn run_writer(
+    mut jobs: mpsc::UnboundedReceiver<WriteJob>,
+    tasks: Tasks,
+    drafts: DraftStore,
+    write: Arc<WriteFile>,
+) {
     let mut last: HashMap<PathBuf, Result<(), WorkspaceSaveError>> = HashMap::new();
     while let Some(job) = jobs.recv().await {
         let mut round = Round::default();
@@ -210,14 +246,44 @@ async fn run_writer(mut jobs: mpsc::UnboundedReceiver<WriteJob>, tasks: Tasks, w
         while let Ok(job) = jobs.try_recv() {
             round.take(job);
         }
+        let purged: HashSet<PathBuf> = round.purges.iter().map(|(path, ..)| path.clone()).collect();
         for (path, record) in round.records {
+            if purged.contains(&path) {
+                continue;
+            }
             let outcome = write_record(&tasks, &write, path.clone(), record).await;
             last.insert(path, outcome);
+        }
+        for (path, scope, reply) in round.purges {
+            last.remove(&path);
+            let store = drafts.clone();
+            let outcome = tasks
+                .spawn_blocking_task(move || purge_blocking(&path, &store, &scope))
+                .await
+                .unwrap_or_else(|failure| Err(WorkspaceSaveError::Purge(failure.to_string())));
+            if let Err(error) = &outcome {
+                tracing::warn!(%error, "could not delete a deleted connection's saved tabs");
+            }
+            let _ = reply.send(outcome);
         }
         for (path, written) in round.waiting {
             let _ = written.send(last.get(&path).cloned().unwrap_or(Ok(())));
         }
     }
+}
+
+/// Every part is tried, so one that fails leaves no more behind than
+/// it has to; the first failure is the one reported.
+fn purge_blocking(path: &Path, drafts: &DraftStore, scope: &DraftScope) -> Result<(), WorkspaceSaveError> {
+    let file = match std::fs::remove_file(path) {
+        Err(error) if error.kind() != ErrorKind::NotFound => Err(error.to_string()),
+        _ => Ok(()),
+    };
+    let copies = tablepro_storage::fs::remove_moved_aside_blocking(path)
+        .map(drop)
+        .map_err(|error| error.to_string());
+    let drafts = drafts.delete_scope_blocking(scope).map_err(|error| error.to_string());
+    file.and(copies).and(drafts).map_err(WorkspaceSaveError::Purge)
 }
 
 async fn write_record(
@@ -291,7 +357,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::Mutex;
 
-    use tablepro_storage::DraftId;
+    use tablepro_storage::{DraftId, DraftStore};
     use uuid::Uuid;
 
     use super::*;
@@ -322,10 +388,14 @@ mod tests {
         store: WorkspaceStore,
     }
 
+    fn drafts(root: &Path) -> DraftStore {
+        DraftStore::new(root.join("drafts"))
+    }
+
     impl Fixture {
         fn new() -> Self {
             let root = tempfile::tempdir().expect("tempdir");
-            let store = WorkspaceStore::start(root.path().join("workspaces"), &paused_tasks());
+            let store = WorkspaceStore::start(root.path().join("workspaces"), drafts(root.path()), &paused_tasks());
             Self { root, store }
         }
 
@@ -502,7 +572,11 @@ mod tests {
         fixture.store.reset(&key).await.expect("reset");
         assert!(fixture.store.has_moved_aside_copy(&key));
         // As a later run finds it on disk.
-        let restarted = WorkspaceStore::start(fixture.root.path().join("workspaces"), &paused_tasks());
+        let restarted = WorkspaceStore::start(
+            fixture.root.path().join("workspaces"),
+            drafts(fixture.root.path()),
+            &paused_tasks(),
+        );
         assert_eq!(restarted.load(&key).await, WorkspaceLoad::Empty);
         restarted.load(&other).await;
 
@@ -562,7 +636,7 @@ mod tests {
             }
             Ok(())
         });
-        let store = WorkspaceStore::start_with(root.path().to_owned(), &paused_tasks(), write);
+        let store = WorkspaceStore::start_with(root.path().to_owned(), drafts(root.path()), &paused_tasks(), write);
         let (a, b) = (key(), key());
         let path_a = store.inner.path(&a);
         let path_b = store.inner.path(&b);
@@ -590,6 +664,110 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn purge_removes_the_file_its_moved_aside_copies_and_drafts() {
+        let fixture = Fixture::new();
+        let (key, other) = (key(), key());
+        let path = fixture.seed(&key, b"{ not json");
+        assert!(matches!(fixture.store.load(&key).await, WorkspaceLoad::Blocked(_)));
+        fixture.store.reset(&key).await.expect("reset");
+        fixture.store.schedule(&key, record(1)).expect("scheduled");
+        fixture.store.flush(&key).await.expect("written");
+        let store = drafts(fixture.root.path());
+        let scope = WorkspaceFileName::for_key(&key).draft_scope();
+        store
+            .write_blocking(&scope, DraftId::new(), "SELECT 1")
+            .expect("a draft");
+        let kept_scope = WorkspaceFileName::for_key(&other).draft_scope();
+        store
+            .write_blocking(&kept_scope, DraftId::new(), "SELECT 2")
+            .expect("a draft");
+        fixture.store.schedule(&other, record(2)).expect("scheduled");
+
+        fixture.store.purge(&key).await.expect("purged");
+
+        assert!(!path.exists(), "the saved tabs outlived the purge");
+        assert!(
+            !tablepro_storage::fs::moved_aside_exists_blocking(&path).expect("list"),
+            "a copy Reset moved aside outlived the purge"
+        );
+        assert!(
+            !store.root().join(scope.as_str()).exists(),
+            "the drafts outlived the purge"
+        );
+        assert!(
+            store.root().join(kept_scope.as_str()).exists(),
+            "another session's drafts went"
+        );
+        assert!(!fixture.store.has_moved_aside_copy(&key));
+        fixture.store.flush(&other).await.expect("written");
+        assert_eq!(fixture.on_disk(&other), record(2));
+    }
+
+    #[tokio::test]
+    async fn purge_drops_a_record_still_queued() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let written: Arc<Mutex<Vec<PathBuf>>> = Arc::default();
+        let (started, mut starts) = mpsc::unbounded_channel::<()>();
+        let (release, hold) = std::sync::mpsc::channel::<()>();
+        let hold = Mutex::new(hold);
+        let log = written.clone();
+        // Holds the first write open, so the record and the purge after
+        // it arrive in one round.
+        let write: Arc<WriteFile> = Arc::new(move |path: &Path, bytes: &[u8]| {
+            let first = {
+                let mut log = log.lock().expect("the log");
+                log.push(path.to_owned());
+                log.len() == 1
+            };
+            let _ = started.send(());
+            if first {
+                let _ = hold.lock().expect("the hold").recv();
+            }
+            tablepro_storage::fs::write_private_blocking(path, bytes)
+        });
+        let store = WorkspaceStore::start_with(root.path().to_owned(), drafts(root.path()), &paused_tasks(), write);
+        let (busy, purged) = (key(), key());
+
+        store.schedule(&busy, record(1)).expect("scheduled");
+        starts.recv().await.expect("the first write started");
+        store.schedule(&purged, record(2)).expect("scheduled");
+        let purging = store.purge(&purged);
+        release.send(()).expect("release the first write");
+        purging.await.expect("purged");
+
+        let path = store.inner.path(&purged);
+        assert!(!path.exists(), "the queued record was written after all");
+        assert!(
+            !written.lock().expect("the log").contains(&path),
+            "the queued record was written and then removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn purging_a_session_with_nothing_saved_succeeds() {
+        let fixture = Fixture::new();
+
+        assert_eq!(fixture.store.purge(&key()).await, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn a_purge_that_cannot_delete_the_drafts_says_so() {
+        let fixture = Fixture::new();
+        let key = key();
+        let scope = WorkspaceFileName::for_key(&key).draft_scope();
+        let drafts_root = fixture.root.path().join("drafts");
+        std::fs::create_dir_all(&drafts_root).expect("mkdir");
+        // A file where the scope's directory goes cannot be removed as
+        // one.
+        std::fs::write(drafts_root.join(scope.as_str()), b"not a directory").expect("seed");
+
+        assert!(matches!(
+            fixture.store.purge(&key).await,
+            Err(WorkspaceSaveError::Purge(_))
+        ));
+    }
+
+    #[tokio::test]
     async fn a_failed_write_is_reported_by_flush() {
         let root = tempfile::tempdir().expect("tempdir");
         let write: Arc<WriteFile> = Arc::new(|path: &Path, _: &[u8]| {
@@ -598,7 +776,7 @@ mod tests {
                 source: std::io::Error::other("disk full"),
             })
         });
-        let store = WorkspaceStore::start_with(root.path().to_owned(), &paused_tasks(), write);
+        let store = WorkspaceStore::start_with(root.path().to_owned(), drafts(root.path()), &paused_tasks(), write);
         let key = key();
 
         store.schedule(&key, record(1)).expect("scheduled");

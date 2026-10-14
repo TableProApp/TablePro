@@ -11,4 +11,6 @@ pub enum WorkspaceSaveError {
     MoveAside(String),
     #[error("the workspace writer has stopped")]
     WriterStopped,
+    #[error("could not delete the saved tabs: {0}")]
+    Purge(String),
 }

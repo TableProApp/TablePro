@@ -1,4 +1,5 @@
 mod accessible_label;
+mod alert_response;
 mod fake_session;
 mod main_loop;
 mod memory_settings;
@@ -9,6 +10,7 @@ mod wait_timed_out;
 mod widget_lookup;
 
 pub(crate) use accessible_label::assert_labelled;
+pub(crate) use alert_response::respond;
 pub(crate) use fake_session::FakeSession;
 pub(crate) use main_loop::{drain_main_context, finish_on_main, wait_until};
 pub(crate) use memory_settings::MemorySettings;

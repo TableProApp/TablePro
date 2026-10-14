@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
 - Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
 - Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
+- Deleting a connection asks once, offers its window when it is open, and can delete its query history too.
 
 ### Removed
 
@@ -58,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
 - Stop could not end a SQLite statement waiting for another connection's lock.
 - Launching TablePro while it was running did nothing instead of showing the open window.
+- Deleting a connection left its saved tabs and editor drafts on disk.
 - A change to the connection list made just before quitting could be lost.
 - A SQLite save that failed in a way SQLite rolls back itself closed the connection and its temporary tables.
 - A SQLite script ending in an unclosed comment showed later results under the first statement's columns.

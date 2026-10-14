@@ -5,15 +5,17 @@ use std::sync::Arc;
 
 use gtk4::glib::prelude::IsA;
 use tablepro_core::{ConnectEnvironment, DriverRegistry, LivenessPolicy};
+use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::operation::{DeadlinePolicy, DefaultDeadlines};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectServices, Connector, DriverConnector, SessionRegistry};
 use tablepro_ssh::SshServices;
-use tablepro_storage::{AppSettings, SecretStore, StoragePaths};
+use tablepro_storage::{AppSettings, QueryHistory, SecretStore, StoragePaths};
 
 use crate::config;
 use crate::runtime::GioProcessHold;
 use crate::services::active_session::ActiveSession;
+use crate::services::connection_deletion::ConnectionDeletion;
 use crate::services::history_service::{HistoryService, publish_retention};
 use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
 use crate::storage::{AppStorage, SharedStorage};
@@ -146,6 +148,24 @@ impl AppServices {
 
     pub(crate) fn hold(&self) -> Rc<dyn ProcessHold> {
         self.hold.clone()
+    }
+
+    /// What deletes a saved connection and everything kept for it, with
+    /// `history` as the history database, or `None` when it did not
+    /// open.
+    pub(crate) fn connection_deletion(&self, history: Option<QueryHistory>) -> ConnectionDeletion {
+        ConnectionDeletion {
+            secrets: self.storage.secrets().clone(),
+            connections: Arc::new(StoreConnectionWrites::new(
+                self.storage.connections().clone(),
+                self.tasks.clone(),
+            )),
+            column_widths: self.storage.column_widths().clone(),
+            filters: self.storage.filter_settings().clone(),
+            workspaces: self.storage.workspaces().clone(),
+            history,
+            spawner: self.tasks.clone(),
+        }
     }
 
     pub(crate) fn bind_application(&self, application: &impl IsA<gio::Application>) {

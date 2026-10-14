@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use tablepro_storage::DraftScope;
 use tokio::sync::oneshot;
 
 use super::{WorkspaceRecord, WorkspaceSaveError};
@@ -15,5 +16,13 @@ pub(super) enum WriteJob {
     Flush {
         path: PathBuf,
         written: oneshot::Sender<Result<(), WorkspaceSaveError>>,
+    },
+    /// Delete the file, every copy of it moved aside and the drafts in
+    /// `drafts`, for a connection that was deleted. A record queued for
+    /// `path` in the same round is dropped rather than written.
+    Purge {
+        path: PathBuf,
+        drafts: DraftScope,
+        purged: oneshot::Sender<Result<(), WorkspaceSaveError>>,
     },
 }
