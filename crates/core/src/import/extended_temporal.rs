@@ -118,6 +118,16 @@ mod tests {
     }
 
     #[test]
+    fn extended_dates_enforce_each_thirty_day_month_boundary() {
+        for text in ["10000-04-30", "10000-06-30", "10000-09-30", "10000-11-30"] {
+            assert!(duckdb_extended_date(text), "{text}");
+        }
+        for text in ["10000-04-31", "10000-06-31", "10000-09-31", "10000-11-31"] {
+            assert!(!duckdb_extended_date(text), "{text}");
+        }
+    }
+
+    #[test]
     fn timestamptz_nanos_keep_fractional_seconds_across_zone_forms() {
         assert_eq!(
             duckdb_extended_timestamptz_nanos("280000-02-29 12:34:56.123456+05:30"),
