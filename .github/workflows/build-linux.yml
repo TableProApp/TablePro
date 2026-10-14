@@ -147,6 +147,7 @@ jobs:
           ../scripts/check-doc-symbols.sh \
             linux/ARCHITECTURE.md \
             linux/docs/state-management.md \
+            linux/docs/storage.md \
             linux/docs/testing.md \
             linux/docs/decisions/0012-window-per-session.md
       - name: Clippy

@@ -1,65 +1,41 @@
 # Storage
 
-Three persistence backends, used for different data shapes. Each is owned by the `storage` crate; nothing else in the workspace touches the filesystem, libsecret, or `gio::Settings` directly.
+The app's data goes to the store its shape calls for. The `storage` crate owns the stores and the calls that write private files; the app crate's workspace, column-width and filter files go through those same calls in `tablepro_storage::fs`.
 
-| Data | Backend | Crate API |
+| Data | Backend | API |
 |---|---|---|
-| Connection metadata (host, port, db, etc.) | JSON file in XDG | `storage::connections` |
-| Passwords | libsecret via `oo7` | `storage::secrets` |
-| App preferences (theme, last window size, etc.) | `gio::Settings` (GSchema) | `storage::settings` |
-| Query history | SQLite (FTS5) — **deferred to Phase 2** | `storage::history` (does not exist yet) |
-| Tab state | JSON file — **deferred to Phase 2** | `storage::tabs` (does not exist yet) |
+| Saved connections | JSON file | `ConnectionStore` |
+| Database passwords, SSH passwords and key passphrases | the Secret Service, through `oo7` | `SecretStore`, read at each connect by `KeyringCredentials` |
+| Preferences and window geometry | `gio::Settings` | `AppSettings` |
+| Query history and saved queries | SQLite, one database | `QueryHistory`, `SavedQueries` |
+| Editor tab text | one file per tab | `DraftStore` |
+| Open tabs, open sessions, column widths, filters | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
 
-## File locations
-
-All paths follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html). Defaults assume the user has not overridden `XDG_CONFIG_HOME` or `XDG_DATA_HOME`.
-
-| Path | Purpose |
-|---|---|
-| `$XDG_CONFIG_HOME/tablepro/connections.json` | Connection list, ordered, with metadata |
-| `$XDG_CONFIG_HOME/tablepro/groups.json` | Connection groups |
-| `$XDG_DATA_HOME/tablepro/history.db` | SQLite FTS5 query history (Phase 2) |
-| `$XDG_DATA_HOME/tablepro/tabs.json` | Open-tab snapshots (Phase 2) |
-| `$XDG_CACHE_HOME/tablepro/` | Anything regenerable. Schema caches, parsed manifests. |
-
-In Flatpak, these resolve under the sandboxed home, which is the correct behaviour. Do not reach outside the sandbox.
+[Where files go](#where-files-go) has the paths.
 
 ## Connection metadata
 
-`storage::connections` exposes:
+`ConnectionStore` holds the saved-connection list, one store per storage root:
 
-```rust
-pub async fn load_connections() -> Result<Vec<SavedConnection>, StorageError>;
-pub async fn save_connections(connections: &[SavedConnection]) -> Result<(), StorageError>;
-pub async fn save_connection(connection: &SavedConnection) -> Result<(), StorageError>;
-pub async fn delete_connection(id: ConnectionId) -> Result<(), StorageError>;
-```
-
-Implementation rules:
-
-- Writes are atomic: write to `connections.json.tmp`, fsync, rename. Same pattern as the macOS app's `ConnectionStorage`.
-- The JSON schema includes a `version` field. Migrations live in `storage::connections::migrate`. Never silently change the on-disk shape.
-- A `SavedConnection` does **not** carry the password. Passwords are stored separately in libsecret, keyed by the connection's UUID.
+- `load_blocking`, `upsert_blocking`, `remove_blocking`, `touch_last_opened_blocking`, `import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock across read, change and write, so two writers never lose an entry.
+- A write goes through `write_private_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were.
+- `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
+- A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
+- A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID.
 
 ### SSH settings
 
 `SavedConnection.ssh` holds an optional `SavedSshConfig`:
 
-- `host`, plus optional `port` and `username`. Leaving them out lets `~/.ssh/config` decide once the OpenSSH transport is in use.
+- `host`, plus optional `port` and `username`. Leaving them out lets `~/.ssh/config` decide.
 - `jump_hosts`: `[user@]host[:port]` entries, empty for a direct connection.
 - `auth`, tagged by `kind`: `agent`, `private_key` (optional `path` and `has_passphrase`), `password` or `keyboard_interactive`.
 
-SSH passwords and key passphrases live in libsecret next to database passwords. Until the OpenSSH transport lands, the russh tunnel serves `password`, and `private_key` with a path, when the port and user are set and there are no jump hosts. Any other stored combination fails before any network I/O with an error that names the setting.
+SSH passwords and key passphrases live in libsecret next to database passwords. The system OpenSSH client runs every combination ([ADR 0013](decisions/0013-openssh-client-transport.md)), and asks for a missing secret through the app's prompts.
 
 ## Passwords with libsecret
 
-`storage::secrets` exposes:
-
-```rust
-pub async fn store_password(id: ConnectionId, password: &str) -> Result<(), StorageError>;
-pub async fn load_password(id: ConnectionId) -> Result<Option<String>, StorageError>;
-pub async fn delete_password(id: ConnectionId) -> Result<(), StorageError>;
-```
+`SecretStore` is the app's `SecretVault`: `store`, `load`, `relabel`, `delete_kind` and `delete_connection`, keyed by connection id and `SecretKind`, with the secret as a `SecretString`.
 
 Backed by the [`oo7`](https://crates.io/crates/oo7) crate, which speaks the Secret Service D-Bus API. Both GNOME Keyring and KWallet implement it.
 
@@ -125,8 +101,10 @@ delete ends, as it does for every other write to the connection list.
 ## Where files go
 
 `tablepro_storage::StoragePaths` resolves every directory once at startup
-through GLib, so the app agrees with the rest of the desktop about the XDG
-base directories and their fallbacks.
+through GLib, so the app agrees with the rest of the desktop about the
+[XDG base directories](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html)
+and their fallbacks. Under Flatpak they resolve inside the sandbox, and
+nothing reaches outside it.
 
 | Accessor | Path |
 |---|---|
@@ -163,8 +141,22 @@ These calls block on `fsync`, so async callers run them through
 
 ## Query history schema
 
+`QueryHistory` is the query history and, in the same database, the saved
+queries (`QueryHistory::saved_queries`). It opens `history.db` with one
+pooled connection in WAL mode, with sqlx's statement logging off, since
+query text is the user's own SQL. It links the system SQLite: the trigram
+tokenizer needs 3.34 or later, and `trigram_index_available_on_system_sqlite`
+fails against an older one.
+
 `crates/storage/migrations/` holds the schema as sqlx migrations, embedded
-at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
+at compile time with `sqlx::migrate!` and run by `QueryHistory::open`:
+
+1. `20260914000000_create_history.sql`: the `history` table.
+2. `20260918000000_create_saved_queries.sql`: the saved queries.
+3. `20261014000000_history_substring_search.sql`: adds `query_folded`,
+   replaces the word index over `query` with the trigram index
+   `history_search` over `query_folded`, and adds `history_page_idx` on
+   `(pinned DESC, executed_at DESC, id DESC)` for paging.
 
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
@@ -172,7 +164,11 @@ which makes sqlx refuse every database that already applied it.
 
 A database carrying a version this build has no migration for is refused
 with `StorageError::HistoryNewerThanApp` and nothing is written, so an
-older binary cannot damage a newer file.
+older binary cannot damage a newer file. Any other migration failure is
+`StorageError::HistoryMigration`.
+
+`QueryHistory::record` refuses a query over 1 MiB with
+`StorageError::TooLarge`.
 
 `QueryHistory::prune(retention_days)` removes unpinned rows in two passes:
 first anything past the retention window, then anything past
@@ -186,14 +182,39 @@ shrinks. It returns a `PruneReport { expired, over_cap }`.
 `QueryHistory::search_page(&HistoryQuery, HistoryPageRequest)` finds
 entries that hold every search term anywhere, in any case. Each row keeps
 its query lowercased by Unicode rules in `query_folded`, which SQLite's
-`lower()` cannot do, so `QueryHistory::open` folds the rows an older
-build recorded. `history_search`, an FTS5 trigram index over that column,
-answers a term of three characters or more as a quoted phrase, so quotes
-and FTS5 operators stay literal; a shorter term goes through `instr`.
+`lower()` cannot do. Rows an older build recorded have none, and
+`QueryHistory::open` folds them 500 to a transaction; a partial index on
+the unfolded rows makes finding none left cost nothing. `history_search`,
+an FTS5 trigram index over that column, answers a term of three
+characters or more as a quoted phrase, so quotes and FTS5 operators stay
+literal; a shorter term goes through `instr`.
+
+`HistoryQuery` also narrows by connection, by `StatusFilter` and by a
+start time. A cancelled run is stored with `success = 0`, so Failed leaves
+it out explicitly.
 
 A page is read by keyset on `(pinned, executed_at, id)`, newest first
-with pinned entries ahead, and `HistoryPage::next` is where the next one
-starts. Rows recorded while the user scrolls never shift a page.
+with pinned entries ahead, never by offset. The request's limit is clamped
+to `MAX_PAGE_SIZE` (1,000), one row past it says whether another page
+exists, and `HistoryPage::next` is the `HistoryCursor` the next page
+starts after. Rows recorded while the user scrolls never shift a page, and no
+row shows twice. Cursors compare as the query orders rows, so the dialog
+can tell whether a re-pinned entry falls in the pages already read.
+
+### Deleting and restoring
+
+- `delete_returning(ids)` deletes in one transaction, 500 ids to a
+  statement, and returns the entries it removed. An id already gone is
+  skipped.
+- `restore(entries)` puts them back under their own ids, pinned as they
+  were and folded again; the insert trigger indexes them. The history
+  dialog's Undo is this pair.
+- `clear_all` empties the history, pinned entries included.
+- `delete_for_connection` removes one connection's entries, pinned ones
+  included, for a connection deleted along with its history, then runs
+  `optimize` as a prune does.
+- `connections_with_history` lists each connection the history holds
+  under the name of its latest run, so a renamed connection shows once.
 
 ### What goes into the history
 
@@ -231,6 +252,7 @@ Schema id and path: `app.tablepro.TablePro`.
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `confirm-destructive` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
+| `connect-dialog-driver` | `s` | `postgres` | |
 | `save-query-history` | `b` | `true` | |
 | `history-retention-days` | `u` | `30` | 0 to 365 |
 | `query-timeout-secs` | `u` | `60` | 0 to 3600 |
@@ -270,23 +292,19 @@ High-churn keyed data stays in files: column widths, per-table filters and works
 
 ## Errors
 
-`StorageError` is a `thiserror` enum exported from `storage`. Variants:
+`StorageError` is the crate's `thiserror` enum:
 
-- `Io(std::io::Error)`
-- `Serde(serde_json::Error)`
-- `Secret(oo7::Error)`
-- `Schema(String)` — schema mismatch, migration failed
-- `NotFound`
+- Files: `Io` and `Permissions` with the path, `Write` with the path and GLib's error, `Serde`, `DocumentUnavailable` for a JSON document that cannot be used, and `DraftNotUtf8`.
+- `Schema` with a reason: a Reset of a connection list that is readable, a name `DraftScope::new` refuses, or, from `tablepro-session`, a connections write task that failed.
+- The history database: `Database`, `HistoryNewerThanApp`, `HistoryMigration`, and `TooLarge` for a query over the size limit.
+- The saved queries: `EmptyName`, `NotFound`, and `TooLarge` for a name or query over its limit.
+- `Encode` for a history CSV export.
+- `NotInitialised` and `Settings` are declared, but nothing returns them: `AppSettings` returns its own `SettingsError`.
 
-UI code matches on these variants to display useful messages, not the raw `Display` output. See [error-handling.md](error-handling.md).
+A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`. UI code matches on the variants to say something useful, never the raw `Display` text. See [error-handling.md](error-handling.md).
 
-## Migration policy
+## Changing a format
 
-When the on-disk shape changes:
-
-1. Bump the `version` field in the schema.
-2. Add a migration step in `storage::*::migrate`.
-3. Test loading the previous version's fixture in `tests/`.
-4. Update this file and the changelog.
-
-Never break old user data without a migration step. Users have years-worth of saved connections.
+- A JSON document is a `VersionedDocument` with a `version` field. A new shape bumps its `VERSION`, and there are no upgraders: a file from another version is never migrated, and one from a newer build is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
+- The history database moves forward by sqlx migration: a new timestamped file under `crates/storage/migrations/` with its own fixture test, never an edit to an applied one.
+- Update this page, and add a fragment to the Linux changelog.

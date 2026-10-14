@@ -150,6 +150,32 @@ How the app reaches a database: the contract in `tablepro-core`, a transport tha
 
 `DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md).
 
+### SQL scripts
+
+`tablepro_core::sql_syntax::script` reads a script the way the engine's own client does. `ScriptPlan::build(text, grammar, settings)` lexes the text once and returns its tokens, its statements, its batches, and a `ScriptDiagnostic` for a string, quoted name, comment or dollar quote left open. Ranges are in bytes; `text_offsets` maps them to the characters GTK counts.
+
+A driver names its grammar through `SqlDialect::grammar`. The rules for each `SqlGrammar` are one table in core (`crates/core/src/sql_syntax/script/script_rules.rs`), so the editor's runs, completion and formatting, the drivers' own splitting and read-only guards, and the history's credential check all read a script the same way. `LexicalSettings` holds what a session can change: whether a backslash escapes in a plain string.
+
+| Grammar | Splits at | Kept whole across `;` | Beyond standard quotes and comments |
+|---|---|---|---|
+| PostgreSQL | `;` | dollar-quoted bodies, the `BEGIN ... END` body of a `CREATE FUNCTION` or `PROCEDURE`, parentheses | `E'...'` escapes, nested block comments, backslash escapes only with `standard_conforming_strings` off |
+| MySQL, MariaDB | `;`, or the delimiter a `DELIMITER` line sets | nothing | backtick names, `"` strings, `#` comments, `--` only before whitespace, a control character or the end of the text, backslash escapes |
+| SQLite | `;` | a `CREATE TRIGGER` body, as `sqlite3_complete` reads it | `[name]` and backtick names |
+| SQL Server | a `GO` line, with an optional count | the whole batch, whatever `;` it holds | `[name]` with `]]` inside, nested block comments |
+| ClickHouse | `;` | heredocs, `$tag$ ... $tag$` | backslash escapes in every quote, `//`, `# ` and `#!` comments, nested block comments |
+
+A failed statement stops the rest of a script, except on SQL Server, where each `GO` batch runs on its own as in sqlcmd (`BatchErrorPolicy::ContinueNextBatch`). The editor sends one statement, or one `GO` batch, per run; [docs/state-management.md](docs/state-management.md#the-sql-editor) has the run.
+
+**MySQL stored programs need `DELIMITER`.** The mysql client splits at every `;` outside a quote or a comment, `BEGIN ... END` included, and the plan does the same: `CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END` is three statements, and the server refuses the first. A trigger, procedure, function or event whose body holds a `;` goes between `DELIMITER` lines, as in the mysql client:
+
+```sql
+DELIMITER //
+CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END//
+DELIMITER ;
+```
+
+A `DELIMITER` or `\d` line that starts a line outside a statement is a directive and is never sent. The MySQL driver honours the same lines when a whole script reaches it, and sends text without them as one multi-statement batch, which the server parses itself.
+
 ### Connecting
 
 `DriverConnector` in `tablepro-session` turns a saved connection into a connected one:
@@ -273,7 +299,7 @@ Each workspace owns two registries holding the in-flight edit state for its tabs
 
 A handle is a newtype over `Rc<RefCell<_>>`. Every method borrows only for its own body, calls no GTK and no callbacks, and returns owned data (`CellOverlay`, `RowState`, `TrackerDelta`), so a grid bind that runs while a tab is applying a change never meets a held borrow. A row edit goes in as a `TrackerEdit` and comes back as a `TrackerDelta`: the rows to redraw, the draft rows the list store gains or loses, and the new pending count. The tab applies it to its `gio::ListStore` after the call returns. A grid row is a `RowObject` whose identity is fixed when it is made: a saved row's key and cells as fetched, or a draft's id, whose cells live only in the tracker. A tracked change bumps the row's `revision` property, and each cell bound to the row listens for it and draws again in place, so the store never swaps a row and its selection and focus stay put. The tab finds the row through a `GridRowIndex` of weak references keyed like the tracker. A grid cell resolves its row through its column view cell when an event fires, so an edit, a menu action or a toggle reaches the row it was made on even after rows above it came or went. Every pending change carries a `Touch` from the tracker's counter. An `UndoOp` holds the pending state on both sides of a step, touch included, so undo after A, B, C shows B, not the fetched value. `change_set` emits one change per row in touch order, and `plan_save` keeps that order: a row deleted and replaced by a draft with the same unique value saves, because its DELETE runs first. `WorkspaceHandle::dirty_tabs` reads both registries, with each editor's open transaction, for the close prompts, the teardown guard and the tabs' unsaved icon. CI fails on a `thread_local!` under `crates/app/src/services`, since a process-wide registry would share one window's unsaved edits with every other window.
 
-The Structure tab is **definition + draft**, not a per-change log. The `TableDefinition` one read returned is what the tab plans against; `diff_table` turns the draft into `TableChanges`, and the engine's `DdlDialect` plans them into statements in its own order. Discard copies the definition back over the draft, and is the only restore point. The tracker holds the latest `PendingStructure`, so the close prompt and the save dispatcher read the same change without the tab, and the save plans it again with the dialect of the connection that runs it ([ADR 0010](docs/decisions/0010-ddl-plans-and-table-definitions.md)).
+The Structure tab is **definition + draft**, not a per-change log. The `TableDefinition` one read returned is what the tab plans against; `diff_table` turns the draft into `TableChanges`, and the engine's `DdlDialect` plans them into statements in its own order. Discard copies the definition back over the draft, and is the only restore point. The tracker holds the latest `PendingStructure`, so the close prompt and the save dispatcher read the same change without the tab, and the save plans it again with the dialect of the connection that runs it ([ADR 0010](docs/decisions/0010-ddl-plans-and-table-definitions.md)). A save that loses something, or that has several statements on an engine that applies DDL one statement at a time, first shows the user its `ChangeReview` and runs only the statements reviewed, whether the tab's Save or a close prompt asked for it ([state-management.md](docs/state-management.md#rules-for-every-view)).
 
 ## Persistence
 
@@ -284,7 +310,7 @@ The Structure tab is **definition + draft**, not a per-change log. The `TableDef
 | Workspace tabs, one file per session | JSON, durable write, debounced 500 ms, off the GTK thread | `$XDG_STATE_HOME/tablepro/workspaces/<connection id>.json`, `file-<sha256 of the URI>.json` for an unsaved file |
 | Sessions open at quit, reopened at launch | JSON, durable write, off the GTK thread | `$XDG_STATE_HOME/tablepro/workspaces/open-sessions.json` |
 | Editor tab text | one file per tab, debounced 500 ms | `$XDG_DATA_HOME/tablepro/drafts/<workspace name>/` |
-| Query history | SQLite + FTS5 virtual table, 0600 | `$XDG_STATE_HOME/tablepro/history.db` |
+| Query history and saved queries | SQLite with an FTS5 trigram index over the case-folded query, 0600 | `$XDG_STATE_HOME/tablepro/history.db` |
 | Application preferences | GSettings | schema `app.tablepro.TablePro` |
 | Window size / maximized | GSettings | schema `app.tablepro.TablePro` |
 | Per-table column widths | JSON, durable write | `$XDG_CONFIG_HOME/tablepro/column_widths.json` |
