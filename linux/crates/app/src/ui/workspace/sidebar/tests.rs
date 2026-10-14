@@ -286,8 +286,10 @@ fn a_read_only_connection_refuses_writes_from_a_stale_menu() {
 }
 
 #[gtk4::test]
-fn keyboard_menu_opens_for_selected_row() {
+fn keyboard_menu_falls_back_to_the_selected_row() {
     let shown = Shown::new(&["a", "b", "c", "d"], every_affordance());
+    // Showing the window focuses its first control, which may be a row.
+    gtk::prelude::GtkWindowExt::set_focus(&shown.window, None::<&gtk::Widget>);
     shown.selection().set_selected(2);
 
     shown
@@ -305,6 +307,59 @@ fn keyboard_menu_opens_for_selected_row() {
     );
     assert!(popover.pointing_to().0, "the menu points at nothing");
     popover.popdown();
+}
+
+/// The table the open menu acts on, if a menu is open.
+fn menu_table(shown: &Shown) -> Option<ObjectKey> {
+    let popover = shown.popover();
+    if !popover.is_visible() {
+        return None;
+    }
+    let (_, target) = menu_items(&popover.menu_model()?).into_iter().next()?;
+    target.as_ref().and_then(ObjectKey::from_variant)
+}
+
+/// The name on the row the keyboard is on.
+fn focused_name(list_view: &gtk::ListView) -> Option<String> {
+    list_view
+        .focus_child()
+        .and_then(|item| item.first_child())
+        .and_then(|row| row.last_child())
+        .and_downcast::<gtk::Label>()
+        .map(|label| label.label().to_string())
+}
+
+/// The scroll marks the row the list focuses next; the grab carries the
+/// focus there.
+fn focus_row(list_view: &gtk::ListView, position: u32, name: &str) {
+    list_view.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+    list_view.grab_focus();
+    wait_until(WAIT, || focused_name(list_view).as_deref() == Some(name)).expect("the row focused");
+}
+
+#[gtk4::test]
+fn keyboard_menu_opens_for_the_focused_row() {
+    let shown = Shown::new(&["a", "b", "c", "d"], every_affordance());
+    let list_view = shown.list_view();
+    wait_until(WAIT, || list_view.height() > 0).expect("the list laid out");
+
+    // An editor tab in front: no row is selected.
+    focus_row(&list_view, 2, "c");
+    shown.view.sync_selection(None);
+    list_view
+        .activate_action("sidebar.context-menu", None)
+        .expect("the action");
+    assert_eq!(menu_table(&shown), Some(ObjectKey(table("c"))));
+    shown.popover().popdown();
+
+    // A table tab in front selects its own row, not the focused one.
+    focus_row(&list_view, 2, "c");
+    shown.view.sync_selection(Some(&table("a")));
+    list_view
+        .activate_action("sidebar.context-menu", None)
+        .expect("the action");
+    assert_eq!(menu_table(&shown), Some(ObjectKey(table("c"))));
+    shown.popover().popdown();
 }
 
 #[gtk4::test]

@@ -253,10 +253,13 @@ impl SidebarInner {
         self.popover.popup();
     }
 
-    /// The Menu key and Shift+F10: the selected row's menu, over that
-    /// row.
-    fn popup_selected_menu(&self) {
-        let position = self.model.selection().selected();
+    /// The Menu key and Shift+F10: the menu of the row the keyboard is
+    /// on, over that row. The selection follows the tab in front, not
+    /// the keyboard, so it stands in only when no row has focus.
+    fn popup_keyboard_menu(&self) {
+        let position = self
+            .focused_position()
+            .unwrap_or_else(|| self.model.selection().selected());
         if position == gtk::INVALID_LIST_POSITION {
             return;
         }
@@ -269,13 +272,23 @@ impl SidebarInner {
     }
 
     fn row_bounds(&self, position: u32) -> Option<gdk::Rectangle> {
-        let rows = self.rows.borrow();
-        let row = rows
-            .iter()
-            .filter_map(glib::WeakRef::upgrade)
-            .find(|item| item.position() == position && item.item().is_some())?
-            .child()?;
+        let row = self.bound_rows().find(|item| item.position() == position)?.child()?;
         bounds_in(&row, &self.list_view)
+    }
+
+    fn focused_position(&self) -> Option<u32> {
+        let focused = self.list_view.focus_child()?;
+        self.bound_rows()
+            .find(|item| {
+                item.child()
+                    .is_some_and(|row| row == focused || row.is_ancestor(&focused))
+            })
+            .map(|item| item.position())
+    }
+
+    fn bound_rows(&self) -> impl Iterator<Item = gtk::ListItem> {
+        let rows: Vec<gtk::ListItem> = self.rows.borrow().iter().filter_map(glib::WeakRef::upgrade).collect();
+        rows.into_iter().filter(|item| item.item().is_some())
     }
 
     /// Run a table action whose target came through GAction: a target of
@@ -374,7 +387,7 @@ fn install_actions(inner: &Rc<SidebarInner>) {
     let view = Rc::downgrade(inner);
     menu.connect_activate(move |_, _| {
         if let Some(view) = view.upgrade() {
-            view.popup_selected_menu();
+            view.popup_keyboard_menu();
         }
     });
     inner.actions.add_action(&menu);
