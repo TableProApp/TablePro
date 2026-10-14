@@ -22,6 +22,17 @@ pub struct TableProApplication {
     pub(super) quit: RefCell<Option<glib::JoinHandle<CloseDecision>>>,
     /// The window the quit is waiting on.
     pub(super) quit_asking: Cell<Option<u32>>,
+    /// Only the first activate restores the last session.
+    pub(super) restore: Cell<RestoreState>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RestoreState {
+    #[default]
+    NotAttempted,
+    /// The record is being read, and the windows open once it is.
+    Loading,
+    Done,
 }
 
 #[glib::object_subclass]
@@ -67,7 +78,13 @@ impl ApplicationImpl for TableProApplication {
             window.present();
             return;
         }
-        app.open_window(WindowLaunch::Picker);
+        match self.restore.get() {
+            RestoreState::NotAttempted => app.restore_session(),
+            RestoreState::Loading => {}
+            RestoreState::Done => {
+                app.open_window(WindowLaunch::Picker);
+            }
+        }
     }
 
     /// `--new-window` on a second launch opens the window in the running
@@ -90,6 +107,11 @@ impl ApplicationImpl for TableProApplication {
     }
 
     fn shutdown(&self) {
+        // The windows go with the process, which is not the user closing
+        // them, so the next launch still reopens their sessions.
+        if let Some(services) = self.services.get() {
+            services.open_sessions().freeze_for_quit();
+        }
         self.windows.clear();
         drop(self.quit.take());
         self.parent_shutdown();

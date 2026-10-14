@@ -52,7 +52,11 @@ impl SessionWindow {
         self.set_title(Some(&crate::i18n::gettext("TablePro")));
         workspace.shutdown();
         drop(workspace);
+        let key = claim.key().clone();
         drop(claim);
+        // A quit freezes the record first, so only a disconnect or a
+        // window closed by hand takes the session off it.
+        self.forget_session(&key);
         close_session(
             session,
             editor_sessions,

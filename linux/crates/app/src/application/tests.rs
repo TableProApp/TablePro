@@ -5,16 +5,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use libadwaita as adw;
+use libadwaita::prelude::*;
 use tablepro_core::{DriverRegistry, LivenessPolicy};
-use tablepro_session::fakes::FakeConnector;
+use tablepro_session::SessionKey;
+use tablepro_session::fakes::{FakeConnector, FakeEstablish};
 use tablepro_session::operation::DefaultDeadlines;
 use tablepro_storage::StoragePaths;
-use tablepro_test_support::FakeSecretVault;
+use tablepro_storage::document::{decode_document, encode_document};
+use tablepro_test_support::{ConnectionScript, FakeDriver, FakeReply, FakeSecretVault};
 
 use super::*;
 use crate::storage::AppStorage;
 use crate::test_support::{MemorySettings, finish_on_main, wait_until};
-use crate::workspace::{CloseDecision, InhibitReason, InhibitTarget, WindowInhibitor};
+use crate::workspace::{CloseDecision, InhibitReason, InhibitTarget, OpenSessionsRecord, WindowInhibitor};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -22,7 +25,7 @@ const WAIT: Duration = Duration::from_secs(10);
 struct Backing {
     runtime: Option<crate::runtime::AppRuntime>,
     _settings: MemorySettings,
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
 }
 
 impl Drop for Backing {
@@ -45,9 +48,19 @@ fn fake_services() -> (AppServices, Backing) {
     let paths = StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID);
     let storage = AppStorage::new(paths, Arc::new(FakeSecretVault::new()), &runtime.tasks());
     let liveness = LivenessPolicy::DESKTOP;
+    // Files open through a fake driver, so a restored file connects.
+    let mut script = ConnectionScript::default();
+    script.probe.always(FakeReply::ok(()));
+    script.list_schemas.always(FakeReply::ok(Vec::new()));
+    script.list_objects.always(FakeReply::ok(Vec::new()));
+    let mut drivers = DriverRegistry::new();
+    drivers.register(Arc::new(FakeDriver::connecting(
+        &FakeDriver::FILE_CAPABILITIES,
+        script.clone(),
+    )));
     let services = AppServices::new(AppServicesParts {
-        drivers: DriverRegistry::new(),
-        connector: Arc::new(FakeConnector::new([])),
+        drivers,
+        connector: Arc::new(FakeConnector::new([]).always(FakeEstablish::Connect(script))),
         deadlines: Arc::new(DefaultDeadlines::new(liveness)),
         liveness,
         settings: settings.get().clone(),
@@ -57,7 +70,7 @@ fn fake_services() -> (AppServices, Backing) {
     let backing = Backing {
         runtime: Some(runtime),
         _settings: settings,
-        _dir: dir,
+        dir,
     };
     (services, backing)
 }
@@ -88,6 +101,54 @@ impl TestApp {
 
     fn window(&self) -> adw::ApplicationWindow {
         self.app.open_window(WindowLaunch::Picker).expect("a window")
+    }
+
+    fn services(&self) -> Rc<AppServices> {
+        self.app.services().expect("the application's services")
+    }
+
+    /// A database file in the test's directory, by the key it opens as.
+    fn database(&self, name: &str) -> SessionKey {
+        let dir = std::fs::canonicalize(self._backing.dir.path()).expect("the canonical directory");
+        let path = dir.join(name);
+        std::fs::write(&path, b"").expect("create the database");
+        SessionKey::File(glib::filename_to_uri(&path, None).expect("a file URI").to_string())
+    }
+
+    fn record_path(&self) -> std::path::PathBuf {
+        self.services()
+            .storage
+            .paths()
+            .workspaces_dir()
+            .join(OpenSessionsRecord::FILE_NAME)
+    }
+
+    /// Write `keys` as the sessions open at the last quit.
+    fn record(&self, keys: &[SessionKey]) {
+        let path = self.record_path();
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("the workspaces directory");
+        let bytes = encode_document(&OpenSessionsRecord::from_keys(keys)).expect("encode");
+        std::fs::write(&path, bytes).expect("write the record");
+    }
+
+    /// The sessions recorded on disk, once every write has landed.
+    fn recorded(&self) -> Vec<SessionKey> {
+        crate::test_support::finish_on_main(WAIT, self.services().open_sessions().flush()).expect("the flush");
+        let path = self.record_path();
+        let bytes = std::fs::read(&path).expect("the record");
+        decode_document::<OpenSessionsRecord>(&path, &bytes)
+            .expect("a record")
+            .keys()
+    }
+
+    /// Wait for every key to show its workspace in a window of its own.
+    fn wait_for_sessions(&self, keys: &[SessionKey]) {
+        let services = self.services();
+        wait_until(WAIT, || {
+            services.sessions.live_count() == keys.len()
+                && keys.iter().all(|key| services.sessions.window_for(key).is_some())
+        })
+        .expect("the restored sessions to connect");
     }
 }
 
@@ -182,9 +243,172 @@ fn activate_opens_one_picker_and_then_presents_it() {
 
     test.app.activate();
     test.app.activate();
+    wait_until(WAIT, || test.app.windows().len() == 1).expect("the picker");
+    test.app.activate();
+    let _ = wait_until(Duration::from_millis(300), || test.app.windows().len() > 1);
 
     assert_eq!(test.app.windows().len(), 1);
     assert_eq!(test.app.imp().windows.len(), 1);
+}
+
+#[gtk4::test]
+fn activate_restores_the_recorded_sessions_in_order() {
+    let test = TestApp::started("Restore");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    test.record(&[first.clone(), second.clone()]);
+
+    test.app.activate();
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+
+    let services = test.services();
+    let ids = [&first, &second].map(|key| services.sessions.window_for(key).expect("a window"));
+    assert!(ids[0] < ids[1], "the windows opened out of the recorded order: {ids:?}");
+    assert_eq!(
+        test.app.windows().len(),
+        2,
+        "a picker opened beside the restored windows"
+    );
+    assert_eq!(services.open_sessions().keys(), [first, second]);
+}
+
+#[gtk4::test]
+fn activate_restores_nothing_when_restore_session_false() {
+    let test = TestApp::started("NoRestore");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+    test.services()
+        .settings
+        .set_restore_session(false)
+        .expect("turn restoring off");
+
+    test.app.activate();
+
+    assert_eq!(test.app.windows().len(), 1, "the picker did not open at once");
+    let _ = wait_until(Duration::from_millis(500), || {
+        test.services().sessions.window_for(&first).is_some()
+    });
+    assert_eq!(
+        test.services().sessions.window_for(&first),
+        None,
+        "a session was restored"
+    );
+    assert_eq!(test.app.windows().len(), 1);
+}
+
+#[gtk4::test]
+fn second_activate_does_not_restore_again() {
+    let test = TestApp::started("RestoreOnce");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+    test.app.activate();
+    test.wait_for_sessions(std::slice::from_ref(&first));
+    for window in test.app.windows() {
+        window.destroy();
+    }
+    assert!(test.recorded().is_empty(), "a closed window's session stayed recorded");
+    test.record(std::slice::from_ref(&first));
+
+    test.app.activate();
+
+    assert_eq!(test.app.windows().len(), 1, "the picker did not open at once");
+    let _ = wait_until(Duration::from_millis(500), || {
+        test.services().sessions.window_for(&first).is_some()
+    });
+    assert_eq!(
+        test.services().sessions.window_for(&first),
+        None,
+        "the session was restored twice"
+    );
+}
+
+#[gtk4::test]
+fn an_activate_while_the_record_loads_opens_nothing_more() {
+    let test = TestApp::started("RestoreLoading");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+
+    test.app.activate();
+    test.app.activate();
+    test.wait_for_sessions(std::slice::from_ref(&first));
+    let _ = wait_until(Duration::from_millis(300), || test.app.windows().len() > 1);
+
+    assert_eq!(
+        test.app.windows().len(),
+        1,
+        "a picker opened beside the restored window"
+    );
+}
+
+#[gtk4::test]
+fn quit_keeps_keys_window_close_removes() {
+    let test = TestApp::started("QuitRecord");
+    let (closed, kept) = (test.database("closed.db"), test.database("kept.db"));
+    test.record(&[closed.clone(), kept.clone()]);
+    test.app.activate();
+    test.wait_for_sessions(&[closed.clone(), kept.clone()]);
+    let services = test.services();
+    let closed_id = services.sessions.window_for(&closed).expect("the window to close");
+    let window = test
+        .app
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<gtk4::ApplicationWindow>().ok())
+        .find(|window| window.id() == closed_id)
+        .expect("the window");
+
+    window.close();
+    wait_until(WAIT, || services.sessions.window_for(&closed).is_none()).expect("the window to close");
+    let decision = finish_on_main(WAIT, QuitSequence::run(test.app.clone())).expect("the quit to finish");
+
+    assert_eq!(decision, CloseDecision::Approved);
+    assert!(test.app.windows().is_empty());
+    assert_eq!(test.recorded(), [kept]);
+}
+
+#[gtk4::test]
+fn cancelled_quit_thaws_to_live_keys() {
+    let test = TestApp::started("QuitCancelled");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    test.record(&[first.clone(), second.clone()]);
+    test.app.activate();
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+    // Whichever window the quit asks first closes and raises a dialog
+    // over the other, which takes that window's close request and so
+    // cancels the quit.
+    let windows: Vec<adw::ApplicationWindow> = test
+        .app
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<adw::ApplicationWindow>().ok())
+        .collect();
+    let [one, other] = windows.as_slice() else {
+        panic!("{} windows, not two", windows.len());
+    };
+    let raised = Rc::new(Cell::new(false));
+    for (closing, kept) in [(one, other), (other, one)] {
+        let (kept, raised) = (kept.downgrade(), raised.clone());
+        closing.connect_close_request(move |_| {
+            if let Some(kept) = kept.upgrade()
+                && !raised.replace(true)
+            {
+                adw::AlertDialog::new(Some("Busy"), None).present(Some(&kept));
+            }
+            glib::Propagation::Proceed
+        });
+    }
+
+    let decision = finish_on_main(WAIT, QuitSequence::run(test.app.clone())).expect("the quit to finish");
+
+    assert_eq!(decision, CloseDecision::Cancelled);
+    assert_eq!(test.app.windows().len(), 1);
+    let services = test.services();
+    let open: Vec<SessionKey> = [first, second]
+        .into_iter()
+        .filter(|key| services.sessions.window_for(key).is_some())
+        .collect();
+    assert_eq!(open.len(), 1, "{open:?}");
+    assert_eq!(services.open_sessions().keys(), open);
+    assert_eq!(test.recorded(), open);
 }
 
 #[gtk4::test]

@@ -1,3 +1,4 @@
+use tablepro_session::SessionKey;
 use tablepro_storage::{ConnectionColor, SavedConnection};
 use uuid::Uuid;
 
@@ -16,6 +17,14 @@ pub(crate) enum SessionWindowInput {
     OpenFile(gio::File),
     /// The file resolved, off the GTK thread, to the session it opens.
     FileResolved(Box<ResolvedFile>),
+    /// Open a session that was open when the application last quit.
+    Restore(SessionKey),
+    /// The restored saved connection as the list holds it now, or `None`
+    /// once it is deleted.
+    RestoreSaved {
+        id: Uuid,
+        saved: Option<Box<SavedConnection>>,
+    },
     OpenConnectDialog,
     /// The connect dialog's Connect: connect, then save the entry.
     ConnectFromDialog(Box<ConnectSubmission>),

@@ -8,19 +8,24 @@ use std::sync::Arc;
 use tablepro_session::SessionKey;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::StorageError;
-use tablepro_storage::document::{decode_document, encode_document};
+use tablepro_storage::document::{VersionedDocument, decode_document, encode_document};
 use tokio::sync::{mpsc, oneshot};
 
+use super::open_sessions_record::read_open_sessions_blocking;
 use super::write_job::WriteJob;
-use super::{WorkspaceFileName, WorkspaceLoad, WorkspaceLoadError, WorkspaceRecord, WorkspaceSaveError};
+use super::{
+    OpenSessionsLoad, OpenSessionsRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceLoadError, WorkspaceRecord,
+    WorkspaceSaveError,
+};
 
 type WriteFile = dyn Fn(&Path, &[u8]) -> Result<(), StorageError> + Send + Sync;
 
 /// Thousands of tabs encode to less than this. A file past it is read
 /// no further, so a runaway one costs no memory to refuse.
-const MAX_FILE_BYTES: u64 = 1024 * 1024;
+pub(super) const MAX_FILE_BYTES: u64 = 1024 * 1024;
 
-/// Every session's saved tabs, one file each.
+/// Every session's saved tabs, one file each, and which sessions the
+/// windows show.
 ///
 /// Writes go to one task that keeps only the newest record per file, so
 /// a burst of tab changes costs one write, and each write runs on a
@@ -153,6 +158,44 @@ impl WorkspaceStore {
         }
     }
 
+    /// Queue `record` as the sessions the windows show. A newer one
+    /// replaces it if the writer has not reached it yet.
+    pub fn schedule_open_sessions(&self, record: OpenSessionsRecord) -> Result<(), WorkspaceSaveError> {
+        self.inner
+            .writer
+            .send(WriteJob::OpenSessions {
+                path: self.inner.open_sessions_path(),
+                record,
+            })
+            .map_err(|_| WorkspaceSaveError::WriterStopped)
+    }
+
+    /// Resolves once every open-sessions record queued so far is on
+    /// disk, with how the last write of it went.
+    pub fn flush_open_sessions(&self) -> impl Future<Output = Result<(), WorkspaceSaveError>> + use<> {
+        let written = self.inner.queue_flush(&self.inner.open_sessions_path());
+        async move { written.await.unwrap_or(Err(WorkspaceSaveError::WriterStopped)) }
+    }
+
+    /// Read which sessions the windows showed, after any record already
+    /// queued has landed.
+    pub fn load_open_sessions(&self) -> impl Future<Output = OpenSessionsLoad> + use<> {
+        let inner = self.inner.clone();
+        let path = self.inner.open_sessions_path();
+        let written = self.inner.queue_flush(&path);
+        async move {
+            let _ = written.await;
+            inner
+                .tasks
+                .spawn_blocking_task(move || read_open_sessions_blocking(&path))
+                .await
+                .unwrap_or_else(|failure| {
+                    tracing::warn!(%failure, "could not read which sessions were open");
+                    OpenSessionsLoad::Empty
+                })
+        }
+    }
+
     pub fn is_blocked(&self, key: &SessionKey) -> bool {
         self.inner.blocked.borrow().contains(key)
     }
@@ -168,6 +211,10 @@ impl WorkspaceStore {
 impl StoreInner {
     fn path(&self, key: &SessionKey) -> PathBuf {
         self.dir.join(WorkspaceFileName::for_key(key).file_name())
+    }
+
+    fn open_sessions_path(&self) -> PathBuf {
+        self.dir.join(OpenSessionsRecord::FILE_NAME)
     }
 
     fn queue_flush(&self, path: &Path) -> oneshot::Receiver<Result<(), WorkspaceSaveError>> {
@@ -188,6 +235,7 @@ impl StoreInner {
 #[derive(Default)]
 struct Round {
     records: BTreeMap<PathBuf, WorkspaceRecord>,
+    open_sessions: Option<(PathBuf, OpenSessionsRecord)>,
     waiting: Vec<(PathBuf, oneshot::Sender<Result<(), WorkspaceSaveError>>)>,
 }
 
@@ -197,6 +245,7 @@ impl Round {
             WriteJob::Write { path, record } => {
                 self.records.insert(path, record);
             }
+            WriteJob::OpenSessions { path, record } => self.open_sessions = Some((path, record)),
             WriteJob::Flush { path, written } => self.waiting.push((path, written)),
         }
     }
@@ -214,17 +263,21 @@ async fn run_writer(mut jobs: mpsc::UnboundedReceiver<WriteJob>, tasks: Tasks, w
             let outcome = write_record(&tasks, &write, path.clone(), record).await;
             last.insert(path, outcome);
         }
+        if let Some((path, record)) = round.open_sessions {
+            let outcome = write_record(&tasks, &write, path.clone(), record).await;
+            last.insert(path, outcome);
+        }
         for (path, written) in round.waiting {
             let _ = written.send(last.get(&path).cloned().unwrap_or(Ok(())));
         }
     }
 }
 
-async fn write_record(
+async fn write_record<D: VersionedDocument + Send + 'static>(
     tasks: &Tasks,
     write: &Arc<WriteFile>,
     path: PathBuf,
-    record: WorkspaceRecord,
+    record: D,
 ) -> Result<(), WorkspaceSaveError> {
     let write = write.clone();
     let shown = path.display().to_string();
@@ -236,7 +289,7 @@ async fn write_record(
         .await
         .unwrap_or_else(|failure| Err(WorkspaceSaveError::Write(failure.to_string())));
     if let Err(error) = &outcome {
-        tracing::warn!(%error, path = %shown, "could not save the open tabs");
+        tracing::warn!(%error, path = %shown, kind = D::KIND, "could not write a workspace file");
     }
     outcome
 }
@@ -255,7 +308,7 @@ fn read_record(path: &Path) -> WorkspaceLoad {
 }
 
 /// The whole file, or `None` when it is larger than `MAX_FILE_BYTES`.
-fn read_capped(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+pub(super) fn read_capped(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
     let file = std::fs::File::open(path)?;
     if file.metadata()?.len() > MAX_FILE_BYTES {
         return Ok(None);

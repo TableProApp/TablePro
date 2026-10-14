@@ -11,6 +11,7 @@ mod imp;
 mod picker_page;
 mod resolve_file_identity;
 mod session_page;
+mod session_restore;
 mod session_teardown;
 mod session_window_command;
 mod session_window_input;
@@ -163,6 +164,7 @@ impl SessionWindow {
             WindowLaunch::Picker => {}
             WindowLaunch::Connect(saved) => input.deliver(SessionWindowInput::OpenSaved(saved)),
             WindowLaunch::OpenFile(file) => input.deliver(SessionWindowInput::OpenFile(file)),
+            WindowLaunch::Restore(key) => input.deliver(SessionWindowInput::Restore(key)),
         }
     }
 
@@ -241,6 +243,8 @@ impl SessionWindow {
             SessionWindowInput::OpenSaved(saved) => self.on_open_saved(*saved),
             SessionWindowInput::OpenFile(file) => self.on_open_file(file),
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
+            SessionWindowInput::Restore(key) => self.on_restore(key),
+            SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
             SessionWindowInput::OpenConnectDialog => self.present_connect_dialog(None, None),
             SessionWindowInput::ConnectFromDialog(submission) => self.on_connect_from_dialog(*submission),
             SessionWindowInput::DialogClosed => drop(self.imp().dialog.take()),
@@ -364,12 +368,18 @@ impl SessionWindow {
         match result {
             Ok(connected) => self.adopt(claim, source, connected),
             Err(AttemptError::Cancelled) => {
+                let key = claim.key().clone();
                 drop(claim);
                 self.show_page(SessionPage::Picker);
+                self.forget_session(&key);
             }
+            // A session restored at launch that no longer opens is not
+            // tried again at the next one; a Retry that works records it.
             Err(AttemptError::Failed(failure)) => {
                 tracing::warn!(error = %failure.message, "connect failed");
+                let key = claim.key().clone();
                 self.show_page(SessionPage::ConnectFailed { claim, source, failure });
+                self.forget_session(&key);
             }
         }
     }
@@ -389,6 +399,7 @@ impl SessionWindow {
         let credentials = state.context.credentials_for(saved.as_ref());
         let session = Session::start(pending, state.context.session_deps(credentials));
         claim.attach(&session);
+        self.remember_session(&key, saved.as_ref());
         if let ConnectSource::Intent(intent) = &source
             && let Err(error) = state
                 .services
@@ -520,15 +531,25 @@ impl SessionWindow {
             }
             return;
         }
+        // A file restored under a key it no longer resolves to would be
+        // reopened under both.
+        let arrived = SessionKey::File(uri.clone());
         match target {
-            Ok(FileTarget::Saved(saved)) => self.on_open_saved(*saved),
+            Ok(FileTarget::Saved(saved)) => {
+                self.forget_session(&arrived);
+                self.on_open_saved(*saved);
+            }
             Ok(FileTarget::File(identity)) => {
+                if identity.uri != uri {
+                    self.forget_session(&arrived);
+                }
                 if let Some(claim) = self.claim(SessionKey::File(identity.uri.clone())) {
                     self.begin_connect(claim, ConnectSource::File(identity));
                 }
             }
             Err(error) => {
                 tracing::warn!(%error, %uri, "could not open the file");
+                self.forget_session(&arrived);
                 let Some(claim) = self.claim(SessionKey::File(uri.clone())) else {
                     return;
                 };
@@ -612,7 +633,11 @@ impl SessionWindow {
             stop_connecting(&self.imp().attempts);
         }
         if self.page_is(|page| matches!(page, SessionPage::Connecting { .. } | SessionPage::ConnectFailed { .. })) {
+            let key = self.imp().page.borrow().key().cloned();
             self.show_page(SessionPage::Picker);
+            if let Some(key) = key {
+                self.forget_session(&key);
+            }
         }
     }
 
@@ -708,7 +733,11 @@ impl SessionWindow {
                 return;
             }
         };
+        let key = left.key().cloned();
         drop(left);
+        if let Some(key) = key {
+            self.forget_session(&key);
+        }
     }
 
     fn refresh_inhibitor(&self) {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tablepro_session::{ConnectSource, Session, SessionClaim};
+use tablepro_session::{ConnectSource, Session, SessionClaim, SessionKey};
 
 use super::session_window_command::ConnectFailure;
 use crate::ui::workspace::Workspace;
@@ -30,6 +30,16 @@ pub(crate) enum SessionPage {
 }
 
 impl SessionPage {
+    /// The key the page holds a claim on.
+    pub(crate) fn key(&self) -> Option<&SessionKey> {
+        match self {
+            Self::Picker => None,
+            Self::Connecting { claim, .. } | Self::ConnectFailed { claim, .. } | Self::Workspace { claim, .. } => {
+                Some(claim.key())
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn name(&self) -> &'static str {
         match self {

@@ -184,6 +184,7 @@ crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
 crates/app/src/ui/session_window/session_page.rs
+crates/app/src/ui/session_window/session_restore.rs
 crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs
 crates/app/src/ui/session_window/session_window_input.rs
@@ -238,6 +239,9 @@ crates/app/src/workspace/draft_writer.rs
 crates/app/src/workspace/inhibit_reason.rs
 crates/app/src/workspace/legacy_tab_file.rs
 crates/app/src/workspace/mod.rs
+crates/app/src/workspace/open_sessions.rs
+crates/app/src/workspace/open_sessions_load.rs
+crates/app/src/workspace/open_sessions_record.rs
 crates/app/src/workspace/open_transaction_dialog.rs
 crates/app/src/workspace/pending_state.rs
 crates/app/src/workspace/persist_debouncer.rs
@@ -254,6 +258,7 @@ crates/app/src/workspace/save_snapshot.rs
 crates/app/src/workspace/save_start.rs
 crates/app/src/workspace/save_ticket.rs
 crates/app/src/workspace/schema_write.rs
+crates/app/src/workspace/session_key_record.rs
 crates/app/src/workspace/sort_record.rs
 crates/app/src/workspace/tab_directory.rs
 crates/app/src/workspace/tab_entry.rs

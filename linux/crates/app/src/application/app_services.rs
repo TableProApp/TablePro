@@ -18,6 +18,7 @@ use crate::services::history_service::{HistoryService, publish_retention};
 use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
 use crate::storage::{AppStorage, SharedStorage};
 use crate::ui::credential_prompt::{GtkCredentialPrompter, PromptQueue};
+use crate::workspace::OpenSessions;
 
 /// What every window of the application shares. GTK-thread only.
 pub struct AppServices {
@@ -35,6 +36,8 @@ pub struct AppServices {
     application_hold: Rc<GioProcessHold>,
     /// What keeps the process alive while a close or a save finishes.
     hold: Rc<dyn ProcessHold>,
+    /// Which sessions the windows show, for the next launch to reopen.
+    open_sessions: Rc<OpenSessions>,
     history: OnceCell<HistoryService>,
     ssh: Option<SshServices>,
 }
@@ -63,6 +66,7 @@ impl AppServices {
             tasks,
         } = parts;
         let application_hold = Rc::new(GioProcessHold::default());
+        let open_sessions = OpenSessions::new(storage.workspaces().clone(), application_hold.clone());
         Self {
             drivers: Arc::new(drivers),
             connector,
@@ -75,6 +79,7 @@ impl AppServices {
             tasks,
             hold: application_hold.clone(),
             application_hold,
+            open_sessions,
             history: OnceCell::new(),
             ssh: None,
         }
@@ -148,6 +153,10 @@ impl AppServices {
         self.hold.clone()
     }
 
+    pub(crate) fn open_sessions(&self) -> &Rc<OpenSessions> {
+        &self.open_sessions
+    }
+
     pub(crate) fn bind_application(&self, application: &impl IsA<gio::Application>) {
         self.application_hold.bind(application);
     }
@@ -155,6 +164,7 @@ impl AppServices {
     /// A test reads the holds, or stands in for the keyring.
     #[cfg(test)]
     pub(crate) fn with_hold(mut self, hold: Rc<dyn ProcessHold>) -> Self {
+        self.open_sessions = OpenSessions::new(self.storage.workspaces().clone(), hold.clone());
         self.hold = hold;
         self
     }

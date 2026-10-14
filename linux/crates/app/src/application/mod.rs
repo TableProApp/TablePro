@@ -28,6 +28,7 @@ pub(crate) use window_registry::WindowRegistry;
 
 use crate::config;
 use crate::ui::{SessionWindow, SessionWindowInit};
+use crate::workspace::OpenSessionsLoad;
 
 glib::wrapper! {
     pub struct TableProApplication(ObjectSubclass<imp::TableProApplication>)
@@ -83,6 +84,40 @@ impl TableProApplication {
         };
         window.present();
         true
+    }
+
+    /// Open the windows whose sessions were open when the application
+    /// last quit, or the picker when there were none or the user turned
+    /// restoring off.
+    fn restore_session(&self) {
+        let imp = self.imp();
+        let services = match self.services() {
+            Some(services) if services.settings.restore_session() => services,
+            _ => {
+                imp.restore.set(imp::RestoreState::Done);
+                self.open_window(WindowLaunch::Picker);
+                return;
+            }
+        };
+        imp.restore.set(imp::RestoreState::Loading);
+        // No window holds the application while the record is read.
+        let hold = services.hold().acquire();
+        let loading = services.open_sessions().load();
+        let app = self.clone();
+        glib::spawn_future_local(async move {
+            let keys = match loading.await {
+                OpenSessionsLoad::Restored(record) => services.open_sessions().restore(record),
+                OpenSessionsLoad::Empty => Vec::new(),
+            };
+            app.imp().restore.set(imp::RestoreState::Done);
+            if keys.is_empty() {
+                app.open_window(WindowLaunch::Picker);
+            }
+            for key in keys {
+                app.open_window(WindowLaunch::Restore(key));
+            }
+            drop(hold);
+        });
     }
 
     /// Ask every window to close, in turn. While one is asking, another

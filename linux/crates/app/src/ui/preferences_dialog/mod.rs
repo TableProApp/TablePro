@@ -41,6 +41,9 @@ impl PreferencesDialog {
         let gio_settings = settings.gio();
 
         gio_settings
+            .bind(keys::RESTORE_SESSION, &imp.restore_session_row.get(), "active")
+            .build();
+        gio_settings
             .bind(keys::DEFAULT_PAGE_SIZE, &imp.page_size_row.get(), "value")
             .build();
         gio_settings
@@ -230,6 +233,22 @@ mod tests {
 
         assert_eq!(settings.get().default_page_size(), 2_500);
         assert!(settings.get().confirm_destructive());
+    }
+
+    #[gtk4::test]
+    fn the_restore_session_row_is_bound() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
+        let row = dialog.imp().restore_session_row.get();
+        assert!(row.is_active(), "the row does not show the default");
+
+        row.set_active(false);
+        assert!(!settings.get().restore_session());
+
+        settings.get().set_restore_session(true).expect("store the flag");
+        assert!(row.is_active());
     }
 
     #[gtk4::test]
