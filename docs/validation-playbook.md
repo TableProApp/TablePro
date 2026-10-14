@@ -95,7 +95,7 @@ Build/package, mutation, coverage and acceptance retain their existing entrypoin
 | Scope | Entry point | Completion evidence |
 | --- | --- | --- |
 | Optional DuckDB | Build Linux / `duckdb`; commands in [testing](testing.md#optional-features-and-ignored-tests) | Driver tests plus app feature build |
-| Mutation | Linux test quality; [local instructions](testing.md#mutation-testing) | Selected/generated count, caught/missed/timeout/unviable counts and outcomes JSON |
+| Mutation | GitHub Linux test quality; Forgejo nightly; [local instructions](testing.md#mutation-testing) | Selected/generated count, caught/missed/timeout/unviable counts and outcomes JSON; Forgejo also checks missed mutants against package baselines |
 | Coverage | Linux test quality; [local instructions](testing.md#coverage) | LCOV, exclusions and summary; this report has no threshold. Forgejo nightly separately enforces the unit-tier and per-crate floors. |
 | Flatpak | Flatpak Linux (packaging only) | Pull requests build the default profile; push and `workflow_dispatch` also build development; not regression acceptance |
 | Arch / Debian candidate | [Packaging guide](../apps/linux/packaging/README.md) and packaging scripts | Immutable SHA, package checksum, validator output |
