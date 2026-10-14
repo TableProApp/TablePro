@@ -14,11 +14,17 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-failed-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connecting-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/export-operations-button.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/filter-rule-row.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/filter-strip.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/find-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/history-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/history-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/picker-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-data-browser-group.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-editor-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-general-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-history-group.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>

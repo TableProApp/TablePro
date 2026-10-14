@@ -1,19 +1,25 @@
+mod data_browser_group;
+mod editor_page;
+mod general_page;
+mod history_group;
 mod imp;
 
 use std::rc::Rc;
 
-use gio::prelude::SettingsExtManual;
 use gtk4::glib;
-use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::AppSettings;
-use tablepro_storage::settings::keys;
 
-use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
-use crate::ui::style_scheme_grid;
+use crate::ui::file_reveal::FileRevealer;
+
+#[cfg(test)]
+pub(super) use self::{
+    data_browser_group::DataBrowserGroup, editor_page::EditorPage, general_page::GeneralPage,
+    history_group::HistoryGroup,
+};
 
 glib::wrapper! {
     pub struct PreferencesDialog(ObjectSubclass<imp::PreferencesDialog>)
@@ -22,6 +28,8 @@ glib::wrapper! {
 }
 
 impl PreferencesDialog {
+    /// Every row binds straight to GSettings, so a change reaches any
+    /// other view through `changed::<key>` without a save step.
     pub(crate) fn new(
         settings: &Rc<AppSettings>,
         storage: &crate::storage::SharedStorage,
@@ -30,164 +38,40 @@ impl PreferencesDialog {
         revealer: Rc<dyn FileRevealer>,
     ) -> Self {
         let dialog: Self = glib::Object::new();
-        dialog.imp().settings.replace(Some(settings.clone()));
-        dialog.bind(settings, storage);
-        dialog.connect_history_actions(storage, history, tasks, revealer);
+        let imp = dialog.imp();
+        imp.settings.replace(Some(settings.clone()));
+        imp.general_page.bind(settings, storage, history, tasks, revealer);
+        imp.editor_page.bind(settings);
+        let shown_in = dialog.downgrade();
+        imp.general_page.history_group().connect_toast(move |_, toast| {
+            if let Some(dialog) = shown_in.upgrade() {
+                dialog.add_toast(toast.clone());
+            }
+        });
         dialog
     }
+}
 
-    /// Every row binds straight to GSettings, so a change reaches any
-    /// other view through `changed::<key>` without a save step.
-    fn bind(&self, settings: &Rc<AppSettings>, storage: &crate::storage::SharedStorage) {
-        let imp = self.imp();
-        let gio_settings = settings.gio();
-
-        gio_settings
-            .bind(keys::RESTORE_SESSION, &imp.restore_session_row.get(), "active")
-            .build();
-        gio_settings
-            .bind(keys::DEFAULT_PAGE_SIZE, &imp.page_size_row.get(), "value")
-            .build();
-        gio_settings
-            .bind(keys::CONFIRM_DESTRUCTIVE, &imp.confirm_row.get(), "active")
-            .build();
-        // Off stops new records only; Clear is what removes the old ones.
-        gio_settings
-            .bind(keys::SAVE_QUERY_HISTORY, &imp.save_history_row.get(), "active")
-            .build();
-        gio_settings
-            .bind(keys::HISTORY_RETENTION_DAYS, &imp.retention_row.get(), "value")
-            .build();
-        gio_settings
-            .bind(keys::QUERY_TIMEOUT_SECS, &imp.timeout_row.get(), "value")
-            .build();
-        gio_settings
-            .bind(keys::USE_SYSTEM_FONT, &imp.system_font_row.get(), "active")
-            .build();
-
-        // The font row is only reachable when the system font is off, so
-        // the switch drives its sensitivity with the value inverted.
-        gio_settings
-            .bind(keys::USE_SYSTEM_FONT, &imp.font_row.get(), "sensitive")
-            .flags(gio::SettingsBindFlags::GET | gio::SettingsBindFlags::INVERT_BOOLEAN)
-            .build();
-
-        gio_settings
-            .bind(keys::CUSTOM_FONT, &imp.font_button.get(), "font-desc")
-            .mapping(|variant, _| {
-                let description = variant.get::<String>()?;
-                Some(gtk4::pango::FontDescription::from_string(&description).to_value())
-            })
-            .set_mapping(|value, _| {
-                let description = value.get::<gtk4::pango::FontDescription>().ok()?;
-                Some(description.to_str().to_variant())
-            })
-            .build();
-
-        style_scheme_grid::populate(&imp.style_scheme_box.get(), settings);
-
-        // The path is known from the configuration even before the
-        // database opens, so the row is never blank.
-        let path = storage.paths().history_database().display().to_string();
-        imp.storage_row.set_subtitle(&path);
-        // AdwActionRow ellipsises a long subtitle, so the full path lives
-        // in the tooltip.
-        imp.storage_row.set_tooltip_text(Some(&path));
-    }
-
-    fn connect_history_actions(
-        &self,
-        storage: &crate::storage::SharedStorage,
-        history: Option<tablepro_storage::QueryHistory>,
-        tasks: &Tasks,
-        revealer: Rc<dyn FileRevealer>,
-    ) {
-        let imp = self.imp();
-        let history_path = storage.paths().history_database();
-
-        // The database opens on a background task, so the button stays
-        // insensitive until it is there to clear.
-        imp.clear_button.set_sensitive(history.is_some());
-
-        let dialog = self.clone();
-        let tasks = tasks.clone();
-        let history_for_clear = history;
-        imp.clear_button.connect_clicked(move |_| {
-            let alert = adw::AlertDialog::new(
-                Some(&crate::i18n::gettext("Clear all query history?")),
-                Some(&crate::i18n::gettext(
-                    "This permanently deletes every saved query, including pinned ones.",
-                )),
-            );
-            alert.add_response("cancel", &crate::i18n::gettext("Cancel"));
-            alert.add_response("clear", &crate::i18n::gettext("Clear"));
-            alert.set_response_appearance("clear", adw::ResponseAppearance::Destructive);
-            alert.set_default_response(Some("cancel"));
-            alert.set_close_response("cancel");
-            let history_for_clear = history_for_clear.clone();
-            let tasks = tasks.clone();
-            let dialog_for_toast = dialog.clone();
-            // AdwAlertDialog closes itself before it emits, so there is
-            // no close to do here.
-            alert.connect_response(None, move |_, response| {
-                if response != "clear" {
-                    return;
-                }
-                let Some(history) = history_for_clear.clone() else {
-                    return;
-                };
-                let clearing = tasks.spawn_task(async move { history.clear_all().await });
-                let dialog = dialog_for_toast.clone();
-                // A destructive action that reports nothing leaves the
-                // user guessing whether it ran.
-                glib::spawn_future_local(async move {
-                    let message = match clearing.await {
-                        Ok(Ok(removed)) => crate::i18n::ngettext_f(
-                            "{count} query cleared",
-                            "{count} queries cleared",
-                            removed as u32,
-                            &[("count", &removed.to_string())],
-                        ),
-                        Ok(Err(error)) => {
-                            tracing::warn!(%error, "could not clear the query history");
-                            crate::i18n::gettext("The query history could not be cleared.")
-                        }
-                        Err(failure) => {
-                            tracing::warn!(%failure, "the clear-history task failed");
-                            crate::i18n::gettext("The query history could not be cleared.")
-                        }
-                    };
-                    dialog.add_toast(adw::Toast::new(&message));
-                });
-            });
-            alert.present(Some(&dialog));
-        });
-
-        let dialog = self.downgrade();
-        imp.storage_button.connect_clicked(move |_| {
-            let Some(shown_from) = dialog.upgrade() else {
-                return;
-            };
-            let revealing = revealer.reveal(gio::File::for_path(&history_path), shown_from.root().and_downcast());
-            let dialog = dialog.clone();
-            glib::spawn_future_local(async move {
-                let revealed = revealing.await;
-                if let (Some(toast), Some(dialog)) = (reveal_failure_toast(&revealed), dialog.upgrade()) {
-                    dialog.add_toast(toast);
-                }
-            });
-        });
-    }
+/// A storage under a temporary root, so the dialog's storage row and
+/// history actions stay away from the developer's own files.
+#[cfg(test)]
+fn test_storage(tasks: &Tasks) -> crate::storage::SharedStorage {
+    let root = std::env::temp_dir().join(format!("tablepro-prefs-{}", std::process::id()));
+    let paths = tablepro_storage::StoragePaths::under(&root, "tablepro-test", "app.tablepro.TablePro.Devel");
+    Rc::new(crate::storage::AppStorage::new(
+        paths,
+        std::sync::Arc::new(tablepro_storage::SecretStore::new(crate::config::secret_schema())),
+        tasks,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
-    use tablepro_storage::{EditorFont, StoragePaths};
-
-    use crate::test_support::{MemorySettings, test_runtime};
-    use crate::ui::file_reveal::RecordingRevealer;
+    use tablepro_storage::StoragePaths;
 
     use super::*;
+    use crate::test_support::{MemorySettings, assert_labelled, descendants, test_runtime, unlabelled_icon_buttons};
+    use crate::ui::file_reveal::RecordingRevealer;
 
     /// The template lives in the embedded resources, so a test that
     /// builds the dialog has to register them first. Test order is not
@@ -208,145 +92,75 @@ mod tests {
         )
     }
 
-    fn test_storage(tasks: &Tasks) -> crate::storage::SharedStorage {
-        // A temporary root keeps the dialog's storage row and history
-        // actions away from the developer's own files.
-        let root = std::env::temp_dir().join(format!("tablepro-prefs-{}", std::process::id()));
-        let paths = StoragePaths::under(&root, "tablepro-test", "app.tablepro.TablePro.Devel");
-        Rc::new(crate::storage::AppStorage::new(
-            paths,
-            std::sync::Arc::new(tablepro_storage::SecretStore::new(crate::config::secret_schema())),
-            tasks,
-        ))
+    /// The dialog's pages, in the order it shows them. They are not in
+    /// its widget tree until it is presented, so they come from the
+    /// template.
+    fn pages(dialog: &PreferencesDialog) -> [adw::PreferencesPage; 2] {
+        let imp = dialog.imp();
+        [imp.general_page.get().upcast(), imp.editor_page.get().upcast()]
     }
 
     #[gtk4::test]
     fn preferences_dialog_template_builds() {
         let settings = MemorySettings::new();
-
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
         let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
-        let imp = dialog.imp();
+        let [general, editor] = pages(&dialog);
 
-        assert_eq!(imp.page_size_row.title(), "Default page size");
-        assert_eq!(imp.timeout_row.title(), "Query timeout (seconds)");
-        assert!(imp.style_scheme_box.first_child().is_some(), "no style scheme previews");
-    }
-
-    #[gtk4::test]
-    fn preference_rows_are_bound() {
-        let settings = MemorySettings::new();
-        settings.get().set_default_page_size(500).expect("store the page size");
-        settings.get().set_confirm_destructive(false).expect("store the flag");
-
-        let runtime = test_runtime();
-        let storage = test_storage(&runtime.tasks());
-        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
-        let imp = dialog.imp();
-
-        assert_eq!(imp.page_size_row.value(), 500.0);
-        assert!(!imp.confirm_row.is_active());
-
-        imp.page_size_row.set_value(2_500.0);
-        imp.confirm_row.set_active(true);
-
-        assert_eq!(settings.get().default_page_size(), 2_500);
-        assert!(settings.get().confirm_destructive());
-    }
-
-    #[gtk4::test]
-    fn the_restore_session_row_is_bound() {
-        let settings = MemorySettings::new();
-        let runtime = test_runtime();
-        let storage = test_storage(&runtime.tasks());
-        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
-        let row = dialog.imp().restore_session_row.get();
-        assert!(row.is_active(), "the row does not show the default");
-
-        row.set_active(false);
-        assert!(!settings.get().restore_session());
-
-        settings.get().set_restore_session(true).expect("store the flag");
-        assert!(row.is_active());
-    }
-
-    #[gtk4::test]
-    fn preferences_history_switch_bound_to_setting() {
-        let settings = MemorySettings::new();
-        let runtime = test_runtime();
-        let storage = test_storage(&runtime.tasks());
-        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
-        let row = dialog.imp().save_history_row.get();
-        assert!(row.is_active(), "the row does not show the default");
-
-        row.set_active(false);
-        assert!(!settings.get().save_query_history());
-
-        settings.get().set_save_query_history(true).expect("store the flag");
-        assert!(row.is_active());
-    }
-
-    #[gtk4::test]
-    fn the_font_row_is_insensitive_while_the_system_font_is_on() {
-        let settings = MemorySettings::new();
-
-        let runtime = test_runtime();
-        let storage = test_storage(&runtime.tasks());
-        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
-        let imp = dialog.imp();
-
-        assert!(!imp.font_row.is_sensitive());
-
-        settings
-            .get()
-            .set_editor_font(&EditorFont::Custom("Monospace 11".to_owned()))
-            .expect("store a custom font");
-
-        assert!(imp.font_row.is_sensitive());
+        assert_eq!(general.title(), "General");
+        assert_eq!(editor.title(), "Editor");
+        assert_eq!(dialog.visible_page().as_ref(), Some(&general));
+        dialog.set_visible_page(&editor);
         assert_eq!(
-            imp.font_button.font_desc().map(|font| font.to_str().to_string()),
-            Some("Monospace 11".to_owned())
+            dialog.visible_page().as_ref(),
+            Some(&editor),
+            "the Editor page is not in the dialog"
         );
     }
 
     #[gtk4::test]
-    fn the_storage_row_names_the_history_database() {
+    fn every_preferences_page_audits_clean() {
         let settings = MemorySettings::new();
-
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
         let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
 
-        let subtitle = dialog.imp().storage_row.subtitle().unwrap_or_default();
-        assert!(subtitle.contains("history.db"), "{subtitle}");
+        for page in pages(&dialog) {
+            let rows: Vec<adw::PreferencesRow> = descendants(&page)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<adw::PreferencesRow>().ok())
+                .collect();
+            assert!(!rows.is_empty(), "{} has no rows", page.title());
+            for row in rows {
+                assert_labelled(&row).unwrap_or_else(|problem| panic!("{}: {problem}", page.title()));
+            }
+            for group in descendants(&page)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
+            {
+                assert!(!group.title().is_empty(), "{} has a group with no title", page.title());
+            }
+            assert_eq!(unlabelled_icon_buttons(&page), Vec::<String>::new(), "{}", page.title());
+        }
     }
 
     #[gtk4::test]
-    fn preferences_show_in_files_reveals_the_database_file_not_its_folder() {
-        crate::register_test_resources();
+    fn the_dialog_is_freed_once_dropped() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let revealer = Rc::new(RecordingRevealer::succeeding());
-        let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks(), revealer.clone());
+        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
+        let history_group = dialog.imp().general_page.history_group().downgrade();
+        let freed = dialog.downgrade();
 
-        dialog.imp().storage_button.emit_clicked();
+        drop(dialog);
+        crate::test_support::drain_main_context();
 
-        assert_eq!(revealer.revealed(), [storage.paths().history_database()]);
-    }
-
-    #[gtk4::test]
-    fn clear_history_is_insensitive_until_the_database_opens() {
-        let settings = MemorySettings::new();
-        let runtime = test_runtime();
-        let storage = test_storage(&runtime.tasks());
-
-        let starting = new_dialog(&settings, &storage, None, &runtime.tasks());
-
+        assert!(freed.upgrade().is_none(), "the dialog outlived its last reference");
         assert!(
-            !starting.imp().clear_button.is_sensitive(),
-            "Clear offered to clear a database that is not open"
+            history_group.upgrade().is_none(),
+            "the history group outlived its dialog"
         );
     }
 
@@ -362,9 +176,9 @@ mod tests {
         assert_eq!(count(&runtime, &history), 1);
 
         let dialog = new_dialog(&settings, &storage, Some(history.clone()), &runtime.tasks());
-        assert!(dialog.imp().clear_button.is_sensitive());
+        assert!(clear_button(&dialog).is_sensitive());
         let window = present_on_a_window(&dialog);
-        dialog.imp().clear_button.emit_clicked();
+        clear_button(&dialog).emit_clicked();
         confirm_the_alert(&window);
 
         // The toast is posted once the clear has finished, so it is
@@ -385,6 +199,10 @@ mod tests {
         drop(window);
     }
 
+    fn clear_button(dialog: &PreferencesDialog) -> gtk4::Button {
+        dialog.imp().general_page.history_group().imp().clear_button.get()
+    }
+
     /// How long a test waits for work that crosses a thread. Long
     /// enough that a loaded machine cannot decide the outcome; a
     /// passing test returns as soon as its condition holds and never
@@ -397,8 +215,7 @@ mod tests {
         let window = adw::Window::new();
         window.present();
         dialog.present(Some(&window));
-        crate::test_support::wait_until(WAIT, || dialog.imp().clear_button.is_mapped())
-            .expect("the dialog never appeared");
+        crate::test_support::wait_until(WAIT, || clear_button(dialog).is_mapped()).expect("the dialog never appeared");
         window
     }
 

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProGeneralPage" parent="AdwPreferencesPage">
+    <property name="title" translatable="yes">General</property>
+    <property name="icon-name">preferences-system-symbolic</property>
+    <child>
+      <object class="AdwPreferencesGroup">
+        <property name="title" translatable="yes">Startup</property>
+        <child>
+          <object class="AdwSwitchRow" id="restore_session_row">
+            <property name="title" translatable="yes">Restore session</property>
+            <property name="subtitle" translatable="yes">Reopen the connections that were open when TablePro quit</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="TableProDataBrowserGroup" id="data_browser_group"/>
+    </child>
+    <child>
+      <object class="TableProHistoryGroup" id="history_group"/>
+    </child>
+  </template>
+</interface>

@@ -61,6 +61,7 @@ use self::page_state::PageState;
 use self::row_deletion::{RowDeletion, plan_row_deletion};
 pub(crate) use self::row_total::RowTotal;
 use self::selection_snapshot::SelectionSnapshot;
+use super::filter_strip::FilterStrip;
 use super::format::format_thousands;
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
@@ -154,17 +155,17 @@ impl BrowseTab {
         // Filter strip: an inline editor that slides down above the grid.
         // It lives in this tab so the user's in-progress rules survive a
         // click into a cell or the SQL editor.
-        let on_apply_filter: Rc<dyn Fn(tablepro_core::FilterSet)> = {
+        let filter_strip = FilterStrip::new(Vec::new(), &initial_filter);
+        filter_strip.connect_applied({
             let tab = tab.downgrade();
-            Rc::new(move |set| {
+            move |_, set| {
                 if let Some(tab) = tab.upgrade() {
                     tab.send(BrowseTabInput::FilterApplied(set));
                 }
-            })
-        };
-        let filter_strip = crate::ui::filter_strip::build(Vec::new(), initial_filter.clone(), on_apply_filter);
-        imp.toolbar.add_top_bar(&filter_strip.widget);
-        tab.collapse_top_bars_with(&filter_strip.widget);
+            }
+        });
+        imp.toolbar.add_top_bar(&filter_strip);
+        tab.collapse_top_bars_with(&filter_strip);
         tab.connect_widgets();
         let stale_banner = StaleBanner::new(imp.stale_banner.get(), {
             let tab = tab.downgrade();
@@ -244,7 +245,7 @@ impl BrowseTab {
             last_button: imp.last_button.get(),
             filter_button: imp.filter_button.get(),
             filter_badge: imp.filter_badge.get(),
-            filter_strip: Some(filter_strip),
+            filter_strip,
             insert_button: imp.insert_button.get(),
             delete_button: imp.delete_button.get(),
             actions,
@@ -471,7 +472,7 @@ impl BrowseTab {
 
     /// The top-bar slot draws a thin strip even when every banner in it
     /// is collapsed, so the slot itself is hidden unless one shows.
-    fn collapse_top_bars_with(&self, filter: &gtk::Revealer) {
+    fn collapse_top_bars_with(&self, filter: &FilterStrip) {
         let imp = self.imp();
         // The banners and the strip hold this through their notify
         // handlers, and the tab holds them, so it holds them all weakly.
@@ -491,7 +492,7 @@ impl BrowseTab {
                     .iter()
                     .filter_map(glib::WeakRef::upgrade)
                     .any(|banner| banner.is_revealed());
-                toolbar.set_reveal_top_bars(banner_shown || filter.reveals_child());
+                toolbar.set_reveal_top_bars(banner_shown || filter.revealed());
             })
         };
         sync();
@@ -499,7 +500,7 @@ impl BrowseTab {
             let sync = sync.clone();
             banner.connect_revealed_notify(move |_| sync());
         }
-        filter.connect_reveal_child_notify(move |_| sync());
+        filter.connect_revealed_notify(move |_| sync());
     }
 
     fn connect_widgets(&self) {
@@ -667,7 +668,7 @@ pub(crate) struct BrowseModel {
     last_button: gtk::Button,
     filter_button: gtk::Button,
     filter_badge: gtk::Label,
-    filter_strip: Option<crate::ui::filter_strip::FilterStrip>,
+    filter_strip: FilterStrip,
     insert_button: gtk::Button,
     delete_button: gtk::Button,
     actions: BrowseActions,
@@ -1503,9 +1504,7 @@ impl BrowseModel {
         self.refresh_crud_buttons();
         // Operator lists narrow per type, so the strip rebuilds against
         // the new columns.
-        if let Some(strip) = self.filter_strip.as_ref() {
-            strip.update_columns(columns);
-        }
+        self.filter_strip.set_columns(columns);
         self.render_grid_if_ready(fx);
     }
 
@@ -1548,11 +1547,7 @@ impl BrowseModel {
                 sel.unselect_all();
             }
             BrowseTabInput::RequestRefresh => fx.output(BrowseTabOutput::RefreshRequested),
-            BrowseTabInput::ToggleFilterStrip => {
-                if let Some(strip) = self.filter_strip.as_ref() {
-                    strip.toggle();
-                }
-            }
+            BrowseTabInput::ToggleFilterStrip => self.filter_strip.toggle(),
             BrowseTabInput::FilterApplied(set) => {
                 // The same rules again would only duplicate F5.
                 if set == self.current_filter {
@@ -1566,9 +1561,7 @@ impl BrowseModel {
                 // Filtered counts shift, so back to page 1.
                 self.pager.go_to(0);
                 self.refresh_filter_chrome();
-                if let Some(strip) = self.filter_strip.as_ref() {
-                    strip.update_filter(set);
-                }
+                self.filter_strip.set_filter(&set);
                 self.stop_count(false);
                 self.fetch(BrowseRequestKind::Page, fx);
                 self.fetch(BrowseRequestKind::Estimate, fx);
