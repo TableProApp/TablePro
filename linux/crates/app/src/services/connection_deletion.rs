@@ -58,7 +58,11 @@ impl ConnectionDeletion {
             report.purge_failures.push(PurgeFailure::Workspace(error));
         }
         let Some(history) = self.history.clone() else {
-            report.purge_failures.push(PurgeFailure::HistoryUnavailable);
+            let unavailable = || "the query history did not open".to_owned();
+            report.purge_failures.push(PurgeFailure::SavedQueries(unavailable()));
+            if options.delete_history {
+                report.purge_failures.push(PurgeFailure::History(unavailable()));
+            }
             return report;
         };
         // The queries saved under the connection name tables only its
@@ -451,6 +455,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn without_the_history_database_only_the_saved_queries_are_left_unless_history_was_asked_for() {
+        let fixture = fixture().await;
+        let mut deletion = fixture.deletion();
+        deletion.history = None;
+
+        let report = deletion
+            .run(fixture.id, DeletionOptions::default())
+            .await
+            .expect("the delete");
+
+        assert!(
+            matches!(report.purge_failures.as_slice(), [PurgeFailure::SavedQueries(_)]),
+            "{report:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn purge_failure_reported_but_entry_removed() {
         let fixture = fixture().await;
         let drafts = fixture.drafts_of(fixture.id);
@@ -479,7 +500,14 @@ mod tests {
             report
                 .purge_failures
                 .iter()
-                .any(|failure| matches!(failure, PurgeFailure::HistoryUnavailable)),
+                .any(|failure| matches!(failure, PurgeFailure::SavedQueries(_))),
+            "{report:?}"
+        );
+        assert!(
+            report
+                .purge_failures
+                .iter()
+                .any(|failure| matches!(failure, PurgeFailure::History(_))),
             "{report:?}"
         );
         assert!(

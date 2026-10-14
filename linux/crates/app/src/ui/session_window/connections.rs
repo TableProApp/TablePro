@@ -241,6 +241,7 @@ impl SessionWindow {
         let counting = asking.clone();
         glib::spawn_future_local(async move {
             let Some(store) = history.ready_store().await else {
+                counting.show_history_unavailable();
                 return;
             };
             match tasks
@@ -304,10 +305,9 @@ impl SessionWindow {
                     for failure in &report.purge_failures {
                         tracing::warn!(%failure, "kept something stored for a deleted connection");
                     }
-                    input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext_f(
-                        "“{name}” was deleted, but some saved tabs or settings could not be removed",
-                        &[("name", &name)],
-                    )));
+                    if let Some(summary) = report.summary(&name) {
+                        input.deliver(SessionWindowInput::ShowToast(summary));
+                    }
                 }
                 Err(DeletionError::Secrets(error)) => {
                     tracing::warn!(%error, "could not delete the connection's secrets; keeping the entry");
@@ -315,10 +315,7 @@ impl SessionWindow {
                 }
                 Err(error) => {
                     tracing::warn!(%error, "could not delete the connection");
-                    input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext_f(
-                        "“{name}” could not be deleted",
-                        &[("name", &name)],
-                    )));
+                    input.deliver(SessionWindowInput::ShowToast(error.summary(&name)));
                 }
             }
             drop(claim);

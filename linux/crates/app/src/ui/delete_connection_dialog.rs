@@ -57,6 +57,15 @@ impl DeleteConnectionDialog {
         ));
     }
 
+    /// The history database did not open, so the switch could remove
+    /// nothing.
+    pub fn show_history_unavailable(&self) {
+        self.history.set_active(false);
+        self.history
+            .set_subtitle(&crate::i18n::gettext("The query history is not available"));
+        self.history.set_sensitive(false);
+    }
+
     /// Run `chosen` with what the user picked when they press Delete.
     pub fn connect_delete(&self, chosen: impl Fn(DeletionOptions) + 'static) {
         // The row, not the dialog: the dialog holds this closure.
@@ -122,6 +131,26 @@ mod tests {
         assert!(
             !asking.history.is_sensitive(),
             "a switch that removes nothing is offered"
+        );
+    }
+
+    #[gtk4::test]
+    fn an_unavailable_history_offers_no_switch() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let asking = DeleteConnectionDialog::new("Prod");
+
+        asking.show_history_unavailable();
+
+        assert!(
+            !asking.history.is_sensitive(),
+            "a switch that can do nothing is offered"
+        );
+        assert!(!asking.history.is_active());
+        assert!(
+            asking
+                .history
+                .subtitle()
+                .is_some_and(|text| text.contains("not available"))
         );
     }
 
