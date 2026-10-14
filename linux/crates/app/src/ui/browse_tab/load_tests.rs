@@ -10,8 +10,8 @@ use tablepro_test_support::{CallCounters, FakeReply};
 
 use super::BrowseTabInput;
 use super::tests::{
-    Harness, Shown, WAIT, after_next_frame, column, column_view, delete_action, header_titles, key, not_null_name,
-    rows, serving_table, text, toasts,
+    Harness, Shown, WAIT, after_next_frame, column, column_view, delete_action, full_page, header_titles, key,
+    not_null_name, rows, serving_table, text, toasts,
 };
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::grid::GridCell;
@@ -357,6 +357,47 @@ fn the_rows_behind_the_error_page_take_no_action() {
         "Delete stayed on for rows behind the error page"
     );
     assert_eq!(harness.tab().imp().paginator_label.label(), "");
+}
+
+/// Next moved the pager before its read failed, so the way back goes
+/// from where the pager is, and the key for it with the button.
+#[gtk4::test]
+fn a_failed_next_page_leaves_the_way_back_open() {
+    let mut script = serving_table();
+    // A count below the second page would clamp the pager back to the
+    // first before the failed read lands.
+    script.count_rows.always(FakeReply::ok(1_000));
+    script
+        .query_bound
+        .once(FakeReply::ok(full_page(0)))
+        .once(FakeReply::err(DriverError::server("denied")))
+        .always(FakeReply::ok(full_page(0)));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let imp = harness.tab().imp();
+    assert!(!imp.prev_button.is_sensitive());
+
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
+
+    assert_eq!(harness.tab().current_offset(), 100);
+    assert!(imp.first_button.is_sensitive(), "First stayed off past the first page");
+    assert!(
+        imp.prev_button.is_sensitive(),
+        "Previous stayed off past the first page"
+    );
+    assert!(
+        !imp.next_button.is_sensitive(),
+        "Next stayed on past a page that was not read"
+    );
+    harness
+        .tab()
+        .activate_action("browse.previous-page", None)
+        .expect("the action");
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("grid")).expect("the first page again");
+    assert_eq!(harness.tab().current_offset(), 0);
+    assert!(!imp.prev_button.is_sensitive());
+    assert!(imp.next_button.is_sensitive());
 }
 
 fn renamed_page() -> QueryResult {

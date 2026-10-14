@@ -1090,6 +1090,7 @@ impl BrowseModel {
             }
         }
         self.stale_banner.show(presentation.stale.as_ref());
+        self.sync_pager_buttons();
         self.sync_total_chrome();
         self.sync_delete_action();
         if self.tab_loading != presentation.tab_loading {
@@ -1347,16 +1348,23 @@ impl BrowseModel {
     /// depends on the page but not the column structure.
     fn refresh_grid_chrome(&self) {
         self.refresh_crud_buttons();
-        self.first_button.set_sensitive(self.pager.first().is_some());
-        self.prev_button.set_sensitive(self.pager.prev().is_some());
-        self.next_button
-            .set_sensitive(self.pager.next(self.rows_on_page()).is_some());
+        self.sync_pager_buttons();
         self.sync_total_chrome();
         self.suppress_combo_emit.set(false);
     }
 
+    /// A page turn moves the pager before its read lands, so a failed
+    /// read leaves the pager on a page the grid does not show. The way
+    /// back goes from the pager, and Next waits for a page on screen.
+    fn sync_pager_buttons(&self) {
+        self.first_button.set_sensitive(self.pager.first().is_some());
+        self.prev_button.set_sensitive(self.pager.prev().is_some());
+        self.next_button
+            .set_sensitive(self.pager.next(self.rows_on_page()).is_some());
+    }
+
     fn rows_on_page(&self) -> u64 {
-        self.page.as_ref().map_or(0, |page| page.row_count as u64)
+        self.shown_page().map_or(0, |page| page.row_count as u64)
     }
 
     fn has_primary_key(&self) -> bool {
