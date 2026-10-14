@@ -93,6 +93,12 @@ impl DdlDialect for SqliteDialect {
         permissions
     }
 
+    /// The parent of a key is written bare and looked for in the child's
+    /// own schema, so a table of an attached database cannot be one.
+    fn references_other_schemas(&self) -> bool {
+        false
+    }
+
     fn type_suggestions(&self) -> &'static [&'static str] {
         TYPE_SUGGESTIONS
     }

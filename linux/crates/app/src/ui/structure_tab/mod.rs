@@ -77,7 +77,7 @@ use self::columns::build_column_row;
 use self::context::StructureContext;
 use self::draft_column_object::{DraftColumnObject, UnparsedDefault};
 use self::fks::build_fk_row;
-use self::foreign_key_dialog::{ForeignKeyDialog, ForeignKeyDialogInit};
+use self::foreign_key_dialog::{ForeignKeyDialog, ForeignKeyDialogInit, reference_scope};
 use self::foreign_key_object::ForeignKeyObject;
 use self::index_dialog::IndexDialog;
 use self::index_object::IndexObject;
@@ -182,7 +182,13 @@ impl StructureTab {
         let indexes = gio::ListStore::new::<IndexObject>();
         let foreign_keys = gio::ListStore::new::<ForeignKeyObject>();
         tab.bind_lists(&context, &columns, &indexes, &foreign_keys);
-        tab.connect_add_dialogs(&context, &columns, &indexes, &foreign_keys, &init.session, &init.tasks);
+        tab.connect_add_dialogs(
+            &context,
+            (&columns, &indexes, &foreign_keys),
+            init.schema.clone(),
+            &init.session,
+            &init.tasks,
+        );
 
         let link_changes = init.session.link_changes();
         let model = StructureModel {
@@ -417,13 +423,13 @@ impl StructureTab {
     }
 
     /// Each dialog takes the draft as it is when it opens: its columns,
-    /// and the names its indexes or foreign keys already take.
+    /// and the names its indexes or foreign keys already take. `schema`
+    /// is the table's, which a foreign key may have to reference within.
     fn connect_add_dialogs(
         &self,
         context: &Rc<RefCell<StructureContext>>,
-        columns: &gio::ListStore,
-        indexes: &gio::ListStore,
-        foreign_keys: &gio::ListStore,
+        (columns, indexes, foreign_keys): (&gio::ListStore, &gio::ListStore, &gio::ListStore),
+        schema: Option<String>,
         session: &Arc<Session>,
         tasks: &Tasks,
     ) {
@@ -451,8 +457,12 @@ impl StructureTab {
         );
         let (session, tasks) = (session.clone(), tasks.clone());
         imp.add_fk_row.connect_activated(move |row| {
-            let actions = context.borrow().ddl().map(|ddl| ddl.referential_actions());
-            let (Some(columns), Some(keys), Some(actions)) = (columns_for_key.upgrade(), keys.upgrade(), actions)
+            let engine = context
+                .borrow()
+                .ddl()
+                .map(|ddl| (ddl.referential_actions(), reference_scope(ddl, schema.as_deref())));
+            let (Some(columns), Some(keys), Some((actions, scope))) =
+                (columns_for_key.upgrade(), keys.upgrade(), engine)
             else {
                 return;
             };
@@ -463,6 +473,7 @@ impl StructureTab {
                     .map(|key| key.info().name.clone())
                     .collect(),
                 actions,
+                scope,
                 session: session.clone(),
                 tasks: tasks.clone(),
             };

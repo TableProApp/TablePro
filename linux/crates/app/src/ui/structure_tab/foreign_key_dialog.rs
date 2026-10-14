@@ -12,7 +12,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::ForeignKeyInfo;
-use tablepro_core::ddl::ReferentialAction;
+use tablepro_core::ddl::{DdlDialect, ReferentialAction};
 use tablepro_core::meta::{ObjectScope, TableRef};
 use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_session::{OperationError, Session};
@@ -29,6 +29,8 @@ pub(super) struct ForeignKeyDialogInit {
     pub existing: Vec<String>,
     /// The actions the engine takes, in the order it offers them.
     pub actions: &'static [ReferentialAction],
+    /// Where the referenced table can be (`reference_scope`).
+    pub scope: ObjectScope,
     pub session: Arc<Session>,
     pub tasks: Tasks,
 }
@@ -56,6 +58,7 @@ struct Inner {
     shown_pairs: RefCell<Option<PairShape>>,
     columns: Vec<String>,
     existing: Vec<String>,
+    scope: ObjectScope,
     session: Arc<Session>,
     tasks: Tasks,
     draft: RefCell<ForeignKeyDraft>,
@@ -77,6 +80,7 @@ impl ForeignKeyDialog {
             columns,
             existing,
             actions,
+            scope,
             session,
             tasks,
         } = init;
@@ -158,6 +162,7 @@ impl ForeignKeyDialog {
             shown_pairs: RefCell::default(),
             columns,
             existing,
+            scope,
             session,
             tasks,
             draft: RefCell::default(),
@@ -236,17 +241,14 @@ impl Inner {
 
     /// The catalog's tables, read once as the dialog opens.
     fn load_tables(self: &Rc<Self>) {
-        let session = self.session.clone();
+        let (session, scope) = (self.session.clone(), self.scope.clone());
         let weak = Rc::downgrade(self);
-        let _delivery = crate::runtime::spawn_and_deliver(
-            &self.tasks,
-            async move { session.objects(ObjectScope::AllSchemas).await },
-            move |read| {
+        let _delivery =
+            crate::runtime::spawn_and_deliver(&self.tasks, async move { session.objects(scope).await }, move |read| {
                 if let Some(inner) = weak.upgrade() {
                     inner.tables_read(read);
                 }
-            },
-        );
+            });
     }
 
     fn tables_read(
@@ -441,6 +443,16 @@ impl Inner {
     }
 }
 
+/// Where a key of a table in `schema` can find its referenced table: any
+/// schema, or the table's own where the engine looks there alone.
+pub(super) fn reference_scope(ddl: &dyn DdlDialect, schema: Option<&str>) -> ObjectScope {
+    match (ddl.references_other_schemas(), schema) {
+        (true, _) => ObjectScope::AllSchemas,
+        (false, Some(schema)) => ObjectScope::Schema(schema.to_owned()),
+        (false, None) => ObjectScope::DefaultSchema,
+    }
+}
+
 /// A read that never answered reads like the operation it ran.
 fn settled<T>(read: Result<Result<T, Arc<OperationError>>, TaskFailure>) -> Result<T, String> {
     match read {
@@ -483,6 +495,7 @@ mod tests {
                     columns: vec!["id".to_owned(), "account_id".to_owned(), "owner_id".to_owned()],
                     existing: vec!["fk_taken".to_owned()],
                     actions: &ReferentialAction::ALL,
+                    scope: ObjectScope::AllSchemas,
                     session: fake.session.clone(),
                     tasks: runtime.tasks(),
                 },
@@ -666,6 +679,24 @@ mod tests {
             inner.draft.borrow().pairs,
             [("account_id".to_owned(), Some("id".to_owned()))]
         );
+    }
+
+    #[test]
+    fn a_sqlite_key_picks_its_table_from_its_own_schema() {
+        use tablepro_core::dialect::SqlDialect;
+
+        let sqlite = drivers_sqlite::SqliteDialect::new(drivers_sqlite::SqliteVersion::new(3, 45, 0));
+        let postgres =
+            drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+        let sqlite = sqlite.ddl().expect("SQLite plans DDL");
+        let postgres = postgres.ddl().expect("PostgreSQL plans DDL");
+
+        assert_eq!(
+            reference_scope(sqlite, Some("aux")),
+            ObjectScope::Schema("aux".to_owned())
+        );
+        assert_eq!(reference_scope(sqlite, None), ObjectScope::DefaultSchema);
+        assert_eq!(reference_scope(postgres, Some("sales")), ObjectScope::AllSchemas);
     }
 
     #[gtk4::test]
