@@ -220,10 +220,10 @@ Main menu, then Catalog, on a PostgreSQL connection with a few objects of each k
 
 ## Grid previews for long values
 
-In browse and SQL result grids, text, JSON and binary cells over 8 KiB show a typed preview with the original byte count. Previewed cells are read-only; **View Value** and **Copy Value** expose the complete value. Full-value editing is future work under [#610](https://github.com/cozyGarage/BookiE/issues/610). Use text and JSON values just below and just above the 8 KiB threshold.
+In browse and SQL result grids, text, JSON and binary cells over 8 KiB show a typed preview with the original byte count. SQL result grids are read-only. In an editable browse table, confirm that a long text cell opens for inline editing with the full value, not the preview. **View Value** and **Copy Value** expose the complete value. A dedicated multiline editor for large text and JSON remains future work under [#610](https://github.com/cozyGarage/BookiE/issues/610). Use text and JSON values just below and just above the 8 KiB threshold.
 
 - [ ] A value below the threshold displays in full and remains editable where that type supports grid edits.
-- [ ] Values over the threshold show a prefix and `… (N bytes total)`, and the cell does not offer inline editing.
+- [ ] Values over the threshold show a prefix and `… (N bytes total)`; SQL result cells and binary/unsupported browse values do not offer inline editing. Editable browse text opens with the full value.
 - [ ] View Value shows the complete text or JSON, including the final characters or JSON structure.
 - [ ] A long unbroken value wraps without display-only hyphens; the GTK widget regression covers this rendering property ([#791](https://github.com/cozyGarage/BookiE/pull/791)); installed retest pending.
 - [ ] Copy Value copies the complete text or JSON rather than the displayed preview.
