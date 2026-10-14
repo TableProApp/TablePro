@@ -1,6 +1,18 @@
 # State management with Relm4
 
-The `app` crate uses [Relm4](https://relm4.org) on top of gtk4-rs. The choice is recorded in [decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md). This file describes the patterns we follow inside the codebase. Read the official Relm4 book first; this document only covers the conventions specific to TablePro Linux.
+The `app` crate's windows and workspace are gtk-rs subclasses ([decisions/0012-window-per-session.md](decisions/0012-window-per-session.md)); its other views are still [Relm4](https://relm4.org) components ([decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md)). This file describes the patterns we follow inside the codebase. For the Relm4 components, read the official Relm4 book first; this document only covers the conventions specific to TablePro Linux.
+
+## Windows and the workspace
+
+`SessionWindow` and `Workspace` are subclasses with a CompositeTemplate `.ui` file in the GResource, and each owns an input queue from `runtime::input_queue`:
+
+- Actions, signal handlers and background work send it a message, and `pump_inputs` hands the messages to the widget one at a time on the GTK thread, never inside the signal or action that sent one.
+- Background work runs on the app's `Tasks` and answers through the queue with `DeliverInput::deliver`, which drops the answer once the widget has shut down.
+- Shutdown aborts the pump, which closes the queue. A message still queued that owns something, such as a connection that finished connecting, goes to the pump's leftover handler (`pump_inputs_with_leftovers`) and is closed rather than dropped.
+- Window actions go on the window's own action map with `add_action_entries`; the workspace removes the ones it added when it shuts down.
+- Work the user expects to finish, such as a save, runs through `runtime::spawn_held`, which holds the process until it ends.
+
+The rest of this page applies to the Relm4 components.
 
 ## When to use which component flavour
 

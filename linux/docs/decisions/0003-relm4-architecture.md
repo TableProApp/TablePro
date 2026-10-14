@@ -1,6 +1,6 @@
 # 0003 — Relm4 for app architecture
 
-- **Status**: Accepted
+- **Status**: Accepted; superseded for windows and the workspace by [0012](0012-window-per-session.md)
 - **Date**: 2026-04-26
 
 ## Context

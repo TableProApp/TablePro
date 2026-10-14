@@ -91,7 +91,7 @@ Each window is a `SessionWindow` for one connection session. It opens on the pic
 
 ## UI architecture: Relm4
 
-The `app` crate uses [Relm4](https://relm4.org) for component-based UI structure.
+`SessionWindow` and `Workspace` are gtk-rs subclasses with CompositeTemplate `.ui` files ([ADR 0012](docs/decisions/0012-window-per-session.md)). The `app` crate's other views use [Relm4](https://relm4.org) for component-based UI structure.
 
 - **Component**: a unit of UI with explicit `Init`, `Input`, `Output`, `CmdOutput` types. State is private. All transitions go through `update`.
 - **AsyncComponent**: same shape, but `init` and `update` may be `async`. Used for components that load data on creation.
