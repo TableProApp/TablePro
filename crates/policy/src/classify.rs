@@ -451,7 +451,7 @@ fn from_table_names(from: &FromTable) -> Vec<String> {
     list.iter().flat_map(|t| table_factor_names(&t.relation)).collect()
 }
 
-fn classify_query(query: &Query) -> StatementDetails {
+pub(crate) fn classify_query(query: &Query) -> StatementDetails {
     let mut writes = false;
     let mut administrative = false;
     let mut contains_unscoped_dml = false;
@@ -474,7 +474,7 @@ fn classify_query(query: &Query) -> StatementDetails {
     administrative |= body_facts.class == StatementClass::Administrative;
     effects = effects.union(body_facts.effects);
     contains_unscoped_dml |= body_facts.contains_unscoped_dml;
-    writes |= administrative;
+    writes |= administrative || !query.locks.is_empty();
     tables.extend(body_facts.tables);
 
     StatementDetails {
