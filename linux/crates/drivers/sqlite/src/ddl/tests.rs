@@ -1,7 +1,8 @@
 use tablepro_core::column::{ColumnInfo, SqlExpression};
 use tablepro_core::ddl::{
     ColumnAttributes, ColumnDefinition, DdlOperation, DraftType, GeneratedColumn, IdentityStyle, InboundForeignKey,
-    Permission, PrimaryKeyConstraint, ReferentialAction, RefusalReason, SchemaObjectSource, TableSource, diff_table,
+    Permission, PrimaryKeyConstraint, RecreatedObject, ReferentialAction, RefusalReason, SchemaObjectSource,
+    TableRebuild, TableSource, diff_table,
 };
 use tablepro_core::meta::IndexKey;
 use tablepro_core::value::Value;
@@ -1199,4 +1200,43 @@ fn every_type_suggestion_parses() {
         assert!(dialect.parse_type(suggestion).is_ok(), "{suggestion}");
     }
     assert!(dialect.parse_type(dialect.default_column_type()).is_ok());
+}
+
+#[test]
+fn a_rebuild_names_what_it_drops_and_makes_again() {
+    let orders = orders();
+    let loose = table(
+        "kept",
+        vec![
+            not_null(column("id", "INTEGER", false)),
+            column("parent", "INTEGER", false),
+        ],
+        "CREATE TABLE kept (id INTEGER NOT NULL, parent INTEGER)",
+    );
+    let recreated = |kind, name: &str| RecreatedObject {
+        kind,
+        name: name.to_owned(),
+    };
+
+    let retyped = alter(&orders, |draft| {
+        retype(draft, "total", "NUMERIC");
+        draft.indexes.clear();
+    })
+    .expect("the rebuild plans");
+    let keyed = alter(&loose, |draft| draft.columns[0].primary_key = true).expect("the rebuild plans");
+    let native = alter(&orders, |draft| draft.columns[3].name = "memo".to_owned()).expect("the rename plans");
+
+    assert_eq!(
+        retyped.rebuild,
+        Some(TableRebuild {
+            recreated: vec![
+                recreated(SchemaObjectKind::Trigger, "orders_stamp"),
+                recreated(SchemaObjectKind::View, "big_orders"),
+                recreated(SchemaObjectKind::Trigger, "customers_cleanup"),
+            ],
+            renumbers_rowids: false,
+        })
+    );
+    assert!(keyed.rebuild.is_some_and(|rebuild| rebuild.renumbers_rowids));
+    assert_eq!(native.rebuild, None);
 }

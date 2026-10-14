@@ -40,11 +40,19 @@ mod context;
 mod draft_column_object;
 mod draft_column_object_imp;
 mod fks;
+mod foreign_key_dialog;
+mod foreign_key_draft;
 mod foreign_key_object;
+mod form_dialog;
 mod imp;
+mod index_dialog;
+mod index_draft;
 mod index_object;
 mod indexes;
+mod referential_action_label;
+pub(crate) mod review_dialog;
 mod structure_command;
+mod table_choice_object;
 #[cfg(test)]
 mod tests;
 
@@ -69,7 +77,9 @@ use self::columns::build_column_row;
 use self::context::StructureContext;
 use self::draft_column_object::{DraftColumnObject, UnparsedDefault};
 use self::fks::build_fk_row;
+use self::foreign_key_dialog::{ForeignKeyDialog, ForeignKeyDialogInit, reference_scope};
 use self::foreign_key_object::ForeignKeyObject;
+use self::index_dialog::IndexDialog;
 use self::index_object::IndexObject;
 use self::indexes::build_index_row;
 pub(crate) use self::structure_command::{LoadedStructure, StructureCommand, StructureRequestKind};
@@ -78,7 +88,6 @@ use crate::services::pending_structure::PendingStructure;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::ui::error_text::{build_error_text, save_blocker_text};
 use crate::ui::handler_guard::HandlerGuard;
-use crate::ui::structure_tab_dialogs::{present_fk_dialog, present_index_dialog};
 
 glib::wrapper! {
     pub struct StructureTab(ObjectSubclass<imp::StructureTab>)
@@ -116,12 +125,6 @@ impl StructureTabSender {
     pub(crate) fn input(&self, msg: StructureTabInput) {
         if let Some(tab) = self.tab.upgrade() {
             tab.send(msg);
-        }
-    }
-
-    pub(crate) fn output(&self, output: StructureTabOutput) {
-        if let Some(tab) = self.tab.upgrade() {
-            tab.emit_output(output);
         }
     }
 }
@@ -179,6 +182,13 @@ impl StructureTab {
         let indexes = gio::ListStore::new::<IndexObject>();
         let foreign_keys = gio::ListStore::new::<ForeignKeyObject>();
         tab.bind_lists(&context, &columns, &indexes, &foreign_keys);
+        tab.connect_add_dialogs(
+            &context,
+            (&columns, &indexes, &foreign_keys),
+            init.schema.clone(),
+            &init.session,
+            &init.tasks,
+        );
 
         let link_changes = init.session.link_changes();
         let model = StructureModel {
@@ -405,22 +415,71 @@ impl StructureTab {
         bind_list(&imp.fks_list, foreign_keys, move |key: &ForeignKeyObject| {
             let context = context_for_keys.borrow();
             let removable = context.table_permission(context.capabilities().drop_foreign_key);
-            build_fk_row(key, &removable, &sender)
+            let drafted = context
+                .original()
+                .is_none_or(|definition| !definition.foreign_keys.contains(key.info()));
+            build_fk_row(key, &removable, drafted, &sender)
         });
+    }
 
-        // The dialogs list the columns the draft has when they open.
-        let (columns_for_index, sender) = (columns.downgrade(), self.sender());
+    /// Each dialog takes the draft as it is when it opens: its columns,
+    /// and the names its indexes or foreign keys already take. `schema`
+    /// is the table's, which a foreign key may have to reference within.
+    fn connect_add_dialogs(
+        &self,
+        context: &Rc<RefCell<StructureContext>>,
+        (columns, indexes, foreign_keys): (&gio::ListStore, &gio::ListStore, &gio::ListStore),
+        schema: Option<String>,
+        session: &Arc<Session>,
+        tasks: &Tasks,
+    ) {
+        let imp = self.imp();
+        let (columns_for_index, indexes, sender) = (columns.downgrade(), indexes.downgrade(), self.sender());
         imp.add_index_row.connect_activated(move |row| {
-            if let Some(columns) = columns_for_index.upgrade() {
-                present_index_dialog(row.upcast_ref(), &draft_columns(&columns), sender.clone());
-            }
+            let (Some(columns), Some(indexes)) = (columns_for_index.upgrade(), indexes.upgrade()) else {
+                return;
+            };
+            let existing = items::<IndexObject>(&indexes)
+                .iter()
+                .map(|index| index.info().name.clone())
+                .collect();
+            let sender = sender.clone();
+            IndexDialog::new(column_names(&columns), existing, move |index| {
+                sender.input(StructureTabInput::AddIndex(index));
+            })
+            .present(row.upcast_ref());
         });
-        let (columns_for_key, context_for_key, sender) = (columns.downgrade(), context.clone(), self.sender());
+        let (columns_for_key, keys, context, sender) = (
+            columns.downgrade(),
+            foreign_keys.downgrade(),
+            context.clone(),
+            self.sender(),
+        );
+        let (session, tasks) = (session.clone(), tasks.clone());
         imp.add_fk_row.connect_activated(move |row| {
-            let actions = context_for_key.borrow().ddl().map(|ddl| ddl.referential_actions());
-            if let (Some(columns), Some(actions)) = (columns_for_key.upgrade(), actions) {
-                present_fk_dialog(row.upcast_ref(), &draft_columns(&columns), actions, sender.clone());
-            }
+            let engine = context
+                .borrow()
+                .ddl()
+                .map(|ddl| (ddl.referential_actions(), reference_scope(ddl, schema.as_deref())));
+            let (Some(columns), Some(keys), Some((actions, scope))) =
+                (columns_for_key.upgrade(), keys.upgrade(), engine)
+            else {
+                return;
+            };
+            let init = ForeignKeyDialogInit {
+                columns: column_names(&columns),
+                existing: items::<ForeignKeyObject>(&keys)
+                    .iter()
+                    .map(|key| key.info().name.clone())
+                    .collect(),
+                actions,
+                scope,
+                session: session.clone(),
+                tasks: tasks.clone(),
+            };
+            let sender = sender.clone();
+            ForeignKeyDialog::new(init, move |key| sender.input(StructureTabInput::AddForeignKey(key)))
+                .present(row.upcast_ref());
         });
     }
 }
@@ -1186,6 +1245,13 @@ where
 fn items<T: IsA<glib::Object>>(store: &gio::ListStore) -> Vec<T> {
     (0..store.n_items())
         .filter_map(|position| store.item(position).and_downcast::<T>())
+        .collect()
+}
+
+fn column_names(store: &gio::ListStore) -> Vec<String> {
+    items::<DraftColumnObject>(store)
+        .iter()
+        .map(DraftColumnObject::name)
         .collect()
 }
 

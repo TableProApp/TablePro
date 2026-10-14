@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Read-only or read-write choice before opening a SQLite file on a network share or FUSE filesystem.
 - Locate… for a saved SQLite connection whose file was moved or renamed.
 - Open SQLite files from the file manager's Open With, or with `tablepro file.sqlite3`.
+- Review before a structure save that drops data, rebuilds the table or can stop halfway, with the SQL it runs.
 
 ### Changed
 
@@ -46,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
 - Deleting a connection asks once, offers its window when it is open, and can delete its query history too.
 - SQLite files shared through the document portal show their own path instead of the portal's.
+- Add Index and Add Foreign Key check the form as you type, and pick the referenced table and columns from the database.
 
 ### Removed
 

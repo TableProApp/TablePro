@@ -15,6 +15,10 @@ impl StructureTrackerHandle {
         self.0.borrow_mut().set_pending(pending);
     }
 
+    pub fn pending_save(&self) -> Result<Option<PendingStructure>, SaveRejection> {
+        self.0.borrow().pending_save()
+    }
+
     pub fn begin_save(&self) -> Result<Option<PendingStructure>, SaveRejection> {
         self.0.borrow_mut().begin_save()
     }

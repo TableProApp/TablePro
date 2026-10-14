@@ -46,6 +46,12 @@ pub trait DdlDialect: Send + Sync + std::fmt::Debug {
         &ReferentialAction::ALL
     }
 
+    /// Whether a foreign key can reference a table in another schema.
+    /// Where it cannot, a key is offered only the tables of its own.
+    fn references_other_schemas(&self) -> bool {
+        true
+    }
+
     fn plan_create_table(&self, draft: &TableDraft) -> Result<DdlPlan, BuildDdlError>;
 
     fn plan_alter_table(&self, original: &TableDefinition, changes: &TableChanges) -> Result<DdlPlan, BuildDdlError>;

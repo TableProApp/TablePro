@@ -115,5 +115,8 @@ pub fn build_error_text(error: &BuildDdlError) -> String {
             "The table can't be rebuilt: the stored statement of {name}, which uses it, can't be run again.",
             &[("name", name)],
         ),
+        BuildDdlError::NotAsReviewed => crate::i18n::gettext(
+            "The changes were edited or the connection changed during the review, so nothing was saved. Save again to review them.",
+        ),
     }
 }
