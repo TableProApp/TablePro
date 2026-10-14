@@ -1140,8 +1140,12 @@ impl BrowseModel {
                 None,
             );
         }
-        let generation = self.tracker.flash_error_row(key.clone());
+        let flash = self.tracker.flash_error_row(key.clone());
         row.bump_revision();
+        if let Some(replaced) = flash.replaced.and_then(|replaced| self.row_index.get(&replaced)) {
+            replaced.bump_revision();
+        }
+        let generation = flash.generation;
         let tracker = self.tracker.clone();
         let tab = self.this.clone();
         // Matches the length of the flash animation in the stylesheet. The

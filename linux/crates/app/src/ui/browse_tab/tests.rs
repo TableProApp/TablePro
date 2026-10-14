@@ -1410,6 +1410,46 @@ fn error_flash_sets_and_clears_on_the_failed_row() {
     wait_until(WAIT, || !has_class(&cell, "tp-row-leftmost-error-flash")).expect("the flash never ended");
 }
 
+/// The first flash's timer cannot clear a flash that is no longer its
+/// own, so the second one has to.
+#[gtk4::test]
+fn a_second_failed_row_takes_the_mark_off_the_first() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let first = grid_cell_of(harness.tab(), 1, 0);
+    let row = first.parent().and_then(|cell| cell.parent()).expect("the row widget");
+    let icon = crate::test_support::first_descendant_of_type::<gtk4::Image>(&row).expect("the row's state icon");
+    let fail = |id| {
+        harness
+            .tab()
+            .send(BrowseTabInput::FlashErrorRow(StatementSource::Update {
+                row_key: key(id),
+            }));
+    };
+
+    fail(1);
+    assert_eq!(icon.icon_name().as_deref(), Some("dialog-error-symbolic"));
+    fail(0);
+
+    assert!(
+        first.row().is_some_and(|row| row.key() == Some(&key(1))),
+        "the cell moved to another row"
+    );
+    assert!(has_class(
+        &grid_cell_of(harness.tab(), 0, 0),
+        "tp-row-leftmost-error-flash"
+    ));
+    assert!(!has_class(&first, "tp-row-leftmost-error-flash"));
+    assert_eq!(icon.icon_name(), None, "the first row still reads as not saved");
+    assert!(!gtk4::test_accessible_has_property(
+        &row,
+        gtk4::AccessibleProperty::Description
+    ));
+}
+
 #[gtk4::test]
 fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
     let mut id = col("integer", false);

@@ -149,7 +149,7 @@ mod tests {
         }));
         assert_eq!(shown(&first), state("document-edit-symbolic", "Modified"));
 
-        let generation = grid.tracker.flash_error_row(key(1));
+        let generation = grid.tracker.flash_error_row(key(1)).generation;
         first_row.bump_revision();
         assert_eq!(shown(&first), state("dialog-error-symbolic", "Not saved"));
         assert!(grid.tracker.clear_error_row_if(generation));

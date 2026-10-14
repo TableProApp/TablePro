@@ -6,7 +6,7 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
-use super::change_tracker::{DraftRow, RowKey, RowState, TabChangeTracker, TrackedChanges};
+use super::change_tracker::{DraftRow, ErrorFlash, RowKey, RowState, TabChangeTracker, TrackedChanges};
 use super::save_batch::{SaveBatch, SaveTarget};
 use super::tracker_delta::TrackerDelta;
 use super::tracker_edit::TrackerEdit;
@@ -92,7 +92,7 @@ impl TabTrackerHandle {
         self.0.borrow_mut().discard()
     }
 
-    pub fn flash_error_row(&self, row_key: RowKey) -> u64 {
+    pub fn flash_error_row(&self, row_key: RowKey) -> ErrorFlash {
         self.0.borrow_mut().flash_error_row(row_key)
     }
 
