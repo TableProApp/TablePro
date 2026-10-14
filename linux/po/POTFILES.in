@@ -99,6 +99,7 @@ crates/app/src/test_support/alert_response.rs
 crates/app/src/test_support/fake_clocks.rs
 crates/app/src/test_support/fake_reachability.rs
 crates/app/src/test_support/fake_session.rs
+crates/app/src/test_support/focus_thief.rs
 crates/app/src/test_support/icon_buttons.rs
 crates/app/src/test_support/key_injection_error.rs
 crates/app/src/test_support/key_injector.rs
@@ -217,8 +218,6 @@ crates/app/src/ui/export/export_ledger/tests.rs
 crates/app/src/ui/export/export_message.rs
 crates/app/src/ui/export/export_operations_button.rs
 crates/app/src/ui/export/export_outcome.rs
-crates/app/src/ui/export/export_outcome.rs
-crates/app/src/ui/export/export_outcome.rs
 crates/app/src/ui/export/export_producer.rs
 crates/app/src/ui/export/export_query.rs
 crates/app/src/ui/export/export_scope.rs
@@ -323,16 +322,12 @@ crates/app/src/ui/preferences_dialog/general_page.rs
 crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mod.rs
-crates/app/src/ui/preferences_dialog/mod.rs
-crates/app/src/ui/preferences_dialog/mod.rs
 crates/app/src/ui/result_pane/mod.rs
 crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/saved_queries_dialog.rs
 crates/app/src/ui/session_window/application_notification_sink.rs
-crates/app/src/ui/session_window/connect_failed_page.rs
-crates/app/src/ui/session_window/connect_failed_page.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
 crates/app/src/ui/session_window/connect_failure_view.rs
 crates/app/src/ui/session_window/connect_flow.rs

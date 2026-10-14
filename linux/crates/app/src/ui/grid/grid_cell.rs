@@ -333,7 +333,7 @@ impl GridCell {
         let held = window
             .as_ref()
             .and_then(gtk::prelude::GtkWindowExt::focus)
-            .is_some_and(|focus| focus.is_ancestor(self) || focus == *self.upcast_ref::<gtk::Widget>());
+            .is_some_and(|focus| self.row_holds(&focus));
         if let Some(window) = window.as_ref().filter(|_| held) {
             gtk::prelude::GtkWindowExt::set_focus(window, None::<&gtk::Widget>);
         }
@@ -358,6 +358,17 @@ impl GridCell {
             }
         });
         handler.replace(Some(id));
+    }
+
+    /// Whether `focus` is in this cell's row: in the cell or its editor,
+    /// or on the list's own cell or row widget above it, where the
+    /// keyboard sits while nothing is being edited.
+    fn row_holds(&self, focus: &gtk::Widget) -> bool {
+        if focus == self.upcast_ref::<gtk::Widget>() || focus.is_ancestor(self) {
+            return true;
+        }
+        self.ancestor(gtk::ListView::static_type())
+            .is_some_and(|list| self.is_ancestor(focus) && focus.is_ancestor(&list))
     }
 
     fn is_bound(&self) -> bool {
@@ -404,8 +415,10 @@ mod tests {
 
     use super::GridCell;
     use crate::services::tracker_edit::TrackerEdit;
-    use crate::test_support::{descendants, wait_until};
-    use crate::ui::grid::test_grid::{Grid, WAIT, flag_rows, key, named, recorder, two_text_rows};
+    use crate::test_support::{FocusThief, descendants, drain_main_context, wait_until};
+    use crate::ui::grid::test_grid::{
+        Grid, WAIT, after_next_frame, flag_rows, focus_in_grid, key, named, page, recorder, two_text_rows,
+    };
     use crate::ui::grid::{RowObject, build_result_grid};
 
     fn described(widget: &impl IsA<gtk::Accessible>) -> bool {
@@ -531,6 +544,23 @@ mod tests {
         assert_eq!(above.as_ref(), Some(&cell));
         assert!(GridCell::from_focus(gtk::Label::new(None).upcast_ref()).is_none());
         editor.unparent();
+    }
+
+    /// The keyboard sits on the list's own cell widget, above the cell.
+    /// GTK moves a focus left in a removed row only after the next frame,
+    /// and a window focus-in before then crashed GTK 4.22 on the row.
+    #[gtk4::test]
+    fn a_focus_in_after_a_page_took_the_focused_row_keeps_the_focus_in_the_grid() {
+        let grid = two_text_rows();
+        grid.focus(0, 1);
+        let thief = FocusThief::take_from(&grid.window).expect("another window takes the focus");
+
+        grid.store.splice(0, grid.store.n_items(), &page(3..5));
+        thief.give_back(&grid.window);
+        drain_main_context();
+        after_next_frame(&grid);
+
+        assert!(focus_in_grid(&grid), "the focus left the grid");
     }
 
     #[gtk4::test]

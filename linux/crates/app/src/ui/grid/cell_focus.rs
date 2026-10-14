@@ -122,8 +122,6 @@ pub(crate) fn edit_row(view: &gtk::ColumnView, position: u32) {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
-    use std::rc::Rc;
     use std::time::Duration;
 
     use gtk4::prelude::*;
@@ -134,7 +132,7 @@ mod tests {
 
     use super::edit_row;
     use crate::test_support::{drain_main_context, first_descendant_of_type, wait_until};
-    use crate::ui::grid::test_grid::{Grid, WAIT, edited_rows, key, named, text};
+    use crate::ui::grid::test_grid::{Grid, WAIT, after_next_frame, edited_rows, key, named, text};
     use crate::ui::grid::{GridCell, begin_edit};
 
     /// Press `key` in the cell's open one-line editor, through the
@@ -300,18 +298,6 @@ mod tests {
             drain_main_context();
         }
         panic!("the editor popover never showed");
-    }
-
-    /// GTK moves a focus it finds in a hidden popover once the frame is
-    /// painted, so the focus is checked after that.
-    fn after_next_frame(grid: &Grid) {
-        let clock = grid.window.frame_clock().expect("the window's frame clock");
-        let painted = Rc::new(Cell::new(false));
-        let flag = painted.clone();
-        let handler = clock.connect_after_paint(move |_| flag.set(true));
-        clock.request_phase(gdk::FrameClockPhase::AFTER_PAINT);
-        wait_until(WAIT, || painted.get()).expect("the window paints a frame");
-        clock.disconnect(handler);
     }
 
     fn button(popover: &gtk::Popover, label: &str) -> gtk::Button {

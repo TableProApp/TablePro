@@ -110,11 +110,10 @@ pub(super) fn attach_cell_gesture(cell: &GridCell, column_view: &glib::WeakRef<g
 mod tests {
     use gtk4 as gtk;
     use gtk4::prelude::*;
-    use tablepro_core::Value;
 
     use crate::services::change_tracker::RowKey;
-    use crate::test_support::{drain_main_context, wait_until};
-    use crate::ui::grid::test_grid::{Grid, WAIT, key, persisted, two_text_rows};
+    use crate::test_support::{FocusThief, descendants, drain_main_context, wait_until};
+    use crate::ui::grid::test_grid::{Grid, WAIT, after_next_frame, focus_in_grid, key, page, two_text_rows};
     use crate::ui::grid::{GridCell, GridMsg, RowObject};
 
     fn open_menu(cell: &GridCell) {
@@ -149,13 +148,6 @@ mod tests {
             .collect()
     }
 
-    fn page(ids: std::ops::Range<i64>) -> Vec<RowObject> {
-        let rows: Vec<Vec<Value>> = ids
-            .map(|id| vec![Value::Int(id), Value::Text(format!("row {id}"))])
-            .collect();
-        persisted(&rows)
-    }
-
     #[gtk4::test]
     fn a_page_that_lands_under_an_open_menu_leaves_its_items_acting_on_nothing() {
         let grid = two_text_rows();
@@ -175,6 +167,39 @@ mod tests {
         );
 
         assert_eq!(acted_on(&grid), Vec::new(), "the menu acted on a row of the new page");
+    }
+
+    fn shown_menu(grid: &Grid) -> Option<gtk::PopoverMenu> {
+        descendants(&grid.view)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::PopoverMenu>().ok())
+            .find(|menu| menu.is_visible())
+    }
+
+    /// A menu closed, or kept from opening by another client holding the
+    /// pointer, leaves the focus on a cell. A page that then takes that
+    /// cell's row out, and the window taking the focus back before the
+    /// next frame, crashed GTK 4.22 on the detached row.
+    #[gtk4::test]
+    fn a_page_under_a_closed_menu_then_a_focus_in_keeps_the_focus_in_the_grid() {
+        let grid = two_text_rows();
+        grid.focus(0, 1);
+        open_menu(&grid.cell_of(2, 1));
+        if let Some(menu) = shown_menu(&grid) {
+            menu.popdown();
+        }
+        assert!(
+            grid.focused_cell().is_some(),
+            "the closed menu left the focus off the grid"
+        );
+        let thief = FocusThief::take_from(&grid.window).expect("another window takes the focus");
+
+        grid.store.splice(0, grid.store.n_items(), &page(3..5));
+        thief.give_back(&grid.window);
+        drain_main_context();
+        after_next_frame(&grid);
+
+        assert!(focus_in_grid(&grid), "the focus left the grid");
     }
 
     /// The list keeps the widgets of the first row for its focus, so the
