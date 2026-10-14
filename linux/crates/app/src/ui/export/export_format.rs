@@ -3,16 +3,18 @@ use std::sync::Arc;
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::export::{self, CsvEncoder, CsvOptions, JsonArrayEncoder, MarkdownEncoder, RenderError, RowEncoder};
+use tablepro_core::export::{
+    self, CsvEncoder, CsvOptions, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RenderError, RowEncoder,
+    SqlInsertEncoder, XmlEncoder,
+};
 
 /// What an export writes.
 #[derive(Debug, Clone)]
 pub(crate) enum ExportFormat {
     /// Encoded a row at a time, as the rows arrive.
     Rows(RowFormat),
-    /// Rendered whole on the blocking pool: a workbook is a zip archive
-    /// written once the last row is in, and the HTML, XML and SQL
-    /// writers build their text in one piece.
+    /// Rendered whole on the blocking pool once the last row is in: a
+    /// workbook is a zip archive.
     Document(DocumentFormat),
 }
 
@@ -21,6 +23,9 @@ pub(crate) enum RowFormat {
     Csv(CsvOptions),
     Json,
     Markdown,
+    Html { title: String },
+    Xml,
+    Sql(InsertTarget),
 }
 
 impl RowFormat {
@@ -31,6 +36,9 @@ impl RowFormat {
             Self::Csv(options) => Box::new(CsvEncoder::new(columns, options.clone())),
             Self::Json => Box::new(JsonArrayEncoder::new(columns)),
             Self::Markdown => Box::new(MarkdownEncoder::new(columns)),
+            Self::Html { title } => Box::new(HtmlEncoder::new(columns, title.clone())),
+            Self::Xml => Box::new(XmlEncoder::new(columns)),
+            Self::Sql(target) => Box::new(SqlInsertEncoder::new(target.dialect.clone(), &target.table, columns)),
         }
     }
 }
@@ -38,20 +46,19 @@ impl RowFormat {
 #[derive(Debug, Clone)]
 pub(crate) enum DocumentFormat {
     Xlsx { sheet: String },
-    Html { title: String },
-    Xml,
-    Sql(InsertTarget),
 }
 
 impl DocumentFormat {
+    /// The most rows the document can hold.
+    pub(crate) fn row_limit(&self) -> usize {
+        match self {
+            Self::Xlsx { .. } => export::XLSX_MAX_DATA_ROWS,
+        }
+    }
+
     pub(crate) fn render(&self, columns: &[ResultColumn], rows: &[Vec<Value>]) -> Result<Vec<u8>, RenderError> {
         match self {
             Self::Xlsx { sheet } => export::render_xlsx(columns, rows, sheet),
-            Self::Html { title } => Ok(export::render_html(columns, rows, title).into_bytes()),
-            Self::Xml => Ok(export::render_xml(columns, rows).into_bytes()),
-            Self::Sql(target) => {
-                Ok(export::render_sql_insert(&*target.dialect, &target.table, columns, rows).into_bytes())
-            }
         }
     }
 }

@@ -160,7 +160,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     menu.append_section(None, &json_section);
 
     let action_section = gio::Menu::new();
-    action_section.append(Some(&crate::i18n::gettext("Export Results…")), Some("cell.export"));
+    action_section.append(Some(&crate::i18n::gettext("Export…")), Some("cell.export"));
     if shape.row_ops {
         action_section.append(Some(&crate::i18n::gettext("Insert row")), Some("cell.insert-row"));
         action_section.append(Some(&crate::i18n::gettext("Duplicate")), Some("cell.duplicate-row"));

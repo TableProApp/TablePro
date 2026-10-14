@@ -13,6 +13,7 @@ use super::{
     BrowseCommand, BrowseModel, BrowseRequestKind, BrowseTabInput, BrowseTabOutput, ColumnsReply, Effects, PageReply,
 };
 use crate::runtime::{RequestTicket, Stamped};
+use crate::ui::export::TableExport;
 use crate::ui::tab_load::LoadFailure;
 
 /// What a page or a count reads, copied off the tab so the work owns
@@ -185,6 +186,19 @@ impl BrowseModel {
                 .into_iter()
                 .collect(),
             limit: self.pager.page_size(),
+        })
+    }
+
+    /// Every row the tab's filter and sort select, for an export. `None`
+    /// until the columns and the row identity are in.
+    pub(super) fn table_export(&self) -> Option<TableExport> {
+        let plan = self.read_plan()?;
+        Some(TableExport {
+            table: plan.table,
+            columns: plan.columns.into(),
+            filter: plan.filter,
+            sort: plan.sort,
+            identity: plan.identity,
         })
     }
 

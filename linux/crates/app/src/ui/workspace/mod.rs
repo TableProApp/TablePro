@@ -39,7 +39,7 @@ use uuid::Uuid;
 
 use super::browse_tab::BrowseTab;
 use super::editor::SqlEditor;
-use super::export::{ExportLedger, ExportLedgerInit, ExportReporter, ExportSource};
+use super::export::{ExportLedger, ExportLedgerInit, ExportOffer, ExportReporter};
 use super::history_dialog::HistoryDialog;
 use super::host_key_failure::HostKeyFailure;
 use super::host_key_review::HostKeyReviewOutcome;
@@ -340,11 +340,7 @@ pub(crate) enum WorkspaceInput {
         approved: bool,
     },
     RefreshPage,
-    ExportResults {
-        source: ExportSource,
-        name: String,
-        target: Option<super::export_dialog::SqlTarget>,
-    },
+    ExportResults(Box<ExportOffer>),
     /// Text to copy as it is, such as a saved query.
     CopyText(String),
     WorkspaceTabClosed(Uuid),
@@ -800,15 +796,13 @@ impl WorkspaceModel {
             WorkspaceInput::OpenHistoryQuery(text) => self.append_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),
-            WorkspaceInput::ExportResults { source, name, target } => {
+            WorkspaceInput::ExportResults(offer) => {
                 if let Some(window) = self.window() {
                     let dialect = self.context.active.get().and_then(|session| session.current_dialect());
                     super::export_dialog::present(super::export_dialog::ExportDialogInit {
                         parent: &window,
                         exports: &self.exports,
-                        source,
-                        name,
-                        target,
+                        offer: *offer,
                         dialect,
                         settings: &self.settings,
                     });

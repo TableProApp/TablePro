@@ -5,9 +5,12 @@ use super::super::csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptio
 use super::super::test_columns::{cols, typed};
 use super::super::tsv::tsv_writer_builder;
 use super::super::value_text::value_text;
-use super::super::{column_type, render_csv, render_json, render_tsv, row_to_json};
+use super::super::{
+    column_type, render_csv, render_html, render_json, render_sql_insert, render_tsv, render_xml, row_to_json,
+};
 use super::*;
 use crate::column::{ColumnKind, IntegerKind, IntegerWidth};
+use crate::dialect::{SqlDialect, TestDialect};
 use crate::value::{JsonText, UndecodableReason, UndecodedValue};
 
 /// Every call's output taken away as soon as it is written, the way a
@@ -263,6 +266,53 @@ fn empty_json_export_is_empty_array() {
 }
 
 #[test]
+fn document_encoders_match_their_renderers() {
+    let (columns, mut rows) = fixture();
+    rows.push(vec![Value::Int(1)]);
+    rows.push(vec![
+        Value::Int(2),
+        Value::Null,
+        Value::Text("<b>&'".into()),
+        Value::Int(3),
+    ]);
+    let dialect: Arc<dyn SqlDialect> = Arc::new(TestDialect::default());
+
+    assert_eq!(
+        streamed(HtmlEncoder::new(columns.clone(), "rows & <more>"), &rows),
+        render_html(&columns, &rows, "rows & <more>")
+    );
+    assert_eq!(
+        streamed(XmlEncoder::new(columns.clone()), &rows),
+        render_xml(&columns, &rows)
+    );
+    assert_eq!(
+        streamed(SqlInsertEncoder::new(dialect.clone(), "t", columns.clone()), &rows),
+        render_sql_insert(&*dialect, "t", &columns, &rows)
+    );
+}
+
+#[test]
+fn document_encoders_write_whole_documents_for_no_rows() {
+    let columns: Arc<[ResultColumn]> = cols(&["a"]).into();
+    let dialect: Arc<dyn SqlDialect> = Arc::new(TestDialect::default());
+
+    assert_eq!(
+        streamed(HtmlEncoder::new(columns.clone(), "t"), &[]),
+        render_html(&columns, &[], "t")
+    );
+    assert_eq!(
+        streamed(XmlEncoder::new(columns.clone()), &[]),
+        render_xml(&columns, &[])
+    );
+    assert_eq!(streamed(SqlInsertEncoder::new(dialect.clone(), "t", columns), &[]), "");
+    assert_eq!(
+        streamed(SqlInsertEncoder::new(dialect, "t", Vec::new().into()), &[Vec::new()]),
+        "",
+        "a result with no columns has no statement"
+    );
+}
+
+#[test]
 fn encoder_reports_undecodable_cell() {
     let columns: Arc<[ResultColumn]> = cols(&["id", "shape"]).into();
     let undecodable = Value::Undecodable(Box::new(UndecodedValue {
@@ -274,6 +324,13 @@ fn encoder_reports_undecodable_cell() {
         Box::new(TsvEncoder::new(columns.clone(), true)),
         Box::new(JsonArrayEncoder::new(columns.clone())),
         Box::new(MarkdownEncoder::new(columns.clone())),
+        Box::new(HtmlEncoder::new(columns.clone(), "t")),
+        Box::new(XmlEncoder::new(columns.clone())),
+        Box::new(SqlInsertEncoder::new(
+            Arc::new(TestDialect::default()),
+            "t",
+            columns.clone(),
+        )),
     ];
     for mut encoder in encoders {
         let mut out = Vec::new();

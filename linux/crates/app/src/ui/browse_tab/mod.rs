@@ -59,13 +59,13 @@ use self::confirming_delete::ConfirmingDelete;
 pub(crate) use self::page_reply::PageReply;
 use self::page_state::PageState;
 use self::row_deletion::{RowDeletion, plan_row_deletion};
-use self::row_total::RowTotal;
+pub(crate) use self::row_total::RowTotal;
 use self::selection_snapshot::SelectionSnapshot;
 use super::format::format_thousands;
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
-    RowJsonRequest, RowKeyBuilder, RowObject, RowSnapshot, TabGridContext, build_column_view, cell_editability,
-    cell_presets, delete_availability, edit_context, edit_row, export_snapshot, present_row_json,
+    GridSorting, RowJsonRequest, RowKeyBuilder, RowObject, RowSnapshot, TabGridContext, build_column_view,
+    cell_editability, cell_presets, delete_availability, edit_context, edit_row, export_snapshot, present_row_json,
 };
 use super::tab_load::{ContentLoad, ContentPage, LoadFailure, LoadPresentation, StaleBanner};
 use crate::runtime::{FailedRequests, RequestSequencer};
@@ -77,7 +77,7 @@ use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
 use crate::ui::clipboard::{CopyKind, CopyRequest, InsertCopy, InsertRow};
-use crate::ui::export::ExportSource;
+use crate::ui::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
@@ -112,14 +112,6 @@ pub struct BrowseTabInit {
     pub tasks: Tasks,
     /// The session's deadlines, which a count that ran out names.
     pub deadlines: Arc<dyn DeadlinePolicy>,
-}
-
-/// Rows the user asked to write to a file, and what to call it.
-#[derive(Debug, Clone)]
-pub struct ExportRequest {
-    pub source: ExportSource,
-    pub name: String,
-    pub target: Option<crate::ui::export_dialog::SqlTarget>,
 }
 
 impl BrowseTab {
@@ -369,12 +361,12 @@ impl BrowseTab {
         self.connect_closure("state-changed", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
 
-    pub fn connect_export_results<F: Fn(&Self, ExportRequest) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+    pub(crate) fn connect_export_results<F: Fn(&Self, ExportOffer) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "export-results",
             false,
             glib::closure_local!(move |tab: &Self, payload: glib::BoxedAnyObject| {
-                f(tab, payload.borrow::<ExportRequest>().clone());
+                f(tab, payload.borrow::<ExportOffer>().clone());
             }),
         )
     }
@@ -448,8 +440,8 @@ impl BrowseTab {
                     });
                 }
             }
-            BrowseTabOutput::ExportResults(request) => {
-                self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(request)]);
+            BrowseTabOutput::Export(offer) => {
+                self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(*offer)]);
             }
             BrowseTabOutput::ShowSelectionAlert { title, body } => {
                 self.emit_by_name::<()>("alert", &[&title, &body]);
@@ -523,7 +515,7 @@ impl BrowseTab {
         on_click(&imp.prev_button, || BrowseTabInput::PrevPage);
         on_click(&imp.next_button, || BrowseTabInput::NextPage);
         on_click(&imp.last_button, || BrowseTabInput::LastPage);
-        on_click(&imp.export_button, || BrowseTabInput::ExportCurrentPage);
+        on_click(&imp.export_button, || BrowseTabInput::Export(None));
         on_click(&imp.discard_button, || BrowseTabInput::DiscardAll);
         on_click(&imp.save_button, || BrowseTabInput::CommitSave);
         on_click(&imp.stop_button, || BrowseTabInput::StopSaving);
@@ -549,7 +541,7 @@ impl From<GridMsg> for BrowseTabInput {
             GridMsg::ShowToast(text) => Self::GridShowToast(text),
             GridMsg::CopyRowsAsInsert { rows } => Self::GridCopyRowsAsInsert(rows),
             GridMsg::SetCellValue { row, column, preset } => Self::GridSetCellValue { row, column, preset },
-            GridMsg::ExportResults(result) => Self::GridExportResults(result),
+            GridMsg::ExportResults(page) => Self::Export(Some(page)),
             GridMsg::DeleteRows { rows } => Self::DeleteRows(rows),
             GridMsg::InsertRow => Self::InsertRow,
             GridMsg::DuplicateRows { rows } => Self::DuplicateRows(rows),
@@ -743,8 +735,9 @@ pub(crate) enum BrowseTabInput {
         preset: CellPreset,
     },
     GridShowToast(String),
-    GridExportResults(ExportSource),
-    ExportCurrentPage,
+    /// The paginator's Export button, or the grid's Export with the page
+    /// as the grid holds it.
+    Export(Option<ExportSource>),
     GridCopyRowsAsInsert(Vec<RowObject>),
     DuplicateRows(Vec<RowObject>),
     GridCopy(CopyRequest),
@@ -790,7 +783,7 @@ pub(crate) enum BrowseTabOutput {
     StateChanged,
     Copy(CopyRequest),
     ShowRowJson(RowJsonRequest),
-    ExportResults(ExportRequest),
+    Export(Box<ExportOffer>),
     ShowSelectionAlert {
         title: String,
         body: String,
@@ -856,8 +849,8 @@ impl BrowseModel {
         false
     }
 
-    /// What the paginator's Export button writes: the grid's rows, so
-    /// it matches the context menu's Export Results row for row.
+    /// The page the paginator's Export button writes: the grid's rows,
+    /// so it matches the context menu's Export row for row.
     fn export_payload(&self) -> Option<ExportSource> {
         let page = self.shown_page()?;
         let rows = self
@@ -869,6 +862,32 @@ impl BrowseModel {
             columns: page.result_columns.clone(),
             rows,
         })
+    }
+
+    /// Ask the window to export the page, or every row the filter
+    /// selects. Rows behind an error page are not what the table holds
+    /// under the current filter, so they are never offered.
+    fn offer_export(&self, page: Option<ExportSource>, fx: &mut Effects) {
+        let page = match (self.shown_page(), page) {
+            (Some(_), Some(page)) => Some(page),
+            (Some(_), None) => self.export_payload(),
+            (None, _) => None,
+        };
+        let (Some(page), Some(table)) = (page, self.table_export()) else {
+            fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext("Nothing to export")));
+            return;
+        };
+        fx.output(BrowseTabOutput::Export(Box::new(ExportOffer {
+            origin: ExportOrigin::Browse {
+                page,
+                query: ExportQuery::Table(table),
+                total: self.total.clone(),
+                has_unsaved_changes: self.tracker.pending_count() > 0,
+            },
+            session: Some(self.session.clone()),
+            name: self.export_name(),
+            target: Some(self.sql_target()),
+        })));
     }
 
     /// Resolve a preset against the column it lands in. The menu offers
@@ -1235,8 +1254,9 @@ impl BrowseModel {
             content,
             &self.current_columns,
             self.grid_sink.clone(),
-            self.current_sort,
-            true,
+            GridSorting::Server {
+                initial: self.current_sort,
+            },
             self.grid_context(),
         );
         self.current_selection = Some(selection);
@@ -1640,24 +1660,7 @@ impl BrowseModel {
             BrowseTabInput::GridShowToast(message) => {
                 fx.output(BrowseTabOutput::ShowToast(message));
             }
-            BrowseTabInput::GridExportResults(source) => {
-                fx.output(BrowseTabOutput::ExportResults(ExportRequest {
-                    source,
-                    name: self.export_name(),
-                    target: Some(self.sql_target()),
-                }));
-            }
-            BrowseTabInput::ExportCurrentPage => {
-                let Some(source) = self.export_payload() else {
-                    fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext("Nothing to export")));
-                    return;
-                };
-                fx.output(BrowseTabOutput::ExportResults(ExportRequest {
-                    source,
-                    name: self.export_name(),
-                    target: Some(self.sql_target()),
-                }));
-            }
+            BrowseTabInput::Export(page) => self.offer_export(page, fx),
             BrowseTabInput::GridCopyRowsAsInsert(rows) => {
                 if !self.grid_is_stale() {
                     self.copy_rows_as_insert(&rows, fx);

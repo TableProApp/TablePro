@@ -9,7 +9,9 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 use tablepro_core::{ColumnInfo, Value};
 
-use super::{GridCell, GridContent, GridMsg, GridSink, RowObject, TabGridContext, begin_edit, build_column_view};
+use super::{
+    GridCell, GridContent, GridMsg, GridSink, GridSorting, RowObject, TabGridContext, begin_edit, build_column_view,
+};
 use crate::services::change_tracker::RowKey;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -112,8 +114,7 @@ impl Grid {
             content(&columns, persisted(&rows)),
             &columns,
             sink,
-            None,
-            false,
+            GridSorting::Server { initial: None },
             tracked(&tracker),
         );
         let store = selection

@@ -122,7 +122,9 @@ mod tests {
     };
     use crate::test_support::{descendants, wait_until};
     use crate::ui::grid::test_grid::{Grid, WAIT, content, edited_rows, key, named, recorder, text, two_text_rows};
-    use crate::ui::grid::{CellPreset, GridCell, GridMsg, RowObject, TabGridContext, begin_edit, build_column_view};
+    use crate::ui::grid::{
+        CellPreset, GridCell, GridMsg, GridSorting, RowObject, TabGridContext, begin_edit, build_column_view,
+    };
 
     fn accels(shortcut: &gtk::Shortcut) -> Vec<Keystroke> {
         shortcut
@@ -452,8 +454,7 @@ mod tests {
             content(&columns, vec![RowObject::result(vec![Value::Int(7)].into())]),
             &[],
             sink,
-            None,
-            false,
+            GridSorting::Server { initial: None },
             TabGridContext::default(),
         );
         let window = gtk::Window::new();

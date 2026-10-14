@@ -13,7 +13,7 @@ use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
 use super::row_deletion::RowDeletion;
-use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes};
+use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, RowTotal, apply_draft_changes};
 use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -666,22 +666,69 @@ fn export_and_save_reach_the_window_as_signals() {
     let exported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let saved = std::rc::Rc::new(std::cell::Cell::new(0));
     let export_sink = exported.clone();
-    harness.tab().connect_export_results(move |_, request| {
+    harness.tab().connect_export_results(move |_, offer| {
         export_sink
             .borrow_mut()
-            .push((request.name, request.source.row_count()));
+            .push((offer.name, offer.origin.shown().row_count()));
     });
     let save_sink = saved.clone();
     harness
         .tab()
         .connect_save_requested(move |_| save_sink.set(save_sink.get() + 1));
 
-    harness.tab().send(BrowseTabInput::ExportCurrentPage);
+    harness.tab().send(BrowseTabInput::Export(None));
     harness.tab().send(BrowseTabInput::InsertRow);
     harness.tab().send(BrowseTabInput::CommitSave);
 
-    assert_eq!(*exported.borrow(), [("users".to_owned(), 2)]);
+    assert_eq!(*exported.borrow(), [("users".to_owned(), Some(2))]);
     assert_eq!(saved.get(), 1);
+}
+
+#[gtk4::test]
+fn current_page_export_includes_pending_edits() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    harness.apply_delta(&harness.tracker.apply(rename(0, "Ada", "Ada Lovelace")));
+    let offers = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = offers.clone();
+    harness
+        .tab()
+        .connect_export_results(move |_, offer| sink.borrow_mut().push(offer));
+
+    harness.tab().send(BrowseTabInput::Export(None));
+
+    let offers = offers.borrow();
+    let [offer] = offers.as_slice() else {
+        panic!("one export, not {}", offers.len());
+    };
+    let crate::ui::export::ExportOrigin::Browse {
+        page: crate::ui::export::ExportSource::Rows { rows, .. },
+        query: crate::ui::export::ExportQuery::Table(table),
+        total,
+        has_unsaved_changes,
+    } = &offer.origin
+    else {
+        panic!("not a browse page: {:?}", offer.origin);
+    };
+    let names: Vec<Value> = rows.iter().map(|row| row.to_values()[1].clone()).collect();
+    assert_eq!(
+        names,
+        [Value::Text("Ada Lovelace".to_owned()), Value::Text("Grace".to_owned())]
+    );
+    assert!(*has_unsaved_changes, "the pending rename went unmentioned");
+    assert_eq!(table.table.name, "users");
+    assert_eq!(
+        table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        ["id", "name"]
+    );
+    assert_ne!(*total, RowTotal::Unknown, "the table's total was not handed over");
+    assert!(offer.session.is_some(), "a read of every row has no session");
 }
 
 #[gtk4::test]
@@ -1005,9 +1052,9 @@ fn page_export_snapshot_contains_no_hidden_columns() {
     let sink = exported.clone();
     harness
         .tab()
-        .connect_export_results(move |_, request| sink.borrow_mut().push(request.source));
+        .connect_export_results(move |_, offer| sink.borrow_mut().push(offer.origin.shown().clone()));
 
-    harness.tab().send(BrowseTabInput::ExportCurrentPage);
+    harness.tab().send(BrowseTabInput::Export(None));
 
     let exported = exported.borrow();
     let [crate::ui::export::ExportSource::Rows { columns, rows }] = exported.as_slice() else {

@@ -9,6 +9,9 @@ use crate::value::{Temporal, Value};
 const MAX_ROWS: usize = 1_048_576;
 const MAX_COLUMNS: usize = 16_384;
 
+/// The rows a sheet holds under its header row.
+pub const XLSX_MAX_DATA_ROWS: usize = MAX_ROWS - 1;
+
 /// The whole point of XLSX over CSV is that a number arrives as a
 /// number, so each value is written in the type Excel has for it and
 /// dates carry a display format rather than a serial number.
@@ -20,7 +23,7 @@ pub fn render_xlsx(columns: &[ResultColumn], rows: &[Vec<Value>], sheet_name: &s
     if rows.len() + 1 > MAX_ROWS {
         return Err(RenderError::TooManyRows {
             got: rows.len(),
-            limit: MAX_ROWS - 1,
+            limit: XLSX_MAX_DATA_ROWS,
         });
     }
     if columns.len() > MAX_COLUMNS {

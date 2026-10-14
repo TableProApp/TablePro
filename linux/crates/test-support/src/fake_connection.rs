@@ -11,10 +11,11 @@ use tablepro_core::{
     EditorSessionOptions, ErrorCategory, ForeignKeyInfo, IndexInfo, LinkState, LinkWatch, QueryResult, ReadStatement,
     ResultSink, RowLimit, ServerInfo, SinkFlow, StreamSummary, TableRef, TimeoutPhase, WriteBatch, WriteReport,
 };
+use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::fake_reply::Stop;
-use crate::{CallCounters, CloseBehaviour, ConnectionScript, FakeReply, Replies, lock};
+use crate::{CallCounters, CloseBehaviour, ConnectionScript, FakeReply, Replies, StreamEnd, lock};
 
 /// A `Connection` that answers from a `ConnectionScript`.
 ///
@@ -33,8 +34,17 @@ pub struct FakeConnection {
     link: LinkWatch,
     closed: CancellationToken,
     counters: CallCounters,
-    /// The cancel token each call was handed, by method, in call order.
-    cancels: Mutex<Vec<(&'static str, CancellationToken)>>,
+    /// What each call was handed, in call order.
+    calls: Mutex<Vec<ObservedCall>>,
+}
+
+/// One call as the fake saw it.
+#[derive(Debug)]
+struct ObservedCall {
+    method: &'static str,
+    cancel: CancellationToken,
+    deadline: Option<Instant>,
+    sql: Option<String>,
 }
 
 impl FakeConnection {
@@ -50,7 +60,7 @@ impl FakeConnection {
             link: LinkWatch::new(),
             closed: CancellationToken::new(),
             counters: CallCounters::default(),
-            cancels: Mutex::new(Vec::new()),
+            calls: Mutex::new(Vec::new()),
         }
     }
 
@@ -77,10 +87,24 @@ impl FakeConnection {
     /// The cancel token every call to `method` was handed, oldest first,
     /// so a test can tell its own stop reached the call.
     pub fn observed_cancels(&self, method: &str) -> Vec<CancellationToken> {
-        lock(&self.cancels)
+        self.observed(method, |call| call.cancel.clone())
+    }
+
+    /// The deadline every call to `method` was handed, oldest first.
+    pub fn observed_deadlines(&self, method: &str) -> Vec<Option<Instant>> {
+        self.observed(method, |call| call.deadline)
+    }
+
+    /// The SQL every call to `method` was handed, oldest first.
+    pub fn observed_sql(&self, method: &str) -> Vec<Option<String>> {
+        self.observed(method, |call| call.sql.clone())
+    }
+
+    fn observed<T>(&self, method: &str, read: impl Fn(&ObservedCall) -> T) -> Vec<T> {
+        lock(&self.calls)
             .iter()
-            .filter(|(called, _)| *called == method)
-            .map(|(_, cancel)| cancel.clone())
+            .filter(|call| call.method == method)
+            .map(read)
             .collect()
     }
 
@@ -97,7 +121,12 @@ impl FakeConnection {
         T: Clone,
     {
         CallCounters::record(counter);
-        lock(&self.cancels).push((method, options.cancel().clone()));
+        lock(&self.calls).push(ObservedCall {
+            method,
+            cancel: options.cancel().clone(),
+            deadline: options.deadline(),
+            sql: sql.map(str::to_owned),
+        });
         if self.closed.is_cancelled() {
             CallCounters::record(&self.counters.stopped);
             return Err(DriverError::Cancelled);
@@ -331,16 +360,27 @@ impl Connection for FakeConnection {
                 TimeoutPhase::Statement,
             )
             .await?;
+        let end = lock(&self.script).stream_end.clone();
         let mut rows = 0_u64;
         for event in events {
             if let tablepro_core::ResultEvent::Rows(batch) = &event {
                 rows += batch.len() as u64;
             }
             if sink.accept(event).await == SinkFlow::ConsumerGone {
-                return Err(DriverError::Cancelled);
+                return match end {
+                    StreamEnd::SummaryWhenStopped => Ok(StreamSummary::new(rows)),
+                    StreamEnd::Summary | StreamEnd::Failed(_) => Err(DriverError::Cancelled),
+                };
             }
         }
-        Ok(StreamSummary::new(rows))
+        match end {
+            StreamEnd::Summary | StreamEnd::SummaryWhenStopped => Ok(StreamSummary::new(rows)),
+            StreamEnd::Failed(error) => {
+                let outcome: Result<StreamSummary, DriverError> = Err(error);
+                self.observe(&outcome);
+                outcome
+            }
+        }
     }
 
     async fn write_batch(&self, batch: &WriteBatch, options: CallOptions) -> Result<WriteReport, DriverError> {

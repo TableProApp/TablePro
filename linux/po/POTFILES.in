@@ -3,15 +3,11 @@ crates/app/src/application/accelerator.rs
 crates/app/src/application/accelerator_scope.rs
 crates/app/src/application/accelerators.rs
 crates/app/src/application/app_actions.rs
-crates/app/src/application/app_actions.rs
-crates/app/src/application/app_actions.rs
 crates/app/src/application/app_services.rs
 crates/app/src/application/app_window_host.rs
 crates/app/src/application/debug_info.rs
 crates/app/src/application/imp.rs
 crates/app/src/application/legal_section.rs
-crates/app/src/application/mod.rs
-crates/app/src/application/mod.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
 crates/app/src/application/quit_sequence.rs
@@ -173,7 +169,6 @@ crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
 crates/app/src/ui/editor/mod.rs
 crates/app/src/ui/editor/result_item.rs
-crates/app/src/ui/editor/result_rows.rs
 crates/app/src/ui/editor/result_widgets.rs
 crates/app/src/ui/editor/results_pane.rs
 crates/app/src/ui/editor/run_history.rs
@@ -198,6 +193,7 @@ crates/app/src/ui/error_text/ssh.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
+crates/app/src/ui/export/document_sink.rs
 crates/app/src/ui/export/encoding_sink.rs
 crates/app/src/ui/export/export_failure_text.rs
 crates/app/src/ui/export/export_format.rs
@@ -209,6 +205,8 @@ crates/app/src/ui/export/export_message.rs
 crates/app/src/ui/export/export_operations_button.rs
 crates/app/src/ui/export/export_outcome.rs
 crates/app/src/ui/export/export_producer.rs
+crates/app/src/ui/export/export_query.rs
+crates/app/src/ui/export/export_scope.rs
 crates/app/src/ui/export/export_sink_parts.rs
 crates/app/src/ui/export/export_source.rs
 crates/app/src/ui/export/mod.rs
@@ -252,6 +250,8 @@ crates/app/src/ui/grid/inline_editor.rs
 crates/app/src/ui/grid/menu_rows.rs
 crates/app/src/ui/grid/mod.rs
 crates/app/src/ui/grid/multiline_editor.rs
+crates/app/src/ui/grid/result_grid.rs
+crates/app/src/ui/grid/result_sorters.rs
 crates/app/src/ui/grid/row_factory.rs
 crates/app/src/ui/grid/row_json_dialog.rs
 crates/app/src/ui/grid/row_key_builder.rs
@@ -261,6 +261,7 @@ crates/app/src/ui/grid/selection.rs
 crates/app/src/ui/grid/tab_grid_context.rs
 crates/app/src/ui/grid/test_grid.rs
 crates/app/src/ui/grid/toggle_cell.rs
+crates/app/src/ui/grid/value_order.rs
 crates/app/src/ui/handler_guard.rs
 crates/app/src/ui/history_dialog.rs
 crates/app/src/ui/host_key_failure.rs
@@ -270,6 +271,10 @@ crates/app/src/ui/import_dialog.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mod.rs
+crates/app/src/ui/result_pane/mod.rs
+crates/app/src/ui/result_pane/result_limit_banner.rs
+crates/app/src/ui/result_pane/result_set_view.rs
+crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/saved_queries_dialog.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
 crates/app/src/ui/session_window/connect_flow.rs

@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use tablepro_core::column::ResultColumn;
+use tablepro_session::Session;
 
+use super::ExportQuery;
 use crate::ui::grid::RowSnapshot;
 
 /// Where an export reads its rows.
@@ -14,12 +16,18 @@ pub enum ExportSource {
         columns: Arc<[ResultColumn]>,
         rows: Vec<RowSnapshot>,
     },
+    /// A read streamed from the server through `session`, every row of
+    /// it.
+    Query { session: Arc<Session>, query: ExportQuery },
 }
 
 impl ExportSource {
-    pub fn row_count(&self) -> usize {
+    /// The rows it holds. `None` for a read, whose count only the
+    /// server knows.
+    pub fn row_count(&self) -> Option<usize> {
         match self {
-            Self::Rows { rows, .. } => rows.len(),
+            Self::Rows { rows, .. } => Some(rows.len()),
+            Self::Query { .. } => None,
         }
     }
 }

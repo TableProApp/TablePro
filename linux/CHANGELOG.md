@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Table and structure tabs show a spinner in the tab bar while they read.
 - Count Rows in a table tab's paginator, with the reason on Try Again when a count fails.
 - Exports write in the background, with progress and Stop in the header bar, and a close or quit asks to stop them first.
+- Export a table's current page or every row under its filter and sort, and an editor result's shown rows or all of them.
+- Banner over an editor result the row limit cut short, saying how many rows it shows, with Export All for every row.
+- Sort an editor result by clicking a column header, with text in your language's alphabetical order.
 - Copy as puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
 - Shift+F10 opens the menu of a sidebar table or a query history entry, as the Menu key does.
 - Screen readers announce the keyboard shortcut of the table, SQL editor and filter buttons that have one.

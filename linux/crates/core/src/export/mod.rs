@@ -20,7 +20,10 @@ use crate::value::Value;
 
 pub use csv::{FORMULA_LEADS, csv_writer_builder, neutralise_formula, render_csv, render_text_csv};
 pub use csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
-pub use encoder::{CsvEncoder, EncodeError, JsonArrayEncoder, MarkdownEncoder, RowEncoder, TsvEncoder};
+pub use encoder::{
+    CsvEncoder, EncodeError, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RowEncoder, SqlInsertEncoder, TsvEncoder,
+    XmlEncoder,
+};
 pub use html::render_html;
 pub use in_clause::{InClause, render_in_clause};
 pub use json::{render_json, row_to_json};
@@ -30,7 +33,7 @@ pub use render_insert_error::RenderInsertError;
 pub use sql::{literal, render_insert, render_sql_insert};
 pub use tsv::{render_tsv, tsv_writer_builder};
 pub use value_text::{value_text, value_to_text};
-pub use xlsx::render_xlsx;
+pub use xlsx::{XLSX_MAX_DATA_ROWS, render_xlsx};
 pub use xml::render_xml;
 
 /// Why a whole document could not be rendered: a workbook past what a

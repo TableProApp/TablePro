@@ -1,4 +1,5 @@
 use gtk4::glib;
+use tablepro_session::OperationError;
 use tablepro_session::runtime::TaskFailure;
 use thiserror::Error;
 
@@ -27,4 +28,11 @@ pub(crate) enum ExportFailure {
     File(#[from] glib::Error),
     #[error(transparent)]
     Task(#[from] TaskFailure),
+    /// Reading the table failed.
+    #[error("reading the table failed: {0}")]
+    Table(OperationError),
+    /// Running an editor's statement again failed. It ran on a
+    /// connection of its own, which the alert has to explain.
+    #[error("running the statement again failed: {0}")]
+    Statement(OperationError),
 }

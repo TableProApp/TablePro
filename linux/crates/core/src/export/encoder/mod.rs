@@ -1,9 +1,12 @@
 mod csv_encoder;
 mod encode_error;
+mod html_encoder;
 mod json_array_encoder;
 mod markdown_encoder;
 mod row_encoder;
+mod sql_insert_encoder;
 mod tsv_encoder;
+mod xml_encoder;
 
 use std::cell::Cell;
 use std::io;
@@ -13,10 +16,13 @@ use crate::value::Value;
 
 pub use csv_encoder::CsvEncoder;
 pub use encode_error::EncodeError;
+pub use html_encoder::HtmlEncoder;
 pub use json_array_encoder::JsonArrayEncoder;
 pub use markdown_encoder::MarkdownEncoder;
 pub use row_encoder::RowEncoder;
+pub use sql_insert_encoder::SqlInsertEncoder;
 pub use tsv_encoder::TsvEncoder;
+pub use xml_encoder::XmlEncoder;
 
 /// A whole result through `encoder`, as text.
 pub(super) fn encode_rows(mut encoder: impl RowEncoder, rows: &[Vec<Value>]) -> Result<String, EncodeError> {

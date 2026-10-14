@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use tablepro_core::browse::build_export;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::{ResultEvent, ResultSink, SinkFlow, Truncation, Value};
+use tablepro_core::{ReadStatement, ResultEvent, SinkFlow, StreamSummary, Truncation};
 use tablepro_session::runtime::{TaskResult, Tasks};
-use tokio::sync::mpsc;
+use tablepro_session::{OperationError, OperationKind, Session};
 use tokio_util::sync::CancellationToken;
 
-use super::{DocumentFormat, ExportMessage, ExportSinkParts, ExportStreamFailure};
+use super::{ExportQuery, ExportSinkParts};
 use crate::ui::grid::RowSnapshot;
 
 /// Rows a producer encodes before it looks at the cancel again.
@@ -49,38 +50,33 @@ pub(crate) fn start_rows_producer(
     })
 }
 
-/// Render a whole document on the blocking pool and hand it on as one
-/// chunk.
-pub(crate) fn start_document_producer(
+/// Stream every row of `query` through `session` into a sink built
+/// from `parts`, on a connection of the read's own. The SQL is built
+/// from the lease that streams it, so it is spelled for that server.
+pub(crate) fn start_query_producer(
     tasks: &Tasks,
-    format: DocumentFormat,
-    columns: Arc<[ResultColumn]>,
-    rows: Vec<RowSnapshot>,
-    messages: mpsc::Sender<ExportMessage>,
+    session: Arc<Session>,
+    query: ExportQuery,
+    parts: ExportSinkParts,
     cancel: CancellationToken,
-) -> TaskResult<()> {
-    tasks.spawn_blocking_task(move || {
-        if cancel.is_cancelled() {
-            return;
-        }
-        let values: Vec<Vec<Value>> = rows.iter().map(RowSnapshot::to_values).collect();
-        let count = values.len() as u64;
-        let rendered = format.render(&columns, &values);
-        drop(values);
-        if cancel.is_cancelled() {
-            return;
-        }
-        // The channel holds more than the two messages a document
-        // sends, so neither waits, and a closed one has nobody to tell.
-        match rendered {
-            Ok(bytes) => {
-                let _ = messages.try_send(ExportMessage::Chunk { bytes, rows: count });
-                let _ = messages.try_send(ExportMessage::Finished { rows: count });
-            }
-            Err(error) => {
-                let _ = messages.try_send(ExportMessage::Failed(ExportStreamFailure::Document(error)));
-            }
-        }
+) -> TaskResult<Result<StreamSummary, OperationError>> {
+    let query = Arc::new(query);
+    tasks.spawn_task(async move {
+        session
+            .run_cancellable(OperationKind::Export, &cancel, move |lease, options| {
+                let parts = parts.clone();
+                let query = Arc::clone(&query);
+                async move {
+                    let read = match &*query {
+                        ExportQuery::Table(export) => {
+                            ReadStatement::Generated(build_export(&*lease.dialect(), &export.request())?)
+                        }
+                        ExportQuery::Editor { sql } => ReadStatement::User(sql.clone()),
+                    };
+                    Ok(lease.stream_read(&read, parts.sink(), options).await?)
+                }
+            })
+            .await
     })
 }
 
@@ -88,12 +84,14 @@ pub(crate) fn start_document_producer(
 mod tests {
     use std::time::Duration;
 
+    use tablepro_core::Value;
     use tablepro_core::column::ColumnType;
     use tablepro_core::export::CsvOptions;
+    use tokio::sync::mpsc;
 
     use super::*;
     use crate::test_support::paused_tasks;
-    use crate::ui::export::RowFormat;
+    use crate::ui::export::{ExportFormat, ExportMessage, RowFormat};
 
     #[tokio::test(start_paused = true)]
     async fn rows_producer_stops_on_cancel() {
@@ -105,7 +103,8 @@ mod tests {
         let cancel = CancellationToken::new();
         let parts = ExportSinkParts {
             messages,
-            format: RowFormat::Csv(CsvOptions::default()),
+            format: ExportFormat::Rows(RowFormat::Csv(CsvOptions::default())),
+            tasks: paused_tasks(),
         };
         let producer = start_rows_producer(&paused_tasks(), columns, rows, parts, cancel.clone());
 

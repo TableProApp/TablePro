@@ -8,7 +8,7 @@ use tablepro_core::{
     WriteReport,
 };
 
-use crate::{CloseBehaviour, FakeDialect, FakeReply, Replies};
+use crate::{CloseBehaviour, FakeDialect, FakeReply, Replies, StreamEnd};
 
 /// Everything a `FakeConnection` answers, set up before the code under
 /// test gets the connection.
@@ -35,6 +35,8 @@ pub struct ConnectionScript {
     pub count_rows: Replies<FakeReply<u64>>,
     /// The events each read sends to its sink, in order.
     pub stream_read: Replies<FakeReply<Vec<ResultEvent>>>,
+    /// How each read ends once its events are sent.
+    pub stream_end: StreamEnd,
     pub write_batch: Replies<FakeReply<WriteReport>>,
     pub resolve_commit: Replies<FakeReply<CommitResolution>>,
     pub open_editor_session: Replies<FakeReply<Arc<dyn EditorSession>>>,
@@ -59,6 +61,7 @@ impl Default for ConnectionScript {
             query_bound: Replies::default(),
             count_rows: Replies::default(),
             stream_read: Replies::default(),
+            stream_end: StreamEnd::default(),
             write_batch: Replies::default(),
             resolve_commit: Replies::default(),
             open_editor_session: Replies::default(),

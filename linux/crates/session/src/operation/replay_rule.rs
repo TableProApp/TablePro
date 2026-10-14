@@ -67,6 +67,7 @@ mod tests {
             (OperationKind::Save(WriteKind::SchemaChanges), false),
             (OperationKind::Probe, false),
             (OperationKind::Close, false),
+            (OperationKind::Export, false),
         ];
         let categories = [
             (ErrorCategory::ConnectionLost, true),

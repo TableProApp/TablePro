@@ -27,7 +27,6 @@ pub struct RunBatch {
     pub repeat: u32,
     /// Where the batch starts in the buffer, in characters.
     pub error_base: usize,
-    pub preview: String,
 }
 
 /// What one press of Run sends, and how.
@@ -59,7 +58,6 @@ pub fn plan_batches(
                 text: text.to_owned(),
                 repeat: batch.repeat.get(),
                 error_base: scoped.base_char + text_offsets::byte_to_char(&scoped.text, batch.range.start),
-                preview: sql_preview(text),
             })
         })
         .collect();
@@ -100,7 +98,8 @@ pub async fn run_batches(
             if cancel.is_cancelled() {
                 break 'batches;
             }
-            let collector = Arc::new(Mutex::new(BatchCollector::default()));
+            let sql = UserSql::new(batch.text.as_str());
+            let collector = Arc::new(Mutex::new(BatchCollector::new(sql.clone())));
             let options = RunOptions::new(cancel.child_token())
                 .with_deadline(run.statement_timeout)
                 .with_row_limit(run.row_limit);
@@ -108,9 +107,9 @@ pub async fn run_batches(
                 collector: collector.clone(),
             });
             let started = Instant::now();
-            let outcome = editor.run(UserSql::new(batch.text.as_str()), options, sink).await;
+            let outcome = editor.run(sql.clone(), options, sink).await;
             let elapsed_ms = started.elapsed().as_millis();
-            let collected = std::mem::take(&mut *lock(&collector));
+            let collected = std::mem::replace(&mut *lock(&collector), BatchCollector::new(sql));
             let state = editor.state();
             let (entries, verdict, transaction) = collected.finish(outcome, state, batch.error_base);
             let report = BatchReport {
@@ -217,9 +216,9 @@ mod tests {
         }
     }
 
-    fn script(text: &str, grammar: SqlGrammar) -> (ScriptRun, Vec<String>, Vec<String>) {
+    fn script(text: &str, grammar: SqlGrammar) -> (ScriptRun, Vec<UserSql>, Vec<String>) {
         let (batches, policy, warnings) = plan_batches(&scoped(text), grammar, 0);
-        let previews = batches.iter().map(|batch| batch.preview.clone()).collect();
+        let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         (
             ScriptRun {
                 batches,
@@ -227,7 +226,7 @@ mod tests {
                 statement_timeout: None,
                 row_limit: RowLimit::EDITOR_DEFAULT,
             },
-            previews,
+            statements,
             warnings,
         )
     }
@@ -249,11 +248,11 @@ mod tests {
         grammar: SqlGrammar,
         cancel: &CancellationToken,
     ) -> RunLog {
-        let (run, previews, warnings) = script(text, grammar);
+        let (run, statements, warnings) = script(text, grammar);
         let (events, mut received) = mpsc::channel(8);
         let session: Arc<dyn EditorSession> = editor.clone();
         let collect = async move {
-            let mut log = RunLog::new(previews, warnings);
+            let mut log = RunLog::new(statements, warnings);
             while let Some(event) = received.recv().await {
                 let finished = matches!(event, RunEvent::Finished);
                 log.apply(event);
@@ -460,7 +459,7 @@ mod tests {
     #[test]
     fn a_timed_out_run_is_a_stop() {
         assert!(!continues(Verdict::Stopped, BatchErrorPolicy::ContinueNextBatch));
-        let collector = BatchCollector::default();
+        let collector = BatchCollector::new(UserSql::new("SELECT pg_sleep(60)"));
         let (entries, verdict, _) = collector.finish(
             Ok(tablepro_core::RunSummary {
                 elapsed: Duration::from_secs(30),

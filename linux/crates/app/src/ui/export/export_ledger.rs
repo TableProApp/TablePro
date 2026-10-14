@@ -8,14 +8,16 @@ use futures::channel::oneshot;
 use futures::future::{Either, LocalBoxFuture, select};
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_session::runtime::{HoldToken, ProcessHold, TaskFailure, TaskResult, Tasks};
+use tablepro_core::StreamSummary;
+use tablepro_session::OperationError;
+use tablepro_session::runtime::{HoldToken, ProcessHold, TaskResult, Tasks};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::export_producer::{start_document_producer, start_rows_producer};
+use super::export_producer::{start_query_producer, start_rows_producer};
 use super::{
-    ExportFailure, ExportFormat, ExportJob, ExportJobId, ExportJobItem, ExportMessage, ExportOutcome, ExportReporter,
-    ExportSinkParts, ExportSource, FinishError, ReplaceFileWriter,
+    ExportFailure, ExportJob, ExportJobId, ExportJobItem, ExportMessage, ExportOutcome, ExportQuery, ExportReporter,
+    ExportSinkParts, ExportSource, ExportStreamFailure, FinishError, ReplaceFileWriter,
 };
 use crate::i18n::{gettext, ngettext_f};
 use crate::ui::format::plural_count;
@@ -257,7 +259,7 @@ async fn show_display_name(file: &gio::File, item: &ExportJobItem) {
     }
 }
 
-/// Write the job's file: open it, start the encoder, and take its
+/// Write the job's file: open it, start the producer, and take its
 /// chunks until it finishes, fails or the job is stopped.
 async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &ExportJobItem) -> ExportOutcome {
     let writer = match ReplaceFileWriter::open(&job.destination).await {
@@ -274,29 +276,45 @@ async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &E
         return ExportOutcome::Stopped(writer.abort().await);
     }
     let (messages, mut received) = mpsc::channel(CHANNEL_CHUNKS);
-    let producer = start(tasks, job.format, job.source, messages, cancel);
+    let parts = ExportSinkParts {
+        messages,
+        format: job.format,
+        tasks: tasks.clone(),
+    };
+    let producer = Producer::start(tasks, job.source, parts, cancel);
     loop {
-        let next = {
-            let stopped = pin!(cancel.cancelled());
-            let message = pin!(received.recv());
-            match select(stopped, message).await {
-                Either::Left(((), _)) => None,
-                Either::Right((message, _)) => Some(message),
-            }
+        let Some(next) = until_cancelled(cancel, received.recv()).await else {
+            return ExportOutcome::Stopped(writer.abort().await);
         };
         match next {
-            None => {
-                producer.abort();
-                return ExportOutcome::Stopped(writer.abort().await);
-            }
-            Some(Some(ExportMessage::Chunk { bytes, rows })) => {
+            Some(ExportMessage::Chunk { bytes, rows }) => {
                 if let Err(error) = writer.write(bytes).await {
+                    cancel.cancel();
                     return failed(writer, error.into()).await;
                 }
                 item.set_rows(rows);
             }
-            Some(Some(ExportMessage::Failed(failure))) => return failed(writer, failure.into()).await,
-            Some(Some(ExportMessage::Finished { rows })) => {
+            Some(ExportMessage::Progress { rows }) => item.set_rows(rows),
+            Some(ExportMessage::Failed(failure)) => {
+                cancel.cancel();
+                return failed(writer, failure.into()).await;
+            }
+            Some(ExportMessage::Finished { rows }) => {
+                // A read can still fail once its rows are in, as a
+                // statement that writes after it reads does, and the
+                // file is kept only for a read that ended well.
+                let Some(ended) = until_cancelled(cancel, producer.finish()).await else {
+                    return ExportOutcome::Stopped(writer.abort().await);
+                };
+                // A sink that stopped the read on a second result set
+                // says so here, and a driver may still end that read
+                // Ok, as SQL Server's does.
+                if let Some(failure) = sent_failure(&mut received) {
+                    return failed(writer, failure).await;
+                }
+                if let Err(failure) = ended {
+                    return failed(writer, failure).await;
+                }
                 return match writer.finish().await {
                     Ok(()) => ExportOutcome::Exported { rows },
                     Err(FinishError { error, file }) => ExportOutcome::Failed {
@@ -307,16 +325,41 @@ async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &E
             }
             // The producer let go of its sender without finishing:
             // stopped by the cancel, which the next turn sees, or ended
-            // by a panic.
-            Some(None) => {
+            // by a failure or a panic.
+            None => {
                 if cancel.is_cancelled() {
                     return ExportOutcome::Stopped(writer.abort().await);
                 }
-                let failure = producer.await.err().unwrap_or(TaskFailure::Aborted);
-                return failed(writer, failure.into()).await;
+                let failure = match producer.finish().await {
+                    Ok(()) => ExportStreamFailure::NoResultSet.into(),
+                    Err(failure) => failure,
+                };
+                return failed(writer, failure).await;
             }
         }
     }
+}
+
+/// `work`'s output, or `None` once the job is stopped.
+async fn until_cancelled<T>(cancel: &CancellationToken, work: impl Future<Output = T>) -> Option<T> {
+    let stopped = pin!(cancel.cancelled());
+    let work = pin!(work);
+    match select(stopped, work).await {
+        Either::Left(((), _)) => None,
+        Either::Right((output, _)) => Some(output),
+    }
+}
+
+/// The failure a sink sent after its result finished. It says more than
+/// the read's own end: a second result set stops the read, which then
+/// reports only that it was stopped, or nothing wrong at all.
+fn sent_failure(received: &mut mpsc::Receiver<ExportMessage>) -> Option<ExportFailure> {
+    while let Ok(message) = received.try_recv() {
+        if let ExportMessage::Failed(failure) = message {
+            return Some(failure.into());
+        }
+    }
+    None
 }
 
 async fn failed(writer: ReplaceFileWriter, failure: ExportFailure) -> ExportOutcome {
@@ -326,24 +369,45 @@ async fn failed(writer: ReplaceFileWriter, failure: ExportFailure) -> ExportOutc
     }
 }
 
-fn start(
-    tasks: &Tasks,
-    format: ExportFormat,
-    source: ExportSource,
-    messages: mpsc::Sender<ExportMessage>,
-    cancel: &CancellationToken,
-) -> TaskResult<()> {
-    let ExportSource::Rows { columns, rows } = source;
-    match format {
-        ExportFormat::Rows(format) => start_rows_producer(
-            tasks,
-            columns,
-            rows,
-            ExportSinkParts { messages, format },
-            cancel.clone(),
-        ),
-        ExportFormat::Document(format) => {
-            start_document_producer(tasks, format, columns, rows, messages, cancel.clone())
+/// What feeds a job's sink: rows a grid already holds, or a read
+/// streamed from the server.
+enum Producer {
+    Rows(TaskResult<()>),
+    Query {
+        task: TaskResult<Result<StreamSummary, OperationError>>,
+        rerun: bool,
+    },
+}
+
+impl Producer {
+    /// Neither kind is aborted when the job stops. The cancel reaches
+    /// both: the rows producer checks it between batches, and a read
+    /// stops its statement on the server, which an abort would leave
+    /// running behind a dropped future.
+    fn start(tasks: &Tasks, source: ExportSource, parts: ExportSinkParts, cancel: &CancellationToken) -> Self {
+        match source {
+            ExportSource::Rows { columns, rows } => {
+                Self::Rows(start_rows_producer(tasks, columns, rows, parts, cancel.clone()))
+            }
+            ExportSource::Query { session, query } => {
+                let rerun = matches!(query, ExportQuery::Editor { .. });
+                Self::Query {
+                    task: start_query_producer(tasks, session, query, parts, cancel.clone()),
+                    rerun,
+                }
+            }
+        }
+    }
+
+    async fn finish(self) -> Result<(), ExportFailure> {
+        match self {
+            Self::Rows(task) => task.await.map_err(ExportFailure::from),
+            Self::Query { task, rerun } => match task.await {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(error)) if rerun => Err(ExportFailure::Statement(error)),
+                Ok(Err(error)) => Err(ExportFailure::Table(error)),
+                Err(failure) => Err(failure.into()),
+            },
         }
     }
 }
