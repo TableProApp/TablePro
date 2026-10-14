@@ -74,4 +74,4 @@ What the application does not do, or does differently from what you might expect
 ## Test and CI limits
 
 - The installed GTK suite does not pass reliably on a native Ubuntu 24.04 runner (TEST-28); it passes in the Debian 13 and Ubuntu 24.04 containers.
-- About 68 percent of the policy crate's and 81 percent of the core crate's mutations were caught by their own tests when measured at `0d21eb6d4` (2026-10-11); later survivor triage is in the [B4 mutation triage](evidence/b4-mutation-triage-2026-10-12) and the figure has not been re-measured. Mutation survivors are tracked under [TEST-2 / #559](https://github.com/cozyGarage/BookiE/issues/559); expected-value provenance is a separate [TEST-32 oracle review](oracle-review.md).
+- Mutation results are tied to their source SHA; use the latest [TEST-2 / #559](https://github.com/cozyGarage/BookiE/issues/559) report for survivor and timeout status. Expected-value provenance is tracked separately by [TEST-32](oracle-review.md).
