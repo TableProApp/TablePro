@@ -15,8 +15,6 @@ The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/Bo
 | root | `Cargo.toml` workspace, toolchain and lint config, `meson.build`, this file, `AGENTS.md`, `README.md`. |
 | `baselines/` | Ratchet ceilings for comment lines, function size, file size, panic sites, and the coverage floor. |
 
-A new platform app would sit beside `apps/linux/` and reuse `crates/` unchanged.
-
 This page is the one-page map. Accepted [ADRs](docs/decisions/README.md) constrain behaviour; [AGENTS.md](./AGENTS.md) owns contributor rules; the sprint owns sequencing. Capability behaviour extracted from code lives under [`specs/`](specs/README.md).
 
 | If you want to… | Read |
@@ -71,7 +69,7 @@ Both processes register the same static drivers and must obtain a `PolicyGuard` 
 
 ## Containers (crates)
 
-Dependencies point downward. `tablepro-core` is the contract layer and depends on no other workspace crate. UI code reaches engines only through the driver registry; only the two composition roots (`app` and `agentd`) depend on the driver crates.
+Dependencies point downward. `tablepro-core` is the contract layer and depends on no other workspace crate. UI code reaches engines only through the driver registry; in production, only the two composition roots (`app` and `agentd`) depend on driver crates. Test crates may depend on drivers to verify real engine behavior.
 
 ```mermaid
 flowchart TB
@@ -82,6 +80,10 @@ flowchart TB
 
     subgraph surfaces["Surfaces"]
         mcp["tablepro-mcp<br/>scopes, allowlists, tools"]
+    end
+
+    subgraph app_logic["GTK-free application logic"]
+        app_services["tablepro-app-services<br/>state and service logic"]
     end
 
     subgraph governance["Governance"]
@@ -104,6 +106,9 @@ flowchart TB
 
     app --> mcp
     agentd --> mcp
+    app --> app_services
+    app_services --> storage
+    app_services --> core
     app --> transport
     agentd --> transport
     mcp --> policy
@@ -126,6 +131,7 @@ flowchart TB
 | `tablepro-agentd` | Headless MCP composition root. Cargo binary `tablepro-agentd`; installed as `bookie-agentd`. |
 | `tablepro-core` | Domain types, driver traits, values, filters, transactions, registry. No workspace dependency. |
 | `tablepro-policy` | Classify, rules, approval, masking, blast radius, audit types, `PolicyGuard`. Depends on `core` only. |
+| `tablepro-app-services` | GTK-free application state and service logic used by the desktop app. Depends on `core` and `storage`. |
 | `tablepro-storage` | Saved connections, Secret Service, query history, audit journal. |
 | `tablepro-ssh` | Built-in `russh` tunnels and optional system OpenSSH backend. |
 | `tablepro-transport` | Saved-connection → dial options, SSH chain, tunnel, TLS service identity. |
@@ -200,9 +206,11 @@ sequenceDiagram
 Nothing points back up. Cycles are forbidden. Composition roots sit at the top; `core` is the leaf.
 
 ```text
-tablepro-app ────────┐
-tablepro-agentd ─────┼──► mcp, policy, storage, transport, ssh, drivers, core
-tablepro-release-tests┘
+tablepro-app ────────┬──► app-services, mcp, policy, storage, transport, ssh, drivers, core
+tablepro-agentd ────┘
+
+tablepro-release-tests ──► mcp, policy, storage, transport, ssh, drivers, core
+tablepro-app-services ──► storage, core
 
 tablepro-mcp        ──► policy, storage, core
 tablepro-transport  ──► storage, ssh, policy, core
@@ -215,7 +223,7 @@ tablepro-core       ──► (no workspace crate)
 
 Rules that keep this sound:
 
-1. **Two composition roots only.** `app` and `agentd` register drivers and assemble services. Domain crates do not construct GTK widgets or start Relm4.
+1. **Two production composition roots.** `app` and `agentd` register drivers and assemble services. Domain crates do not construct GTK widgets or start Relm4. Test crates may assemble drivers to exercise their contracts against real engines.
 2. **One governance seam.** Every live database handle a consumer sees is a `PolicyGuard`. Token scopes and connection allowlists never replace it.
 3. **Static drivers.** Engines are linked at build time and registered in code. There is no plugin discovery ABI ([ADR 0001](docs/decisions/0001-no-plugin-system.md)).
 4. **Trust at the edges.** MCP input, saved connection files, imported files, environment variables and database metadata are untrusted input.

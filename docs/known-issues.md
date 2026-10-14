@@ -43,6 +43,7 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | TEST-33 | [#595](https://github.com/cozyGarage/BookiE/issues/595) | B3 |
 | DOC-3 | [#561](https://github.com/cozyGarage/BookiE/issues/561) | Maintainer |
 | DOC-5 | [#561](https://github.com/cozyGarage/BookiE/issues/561) | Maintainer |
+| DOC-7 | [#845](https://github.com/cozyGarage/BookiE/issues/845) | B4 |
 | PERF-2 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | B4 |
 | PERF-3 | [#555](https://github.com/cozyGarage/BookiE/issues/555) | B3 |
 | PERF-4 | [#550](https://github.com/cozyGarage/BookiE/issues/550) | B3 |

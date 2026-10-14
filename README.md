@@ -10,7 +10,7 @@ Every shipped feature is free to use. BookiE has no account, license, subscripti
 
 ## Status
 
-The Linux client is under active development toward BookiE 0.2.0. B3 type/value consumer coverage remains open, followed by B4 transport/session acceptance and installed desktop qualification. Workflows include saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, and the headless `bookie-agentd` process. Table browsing fetches bounded pages from the database. Arbitrary SQL editor results are still materialized up to configured caps; progressive server-cursor paging is accepted in [ADR 0011](docs/decisions/0011-paged-query-results.md) but not implemented.
+The Linux client is under active development toward BookiE 0.2.0. B3 type/value and B4 transport/session correctness blockers remain, followed by installed desktop qualification. Workflows include saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, and the headless `bookie-agentd` process. Table browsing fetches bounded pages from the database. Arbitrary SQL editor results are still materialized up to configured caps; progressive server-cursor paging is accepted in [ADR 0011](docs/decisions/0011-paged-query-results.md) but not implemented.
 
 PostgreSQL is the furthest along: server-confirmed cancellation, certificate hostname and authority verification, verified TLS through an SSH tunnel, read-only denial, rollback, blocking-lock reporting, and reconnect run as deterministic container checks. MySQL, ClickHouse, Redis, and MongoDB also have driver TLS fixture evidence; those fixtures do not establish full transport or packaging readiness. Packaging is not release-verified. [`ROADMAP.md`](ROADMAP.md) links to current milestone status and the detailed acceptance boards.
 
@@ -60,7 +60,7 @@ Running the statement asks for one value per name and sends them as driver-bound
 
 ## Architecture
 
-Crate map, Mermaid pipeline diagrams, trait boundaries and deliberate limits live in [`ARCHITECTURE.md`](ARCHITECTURE.md). Every GUI, MCP and agent database handle is a `PolicyGuard`; token scopes and connection allowlists do not replace it. Drivers are linked at build time. The UI is native GTK (no embedded browser).
+Crate map, Mermaid pipeline diagrams, trait boundaries and deliberate limits live in [`ARCHITECTURE.md`](ARCHITECTURE.md). The desktop app uses `tablepro-app-services` for GTK-free application state and service logic. Every GUI, MCP and agent database handle is a `PolicyGuard`; token scopes and connection allowlists do not replace it. Drivers are linked at build time. The UI is native GTK (no embedded browser).
 
 ## Build requirements
 
