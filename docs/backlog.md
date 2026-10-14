@@ -34,7 +34,7 @@ candidate inventory as a release commitment.
 
 | Row | What |
 |---|---|
-| TEST-2 | Broad mutation audit: policy, core, transport, SSH and storage are measured; remaining survivor triage stays open (see [TEST-32](oracle-review.md) and [reports](evidence/test-quality-2026-10-11/transport-mutants.md)) |
+| TEST-2 | Broad mutation audit: policy, core, transport, SSH and storage are measured; survivor triage stays open under [#559](https://github.com/cozyGarage/BookiE/issues/559). Expected-value provenance is tracked separately by [TEST-32](oracle-review.md); see the [transport mutation report](evidence/test-quality-2026-10-11/transport-mutants.md) for one measured package. |
 | AUD-11 consolidation | Finish the single AST walk for classification, masking and blast-radius planning | Behavioural fixes are closed on the current policy suite; shared analysis landed in #506. Structural consolidation follows 0.2.0 |
 | TEST-12 | MongoDB metadata sample consistency |
 | UI-21, TEST-28 | Fake connection for the GTK tier, native Ubuntu AT-SPI menu reachability |
