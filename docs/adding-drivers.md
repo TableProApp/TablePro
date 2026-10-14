@@ -63,12 +63,12 @@ Every registered driver reports a `DriverMaturity` (`Stable` or `Experimental`).
 
 | Driver | Maturity | Connect | Browse | Query | Writes | Params | `begin` / MCP preview | Notes |
 |---|---|---|---|---|---|---|---|---|
-| PostgreSQL | Stable | yes | yes | SQL | yes | yes | yes | all five TLS modes, release-verified |
-| MySQL | Stable | yes | yes | SQL | yes | yes | yes | DDL not transactional; TLS release-verified |
+| PostgreSQL | Stable | yes | yes | SQL | yes | yes | yes | Five TLS modes; release fixture covers certificate verification and SSH routes |
+| MySQL | Stable | yes | yes | SQL | yes | yes | yes | DDL not transactional; driver TLS fixture |
 | SQLite | Stable | yes | yes | SQL | yes | yes | yes | File-based |
 | SQL Server | Stable | yes | yes | SQL | yes | yes | no interactive begin | Tiberius; custom CA implemented; Verify Ca and Verify Full are identical; server cancellation unsupported |
-| ClickHouse | Stable | yes | yes | SQL | yes | yes | no | Async mutations; no row counts; TLS release-verified |
-| Redis | Experimental | yes | DBs / SCAN | Redis CLI | via query | no | no | Single host/port endpoint only; Sentinel and Cluster topologies are unsupported; TLS release-verified; Verify Ca behaves as Verify Full |
+| ClickHouse | Stable | yes | yes | SQL | yes | yes | no | Async mutations; no row counts; driver TLS fixture |
+| Redis | Experimental | yes | DBs / SCAN | Redis CLI | via query | no | no | Single host/port endpoint only; Sentinel and Cluster topologies are unsupported; driver TLS fixture; Verify Ca behaves as Verify Full |
 | MongoDB | Experimental | yes | collections | find / aggregate | insertOne / deleteMany / drop; keyed grid edits use bound values | no | no | TLS fixture coverage; Verify CA behaves as Verify Full; integration coverage includes browse, find, aggregate, stale-edit and stale-delete checks |
 | DuckDB | Experimental | yes | yes | SQL | yes | yes | no | Cargo feature `duckdb`; CSV/TSV/JSON/Parquet files; bundled JSON/Parquet; explicit optional CI |
 
