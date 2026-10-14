@@ -1,18 +1,11 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
+use gtk4 as gtk;
 use gtk4::prelude::*;
-use gtk4::{self as gtk, glib};
 
 use super::cell_accessibility::row_description;
+use super::row_watches::RowWatches;
 use super::{RowObject, TabGridContext};
-
-/// A bound row's revision handler, so unbind can take it off the row.
-struct RowWatch {
-    row: RowObject,
-    handler: glib::SignalHandlerId,
-}
 
 /// Rows never take the focus, so it always lands on a cell and the
 /// arrow keys move between cells. Each row tells a screen reader when
@@ -25,7 +18,7 @@ pub(super) fn install_row_factory(column_view: &gtk::ColumnView, tab_ctx: TabGri
         }
     });
 
-    let watches: Rc<RefCell<HashMap<gtk::ColumnViewRow, RowWatch>>> = Rc::default();
+    let watches: Rc<RowWatches<gtk::ColumnViewRow>> = Rc::default();
     let tab_ctx = Rc::new(tab_ctx);
     {
         let watches = watches.clone();
@@ -36,28 +29,15 @@ pub(super) fn install_row_factory(column_view: &gtk::ColumnView, tab_ctx: TabGri
             let Some(row) = list_row.item().and_downcast::<RowObject>() else {
                 return;
             };
-            describe(list_row, &tab_ctx, &row);
-            // The row outlives the list row it is bound to, so the
-            // handler holds the list row weakly.
-            let weak = list_row.downgrade();
             let tab_ctx = tab_ctx.clone();
-            let handler = row.connect_revision_notify(move |row| {
-                if let Some(list_row) = weak.upgrade() {
-                    describe(&list_row, &tab_ctx, row);
-                }
-            });
-            if let Some(stale) = watches.borrow_mut().insert(list_row.clone(), RowWatch { row, handler }) {
-                stale.row.disconnect(stale.handler);
-            }
+            watches.bind(list_row, row, move |list_row, row| describe(list_row, &tab_ctx, row));
         });
     }
     factory.connect_unbind(move |_, item| {
         let Some(list_row) = item.downcast_ref::<gtk::ColumnViewRow>() else {
             return;
         };
-        if let Some(watch) = watches.borrow_mut().remove(list_row) {
-            watch.row.disconnect(watch.handler);
-        }
+        watches.unbind(list_row);
         list_row.set_property("accessible-description", None::<String>);
     });
     column_view.set_row_factory(Some(&factory));

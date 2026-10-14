@@ -1,11 +1,10 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
+use gtk4 as gtk;
 use gtk4::prelude::*;
-use gtk4::{self as gtk, glib};
 
 use super::row_state_icon::row_state_icon;
+use super::row_watches::RowWatches;
 use super::{RowObject, TabGridContext};
 
 /// Not a result column, so it has no name in the table, no saved width
@@ -13,12 +12,6 @@ use super::{RowObject, TabGridContext};
 pub(crate) const ROW_STATE_COLUMN_ID: &str = "tp-row-state";
 /// One symbolic icon and its padding.
 const ROW_STATE_COLUMN_WIDTH: i32 = 28;
-
-/// A bound row's revision handler, so unbind can take it off the row.
-struct RowWatch {
-    row: RowObject,
-    handler: glib::SignalHandlerId,
-}
 
 /// A narrow first column that shows each row's pending change as an
 /// icon, so the change reads without its tint, as a diff gutter marks a
@@ -38,7 +31,7 @@ pub(super) fn row_state_column(tab_ctx: TabGridContext) -> gtk::ColumnViewColumn
         cell.set_child(Some(&image));
     });
 
-    let watches: Rc<RefCell<HashMap<gtk::ColumnViewCell, RowWatch>>> = Rc::default();
+    let watches: Rc<RowWatches<gtk::ColumnViewCell>> = Rc::default();
     let tab_ctx = Rc::new(tab_ctx);
     {
         let watches = watches.clone();
@@ -46,33 +39,20 @@ pub(super) fn row_state_column(tab_ctx: TabGridContext) -> gtk::ColumnViewColumn
             let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
                 return;
             };
-            let (Some(row), Some(image)) = (
-                cell.item().and_downcast::<RowObject>(),
-                cell.child().and_downcast::<gtk::Image>(),
-            ) else {
+            let Some(row) = cell.item().and_downcast::<RowObject>() else {
                 return;
             };
-            show_state(&image, &tab_ctx, &row);
-            // The row outlives the cell it is bound to, so the handler
-            // holds the icon weakly.
-            let weak = image.downgrade();
             let tab_ctx = tab_ctx.clone();
-            let handler = row.connect_revision_notify(move |row| {
-                if let Some(image) = weak.upgrade() {
+            watches.bind(cell, row, move |cell, row| {
+                if let Some(image) = cell.child().and_downcast::<gtk::Image>() {
                     show_state(&image, &tab_ctx, row);
                 }
             });
-            if let Some(stale) = watches.borrow_mut().insert(cell.clone(), RowWatch { row, handler }) {
-                stale.row.disconnect(stale.handler);
-            }
         });
     }
     factory.connect_unbind(move |_, item| {
-        let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
-            return;
-        };
-        if let Some(watch) = watches.borrow_mut().remove(cell) {
-            watch.row.disconnect(watch.handler);
+        if let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() {
+            watches.unbind(cell);
         }
     });
 

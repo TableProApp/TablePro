@@ -268,6 +268,7 @@ crates/app/src/ui/grid/row_object.rs
 crates/app/src/ui/grid/row_snapshot.rs
 crates/app/src/ui/grid/row_state_column.rs
 crates/app/src/ui/grid/row_state_icon.rs
+crates/app/src/ui/grid/row_watches.rs
 crates/app/src/ui/grid/selection.rs
 crates/app/src/ui/grid/tab_grid_context.rs
 crates/app/src/ui/grid/test_grid.rs

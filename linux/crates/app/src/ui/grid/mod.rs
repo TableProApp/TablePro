@@ -38,6 +38,7 @@ mod row_object;
 mod row_snapshot;
 mod row_state_column;
 mod row_state_icon;
+mod row_watches;
 mod selection;
 mod tab_grid_context;
 #[cfg(test)]
