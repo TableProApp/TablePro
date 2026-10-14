@@ -8,6 +8,7 @@ use tablepro_core::edit::CellInput;
 
 use super::cell_accessibility::cell_description;
 use super::cell_binding::CellBinding;
+use super::cell_focus::return_focus;
 use super::column_drawing::ColumnDrawing;
 use super::grid_columns::GridColumns;
 use super::inline_editor::InlineEditor;
@@ -279,14 +280,28 @@ impl GridCell {
         // popover holds the cell weakly and itself not at all.
         let cell = self.downgrade();
         popover.connect_closed(move |popover| {
+            let cell = cell.upgrade();
+            // GTK moves a focus left in a hidden popover to the popover's
+            // parent after the next frame, and by then it has none, so the
+            // focus would leave the grid. An unbound cell's row is gone.
+            if let Some(cell) = &cell
+                && cell.is_bound()
+                && holds_focus(popover)
+            {
+                return_focus(cell);
+            }
             popover.unparent();
-            if let Some(cell) = cell.upgrade()
+            if let Some(cell) = cell
                 && cell.release_popover(popover)
             {
                 cell.take_edit();
             }
         });
         popover.popup();
+    }
+
+    fn is_bound(&self) -> bool {
+        self.imp().binding.borrow().is_some()
     }
 
     pub(super) fn take_popover(&self) -> Option<gtk::Popover> {
@@ -311,6 +326,14 @@ impl GridCell {
     pub(super) fn suppress_toggle(&self, suppressed: bool) {
         self.imp().suppress_toggle.set(suppressed);
     }
+}
+
+fn holds_focus(widget: &impl IsA<gtk::Widget>) -> bool {
+    widget
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window))
+        .is_some_and(|focus| focus.is_ancestor(widget))
 }
 
 #[cfg(test)]

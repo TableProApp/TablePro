@@ -7,17 +7,24 @@ use super::edit_navigation::{EditDirection, next_edit_target};
 use super::grid_columns::ShownColumn;
 use super::selection::row_at;
 
-/// The grid cell that holds the keyboard focus in `widget`'s window.
-pub(super) fn focused_cell(widget: &impl IsA<gtk::Widget>) -> Option<GridCell> {
+fn window_focus(widget: &impl IsA<gtk::Widget>) -> Option<gtk::Widget> {
     let window = widget.root().and_downcast::<gtk::Window>()?;
-    GridCell::from_focus(&gtk::prelude::GtkWindowExt::focus(&window)?)
+    gtk::prelude::GtkWindowExt::focus(&window)
+}
+
+pub(super) fn focused_cell(widget: &impl IsA<gtk::Widget>) -> Option<GridCell> {
+    GridCell::from_focus(&window_focus(widget)?)
+}
+
+/// Unlike `focused_cell`, not a cell whose editor has the focus.
+fn cell_holding_focus(view: &gtk::ColumnView) -> Option<GridCell> {
+    window_focus(view)?.first_child()?.downcast().ok()
 }
 
 fn n_rows(view: &gtk::ColumnView) -> u32 {
     view.model().map_or(0, |model| model.n_items())
 }
 
-/// Focus `column`'s cell in the row at `position`, and return it.
 pub(super) fn focus_cell(view: &gtk::ColumnView, position: u32, column: &ShownColumn) -> Option<GridCell> {
     if position >= n_rows(view) {
         return None;
@@ -29,10 +36,10 @@ pub(super) fn focus_cell(view: &gtk::ColumnView, position: u32, column: &ShownCo
     // `scroll_to` moves the focus only while it is in the list already.
     // Otherwise it marks the cell the list focuses next, which the grab
     // then reaches.
-    if !focused_cell(view).is_some_and(|cell| landed(&cell)) {
+    if !cell_holding_focus(view).is_some_and(|cell| landed(&cell)) {
         view.grab_focus();
     }
-    focused_cell(view).filter(landed)
+    cell_holding_focus(view).filter(landed)
 }
 
 /// Give the focus back to `cell` once its editor closed, since the
@@ -115,14 +122,20 @@ pub(crate) fn edit_row(view: &gtk::ColumnView, position: u32) {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::time::Duration;
+
     use gtk4::prelude::*;
-    use gtk4::{self as gtk, gdk};
+    use gtk4::{self as gtk, gdk, glib};
     use tablepro_core::Value;
+    use tablepro_core::edit::CellInput;
+    use tablepro_core::value::Temporal;
 
     use super::edit_row;
-    use crate::test_support::wait_until;
-    use crate::ui::grid::GridCell;
+    use crate::test_support::{drain_main_context, first_descendant_of_type, wait_until};
     use crate::ui::grid::test_grid::{Grid, WAIT, edited_rows, key, named, text};
+    use crate::ui::grid::{GridCell, begin_edit};
 
     /// Press `key` in the cell's open one-line editor, through the
     /// handler a real key press reaches first.
@@ -263,5 +276,139 @@ mod tests {
         assert_eq!(cell.column(), 1, "the edit did not skip the auto-increment key");
         let selection = grid.view.model().expect("a selection model");
         assert!(selection.is_selected(0) && !selection.is_selected(1));
+    }
+
+    fn focus_in(grid: &Grid, popover: &gtk::Popover) -> bool {
+        gtk::prelude::GtkWindowExt::focus(&grid.window).is_some_and(|focus| focus.is_ancestor(popover))
+    }
+
+    /// Open the cell's editor popover with the focus in it. Test processes
+    /// share one X display, where another test's window can close an
+    /// autohide popover before it maps.
+    fn open_popover(grid: &Grid, cell: &GridCell) -> gtk::Popover {
+        for _ in 0..5 {
+            begin_edit(cell);
+            if let Some(popover) = first_descendant_of_type::<gtk::Popover>(cell)
+                && wait_until(Duration::from_secs(2), || {
+                    popover.is_mapped() && focus_in(grid, &popover)
+                })
+                .is_ok()
+            {
+                return popover;
+            }
+            cell.cancel_edit();
+            drain_main_context();
+        }
+        panic!("the editor popover never showed");
+    }
+
+    /// GTK moves a focus it finds in a hidden popover once the frame is
+    /// painted, so the focus is checked after that.
+    fn after_next_frame(grid: &Grid) {
+        let clock = grid.window.frame_clock().expect("the window's frame clock");
+        let painted = Rc::new(Cell::new(false));
+        let flag = painted.clone();
+        let handler = clock.connect_after_paint(move |_| flag.set(true));
+        clock.request_phase(gdk::FrameClockPhase::AFTER_PAINT);
+        wait_until(WAIT, || painted.get()).expect("the window paints a frame");
+        clock.disconnect(handler);
+    }
+
+    fn button(popover: &gtk::Popover, label: &str) -> gtk::Button {
+        crate::test_support::descendants(popover)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+            .find(|button| button.label().as_deref() == Some(label))
+            .expect("the popover's button")
+    }
+
+    fn day(day: u32) -> Value {
+        Value::Date(Temporal::Finite(
+            chrono::NaiveDate::from_ymd_opt(2024, 3, day).expect("a date"),
+        ))
+    }
+
+    fn dated_row() -> Grid {
+        Grid::open(
+            vec![named("id", "integer", true), named("day", "date", false)],
+            vec![vec![Value::Int(1), day(15)]],
+        )
+    }
+
+    #[gtk4::test]
+    fn picking_a_day_returns_focus_to_cell() {
+        let grid = dated_row();
+        let cell = grid.focus(0, 1);
+        let popover = open_popover(&grid, &cell);
+        let calendar = first_descendant_of_type::<gtk::Calendar>(&popover).expect("the calendar");
+
+        calendar.set_date(&glib::DateTime::from_utc(2024, 3, 16, 0, 0, 0.0).expect("a day"));
+        after_next_frame(&grid);
+
+        assert!(!cell.is_editing());
+        assert_eq!(grid.focused_cell().as_ref(), Some(&cell), "the focus left the grid");
+        assert_eq!(
+            edited_rows(&grid.take_messages()),
+            vec![(Some(key(1)), 1, CellInput::Value(day(16)))]
+        );
+    }
+
+    #[gtk4::test]
+    fn closing_the_calendar_returns_focus_to_cell() {
+        let grid = dated_row();
+        let cell = grid.focus(0, 1);
+        let popover = open_popover(&grid, &cell);
+
+        // As Escape does.
+        popover.popdown();
+        after_next_frame(&grid);
+
+        assert!(!cell.is_editing());
+        assert_eq!(grid.focused_cell().as_ref(), Some(&cell), "the focus left the grid");
+        assert!(grid.take_messages().is_empty());
+    }
+
+    #[gtk4::test]
+    fn removing_the_row_under_an_open_calendar_drops_its_edit() {
+        let grid = Grid::open(
+            vec![named("id", "integer", true), named("day", "date", false)],
+            vec![vec![Value::Int(1), day(15)], vec![Value::Int(2), day(20)]],
+        );
+        let cell = grid.focus(0, 1);
+        let popover = open_popover(&grid, &cell);
+
+        grid.store.remove(0);
+        after_next_frame(&grid);
+
+        assert!(popover.parent().is_none(), "the popover outlived its row");
+        assert!(!cell.is_editing());
+        assert!(grid.take_messages().is_empty());
+    }
+
+    #[gtk4::test]
+    fn the_multi_line_editor_returns_focus_to_cell() {
+        let grid = Grid::open(
+            vec![named("id", "integer", true), named("note", "text", false)],
+            vec![vec![Value::Int(1), Value::Text("one\ntwo".into())]],
+        );
+        let cell = grid.focus(0, 1);
+
+        let popover = open_popover(&grid, &cell);
+        button(&popover, "Cancel").emit_clicked();
+        after_next_frame(&grid);
+        assert!(!cell.is_editing());
+        assert_eq!(grid.focused_cell().as_ref(), Some(&cell), "Cancel left the grid");
+
+        let popover = open_popover(&grid, &cell);
+        let view = first_descendant_of_type::<sourceview5::View>(&popover).expect("the multi-line editor");
+        view.buffer().set_text("one\nthree");
+        button(&popover, "Save").emit_clicked();
+        after_next_frame(&grid);
+        assert!(!cell.is_editing());
+        assert_eq!(grid.focused_cell().as_ref(), Some(&cell), "Save left the grid");
+        assert_eq!(
+            edited_rows(&grid.take_messages()),
+            vec![(Some(key(1)), 1, text("one\nthree"))]
+        );
     }
 }
