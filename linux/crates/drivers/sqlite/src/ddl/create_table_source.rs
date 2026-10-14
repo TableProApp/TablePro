@@ -17,6 +17,7 @@ use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
 
 use super::column_constraint_segment::{ColumnConstraintKind, ColumnConstraintSegment};
+use super::declared_shape::DeclaredShape;
 use super::source_element::{
     ElementKind, ForeignKeyTarget, SourceColumn, SourceElement, SourceForeignKey, TableConstraint, TableConstraintKind,
 };
@@ -109,8 +110,7 @@ impl<'a> CreateTableSource<'a> {
     }
 
     /// The statement stored for `definition`, read and checked against
-    /// what the catalogue says the table has. Columns pair by position,
-    /// which `pragma_table_xinfo` keeps in declaration order.
+    /// what the catalogue says the table has.
     pub(crate) fn of(definition: &'a TableDefinition) -> Result<Self, SourceReadError> {
         let sql = definition
             .source
@@ -118,36 +118,16 @@ impl<'a> CreateTableSource<'a> {
             .map(|source| source.create_statement.as_str())
             .ok_or(SourceReadError::Missing)?;
         let source = Self::read(sql)?;
-        if !source.table.eq_ignore_ascii_case(&definition.table.name) {
-            return Err(SourceReadError::TableName {
-                expected: definition.table.name.clone(),
-                found: source.table,
-            });
-        }
-        let columns: Vec<&SourceColumn> = source.columns().map(|(_, column)| column).collect();
-        if columns.len() != definition.columns.len() {
-            return Err(SourceReadError::ColumnCount {
-                expected: definition.columns.len(),
-                found: columns.len(),
-            });
-        }
-        for (position, (column, defined)) in columns.iter().zip(&definition.columns).enumerate() {
-            if !column.name.eq_ignore_ascii_case(defined.name()) {
-                return Err(SourceReadError::ColumnName {
-                    position,
-                    expected: defined.name().to_owned(),
-                    found: column.name.clone(),
-                });
-            }
-        }
-        let keys = source.foreign_keys().len();
-        if keys != definition.foreign_keys.len() {
-            return Err(SourceReadError::ForeignKeyCount {
-                expected: definition.foreign_keys.len(),
-                found: keys,
-            });
-        }
+        source.shape().check(definition)?;
         Ok(source)
+    }
+
+    pub(crate) fn shape(&self) -> DeclaredShape {
+        DeclaredShape {
+            table: self.table.clone(),
+            columns: self.columns().map(|(_, column)| column.name.clone()).collect(),
+            foreign_keys: self.foreign_keys().len(),
+        }
     }
 
     pub(crate) fn sql(&self) -> &'a str {

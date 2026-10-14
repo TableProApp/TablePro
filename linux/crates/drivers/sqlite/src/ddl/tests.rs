@@ -1148,6 +1148,50 @@ fn a_trigger_elsewhere_naming_its_own_row_does_not_hold_a_dropped_column() {
 }
 
 #[test]
+fn an_unreadable_table_offers_no_foreign_key_or_key_change() {
+    let virtual_table = table(
+        "docs",
+        vec![column("body", "TEXT", false)],
+        "CREATE VIRTUAL TABLE docs USING fts5(body)",
+    );
+    let dialect = dialect();
+
+    let unreadable = dialect.table_capabilities(&virtual_table);
+    let readable = dialect.table_capabilities(&orders());
+
+    assert!(!unreadable.add_foreign_key && !unreadable.drop_foreign_key && !unreadable.alter_primary_key);
+    assert!(unreadable.add_column && unreadable.create_index && unreadable.rename_column);
+    assert_eq!(readable, *DdlDialect::capabilities(&dialect));
+}
+
+#[test]
+fn the_cached_read_is_checked_against_each_table_asked_about() {
+    let notes = table(
+        "notes",
+        vec![column("title", "TEXT", false)],
+        "CREATE TABLE notes (title TEXT)",
+    );
+    let mut renamed = notes.clone();
+    renamed.columns[0].info.name = "heading".to_owned();
+    let mut rewritten = notes.clone();
+    if let Some(source) = rewritten.source.as_mut() {
+        source.create_statement = "CREATE TABLE notes (title TEXT".to_owned();
+    }
+    let dialect = dialect();
+    let alter_type = |table: &TableDefinition| dialect.column_capabilities(table, &table.columns[0]).alter_type;
+    let unreadable = Permission::Refused(RefusalReason::UnreadableDefinition);
+
+    assert_eq!(alter_type(&notes), Permission::Allowed);
+    assert_eq!(
+        alter_type(&renamed),
+        unreadable,
+        "the same text checked against other columns"
+    );
+    assert_eq!(alter_type(&rewritten), unreadable, "other text read again");
+    assert_eq!(alter_type(&notes), Permission::Allowed);
+}
+
+#[test]
 fn every_type_suggestion_parses() {
     let dialect = dialect();
 

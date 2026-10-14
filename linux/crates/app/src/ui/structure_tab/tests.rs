@@ -6,7 +6,7 @@ use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::{
     ColumnAttributes, ColumnDefinition, ColumnKeyRoles, DraftColumn, IdentityStyle, InboundForeignKey,
-    PrimaryKeyConstraint, TableDefinition, UnmodeledAttribute,
+    PrimaryKeyConstraint, TableDefinition, TableSource, UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -864,4 +864,37 @@ fn a_discard_after_a_change_elsewhere_reads_the_table_again() {
 #[gtk4::test]
 fn a_discard_after_a_save_found_the_table_changed_reads_it_again() {
     assert_eq!(reads_after_discard(Some(StructureTabInput::TableChangedBeforeSave)), 2);
+}
+
+/// The titles of the add buttons under `container`.
+fn add_buttons(container: &gtk::Box) -> Vec<String> {
+    descendants(container)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::ButtonRow>().ok())
+        .map(|row| adw::prelude::PreferencesRowExt::title(&row).to_string())
+        .collect()
+}
+
+/// A SQLite `users (body)` table stored as `create_statement`.
+fn sqlite_users(create_statement: &str) -> Vec<String> {
+    let sqlite: Arc<dyn SqlDialect> = Arc::new(drivers_sqlite::SqliteDialect::new(drivers_sqlite::SqliteVersion::new(
+        3, 45, 0,
+    )));
+    let mut table = definition("body");
+    table.source = Some(TableSource {
+        create_statement: create_statement.to_owned(),
+        dependents: Vec::new(),
+    });
+    let harness = open_edit(sqlite, table);
+    add_buttons(&harness.tab().imp().fks_box)
+}
+
+#[gtk4::test]
+fn an_unreadable_sqlite_table_offers_no_foreign_key() {
+    assert!(sqlite_users("CREATE VIRTUAL TABLE users USING fts5(body)").is_empty());
+}
+
+#[gtk4::test]
+fn a_readable_sqlite_table_offers_a_foreign_key() {
+    assert_eq!(sqlite_users("CREATE TABLE users (body text)"), ["Add Foreign Key…"]);
 }

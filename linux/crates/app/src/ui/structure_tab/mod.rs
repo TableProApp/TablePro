@@ -635,7 +635,13 @@ impl StructureModel {
     }
 
     fn capabilities(&self) -> DdlCapabilities {
-        self.ddl().map(|ddl| *ddl.capabilities()).unwrap_or_default()
+        let Some(ddl) = self.ddl() else {
+            return DdlCapabilities::default();
+        };
+        match (self.mode, &self.definition) {
+            (StructureMode::Edit, Some(definition)) => ddl.table_capabilities(definition),
+            _ => *ddl.capabilities(),
+        }
     }
 
     /// Which changes the row of `column` offers. A column the user added

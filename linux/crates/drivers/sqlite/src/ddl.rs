@@ -3,6 +3,7 @@
 
 mod column_constraint_segment;
 mod create_table_source;
+mod declared_shape;
 mod native_change_rules;
 mod rebuild_plan;
 mod source_element;
@@ -20,12 +21,13 @@ use tablepro_core::meta::{IndexInfo, TableRef};
 
 use self::create_table_source::CreateTableSource;
 pub(crate) use self::create_table_source::declared_foreign_key_names;
+use self::declared_shape::readable;
 use crate::dialect::SqliteDialect;
 
 /// A change ALTER TABLE cannot make rebuilds the table, so every change
 /// is offered. The rebuild needs the table's stored CREATE TABLE, and
-/// `column_capabilities` refuses the changes only a rebuild makes when
-/// that text cannot be read.
+/// `table_capabilities` and `column_capabilities` refuse the changes
+/// only a rebuild makes when that text cannot be read.
 static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     create_table: true,
     rename_table: true,
@@ -62,16 +64,27 @@ impl DdlDialect for SqliteDialect {
         self
     }
 
+    /// Without a readable CREATE TABLE no rebuild runs, so no foreign key
+    /// is added or dropped and the key stays where it is.
+    fn table_capabilities(&self, table: &TableDefinition) -> DdlCapabilities {
+        match readable(table) {
+            true => CAPABILITIES,
+            false => DdlCapabilities {
+                alter_primary_key: false,
+                add_foreign_key: false,
+                drop_foreign_key: false,
+                ..CAPABILITIES
+            },
+        }
+    }
+
     /// The rebuild writes a new type or nullability beside a generated
     /// column's expression rather than restating the column, so neither
     /// loses the expression.
     fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
         let mut permissions = ColumnCapabilities::standard(&CAPABILITIES, table, column);
-        let readable = match CreateTableSource::of(table) {
-            Ok(_) => Permission::Allowed,
-            Err(_) => Permission::Refused(RefusalReason::UnreadableDefinition),
-        };
-        let rebuild = || readable.clone();
+        let rebuildable = Permission::unless(readable(table), RefusalReason::UnreadableDefinition);
+        let rebuild = || rebuildable.clone();
         permissions.alter_type = rebuild();
         permissions.alter_nullability = rebuild();
         permissions.alter_default = permissions.alter_default.and(rebuild);
