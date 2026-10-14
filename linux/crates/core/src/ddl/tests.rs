@@ -696,3 +696,164 @@ fn a_typed_default_becomes_a_value_or_an_expression() {
         "'it''s'"
     );
 }
+
+/// The review of `edit` made to `users`, over a plan of `statements`.
+fn review(statements: &[&str], edit: impl FnOnce(&mut TableDraft)) -> ChangeReview {
+    let original = users();
+    let mut draft = TableDraft::from_definition(&original);
+    edit(&mut draft);
+    let plan = DdlPlan::from_sql(statements.iter().map(|statement| (*statement).to_owned()));
+    ChangeReview::review(&diff_table(&original, &draft), &plan)
+}
+
+#[test]
+fn drop_column_is_destructive() {
+    let reviewed = review(&["ALTER TABLE users DROP COLUMN legacy"], |draft| {
+        draft.columns.retain(|column| column.name != "legacy");
+        draft.indexes.retain(|index| index.name != "by_legacy");
+    });
+
+    assert_eq!(
+        reviewed.destructive,
+        [
+            DestructiveChange::DropColumn {
+                column: "legacy".to_owned()
+            },
+            DestructiveChange::DropIndex {
+                index: "by_legacy".to_owned()
+            },
+        ]
+    );
+    assert_eq!(reviewed.operations, 2);
+    assert!(reviewed.requires_confirmation(crate::WriteAtomicity::Transactional));
+}
+
+#[test]
+fn rename_is_not_destructive() {
+    let reviewed = review(&["ALTER TABLE users RENAME COLUMN email TO mail"], |draft| {
+        draft_column(draft, "email").name = "mail".to_owned();
+    });
+
+    assert!(reviewed.destructive.is_empty(), "{:?}", reviewed.destructive);
+    assert!(!reviewed.requires_confirmation(crate::WriteAtomicity::StatementByStatement));
+}
+
+#[test]
+fn unchanged_catalog_type_is_not_type_change() {
+    let catalog = review(&["ALTER TABLE users ALTER COLUMN email SET NOT NULL"], |draft| {
+        let email = draft_column(draft, "email");
+        email.column_type = DraftType::Catalog(text());
+        email.nullable = false;
+    });
+    let retyped = review(&["ALTER TABLE users ALTER COLUMN email SET NOT NULL"], |draft| {
+        let email = draft_column(draft, "email");
+        email.column_type = DraftType::Typed(" text ".to_owned());
+        email.nullable = false;
+    });
+
+    assert!(catalog.destructive.is_empty(), "{:?}", catalog.destructive);
+    assert!(retyped.destructive.is_empty(), "{:?}", retyped.destructive);
+}
+
+#[test]
+fn typed_type_change_is_destructive() {
+    let reviewed = review(&["ALTER TABLE users ALTER COLUMN email TYPE varchar(40)"], |draft| {
+        draft_column(draft, "email").column_type = DraftType::Typed("varchar(40)".to_owned());
+    });
+
+    assert_eq!(
+        reviewed.destructive,
+        [DestructiveChange::ChangeColumnType {
+            column: "email".to_owned(),
+            from: "text".to_owned(),
+            to: "varchar(40)".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn a_dropped_foreign_key_and_a_rebuild_are_named() {
+    let original = users();
+    let mut draft = TableDraft::from_definition(&original);
+    draft.foreign_keys.clear();
+    let mut plan = DdlPlan::from_sql(["CREATE TABLE _new (id integer)".to_owned()]);
+    let rebuild = TableRebuild {
+        recreated: vec![RecreatedObject {
+            kind: SchemaObjectKind::View,
+            name: "active_users".to_owned(),
+        }],
+        renumbers_rowids: false,
+    };
+    plan.rebuild = Some(rebuild.clone());
+
+    let reviewed = ChangeReview::review(&diff_table(&original, &draft), &plan);
+
+    assert_eq!(
+        reviewed.destructive,
+        [
+            DestructiveChange::RebuildTable(rebuild),
+            DestructiveChange::DropForeignKey {
+                key: "users_account_fk".to_owned()
+            },
+        ]
+    );
+}
+
+#[test]
+fn non_atomic_multi_statement_requires_confirmation() {
+    let two = review(
+        &[
+            "ALTER TABLE users RENAME COLUMN email TO mail",
+            "CREATE INDEX by_mail ON users (mail)",
+        ],
+        |draft| {
+            draft_column(draft, "email").name = "mail".to_owned();
+            draft.indexes.push(index("by_mail", &["mail"]));
+        },
+    );
+    let one = review(&["ALTER TABLE users RENAME COLUMN email TO mail"], |draft| {
+        draft_column(draft, "email").name = "mail".to_owned();
+    });
+
+    assert!(two.requires_confirmation(crate::WriteAtomicity::StatementByStatement));
+    assert!(!two.requires_confirmation(crate::WriteAtomicity::Transactional));
+    assert!(!one.requires_confirmation(crate::WriteAtomicity::StatementByStatement));
+}
+
+#[test]
+fn transactional_additive_save_does_not() {
+    let reviewed = review(
+        &[
+            "ALTER TABLE users ADD COLUMN nickname text",
+            "CREATE INDEX by_nickname ON users (nickname)",
+        ],
+        |draft| {
+            draft
+                .columns
+                .push(DraftColumn::new("nickname", DraftType::Typed("text".to_owned())));
+            draft.indexes.push(index("by_nickname", &["nickname"]));
+        },
+    );
+    let created = ChangeReview::create(&DdlPlan::from_sql(["CREATE TABLE t (a int)".to_owned()]));
+
+    assert!(!reviewed.requires_confirmation(crate::WriteAtomicity::Transactional));
+    assert_eq!(reviewed.operations, 2);
+    assert!(!created.requires_confirmation(crate::WriteAtomicity::StatementByStatement));
+    assert_eq!(created.operations, 1);
+}
+
+#[test]
+fn a_review_matches_only_the_plan_it_read() {
+    let reviewed = review(&["ALTER TABLE a", "ALTER TABLE b"], |_| {});
+
+    assert!(reviewed.matches(&DdlPlan::from_sql([
+        "ALTER TABLE a".to_owned(),
+        "ALTER TABLE b".to_owned()
+    ])));
+    assert!(!reviewed.matches(&DdlPlan::from_sql(["ALTER TABLE a".to_owned()])));
+    assert!(!reviewed.matches(&DdlPlan::from_sql([
+        "ALTER TABLE a".to_owned(),
+        "ALTER TABLE c".to_owned()
+    ])));
+    assert_eq!(reviewed.sql(), "ALTER TABLE a;\n\nALTER TABLE b;");
+}

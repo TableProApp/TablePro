@@ -17,7 +17,8 @@ use std::ops::Range;
 use tablepro_core::ddl::ddl_sql::{column_list, default_sql};
 use tablepro_core::ddl::{
     BuildDdlError, ColumnAlteration, ColumnDefinition, ColumnRename, DdlOperation, DdlPlan, DdlPrecondition,
-    DraftColumn, RefusalReason, SchemaObjectKind, SchemaObjectSource, TableChanges, TableDefinition, order_renames,
+    DraftColumn, RecreatedObject, RefusalReason, SchemaObjectKind, SchemaObjectSource, TableChanges, TableDefinition,
+    TableRebuild, order_renames,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -252,6 +253,16 @@ impl Rebuild<'_> {
         plan.precondition = Some(DdlPrecondition {
             probe: self.unchanged_probe(),
             rows: 0,
+        });
+        plan.rebuild = Some(TableRebuild {
+            recreated: self
+                .recreated()
+                .map(|object| RecreatedObject {
+                    kind: object.kind,
+                    name: object.name.clone(),
+                })
+                .collect(),
+            renumbers_rowids: self.rowids_renumbered(),
         });
         Ok(plan)
     }

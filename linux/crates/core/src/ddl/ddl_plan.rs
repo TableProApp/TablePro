@@ -1,4 +1,4 @@
-use super::{BuildDdlError, DdlOperation, DdlPrecondition, TableChanges};
+use super::{BuildDdlError, DdlOperation, DdlPrecondition, TableChanges, TableRebuild};
 use crate::foreign_key_mode::ForeignKeyMode;
 use crate::meta::TableRef;
 use crate::statement::{GuardedStatement, RowGuard, Statement, StatementBuilder};
@@ -11,6 +11,9 @@ pub struct DdlPlan {
     pub statements: Vec<Statement>,
     pub foreign_keys: ForeignKeyMode,
     pub precondition: Option<DdlPrecondition>,
+    /// Set where the plan copies the table into a new one, which the
+    /// review names before it runs.
+    pub rebuild: Option<TableRebuild>,
 }
 
 impl DdlPlan {
@@ -28,6 +31,7 @@ impl DdlPlan {
                 .collect(),
             foreign_keys: ForeignKeyMode::Enforced,
             precondition: None,
+            rebuild: None,
         }
     }
 

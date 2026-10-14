@@ -3,6 +3,7 @@
 //! turn them into DDL.
 
 mod build_ddl_error;
+mod change_review;
 mod changed_attributes;
 mod collation_name;
 mod column_alteration;
@@ -20,6 +21,7 @@ mod ddl_plan;
 mod ddl_precondition;
 pub mod ddl_sql;
 mod default_text;
+mod destructive_change;
 mod diff_table;
 mod draft_column;
 mod draft_problem;
@@ -38,6 +40,7 @@ mod schema_object_source;
 mod table_changes;
 mod table_definition;
 mod table_draft;
+mod table_rebuild;
 mod table_source;
 mod unmodeled_attribute;
 
@@ -45,6 +48,7 @@ mod unmodeled_attribute;
 mod tests;
 
 pub use build_ddl_error::BuildDdlError;
+pub use change_review::ChangeReview;
 pub use changed_attributes::ChangedAttributes;
 pub use collation_name::CollationName;
 pub use column_alteration::ColumnAlteration;
@@ -61,6 +65,7 @@ pub use ddl_operation::DdlOperation;
 pub use ddl_plan::DdlPlan;
 pub use ddl_precondition::DdlPrecondition;
 pub use default_text::{default_text, parse_default};
+pub use destructive_change::DestructiveChange;
 pub use diff_table::diff_table;
 pub use draft_column::DraftColumn;
 pub use draft_problem::DraftProblem;
@@ -79,5 +84,6 @@ pub use schema_object_source::{SchemaObjectKind, SchemaObjectSource};
 pub use table_changes::TableChanges;
 pub use table_definition::TableDefinition;
 pub use table_draft::TableDraft;
+pub use table_rebuild::{RecreatedObject, TableRebuild};
 pub use table_source::TableSource;
 pub use unmodeled_attribute::UnmodeledAttribute;
