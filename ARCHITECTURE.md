@@ -1,6 +1,6 @@
 # Architecture
 
-**BookiE** is a Linux-only native database client. Two composition roots (the GTK app and the headless MCP daemon) share one governed path: resolve credentials → open a tunnel if needed → wrap the driver in `PolicyGuard` → classify / approve / mask / execute / audit → return bounded results. There is no browser UI, no runtime driver plugin ABI, and no remote entitlement gate.
+**BookiE** is a Linux-only native database client. Two composition roots (the GTK app and the headless MCP daemon) share one governed path: resolve credentials → open a tunnel if needed → wrap the driver in `PolicyGuard` → classify and evaluate → approve when required → write required audit intent → execute → mask eligible returned results → write terminal audit → return bounded results. There is no browser UI, no runtime driver plugin ABI, and no remote entitlement gate.
 
 The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE). The Cargo workspace lives at the repository root (Rust 1.98). Crate and Cargo binary names stay `tablepro-*`. Packaging and Meson install `bookie` / `bookie-agentd` and add `tablepro` / `tablepro-agentd` aliases. App ID, XDG paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Check the [active sprint](docs/bookie-0.2-sprint.md) before renaming any of them.
 
@@ -150,7 +150,7 @@ These traits are the seams that keep engines and UI replaceable. Behaviour detai
 | `DatabaseDriver` | `core` | Connect and advertise engine capabilities. |
 | `Connection` | `core` | Query, execute, schema, transactions, controlled cancel and optional forward-only query cursors. |
 | `OperationControl` | `core` | Cancellation token + optional deadline that reach the driver. |
-| `PolicyGuard` | `policy` | Only consumer-facing `Connection`. Classify → decide → approve → mask → execute → audit. |
+| `PolicyGuard` | `policy` | Only consumer-facing `Connection`. Classify → decide → approve when required → write required intent → execute → mask eligible returned results → audit terminal outcome. |
 | `ApprovalSink` / `AuditSink` | `policy` | Pluggable approval UI and durable journal writes. |
 | `ConnectionProvider` | `mcp` | Must return a policy-gated handle; no raw driver escape hatch. |
 | `ConnectionFaultSink` | `policy` | Optional: app/agentd learn the connection is unusable after panic/desync. |
@@ -187,7 +187,7 @@ sequenceDiagram
         G->>A: audit intent
         G->>D: execute (OperationControl)
         D-->>G: result / error
-        G->>G: mask
+        G->>G: mask eligible returned result
         G->>A: terminal succeeded / failed / cancelled / timed_out
         G-->>U: bounded result
     end
@@ -276,7 +276,7 @@ flowchart LR
     allowlist -->|yes| guard[PolicyGuard]
     guard --> sql{SQL decision}
     sql -->|deny| auditD[audit denied]
-    sql -->|allow| exec[execute + mask + audit]
+    sql -->|allow| exec[execute → mask eligible result → audit]
 ```
 
 MCP may ask policy whether a statement needs write capability for a scope check; it does not evaluate rules or write audit records itself. A missing token, scope, allowlist entry or policy decision denies access.

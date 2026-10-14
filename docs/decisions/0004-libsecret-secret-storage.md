@@ -6,7 +6,7 @@
 
 ## Context
 
-Database and SSH credentials must persist without being written to JSON files. GUI-issued MCP token plaintext is returned once and Secret Service storage is attempted; the headless agent has a separate explicit issuance flow that emits plaintext once. The token registry persists only a hash. The storage mechanism must work across common Linux desktop environments, expose an async Rust API, and fail safely when no keyring service is available.
+Database and SSH credentials must persist without being written to JSON files. GUI-issued MCP token plaintext is returned once and Secret Service storage is attempted; the headless agent emits plaintext once to stdout or an explicitly selected owner-only file. The token registry persists only a hash. The storage mechanism must work across common Linux desktop environments, expose an async Rust API, and fail safely when no keyring service is available.
 
 Available choices include the Secret Service D-Bus API, desktop-specific keyring APIs, encrypted application files, plain files, or prompting on every connection.
 

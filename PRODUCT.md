@@ -12,7 +12,7 @@ Alternatives include other desktop database clients, vendor consoles, and comman
 
 ## Vision
 
-Stay a Linux-only native client. Finish BookiE 0.2.0 as a development release for the Arch and Hyprland target, with hotfixes to follow. Keep drivers compiled in. Store persistent credentials in Secret Service and issue headless MCP tokens once through an explicit output path. Keep MCP, the GUI and the headless daemon on one governed SQL path.
+Stay a Linux-only native client. Finish BookiE 0.2.0 as a development release for the Arch and Hyprland target, with hotfixes to follow. Keep drivers compiled in. Store persistent database and SSH credentials in Secret Service. Issue GUI MCP tokens once with best-effort keyring storage; headless MCP token plaintext goes once to stdout or an explicitly selected owner-only file. Keep MCP, the GUI and the headless daemon on one governed SQL path.
 
 ## Current state (as of 2026-10)
 
@@ -26,7 +26,7 @@ The roster is in [docs/personas.md](docs/personas.md). The primary persona is th
 
 ## Key capabilities
 
-- Governed SQL through `PolicyGuard` (classify, rules, approval, mask, execute, audit). See [specs/governed-sql/spec.md](specs/governed-sql/spec.md).
+- Governed SQL through `PolicyGuard`: classify and evaluate, request approval when required, record required audit intent, execute, mask eligible returned results, and write the terminal audit outcome. See [specs/governed-sql/spec.md](specs/governed-sql/spec.md).
 - SSH transport and host-key trust. See [specs/ssh-transport/spec.md](specs/ssh-transport/spec.md).
 - Secret Service credentials (absent vs keyring failure). See [specs/secret-storage/spec.md](specs/secret-storage/spec.md).
 - Native GTK workspace: browse, SQL editor, named parameters, favorites, Open Quickly.
