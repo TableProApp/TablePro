@@ -355,7 +355,8 @@ impl Rebuild<'_> {
     /// table.
     fn checks(&self, target: &TableRef) -> Vec<ForeignKeyCheck> {
         let table = &self.original.table;
-        let rebuilt = ForeignKeyCheck::new(Some(table.clone()), target.clone());
+        let rebuilt = ForeignKeyCheck::new(Some(table.clone()), target.clone())
+            .with_renamed_columns(self.changes.renamed_columns.clone());
         let mut checks = vec![match self.rowids_renumbered() {
             true => rebuilt.renumbered(),
             false => rebuilt,

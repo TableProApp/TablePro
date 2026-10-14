@@ -19,10 +19,10 @@ use tablepro_core::{
 };
 
 use crate::autocommit::is_autocommit;
-use crate::catalog::{FOREIGN_KEY_CHECK_SQL, MAIN_SCHEMA};
+use crate::catalog::{FOREIGN_KEY_CHECK_SQL, FOREIGN_KEY_LIST_SQL, MAIN_SCHEMA};
 use crate::encode::bind_all;
 use crate::errors::{SQLITE_IOERR, is_interrupt, map_error, primary_of};
-use crate::foreign_key_verification::{Violation, introduced, renamed, violation_error};
+use crate::foreign_key_verification::{Renames, ViolatedKey, Violation, introduced, violation_error};
 use crate::interrupt::InterruptFlag;
 use crate::result_stream::{count, reports_changes};
 use crate::sqlite_pooled::SqlitePooled;
@@ -300,15 +300,15 @@ fn stop_cause(reason: StopReason) -> DriverError {
 /// The violations already there, named as they will be after the batch.
 async fn baseline(connection: &mut SqlxConnection, checks: &[ForeignKeyCheck]) -> Result<Vec<Violation>, DriverError> {
     let mut found = Vec::new();
-    let mut renames = HashMap::new();
+    let mut renames = Renames::default();
     for check in checks {
         let Some(before) = &check.before else {
             continue;
         };
         found.extend(violations(connection, before, check.rowids_renumbered).await?);
-        renames.insert(before.name.to_lowercase(), check.after.name.clone());
+        renames.add(&before.name, &check.after.name, &check.renamed_columns);
     }
-    Ok(renamed(found, &renames))
+    Ok(renames.apply(found))
 }
 
 async fn violations_after(
@@ -341,14 +341,44 @@ async fn violations(
         .fetch_all(&mut *connection)
         .await
         .map_err(map_error)?;
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let keys = foreign_keys(connection, table, schema).await?;
     rows.iter()
         .map(|row| {
             let rowid: Option<i64> = row.try_get("rowid").map_err(map_error)?;
+            let fkid: i64 = row.try_get("fkid").map_err(map_error)?;
             Ok(Violation {
                 table: row.try_get("table").map_err(map_error)?,
                 rowid: rowid.filter(|_| !rowids_renumbered),
                 parent: row.try_get("parent").map_err(map_error)?,
+                key: keys.get(&fkid).cloned().unwrap_or_default(),
             })
         })
         .collect()
+}
+
+/// The table's foreign keys by the id `foreign_key_check` names them by.
+async fn foreign_keys(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+    schema: &str,
+) -> Result<HashMap<i64, ViolatedKey>, DriverError> {
+    let rows = sqlx::query(FOREIGN_KEY_LIST_SQL)
+        .bind(table.name.as_str())
+        .bind(schema)
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(map_error)?;
+    let mut keys: HashMap<i64, ViolatedKey> = HashMap::new();
+    for row in rows {
+        let id: i64 = row.try_get("id").map_err(map_error)?;
+        let from: String = row.try_get("from").map_err(map_error)?;
+        let to: Option<String> = row.try_get("to").map_err(map_error)?;
+        let key = keys.entry(id).or_default();
+        key.columns.push(from);
+        key.parent_columns.extend(to);
+    }
+    Ok(keys)
 }
