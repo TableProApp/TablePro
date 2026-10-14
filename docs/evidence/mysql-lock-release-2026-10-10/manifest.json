@@ -11,7 +11,7 @@
     "MariaDB 11 testcontainers fixture"
   ],
   "command": "cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic -- --include-ignored --test-threads=1",
-  "runtime": "Local Omarchy Linux host with Docker; serialized driver selector",
+  "runtime": "Linux host with Docker; serialized driver selector",
   "result": "20 passed; 0 failed; 0 ignored; 75 filtered out; 131.80 seconds; exit code 0",
   "assertions": [
     "GET_LOCK succeeds inside the failed batch and a MyISAM witness records its return value on the batch session.",

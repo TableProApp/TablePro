@@ -13,7 +13,7 @@
     "scenario": "mysql_unparseable_routine_dialog_denial_preserves_database",
     "count": 3,
     "result": "passed 3/3 consecutive isolated runs",
-    "runtime": "Local Omarchy Linux; Xvfb/X11; private D-Bus; GTK AT-SPI; Docker MySQL 8.0",
+    "runtime": "Linux; isolated Xvfb/X11, D-Bus and GTK AT-SPI; Docker MySQL 8.0",
     "logs": {
       "run-1.log": "034ba332069441f8cb5fccfec4a2828179be1c9d75cbf019791bff9b7763001c",
       "run-2.log": "55e963e62406cdebed4b92ec2cef47befb20a321ed60c0ccf47d1c4822311abd",

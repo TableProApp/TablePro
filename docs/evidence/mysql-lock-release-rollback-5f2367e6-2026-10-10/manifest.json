@@ -11,7 +11,7 @@
     "MariaDB 11 testcontainers fixture"
   ],
   "command": "cargo test --locked -p tablepro-driver-mysql --test integration failed_batch_does_not_restore_a_released_named_lock -- --ignored --test-threads=1",
-  "runtime": "Local Omarchy Linux host with Docker; serialized MySQL and MariaDB selector",
+  "runtime": "Linux host with Docker; serialized MySQL and MariaDB selector",
   "result": "2 passed; 0 failed; 95 filtered out; 12.34 seconds; exit code 0",
   "assertions": [
     "A CHECK constraint requires GET_LOCK to succeed inside the failing batch.",

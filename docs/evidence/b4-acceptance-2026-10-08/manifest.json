@@ -124,7 +124,7 @@
   },
   "native_wayland_probe": {
     "result": "inconclusive: fallback reached portal file-chooser discovery but chooser did not appear on isolated D-Bus",
-    "backend": "native Wayland (GDK_BACKEND=wayland; WAYLAND_DISPLAY=/run/user/1000/wayland-1)",
+    "backend": "native Wayland (GDK_BACKEND=wayland; session display socket omitted)",
     "runtime_binary_source": "a7f14faef07f05bd4a3d63a6ca31b60f2a4e0200",
     "runtime_binary_sha256": "5a8cf04f6b23ee1e6688b4e14c6ebd276a452e255f85506dc31d371c8e3863d7",
     "attempted_scenarios": [

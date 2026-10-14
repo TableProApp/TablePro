@@ -11,8 +11,8 @@
     "MySQL 8.1 testcontainers fixture",
     "MariaDB 11 testcontainers fixture"
   ],
-  "command": "CARGO_TARGET_DIR=[user-home]/Projects/bookie-b4-postgres-snapshot-pages/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic:: -- --include-ignored --test-threads=1",
-  "runtime": "Omarchy Linux host with Docker Engine 29.7.2 and rustc 1.98.1; compiled target cache reused from another BookiE worktree",
+  "command": "cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic:: -- --include-ignored --test-threads=1",
+  "runtime": "Linux host with Docker and rustc 1.98.1",
   "result": "23 passed; 0 failed; 0 ignored; 78 filtered out; 168.90 seconds; exit code 0",
   "coverage": [
     "Failed-batch rollback with MyISAM, MEMORY, CSV, ARCHIVE and BLACKHOLE tables.",

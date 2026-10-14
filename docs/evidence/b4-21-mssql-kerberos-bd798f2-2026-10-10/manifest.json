@@ -6,7 +6,7 @@
   "test_binary_path": "linux/target/debug/deps/mssql_kerberos-d9383d05e23e4f3d",
   "test_binary_sha256": "e6614304f8c2fc9a1592e7207dfbc19f02bd3cf1b0fc90c6c84c9bcfc958c4a0",
   "command": "bash linux/scripts/test-mssql-kerberos.sh",
-  "runtime": "Local Linux host; Docker Engine 29.7.2; Samba AD and SQL Server fixtures; generated Kerberos keytabs and verified TLS certificates",
+  "runtime": "Linux host with Docker; Samba AD and SQL Server fixtures; generated Kerberos keytabs and verified TLS certificates",
   "result": "2 passed, 0 failed",
   "tests": [
     "kerberos_refuses_an_unregistered_sql_server_spn",

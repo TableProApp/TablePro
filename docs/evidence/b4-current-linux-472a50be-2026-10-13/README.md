@@ -17,6 +17,6 @@ The PostgreSQL release scenarios included the read-scoped plan refusal, `EXPLAIN
 
 ## Environment and limits
 
-The host had Docker Engine 29.7.2. The GTK scenarios ran with the script's isolated D-Bus, Xvfb and AT-SPI setup. The release script's first two attempts stopped before product assertions because a long temporary-directory path made the OpenSSH control socket exceed the Unix socket path limit. The successful run used a short `/run/user/1000/x` symlink pointing to a temporary directory inside the repository; that symlink and temporary directory were removed after the run.
+The GTK scenarios ran with the script's isolated D-Bus, Xvfb and AT-SPI setup. The release script's first two attempts stopped before product assertions because a long temporary-directory path made the OpenSSH control socket exceed the Unix socket path limit. The successful run used a short-lived runtime-directory symlink to a temporary directory; both were removed after the run.
 
 These are source-build local results on the current tip. They are not evidence for the older frozen candidate `bbdc39a430ede9382bc5dfa7164e51a065e2bd88`, and they do not establish Forgejo, installed-package, native Wayland, or power-loss acceptance.
