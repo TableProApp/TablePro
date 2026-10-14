@@ -48,7 +48,10 @@ mod tests {
     use super::*;
     use crate::test_support::MemorySettings;
 
-    #[test]
+    /// On the GTK thread: GSettings delivers a change through the main
+    /// context, and only the thread that holds it gets the change at
+    /// once rather than queued for whichever thread is iterating it.
+    #[gtk4::test]
     fn a_changed_preference_reaches_the_channel() {
         let settings = MemorySettings::new();
         let preferences = HistoryPreferences::follow(settings.get());
