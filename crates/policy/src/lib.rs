@@ -48,12 +48,20 @@ pub fn panic_description(location: Option<(&str, u32)>) -> String {
 }
 
 pub fn withhold_panic_messages() {
-    if std::env::var_os("TABLEPRO_DEBUG_PANICS").is_some() {
-        return;
-    }
-    std::panic::set_hook(Box::new(|info| {
+    let debug_panics = std::env::var_os("TABLEPRO_DEBUG_PANICS").is_some();
+    std::panic::set_hook(Box::new(move |info| {
         let location = info.location().map(|location| (location.file(), location.line()));
-        tracing::error!("{}", panic_description(location));
+        let description = panic_description(location);
+        let backtrace = if debug_panics {
+            Some(std::backtrace::Backtrace::force_capture())
+        } else {
+            let backtrace = std::backtrace::Backtrace::capture();
+            matches!(backtrace.status(), std::backtrace::BacktraceStatus::Captured).then_some(backtrace)
+        };
+        match backtrace {
+            Some(backtrace) => tracing::error!(panic = %description, backtrace = %backtrace),
+            None => tracing::error!(panic = %description),
+        }
     }));
 }
 

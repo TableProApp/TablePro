@@ -38,7 +38,7 @@ The application survives a panicking driver with an honest error, a correct audi
 
 Containment is not a repair. A caught panic means a dependency reached a state its author did not expect, and we resume on a new connection without knowing why.
 
-The app and `agentd` install a panic hook that withholds the payload by default. Its debug-mode exception is tracked as SEC-10 in [known limitations](../known-limitations.md#known-bugs). `PolicyGuard` separately catches driver panics and logs only the operation and payload byte count; returned errors withhold the payload. These hooks do not cover arbitrary panics in other processes or code that does not install the hook.
+The app and `agentd` install a panic hook that always withholds the payload. `TABLEPRO_DEBUG_PANICS=1` enables a backtrace without restoring Rust's payload-printing hook; `RUST_BACKTRACE=1` also requests one. Both modes retain the source location and stack frames while keeping the panic message out of logs and stderr. [#666](https://github.com/cozyGarage/BookiE/issues/666) records the installed-launch investigation steps. `PolicyGuard` separately catches driver panics and logs only the operation and payload byte count; returned errors withhold the payload. These hooks do not cover arbitrary panics in other processes or code that does not install the hook.
 
 `catch_unwind` requires the unwinding panic strategy. Setting `panic = "abort"` in a release profile would silently disable this entire boundary, so that setting must not be introduced without replacing this mechanism.
 

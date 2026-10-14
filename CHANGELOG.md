@@ -224,7 +224,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A session now refuses a script that hides BEGIN, COMMIT or ROLLBACK among other statements, so the transaction BookiE tracks always matches the one on the server.
 - A SQLite, PostgreSQL, MySQL or MariaDB connection marked read-only is now read-only in the database engine itself, so a statement the safety checks mistake for a read still cannot change data; a read-only SQLite connection no longer creates a missing file.
 - Importing a connection bundle now refuses a file over 16 MiB, or anything that is not a regular file, before reading it.
-- Driver panic messages are withheld by default. `TABLEPRO_DEBUG_PANICS=1` restores Rust's default hook and may print query text or credentials; keep it unset when using real database data.
+- Panic diagnostics retain source locations and requested backtraces while always withholding the panic message, including with `TABLEPRO_DEBUG_PANICS=1`.
 - SSH connections refuse a host key marked revoked in `known_hosts` and ignore a relative configuration directory.
 - Agent token files are created with owner-only permissions, and approval prompts strip bidirectional text controls that could disguise displayed text.
 - Shortened agent-token labels stop at character boundaries and never split a UTF-8 character.

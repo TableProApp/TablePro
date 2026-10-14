@@ -76,7 +76,6 @@ What the application does not do, or does differently from what you might expect
 - **Several UI details remain inconsistent** ([#660](https://github.com/cozyGarage/BookiE/issues/660)): the ENUM picker may not highlight the current member, text and bytea NULL values render differently, Structure tab chevrons look inverted, and the catalog kind selector can shift the search field.
 - **PostgreSQL `VOID` results are shown as undecodable** ([#660](https://github.com/cozyGarage/BookiE/issues/660)); they should render as empty values.
 - **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); the cause remains under investigation.
-- **Debug panic output can expose sensitive panic text** (SEC-10 / [#849](https://github.com/cozyGarage/BookiE/issues/849)): setting `TABLEPRO_DEBUG_PANICS=1` currently leaves Rust's default hook active, which may print the raw panic payload. Avoid enabling it until the fix lands.
 - **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Intermittent failures remain under investigation; recent failures include an application shutdown with a bad exit status after the scenarios passed. The required consecutive full-run evidence has not been met.
 
 ## Test and CI limits
