@@ -33,6 +33,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
+use libadwaita::prelude::AdwApplicationWindowExt;
 use relm4::prelude::*;
 
 use tablepro_core::DriverError;
@@ -152,7 +153,7 @@ impl SessionWindow {
                     WelcomeViewOutput::SetGroup(id, group) => SessionWindowInput::SetConnectionGroup(id, group),
                 });
             });
-        let picker = PickerPage::new(welcome.widget());
+        let picker = PickerPage::new(welcome.widget(), self.application().as_ref());
         let reset_input = input.clone();
         picker
             .banner()
@@ -361,10 +362,15 @@ impl SessionWindow {
         self.add_toast(adw::Toast::new(message));
     }
 
+    /// On the page on screen: a toast for a page left behind would never
+    /// show.
     fn add_toast(&self, toast: adw::Toast) {
         #[cfg(test)]
         self.imp().toasts.borrow_mut().push(toast.clone());
-        self.imp().toast_overlay.add_toast(toast);
+        match self.imp().page_toasts.borrow().as_ref() {
+            Some(overlay) => overlay.add_toast(toast),
+            None => tracing::debug!(title = ?toast.title(), "a toast with no page to show it on"),
+        }
     }
 
     /// Move to `page`. The page left behind drops with what it held,
@@ -373,21 +379,34 @@ impl SessionWindow {
     fn show_page(&self, page: SessionPage) {
         self.tear_down();
         let imp = self.imp();
-        let child: Option<gtk::Widget> = match &page {
+        let app = self.application();
+        let (child, toasts): (Option<gtk::Widget>, Option<adw::ToastOverlay>) = match &page {
             SessionPage::Picker => {
                 self.set_title(Some(&crate::i18n::gettext("TablePro")));
-                imp.picker.get().map(|picker| picker.clone().upcast())
+                let picker = imp.picker.get();
+                (
+                    picker.map(|picker| picker.clone().upcast()),
+                    picker.map(PickerPage::toast_overlay),
+                )
             }
-            SessionPage::Connecting { source, .. } => Some(ConnectingPage::new(&source_name(source)).upcast()),
-            SessionPage::ConnectFailed { source, failure, .. } => Some(
-                ConnectFailedPage::new(
+            SessionPage::Connecting { source, .. } => {
+                let connecting = ConnectingPage::new(&source_name(source), app.as_ref());
+                let toasts = connecting.toast_overlay();
+                (Some(connecting.upcast()), Some(toasts))
+            }
+            SessionPage::ConnectFailed { source, failure, .. } => {
+                let failed = ConnectFailedPage::new(
                     &failure.message,
                     edit_label(source, failure).as_deref(),
                     failure.reenter,
-                )
-                .upcast(),
-            ),
-            SessionPage::Workspace { workspace, .. } => Some(workspace.clone().upcast()),
+                    app.as_ref(),
+                );
+                let toasts = failed.toast_overlay();
+                (Some(failed.upcast()), Some(toasts))
+            }
+            SessionPage::Workspace { workspace, .. } => {
+                (Some(workspace.clone().upcast()), Some(workspace.toast_overlay()))
+            }
         };
         let editable = match &page {
             SessionPage::ConnectFailed { source, .. } => is_editable(source),
@@ -398,7 +417,8 @@ impl SessionWindow {
             imp.opened_for_file.set(false);
         }
         let left = imp.page.replace(page);
-        imp.toast_overlay.set_child(child.as_ref());
+        imp.page_toasts.replace(toasts);
+        self.set_content(child.as_ref());
         drop(left);
     }
 

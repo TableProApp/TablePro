@@ -51,6 +51,8 @@ pub(crate) struct Script {
     pub tunnel: Option<tablepro_storage::SavedSshConfig>,
     /// The connection list on disk cannot be read, so it holds nothing.
     pub unreadable_list: bool,
+    /// The size the window opens at, as the settings remember it.
+    pub window_size: Option<(i32, i32)>,
 }
 
 /// A TablePro over fakes with one window open on the picker and `saved`
@@ -98,7 +100,18 @@ impl TestWindow {
             network,
             tunnel,
             unreadable_list,
+            window_size,
         } = script;
+        if let Some((width, height)) = window_size {
+            settings
+                .get()
+                .set_window_geometry(tablepro_storage::WindowGeometry {
+                    width,
+                    height,
+                    maximized: false,
+                })
+                .expect("store the window size");
+        }
         let network = network || tunnel.is_some();
         let saved = match tunnel {
             Some(tunnel) => SavedConnection {
@@ -330,19 +343,27 @@ fn the_header_icon_buttons_are_labelled() {
     let test = TestWindow::connected("Labels");
     let picker = test.window.imp().picker.get().expect("the picker").clone();
 
-    for root in [picker.upcast::<gtk4::Widget>(), test.workspace().upcast()] {
-        // The tab overview's own header is libadwaita's.
-        let headers = descendants(&root).into_iter().filter(|widget| {
-            widget.is::<adw::HeaderBar>() && widget.ancestor(adw::TabOverview::static_type()).is_none()
-        });
+    // The tab overview's own header is libadwaita's, outside the
+    // workspace's breakpoint bin.
+    let panes = test.workspace().imp().breakpoint_bin.get();
+    for root in [picker.upcast::<gtk4::Widget>(), panes.upcast()] {
+        let headers = descendants(&root)
+            .into_iter()
+            .filter(|widget| widget.is::<adw::HeaderBar>());
         let buttons: Vec<gtk4::Widget> = headers
             .flat_map(|header| descendants(&header))
-            // A menu button's own toggle is labelled through the menu
-            // button.
+            // A menu button's own toggle, and the tab button's inner
+            // button, are labelled through their outer widget.
             .filter(|widget| {
+                let inner = widget
+                    .parent()
+                    .is_some_and(|parent| parent.is::<gtk4::MenuButton>() || parent.is::<adw::TabButton>());
                 widget.is::<gtk4::MenuButton>()
-                    || (widget.is::<gtk4::ToggleButton>()
-                        && !widget.parent().is_some_and(|parent| parent.is::<gtk4::MenuButton>()))
+                    || widget.is::<adw::TabButton>()
+                    || (widget.is::<gtk4::ToggleButton>() && !inner)
+                    || widget
+                        .downcast_ref::<gtk4::Button>()
+                        .is_some_and(|button| button.icon_name().is_some() && !inner)
             })
             .collect();
         assert!(!buttons.is_empty(), "no header buttons under {}", root.type_().name());
@@ -350,6 +371,40 @@ fn the_header_icon_buttons_are_labelled() {
             assert_labelled(&button).unwrap_or_else(|problem| panic!("{problem:?}: {:?}", button.tooltip_text()));
         }
     }
+}
+
+fn shows_text(root: &impl IsA<gtk4::Widget>, text: &str) -> bool {
+    descendants(root)
+        .iter()
+        .filter_map(|widget| widget.downcast_ref::<gtk4::Label>())
+        .any(|label| label.label() == text)
+}
+
+#[gtk4::test]
+fn toast_routes_to_current_page_overlay() {
+    let test = TestWindow::picker("ToastRoutes");
+    let picker = test.window.imp().picker.get().expect("the picker").clone();
+
+    test.window.show_toast("on the picker");
+    drain_main_context();
+    assert!(shows_text(&picker.toast_overlay(), "on the picker"));
+
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    test.window.show_toast("on the workspace");
+    drain_main_context();
+
+    let workspace = test.workspace();
+    assert!(shows_text(&workspace.toast_overlay(), "on the workspace"));
+    assert!(!shows_text(&picker.toast_overlay(), "on the workspace"));
+    assert!(
+        workspace
+            .toast_overlay()
+            .ancestor(adw::TabOverview::static_type())
+            .is_some(),
+        "the workspace's toasts sit above the tab overview"
+    );
 }
 
 #[gtk4::test]
@@ -482,9 +537,7 @@ fn a_failed_connect_shows_why_and_choose_connection_returns_to_the_picker() {
     test.wait_for_page("connect-failed");
     let page = test
         .window
-        .imp()
-        .toast_overlay
-        .child()
+        .content()
         .and_then(|child| child.downcast::<ConnectFailedPage>().ok())
         .expect("the failed page");
     assert!(page.message().is_some_and(|message| !message.is_empty()));
@@ -605,9 +658,7 @@ fn missing_file_goes_to_connect_failed() {
 
     let message = test
         .window
-        .imp()
-        .toast_overlay
-        .child()
+        .content()
         .and_then(|child| child.downcast::<ConnectFailedPage>().ok())
         .and_then(|page| page.message())
         .expect("the failed page's message");

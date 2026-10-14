@@ -9,6 +9,8 @@ pub enum ShortcutOwner {
     CellEditor,
     /// The SQL editor's source view.
     SqlEditor,
+    /// The whole SQL editor tab, its find bar included.
+    SqlEditorTab,
     StructureTab,
     FilterStrip,
     /// A row of the sidebar's table list.

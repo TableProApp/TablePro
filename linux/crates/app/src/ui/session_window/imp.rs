@@ -23,9 +23,9 @@ use crate::workspace::{CloseGuards, WindowInhibitor};
 #[derive(Default, gtk::CompositeTemplate)]
 #[template(resource = "/app/tablepro/TablePro/ui/session-window.ui")]
 pub struct SessionWindow {
-    #[template_child]
-    pub toast_overlay: TemplateChild<adw::ToastOverlay>,
-
+    /// The toasts of the page on screen. Each page has its own, under
+    /// its header bar, so a workspace's sit inside the tab overview.
+    pub(super) page_toasts: RefCell<Option<adw::ToastOverlay>>,
     /// What the application handed the window, set once it is added.
     pub(super) state: OnceCell<WindowState>,
     pub(super) input: OnceCell<InputSender<SessionWindowInput>>,

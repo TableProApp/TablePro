@@ -45,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen readers announce the keyboard shortcut of the table, SQL editor and filter buttons that have one.
 - Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
 - Licenses of the third-party crates TablePro is built with, in About TablePro and installed with the app.
+- F9 and the sidebar button show and hide the table sidebar.
+- Find and replace in the SQL editor with Ctrl+F and Ctrl+H, matching case, whole words or regular expressions.
 
 ### Changed
 
@@ -82,6 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ctrl+S, Ctrl+Z, F5 and Ctrl+F act on the tab that has the focus, so a text field keeps its own undo.
 - Keyboard Shortcuts lists every shortcut, grouped by where it works.
 - About TablePro links to the website, documentation and issue tracker, and shows a release's notes.
+- The sidebar and the tabs each have a header bar, and a narrow window folds the sidebar away and swaps the tab bar for a tab button.
+- New Connection and the main menu sit in the connection list's header bar.
+- A tab with unsaved changes or an open transaction shows a dot icon instead of a • in its title.
+- The window title names the tab in front and its connection, and the header says when the connection is read-only.
+- Tab titles name the schema once the database has two schemas of its own.
 
 ### Removed
 

@@ -2,6 +2,7 @@ use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
+use super::find_bar::Direction;
 use super::{SqlEditor, toggle_line_comment};
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 
@@ -27,6 +28,12 @@ impl SqlEditor {
             entry("cancel", SqlEditor::stop),
             entry("format", SqlEditor::format),
             entry("toggle-comment", |editor| toggle_line_comment(&editor.buffer())),
+            entry("find", |editor| editor.imp().find_bar.open(false)),
+            entry("find-replace", |editor| editor.imp().find_bar.open(true)),
+            entry("find-next", |editor| editor.imp().find_bar.find(Direction::Next)),
+            entry("find-previous", |editor| {
+                editor.imp().find_bar.find(Direction::Previous)
+            }),
         ]);
         set_cancel_enabled(&actions, false);
         self.insert_action_group("editor", Some(&actions));
@@ -35,6 +42,8 @@ impl SqlEditor {
         let imp = self.imp();
         imp.source_view
             .add_controller(local_shortcut_controller(ShortcutOwner::SqlEditor));
+        // On the tab, so the find keys work from the find bar's entries too.
+        self.add_controller(local_shortcut_controller(ShortcutOwner::SqlEditorTab));
         crate::ui::a11y::announce_key_shortcuts(&imp.run_button.get(), "editor.run");
         crate::ui::a11y::announce_key_shortcuts(&imp.stop_button.get(), "editor.cancel");
     }

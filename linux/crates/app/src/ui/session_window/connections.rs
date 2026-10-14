@@ -575,7 +575,7 @@ impl SessionWindow {
             .tasks
             .spawn_blocking_task(move || store.reset_unreadable_blocking(std::time::SystemTime::now()));
         let banner = picker.banner();
-        let toasts = self.imp().toast_overlay.get();
+        let toasts = picker.toast_overlay();
         glib::spawn_future_local(async move {
             let reset = resetting.await;
             drop(held);

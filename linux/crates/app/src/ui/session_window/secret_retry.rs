@@ -277,9 +277,7 @@ mod window_tests {
 
     fn failed_page(window: &SessionWindow) -> ConnectFailedPage {
         window
-            .imp()
-            .toast_overlay
-            .child()
+            .content()
             .and_then(|child| child.downcast::<ConnectFailedPage>().ok())
             .expect("the failed page")
     }

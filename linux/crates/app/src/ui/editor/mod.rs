@@ -6,6 +6,8 @@ mod buffer_edit;
 mod completion;
 mod editor_actions;
 mod editor_session_slot;
+mod find_bar;
+mod find_state;
 mod format_plan;
 mod imp;
 mod result_item;
@@ -100,6 +102,13 @@ impl SqlEditor {
         // The text the tab opens with is not an edit to take back.
         buffer.set_text(&initial_text);
         imp.source_view.set_buffer(Some(&buffer));
+        imp.find_bar.attach(&imp.source_view);
+        let toasts = editor.downgrade();
+        imp.find_bar.connect_toast(move |_, text| {
+            if let Some(editor) = toasts.upgrade() {
+                editor.emit_by_name::<()>("toast", &[&text]);
+            }
+        });
         editor.connect_theme(&init.settings);
         editor.connect_completion(&buffer);
         editor.connect_buffer(&buffer);

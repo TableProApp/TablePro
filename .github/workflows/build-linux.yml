@@ -131,6 +131,14 @@ jobs:
             echo "::error::add window actions with add_action_entries on the window, not a group inserted as win"
             exit 1
           fi
+      - name: Tab ids in the tab index
+        # TabIndex maps a page to its tab. qdata on a page is unsafe to
+        # read and outlives the tab it names.
+        run: |
+          if grep -rn 'set_qdata' crates/app/src; then
+            echo "::error::map a tab page to its tab through TabIndex, not set_qdata"
+            exit 1
+          fi
       - name: Docs name paths and types that exist
         # A renamed type or a moved file stays named in prose until
         # something asks. GTK and GLib names resolve against the GIR
