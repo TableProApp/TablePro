@@ -247,6 +247,7 @@ mod tests {
                 ssh_program: PathBuf::from("/nonexistent/ssh"),
                 ssh_keygen_program: PathBuf::from("/nonexistent/ssh-keygen"),
                 askpass_program: PathBuf::from("/nonexistent/tablepro-askpass"),
+                config_file: None,
             },
             liveness: LivenessPolicy::DESKTOP,
         };

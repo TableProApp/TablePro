@@ -1956,3 +1956,190 @@ fn read_only_cells_use_inscription_not_selectable_label() {
     crate::ui::grid::begin_edit(&cell);
     assert!(!cell.is_editing(), "a locked cell opened for editing");
 }
+
+/// More rows than a delete marks without asking first.
+const DOZEN: [&str; 12] = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"];
+
+/// The confirmation a bulk delete is waiting on, by its ticket.
+fn confirming(tab: &BrowseTab) -> Option<(u64, libadwaita::AlertDialog)> {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    tab.imp().model.borrow().as_ref().and_then(|model| {
+        model
+            .confirming_delete
+            .as_ref()
+            .map(|pending| (pending.ticket, pending.dialog.clone()))
+    })
+}
+
+/// Every row selected and Delete pressed, which asks before marking.
+fn ask_to_delete_every_row(harness: &Harness) -> libadwaita::AlertDialog {
+    wait_until(WAIT, || harness.shown().len() == DOZEN.len()).expect("the first page");
+    harness.tab().send(BrowseTabInput::SelectAllRows);
+    delete_rows(harness.tab());
+    let (_, dialog) = confirming(harness.tab()).expect("a bulk delete asks first");
+    assert_eq!(harness.tracker.pending_count(), 0);
+    dialog
+}
+
+fn answer_delete(dialog: &libadwaita::AlertDialog) {
+    dialog.emit_by_name::<()>("response", &[&"delete"]);
+    drain_main_context();
+}
+
+fn change_schema(harness: &Harness, done: impl Fn(&[ColumnInfo]) -> bool) {
+    harness
+        .session
+        .invalidate_table(&tablepro_core::TableRef::unqualified("users"));
+    harness.tab().send(BrowseTabInput::SchemaChanged);
+    wait_until(WAIT, || done(&harness.tab().columns())).expect("the new columns");
+}
+
+/// Answering closes the dialog, which answers again with its close
+/// response, and the rows stay marked.
+#[gtk4::test]
+fn a_confirmed_bulk_delete_marks_every_selected_row() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    let dialog = ask_to_delete_every_row(&harness);
+
+    answer_delete(&dialog);
+
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
+    assert!(confirming(harness.tab()).is_none());
+}
+
+#[gtk4::test]
+fn a_bulk_delete_waiting_while_the_primary_key_moves_is_cancelled() {
+    let mut script = serving_table();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .always(FakeReply::ok(vec![column("id", false), column("name", true)]));
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    let toasts = toasts(harness.tab());
+    let dialog = ask_to_delete_every_row(&harness);
+
+    change_schema(&harness, |columns| {
+        columns.iter().any(|column| column.name == "name" && column.primary_key)
+    });
+    answer_delete(&dialog);
+
+    assert!(confirming(harness.tab()).is_none(), "the confirmation outlived the key");
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "rows were marked by the key they had before"
+    );
+    assert_eq!(toasts.borrow().len(), 1, "{:?}", toasts.borrow());
+}
+
+#[gtk4::test]
+fn a_bulk_delete_waiting_while_a_column_is_added_marks_its_rows_under_the_new_columns() {
+    let widened = [column("id", true), column("name", false), column("email", false)];
+    let mut script = serving_table();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .always(FakeReply::ok(widened.to_vec()));
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    let dialog = ask_to_delete_every_row(&harness);
+
+    change_schema(&harness, |columns| columns.len() == widened.len());
+    assert!(
+        confirming(harness.tab()).is_some(),
+        "a change that keeps the key cancelled the delete"
+    );
+    answer_delete(&dialog);
+
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
+    assert_eq!(
+        harness.tracker.row_state(&key(0)),
+        crate::services::change_tracker::RowState::PendingDelete
+    );
+}
+
+/// What this thread logs, as text.
+#[derive(Clone, Default)]
+struct LogLines(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl LogLines {
+    fn text(&self) -> String {
+        let bytes = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+}
+
+impl std::io::Write for LogLines {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[gtk4::test]
+fn a_failed_row_count_logs_its_category_and_not_the_server_message() {
+    let lines = LogLines::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::DEBUG)
+        .with_writer({
+            let lines = lines.clone();
+            move || lines.clone()
+        })
+        .finish();
+    let _logging = tracing::subscriber::set_default(subscriber);
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    script.count_rows.always(FakeReply::err(DriverError::reported(
+        tablepro_core::ServerDiagnostics::new(None, "You have an error in your SQL syntax near 'hunter2' at line 1"),
+    )));
+    let _harness = Harness::open(script, []);
+
+    wait_until(WAIT, || lines.text().contains("the row count could not be read")).expect("the failure is logged");
+
+    let text = lines.text();
+    assert!(!text.contains("hunter2"), "{text}");
+    assert!(text.contains("category=Some(Server)"), "{text}");
+}
+
+#[gtk4::test]
+fn a_second_delete_replaces_the_waiting_confirmation() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    ask_to_delete_every_row(&harness);
+    let (first, _) = confirming(harness.tab()).expect("the first confirmation");
+
+    delete_rows(harness.tab());
+    drain_main_context();
+    let (second, dialog) = confirming(harness.tab()).expect("the closed confirmation cancelled the new one");
+    assert_ne!(first, second);
+    harness.tab().send(BrowseTabInput::BulkDeleteAnswered {
+        ticket: first,
+        confirmed: true,
+    });
+    drain_main_context();
+
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "an answer to the replaced confirmation marked the rows"
+    );
+    assert_eq!(confirming(harness.tab()).map(|(ticket, _)| ticket), Some(second));
+    answer_delete(&dialog);
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
+}

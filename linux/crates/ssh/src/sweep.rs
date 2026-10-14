@@ -115,6 +115,7 @@ mod tests {
             ssh_program: PathBuf::from("true"),
             ssh_keygen_program: PathBuf::from("true"),
             askpass_program: PathBuf::from("/nonexistent"),
+            config_file: None,
         }
     }
 

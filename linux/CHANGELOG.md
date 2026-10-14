@@ -89,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Turning a column's primary key on or off in the Structure tab saved nothing.
 - Dropping a SQL Server column that has a default failed.
 - Creating a SQLite table with a foreign key failed.
-- Changing a column in the Structure tab lost its collation, SRID, SPARSE, CHECK or other attributes it had.
+- Changing a column in the Structure tab lost its collation, SRID, SPARSE, CHECK, storage, compression or other attributes it had.
 - Saving a MySQL column whose default or generated expression held a quoted string failed.
 - Save in a Structure tab's close prompt skipped the tab's checks and dropped a default that did not parse.
 - The Structure tab refused every save on a SQLite table keyed by INTEGER PRIMARY KEY.
@@ -109,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ctrl+S did nothing in a Structure tab.
 - Structure tab could not save two columns swapping names, or a column taking the name of one being removed.
 - Changing the type of a SQL Server column with a default failed.
+- A bulk delete confirmed after the table's primary key changed marked rows by their old key.
 
 ### Security
 
@@ -116,3 +117,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL run in the editor, a typed filter or a column default, and the values in them, reached the journal at debug level.
 - Column types and defaults typed in the Structure tab reached the SQL after a text filter instead of the database's own parser.
 - Changing a SQL Server column's type or nullability in the Structure tab removed its data mask.
+- A jump host whose ssh_config sets StrictHostKeyChecking to accept-new or no was trusted without the host key dialog.
+- Editor SQL saved by an earlier build stayed on disk in a tab file nothing reads any more.

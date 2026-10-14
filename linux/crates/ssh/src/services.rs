@@ -15,6 +15,10 @@ pub struct SshServices {
     pub ssh_program: PathBuf,
     pub ssh_keygen_program: PathBuf,
     pub askpass_program: PathBuf,
+    /// The ssh_config file every ssh this crate starts reads in place of
+    /// the user's and the system's, as `ssh -F` does. `None` leaves
+    /// OpenSSH to read its own.
+    pub config_file: Option<PathBuf>,
 }
 
 impl SshServices {
@@ -29,6 +33,7 @@ impl SshServices {
             ssh_program: PathBuf::from("ssh"),
             ssh_keygen_program: PathBuf::from("ssh-keygen"),
             askpass_program: locate_askpass(libexecdir, executable_dir.as_deref()),
+            config_file: None,
         }
     }
 
@@ -72,6 +77,7 @@ mod tests {
             ssh_program: PathBuf::from("ssh"),
             ssh_keygen_program: PathBuf::from("ssh-keygen"),
             askpass_program,
+            config_file: None,
         }
     }
 

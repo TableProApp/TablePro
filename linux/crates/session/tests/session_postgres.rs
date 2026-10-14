@@ -101,6 +101,7 @@ fn isolated_ssh() -> IsolatedSsh {
         ssh_program: wrapper,
         ssh_keygen_program: PathBuf::from("ssh-keygen"),
         askpass_program: PathBuf::from("/nonexistent/tablepro-askpass"),
+        config_file: None,
     };
     IsolatedSsh { dir, services }
 }

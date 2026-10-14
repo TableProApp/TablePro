@@ -1,4 +1,7 @@
-use super::{CollationName, ColumnKeyRoles, ColumnVisibility, GeneratedColumn, IdentityStyle, UnmodeledAttribute};
+use super::{
+    CollationName, ColumnCompression, ColumnKeyRoles, ColumnStorage, ColumnVisibility, GeneratedColumn, IdentityStyle,
+    UnmodeledAttribute,
+};
 use crate::column::SqlExpression;
 
 /// What a column definition says beyond its name, type, nullability and
@@ -32,6 +35,12 @@ pub struct ColumnAttributes {
     /// drops it unless the definition restates it; every other engine
     /// keeps a CHECK on the table, where a redefinition leaves it alone.
     pub check: Option<SqlExpression>,
+    /// PostgreSQL `SET STORAGE`, set only when it differs from the
+    /// type's own.
+    pub storage: Option<ColumnStorage>,
+    /// PostgreSQL `SET COMPRESSION`, set only when the column names a
+    /// method rather than following the server's default.
+    pub compression: Option<ColumnCompression>,
     pub identity: IdentityStyle,
     /// The SQL Server constraint that holds the default. A type change
     /// has to drop it by name first and add it back afterwards.
