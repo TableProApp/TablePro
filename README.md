@@ -12,20 +12,9 @@ Every shipped feature is free to use. BookiE has no account, license, subscripti
 
 The Linux client is under active development toward BookiE 0.2.0. B3 type/value and B4 transport/session correctness blockers remain alongside installed desktop qualification. Workflows include saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, and the headless `bookie-agentd` process. Table browsing fetches bounded pages from the database. Core, PostgreSQL and PolicyGuard cursor APIs exist, but the SQL editor is not wired to them yet, so arbitrary SQL results are still materialized up to configured caps ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8).
 
-PostgreSQL is the furthest along: server-confirmed cancellation, certificate hostname and authority verification, verified TLS through an SSH tunnel, read-only denial, rollback, blocking-lock reporting, and reconnect run as deterministic container checks. MySQL, ClickHouse, Redis, and MongoDB also have driver TLS fixture evidence; those fixtures do not establish full transport or packaging readiness. Packaging is not release-verified. [`ROADMAP.md`](ROADMAP.md) links to current milestone status and the detailed acceptance boards.
+PostgreSQL has the broadest release-fixture coverage: server-confirmed cancellation, certificate hostname and authority verification, verified TLS through an SSH tunnel, read-only denial, rollback, blocking-lock reporting, and reconnect run as deterministic container checks. MySQL, ClickHouse, Redis, and MongoDB also have driver TLS fixture evidence; those fixtures do not establish full transport or packaging readiness. Packaging is not release-verified. [`ROADMAP.md`](ROADMAP.md) links to current milestone status and the detailed acceptance boards.
 
-| Database | Status |
-|---|---|
-| PostgreSQL | Implemented; PostgreSQL release fixture |
-| MySQL and MariaDB | Implemented; driver and TLS fixtures |
-| SQLite | Implemented; local and GTK tests |
-| Microsoft SQL Server | Implemented; timed-out query cancellation is not available in BookiE yet |
-| ClickHouse | Implemented; driver and TLS fixtures |
-| Redis | Experimental; single host/port endpoint in 0.2.0 |
-| MongoDB | Experimental |
-| DuckDB | Optional build feature |
-
-See [`docs/adding-drivers.md`](docs/adding-drivers.md#driver-maturity) for current limits, and [platforms](docs/platforms.md) for released packages, library requirements and install acceptance. The 0.1.5 packages do not qualify the 0.2.0 source.
+See the [driver maturity table](docs/adding-drivers.md#driver-maturity) for current per-engine capabilities and limits, and [platforms](docs/platforms.md) for released packages, library requirements and install acceptance. The 0.1.5 packages do not qualify the 0.2.0 source.
 
 ## Supported platforms
 
