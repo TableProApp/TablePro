@@ -17,6 +17,7 @@ mod liveness;
 mod metadata;
 mod pgbouncer;
 mod read_only;
+mod slow_route;
 mod support;
 mod tls;
 mod write_batch;

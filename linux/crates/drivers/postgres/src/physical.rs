@@ -94,8 +94,13 @@ impl PgEndpoint {
     /// Ask the server to stop whatever the connection behind `token` is
     /// running. The request goes over a stream of its own, because the
     /// connection it names is busy.
+    ///
+    /// It returns once the server has acted on the request. The request
+    /// names the backend, not the statement, so one the server reads
+    /// after the statement ended cancels the next statement sent there.
+    /// A backend that is idle when the signal arrives ignores it.
     pub(crate) async fn cancel_request(&self, token: &CancelToken) -> Result<(), DriverError> {
-        let stream = TransportIo::new(self.transport.open().await.map_err(transport_error)?);
+        let stream = TransportIo::awaiting_close(self.transport.open().await.map_err(transport_error)?);
         let (connector, _) = self.tls.connector();
         token
             .cancel_query_raw(stream, connector)

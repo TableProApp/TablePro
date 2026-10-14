@@ -19,6 +19,8 @@ pub(crate) enum StopProgress {
     /// The request was still out when the call returned: the transport
     /// did not open, or the server did not answer it.
     InFlight,
+    /// The server took the request and closed its stream, which it does
+    /// only once it has signalled the backend.
     Delivered,
     Failed,
 }
