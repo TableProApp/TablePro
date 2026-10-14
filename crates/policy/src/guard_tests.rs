@@ -605,6 +605,8 @@ mod audit;
 mod bulk;
 #[path = "guard_tests_checked.rs"]
 mod checked;
+#[path = "guard_tests_cursor.rs"]
+mod cursor;
 #[path = "guard_tests_fault.rs"]
 mod fault;
 #[path = "guard_tests_gating.rs"]
