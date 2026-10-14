@@ -448,7 +448,7 @@ impl HistoryDialog {
 
     fn copy_query(&self, id: i64) {
         if let Some(query) = self.entry_by_id(id).and_then(|entry| entry.query()) {
-            self.clipboard().set_text(&query);
+            crate::ui::clipboard::copy_text(self, query, |message| self.add_toast(message));
         }
     }
 

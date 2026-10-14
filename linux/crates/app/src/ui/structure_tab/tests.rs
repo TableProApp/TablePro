@@ -319,6 +319,24 @@ fn toasts(tab: &StructureTab) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
     toasts
 }
 
+#[gtk4::test]
+fn copy_sql_puts_the_statement_on_the_clipboard_and_says_so() {
+    let harness = Harness::open(StructureMode::New, ConnectionScript::default(), []);
+    let toasts = toasts(harness.tab());
+    sql_buffer(harness.tab()).set_text("CREATE TABLE users (id int);");
+
+    harness.tab().imp().copy_sql_button.emit_clicked();
+
+    let text = harness
+        .tab()
+        .clipboard()
+        .content()
+        .and_then(|content| content.value(String::static_type()).ok())
+        .and_then(|value| value.get::<String>().ok());
+    assert_eq!(text.as_deref(), Some("CREATE TABLE users (id int);"));
+    assert_eq!(*toasts.borrow(), ["Copied to clipboard"]);
+}
+
 /// The table reads once, then every read after it fails.
 fn readable_once() -> ConnectionScript {
     let mut script = ConnectionScript::default();

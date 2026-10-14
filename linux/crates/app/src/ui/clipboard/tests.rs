@@ -154,11 +154,7 @@ fn a_slower_earlier_copy_gives_way_to_a_later_one() {
             sink.borrow_mut().push(text.to_owned());
         })
     };
-    let many: Vec<Vec<Value>> = (0..100_000)
-        .map(|row| vec![Value::Int(row), Value::Text(format!("name {row}"))])
-        .collect();
-
-    let slow = copy(rows_request(&many, CopyKind::Json));
+    let slow = copy(rows_request(&many_rows(), CopyKind::Json));
     let fast = copy(rows_request(&people()[..1], CopyKind::Rows));
     finish_on_main(WAIT, fast)
         .expect("the later copy to end")
@@ -176,6 +172,79 @@ fn a_slower_earlier_copy_gives_way_to_a_later_one() {
     assert!(
         now.is_none() || now == landed,
         "the earlier copy replaced the later one"
+    );
+    runtime.shutdown();
+}
+
+fn many_rows() -> Vec<Vec<Value>> {
+    (0..100_000)
+        .map(|row| vec![Value::Int(row), Value::Text(format!("name {row}"))])
+        .collect()
+}
+
+/// A copy written at once, as Copy Query in the history does, while a
+/// large copy still renders.
+#[gtk4::test]
+fn a_copy_still_rendering_gives_way_to_one_written_at_once() {
+    let widget = gtk::Label::new(None);
+    let clipboard = widget.clipboard();
+    let runtime = test_runtime();
+    let toasts = Rc::new(RefCell::new(Vec::new()));
+    let sink = toasts.clone();
+
+    let slow = copy_rows(
+        &widget,
+        &runtime.tasks(),
+        rows_request(&many_rows(), CopyKind::Json),
+        move |text| sink.borrow_mut().push(text.to_owned()),
+    );
+    copy_text(&widget, "SELECT 1".to_owned(), |text| {
+        toasts.borrow_mut().push(text.to_owned())
+    });
+    let landed = clipboard.content();
+    finish_on_main(WAIT, slow)
+        .expect("the earlier copy to end")
+        .expect("the earlier copy");
+
+    assert_eq!(toasts.take(), ["Copied to clipboard"]);
+    let now = clipboard.content();
+    assert!(
+        now.is_none() || now == landed,
+        "the earlier copy replaced the later one"
+    );
+    runtime.shutdown();
+}
+
+/// A text field copies through GTK, past every ticket.
+#[gtk4::test]
+fn a_copy_still_rendering_gives_way_to_a_text_field_copy() {
+    let widget = gtk::Label::new(None);
+    let clipboard = widget.clipboard();
+    let runtime = test_runtime();
+    let toasts = Rc::new(RefCell::new(Vec::new()));
+    let sink = toasts.clone();
+    let field = gtk::Text::new();
+    field.set_text("typed");
+    field.select_region(0, -1);
+
+    let slow = copy_rows(
+        &widget,
+        &runtime.tasks(),
+        rows_request(&many_rows(), CopyKind::Json),
+        move |text| sink.borrow_mut().push(text.to_owned()),
+    );
+    field.emit_by_name::<()>("copy-clipboard", &[]);
+    assert_eq!(local_text(&clipboard).as_deref(), Some("typed"));
+    let landed = clipboard.content();
+    finish_on_main(WAIT, slow)
+        .expect("the earlier copy to end")
+        .expect("the earlier copy");
+
+    assert!(toasts.borrow().is_empty(), "{:?}", toasts.borrow());
+    let now = clipboard.content();
+    assert!(
+        now.is_none() || now == landed,
+        "the earlier copy replaced the text field's"
     );
     runtime.shutdown();
 }

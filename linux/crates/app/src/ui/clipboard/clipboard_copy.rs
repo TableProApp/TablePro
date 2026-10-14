@@ -1,8 +1,10 @@
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
+use gtk4::{gdk, glib};
 use tablepro_core::export::{EncodeError, RenderInsertError};
 use tablepro_session::runtime::Tasks;
 
@@ -10,6 +12,7 @@ use super::clipboard_writer::{holds_nul, write};
 use super::{ClipboardError, ClipboardPayload, CopyError, CopyKind, CopyRequest, render_copy};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::ui::format::{format_thousands, plural_count};
+use crate::ui::handler_guard::HandlerGuard;
 
 /// The copy asked for last, in the whole process: every window copies
 /// to the same display clipboard, and a large copy renders long enough
@@ -26,6 +29,35 @@ impl CopyTicket {
 
     fn is_latest(self) -> bool {
         LATEST_COPY.load(Ordering::Relaxed) == self.0
+    }
+}
+
+/// Whether this process put something else on the clipboard since the
+/// watch began: a copy that writes at once, or a text field's own Copy,
+/// which no ticket sees. Another application's copy is not counted,
+/// since Wayland announces the clipboard again on every focus change.
+struct LocalWrite {
+    seen: Rc<Cell<bool>>,
+    _handler: HandlerGuard,
+}
+
+impl LocalWrite {
+    fn watch(clipboard: &gdk::Clipboard) -> Self {
+        let seen = Rc::new(Cell::new(false));
+        let flag = seen.clone();
+        let handler = clipboard.connect_changed(move |clipboard| {
+            if clipboard.is_local() {
+                flag.set(true);
+            }
+        });
+        Self {
+            seen,
+            _handler: HandlerGuard::new(clipboard, handler),
+        }
+    }
+
+    fn seen(&self) -> bool {
+        self.seen.get()
     }
 }
 
@@ -73,9 +105,9 @@ impl Copied {
 }
 
 /// Render `request` off the GTK thread and put it on `widget`'s
-/// clipboard, then tell `report` how it went. A copy asked for after
-/// this one wins, and this one then ends without a word. The handle
-/// resolves once the copy has landed or given way.
+/// clipboard, then tell `report` how it went. Anything copied in this
+/// process after this one wins, and this one then ends without a word.
+/// The handle resolves once the copy has landed or given way.
 pub(crate) fn copy_rows(
     widget: &impl IsA<gtk::Widget>,
     tasks: &Tasks,
@@ -84,11 +116,12 @@ pub(crate) fn copy_rows(
 ) -> glib::JoinHandle<()> {
     let ticket = CopyTicket::take();
     let clipboard = widget.as_ref().clipboard();
+    let overtaken = LocalWrite::watch(&clipboard);
     let copied = Copied::of(&request);
     let rendering = render_copy(tasks, request);
     glib::spawn_future_local(async move {
         let rendered = rendering.await;
-        if !ticket.is_latest() {
+        if !ticket.is_latest() || overtaken.seen() {
             tracing::debug!("a copy finished after a later one and was dropped");
             return;
         }
@@ -125,8 +158,6 @@ pub(crate) fn copy_text(widget: &impl IsA<gtk::Widget>, text: String, report: im
 /// Put a payload rendered already on `widget`'s clipboard, and tell
 /// `report`.
 pub(crate) fn copy_payload(widget: &impl IsA<gtk::Widget>, payload: ClipboardPayload, report: impl Fn(&str)) {
-    // A copy still rendering gives way to this one.
-    CopyTicket::take();
     if holds_nul(&payload.text) {
         return report(&ClipboardError::ContainsNul.message());
     }

@@ -159,10 +159,15 @@ impl StructureTab {
         // Saves the user clicking into the preview, selecting all and
         // copying every time they want the DDL in another tool.
         let buffer_for_copy = sql_buffer.downgrade();
+        let tab_for_copy = tab.downgrade();
         imp.copy_sql_button.connect_clicked(move |button| {
             if let Some(buffer) = buffer_for_copy.upgrade() {
                 let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                button.clipboard().set_text(text.as_str());
+                crate::ui::clipboard::copy_text(button, text.to_string(), |message| {
+                    if let Some(tab) = tab_for_copy.upgrade() {
+                        tab.emit_output(StructureTabOutput::ShowToast(message.to_owned()));
+                    }
+                });
             }
         });
 
