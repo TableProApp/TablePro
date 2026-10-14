@@ -38,6 +38,8 @@ impl Thousands {
     }
 }
 
+// A cache, not state: every window formats with the process's locale,
+// read once, and nothing writes to it after.
 thread_local! {
     static USER: Thousands = Thousands::for_posix_locale(&numeric_locale());
 }
