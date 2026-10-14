@@ -8,7 +8,6 @@ use super::context_menu::prepare_menu;
 use super::grid_menus::GridMenus;
 use super::{CellPreset, GridCell, GridMsg, GridSink};
 
-/// The keys a grid answers on its focused cell.
 pub(super) struct GridKeyboard;
 
 impl GridKeyboard {
@@ -20,7 +19,7 @@ impl GridKeyboard {
     ///
     /// Each action proceeds while the cell is editing. GtkShortcutController
     /// then tries its next shortcut and lets the key go on, so an open
-    /// editor keeps Return, Tab, Menu and Ctrl+Backspace (delete word).
+    /// editor keeps Return, space, Menu and Ctrl+Backspace (delete word).
     pub(super) fn install(column_view: &gtk::ColumnView, menus: GridMenus, sink: GridSink) {
         let controller = gtk::ShortcutController::new();
         controller.set_scope(gtk::ShortcutScope::Local);
@@ -34,6 +33,10 @@ impl GridKeyboard {
                 (gdk::Key::KP_Enter, none),
             ])),
             Some(on_focused_cell(|_, cell| edit_or_toggle(cell))),
+        ));
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(any_of(&[(gdk::Key::space, none), (gdk::Key::KP_Space, none)])),
+            Some(on_focused_cell(|_, cell| toggle(cell))),
         ));
         controller.add_shortcut(gtk::Shortcut::new(
             Some(any_of(&[
@@ -66,14 +69,23 @@ fn on_focused_cell(act: impl Fn(&gtk::Widget, &GridCell) -> glib::Propagation + 
 
 /// A locked cell lets the key go on, so the list's own activation runs.
 fn edit_or_toggle(cell: &GridCell) -> glib::Propagation {
+    if cell.check_button().is_some() {
+        return toggle(cell);
+    }
     if cell.lock().is_some() {
         return glib::Propagation::Proceed;
     }
-    match cell.check_button() {
-        // The check button's toggled handler sends the edit.
-        Some(check) => check.set_active(!check.is_active()),
-        None => begin_edit(cell),
-    }
+    begin_edit(cell);
+    glib::Propagation::Stop
+}
+
+/// Space on any other cell goes on to select the row.
+fn toggle(cell: &GridCell) -> glib::Propagation {
+    let (None, Some(check)) = (cell.lock(), cell.check_button()) else {
+        return glib::Propagation::Proceed;
+    };
+    // The check button's toggled handler sends the edit.
+    check.set_active(!check.is_active());
     glib::Propagation::Stop
 }
 
@@ -151,7 +163,6 @@ mod tests {
         keys
     }
 
-    /// The controller that binds F2 on the column view.
     fn keyboard(view: &gtk::ColumnView) -> gtk::ShortcutController {
         let controllers = view.observe_controllers();
         (0..controllers.n_items())
@@ -228,6 +239,7 @@ mod tests {
         assert!(cell.inline_text().is_some());
 
         assert!(!press(&grid.view, gdk::Key::Return, none()));
+        assert!(!press(&grid.view, gdk::Key::space, none()));
         assert!(!press(&grid.view, gdk::Key::BackSpace, gdk::ModifierType::CONTROL_MASK));
         assert!(!press(&grid.view, gdk::Key::Menu, none()));
 
@@ -280,6 +292,35 @@ mod tests {
             )]
         );
         assert!(!cell.is_editing());
+    }
+
+    #[gtk4::test]
+    fn space_toggles_a_focused_check_box_and_selects_from_any_other_cell() {
+        let grid = Grid::open(
+            vec![
+                named("id", "integer", true),
+                named("name", "text", false),
+                named("flag", "boolean", false),
+            ],
+            vec![vec![Value::Int(1), Value::Text("a".into()), Value::Bool(false)]],
+        );
+
+        grid.focus(0, 2);
+        assert!(press(&grid.view, gdk::Key::space, none()));
+        grid.focus(0, 1);
+        assert!(
+            !press(&grid.view, gdk::Key::space, none()),
+            "Space on a text cell did not go on to select the row"
+        );
+
+        assert_eq!(
+            edited_rows(&grid.take_messages()),
+            vec![(
+                Some(key(1)),
+                2,
+                tablepro_core::edit::CellInput::Value(Value::Bool(true))
+            )]
+        );
     }
 
     #[gtk4::test]
