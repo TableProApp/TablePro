@@ -18,9 +18,10 @@ What the application does not do, or does differently from what you might expect
   and audit; the SQL editor does not yet use them and remains materialized under
   these caps (ADR 0011).
 - **SQL result filters apply only to loaded rows** ([#609](https://github.com/cozyGarage/BookiE/issues/609)). Filter and sort actions are local, show the visible and loaded counts, and do not re-run SQL. Clearing a filter restores loaded rows. Settings carry across reruns of the same statement and pin/unpin while the result remains current or pinned. Selection follows source-row identity when the same materialized result is rerendered; a fresh query resets selection. Settings do not survive an app restart.
-- **Long cells are shown as a preview** (PERF-10). A table cell over 8 KiB shows a
-  typed preview and its byte count; View Value fetches the whole value by primary
-  key. A table without a primary key cannot refetch.
+- **Long cells are shown as a preview** (PERF-10). Values over 8 KiB show a typed
+  preview and byte count. View Value and Copy Value use the full value, including
+  pending edits and drafts. Browse-table values are refetched by primary key; a
+  table without one cannot refetch.
 - **Hidden-column projection still needs desktop acceptance** (PERF-9). Merged
   [#384](https://github.com/cozyGarage/BookiE/pull/384) projects hidden non-key
   columns out of the select and refuses full-row copy, row JSON and current-page
@@ -50,7 +51,7 @@ What the application does not do, or does differently from what you might expect
 
 - Multi-cursor editing is not available (UI-22 / [#552](https://github.com/cozyGarage/BookiE/issues/552)). Split panes and SQL code folding are available. Vim keys are an opt-in preference; typed vim commands in a running editor are not yet covered by an installed scenario. Preview tabs are temporary and are not restored after restart; tabs you keep are restored (UI-17b). Query history now opens in a docked panel (UI-18).
 - The PostgreSQL catalog lists materialized views, routines, triggers, sequences, extensions and roles; a typed activity console is deferred and the activity dialog stays a plain result grid (UI-23).
-- Long text, JSON and binary values show a typed preview and byte count. View Value and Copy Value use the full value. In an editable browse table, text cells remain inline-editable and the editor starts from the full value; SQL result grids are read-only. A dedicated multiline editor for large text and JSON remains open under [#610](https://github.com/cozyGarage/BookiE/issues/610).
+- In editable browse tables, text cells remain inline-editable and the editor starts from the full value; SQL result grids are read-only. A dedicated multiline editor for large text and JSON remains open under [#610](https://github.com/cozyGarage/BookiE/issues/610).
 - No server messages (NOTICE, PRINT) and no timing breakdown; timing shows elapsed time only (UI-20, PERF-4 / [#550](https://github.com/cozyGarage/BookiE/issues/550)).
 - No foreign-key value picker or estimated row counts (UI-19 / [#549](https://github.com/cozyGarage/BookiE/issues/549)). Enum and set pickers and tab-separated row paste are implemented.
 - PostgreSQL schemas can be hidden from the sidebar per connection ([#580](https://github.com/cozyGarage/BookiE/issues/580)); this display filter does not reduce catalog query work. Many-schema performance and restricted-role metadata remain open under B6.
