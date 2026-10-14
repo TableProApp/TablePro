@@ -296,6 +296,35 @@ Policy:
 - A flow across windows or launches: an application test.
 - UI changes still carry before and after screenshots in the PR description.
 
+## Scripts, the editor and structure review
+
+### The script planner
+
+`crates/core/tests/script_corpus.rs` holds the planner's fixtures, by grammar:
+
+- A named case for each rule an engine's client follows: dollar quotes and `BEGIN ATOMIC` bodies, a procedure with `DELIMITER` and one without, trigger bodies, `GO` with a count, heredocs, `#` and `//` comments, backslash escapes with the setting on and off, and text left open, which keeps the statements before it.
+- `lexer_matches_sqlparser_where_engines_agree` checks the semicolons the lexer finds in `AGREED_CASES` against sqlparser's tokenizer, on cases where sqlparser reads the text as the engine does.
+- A proptest runs every grammar over random text with multibyte characters: the tokens cover the text with no gap, every range ends on a character boundary, and batches never overlap.
+
+`crates/drivers/sqlite/tests/script_plan_matches_sqlite3_complete.rs` checks every prefix of a SQLite corpus against SQLite's own `sqlite3_complete`. A new rule gets a named case, and a place in `AGREED_CASES` when sqlparser reads it the engine's way.
+
+The real servers run scripts in tests ignored with `requires docker`: MySQL and MariaDB create a trigger and procedures with and without `DELIMITER` (`create_trigger_and_procedure_in_session`), SQL Server runs `GO` batches past a failed one (`go_batches_run_in_order_and_continue_after_an_error`), and PostgreSQL splits with backslash escapes once `standard_conforming_strings` is off (`standard_conforming_strings_off_splits_with_backslash_escapes`).
+
+### The editor
+
+Editor tests run on a `FakeEditorSession` scripted with `Replies<FakeRun>`, never a server:
+
+- `FakeRun::completed` streams the events it is given, `failed` ends in a statement the server refused, `session_error` fails the session itself (`EditorSessionBusy`, a lost connection), and `until_stopped` ends only at a cancel or the deadline. `taking` adds a delay, and `leaving` sets the `TransactionState` the run leaves.
+- `Replies::when_sql_contains` ties an answer to a statement, so a test can fail the third of five.
+- `texts` returns what each run was sent, so a test asserts the split itself, such as `GO 2` sending its batch twice. `stopped_runs` counts the runs a cancel or a timeout ended, and `close_count` the closes.
+- The fake keeps the session's rules: a run while another runs gets `EditorSessionBusy`, and a lost session stays lost.
+
+The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` under tokio and fold its events into a `RunLog`. The widget tests in `crates/app/src/ui/editor/tests.rs` build a `SqlEditor` over a `Session` whose `ConnectionScript` hands out the fake from `open_editor_session`, run it, wait for `run-state-changed`, then check the results list, the transaction label, the history and what was sent.
+
+### Structure review
+
+`crates/app/src/workspace/structure_review_tests.rs` saves a structure tab through `WorkspaceHandle::save` on the `workspace::test_workspace::Workspace` harness and answers the review with `workspace::answer`. A dropped column shows the review with its SQL, Cancel sends nothing, Apply runs one write batch, an additive save on an engine that applies DDL in one transaction starts without a review, a draft changed during the review is not saved, and a second save during the review opens no second one. The close guard's own tests check that its Save reviews too, and that a declined review keeps the window open with no alert and starts none of the saves after it.
+
 ## CI
 
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner:
