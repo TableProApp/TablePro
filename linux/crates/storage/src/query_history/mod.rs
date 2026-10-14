@@ -392,21 +392,22 @@ impl QueryHistory {
             .collect())
     }
 
+    /// The entries with these ids, in the order the history lists them.
     pub async fn fetch_by_ids(&self, ids: &[i64]) -> Result<Vec<Entry>, StorageError> {
-        if ids.is_empty() {
-            return Ok(Vec::new());
+        let mut entries = Vec::with_capacity(ids.len());
+        for chunk in ids.chunks(IDS_PER_STATEMENT) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!("SELECT {ENTRY_COLUMNS} FROM history h WHERE h.id IN ({placeholders})");
+            let mut statement = sqlx::query(AssertSqlSafe(sql));
+            for id in chunk {
+                statement = statement.bind(id);
+            }
+            for row in statement.fetch_all(&self.pool).await? {
+                entries.push(Self::row_to_entry(row)?);
+            }
         }
-        let placeholders = vec!["?"; ids.len()].join(",");
-        let sql = format!(
-            "SELECT {ENTRY_COLUMNS} FROM history h WHERE h.id IN ({placeholders}) \
-             ORDER BY h.pinned DESC, h.executed_at DESC, h.id DESC"
-        );
-        let mut q = sqlx::query(AssertSqlSafe(sql.as_str()));
-        for id in ids {
-            q = q.bind(id);
-        }
-        let rows = q.fetch_all(&self.pool).await?;
-        rows.into_iter().map(Self::row_to_entry).collect()
+        entries.sort_by_key(|entry| std::cmp::Reverse(HistoryCursor::after(entry)));
+        Ok(entries)
     }
 
     pub async fn export_sql(&self, ids: &[i64]) -> Result<String, StorageError> {
@@ -860,6 +861,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_quote_in_a_long_term_matches_literally() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let quoted = "SELECT \"total\" FROM sales";
+        history.record(entry(quoted, Uuid::nil())).await.expect("record");
+        history
+            .record(entry("SELECT total FROM sales", Uuid::nil()))
+            .await
+            .expect("record");
+
+        for input in ["\"total\"", "total\"", "\"tot"] {
+            assert_eq!(matching(&history, input).await, vec![quoted.to_owned()], "{input}");
+        }
+        for input in ["\"totals\"", "t\"\"", "\"FROM"] {
+            assert!(matching(&history, input).await.is_empty(), "{input}");
+        }
+        assert_eq!(matching(&history, "total").await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn fetch_by_ids_reads_past_one_statement_in_list_order() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        let mut ids = Vec::new();
+        for index in 0..IDS_PER_STATEMENT + 10 {
+            ids.push(
+                history
+                    .record(entry(&format!("SELECT {index}"), Uuid::nil()))
+                    .await
+                    .expect("record"),
+            );
+        }
+        // In the last statement's ids, but first in the list.
+        let pinned = ids[ids.len() - 1];
+        history.set_pinned(pinned, true).await.expect("pin");
+
+        let fetched = history.fetch_by_ids(&ids).await.expect("fetch");
+
+        assert_eq!(fetched.len(), ids.len());
+        assert_eq!(fetched.first().map(|entry| entry.id), Some(pinned));
+        assert_eq!(fetched, all(&history).await);
+    }
+
+    #[tokio::test]
     async fn terms_are_anded() {
         let root = tempfile::tempdir().expect("tempdir");
         let history = QueryHistory::open(&paths(&root)).await.expect("open");
@@ -896,6 +941,17 @@ mod tests {
                 .await
                 .expect("a page");
             pages += 1;
+            for entry in &page.entries {
+                let cursor = HistoryCursor::after(entry);
+                assert!(
+                    request.after.is_none_or(|after| cursor < after),
+                    "an entry on a later page does not sort below the cursor"
+                );
+                assert!(
+                    page.next.is_none_or(|next| cursor >= next),
+                    "an entry on this page sorts below its own cursor"
+                );
+            }
             seen.extend(
                 page.entries
                     .iter()
