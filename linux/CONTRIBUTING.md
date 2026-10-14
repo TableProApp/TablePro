@@ -10,7 +10,7 @@ System packages — see [README.md](README.md) for distro-specific commands. Aft
 cd linux
 meson setup _build -Dprofile=development
 meson compile -C _build        # builds tablepro and tablepro-askpass
-meson test -C _build           # unit, gtk and data suites
+meson test -C _build           # unit, gtk, data and packaging suites
 meson devenv -C _build ./crates/app/tablepro   # run the app
 meson devenv -C _build cargo test   # cargo against the configured app ID
 cargo fmt --all                # format

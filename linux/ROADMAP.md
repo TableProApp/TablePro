@@ -14,7 +14,7 @@ This is **past demo-grade**, but still **not beta-shippable**. The gap between "
 | Result scaling | Streams via sqlx `fetch` with `MAX_QUERY_ROWS` cap; full result still held in the grid model |
 | Connection management | Done. One window per connection session, each with its own `AdwTabView` workspace; the sessions open at quit open again at launch |
 | Network security | SSH tunnelling + TLS toggle present; cert-path / verify-mode UI still thin |
-| Distribution | Flatpak manifest + metainfo + desktop + icon present; never built end-to-end on CI |
+| Distribution | Flatpak manifest + metainfo + desktop + icon present; .deb (Ubuntu 26.04) and .rpm (Fedora 44) built, linted and install-tested in CI, published by a `linux-v*` tag |
 | Internationalization | gettext through `crates/app/src/i18n.rs` + `po/` template; extraction reaches every call site and `POTFILES.in` matches the tree. The committed template still predates that fix and needs regenerating on gettext 0.24 or newer |
 | Accessibility | Untested with Orca / keyboard nav |
 | Integration tests | Postgres, MySQL, MSSQL and ClickHouse docker suites run in CI, one nextest job per package; SQLite has a value suite that needs no container |
@@ -229,10 +229,12 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 ### Distribution variants (~0.5 weeks)
 
-- [ ] AppImage build via `appimagetool` (portable use case)
-- [ ] `.deb` build for Debian / Ubuntu (community-maintained or official)
-- [ ] `.rpm` build for Fedora (community-maintained or official)
+- [x] `.deb` for Ubuntu 26.04 on GitHub Releases, built from `meson install` with rustup ([ADR 0017](docs/decisions/0017-distribution-channels.md))
+- [x] `.rpm` for Fedora 44 through COPR, built with Fedora's Rust
+- [x] Both packages built in fresh containers, linted, and installed and started in fresh containers on CI
+- [ ] Set up the COPR project, the `COPR_CONFIG` secret and the `LINUX_COPR_PROJECT` variable before the first tag
 - [ ] AUR PKGBUILD for Arch (community-maintained, mirror in repo)
+- AppImage dropped: no base older than Ubuntu 26.04 or Fedora 44 has GLib 2.88 and GTK 4.22
 
 ### Documentation (~0.5 weeks)
 
@@ -339,7 +341,8 @@ These are ambitions, not commitments. Phase 6 should only start after Phase 5 ha
 | Embedded scripting (JS / Python / Lua) | SQL is enough; adds attack surface |
 | Hot-reload of drivers | Compile-time only; use `cargo watch` during dev |
 | Cloud sync of connections (proprietary backend) | Out of scope unless business model demands it |
-| Snap distribution | Decided to skip; Flathub + AppImage cover the audience |
+| Snap distribution | Decided to skip; Flathub, .deb and .rpm cover the audience |
+| AppImage | No base older than Ubuntu 26.04 or Fedora 44 has the GNOME 50 libraries; see [decision 0017](docs/decisions/0017-distribution-channels.md) |
 | KDE-native styling | Run as Adwaita on KDE; users wanting native KDE have other options |
 
 ---
