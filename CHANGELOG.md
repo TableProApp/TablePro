@@ -137,6 +137,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- Opening the filter strip with an active structured filter now expands the rule editor instead of showing an empty raw WHERE field.
 - Restoring an editor no longer triggers a GTK sidebar layout failure before the window has completed its first layout.
 - PostgreSQL `SELECT ... FOR UPDATE` statements are treated as writes and follow configured approval and read-only rules.
 - PostgreSQL displays `interval` and `timetz` values and formats `float4` values consistently, including inside point and float arrays.

@@ -297,6 +297,7 @@ pub struct FilterStrip {
     columns: Rc<RefCell<Vec<ColumnInfo>>>,
     rebuild: RebuilderSlot,
     raw_entry: gtk::Entry,
+    rules_expander: gtk::Expander,
 }
 
 impl FilterStrip {
@@ -336,6 +337,7 @@ impl FilterStrip {
     /// reflects what's actually in effect.
     pub fn update_filter(&self, set: FilterSet) {
         let extra = set.extra_sql.clone().unwrap_or_default();
+        self.rules_expander.set_expanded(!set.rules.is_empty());
         *self.state.borrow_mut() = set;
         // Raw entry mirrors state too — without this the entry's
         // text still shows the previous raw fragment after a
@@ -643,6 +645,7 @@ pub fn build(
         columns,
         rebuild,
         raw_entry,
+        rules_expander,
     }
 }
 
@@ -916,5 +919,48 @@ fn input_purpose_for(data_type: &str) -> gtk::InputPurpose {
         gtk::InputPurpose::Number
     } else {
         gtk::InputPurpose::FreeForm
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use super::{FilterOp, FilterRule, FilterSet, FilterValue, build};
+    use relm4::{gtk, gtk::prelude::*};
+
+    #[test]
+    #[ignore = "requires isolated GTK display"]
+    fn an_externally_applied_rule_expands_the_rule_editor() {
+        gtk::init().unwrap();
+        let strip = build(Vec::new(), FilterSet::default(), Rc::new(|_| {}), None);
+        let widget: gtk::Widget = strip.widget.clone().upcast();
+        let expander = find_expander(&widget).expect("the filter strip contains a rule expander");
+        assert!(!expander.is_expanded());
+
+        strip.update_filter(FilterSet {
+            rules: vec![FilterRule {
+                column: "name".into(),
+                op: FilterOp::Eq,
+                value: Some(FilterValue::Single("bookie".into())),
+            }],
+            ..FilterSet::default()
+        });
+
+        assert!(expander.is_expanded());
+    }
+
+    fn find_expander(widget: &gtk::Widget) -> Option<gtk::Expander> {
+        if let Ok(expander) = widget.clone().downcast::<gtk::Expander>() {
+            return Some(expander);
+        }
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            if let Some(expander) = find_expander(&current) {
+                return Some(expander);
+            }
+            child = current.next_sibling();
+        }
+        None
     }
 }
