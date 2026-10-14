@@ -52,7 +52,7 @@ Include before and after screenshots for visible changes. Test both light and da
 
 ## Packaging
 
-GitHub Release packages are Arch x86_64 and a `.deb` for Debian/Ubuntu hosts that already have the GNOME 50 library line. Ubuntu 24.04 and 25.10 cannot run that `.deb`. See [README.md](../README.md#linux-versions) and [platforms](platforms.md). Test `apps/linux/packaging/arch/PKGBUILD`, `scripts/validate-arch-package.sh`, and `scripts/validate-deb-package.sh` when a change affects installed files, native dependencies, desktop integration, or launch behavior. Public AUR and Flathub publication are deferred and must not define current requirements.
+See [platforms](platforms.md) for released artifacts, supported native-library versions and package availability. Test `apps/linux/packaging/arch/PKGBUILD`, `scripts/validate-arch-package.sh`, and `scripts/validate-deb-package.sh` when a change affects installed files, native dependencies, desktop integration, or launch behavior. Public AUR and Flathub publication are deferred and must not define current requirements.
 
 ## Commits and pull requests
 

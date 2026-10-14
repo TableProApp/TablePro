@@ -12,6 +12,17 @@ The root Meson project declares the higher GNOME 50 library line (GTK 4.22, GLib
 
 Neither distro packages Rust 1.98. Build with rustup.
 
+## Released packages
+
+The latest release is [`linux-v0.1.5`](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5). These packages do not qualify the 0.2.0 source.
+
+| Target | Architecture | Artifact | Package / launch command |
+|---|---|---|---|
+| Arch Linux / Omarchy | x86_64 | `bookie-0.1.5-1-x86_64.pkg.tar.zst` | `bookie` |
+| Debian / Ubuntu with GNOME 50 libraries | amd64 | `tablepro_0.1.5-1_amd64.deb` | `tablepro` package, `bookie` command |
+
+No Fedora, AUR, Flathub, 32-bit or ARM packages are published.
+
 ## Rust toolchain
 
 Rust 1.98 is the minimum supported version, declared in `rust-toolchain.toml`, `Cargo.toml` and `clippy.toml`. CI compiles and lints with 1.98, and a weekly job lints with current stable.
@@ -34,7 +45,7 @@ The Arch package is an internal candidate, not an AUR or Flathub release. It ins
 - Build from a clean tree at a recorded commit: `scripts/build-arch-rc.sh` refuses a dirty tree or a SHA that is not `HEAD`, then runs `makepkg --cleanbuild`, `namcap` and package-content checks.
 - Saved connections, drafts, favorites and the audit journal live in `~/.config/tablepro` and `~/.local/share/tablepro`. Stop the app before an upgrade or rollback and never delete those directories or the keyring records.
 - The package replaces and conflicts with `tablepro`. Install, upgrade and removal must keep user XDG data (PKG-6).
-- The current released package is 0.1.5 ([release notes](../CHANGELOG.md#015---2026-09-27)); the 0.1.4 report is historical evidence only.
+- The 0.1.4 package report is historical evidence only.
 
 ## Flathub
 

@@ -25,22 +25,11 @@ PostgreSQL is the furthest along: server-confirmed cancellation, certificate hos
 | MongoDB | Experimental |
 | DuckDB | Optional build feature |
 
-See [`docs/adding-drivers.md`](docs/adding-drivers.md#driver-maturity) for current limits. Installable 0.1.5 packages are on the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5); they do not qualify the 0.2.0 source. Wayland soak remains an operator check after install.
+See [`docs/adding-drivers.md`](docs/adding-drivers.md#driver-maturity) for current limits, and [platforms](docs/platforms.md) for released packages, library requirements and install acceptance. The 0.1.5 packages do not qualify the 0.2.0 source.
 
-## Linux versions
+## Supported platforms
 
-BookiE 0.1.5 (tag `linux-v0.1.5`) targets:
-
-| Distro | Arch | Artifact | Package name | Launch |
-|---|---|---|---|---|
-| Debian / Ubuntu with the required GNOME 50 libraries | amd64 | `tablepro_0.1.5-1_amd64.deb` | `tablepro` | `bookie` |
-| Arch Linux / Omarchy | x86_64 | `bookie-0.1.5-1-x86_64.pkg.tar.zst` | `bookie` | `bookie` |
-
-`tablepro` and `tablepro-agentd` remain command aliases. Application ID and XDG paths stay `com.tablepro.linux` / `tablepro`.
-
-**The released `.deb` does not run on the default Ubuntu 24.04 or 25.10 libraries.** It needs the GNOME 50 runtime line. Cargo compile and distro-floor tests support the lower Ubuntu 24.04 stack; the root Meson project separately declares GNOME 50 library requirements. GTK CI builds in Debian testing, whose library set meets that higher line.
-
-Cargo compile / CI floor: GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13). The root Meson project and GNOME 50 GitHub Release `.deb` use GTK 4.22+, GLib 2.88+, libadwaita 1.9+, GtkSourceView 5.18+. Details: [ADR 0002](docs/decisions/0002-rust-gtk4-libadwaita.md) and [platforms](docs/platforms.md). Build with Rust 1.98. No AUR, Flathub, or Fedora package. No 32-bit or ARM artifacts.
+BookiE targets Linux. The current 0.2.0 desktop target and package requirements are documented in [platforms](docs/platforms.md).
 
 ## Named query parameters
 
@@ -69,7 +58,7 @@ Crate map, Mermaid pipeline diagrams, trait boundaries and deliberate limits liv
 sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev \
   libgtksourceview-5-dev libssl-dev libsecret-1-dev libkrb5-dev libsqlite3-dev clang
 
-# Fedora (build from source only; no 0.1.5 package)
+# Fedora (build from source)
 sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel \
   gtksourceview5-devel openssl-devel libsecret-devel krb5-devel clang
 
@@ -138,13 +127,7 @@ GitHub runs the cheap tier only; merge acceptance is the Forgejo gate (`bash scr
 
 ## Packaging
 
-The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see the [0.1.5 release notes](CHANGELOG.md) and [packaging guide](apps/linux/packaging/README.md). To rebuild the Arch package from a clean commit at the repository root:
-
-```bash
-TABLEPRO_RC_COMMIT="$(git rev-parse HEAD)" TABLEPRO_RC_VERSION=0.1.5 ./scripts/build-arch-rc.sh
-```
-
-The helper archives that commit, verifies a real checksum, and does not publish to AUR. Set `TABLEPRO_RC_TAG=linux-v…` instead of `TABLEPRO_RC_COMMIT` only to verify an already published tag.
+See the [packaging guide](apps/linux/packaging/README.md) for candidate builds and validation, and [platforms](docs/platforms.md) for release artifacts and package support.
 
 ## Documentation
 
