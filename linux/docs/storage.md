@@ -86,7 +86,6 @@ base directories and their fallbacks.
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces` |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
-| `instance_lock()` | `$XDG_RUNTIME_DIR/app/<app-id>/tablepro.lock` |
 
 `<dir>` is `tablepro` for an installed build and `tablepro-devel` for a
 development one, so `cargo run` never writes over an installed build's

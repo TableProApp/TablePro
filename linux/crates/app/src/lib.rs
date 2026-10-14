@@ -1,17 +1,12 @@
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use libadwaita as adw;
-use relm4::RelmApp;
 use thiserror::Error;
 
-use tablepro_core::{ConnectEnvironment, DriverRegistry, LivenessPolicy};
-use tablepro_session::operation::{DeadlinePolicy, DefaultDeadlines};
-use tablepro_session::runtime::Tasks;
-use tablepro_session::{ConnectServices, DriverConnector, SessionRegistry};
-use tablepro_ssh::SshServices;
+use tablepro_core::DriverRegistry;
+use tablepro_storage::{AppSettings, StoragePaths};
 
+pub mod application;
 pub mod config;
 pub mod i18n;
 pub mod logging;
@@ -26,148 +21,46 @@ mod test_support;
 mod ui;
 mod workspace;
 
+use application::{AppServices, TableProApplication};
+
 #[derive(Debug, Error)]
-enum StartupError {
+pub enum StartupError {
+    #[error("could not start logging: {0}")]
+    Logging(#[from] logging::LoggingError),
     #[error("could not start the background runtime: {0}")]
     Runtime(#[source] std::io::Error),
     #[error("could not register the embedded resources: {0}")]
     Resources(#[source] glib::Error),
     #[error("could not open the settings schema: {0}")]
     Settings(#[from] tablepro_storage::SettingsError),
-    #[error("could not start logging: {0}")]
-    Logging(#[from] logging::LoggingError),
 }
 
-pub fn run() -> glib::ExitCode {
+/// Start the application and return its exit code once the last window
+/// and the last background close are gone.
+pub fn run() -> Result<glib::ExitCode, StartupError> {
     // SAFETY: nothing above spawns a thread; the tokio runtime and GTK start later.
     let translations = unsafe { i18n::init() };
-
-    if let Err(error) = logging::init(config::profile()) {
-        // Nothing is journalling yet, so this is the one place that has
-        // to reach the session log by another route.
-        glib::g_critical!("tablepro", "{error}");
-        return glib::ExitCode::FAILURE;
-    }
+    logging::init(config::profile())?;
     if let Err(error) = translations {
         tracing::warn!(%error, "translations unavailable; falling back to the source strings");
     }
 
-    match start() {
-        Ok(()) => glib::ExitCode::SUCCESS,
-        Err(error) => {
-            tracing::error!(%error, "TablePro could not start");
-            glib::ExitCode::FAILURE
-        }
-    }
-}
-
-fn start() -> Result<(), StartupError> {
-    // Single-instance gate: belt-and-suspenders flock on top of
-    // gtk::Application's DBus-based uniqueness, since the latter
-    // silently lets two processes through when DBus is unavailable.
-    // A second instance would write the same state files beside this
-    // one. Hold the lock through the entire `start`.
-    let paths = tablepro_storage::StoragePaths::from_glib(config::storage_dir_name(), config::APP_ID);
-
-    let _instance_lock = match services::single_instance::acquire(&paths) {
-        Ok(lock) => Some(lock),
-        Err(services::single_instance::LockError::AlreadyRunning) => {
-            tracing::info!("another TablePro instance is running; exiting");
-            return Ok(());
-        }
-        Err(e) => {
-            // No XDG runtime, cache or HOME: proceed without the
-            // lock. gtk::Application's uniqueness still applies.
-            tracing::warn!(error = %e, "single-instance lock unavailable; relying on DBus uniqueness");
-            None
-        }
-    };
-
-    let settings = std::rc::Rc::new(tablepro_storage::AppSettings::open(config::SCHEMA_ID)?);
     let runtime = runtime::AppRuntime::build().map_err(StartupError::Runtime)?;
-    let tasks = runtime.tasks();
-    // The database migrates and prunes on open, which is too slow to
-    // hold up the first window. The menu item that needs it stays
-    // disabled until the service reports Ready.
-    let retention = services::history_service::publish_retention(&settings);
-    let history = services::history_service::HistoryService::start(paths.clone(), retention, &tasks);
-    let storage = std::rc::Rc::new(storage::AppStorage::new(
-        paths,
-        std::sync::Arc::new(tablepro_storage::SecretStore::new(config::secret_schema())),
-        &tasks,
-    ));
-
-    let drivers = Arc::new(build_registry());
+    gio::resources_register_include!("tablepro.gresource").map_err(StartupError::Resources)?;
+    let settings = Rc::new(AppSettings::open(config::SCHEMA_ID)?);
+    let paths = StoragePaths::from_glib(config::storage_dir_name(), config::APP_ID);
+    let drivers = build_registry();
     tracing::info!(drivers = drivers.len(), "starting tablepro");
 
-    gio::resources_register_include!("tablepro.gresource").map_err(StartupError::Resources)?;
-
-    let application = adw::Application::builder()
-        .application_id(config::APP_ID)
-        .resource_base_path(config::RESOURCE_BASE_PATH)
-        .build();
-    let ssh = ssh_services(&storage.paths().runtime, &tasks);
-    let liveness = LivenessPolicy::DESKTOP;
-    let deadlines: Arc<dyn DeadlinePolicy> = Arc::new(DefaultDeadlines::new(liveness));
-    let connector = DriverConnector::new(
-        ConnectServices {
-            environment: ConnectEnvironment::new(config::VERSION),
-            ssh,
-            liveness,
-        },
-        deadlines.clone(),
-    );
-    let (prompter, prompts) = ui::credential_prompt::GtkCredentialPrompter::new();
-    let context = Rc::new(services::session_context::SessionContext {
-        drivers,
-        connector: Arc::new(connector),
-        deadlines,
-        prompter: Arc::new(prompter),
-        secrets: storage.secrets().clone(),
-        sessions: SessionRegistry::new(),
-        hold: Rc::new(runtime::GioProcessHold::new(&application)),
-        tasks: tasks.clone(),
-        liveness,
-        active: services::active_session::ActiveSession::new(),
-    });
-
-    let app = RelmApp::from_app(application);
-    app.run::<ui::App>(ui::AppInit {
-        context,
-        prompts,
-        settings,
-        storage,
-        tasks,
-        history,
-    });
+    let application = TableProApplication::new(AppServices::production(drivers, settings, paths, runtime.tasks()));
+    let code = gio::prelude::ApplicationExtManual::run(&application);
+    drop(application);
 
     // The main loop has returned, so nothing is producing work any
     // more. Give what is in flight a moment to finish rather than
     // dropping it mid-write.
     runtime.shutdown();
-    Ok(())
-}
-
-/// The system OpenSSH client, with its control sockets under the app's
-/// runtime directory.
-///
-/// A missing askpass helper is logged rather than fatal: only SSH needs
-/// it, and the connect that tries says so in its own error. The sweep
-/// ends masters a crashed instance left behind, which would otherwise
-/// keep their tunnels open until the next reboot.
-fn ssh_services(runtime_dir: &Path, tasks: &Tasks) -> SshServices {
-    let services = SshServices::system(runtime_dir.to_path_buf(), Path::new(config::LIBEXECDIR));
-    if let Err(error) = services.verify_askpass_helper() {
-        tracing::warn!(%error, "SSH connections will fail until the askpass helper is installed");
-    }
-    let sweeping = services.clone();
-    drop(tasks.spawn_task(async move {
-        let ended = tablepro_ssh::sweep_stale_masters(&sweeping).await;
-        if ended > 0 {
-            tracing::info!(ended, "ended SSH masters a previous instance left running");
-        }
-    }));
-    services
+    Ok(code)
 }
 
 fn build_registry() -> DriverRegistry {
@@ -190,11 +83,10 @@ pub(crate) fn register_test_resources() {
 
 #[cfg(test)]
 mod tests {
-    use gio::prelude::ApplicationExt;
+    use glib::prelude::ObjectExt;
+    use libadwaita as adw;
 
     use super::register_test_resources;
-    use glib::prelude::ObjectExt;
-
     use super::*;
 
     #[test]
@@ -221,15 +113,5 @@ mod tests {
             .expect("shortcuts_dialog is an AdwShortcutsDialog");
 
         assert_eq!(dialog.type_().name(), "AdwShortcutsDialog");
-    }
-
-    #[gtk4::test]
-    fn application_uses_explicit_resource_base_path() {
-        let app = adw::Application::builder()
-            .application_id(config::APP_ID)
-            .resource_base_path(config::RESOURCE_BASE_PATH)
-            .build();
-
-        assert_eq!(app.resource_base_path().as_deref(), Some(config::RESOURCE_BASE_PATH));
     }
 }

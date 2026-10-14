@@ -7,6 +7,8 @@ use tablepro_storage::SavedQueries;
 use tablepro_storage::saved_queries::SavedQuery;
 use uuid::Uuid;
 
+use crate::runtime::DeliverInput;
+
 /// The user's named queries, grouped by the connection each was saved
 /// against.
 ///
@@ -94,7 +96,7 @@ impl Component for SavedQueriesDialog {
         search_bar.append(&search);
         toolbar.add_top_bar(&search_bar);
         let sender_for_search = sender.clone();
-        search.connect_search_changed(move |_| sender_for_search.input(SavedQueriesDialogInput::SearchChanged));
+        search.connect_search_changed(move |_| sender_for_search.deliver(SavedQueriesDialogInput::SearchChanged));
 
         let groups = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -136,7 +138,7 @@ impl Component for SavedQueriesDialog {
             status_page,
             queries: Vec::new(),
         };
-        sender.input(SavedQueriesDialogInput::Refresh);
+        sender.deliver(SavedQueriesDialogInput::Refresh);
 
         ComponentParts { model, widgets: () }
     }
@@ -202,10 +204,10 @@ impl Component for SavedQueriesDialog {
                 self.queries = queries;
                 self.render(&sender);
             }
-            SavedQueriesDialogCmd::Changed => sender.input(SavedQueriesDialogInput::Refresh),
+            SavedQueriesDialogCmd::Changed => sender.deliver(SavedQueriesDialogInput::Refresh),
             SavedQueriesDialogCmd::Failed(message) => {
                 let _ = sender.output(SavedQueriesDialogOutput::ShowToast(message));
-                sender.input(SavedQueriesDialogInput::Refresh);
+                sender.deliver(SavedQueriesDialogInput::Refresh);
             }
         }
     }
@@ -290,7 +292,7 @@ impl SavedQueriesDialog {
 
         let id = saved.id;
         let sender_for_activate = sender.clone();
-        row.connect_activated(move |_| sender_for_activate.input(SavedQueriesDialogInput::Activate(id)));
+        row.connect_activated(move |_| sender_for_activate.deliver(SavedQueriesDialogInput::Activate(id)));
 
         let menu = gio::Menu::new();
         let open_section = gio::Menu::new();
@@ -311,7 +313,7 @@ impl SavedQueriesDialog {
         let actions = gio::SimpleActionGroup::new();
         let entry = |name: &str, message: fn(i64) -> SavedQueriesDialogInput, sender: ComponentSender<Self>| {
             gio::ActionEntry::<gio::SimpleActionGroup>::builder(name)
-                .activate(move |_, _, _| sender.input(message(id)))
+                .activate(move |_, _, _| sender.deliver(message(id)))
                 .build()
         };
         actions.add_action_entries([
@@ -361,7 +363,7 @@ impl SavedQueriesDialog {
             if name.trim().is_empty() {
                 return;
             }
-            sender.input(SavedQueriesDialogInput::Rename(id, name));
+            sender.deliver(SavedQueriesDialogInput::Rename(id, name));
         });
         dialog.present(Some(&self.root));
     }
@@ -386,7 +388,7 @@ impl SavedQueriesDialog {
         dialog.connect_response(None, move |dialog, response| {
             dialog.close();
             if response == "delete" {
-                sender.input(SavedQueriesDialogInput::Delete(id));
+                sender.deliver(SavedQueriesDialogInput::Delete(id));
             }
         });
         dialog.present(Some(&self.root));

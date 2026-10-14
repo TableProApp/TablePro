@@ -5,6 +5,7 @@
 mod close_decision;
 mod close_guard;
 mod close_guards;
+mod close_reason;
 mod close_scope;
 mod close_step;
 mod dialog_response;
@@ -52,6 +53,7 @@ mod write_job;
 pub use close_decision::CloseDecision;
 pub(crate) use close_guard::CloseGuard;
 pub(crate) use close_guards::CloseGuards;
+pub use close_reason::CloseReason;
 pub use close_scope::CloseScope;
 pub use close_step::{CloseStep, next_close_step};
 pub use dirty_kind::DirtyKind;
@@ -78,6 +80,8 @@ pub use tab_directory::TabDirectory;
 pub use tab_entry::TabEntry;
 pub use tab_record::TabRecord;
 pub use unknown_cause::UnknownCause;
+#[cfg(test)]
+pub use window_inhibitor::InhibitTarget;
 pub use window_inhibitor::{ApplicationInhibit, WindowInhibitor};
 pub use workspace_event::WorkspaceEvent;
 pub use workspace_file_name::WorkspaceFileName;

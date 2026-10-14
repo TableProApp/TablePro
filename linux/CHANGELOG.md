@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite column type, nullability, default and primary key changes, and foreign keys added or removed, in the Structure tab.
 - Delete button in the table grid, with the reason in its tooltip when the selected rows can't be deleted.
 - Set to DEFAULT in a new row's cell menu, for columns the server fills.
+- New Window (Ctrl+Shift+N, or `tablepro --new-window`) opens another window in the running TablePro.
 
 ### Changed
 
@@ -34,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Delete, Duplicate and Copy as in a grid cell's menu act on every selected row when the clicked row is selected.
 - Grid cells edit in place with the keyboard each type needs; dates open a calendar, and JSON, XML and long text a larger editor.
 - Set Value in a grid cell's menu is Set to Empty, Set to NULL and Set to DEFAULT, each shown only where the column takes it.
+- Set a grid cell to NULL with Ctrl+Backspace instead of Ctrl+Shift+N.
+- Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
 
 ### Fixed
 
@@ -45,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
 - Stop could not end a SQLite statement waiting for another connection's lock.
+- Launching TablePro while it was running did nothing instead of showing the open window.
 - A SQLite save that failed in a way SQLite rolls back itself closed the connection and its temporary tables.
 - A SQLite script ending in an unclosed comment showed later results under the first statement's columns.
 - SQLite text containing a NUL character exported as SQL that SQLite cannot read.

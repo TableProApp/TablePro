@@ -85,7 +85,7 @@ Bridging uses Relm4's built-in primitives instead of hand-rolled channels:
 - `relm4::spawn(async move { ... })`: a fire-and-forget tokio task with no component lifetime tie. Used for storage writes (`touch_last_opened`, `query_history::record`, column-width persistence) and other side-effect work.
 - `sender.input(AppMsg::...)` from inside an async block routes back into the component's `update` on the GTK thread. Combined with `sender.command`, this is how a "fetch-then-render" round trip lands its result on the right widget.
 
-`main.rs` builds a tiny `tokio::runtime::Builder::new_multi_thread().worker_threads(1)` runtime exclusively to `block_on` the history-DB init / prune at startup, then `shutdown_timeout`s it before `RelmApp::run` takes over. The query-history sqlx pool is stored in a `OnceLock` and reused from Relm4's runtime afterward.
+`run()` builds the app's own tokio runtime (`AppRuntime`) and hands its `Tasks` to `TableProApplication`, an `adw::Application` subclass that owns the windows, the app actions and D-Bus uniqueness. Its startup opens the query history on that runtime. Quit asks each window through its close prompts and never calls `g_application_quit`, so the process ends when the last window and the last close or save hold are gone, and the runtime shuts down after that.
 
 ## UI architecture: Relm4
 
@@ -241,7 +241,6 @@ The Structure tab is **definition + draft**, not a per-change log. The `TableDef
 | Application preferences | GSettings | schema `app.tablepro.TablePro` |
 | Window size / maximized | GSettings | schema `app.tablepro.TablePro` |
 | Per-table column widths | JSON, durable write | `$XDG_CONFIG_HOME/tablepro/column_widths.json` |
-| Single-instance lock | `flock` on an empty file | `$XDG_RUNTIME_DIR/app/<app-id>/tablepro.lock` |
 
 `WorkspaceStore` reads a session's file once its session is adopted, and the window writes the tab list only after that read, so a write never lands on tabs not yet restored. A file that cannot be read, that another version wrote, or that is over 1 MiB is left as it is and nothing is written over it until the user picks Reset on the toast, which moves it aside as `<name>.json.corrupt-<seconds>`. Every open tab is saved and restored, with no cap on the count. Writes go through one task that keeps the newest record per file. Editor records carry a draft id, never the text, and the editor's `content-changed` signal carries no text either: the tab label reads at most 200 characters.
 

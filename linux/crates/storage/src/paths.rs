@@ -61,10 +61,6 @@ impl StoragePaths {
     pub fn drafts_dir(&self) -> PathBuf {
         self.data.join("drafts")
     }
-
-    pub fn instance_lock(&self) -> PathBuf {
-        self.runtime.join("tablepro.lock")
-    }
 }
 
 #[cfg(test)]

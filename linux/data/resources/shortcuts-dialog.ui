@@ -20,8 +20,14 @@
         </child>
         <child>
           <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">New window</property>
+            <property name="action-name">app.new-window</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Open Preferences</property>
-            <property name="accelerator">&lt;Primary&gt;comma</property>
+            <property name="action-name">app.preferences</property>
           </object>
         </child>
         <child>
@@ -57,7 +63,7 @@
         <child>
           <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Quit</property>
-            <property name="accelerator">&lt;Primary&gt;q</property>
+            <property name="action-name">app.quit</property>
           </object>
         </child>
       </object>
@@ -116,7 +122,7 @@
         <child>
           <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Set focused cell to NULL</property>
-            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;n</property>
+            <property name="accelerator">&lt;Primary&gt;BackSpace</property>
           </object>
         </child>
         <child>

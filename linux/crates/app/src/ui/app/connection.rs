@@ -27,6 +27,7 @@ use crate::workspace::CloseDecision;
 
 use super::connect_flow::{self, SubmitError};
 use super::{App, AppMsg, qualified_label};
+use crate::runtime::DeliverInput;
 
 /// What a failed connect can be retried from: the connection as it was
 /// submitted, and the setting that would fix it.
@@ -136,10 +137,10 @@ impl App {
         });
         let submitted = sender.clone();
         dialog.connect_submitted(move |_, submission| {
-            submitted.input(AppMsg::ConnectSubmitted(Box::new(submission)));
+            submitted.deliver(AppMsg::ConnectSubmitted(Box::new(submission)));
         });
         let closed = sender;
-        dialog.connect_closed(move |_| closed.input(AppMsg::DialogClosed));
+        dialog.connect_closed(move |_| closed.deliver(AppMsg::DialogClosed));
         dialog.present(Some(&self.window));
         if let Some(field) = focus {
             dialog.reveal_field(field);
@@ -242,7 +243,7 @@ impl App {
                 ),
                 Err(failure) => failed(crate::ui::error_text::task_failure_message(&failure), retry),
             };
-            sender.input(message);
+            sender.deliver(message);
         });
     }
 
@@ -279,7 +280,7 @@ impl App {
             if !self.close_guards.may_tear_down(&self.workspace_handle) {
                 self.close_guards
                     .ask_tear_down(self.window.upcast_ref(), &self.workspace_handle, move |decision| {
-                        sender.input(match decision {
+                        sender.deliver(match decision {
                             CloseDecision::Approved => AppMsg::SessionReady(Box::new(ready)),
                             CloseDecision::Cancelled => AppMsg::SessionDeclined(Box::new(ready)),
                         });
@@ -297,11 +298,13 @@ impl App {
         } = ready;
         let claim = match self.context.sessions.claim(key.clone(), self.window.id()) {
             Ok(claim) => claim,
-            Err(ClaimError::AlreadyOpen { .. }) => {
+            Err(ClaimError::AlreadyOpen { window_id }) => {
                 self.discard_pending(pending);
-                self.show_toast(&crate::i18n::gettext(
-                    "This connection is already open in another window.",
-                ));
+                if !self.host.present_window(window_id) {
+                    self.show_toast(&crate::i18n::gettext(
+                        "This connection is already open in another window.",
+                    ));
+                }
                 return;
             }
         };
@@ -320,12 +323,12 @@ impl App {
             _health: WatchForwarder::new(
                 session.health(),
                 move |health| {
-                    health_sender.input(AppMsg::HealthChanged(FromSession::new(health_origin.clone(), health)));
+                    health_sender.deliver(AppMsg::HealthChanged(FromSession::new(health_origin.clone(), health)));
                 },
                 spawn_local,
             ),
             _catalog_watch: catalog_watch(&session, move |update| {
-                catalog_sender.input(AppMsg::CatalogChanged(update));
+                catalog_sender.deliver(AppMsg::CatalogChanged(update));
             }),
         });
         for warning in warnings {
@@ -367,7 +370,7 @@ impl App {
             let retry = std::cell::RefCell::new(Some(retry));
             dialog.connect_response(Some("edit"), move |_, _| {
                 if let Some(retry) = retry.borrow_mut().take() {
-                    sender.input(AppMsg::EditConnection(retry));
+                    sender.deliver(AppMsg::EditConnection(retry));
                 }
             });
         }
@@ -431,11 +434,11 @@ impl App {
                     Err(error) => tracing::warn!(%error, "the last-opened task failed"),
                     Ok(Ok(())) => {}
                 }
-                sender_for_touch.input(AppMsg::ReloadConnections);
+                sender_for_touch.deliver(AppMsg::ReloadConnections);
             });
             return;
         }
-        sender.input(AppMsg::ReloadConnections);
+        sender.deliver(AppMsg::ReloadConnections);
     }
 
     /// The key this window's session is claimed under, which its saved
@@ -490,10 +493,10 @@ impl App {
         let reading = self.tasks.spawn_blocking_task(move || store.load_blocking());
         glib::spawn_future_local(async move {
             match reading.await {
-                Ok(Ok(connections)) => sender.input(AppMsg::ConnectionsLoaded(connections.to_vec())),
+                Ok(Ok(connections)) => sender.deliver(AppMsg::ConnectionsLoaded(connections.to_vec())),
                 Ok(Err(error)) => {
                     tracing::warn!(%error, "the saved connections could not be read");
-                    sender.input(AppMsg::ConnectionListUnavailable);
+                    sender.deliver(AppMsg::ConnectionListUnavailable);
                 }
                 Err(failure) => tracing::warn!(%failure, "the connections read task failed"),
             }
@@ -601,7 +604,7 @@ impl App {
                 .await;
             if let Ok(Err(error)) = saved {
                 tracing::warn!(%error, "could not save the duplicated connection");
-                sender_clone.input(AppMsg::ShowToast(crate::i18n::gettext(
+                sender_clone.deliver(AppMsg::ShowToast(crate::i18n::gettext(
                     "The connection could not be duplicated.",
                 )));
                 return;
@@ -610,8 +613,8 @@ impl App {
             // user types one, so a keyring that refuses is
             // reported rather than undoing the copy.
             let carried = copy_secrets(secrets.as_ref(), source.id, copy_id, &name).await;
-            sender_clone.input(AppMsg::ReloadConnections);
-            sender_clone.input(AppMsg::ShowToast(if carried {
+            sender_clone.deliver(AppMsg::ReloadConnections);
+            sender_clone.deliver(AppMsg::ShowToast(if carried {
                 crate::i18n::gettext_f("Duplicated as {name}", &[("name", &name)])
             } else {
                 crate::i18n::gettext_f(
@@ -670,9 +673,9 @@ impl App {
                 .await;
             if let Ok(Err(error)) = written {
                 tracing::warn!(%error, "could not save the connection");
-                sender_clone.input(AppMsg::ShowToast(failure));
+                sender_clone.deliver(AppMsg::ShowToast(failure));
             }
-            sender_clone.input(AppMsg::ReloadConnections);
+            sender_clone.deliver(AppMsg::ReloadConnections);
         }));
     }
 
@@ -759,8 +762,8 @@ impl App {
                     crate::i18n::gettext("The connections could not be imported.")
                 }
             };
-            sender_clone.input(AppMsg::ReloadConnections);
-            sender_clone.input(AppMsg::ShowToast(message));
+            sender_clone.deliver(AppMsg::ReloadConnections);
+            sender_clone.deliver(AppMsg::ShowToast(message));
         }));
     }
 
@@ -769,6 +772,13 @@ impl App {
         let key = SessionKey::Saved(saved.id);
         if self.session_links.as_ref().is_some_and(|links| links.key == key) {
             self.show_toast(&crate::i18n::gettext("This connection is already open."));
+            return;
+        }
+        // One window per connection: the one that has it comes forward.
+        if let Some(owner) = self.context.sessions.window_for(&key)
+            && owner != self.window.id()
+            && self.host.present_window(owner)
+        {
             return;
         }
         if self.context.active.is_connected() {
@@ -806,7 +816,7 @@ impl App {
             connect_flow::connect_saved(&saved, &drivers, &credentials, &*connector, interaction, cancel).await
         };
         crate::runtime::spawn_and_deliver(&self.tasks, connecting, move |outcome| match outcome {
-            Ok(Ok((pending, refused))) => sender.input(AppMsg::SessionReady(Box::new(ReadySession {
+            Ok(Ok((pending, refused))) => sender.deliver(AppMsg::SessionReady(Box::new(ReadySession {
                 key,
                 pending,
                 credentials: source,
@@ -816,12 +826,12 @@ impl App {
                     .collect(),
                 generation: Some(generation),
             }))),
-            Ok(Err(ConnectError::Cancelled)) => sender.input(AppMsg::ConnectFailed {
+            Ok(Err(ConnectError::Cancelled)) => sender.deliver(AppMsg::ConnectFailed {
                 generation,
                 message: None,
                 edit: None,
             }),
-            Ok(Err(error)) => sender.input(AppMsg::ConnectFailed {
+            Ok(Err(error)) => sender.deliver(AppMsg::ConnectFailed {
                 generation,
                 message: Some(crate::ui::error_text::connect_error_message(&error)),
                 edit: Some(Box::new(ConnectRetry {
@@ -829,7 +839,7 @@ impl App {
                     ..retry
                 })),
             }),
-            Err(failure) => sender.input(AppMsg::ConnectFailed {
+            Err(failure) => sender.deliver(AppMsg::ConnectFailed {
                 generation,
                 message: Some(crate::ui::error_text::task_failure_message(&failure)),
                 edit: Some(Box::new(retry)),
@@ -995,7 +1005,7 @@ fn execute_delete_connection(
             // Keep the entry: an entry with no secrets can be
             // fixed, a secret with no entry is orphaned.
             tracing::warn!(%error, "could not delete the connection secrets; keeping the entry");
-            sender_clone.input(AppMsg::SecretDeleteFailed(id));
+            sender_clone.deliver(AppMsg::SecretDeleteFailed(id));
             return;
         }
         let removed = tasks.spawn_blocking_task(move || connections.remove_blocking(id)).await;
@@ -1011,7 +1021,7 @@ fn execute_delete_connection(
         {
             tracing::warn!(%error, "could not remove the connection's saved queries");
         }
-        sender_clone.input(AppMsg::ReloadConnections);
+        sender_clone.deliver(AppMsg::ReloadConnections);
     }));
 }
 
@@ -1040,7 +1050,7 @@ impl App {
         toast.set_button_label(Some(&crate::i18n::gettext("Retry")));
         let retry_sender = sender;
         toast.connect_button_clicked(move |_| {
-            retry_sender.input(AppMsg::DeleteConnection(id));
+            retry_sender.deliver(AppMsg::DeleteConnection(id));
         });
         self.toast_overlay.add_toast(toast);
     }
@@ -1078,7 +1088,7 @@ impl App {
                         toasts.add_toast(adw::Toast::new(&crate::ui::connection_list_banner::reset_toast_text(
                             &moved,
                         )));
-                        sender.input(AppMsg::ReloadConnections);
+                        sender.deliver(AppMsg::ReloadConnections);
                         return;
                     }
                     Ok(Err(error)) => error.to_string(),

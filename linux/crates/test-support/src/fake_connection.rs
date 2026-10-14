@@ -29,6 +29,7 @@ pub struct FakeConnection {
     read_only: bool,
     close_behaviour: CloseBehaviour,
     close_started: AtomicBool,
+    close_finished: AtomicBool,
     link: LinkWatch,
     closed: CancellationToken,
     counters: CallCounters,
@@ -44,6 +45,7 @@ impl FakeConnection {
             read_only: script.read_only,
             close_behaviour: script.close,
             close_started: AtomicBool::new(false),
+            close_finished: AtomicBool::new(false),
             script: Mutex::new(script),
             link: LinkWatch::new(),
             closed: CancellationToken::new(),
@@ -64,6 +66,12 @@ impl FakeConnection {
 
     pub fn is_closed(&self) -> bool {
         self.closed.is_cancelled()
+    }
+
+    /// Set once the first close has run to its end, delay included. A
+    /// close that hangs, or whose caller gave up on it, never sets it.
+    pub fn close_finished(&self) -> bool {
+        self.close_finished.load(Ordering::SeqCst)
     }
 
     /// The cancel token every call to `method` was handed, oldest first,
@@ -395,6 +403,7 @@ impl Connection for FakeConnection {
         self.closed.cancel();
         if first {
             self.close_behaviour.run().await;
+            self.close_finished.store(true, Ordering::SeqCst);
         }
         Ok(())
     }
@@ -480,6 +489,7 @@ mod tests {
         });
         let outcome = tokio::time::timeout(Duration::from_secs(3600), hanging.close()).await;
         assert!(outcome.is_err(), "a hanging close returned");
+        assert!(hanging.is_closed() && !hanging.close_finished());
 
         let delayed = FakeConnection::new(ConnectionScript {
             close: CloseBehaviour::Delay(Duration::from_secs(5)),
@@ -488,6 +498,7 @@ mod tests {
         let started = Instant::now();
         delayed.close().await.unwrap();
         assert!(started.elapsed() >= Duration::from_secs(5));
+        assert!(delayed.close_finished());
         let again = Instant::now();
         delayed.close().await.unwrap();
         assert_eq!(again.elapsed(), Duration::ZERO, "a second close waited again");

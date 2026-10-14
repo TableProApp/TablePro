@@ -47,6 +47,12 @@ impl WindowInhibitor {
         }
     }
 
+    /// Whether the session is being held back now. A session without an
+    /// inhibit service never holds it.
+    pub fn is_held(&self) -> bool {
+        self.cookie != 0
+    }
+
     fn release(&mut self) {
         if self.cookie != 0 {
             self.target.uninhibit(std::mem::take(&mut self.cookie));
@@ -199,10 +205,24 @@ mod tests {
         let mut inhibitor = WindowInhibitor::new(session.clone());
 
         inhibitor.update(Some(InhibitReason::SavingChanges));
+        assert!(!inhibitor.is_held(), "a refused inhibit counted as held");
         inhibitor.update(None);
         drop(inhibitor);
 
         assert!(session.held.borrow().is_empty());
+    }
+
+    #[gtk4::test]
+    fn is_held_follows_the_cookie() {
+        let session = Session::default();
+        let mut inhibitor = WindowInhibitor::new(session.clone());
+        assert!(!inhibitor.is_held());
+
+        inhibitor.update(Some(InhibitReason::UnsavedChanges));
+        assert!(inhibitor.is_held());
+
+        inhibitor.update(None);
+        assert!(!inhibitor.is_held());
     }
 
     #[gtk4::test]

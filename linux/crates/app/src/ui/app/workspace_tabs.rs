@@ -24,6 +24,7 @@ use super::{
     App, AppMsg, CLOSED_TABS_CAPACITY, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceTab,
     read_workspace_tab_id, write_workspace_tab_id,
 };
+use crate::runtime::DeliverInput;
 
 impl App {
     /// Builds the unified AdwTabOverview tree once per connection.
@@ -90,7 +91,7 @@ impl App {
             };
             let reading = tasks.spawn_blocking_task(move || RestoredDrafts::read_blocking(&store, &scope, referenced));
             let drafts = reading.await.unwrap_or_default();
-            sender.input(AppMsg::WorkspaceLoaded(FromSession::new(
+            sender.deliver(AppMsg::WorkspaceLoaded(FromSession::new(
                 origin,
                 LoadedWorkspace { key, load, drafts },
             )));
@@ -200,7 +201,7 @@ impl App {
         let resetting = self.storage.workspaces().reset(&key);
         glib::spawn_future_local(async move {
             let outcome = resetting.await;
-            sender.input(AppMsg::WorkspaceLayoutReset(FromSession::new(origin, outcome)));
+            sender.deliver(AppMsg::WorkspaceLayoutReset(FromSession::new(origin, outcome)));
         });
     }
 

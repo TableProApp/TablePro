@@ -7,6 +7,8 @@ use uuid::Uuid;
 use tablepro_core::AuthMode;
 use tablepro_storage::{ConnectionColor, SavedConnection};
 
+use crate::runtime::DeliverInput;
+
 /// What a row needs to build itself: the connection, plus the groups
 /// the rest of the list is filed under so its menu can offer them.
 #[derive(Debug, Clone)]
@@ -68,7 +70,7 @@ impl FactoryComponent for ConnectionRow {
             set_title: &self.saved.name,
             set_subtitle: &subtitle_for(&self.saved),
             set_activatable: true,
-            connect_activated => ConnectionRowMsg::Open,
+            connect_activated[sender] => move |_| sender.deliver(ConnectionRowMsg::Open),
 
             // The colour the user put on this connection, as a dot
             // ahead of the name. Absent rather than grey when there is
@@ -118,11 +120,11 @@ impl FactoryComponent for ConnectionRow {
         let actions = gio::SimpleActionGroup::new();
         let duplicate_sender = sender.clone();
         let duplicate = gio::ActionEntry::builder("duplicate")
-            .activate(move |_, _, _| duplicate_sender.input(ConnectionRowMsg::RequestDuplicate))
+            .activate(move |_, _, _| duplicate_sender.deliver(ConnectionRowMsg::RequestDuplicate))
             .build();
         let remove_sender = sender.clone();
         let remove = gio::ActionEntry::builder("remove")
-            .activate(move |_, _, _| remove_sender.input(ConnectionRowMsg::RequestDelete))
+            .activate(move |_, _, _| remove_sender.deliver(ConnectionRowMsg::RequestDelete))
             .build();
         actions.add_action_entries([duplicate, remove]);
 
@@ -139,7 +141,7 @@ impl FactoryComponent for ConnectionRow {
                 return;
             };
             action.set_state(&id.to_variant());
-            color_sender.input(ConnectionRowMsg::SetColor(ConnectionColor::from_id(&id)));
+            color_sender.deliver(ConnectionRowMsg::SetColor(ConnectionColor::from_id(&id)));
         });
         actions.add_action(&color);
 
@@ -156,7 +158,7 @@ impl FactoryComponent for ConnectionRow {
                 return;
             };
             action.set_state(&name.to_variant());
-            group_sender.input(ConnectionRowMsg::SetGroup(match name.trim().is_empty() {
+            group_sender.deliver(ConnectionRowMsg::SetGroup(match name.trim().is_empty() {
                 true => None,
                 false => Some(name),
             }));
@@ -164,7 +166,7 @@ impl FactoryComponent for ConnectionRow {
         actions.add_action(&group);
         let new_group_sender = sender.clone();
         let new_group = gio::ActionEntry::builder("new-group")
-            .activate(move |_, _, _| new_group_sender.input(ConnectionRowMsg::NewGroupRequested))
+            .activate(move |_, _, _| new_group_sender.deliver(ConnectionRowMsg::NewGroupRequested))
             .build();
         actions.add_action_entries([new_group]);
         root.insert_action_group("connection", Some(&actions));

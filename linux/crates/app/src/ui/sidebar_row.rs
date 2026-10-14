@@ -7,6 +7,8 @@ use relm4::gtk::prelude::*;
 
 use tablepro_core::meta::ObjectInfo;
 
+use crate::runtime::DeliverInput;
+
 #[derive(Debug)]
 pub struct SidebarRow {
     pub info: ObjectInfo,
@@ -151,7 +153,7 @@ impl FactoryComponent for SidebarRow {
             let state = gesture.current_event_state();
             if state.contains(gdk::ModifierType::CONTROL_MASK) {
                 gesture.set_state(gtk::EventSequenceState::Claimed);
-                sender_for_ctrl.input(SidebarRowMsg::OpenInNewTab);
+                sender_for_ctrl.deliver(SidebarRowMsg::OpenInNewTab);
             }
         });
         root.add_controller(click_gesture);
@@ -216,23 +218,23 @@ impl FactoryComponent for SidebarRow {
         let group = gtk::gio::SimpleActionGroup::new();
         let sender_open = sender.clone();
         let open_action = gtk::gio::ActionEntry::builder("open-in-new-tab")
-            .activate(move |_, _, _| sender_open.input(SidebarRowMsg::OpenInNewTab))
+            .activate(move |_, _, _| sender_open.deliver(SidebarRowMsg::OpenInNewTab))
             .build();
         let sender_edit = sender.clone();
         let edit_action = gtk::gio::ActionEntry::builder("edit-structure")
-            .activate(move |_, _, _| sender_edit.input(SidebarRowMsg::EditStructure))
+            .activate(move |_, _, _| sender_edit.deliver(SidebarRowMsg::EditStructure))
             .build();
         let sender_show = sender.clone();
         let show_create_action = gtk::gio::ActionEntry::builder("show-create-table")
-            .activate(move |_, _, _| sender_show.input(SidebarRowMsg::ShowCreateTable))
+            .activate(move |_, _, _| sender_show.deliver(SidebarRowMsg::ShowCreateTable))
             .build();
         let sender_import = sender.clone();
         let import_action = gtk::gio::ActionEntry::builder("import-csv")
-            .activate(move |_, _, _| sender_import.input(SidebarRowMsg::ImportCsv))
+            .activate(move |_, _, _| sender_import.deliver(SidebarRowMsg::ImportCsv))
             .build();
         let sender_drop = sender.clone();
         let drop_action = gtk::gio::ActionEntry::builder("drop-table")
-            .activate(move |_, _, _| sender_drop.input(SidebarRowMsg::DropTable))
+            .activate(move |_, _, _| sender_drop.deliver(SidebarRowMsg::DropTable))
             .build();
         group.add_action_entries([open_action, edit_action, show_create_action, import_action, drop_action]);
         root.insert_action_group("sidebar-row", Some(&group));

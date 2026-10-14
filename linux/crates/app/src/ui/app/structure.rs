@@ -15,6 +15,7 @@ use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
 use tokio_util::sync::CancellationToken;
 
+use crate::runtime::DeliverInput;
 use crate::services::from_session::FromSession;
 use crate::ui::app::{App, AppMsg, WorkspaceTab};
 use crate::ui::error_text;
@@ -96,7 +97,7 @@ impl App {
         dialog.connect_response(None, move |dlg, response| {
             dlg.close();
             if response == "drop" {
-                sender_for_resp.input(AppMsg::DropTableConfirmed {
+                sender_for_resp.deliver(AppMsg::DropTableConfirmed {
                     schema: schema_for_resp.clone(),
                     table: table_for_resp.clone(),
                 });
@@ -142,8 +143,8 @@ impl App {
         };
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
             match settled(result).and_then(|(_, written)| written) {
-                Ok(_) => sender.input(AppMsg::DropTableSucceeded(FromSession::new(origin, dropped))),
-                Err(error) => sender.input(AppMsg::ShowAlert {
+                Ok(_) => sender.deliver(AppMsg::DropTableSucceeded(FromSession::new(origin, dropped))),
+                Err(error) => sender.deliver(AppMsg::ShowAlert {
                     title: crate::i18n::gettext("Drop failed"),
                     body: error_text::operation_error_message(&error),
                 }),
@@ -153,7 +154,7 @@ impl App {
 
     pub(super) fn on_drop_table_succeeded(&mut self, table: TableRef, sender: ComponentSender<Self>) {
         self.close_tabs_for_table(table.schema.as_deref(), &table.name);
-        sender.input(AppMsg::SchemaChanged {
+        sender.deliver(AppMsg::SchemaChanged {
             schema: table.schema,
             table: Some(table.name),
         });
@@ -233,14 +234,14 @@ impl App {
                     None,
                     sender.clone(),
                 );
-                sender.input(AppMsg::SchemaChanged {
+                sender.deliver(AppMsg::SchemaChanged {
                     schema,
                     table: Some(name),
                 });
             }
             SaveKind::UpdateInPlace(schema, table) => {
                 self.send_to_structure_tab(tab_id, StructureTabInput::SaveCompleted { new_table_name });
-                sender.input(AppMsg::SchemaChanged {
+                sender.deliver(AppMsg::SchemaChanged {
                     schema,
                     table: Some(table),
                 });
@@ -264,7 +265,7 @@ impl App {
             let message = match settled(result) {
                 Ok((definition, dialect)) => match create_table_sql(&definition, &*dialect) {
                     Ok(Some(sql)) => {
-                        sender.input(AppMsg::ShowCreateTableLoaded(FromSession::new(origin, sql)));
+                        sender.deliver(AppMsg::ShowCreateTableLoaded(FromSession::new(origin, sql)));
                         return;
                     }
                     Ok(None) => crate::i18n::gettext_f("Table {table} has no columns.", &[("table", &table)]),
@@ -278,7 +279,7 @@ impl App {
                     &[("error", &error_text::operation_error_message(&error))],
                 ),
             };
-            sender.input(AppMsg::ShowToast(message));
+            sender.deliver(AppMsg::ShowToast(message));
         });
     }
 

@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::connection_list;
 use super::connection_row::{ConnectionRow, ConnectionRowInit, ConnectionRowOutput};
+use crate::runtime::DeliverInput;
 
 pub struct WelcomeView {
     connections: Vec<SavedConnection>,
@@ -87,7 +88,7 @@ impl SimpleComponent for WelcomeView {
         empty_btn.add_css_class("suggested-action");
         empty_btn.add_css_class("pill");
         let s_empty = sender.clone();
-        empty_btn.connect_clicked(move |_| s_empty.input(WelcomeViewInput::OpenConnect));
+        empty_btn.connect_clicked(move |_| s_empty.deliver(WelcomeViewInput::OpenConnect));
         empty_page.set_child(Some(&empty_btn));
         root.add_named(&empty_page, Some("empty"));
 
@@ -126,7 +127,7 @@ impl SimpleComponent for WelcomeView {
             .build();
         header_btn.add_css_class("flat");
         let s_header = sender.clone();
-        header_btn.connect_clicked(move |_| s_header.input(WelcomeViewInput::OpenConnect));
+        header_btn.connect_clicked(move |_| s_header.deliver(WelcomeViewInput::OpenConnect));
         group.set_header_suffix(Some(&header_btn));
         group.add(factory.widget());
         outer.append(&group);

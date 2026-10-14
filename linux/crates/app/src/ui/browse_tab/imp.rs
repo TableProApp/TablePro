@@ -114,11 +114,10 @@ fn install_bindings(klass: &mut <BrowseTab as ObjectSubclass>::Class) {
         ctrl,
         send(|| BrowseTabInput::InsertRow, glib::Propagation::Stop),
     );
-    // No GNOME precedent for "set NULL"; Ctrl+Backspace is delete-word
-    // in every text field, so the null shortcut is Ctrl+Shift+N.
-    klass.add_binding(gdk::Key::n, ctrl | gdk::ModifierType::SHIFT_MASK, |tab| {
-        tab.set_focused_cell_null()
-    });
+    // Ctrl+Shift+N is the application's New Window. An open cell editor
+    // takes Ctrl+Backspace as delete-word first, so this sees it only on
+    // a focused cell.
+    klass.add_binding(gdk::Key::BackSpace, ctrl, |tab| tab.set_focused_cell_null());
     // A cell editor's text field consumes Ctrl+C and Ctrl+V first, so
     // these only see the grid's own copy and paste.
     klass.add_binding(
