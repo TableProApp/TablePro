@@ -23,7 +23,6 @@ struct GridColumn {
     drawing: Rc<ColumnDrawing>,
 }
 
-/// A column the view shows.
 #[derive(Clone)]
 pub(super) struct ShownColumn {
     pub(super) view_column: gtk::ColumnViewColumn,
@@ -56,7 +55,6 @@ impl GridColumns {
         });
     }
 
-    /// The columns `view` shows, in the order it shows them.
     pub(super) fn shown(&self, view: &gtk::ColumnView) -> Vec<ShownColumn> {
         let columns = self.columns.borrow();
         let model = view.columns();

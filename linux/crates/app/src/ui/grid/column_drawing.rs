@@ -42,7 +42,6 @@ impl ColumnDrawing {
         }
     }
 
-    /// Draw `row` in `cell`, and give back the cell's pending state.
     pub fn draw(&self, cell: &GridCell, row: &RowObject) -> CellState {
         let BoundCell {
             input,

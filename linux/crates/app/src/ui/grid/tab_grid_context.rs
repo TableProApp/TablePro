@@ -7,7 +7,6 @@ use crate::services::cell_overlay::CellOverlay;
 use crate::services::change_tracker::{CellState, RowKey, RowState};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 
-/// What a cell draws for a row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoundCell {
     pub input: CellInput,
