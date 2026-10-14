@@ -17,11 +17,13 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 
 `ConnectionStore` holds the saved-connection list, one store per storage root:
 
-- `load_blocking`, `upsert_blocking`, `remove_blocking`, `touch_last_opened_blocking`, `import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock across read, change and write, so two writers never lose an entry.
+- `load_blocking`, `upsert_blocking`, `update_blocking`, `remove_blocking`, `touch_last_opened_blocking`, `import_blocking` and `export_blocking` run off the GTK thread. A change holds the store's lock across read, change and write, so two writers never lose an entry. `update_blocking` changes one entry as the list holds it at the write, so a last-opened stamp from another window in between is kept.
 - A write goes through `write_private_blocking` first and the cached list changes only once it landed, so a failed write leaves both as they were.
 - `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
 - A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
-- A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID.
+- A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
+- `group` is a `ConnectionGroupName`: trimmed, 1 to 64 characters, no control characters. A file with any other group is refused like any other unreadable list.
+- An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again.
 
 ### SSH settings
 

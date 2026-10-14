@@ -18,6 +18,7 @@ use crate::services::active_session::ActiveSession;
 use crate::services::connection_deletion::ConnectionDeletion;
 use crate::services::history_preferences::HistoryPreferences;
 use crate::services::history_service::HistoryService;
+use crate::services::saved_connection_editor::SavedConnectionEditor;
 use crate::services::saved_connection_list::SavedConnectionList;
 use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
 use crate::storage::{AppStorage, SharedStorage};
@@ -37,6 +38,8 @@ pub struct AppServices {
     pub tasks: Tasks,
     /// The saved connections every picker shows, following the store.
     pub saved_connections: Rc<SavedConnectionList>,
+    /// Edits, copies and regroups saved connections with their secrets.
+    pub saved_connection_editor: SavedConnectionEditor,
     /// Shows a file selected in the file manager.
     pub(crate) file_revealer: Rc<dyn FileRevealer>,
     /// Where each session's secrets come from.
@@ -77,6 +80,8 @@ impl AppServices {
         let application_hold = Rc::new(GioProcessHold::default());
         let open_sessions = OpenSessions::new(storage.workspaces().clone(), application_hold.clone());
         let saved_connections = SavedConnectionList::follow(storage.connections());
+        let saved_connection_editor =
+            SavedConnectionEditor::new(storage.connections().clone(), storage.secrets().clone(), tasks.clone());
         Self {
             drivers: Arc::new(drivers),
             connector,
@@ -88,6 +93,7 @@ impl AppServices {
             storage: Rc::new(storage),
             tasks,
             saved_connections,
+            saved_connection_editor,
             file_revealer: Rc::new(FileLauncherRevealer),
             hold: application_hold.clone(),
             application_hold,

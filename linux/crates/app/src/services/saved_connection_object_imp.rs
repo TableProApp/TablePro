@@ -52,7 +52,8 @@ impl SavedConnectionObject {
     fn group(&self) -> Option<String> {
         self.saved
             .get()
-            .and_then(|saved| super::saved_connection_order::group_of(saved).map(str::to_owned))
+            .and_then(|saved| saved.group.as_ref())
+            .map(|group| group.as_str().to_owned())
     }
 
     fn last_opened(&self) -> i64 {

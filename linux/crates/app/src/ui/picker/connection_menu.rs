@@ -1,15 +1,16 @@
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_storage::ConnectionColor;
+use tablepro_storage::{ConnectionColor, ConnectionGroupName};
 use uuid::Uuid;
 
 pub(super) const PICKER: &str = "picker";
 pub(super) const CONNECT: &str = "connect";
+pub(super) const EDIT: &str = "edit";
 pub(super) const DELETE: &str = "delete";
 pub(super) const DUPLICATE: &str = "duplicate";
 pub(super) const NEW_GROUP: &str = "new-group";
 pub(super) const SET_COLOR: &str = "set-color";
-pub(super) const SET_GROUP: &str = "set-group";
+pub(super) const MOVE_TO_GROUP: &str = "move-to-group";
 
 /// The row's own actions: its menu, and the colour and group radios,
 /// whose state is that row's connection.
@@ -27,15 +28,23 @@ pub(super) const NONE: &str = "";
 /// menu acts on the row it opened on whatever the list does meanwhile.
 /// Delete sits in its own section so a destructive action is never the
 /// neighbour of an ordinary one.
-pub(crate) fn connection_menu(id: Uuid, groups: &[String]) -> gio::Menu {
+pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName]) -> gio::Menu {
     let target = id.to_string().to_variant();
     let menu = gio::Menu::new();
     let open = gio::Menu::new();
     open.append_item(&item(&crate::i18n::gettext("Connect"), PICKER, CONNECT, &target));
-    open.append_item(&item(&crate::i18n::gettext("Duplicate"), PICKER, DUPLICATE, &target));
-    open.append_submenu(Some(&crate::i18n::gettext("Colour")), &color_menu());
-    open.append_submenu(Some(&crate::i18n::gettext("Group")), &group_menu(&target, groups));
     menu.append_section(None, &open);
+    let change = gio::Menu::new();
+    change.append_item(&item(&crate::i18n::gettext("Edit…"), PICKER, EDIT, &target));
+    change.append_item(&item(&crate::i18n::gettext("Duplicate"), PICKER, DUPLICATE, &target));
+    menu.append_section(None, &change);
+    let file = gio::Menu::new();
+    file.append_submenu(Some(&crate::i18n::gettext("Colour")), &color_menu());
+    file.append_submenu(
+        Some(&crate::i18n::gettext("Move to Group")),
+        &group_menu(&target, groups),
+    );
+    menu.append_section(None, &file);
     let danger = gio::Menu::new();
     // Named as the dialog it opens names it.
     danger.append_item(&item(&crate::i18n::gettext("Delete…"), PICKER, DELETE, &target));
@@ -67,9 +76,9 @@ fn color_menu() -> gio::Menu {
     menu
 }
 
-/// The groups already in the list, as a radio group, with a way to
-/// start a new one at the end.
-fn group_menu(target: &glib::Variant, groups: &[String]) -> gio::Menu {
+/// The groups already in the list, as a radio group ticked at the one
+/// the connection is in, with a way to start a new one at the end.
+fn group_menu(target: &glib::Variant, groups: &[ConnectionGroupName]) -> gio::Menu {
     let menu = gio::Menu::new();
     menu.append_item(&item(
         &crate::i18n::gettext("No Group"),
@@ -80,7 +89,12 @@ fn group_menu(target: &glib::Variant, groups: &[String]) -> gio::Menu {
     if !groups.is_empty() {
         let existing = gio::Menu::new();
         for group in groups {
-            existing.append_item(&item(&menu_label(group), ROW, ROW_GROUP, &group.to_variant()));
+            existing.append_item(&item(
+                &menu_label(group.as_str()),
+                ROW,
+                ROW_GROUP,
+                &group.as_str().to_variant(),
+            ));
         }
         menu.append_section(None, &existing);
     }
@@ -164,12 +178,35 @@ mod tests {
         }
     }
 
+    fn group(name: &str) -> ConnectionGroupName {
+        ConnectionGroupName::new(name).expect("a group name")
+    }
+
+    #[test]
+    fn the_menu_reads_connect_edit_duplicate_colour_group_delete() {
+        let labels = labels(&connection_menu(Uuid::new_v4(), &[]));
+        let shown = |label: &str| {
+            labels
+                .iter()
+                .position(|candidate| candidate == label)
+                .unwrap_or_else(|| panic!("{label} is missing: {labels:?}"))
+        };
+
+        let order = [
+            shown("Connect"),
+            shown("Edit…"),
+            shown("Duplicate"),
+            shown("Colour"),
+            shown("Move to Group"),
+            shown("Delete…"),
+        ];
+
+        assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{labels:?}");
+    }
+
     #[test]
     fn the_group_menu_offers_every_group_the_list_already_has() {
-        let labels = labels(&connection_menu(
-            Uuid::new_v4(),
-            &["Archive".to_owned(), "Work".to_owned()],
-        ));
+        let labels = labels(&connection_menu(Uuid::new_v4(), &[group("Archive"), group("Work")]));
 
         assert!(labels.contains(&"Archive".to_owned()), "{labels:?}");
         assert!(labels.contains(&"Work".to_owned()), "{labels:?}");
@@ -179,7 +216,7 @@ mod tests {
 
     #[test]
     fn a_group_name_keeps_its_underscores_in_the_menu() {
-        let found = items(connection_menu(Uuid::new_v4(), &["dev_db".to_owned()]).upcast_ref());
+        let found = items(connection_menu(Uuid::new_v4(), &[group("dev_db")]).upcast_ref());
 
         let group = found
             .iter()

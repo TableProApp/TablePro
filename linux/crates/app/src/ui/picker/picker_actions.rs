@@ -1,14 +1,12 @@
 use std::rc::Rc;
 
 use gtk4 as gtk;
-use gtk4::gio;
 use gtk4::prelude::*;
-use libadwaita as adw;
-use libadwaita::prelude::*;
-use tablepro_storage::{ConnectionColor, SavedConnection};
+use gtk4::{gio, glib};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, SavedConnection};
 use uuid::Uuid;
 
-use super::connection_menu::{CONNECT, DELETE, DUPLICATE, NEW_GROUP, NONE, PICKER, SET_COLOR, SET_GROUP};
+use super::connection_menu::{CONNECT, DELETE, DUPLICATE, EDIT, MOVE_TO_GROUP, NEW_GROUP, NONE, PICKER, SET_COLOR};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::SessionWindowInput;
@@ -25,6 +23,7 @@ pub(crate) fn install_picker_actions(
     let actions = gio::SimpleActionGroup::new();
     let by_id = [
         (CONNECT, OnConnection::Connect),
+        (EDIT, OnConnection::Edit),
         (DELETE, OnConnection::Delete),
         (DUPLICATE, OnConnection::Duplicate),
         (NEW_GROUP, OnConnection::NewGroup),
@@ -38,14 +37,19 @@ pub(crate) fn install_picker_actions(
             };
             match picked {
                 OnConnection::Connect => sender.deliver(SessionWindowInput::OpenSaved(Box::new(saved))),
+                OnConnection::Edit => sender.deliver(SessionWindowInput::EditSavedConnection(saved.id)),
                 OnConnection::Delete => sender.deliver(SessionWindowInput::DeleteConnection(saved.id)),
-                OnConnection::Duplicate => sender.deliver(SessionWindowInput::DuplicateConnection(Box::new(saved))),
-                OnConnection::NewGroup => ask_for_group(root.upgrade().as_ref(), saved.id, &sender),
+                OnConnection::Duplicate => sender.deliver(SessionWindowInput::DuplicateConnection(saved.id)),
+                OnConnection::NewGroup => {
+                    if let Some(root) = root.upgrade() {
+                        ask_for_group(root, saved.id, list.groups(), sender.clone());
+                    }
+                }
             }
         });
         actions.add_action(&action);
     }
-    for (name, picked) in [(SET_COLOR, Setting::Color), (SET_GROUP, Setting::Group)] {
+    for (name, picked) in [(SET_COLOR, Setting::Color), (MOVE_TO_GROUP, Setting::Group)] {
         let action = gio::SimpleAction::new(name, Some(&<(String, String)>::static_variant_type()));
         let (list, sender) = (list.clone(), sender.clone());
         action.connect_activate(move |_, target| {
@@ -56,12 +60,17 @@ pub(crate) fn install_picker_actions(
             let Some(saved) = connection(&list, Some(id), name) else {
                 return;
             };
-            sender.deliver(match picked {
+            let input = match picked {
                 Setting::Color => SessionWindowInput::SetConnectionColor(saved.id, ConnectionColor::from_id(&value)),
-                Setting::Group => {
-                    SessionWindowInput::SetConnectionGroup(saved.id, Some(value).filter(|group| group != NONE))
-                }
-            });
+                Setting::Group => match group_named(&value) {
+                    Ok(group) => SessionWindowInput::SetConnectionGroup(saved.id, group),
+                    Err(error) => {
+                        tracing::warn!(action = name, %error, "a picker action named a group that cannot be saved");
+                        return;
+                    }
+                },
+            };
+            sender.deliver(input);
         });
         actions.add_action(&action);
     }
@@ -72,6 +81,7 @@ pub(crate) fn install_picker_actions(
 #[derive(Debug, Clone, Copy)]
 enum OnConnection {
     Connect,
+    Edit,
     Delete,
     Duplicate,
     NewGroup,
@@ -82,6 +92,14 @@ enum OnConnection {
 enum Setting {
     Color,
     Group,
+}
+
+/// The group a radio target names. The empty target is no group.
+fn group_named(value: &str) -> Result<Option<ConnectionGroupName>, tablepro_storage::GroupNameError> {
+    if value == NONE {
+        return Ok(None);
+    }
+    ConnectionGroupName::new(value).map(Some)
 }
 
 /// The connection a target names, or `None`, with a warning, for a
@@ -99,24 +117,31 @@ fn connection(list: &SavedConnectionList, target: Option<String>, action: &str) 
     saved
 }
 
-/// Ask for a group's name, then file the connection under it.
-fn ask_for_group(parent: Option<&gtk::Widget>, id: Uuid, sender: &InputSender<SessionWindowInput>) {
-    let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("New Group")), None);
-    let entry = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
-    let group = adw::PreferencesGroup::new();
-    group.add(&entry);
-    dialog.set_extra_child(Some(&group));
-    dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
-    dialog.add_response("add", &crate::i18n::gettext("Add"));
-    dialog.set_response_appearance("add", adw::ResponseAppearance::Suggested);
-    dialog.set_default_response(Some("add"));
-    dialog.set_close_response("cancel");
-    let sender = sender.clone();
-    dialog.connect_response(Some("add"), move |_, _| {
-        let name = entry.text().trim().to_owned();
-        if !name.is_empty() {
-            sender.deliver(SessionWindowInput::SetConnectionGroup(id, Some(name)));
+/// Ask for a new group's name, then file the connection under it.
+fn ask_for_group(
+    parent: gtk::Widget,
+    id: Uuid,
+    existing: Vec<ConnectionGroupName>,
+    sender: InputSender<SessionWindowInput>,
+) {
+    glib::spawn_future_local(async move {
+        if let Some(group) = super::new_group_dialog::ask_group_name(&parent, &existing).await {
+            sender.deliver(SessionWindowInput::SetConnectionGroup(id, Some(group)));
         }
     });
-    dialog.present(parent);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_radio_target_is_no_group_and_a_blank_one_is_refused() {
+        assert_eq!(group_named(NONE), Ok(None));
+        assert_eq!(
+            group_named(" Work ").map(|group| group.map(String::from)),
+            Ok(Some("Work".to_owned()))
+        );
+        assert!(group_named("   ").is_err());
+    }
 }

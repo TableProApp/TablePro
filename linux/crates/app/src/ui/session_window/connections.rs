@@ -9,14 +9,16 @@ use libadwaita::prelude::*;
 
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
-use tablepro_storage::{ConnectionListState, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionListState, SavedConnection};
 use uuid::Uuid;
 
+use super::session_page::SessionPage;
 use super::{SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::connection_deletion::DeletionOptions;
 use crate::services::deletion_error::DeletionError;
-use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectPrefill, FormField};
+use crate::services::saved_connection_error::SavedConnectionError;
+use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogMode, ConnectPrefill, FormField};
 use crate::ui::delete_connection_dialog::{self, DeleteConnectionDialog};
 use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::ssh_inputs::SshEnvironment;
@@ -33,28 +35,29 @@ fn typed_password(target: &RequestTarget) -> Option<secrecy::SecretString> {
     }
 }
 
-/// What the connect dialog opens on to edit a connection that failed:
+/// What the connect dialog reopens on after a connect from it failed:
 /// the connection as it was submitted, with the password typed for it.
 pub(super) fn prefill_for(source: &ConnectSource) -> Option<ConnectPrefill> {
     match source {
-        ConnectSource::Saved(saved) => Some(ConnectPrefill {
-            connection: (**saved).clone(),
-            password: None,
-        }),
         ConnectSource::Intent(intent) => intent.pending_save.as_ref().map(|save| ConnectPrefill {
             connection: save.connection.clone(),
             password: typed_password(&intent.request.target),
         }),
-        ConnectSource::File(_) => None,
+        ConnectSource::Saved(_) | ConnectSource::File(_) => None,
     }
 }
 
 impl SessionWindow {
-    /// Show the connect dialog over this window, filled from `prefill`
-    /// when a connect from it failed, with the focus on `focus`. It
-    /// opens once the user's SSH keys are looked for, which reads the
-    /// disk and so runs off the GTK thread.
-    pub(super) fn present_connect_dialog(&self, prefill: Option<ConnectPrefill>, focus: Option<FormField>) {
+    /// Show the connect dialog over this window for `mode`, filled from
+    /// `prefill` when a connect from it failed, with the focus on
+    /// `focus`. It opens once the user's SSH keys are looked for, which
+    /// reads the disk and so runs off the GTK thread.
+    pub(super) fn present_connect_dialog(
+        &self,
+        mode: ConnectDialogMode,
+        prefill: Option<ConnectPrefill>,
+        focus: Option<FormField>,
+    ) {
         let Some(state) = self.state() else {
             return;
         };
@@ -74,12 +77,18 @@ impl SessionWindow {
             });
             if let Some(window) = window.upgrade() {
                 window.imp().dialog_opening.set(false);
-                window.show_connect_dialog(prefill, focus, environment);
+                window.show_connect_dialog(mode, prefill, focus, environment);
             }
         });
     }
 
-    fn show_connect_dialog(&self, prefill: Option<ConnectPrefill>, focus: Option<FormField>, ssh: SshEnvironment) {
+    fn show_connect_dialog(
+        &self,
+        mode: ConnectDialogMode,
+        prefill: Option<ConnectPrefill>,
+        focus: Option<FormField>,
+        ssh: SshEnvironment,
+    ) {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
@@ -96,11 +105,17 @@ impl SessionWindow {
             remembered_driver: state.services.settings.connect_dialog_driver(),
             ssh_environment: ssh,
             prefill,
+            mode,
+            editor: state.services.saved_connection_editor.clone(),
+            credentials: context.credentials.clone(),
+            hold: state.services.hold(),
         });
         let submitted = input.clone();
         dialog.connect_submitted(move |_, submission| {
             submitted.deliver(SessionWindowInput::ConnectFromDialog(Box::new(submission)));
         });
+        let saved = input.clone();
+        dialog.connect_saved(move |_, id| saved.deliver(SessionWindowInput::ConnectionSaved(id)));
         dialog.connect_closed(move |_| input.deliver(SessionWindowInput::DialogClosed));
         dialog.present(Some(self));
         if let Some(field) = focus {
@@ -301,96 +316,119 @@ impl SessionWindow {
         });
     }
 
-    /// Copy a saved connection so a second database on the same server
-    /// does not have to be typed out again.
-    ///
-    /// The copy takes a new id, so it carries its own secrets rather
-    /// than sharing the original's: removing either then leaves the
-    /// other able to connect.
-    pub(super) fn on_duplicate_connection(&self, source: SavedConnection) {
-        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+    /// Open the connect dialog on the saved connection `id` to change
+    /// it, as the list holds it now.
+    pub(super) fn on_edit_saved_connection(&self, id: Uuid) {
+        match self.saved_connection(id) {
+            Some(saved) => self.present_connect_dialog(ConnectDialogMode::Edit(Box::new(saved)), None, None),
+            None => self.show_toast(&crate::i18n::gettext("The connection was deleted.")),
+        }
+    }
+
+    /// An edit was saved. A connect that failed here tries again with
+    /// it; a session open on the connection keeps what it connected
+    /// with, since an edit never moves a live session to another server.
+    pub(super) fn on_connection_saved(&self, id: Uuid) {
+        let key = SessionKey::Saved(id);
+        if self.page_is(|page| matches!(page, SessionPage::ConnectFailed { claim, .. } if *claim.key() == key)) {
+            self.on_retry_connect();
+            return;
+        }
+        let Some(state) = self.state() else {
             return;
         };
-        let copy = tablepro_storage::duplicate(&source, &state.services.saved_connections.connections());
-        let name = copy.name.clone();
-        let connections = state.services.storage.connections().clone();
-        let secrets = state.services.storage.secrets().clone();
-        let tasks = state.services.tasks.clone();
-        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
-            let copy_id = copy.id;
-            let saved = tasks
-                .spawn_blocking_task(move || connections.upsert_blocking(copy))
-                .await;
-            if let Ok(Err(error)) = saved {
-                tracing::warn!(%error, "could not save the duplicated connection");
-                input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext(
-                    "The connection could not be duplicated.",
-                )));
-                return;
-            }
-            // A copy with no password still connects once the user types
-            // one, so a keyring that refuses is reported rather than
-            // undoing the copy.
-            let carried = copy_secrets(secrets.as_ref(), source.id, copy_id, &name).await;
-            input.deliver(SessionWindowInput::ShowToast(if carried {
-                crate::i18n::gettext_f("Duplicated as {name}", &[("name", &name)])
-            } else {
-                crate::i18n::gettext_f(
-                    "Duplicated as {name}. Its password could not be copied, so enter it again.",
-                    &[("name", &name)],
-                )
-            }));
-        });
+        if state.context.sessions.window_for(&key).is_some() {
+            self.show_toast(&crate::i18n::gettext("Changes apply the next time you connect"));
+        }
+    }
+
+    /// Copy a saved connection so a second database on the same server
+    /// does not have to be typed out again, then put the focus on the
+    /// copy, which sorts among the connections never opened.
+    pub(super) fn on_duplicate_connection(&self, id: Uuid) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        let hold = state.services.hold().acquire();
+        let window = self.downgrade();
+        crate::runtime::spawn_and_deliver(
+            &state.services.tasks,
+            async move { editor.duplicate(id).await },
+            move |outcome| {
+                drop(hold);
+                let Some(window) = window.upgrade() else {
+                    return;
+                };
+                match flatten(outcome) {
+                    Ok(copy) => {
+                        if let Some(welcome) = window.imp().welcome.borrow().as_ref() {
+                            welcome.focus_connection(copy.id);
+                        }
+                    }
+                    Err(error) => window.show_saved_connection_error(
+                        |reason| {
+                            crate::i18n::gettext_f(
+                                "The connection could not be duplicated. {reason}",
+                                &[("reason", reason)],
+                            )
+                        },
+                        &error,
+                    ),
+                }
+            },
+        );
     }
 
     /// File a connection under a group, or take it out of the one it
-    /// is in. An empty name means no group.
-    pub(super) fn on_set_connection_group(&self, id: Uuid, group: Option<String>) {
-        let group = group.map(|name| name.trim().to_owned()).filter(|name| !name.is_empty());
-        let Some(mut saved) = self.saved_connection(id) else {
+    /// is in.
+    pub(super) fn on_set_connection_group(&self, id: Uuid, group: Option<ConnectionGroupName>) {
+        let Some(state) = self.state() else {
             return;
         };
-        if saved.group == group {
-            return;
-        }
-        saved.group = group;
-        self.write_connection(saved, crate::i18n::gettext("The group could not be saved."));
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.move_to_group(id, group).await }, |reason| {
+            crate::i18n::gettext_f("The group could not be saved. {reason}", &[("reason", reason)])
+        });
     }
 
     /// Put a colour on a connection, or take the one it has off.
-    ///
-    /// The whole entry is rewritten because that is what the store
-    /// takes, and it comes from the list the window already holds rather
-    /// than from a re-read: the row that asked is showing that entry.
-    pub(super) fn on_set_connection_color(&self, id: Uuid, color: Option<tablepro_storage::ConnectionColor>) {
-        let Some(mut saved) = self.saved_connection(id) else {
+    pub(super) fn on_set_connection_color(&self, id: Uuid, color: Option<ConnectionColor>) {
+        let Some(state) = self.state() else {
             return;
         };
-        if saved.color == color {
-            return;
-        }
-        saved.color = color;
-        self.write_connection(saved, crate::i18n::gettext("The colour could not be saved."));
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.set_color(id, color).await }, |reason| {
+            crate::i18n::gettext_f("The colour could not be saved. {reason}", &[("reason", reason)])
+        });
     }
 
-    /// Write one connection back and reload the list from disk, so the
-    /// picker redraws from what was actually saved. The process is held
-    /// until the write lands, so a quit right after it keeps it.
-    fn write_connection(&self, saved: SavedConnection, failure: String) {
-        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+    /// Run a change to a saved connection, holding the process until it
+    /// lands so a quit right after it keeps it. Every picker redraws
+    /// from the list the store then publishes.
+    fn change_connection(
+        &self,
+        change: impl std::future::Future<Output = Result<(), SavedConnectionError>> + Send + 'static,
+        failure: fn(&str) -> String,
+    ) {
+        let Some(state) = self.state() else {
             return;
         };
-        let connections = state.services.storage.connections().clone();
-        let tasks = state.services.tasks.clone();
-        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
-            let written = tasks
-                .spawn_blocking_task(move || connections.upsert_blocking(saved))
-                .await;
-            if let Ok(Err(error)) = written {
-                tracing::warn!(%error, "could not save the connection");
-                input.deliver(SessionWindowInput::ShowToast(failure));
+        let hold = state.services.hold().acquire();
+        let window = self.downgrade();
+        crate::runtime::spawn_and_deliver(&state.services.tasks, change, move |outcome| {
+            drop(hold);
+            if let (Err(error), Some(window)) = (flatten(outcome), window.upgrade()) {
+                window.show_saved_connection_error(failure, &error);
             }
         });
+    }
+
+    /// Say a change did not happen, with `failure` putting the reason
+    /// where the translation wants it.
+    fn show_saved_connection_error(&self, failure: fn(&str) -> String, error: &SavedConnectionError) {
+        tracing::warn!(%error, "a change to a saved connection did not happen");
+        self.show_toast(&failure(&crate::ui::error_text::saved_connection_error_message(error)));
     }
 
     /// Write the connection list to a file the user picks.
@@ -573,36 +611,11 @@ impl SessionWindow {
     }
 }
 
-/// Move every secret the original holds onto the copy's own id.
-///
-/// Returns whether all of them made it: a keyring that is locked or
-/// absent is a reason to tell the user, not to refuse the copy.
-async fn copy_secrets(
-    secrets: &dyn tablepro_core::credentials::SecretVault,
-    from: Uuid,
-    to: Uuid,
-    label: &str,
-) -> bool {
-    use tablepro_core::credentials::{SecretKind, SecretLookup};
-
-    let mut carried = true;
-    for kind in SecretKind::ALL {
-        match secrets.load(from, kind).await {
-            Ok(SecretLookup::Found(secret)) => {
-                if let Err(error) = secrets.store(to, kind, &secret, label).await {
-                    tracing::warn!(%error, ?kind, "could not copy a secret onto the duplicate");
-                    carried = false;
-                }
-            }
-            // Nothing stored for this kind, so nothing to carry.
-            Ok(SecretLookup::NotStored) => {}
-            Err(error) => {
-                tracing::warn!(%error, ?kind, "could not read a secret to duplicate");
-                carried = false;
-            }
-        }
-    }
-    carried
+/// One result from work that can fail and a task that can die.
+fn flatten<T>(
+    outcome: Result<Result<T, SavedConnectionError>, tablepro_session::runtime::TaskFailure>,
+) -> Result<T, SavedConnectionError> {
+    outcome.map_err(SavedConnectionError::from).and_then(|result| result)
 }
 
 fn ask_where_to_export(window: &SessionWindow, bytes: Vec<u8>, input: InputSender<SessionWindowInput>) {
@@ -672,7 +685,7 @@ mod tests {
     use tablepro_test_support::Call;
 
     use super::*;
-    use crate::test_support::{finish_on_main, respond, wait_until};
+    use crate::test_support::{drain_main_context, finish_on_main, respond, wait_until};
     use crate::ui::session_window::tests::{TestWindow, WAIT};
 
     fn read(path: &std::path::Path) -> Result<Vec<u8>, String> {
@@ -867,7 +880,7 @@ mod tests {
             "the hold ended before the write"
         );
 
-        test.window.on_duplicate_connection(test.saved.clone());
+        test.window.on_duplicate_connection(test.saved.id);
         assert_eq!(test.hold.live(), 1, "the copy was written without a hold");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
         let copy = stored()
@@ -880,6 +893,32 @@ mod tests {
         assert_eq!(test.hold.live(), 1, "the delete ran without a hold");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
         assert!(!listed(&test, copy.id), "the hold ended before the delete");
+    }
+
+    #[gtk4::test]
+    fn a_refused_copy_says_what_failed_and_why() {
+        let test = TestWindow::picker("CopyRefused");
+        wait_for_list(&test.window);
+        store_password(&test);
+        test.vault.fail_store(SecretKind::DatabasePassword, SecretError::Locked);
+
+        let toasts = || -> Vec<String> {
+            test.window
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .filter_map(|toast| toast.title().map(|title| title.to_string()))
+                .collect()
+        };
+
+        test.window.on_duplicate_connection(test.saved.id);
+        wait_until(WAIT, || !toasts().is_empty()).expect("the refusal");
+
+        assert_eq!(
+            toasts(),
+            ["The connection could not be duplicated. The keyring is locked. Unlock it and try again."]
+        );
     }
 
     #[gtk4::test]
@@ -980,5 +1019,45 @@ mod tests {
         assert!(answered, "the alert has no Reset button");
         assert!(open_alert(&test.window).is_none(), "the alert stayed open");
         wait_until(WAIT, || matches!(state(), ConnectionListState::Ready(_))).expect("the list to be moved aside");
+    }
+
+    #[gtk4::test]
+    fn an_edit_saved_while_the_connection_is_open_says_when_it_applies() {
+        let test = TestWindow::connected("EditWhileOpen");
+        let other = test
+            .app
+            .open_window(crate::application::WindowLaunch::Picker)
+            .and_then(|window| window.downcast::<SessionWindow>().ok())
+            .expect("a second window");
+        wait_until(WAIT, || other.page_name() == "picker").expect("the second window's picker");
+
+        other.send(SessionWindowInput::ConnectionSaved(test.saved.id));
+
+        wait_until(WAIT, || {
+            other
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .any(|toast| toast.title().as_deref() == Some("Changes apply the next time you connect"))
+        })
+        .expect("the user to be told");
+        assert_eq!(
+            test.window.page_name(),
+            "workspace",
+            "the edit touched the open session"
+        );
+        assert_eq!(test.connector.calls().len(), 1, "the edit reconnected the session");
+    }
+
+    #[gtk4::test]
+    fn an_edit_of_a_closed_connection_says_nothing() {
+        let test = TestWindow::picker("EditWhileClosed");
+
+        test.window.send(SessionWindowInput::ConnectionSaved(test.saved.id));
+        drain_main_context();
+
+        assert!(test.window.imp().toasts.borrow().is_empty());
+        assert_eq!(test.window.page_name(), "picker");
     }
 }

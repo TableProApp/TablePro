@@ -35,7 +35,7 @@ fn connection(name: &str, group: Option<&str>) -> SavedConnection {
         ssh: None,
         last_opened_at: None,
         color: None,
-        group: group.map(str::to_owned),
+        group: group.map(|group| tablepro_storage::ConnectionGroupName::new(group).expect("a group name")),
     }
 }
 
@@ -130,7 +130,7 @@ fn successful_connect_stamp_reorders_every_picker() {
 }
 
 #[gtk4::test]
-fn a_group_of_connections_is_a_section_of_its_own() {
+fn picker_renders_one_group_per_section() {
     let pickers = Pickers::new();
     let (loose, a, b, c) = (
         connection("loose", None),
@@ -146,7 +146,7 @@ fn a_group_of_connections_is_a_section_of_its_own() {
     assert_eq!(
         view.sections(),
         [
-            ("Saved Connections".to_owned(), vec!["loose".to_owned()]),
+            ("Connections".to_owned(), vec!["loose".to_owned()]),
             ("R&amp;D".to_owned(), vec!["c".to_owned()]),
             ("Work".to_owned(), vec!["a".to_owned(), "b".to_owned()]),
         ]
@@ -159,7 +159,7 @@ fn a_group_of_connections_is_a_section_of_its_own() {
     assert_eq!(
         view.sections(),
         [
-            ("Saved Connections".to_owned(), vec!["d".to_owned()]),
+            ("Connections".to_owned(), vec!["d".to_owned()]),
             ("Work".to_owned(), vec!["a".to_owned()]),
         ],
         "a group with no connection left kept its section"
@@ -171,6 +171,14 @@ fn a_group_of_connections_is_a_section_of_its_own() {
         view.sections(),
         [("Work".to_owned(), vec!["e".to_owned()])],
         "an empty ungrouped section stayed"
+    );
+    pickers
+        .list
+        .apply(ConnectionListState::Ready(Arc::from([connection("f", None)])));
+    assert_eq!(
+        view.sections(),
+        [("Saved Connections".to_owned(), vec!["f".to_owned()])],
+        "with no group left the list is not one section among others"
     );
 }
 
@@ -359,4 +367,73 @@ fn unreadable_list_reveals_banner() {
 
     wait_until(WAIT, || banner.is_revealed()).expect("the banner");
     assert_eq!(banner.title(), "Saved connections could not be read");
+}
+
+fn connect_dialog(window: &SessionWindow) -> crate::ui::connect_dialog::ConnectDialog {
+    let mut shown = None;
+    wait_until(WAIT, || {
+        shown = window
+            .visible_dialog()
+            .and_downcast::<crate::ui::connect_dialog::ConnectDialog>();
+        shown.is_some()
+    })
+    .expect("the connect dialog");
+    shown.expect("the dialog")
+}
+
+#[gtk4::test]
+fn edit_opens_the_connect_dialog_on_the_saved_connection() {
+    let test = TestWindow::picker("PickerEdit");
+    let row = picker_row(&test.window, "Fake");
+
+    row.activate_action("picker.edit", Some(&test.saved.id.to_string().to_variant()))
+        .expect("picker.edit");
+
+    let dialog = connect_dialog(&test.window);
+    assert_eq!(dialog.editing().map(|saved| saved.id), Some(test.saved.id));
+    assert_eq!(dialog.title(), "Edit Connection");
+    dialog.close();
+}
+
+#[gtk4::test]
+fn duplicate_focuses_the_new_row() {
+    let test = TestWindow::picker("PickerDuplicate");
+    let row = picker_row(&test.window, "Fake");
+
+    row.activate_action("picker.duplicate", Some(&test.saved.id.to_string().to_variant()))
+        .expect("picker.duplicate");
+
+    let copy = picker_row(&test.window, "Fake (Copy)");
+    // The focus widget of its window, which may not be the active one
+    // while other tests run.
+    wait_until(WAIT, || copy.is_focus()).expect("the copy to take the focus");
+    assert_eq!(test.services.saved_connections.connections().len(), 2);
+}
+
+#[gtk4::test]
+fn a_group_picked_from_the_row_reaches_the_store() {
+    let test = TestWindow::picker("PickerGroup");
+    let row = picker_row(&test.window, "Fake");
+
+    row.activate_action("picker-row.group", Some(&"Work".to_variant()))
+        .expect("picker-row.group");
+
+    wait_until(WAIT, || {
+        test.services
+            .saved_connections
+            .get(test.saved.id)
+            .is_some_and(|saved| saved.group.as_ref().is_some_and(|group| group.as_str() == "Work"))
+    })
+    .expect("the group saved and shown");
+    let row = picker_row(&test.window, "Fake");
+    row.activate_action("picker-row.group", Some(&"   ".to_variant()))
+        .expect("picker-row.group");
+    drain_main_context();
+    assert!(
+        test.services
+            .saved_connections
+            .get(test.saved.id)
+            .is_some_and(|saved| saved.group.is_some()),
+        "a blank group took the connection out of its group"
+    );
 }

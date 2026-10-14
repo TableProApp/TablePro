@@ -2,7 +2,7 @@
 //! every window shares, with a group for the connections in no group
 //! and one for each group the user made.
 
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::rc::Rc;
 
 use gtk4 as gtk;
@@ -12,7 +12,8 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::ConnectionListState;
+use tablepro_storage::{ConnectionGroupName, ConnectionListState};
+use uuid::Uuid;
 
 use crate::services::saved_connection_list::{SavedConnectionList, StateObserverId};
 use crate::services::saved_connection_object::SavedConnectionObject;
@@ -59,6 +60,26 @@ mod imp {
     impl BinImpl for WelcomeView {}
 }
 
+/// The row under `root` whose activation connects to `target`.
+fn row_for(root: &gtk::Widget, target: &str) -> Option<adw::ActionRow> {
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if let Some(row) = widget.downcast_ref::<adw::ActionRow>()
+            && row
+                .action_target_value()
+                .and_then(|value| value.get::<String>())
+                .is_some_and(|value| value == target)
+        {
+            return Some(row.clone());
+        }
+        if let Some(row) = row_for(&widget, target) {
+            return Some(row);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
 glib::wrapper! {
     pub struct WelcomeView(ObjectSubclass<imp::WelcomeView>)
         @extends adw::Bin, gtk::Widget,
@@ -69,7 +90,9 @@ pub(super) struct Parts {
     list: Rc<SavedConnectionList>,
     tasks: Option<Tasks>,
     /// The groups after the ungrouped one, by name, in list order.
-    groups: RefCell<Vec<(String, adw::PreferencesGroup)>>,
+    groups: RefCell<Vec<(ConnectionGroupName, adw::PreferencesGroup)>>,
+    /// A connection whose row takes the focus once the list shows it.
+    focus: Cell<Option<Uuid>>,
     rows_changed: RefCell<Option<glib::SignalHandlerId>>,
     state_changed: RefCell<Option<StateObserverId>>,
 }
@@ -83,6 +106,7 @@ impl WelcomeView {
             list: list.clone(),
             tasks,
             groups: RefCell::new(Vec::new()),
+            focus: Cell::new(None),
             rows_changed: RefCell::new(None),
             state_changed: RefCell::new(None),
         });
@@ -100,6 +124,7 @@ impl WelcomeView {
         let rows_changed = list.model().connect_items_changed(move |_, _, _, _| {
             if let Some(view) = weak.upgrade() {
                 view.refresh();
+                view.take_focus();
             }
         });
         let weak = view.downgrade();
@@ -150,6 +175,30 @@ impl WelcomeView {
         });
     }
 
+    /// Put the focus on the row of the connection `id`, now or once the
+    /// list shows it: a copy reaches the list after the write that
+    /// made it.
+    pub(crate) fn focus_connection(&self, id: Uuid) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        parts.focus.set(Some(id));
+        self.take_focus();
+    }
+
+    fn take_focus(&self) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        let Some(id) = parts.focus.get() else {
+            return;
+        };
+        if let Some(row) = row_for(self.imp().page.upcast_ref(), &id.to_string()) {
+            parts.focus.set(None);
+            row.grab_focus();
+        }
+    }
+
     fn refresh(&self) {
         self.refresh_groups();
         self.refresh_page();
@@ -163,6 +212,12 @@ impl WelcomeView {
             return;
         };
         let names = parts.list.groups();
+        // Next to named groups, "Saved Connections" would read as all of them.
+        imp.ungrouped.set_title(&if names.is_empty() {
+            crate::i18n::gettext("Saved Connections")
+        } else {
+            crate::i18n::gettext("Connections")
+        });
         let unchanged = parts.groups.borrow().iter().map(|(name, _)| name).eq(names.iter());
         if unchanged {
             return;
@@ -174,9 +229,9 @@ impl WelcomeView {
         for name in names {
             // A group's title is markup, and the name is the user's text.
             let group = adw::PreferencesGroup::builder()
-                .title(glib::markup_escape_text(&name).as_str())
+                .title(glib::markup_escape_text(name.as_str()).as_str())
                 .build();
-            self.bind(&group, &self.filtered(Some(&name)));
+            self.bind(&group, &self.filtered(Some(name.as_str())));
             imp.page.add(&group);
             built.push((name, group));
         }

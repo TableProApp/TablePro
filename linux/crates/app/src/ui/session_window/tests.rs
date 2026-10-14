@@ -555,6 +555,179 @@ fn a_failed_connect_shows_why_and_choose_connection_returns_to_the_picker() {
 }
 
 #[gtk4::test]
+fn connecting_page_uses_spinner_paintable_and_cancel_action() {
+    let test = TestWindow::with_script(
+        "ConnectingPage",
+        Script {
+            establish: vec![FakeEstablish::UntilCancelled],
+            ..Script::default()
+        },
+    );
+
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("connecting");
+
+    let page = test
+        .window
+        .content()
+        .and_downcast::<ConnectingPage>()
+        .expect("the connecting page");
+    assert!(
+        page.status_page()
+            .paintable()
+            .and_downcast::<adw::SpinnerPaintable>()
+            .is_some(),
+        "the status page draws no spinner"
+    );
+    assert_eq!(page.status_page().title(), "Connecting to Fake");
+    let cancel = page.cancel_button();
+    assert_eq!(cancel.action_name().as_deref(), Some("win.cancel-connect"));
+    assert_eq!(test.window.default_widget(), Some(cancel.upcast()));
+    assert_eq!(test.window.title().as_deref(), Some("Connecting"));
+    assert_eq!(
+        page.announced(),
+        [(
+            "Connecting to Fake".to_owned(),
+            gtk4::AccessibleAnnouncementPriority::Medium
+        )]
+    );
+
+    WidgetExt::activate_action(&test.window, "win.cancel-connect", None).expect("win.cancel-connect");
+    test.wait_for_page("picker");
+    assert_eq!(
+        test.window.default_widget(),
+        None,
+        "Enter still reached the gone Cancel"
+    );
+}
+
+#[gtk4::test]
+fn failed_page_offers_retry_edit_and_choose() {
+    let test = TestWindow::with_script(
+        "FailedPage",
+        Script {
+            establish: vec![refused()],
+            ..Script::default()
+        },
+    );
+
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("connect-failed");
+
+    let page = test
+        .window
+        .content()
+        .and_downcast::<ConnectFailedPage>()
+        .expect("the failed page");
+    let status = page.status_page();
+    assert_eq!(status.icon_name().as_deref(), Some("network-error-symbolic"));
+    assert_eq!(status.title(), "Could Not Connect");
+    let [retry, edit, choose] = page.buttons();
+    assert_eq!(retry.action_name().as_deref(), Some("win.retry-connect"));
+    assert_eq!(edit.action_name().as_deref(), Some("win.edit-connection"));
+    assert_eq!(choose.action_name().as_deref(), Some("win.cancel-connect"));
+    assert!(edit.is_visible(), "a saved connection offered no Edit Connection");
+    assert!(choose.has_css_class("flat"));
+    assert!(
+        test.window
+            .lookup_action("edit-connection")
+            .is_some_and(|action| action.is_enabled())
+    );
+    let default = test.window.default_widget().expect("a default button");
+    assert!(
+        default.is_visible() && default.has_css_class("suggested-action"),
+        "Enter does not take the suggested way on"
+    );
+    assert_eq!(test.window.title().as_deref(), Some("Could Not Connect"));
+    let message = page.message().expect("the reason");
+    assert_eq!(
+        page.announced(),
+        [(
+            format!("Could Not Connect. {message}"),
+            gtk4::AccessibleAnnouncementPriority::High
+        )]
+    );
+}
+
+#[gtk4::test]
+fn a_file_that_failed_offers_no_edit() {
+    let test = TestWindow::picker("FailedFile");
+
+    test.window.send(SessionWindowInput::OpenFile(gio::File::for_path(
+        test.dir().join("gone.db"),
+    )));
+    test.wait_for_page("connect-failed");
+
+    let page = test
+        .window
+        .content()
+        .and_downcast::<ConnectFailedPage>()
+        .expect("the failed page");
+    assert!(!page.buttons()[1].is_visible());
+    assert!(
+        test.window
+            .lookup_action("edit-connection")
+            .is_some_and(|action| !action.is_enabled())
+    );
+}
+
+#[gtk4::test]
+fn edit_connection_opens_edit_dialog_and_retries_on_save() {
+    let test = TestWindow::with_script(
+        "EditRetries",
+        Script {
+            establish: vec![refused()],
+            network: true,
+            ..Script::default()
+        },
+    );
+    let (vault, id) = (test.vault.clone(), test.saved.id);
+    crate::test_support::finish_on_main(WAIT, async move {
+        tablepro_core::credentials::SecretVault::store(
+            &*vault,
+            id,
+            tablepro_core::credentials::SecretKind::DatabasePassword,
+            &secrecy::SecretString::from("s3cret"),
+            "label",
+        )
+        .await
+    })
+    .expect("the store to end")
+    .expect("the password stored");
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("connect-failed");
+
+    WidgetExt::activate_action(&test.window, "win.edit-connection", None).expect("win.edit-connection");
+    let mut shown = None;
+    wait_until(WAIT, || {
+        shown = test
+            .window
+            .visible_dialog()
+            .and_downcast::<crate::ui::connect_dialog::ConnectDialog>();
+        shown.is_some()
+    })
+    .expect("the connect dialog");
+    let dialog = shown.expect("the dialog");
+    assert_eq!(dialog.editing().map(|saved| saved.id), Some(test.saved.id));
+    assert_eq!(test.connector.calls().len(), 1);
+    dialog.imp().port_row.set_value(6543.0);
+
+    dialog.imp().connect_button.emit_clicked();
+
+    test.wait_for_page("workspace");
+    let calls = test.connector.calls();
+    assert_eq!(calls.len(), 2, "Save did not connect again");
+    let tablepro_session::RequestTarget::Network { endpoint, .. } = &calls[1].request.target else {
+        panic!("expected a network target");
+    };
+    assert_eq!(endpoint.port(), 6543, "the retry connected to the entry as it was");
+    assert_eq!(test.window.visible_dialog(), None, "the dialog stayed open");
+}
+
+#[gtk4::test]
 fn a_close_while_the_page_is_read_does_not_panic() {
     let test = TestWindow::with_script(
         "CloseWhileRead",

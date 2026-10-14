@@ -1,17 +1,19 @@
 use std::path::{Path, PathBuf};
 
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::credentials::{SecretKind, SecretSave};
 use tablepro_core::{
     AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, FileEndpoint, NetworkEndpoint,
     ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
 };
 use tablepro_session::RequestTarget;
-use tablepro_storage::{SavedConnection, SavedSshConfig};
+use tablepro_storage::{SavedConnection, SavedSshAuth, SavedSshConfig};
 use uuid::Uuid;
 
 use super::form_errors::FormErrors;
 use super::form_field::FormField;
+use crate::services::secret_change::SecretChange;
+use crate::services::secret_changes::SecretChanges;
 use crate::services::secret_labels;
 use crate::ui::error_text::config_message;
 use crate::ui::ssh_inputs::{SshFormState, SshInputError, SshSecretToStore};
@@ -98,6 +100,9 @@ pub fn shows_server_name(caps: &TlsCapabilities, route: TransportClass) -> bool 
 /// connect works from a snapshot.
 #[derive(Debug, Clone)]
 pub struct ConnectForm {
+    /// What the list calls the connection. Empty takes the name from
+    /// where it connects, which then follows an edit of the host.
+    pub name: String,
     pub driver_id: String,
     pub host: String,
     pub port: u16,
@@ -126,6 +131,7 @@ pub struct ValidatedForm {
 impl ConnectForm {
     pub fn new(driver_id: &str, caps: &DriverCapabilities) -> Self {
         Self {
+            name: String::new(),
             driver_id: driver_id.to_owned(),
             host: String::new(),
             port: caps.default_port().unwrap_or(1),
@@ -142,25 +148,30 @@ impl ConnectForm {
         }
     }
 
-    /// The form a saved connection fills, for editing it after a failed
-    /// connect. Secrets are not read: they live in the keyring.
+    /// The form a saved connection fills, to edit it. Secrets are not
+    /// read: they live in the keyring and never enter a widget. A name
+    /// that is only where the connection goes is left empty, so it keeps
+    /// following the host and user.
     pub fn from_saved(saved: &SavedConnection, caps: &DriverCapabilities) -> Self {
         let mut form = Self::new(&saved.driver_id, caps);
         form.read_only = saved.read_only;
         if caps.is_file_based() {
             form.file = FileEndpoint::open_existing(PathBuf::from(&saved.database)).ok();
-            return form;
+        } else {
+            form.host = saved.host.clone();
+            form.port_edited = caps.default_port() != Some(saved.port);
+            form.port = saved.port;
+            form.database = saved.database.clone();
+            form.username = saved.username.clone();
+            if caps.supports(saved.auth_mode) {
+                form.auth = saved.auth_mode;
+            }
+            form.tls = TlsFormState::from_config(&saved.tls);
+            form.ssh = saved.ssh.as_ref().map(SshFormState::from_saved);
         }
-        form.host = saved.host.clone();
-        form.port_edited = caps.default_port() != Some(saved.port);
-        form.port = saved.port;
-        form.database = saved.database.clone();
-        form.username = saved.username.clone();
-        if caps.supports(saved.auth_mode) {
-            form.auth = saved.auth_mode;
+        if saved.name != form.label(caps) {
+            saved.name.clone_into(&mut form.name);
         }
-        form.tls = TlsFormState::from_config(&saved.tls);
-        form.ssh = saved.ssh.as_ref().map(SshFormState::from_saved);
         form
     }
 
@@ -294,7 +305,16 @@ impl ConnectForm {
         })
     }
 
-    /// How the entry is named in the connection list.
+    /// How the entry is named in the connection list: the name typed,
+    /// or where it connects.
+    pub fn display_name(&self, caps: &DriverCapabilities) -> String {
+        match self.name.trim() {
+            "" => self.label(caps),
+            name => name.to_owned(),
+        }
+    }
+
+    /// Where the entry connects, as a name.
     pub fn label(&self, caps: &DriverCapabilities) -> String {
         if caps.is_file_based() {
             return self
@@ -349,7 +369,7 @@ impl ConnectForm {
         };
         SavedConnection {
             id,
-            name: self.label(caps),
+            name: self.display_name(caps),
             driver_id: self.driver_id.clone(),
             host,
             port,
@@ -363,6 +383,27 @@ impl ConnectForm {
             color: existing.and_then(|saved| saved.color),
             group: existing.and_then(|saved| saved.group.clone()),
         }
+    }
+
+    /// The entry a connect from the New Connection dialog writes over
+    /// `existing`, the entry it describes again. An empty Name row there
+    /// means no name was typed, so a name the user gave the entry stays;
+    /// one that was only where it connects follows the form.
+    pub fn submitted_connection(
+        &self,
+        caps: &DriverCapabilities,
+        valid: &ValidatedForm,
+        id: Uuid,
+        existing: Option<&SavedConnection>,
+    ) -> SavedConnection {
+        let mut connection = self.saved_connection(caps, valid, id, existing);
+        if let Some(existing) = existing
+            && self.name.trim().is_empty()
+            && existing.name != Self::from_saved(existing, caps).label(caps)
+        {
+            existing.name.clone_into(&mut connection.name);
+        }
+        connection
     }
 
     /// The secrets the entry is saved with. The database password goes
@@ -403,6 +444,93 @@ impl ConnectForm {
         }
     }
 
+    /// What saving this form over `original` does to each secret. A
+    /// typed secret replaces the stored one and an empty row keeps it; a
+    /// secret the edited connection no longer logs in with is removed,
+    /// as is the password when Remember is off. `original_caps` are the
+    /// capabilities of the driver `original` was saved with.
+    pub fn secret_changes(
+        &self,
+        original: &SavedConnection,
+        original_caps: &DriverCapabilities,
+        valid: &ValidatedForm,
+    ) -> SecretChanges {
+        let had_password = !original_caps.is_file_based() && original.auth_mode == AuthMode::Password;
+        let typed = |secret: &SecretString| !secret.expose_secret().is_empty();
+        let database_password = match valid.target {
+            RequestTarget::Network {
+                credentials: Credentials::Password { .. },
+                ..
+            } if self.remember_password && typed(&self.password) => SecretChange::Replace(self.password.clone()),
+            RequestTarget::Network {
+                credentials: Credentials::Password { .. },
+                ..
+            } if self.remember_password => SecretChange::Keep,
+            _ if had_password => SecretChange::Remove,
+            _ => SecretChange::Keep,
+        };
+        let original_ssh = original.ssh.as_ref().map(|ssh| &ssh.auth);
+        let (ssh_password, ssh_passphrase) = match valid.ssh.as_ref() {
+            Some((saved, SshSecretToStore::Password(secret))) => (
+                if typed(secret) {
+                    SecretChange::Replace(secret.clone())
+                } else {
+                    SecretChange::Keep
+                },
+                passphrase_left_unused(original, &saved.auth),
+            ),
+            Some((saved, SshSecretToStore::Passphrase(secret))) => (
+                password_left_unused(original_ssh),
+                if typed(secret) {
+                    SecretChange::Replace(secret.clone())
+                } else {
+                    passphrase_left_unused(original, &saved.auth)
+                },
+            ),
+            Some((saved, SshSecretToStore::None)) => (
+                password_left_unused(original_ssh),
+                passphrase_left_unused(original, &saved.auth),
+            ),
+            None => (
+                password_left_unused(original_ssh),
+                if original.has_stored_passphrase() {
+                    SecretChange::Remove
+                } else {
+                    SecretChange::Keep
+                },
+            ),
+        };
+        SecretChanges {
+            database_password,
+            ssh_password,
+            ssh_passphrase,
+        }
+    }
+
+    /// The secrets whose rows hold a typed value. A Test logs in with
+    /// these over the keyring's whatever Remember says, since the
+    /// keyring may still hold the one they replace.
+    pub fn typed_secrets(&self, valid: &ValidatedForm) -> Vec<SecretKind> {
+        let typed = |secret: &SecretString| !secret.expose_secret().is_empty();
+        let password_login = matches!(
+            valid.target,
+            RequestTarget::Network {
+                credentials: Credentials::Password { .. },
+                ..
+            }
+        );
+        let mut kinds = Vec::new();
+        if password_login && typed(&self.password) {
+            kinds.push(SecretKind::DatabasePassword);
+        }
+        match valid.ssh.as_ref().map(|(_, secret)| secret) {
+            Some(SshSecretToStore::Password(secret)) if typed(secret) => kinds.push(SecretKind::SshPassword),
+            Some(SshSecretToStore::Passphrase(secret)) if typed(secret) => kinds.push(SecretKind::SshPassphrase),
+            _ => {}
+        }
+        kinds
+    }
+
     fn keeps_database_password(&self, valid: &ValidatedForm) -> bool {
         self.remember_password
             && matches!(
@@ -412,6 +540,26 @@ impl ConnectForm {
                     ..
                 }
             )
+    }
+}
+
+/// An SSH password the edited connection no longer logs in with.
+fn password_left_unused(original: Option<&SavedSshAuth>) -> SecretChange {
+    match original {
+        Some(SavedSshAuth::Password) => SecretChange::Remove,
+        _ => SecretChange::Keep,
+    }
+}
+
+/// A stored passphrase unlocks one key file, so it goes once the edited
+/// connection logs in another way or with another key.
+fn passphrase_left_unused(original: &SavedConnection, edited: &SavedSshAuth) -> SecretChange {
+    let same_key =
+        matches!(edited, SavedSshAuth::PrivateKey { path, .. } if path.as_deref() == original.ssh_key_path());
+    if original.has_stored_passphrase() && !same_key {
+        SecretChange::Remove
+    } else {
+        SecretChange::Keep
     }
 }
 
@@ -828,5 +976,222 @@ mod tests {
             ..candidate("sa", AuthMode::Password)
         };
         assert_eq!(match_saved_connection(entries, &finance, false), None);
+    }
+
+    fn saved_from(form: &ConnectForm, caps: &DriverCapabilities) -> SavedConnection {
+        let valid = form.validate(caps).expect("valid");
+        form.saved_connection(caps, &valid, Uuid::new_v4(), None)
+    }
+
+    fn changes(form: &ConnectForm, original: &SavedConnection, caps: &DriverCapabilities) -> SecretChanges {
+        let valid = form.validate(caps).expect("valid");
+        form.secret_changes(original, postgres(), &valid)
+    }
+
+    fn is_keep(change: &SecretChange) -> bool {
+        matches!(change, SecretChange::Keep)
+    }
+
+    fn is_remove(change: &SecretChange) -> bool {
+        matches!(change, SecretChange::Remove)
+    }
+
+    fn replaced_with(change: &SecretChange) -> Option<&str> {
+        match change {
+            SecretChange::Replace(secret) => Some(secret.expose_secret()),
+            SecretChange::Keep | SecretChange::Remove => None,
+        }
+    }
+
+    #[test]
+    fn connect_form_from_saved_prefills_without_secrets() {
+        let mut typed = filled("postgres", postgres());
+        typed.name = "Shop".to_owned();
+        typed.read_only = true;
+        let saved = saved_from(&typed, postgres());
+
+        let form = ConnectForm::from_saved(&saved, postgres());
+
+        assert_eq!(form.name, "Shop");
+        assert_eq!(form.host, "db.example.com");
+        assert_eq!(form.database, "sales");
+        assert_eq!(form.username, "app");
+        assert!(form.read_only);
+        assert_eq!(form.password.expose_secret(), "", "a secret reached the form");
+    }
+
+    #[test]
+    fn a_name_that_is_where_it_connects_follows_the_host() {
+        let saved = saved_from(&filled("postgres", postgres()), postgres());
+        assert_eq!(saved.name, "app@db.example.com");
+
+        let mut form = ConnectForm::from_saved(&saved, postgres());
+        assert_eq!(form.name, "", "the derived name was copied into the Name row");
+        form.host = "db2.example.com".to_owned();
+
+        assert_eq!(saved_from(&form, postgres()).name, "app@db2.example.com");
+        form.name = "  Shop ".to_owned();
+        assert_eq!(saved_from(&form, postgres()).name, "Shop");
+    }
+
+    #[test]
+    fn a_connect_from_new_connection_keeps_the_name_of_a_renamed_match() {
+        let form = filled("postgres", postgres());
+        let valid = form.validate(postgres()).expect("valid");
+        let renamed = SavedConnection {
+            name: "Shop".to_owned(),
+            ..saved_from(&form, postgres())
+        };
+        let candidate = form.saved_connection(postgres(), &valid, Uuid::new_v4(), None);
+        assert_eq!(
+            match_saved_connection(std::slice::from_ref(&renamed), &candidate, false),
+            Some(renamed.id)
+        );
+
+        let submitted = form.submitted_connection(postgres(), &valid, renamed.id, Some(&renamed));
+        assert_eq!(submitted.name, "Shop", "the connect undid the rename");
+
+        let named = ConnectForm {
+            name: "Shop (EU)".to_owned(),
+            ..form.clone()
+        };
+        let valid = named.validate(postgres()).expect("valid");
+        assert_eq!(
+            named
+                .submitted_connection(postgres(), &valid, renamed.id, Some(&renamed))
+                .name,
+            "Shop (EU)"
+        );
+    }
+
+    #[test]
+    fn a_derived_name_follows_the_form_on_a_connect() {
+        let derived = saved_from(&filled("postgres", postgres()), postgres());
+        let moved = ConnectForm {
+            host: "db2.example.com".to_owned(),
+            ..filled("postgres", postgres())
+        };
+        let valid = moved.validate(postgres()).expect("valid");
+
+        let submitted = moved.submitted_connection(postgres(), &valid, derived.id, Some(&derived));
+
+        assert_eq!(submitted.name, "app@db2.example.com");
+    }
+
+    #[test]
+    fn typed_secrets_ignore_remember() {
+        let mut form = filled("postgres", postgres());
+        form.remember_password = false;
+        let valid = form.validate(postgres()).expect("valid");
+        assert_eq!(form.typed_secrets(&valid), [SecretKind::DatabasePassword]);
+
+        form.password = SecretString::from(String::new());
+        let valid = form.validate(postgres()).expect("valid");
+        assert!(form.typed_secrets(&valid).is_empty());
+
+        let tunnelled = tunnelled(SshAuthChoice::PrivateKey, "/home/u/.ssh/id_ed25519", "phrase");
+        let valid = tunnelled.validate(postgres()).expect("valid");
+        assert_eq!(
+            tunnelled.typed_secrets(&valid),
+            [SecretKind::DatabasePassword, SecretKind::SshPassphrase]
+        );
+    }
+
+    #[test]
+    fn secret_changes_from_form() {
+        let original = saved_from(&filled("postgres", postgres()), postgres());
+        let mut form = ConnectForm::from_saved(&original, postgres());
+
+        let untouched = changes(&form, &original, postgres());
+        assert!(is_keep(&untouched.database_password));
+        assert!(is_keep(&untouched.ssh_password));
+        assert!(is_keep(&untouched.ssh_passphrase));
+
+        form.password = SecretString::from("n3w");
+        assert_eq!(
+            replaced_with(&changes(&form, &original, postgres()).database_password),
+            Some("n3w")
+        );
+
+        form.remember_password = false;
+        assert!(is_remove(&changes(&form, &original, postgres()).database_password));
+
+        let kerberos_original = saved_from(&filled("mssql", mssql()), mssql());
+        let kerberos = ConnectForm {
+            auth: AuthMode::Kerberos,
+            ..ConnectForm::from_saved(&kerberos_original, mssql())
+        };
+        let valid = kerberos.validate(mssql()).expect("valid");
+        let moved = kerberos.secret_changes(&kerberos_original, mssql(), &valid);
+        assert!(
+            is_remove(&moved.database_password),
+            "Password to Kerberos left the password stored"
+        );
+    }
+
+    #[test]
+    fn a_file_connection_has_no_password_to_remove() {
+        let form = ConnectForm {
+            file: Some(FileEndpoint::open_existing(PathBuf::from("/srv/app.db")).expect("absolute")),
+            ..ConnectForm::new("sqlite", sqlite())
+        };
+        let original = saved_from(&form, sqlite());
+        let valid = form.validate(sqlite()).expect("valid");
+
+        let changes = form.secret_changes(&original, sqlite(), &valid);
+
+        assert!(
+            is_keep(&changes.database_password),
+            "a file connection's edit asks the keyring"
+        );
+    }
+
+    fn tunnelled(auth: SshAuthChoice, key_path: &str, passphrase: &str) -> ConnectForm {
+        ConnectForm {
+            ssh: Some(SshFormState {
+                host: "bastion".to_owned(),
+                auth,
+                key_path: key_path.to_owned(),
+                password: SecretString::from(String::new()),
+                passphrase: SecretString::from(passphrase),
+                ..SshFormState::new(&SshEnvironment::default())
+            }),
+            ..filled("postgres", postgres())
+        }
+    }
+
+    #[test]
+    fn an_ssh_secret_the_edit_no_longer_uses_is_removed() {
+        let mut by_password = tunnelled(SshAuthChoice::Password, "", "");
+        if let Some(ssh) = by_password.ssh.as_mut() {
+            ssh.password = SecretString::from("tunnel");
+        }
+        let original = saved_from(&by_password, postgres());
+
+        let agent = tunnelled(SshAuthChoice::Agent, "", "");
+        assert!(is_remove(&changes(&agent, &original, postgres()).ssh_password));
+        let kept = tunnelled(SshAuthChoice::Password, "", "");
+        assert!(is_keep(&changes(&kept, &original, postgres()).ssh_password));
+    }
+
+    #[test]
+    fn a_passphrase_goes_with_its_key_file() {
+        let original = saved_from(
+            &tunnelled(SshAuthChoice::PrivateKey, "/home/u/.ssh/id_ed25519", "phrase"),
+            postgres(),
+        );
+        assert!(original.has_stored_passphrase());
+
+        let same_key = tunnelled(SshAuthChoice::PrivateKey, "/home/u/.ssh/id_ed25519", "");
+        assert!(is_keep(&changes(&same_key, &original, postgres()).ssh_passphrase));
+        let other_key = tunnelled(SshAuthChoice::PrivateKey, "/home/u/.ssh/id_rsa", "");
+        assert!(is_remove(&changes(&other_key, &original, postgres()).ssh_passphrase));
+        let typed = tunnelled(SshAuthChoice::PrivateKey, "/home/u/.ssh/id_rsa", "other");
+        assert_eq!(
+            replaced_with(&changes(&typed, &original, postgres()).ssh_passphrase),
+            Some("other")
+        );
+        let untunnelled = filled("postgres", postgres());
+        assert!(is_remove(&changes(&untunnelled, &original, postgres()).ssh_passphrase));
     }
 }

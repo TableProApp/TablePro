@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gtk4::{AccessibleProperty, AccessibleState};
-use tablepro_core::credentials::{CredentialInteraction, SecretKind};
+use tablepro_core::credentials::{CredentialInteraction, SecretKind, SecretVault};
 use tablepro_core::{DriverError, FileOpenMode, TlsFailure, TlsMode};
 use tablepro_session::RequestTarget;
 use tablepro_session::fakes::{FakeConnector, FakeEstablish};
@@ -17,7 +17,10 @@ const WAIT: Duration = Duration::from_secs(10);
 struct Harness {
     dialog: ConnectDialog,
     connector: FakeConnector,
+    store: tablepro_storage::ConnectionStore,
+    vault: Arc<tablepro_test_support::FakeSecretVault>,
     _runtime: crate::runtime::AppRuntime,
+    _dir: tempfile::TempDir,
 }
 
 struct Options {
@@ -26,6 +29,7 @@ struct Options {
     environment: SshEnvironment,
     saved: Vec<SavedConnection>,
     prefill: Option<ConnectPrefill>,
+    mode: ConnectDialogMode,
 }
 
 impl Default for Options {
@@ -36,6 +40,7 @@ impl Default for Options {
             environment: SshEnvironment::default(),
             saved: Vec::new(),
             prefill: None,
+            mode: ConnectDialogMode::Create,
         }
     }
 }
@@ -55,6 +60,16 @@ fn open(options: Options) -> Harness {
     let _ = adw::init();
     crate::register_test_resources();
     let runtime = crate::test_support::test_runtime();
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let store = tablepro_storage::ConnectionStore::new(&tablepro_storage::StoragePaths::under(
+        dir.path(),
+        "tablepro",
+        crate::config::APP_ID,
+    ));
+    for saved in &options.saved {
+        store.upsert_blocking(saved.clone()).expect("the saved connection");
+    }
+    let vault = Arc::new(tablepro_test_support::FakeSecretVault::new());
     let dialog = ConnectDialog::new(ConnectDialogInit {
         drivers: registry(),
         connector: Arc::new(options.connector.clone()),
@@ -64,11 +79,22 @@ fn open(options: Options) -> Harness {
         remembered_driver: options.remembered.to_owned(),
         ssh_environment: options.environment,
         prefill: options.prefill,
+        mode: options.mode,
+        editor: crate::services::saved_connection_editor::SavedConnectionEditor::new(
+            store.clone(),
+            vault.clone(),
+            runtime.tasks(),
+        ),
+        credentials: std::rc::Rc::new(crate::services::session_context::KeyringSources::new(vault.clone())),
+        hold: std::rc::Rc::new(tablepro_session::runtime::CountingHold::new()),
     });
     Harness {
         dialog,
         connector: options.connector,
+        store,
+        vault,
         _runtime: runtime,
+        _dir: dir,
     }
 }
 
@@ -458,6 +484,27 @@ fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
     assert_eq!(edited.connection.id, saved.id);
     assert!(!edited.is_new);
     assert_eq!(edited.connection.host, "db2.example.com");
+    assert_eq!(edited.connection.name, "app@db2.example.com");
+}
+
+#[gtk4::test]
+fn a_connect_from_new_connection_keeps_a_renamed_entry_s_name() {
+    let saved = shop();
+    let harness = open(Options {
+        saved: vec![saved.clone()],
+        ..Options::default()
+    });
+    fill_network(&harness.dialog);
+    assert_eq!(harness.dialog.imp().name_row.text(), "");
+    let log = SignalLog::connect(&harness.dialog, "submitted", |values| {
+        values[1].get::<ConnectSubmission>().expect("a submission")
+    });
+
+    harness.dialog.imp().connect_button.emit_clicked();
+
+    let submitted = log.take().remove(0).pending_save;
+    assert_eq!(submitted.connection.id, saved.id);
+    assert_eq!(submitted.connection.name, "Shop", "the connect undid the rename");
 }
 
 #[gtk4::test]
@@ -599,6 +646,7 @@ fn every_row_has_an_accessible_name() {
     let imp = harness.dialog.imp();
     let tls = imp.tls_section.imp();
     let rows: Vec<gtk4::Widget> = vec![
+        imp.name_row.get().upcast(),
         imp.driver_row.get().upcast(),
         imp.host_row.get().upcast(),
         imp.port_row.get().upcast(),
@@ -633,4 +681,153 @@ fn every_row_has_an_accessible_name() {
             button.tooltip_text()
         );
     }
+}
+
+fn shop() -> SavedConnection {
+    let form = ConnectForm {
+        name: "Shop".to_owned(),
+        host: "db.example.com".to_owned(),
+        database: "sales".to_owned(),
+        username: "app".to_owned(),
+        ..ConnectForm::new("postgres", caps_of("postgres"))
+    };
+    let valid = form.validate(caps_of("postgres")).expect("valid");
+    form.saved_connection(caps_of("postgres"), &valid, Uuid::new_v4(), None)
+}
+
+/// The connect dialog editing `saved`, which is in the list with its
+/// password in the keyring.
+fn editing(saved: &SavedConnection, connector: FakeConnector) -> Harness {
+    let harness = open(Options {
+        connector,
+        saved: vec![saved.clone()],
+        mode: ConnectDialogMode::Edit(Box::new(saved.clone())),
+        ..Options::default()
+    });
+    let (vault, id) = (harness.vault.clone(), saved.id);
+    crate::test_support::finish_on_main(WAIT, async move {
+        vault
+            .store(id, SecretKind::DatabasePassword, &SecretString::from("s3cret"), "label")
+            .await
+    })
+    .expect("the store to end")
+    .expect("the password");
+    harness
+}
+
+#[gtk4::test]
+fn edit_dialog_prefills_and_saves_same_id() {
+    let saved = shop();
+    let harness = editing(&saved, FakeConnector::new([]));
+    let imp = harness.dialog.imp();
+    assert_eq!(harness.dialog.title(), "Edit Connection");
+    assert_eq!(imp.connect_button.label().as_deref(), Some("Save"));
+    assert_eq!(imp.name_row.text(), "Shop");
+    assert_eq!(imp.host_row.text(), "db.example.com");
+    assert_eq!(imp.password_row.text(), "", "a secret reached the form");
+    assert!(
+        imp.auth_group
+            .description()
+            .is_some_and(|text| text.contains("empty to keep")),
+        "the password rows do not say they may stay empty"
+    );
+    let log = SignalLog::connect(&harness.dialog, "saved", |values| {
+        values[1].get::<String>().expect("an id")
+    });
+    imp.name_row.set_text("Shop (EU)");
+    imp.host_row.set_text("db2.example.com");
+
+    imp.connect_button.emit_clicked();
+    wait_until(WAIT, || log.count() == 1).expect("the save");
+
+    assert_eq!(log.take(), [saved.id.to_string()]);
+    let stored = harness.store.load_blocking().expect("the list");
+    assert_eq!(stored.len(), 1, "the edit added an entry");
+    assert_eq!(stored[0].id, saved.id);
+    assert_eq!(stored[0].name, "Shop (EU)");
+    assert_eq!(stored[0].host, "db2.example.com");
+    assert_eq!(
+        harness
+            .vault
+            .stored_secret(saved.id, SecretKind::DatabasePassword)
+            .as_deref(),
+        Some("s3cret"),
+        "the empty password row lost the saved password"
+    );
+    assert!(harness.connector.calls().is_empty(), "Save connected");
+}
+
+#[gtk4::test]
+fn a_refused_save_keeps_the_dialog_open_with_the_reason() {
+    let saved = shop();
+    let harness = editing(&saved, FakeConnector::new([]));
+    harness.vault.fail_store(
+        SecretKind::DatabasePassword,
+        tablepro_core::credentials::SecretError::Locked,
+    );
+    let imp = harness.dialog.imp();
+    let log = SignalLog::connect(&harness.dialog, "saved", |_| ());
+    imp.password_row.set_text("n3w");
+
+    imp.connect_button.emit_clicked();
+    wait_until(WAIT, || !imp.toasts.borrow().is_empty()).expect("the reason");
+
+    assert_eq!(log.count(), 0);
+    assert!(imp.toasts.borrow()[0].contains("locked"), "{:?}", imp.toasts.borrow());
+    assert!(imp.connect_button.is_sensitive(), "Save stayed off after the failure");
+    assert_eq!(harness.store.load_blocking().expect("the list")[0], saved);
+}
+
+#[gtk4::test]
+fn an_edit_test_logs_in_with_the_kept_password() {
+    let saved = shop();
+    let harness = editing(
+        &saved,
+        FakeConnector::new([FakeEstablish::Connect(ConnectionScript::default())]),
+    );
+    let imp = harness.dialog.imp();
+
+    imp.test_button.emit_clicked();
+    wait_until(WAIT, || !imp.toasts.borrow().is_empty()).expect("the test result");
+
+    assert_eq!(imp.toasts.borrow().as_slice(), ["Connection works"]);
+    assert_eq!(tested_password(&harness), "s3cret");
+}
+
+#[gtk4::test]
+fn an_edit_test_logs_in_with_a_typed_password_it_will_not_keep() {
+    let saved = shop();
+    let harness = editing(
+        &saved,
+        FakeConnector::new([FakeEstablish::Connect(ConnectionScript::default())]),
+    );
+    let imp = harness.dialog.imp();
+    imp.password_row.set_text("n3w");
+    imp.remember_row.set_active(false);
+
+    imp.test_button.emit_clicked();
+    wait_until(WAIT, || !imp.toasts.borrow().is_empty()).expect("the test result");
+
+    assert_eq!(tested_password(&harness), "n3w", "Test used the stored password");
+    assert_eq!(
+        harness
+            .vault
+            .stored_secret(saved.id, SecretKind::DatabasePassword)
+            .as_deref(),
+        Some("s3cret"),
+        "Test changed the keyring"
+    );
+}
+
+/// The password the first connect logged in with.
+fn tested_password(harness: &Harness) -> String {
+    let calls = harness.connector.calls();
+    let RequestTarget::Network {
+        credentials: tablepro_core::Credentials::Password { password, .. },
+        ..
+    } = &calls[0].request.target
+    else {
+        panic!("expected a password login");
+    };
+    secrecy::ExposeSecret::expose_secret(password).to_owned()
 }

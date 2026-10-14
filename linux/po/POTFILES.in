@@ -61,6 +61,7 @@ crates/app/src/services/column_relayout.rs
 crates/app/src/services/connection_deletion.rs
 crates/app/src/services/deletion_error.rs
 crates/app/src/services/deletion_report.rs
+crates/app/src/services/duplicate_name.rs
 crates/app/src/services/file_location.rs
 crates/app/src/services/file_location_kind.rs
 crates/app/src/services/file_resolution.rs
@@ -70,10 +71,14 @@ crates/app/src/services/history_service.rs
 crates/app/src/services/mod.rs
 crates/app/src/services/pending_structure.rs
 crates/app/src/services/save_batch.rs
+crates/app/src/services/saved_connection_editor.rs
+crates/app/src/services/saved_connection_error.rs
 crates/app/src/services/saved_connection_list.rs
 crates/app/src/services/saved_connection_object.rs
 crates/app/src/services/saved_connection_object_imp.rs
 crates/app/src/services/saved_connection_order.rs
+crates/app/src/services/secret_change.rs
+crates/app/src/services/secret_changes.rs
 crates/app/src/services/secret_labels.rs
 crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
@@ -137,6 +142,7 @@ crates/app/src/ui/clipboard/clipboard_writer.rs
 crates/app/src/ui/clipboard/copy_renderer.rs
 crates/app/src/ui/clipboard/mod.rs
 crates/app/src/ui/clipboard/tests.rs
+crates/app/src/ui/connect_dialog/connect_dialog_mode.rs
 crates/app/src/ui/connect_dialog/connect_form.rs
 crates/app/src/ui/connect_dialog/connect_submission.rs
 crates/app/src/ui/connect_dialog/form_errors.rs
@@ -193,6 +199,7 @@ crates/app/src/ui/error_text/driver.rs
 crates/app/src/ui/error_text/edit.rs
 crates/app/src/ui/error_text/mod.rs
 crates/app/src/ui/error_text/operation.rs
+crates/app/src/ui/error_text/saved_connection.rs
 crates/app/src/ui/error_text/script.rs
 crates/app/src/ui/error_text/secret.rs
 crates/app/src/ui/error_text/ssh.rs
@@ -298,6 +305,7 @@ crates/app/src/ui/mod.rs
 crates/app/src/ui/picker/connection_menu.rs
 crates/app/src/ui/picker/connection_row.rs
 crates/app/src/ui/picker/mod.rs
+crates/app/src/ui/picker/new_group_dialog.rs
 crates/app/src/ui/picker/picker_actions.rs
 crates/app/src/ui/picker/tests.rs
 crates/app/src/ui/preferences_dialog/imp.rs
@@ -308,6 +316,7 @@ crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/saved_queries_dialog.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
+crates/app/src/ui/session_window/connect_failure_view.rs
 crates/app/src/ui/session_window/connect_flow.rs
 crates/app/src/ui/session_window/connecting_page.rs
 crates/app/src/ui/session_window/connections.rs

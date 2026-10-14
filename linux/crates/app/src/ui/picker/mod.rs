@@ -2,6 +2,7 @@
 
 mod connection_menu;
 mod connection_row;
+mod new_group_dialog;
 mod picker_actions;
 #[cfg(test)]
 mod tests;

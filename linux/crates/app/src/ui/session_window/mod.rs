@@ -4,6 +4,7 @@
 //! and returns to the picker; it never moves to another session.
 
 mod connect_failed_page;
+mod connect_failure_view;
 mod connect_flow;
 mod connecting_page;
 mod connections;
@@ -46,6 +47,7 @@ use tablepro_session::{
 use tablepro_storage::{CredentialDemand, SavedConnection};
 
 pub(super) use self::connect_failed_page::ConnectFailedPage;
+use self::connect_failure_view::ConnectFailureView;
 pub(super) use self::connecting_page::ConnectingPage;
 pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
@@ -56,7 +58,7 @@ use self::sqlite_location_dialog::FileCheck;
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
-use crate::ui::connect_dialog::ConnectSubmission;
+use crate::ui::connect_dialog::{ConnectDialogMode, ConnectSubmission};
 use crate::ui::welcome_view::WelcomeView;
 use crate::ui::workspace::{Workspace, WorkspaceInit, WorkspaceInput};
 use crate::workspace::{
@@ -288,13 +290,17 @@ impl SessionWindow {
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
             SessionWindowInput::Restore(key) => self.on_restore(key),
             SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
-            SessionWindowInput::OpenConnectDialog => self.present_connect_dialog(None, None),
+            SessionWindowInput::OpenConnectDialog => {
+                self.present_connect_dialog(ConnectDialogMode::Create, None, None);
+            }
             SessionWindowInput::ConnectFromDialog(submission) => self.on_connect_from_dialog(*submission),
             SessionWindowInput::DialogClosed => drop(self.imp().dialog.take()),
             SessionWindowInput::CancelConnect => self.on_cancel_connect(),
             SessionWindowInput::RetryConnect => self.on_retry_connect(),
             SessionWindowInput::RetryWithNewSecret(kind) => self.on_retry_with_new_secret(kind),
             SessionWindowInput::EditConnection => self.on_edit_connection(),
+            SessionWindowInput::EditSavedConnection(id) => self.on_edit_saved_connection(id),
+            SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
             SessionWindowInput::Disconnect => self.on_disconnect(),
             SessionWindowInput::TeardownApproved => {
                 if self.tear_down() {
@@ -351,7 +357,7 @@ impl SessionWindow {
             SessionWindowInput::SecretDeleteFailed(id, options) => self.on_secret_delete_failed(id, options),
             SessionWindowInput::DeleteConnection(id) => self.on_delete_connection(id),
             SessionWindowInput::ConfirmDelete(id, options) => self.on_confirm_delete(id, options),
-            SessionWindowInput::DuplicateConnection(saved) => self.on_duplicate_connection(*saved),
+            SessionWindowInput::DuplicateConnection(id) => self.on_duplicate_connection(id),
             SessionWindowInput::SetConnectionColor(id, color) => self.on_set_connection_color(id, color),
             SessionWindowInput::SetConnectionGroup(id, group) => self.on_set_connection_group(id, group),
             SessionWindowInput::ExportConnections => self.on_export_connections(),
@@ -383,45 +389,54 @@ impl SessionWindow {
         self.tear_down();
         let imp = self.imp();
         let app = self.application();
-        let (child, toasts): (Option<gtk::Widget>, Option<adw::ToastOverlay>) = match &page {
+        let mut can_edit = false;
+        let (child, toasts, shown): (Option<gtk::Widget>, Option<adw::ToastOverlay>, ShownPage) = match &page {
             SessionPage::Picker => {
                 self.set_title(Some(&crate::i18n::gettext("TablePro")));
                 let picker = imp.picker.get();
                 (
                     picker.map(|picker| picker.clone().upcast()),
                     picker.map(PickerPage::toast_overlay),
+                    ShownPage::Other,
                 )
             }
             SessionPage::Connecting { source, .. } => {
-                let connecting = ConnectingPage::new(&source_name(source), app.as_ref());
+                let connecting = ConnectingPage::new(app.as_ref());
                 let toasts = connecting.toast_overlay();
-                (Some(connecting.upcast()), Some(toasts))
+                (
+                    Some(connecting.clone().upcast()),
+                    Some(toasts),
+                    ShownPage::Connecting(connecting, source_name(source)),
+                )
             }
             SessionPage::ConnectFailed { source, failure, .. } => {
-                let failed = ConnectFailedPage::new(
-                    &failure.message,
-                    edit_label(source, failure).as_deref(),
-                    failure.reenter,
-                    app.as_ref(),
-                );
+                let view = ConnectFailureView::new(failure, source);
+                can_edit = view.can_edit;
+                let failed = ConnectFailedPage::new(&view, &edit_label(failure), failure.reenter, app.as_ref());
                 let toasts = failed.toast_overlay();
-                (Some(failed.upcast()), Some(toasts))
+                (Some(failed.clone().upcast()), Some(toasts), ShownPage::Failed(failed))
             }
-            SessionPage::Workspace { workspace, .. } => {
-                (Some(workspace.clone().upcast()), Some(workspace.toast_overlay()))
-            }
+            SessionPage::Workspace { workspace, .. } => (
+                Some(workspace.clone().upcast()),
+                Some(workspace.toast_overlay()),
+                ShownPage::Other,
+            ),
         };
-        let editable = match &page {
-            SessionPage::ConnectFailed { source, .. } => is_editable(source),
-            _ => false,
-        };
-        window_actions::sync(self.upcast_ref(), &page, editable);
+        window_actions::sync(self.upcast_ref(), &page, can_edit);
         if !matches!(page, SessionPage::Picker) {
             imp.opened_for_file.set(false);
         }
         let left = imp.page.replace(page);
         imp.page_toasts.replace(toasts);
+        // A Cancel or Retry left as the default would take Enter on a
+        // page that no longer shows it.
+        self.set_default_widget(None::<&gtk::Widget>);
         self.set_content(child.as_ref());
+        match shown {
+            ShownPage::Connecting(page, name) => page.show(&name),
+            ShownPage::Failed(page) => page.show(),
+            ShownPage::Other => {}
+        }
         drop(left);
     }
 
@@ -799,14 +814,28 @@ impl SessionWindow {
         }
     }
 
+    /// The failed page's Edit Connection. A saved connection opens as an
+    /// Edit of the entry as saved now, whose Save connects again; a new
+    /// one reopens the connect dialog on what was typed.
     fn on_edit_connection(&self) {
-        let prefill = match &*self.imp().page.borrow() {
-            SessionPage::ConnectFailed { source, failure, .. } => connections::prefill_for(source)
-                .map(|prefill| (prefill, failure.remedy.map(crate::ui::connect_dialog::remedy_field))),
-            _ => None,
+        let (saved, prefill, focus) = match &*self.imp().page.borrow() {
+            SessionPage::ConnectFailed { source, failure, .. } => (
+                match source {
+                    ConnectSource::Saved(saved) => Some((**saved).clone()),
+                    _ => None,
+                },
+                connections::prefill_for(source),
+                failure.remedy.map(crate::ui::connect_dialog::remedy_field),
+            ),
+            _ => return,
         };
-        if let Some((prefill, focus)) = prefill {
-            self.present_connect_dialog(Some(prefill), focus);
+        match (saved, prefill) {
+            (Some(saved), _) => match self.saved_as_stored(&saved) {
+                Some(current) => self.present_connect_dialog(ConnectDialogMode::Edit(Box::new(current)), None, focus),
+                None => self.show_toast(&crate::i18n::gettext("The connection was deleted.")),
+            },
+            (None, Some(prefill)) => self.present_connect_dialog(ConnectDialogMode::Create, Some(prefill), focus),
+            (None, None) => {}
         }
     }
 
@@ -1084,20 +1113,19 @@ fn file_display_name(uri: &str) -> String {
         .map_or_else(|| uri.to_owned(), |name| name.to_string_lossy().into_owned())
 }
 
-/// Only a connection the connect dialog shows can be edited from a
-/// failed connect.
-fn is_editable(source: &ConnectSource) -> bool {
-    matches!(source, ConnectSource::Saved(_) | ConnectSource::Intent(_))
-}
-
 /// The failed page's Edit button: named after the setting that fixes a
 /// TLS failure when there is one.
-fn edit_label(source: &ConnectSource, failure: &ConnectFailure) -> Option<String> {
-    is_editable(source).then(|| {
-        failure
-            .remedy
-            .map_or_else(|| crate::i18n::gettext("Edit Connection…"), |remedy| remedy.label())
-    })
+fn edit_label(failure: &ConnectFailure) -> String {
+    failure
+        .remedy
+        .map_or_else(|| crate::i18n::gettext("Edit Connection…"), |remedy| remedy.label())
+}
+
+/// A page that says what it shows once it is in the window.
+enum ShownPage {
+    Connecting(ConnectingPage, String),
+    Failed(ConnectFailedPage),
+    Other,
 }
 
 fn file_failure_message(uri: &str, error: &FileResolveError) -> String {

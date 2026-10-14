@@ -6,10 +6,10 @@ use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::{ConnectionColor, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, SavedConnection};
 
 use super::connection_menu::{
-    CONNECT, NONE, PICKER, ROW, ROW_COLOR, ROW_GROUP, ROW_MENU, SET_COLOR, SET_GROUP, color_name, connection_menu,
+    CONNECT, MOVE_TO_GROUP, NONE, PICKER, ROW, ROW_COLOR, ROW_GROUP, ROW_MENU, SET_COLOR, color_name, connection_menu,
 };
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::file_location;
@@ -20,7 +20,11 @@ use crate::ui::a11y::describe_icon_button;
 /// menu holds the rest. `groups` are the list's groups, which the menu
 /// offers. `tasks` reads the file a portal path stands for; `None`
 /// names the file alone.
-pub(crate) fn connection_row(object: &glib::Object, groups: &[String], tasks: Option<&Tasks>) -> gtk::Widget {
+pub(crate) fn connection_row(
+    object: &glib::Object,
+    groups: &[ConnectionGroupName],
+    tasks: Option<&Tasks>,
+) -> gtk::Widget {
     let Some(saved) = object
         .downcast_ref::<SavedConnectionObject>()
         .and_then(SavedConnectionObject::saved)
@@ -74,10 +78,10 @@ fn row_actions(row: &adw::ActionRow, saved: &SavedConnection, menu_button: &gtk:
     });
     actions.add_action(&menu);
     let current_color = saved.color.map_or(NONE, |color| color.id());
-    let current_group = crate::services::saved_connection_order::group_of(saved).unwrap_or(NONE);
+    let current_group = saved.group.as_ref().map_or(NONE, ConnectionGroupName::as_str);
     for (name, state, forward) in [
         (ROW_COLOR, current_color, SET_COLOR),
-        (ROW_GROUP, current_group, SET_GROUP),
+        (ROW_GROUP, current_group, MOVE_TO_GROUP),
     ] {
         let radio = gio::SimpleAction::new_stateful(name, Some(&String::static_variant_type()), &state.to_variant());
         let (row, id) = (row.downgrade(), saved.id.to_string());
