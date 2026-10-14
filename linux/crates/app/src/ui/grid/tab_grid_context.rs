@@ -4,6 +4,7 @@ use tablepro_core::Value;
 use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 
+use super::row_state_icon::RowPendingState;
 use super::{ColumnWidthBinding, GridRowId, RowObject, RowSnapshot};
 use crate::services::cell_overlay::CellOverlay;
 use crate::services::change_tracker::{CellState, RowKey, RowState};
@@ -40,10 +41,18 @@ impl TabGridContext {
         Some((self.tracker.as_ref()?, row.id().tracker_key()?))
     }
 
-    /// `Clean` for a row nothing tracks.
-    pub(super) fn row_state(&self, row: &RowObject) -> RowState {
+    /// `Unchanged` for a row nothing tracks.
+    pub(super) fn row_pending_state(&self, row: &RowObject) -> RowPendingState {
         self.tracked_key(row)
-            .map_or(RowState::Clean, |(tracker, key)| tracker.row_state(&key))
+            .map_or(RowPendingState::Unchanged, |(tracker, key)| {
+                RowPendingState::new(tracker.row_state(&key), tracker.is_error_row(&key))
+            })
+    }
+
+    /// Whether the grid's rows can carry pending changes, which is when
+    /// it gives them a state column.
+    pub(super) fn tracks_changes(&self) -> bool {
+        self.editable && self.tracker.is_some()
     }
 
     /// The row as the grid shows it, for every copy and export path:

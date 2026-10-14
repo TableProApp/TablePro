@@ -65,7 +65,8 @@ use super::format::format_thousands;
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
     GridSorting, RowJsonRequest, RowKeyBuilder, RowObject, RowSnapshot, TabGridContext, build_column_view,
-    cell_editability, cell_presets, delete_availability, edit_context, edit_row, export_snapshot, present_row_json,
+    cell_editability, cell_presets, data_columns, delete_availability, edit_context, edit_row, export_snapshot,
+    present_row_json,
 };
 use super::tab_load::{ContentLoad, ContentPage, LoadFailure, LoadPresentation, StaleBanner};
 use crate::runtime::{FailedRequests, RequestSequencer};
@@ -1261,10 +1262,7 @@ impl BrowseModel {
         );
         self.current_selection = Some(selection);
         self.current_column_view = Some(column_view.clone());
-        let view_columns = column_view.columns();
-        self.view_columns = (0..view_columns.n_items())
-            .filter_map(|position| view_columns.item(position).and_downcast())
-            .collect();
+        self.view_columns = data_columns(&column_view);
         self.rendered_columns = self.current_columns.clone();
 
         // The selection model is new per rebuild, so the previous

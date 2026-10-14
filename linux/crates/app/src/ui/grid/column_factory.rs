@@ -16,6 +16,7 @@ use super::grid_keyboard::GridKeyboard;
 use super::grid_menus::{GridMenuInit, GridMenus, install_grid_context_menus};
 use super::result_sorters::column_sorter;
 use super::row_factory::install_row_factory;
+use super::row_state_column::row_state_column;
 use super::toggle_cell::ToggleCell;
 use super::{GridCell, GridContent, GridMsg, GridSink, RowObject, TabGridContext};
 
@@ -102,6 +103,9 @@ pub(crate) fn build_column_view(
         });
         column_view.append_column(&col);
         columns.push(col);
+    }
+    if tab_ctx.tracks_changes() {
+        column_view.insert_column(0, &row_state_column(tab_ctx.clone()));
     }
 
     // Applied before the notify handlers are wired, so it does not echo
@@ -226,6 +230,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
 
     let setup_drawing = drawing.clone();
     let setup_columns = grid_columns.clone();
+    let setup_name = info.name.clone();
     factory.connect_setup(move |_, item| {
         let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
             return;
@@ -242,7 +247,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         grid_cell.set_columns(setup_columns.clone());
         match kind {
             CellKind::ReadOnly => grid_cell.set_content(&text_display(numeric)),
-            CellKind::Toggle => ToggleCell::setup(&grid_cell),
+            CellKind::Toggle => ToggleCell::setup(&grid_cell, &setup_name),
             CellKind::Text => {
                 grid_cell.set_content(&text_display(numeric));
                 install_edit_triggers(&grid_cell);

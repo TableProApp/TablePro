@@ -8,7 +8,7 @@ use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_tooltip::cell_tooltip;
 use super::display_text::{DisplayText, display_text};
-use super::grid_attributes::GridAttributes;
+use super::grid_attributes::{GridAttributes, TextMark};
 use super::toggle_cell::{ToggleCell, toggle_state};
 use super::{CellLock, GridCell, GridRowId, RowObject, TabGridContext, cell_editability};
 use crate::services::change_tracker::CellState;
@@ -44,10 +44,14 @@ impl ColumnDrawing {
         }
     }
 
-    pub fn draw(&self, cell: &GridCell, row: &RowObject) -> CellState {
+    pub fn draw(&self, cell: &GridCell, row: &RowObject) -> DrawnCell {
         let column = cell.column();
         let (pending_classes, state) = self.tab_ctx.pending_marks(row, column);
         self.tab_ctx.with_effective_value(row, column, |value, default| {
+            let drawn = DrawnCell {
+                state,
+                null: !default && value.is_null(),
+            };
             // An edit opened on a value the row no longer has would, once
             // it ended, send that value back. An edit on the same value
             // keeps what was typed.
@@ -55,7 +59,7 @@ impl ColumnDrawing {
                 cell.cancel_edit();
             }
             let Some(content) = cell.content() else {
-                return;
+                return drawn;
             };
             apply_pending_classes(content, &pending_classes);
             let pending_delete = pending_classes.contains(&"tp-row-pending-delete");
@@ -69,16 +73,21 @@ impl ColumnDrawing {
                 // A check box has no strikethrough, so a pending delete dims it.
                 check.set_opacity(if pending_delete { 0.5 } else { 1.0 });
             } else if let Some(display) = content.downcast_ref::<gtk::Inscription>() {
+                let mark = match (pending_delete, state) {
+                    (true, _) => TextMark::PendingDelete,
+                    (false, CellState::Modified) => TextMark::Modified,
+                    (false, _) => TextMark::Plain,
+                };
                 let shown = CellText {
                     value,
                     default,
                     editable: cell.lock().is_none(),
-                    pending_delete,
+                    mark,
                 };
                 cell.with_scratch(|scratch| self.draw_text(display, &shown, scratch));
             }
-        });
-        state
+            drawn
+        })
     }
 
     /// An editable cell shows NULL as `<NULL>`, so it reads differently
@@ -99,8 +108,16 @@ impl ColumnDrawing {
             "dimmed",
             !cell.default && cell.value.is_null() && !cell.editable,
         );
-        display.set_attributes(attributes.for_text(cell.pending_delete, shown.placeholder));
+        display.set_attributes(attributes.for_text(cell.mark, shown.placeholder));
     }
+}
+
+/// What a draw tells a screen reader about the cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DrawnCell {
+    pub state: CellState,
+    /// The cell holds NULL, not a draft's cell left to the server.
+    pub null: bool,
 }
 
 /// One cell's value and the state it is drawn in.
@@ -109,7 +126,7 @@ struct CellText<'a> {
     /// A draft's cell left to the server.
     default: bool,
     editable: bool,
-    pending_delete: bool,
+    mark: TextMark,
 }
 
 fn set_class(widget: &gtk::Widget, class: &str, on: bool) {

@@ -22,7 +22,9 @@ pub struct ToggleState {
 }
 
 impl ToggleCell {
-    pub(super) fn setup(cell: &GridCell) {
+    /// `column` names the check box, as written in the table, since a
+    /// box with no label reads as nothing but its state.
+    pub(super) fn setup(cell: &GridCell, column: &str) {
         let check = gtk::CheckButton::builder()
             .halign(gtk::Align::Start)
             .valign(gtk::Align::Center)
@@ -33,6 +35,7 @@ impl ToggleCell {
             .focusable(false)
             .focus_on_click(false)
             .build();
+        check.update_property(&[gtk::accessible::Property::Label(column)]);
         cell.set_content(&check);
         // The cell owns the check button, so the handler finds the cell
         // through its parent rather than holding it.

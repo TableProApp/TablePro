@@ -100,6 +100,10 @@ impl TabTrackerHandle {
         self.0.borrow_mut().clear_error_row_if(generation)
     }
 
+    pub fn is_error_row(&self, row_key: &RowKey) -> bool {
+        self.0.borrow().is_error_row(row_key)
+    }
+
     /// The table and columns the tab read, which every save is planned
     /// against.
     #[must_use = "the grid shows stale rows until the delta is applied"]

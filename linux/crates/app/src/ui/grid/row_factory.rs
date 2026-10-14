@@ -65,7 +65,10 @@ pub(super) fn install_row_factory(column_view: &gtk::ColumnView, tab_ctx: TabGri
 
 /// Through the property, since the setter takes no NULL to clear it.
 fn describe(list_row: &gtk::ColumnViewRow, tab_ctx: &TabGridContext, row: &RowObject) {
-    list_row.set_property("accessible-description", row_description(tab_ctx.row_state(row)));
+    list_row.set_property(
+        "accessible-description",
+        row_description(tab_ctx.row_pending_state(row)),
+    );
 }
 
 #[cfg(test)]
@@ -73,6 +76,7 @@ mod tests {
     use gtk4 as gtk;
     use gtk4::prelude::*;
     use tablepro_core::Value;
+    use tablepro_core::edit::CellInput;
 
     use crate::services::tracker_edit::TrackerEdit;
     use crate::test_support::wait_until;
@@ -113,6 +117,13 @@ mod tests {
         .expect("the draft is drawn");
         let draft = draft.expect("the draft's cell");
         let row = draft.parent().and_then(|cell| cell.parent()).expect("the row widget");
+        // A NULL is named whatever the row, so the cell holds a value.
+        let draft_id = draft.row().and_then(|row| row.draft_id()).expect("a draft");
+        grid.redraw(&grid.tracker.apply(TrackerEdit::DraftCell {
+            draft_id,
+            col: draft.column(),
+            input: CellInput::Value(Value::Text("typed".into())),
+        }));
 
         assert!(gtk::test_accessible_has_property(
             &row,

@@ -495,7 +495,7 @@ impl TabChangeTracker {
         CellOverlay {
             pending: self.pending_input(row_key, col),
             state: self.cell_state(row_key, col),
-            error_flash: self.error_row.as_ref() == Some(row_key),
+            error_flash: self.is_error_row(row_key),
         }
     }
 
@@ -560,6 +560,10 @@ impl TabChangeTracker {
         self.error_row_gen = self.error_row_gen.wrapping_add(1);
         self.error_row = Some(key);
         self.error_row_gen
+    }
+
+    pub fn is_error_row(&self, key: &RowKey) -> bool {
+        self.error_row.as_ref() == Some(key)
     }
 
     /// Clear the flash unless a newer one has started. Returns whether

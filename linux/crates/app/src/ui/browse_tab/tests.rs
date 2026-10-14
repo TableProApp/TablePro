@@ -1128,10 +1128,9 @@ fn a_page_that_replaces_the_row_being_edited_keeps_the_edit_and_the_focus() {
     wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
     let shown = Shown::new(harness.tab());
     let view = column_view(harness.tab());
-    let name = view
-        .columns()
-        .item(1)
-        .and_downcast::<gtk4::ColumnViewColumn>()
+    let name = crate::ui::grid::data_columns(&view)
+        .into_iter()
+        .nth(1)
         .expect("the name column");
     view.scroll_to(1, Some(&name), gtk4::ListScrollFlags::FOCUS, None);
     view.grab_focus();

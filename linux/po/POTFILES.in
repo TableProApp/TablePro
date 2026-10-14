@@ -264,6 +264,8 @@ crates/app/src/ui/grid/row_json_dialog.rs
 crates/app/src/ui/grid/row_key_builder.rs
 crates/app/src/ui/grid/row_object.rs
 crates/app/src/ui/grid/row_snapshot.rs
+crates/app/src/ui/grid/row_state_column.rs
+crates/app/src/ui/grid/row_state_icon.rs
 crates/app/src/ui/grid/selection.rs
 crates/app/src/ui/grid/tab_grid_context.rs
 crates/app/src/ui/grid/test_grid.rs
@@ -377,8 +379,6 @@ crates/app/src/ui/workspace/window_title.rs
 crates/app/src/ui/workspace/workspace_actions.rs
 crates/app/src/ui/workspace/workspace_persistence.rs
 crates/app/src/ui/workspace/workspace_tab_view.rs
-crates/app/src/ui/workspace/workspace_tabs.rs
-crates/app/src/ui/workspace/workspace_tabs.rs
 crates/app/src/ui/workspace/workspace_tabs.rs
 crates/app/src/workspace/close_blocker.rs
 crates/app/src/workspace/close_blocker_dialog.rs
