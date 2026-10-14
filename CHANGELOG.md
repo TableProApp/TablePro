@@ -137,6 +137,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- Editing a table's structure keeps the Structure label on its tab when unsaved changes are marked.
 - Open Browse tabs reload their rows after Structure changes so grid headers and SQL exports use the current column names.
 - Opening the filter strip with an active structured filter now expands the rule editor instead of showing an empty raw WHERE field.
 - Restoring an editor no longer triggers a GTK sidebar layout failure before the window has completed its first layout.

@@ -825,6 +825,8 @@ impl App {
         };
         let base = if table_name.is_empty() {
             crate::tr!("New Table")
+        } else if matches!(slot, WorkspaceTab::Structure(_)) {
+            super::workspace_tabs::structure_tab_title(schemas_count, schema, &table_name)
         } else {
             super::workspace_tabs::qualified_browse_tab_label(schemas_count, schema, &table_name)
         };

@@ -520,12 +520,8 @@ impl App {
                 });
 
         let page = tab_view.append(controller.widget());
-        let title = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
-        // Disambiguate from the Data-side tab with the same base name
-        // by suffixing the structure tab title — "products · Structure".
-        // GNOME uses U+00B7 middle dot as the canonical separator
-        // (Files, Builder, Console all do this for compound titles).
-        page.set_title(&format!("{title} · {}", crate::tr!("Structure")));
+        let title = structure_tab_title(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
+        page.set_title(&title);
         write_workspace_tab_id(&page, tab_id);
 
         let slot = super::StructureTabSlot {
@@ -1020,6 +1016,11 @@ pub(super) fn qualified_browse_tab_label(schemas_count: usize, schema: Option<&s
     }
 }
 
+pub(super) fn structure_tab_title(schemas_count: usize, schema: Option<&str>, table: &str) -> String {
+    let title = qualified_browse_tab_label(schemas_count, schema, table);
+    format!("{title} · {}", crate::tr!("Structure"))
+}
+
 fn default_editor_tab_label(n: usize) -> String {
     crate::tr!("Query {n}").replace("{n}", &n.to_string())
 }
@@ -1136,4 +1137,18 @@ fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
     }
     let preview = format!("{}…", &q[..last_idx]);
     if preview == label { None } else { Some(preview) }
+}
+
+#[cfg(test)]
+mod structure_title_tests {
+    use super::*;
+
+    #[test]
+    fn an_existing_structure_tab_keeps_its_kind_in_the_title() {
+        assert_eq!(structure_tab_title(1, None, "orders"), "orders · Structure");
+        assert_eq!(
+            structure_tab_title(2, Some("sales"), "orders"),
+            "sales.orders · Structure"
+        );
+    }
 }

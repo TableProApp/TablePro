@@ -18,7 +18,7 @@ apps/linux/app/src/ui/app/mod.rs 2
 apps/linux/app/src/ui/app/row_ops.rs 1
 apps/linux/app/src/ui/app/shortcuts.rs 1
 apps/linux/app/src/ui/app/structure.rs 4
-apps/linux/app/src/ui/app/workspace_tabs.rs 4
+apps/linux/app/src/ui/app/workspace_tabs.rs 3
 apps/linux/app/src/ui/browse_tab/chrome.rs 1
 apps/linux/app/src/ui/browse_tab/grid_render.rs 1
 apps/linux/app/src/ui/browse_tab/mod.rs 2
