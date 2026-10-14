@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("TiDB and Databend support decisions", .serialized)
 @MainActor
 struct MySQLVariantSupportTests {
     private static func mysqlPluginSnapshot() throws -> PluginMetadataSnapshot {

@@ -1,26 +1,7 @@
-//
-//  TreeOutlineFixture.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 @testable import TablePro
 import Testing
-
-@MainActor
-internal final class TreeOutlineClipboard: ClipboardProvider {
-    var writes: [String] = []
-
-    func readText() -> String? { writes.last }
-    func readGridRows() -> GridRowsClipboardPayload? { nil }
-    func writeText(_ text: String) { writes.append(text) }
-    func writeCsv(_ csv: String) {}
-    func writeImage(_ image: NSImage) {}
-    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {}
-    var hasText: Bool { !writes.isEmpty }
-    var hasGridRows: Bool { false }
-}
 
 @MainActor
 internal final class OpenedLinks {
@@ -58,14 +39,10 @@ internal enum TreeOutlineFixture {
         try JSONTreeParser.parse(json, formats: .english).get()
     }
 
-    /// Every copy in these suites goes to a fake, and the real clipboard is put back afterwards.
+    /// The fake the suite's `.recordingClipboard` trait installed for this case.
     @MainActor
-    static func withClipboard<Result>(_ body: (TreeOutlineClipboard) throws -> Result) rethrows -> Result {
-        let original = ClipboardService.shared
-        defer { ClipboardService.shared = original }
-        let clipboard = TreeOutlineClipboard()
-        ClipboardService.shared = clipboard
-        return try body(clipboard)
+    static func withClipboard<Result>(_ body: (RecordingClipboard) throws -> Result) throws -> Result {
+        try body(try #require(RecordingClipboard.current))
     }
 
     /// No test opens a browser: the opener is replaced for the length of `body` and then restored.

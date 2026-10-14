@@ -12,14 +12,9 @@ struct SSHConfigurationTests {
         return try JSONDecoder().decode(SSHConfiguration.self, from: Data(json.utf8))
     }
 
-    @Test("decodes the macOS None raw value")
-    func decodesMacOSNone() throws {
-        #expect(try decode(authMethod: "None").authMethod == .none)
-    }
-
-    @Test("decodes the lowercase none raw value")
-    func decodesLowercaseNone() throws {
-        #expect(try decode(authMethod: "none").authMethod == .none)
+    @Test("decodes the macOS None raw value and the lowercase none", arguments: ["None", "none"])
+    func decodesNone(_ raw: String) throws {
+        #expect(try decode(authMethod: raw).authMethod == .none)
     }
 
     @Test("None survives an encode and decode round trip")

@@ -10,42 +10,20 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
-
-@MainActor
-private final class Latch {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let pending = waiters
-        waiters = []
-        for waiter in pending {
-            waiter.resume()
-        }
-    }
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-}
 
 @Suite("Database switch lease ordering", .serialized)
 @MainActor
 struct DatabaseSwitchLeaseOrderingTests {
-    private static let typeId = "LeaseOrderingReconnectFake"
-    private static let unpooledTypeId = "LeaseOrderingUnpooledReconnectFake"
-
     /// A type that reopens its connection to change database, and whose driver plugin is not
     /// registered, so every switch reaches the reconnect and fails there. `pools` says whether it can
     /// open a second connection for a database the session has left; one that can switches by
     /// keeping a connection per database instead (`SessionLanesTests`), so the reconnect needs one
-    /// that cannot.
-    private func registerTypeIfNeeded(_ typeId: String = Self.typeId, pools: Bool = false) {
-        guard PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId) == nil else { return }
+    /// that cannot. Each case registers a type of its own, so one case's cleanup never unregisters
+    /// another's.
+    private func registerType(pools: Bool = false) -> String {
+        let typeId = "LeaseOrderingReconnectFake-\(UUID().uuidString)"
         let defaults = PluginMetadataSnapshot.CapabilityFlags.defaults
         var capabilities = PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: true,
@@ -72,12 +50,12 @@ struct DatabaseSwitchLeaseOrderingTests {
             capabilities: capabilities, schema: .defaults, editor: .defaults, connection: .defaults
         )
         PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId)
+        return typeId
     }
 
     private func makeSession() -> DatabaseConnection {
-        registerTypeIfNeeded()
         var connection = TestFixtures.makeConnection(database: "app")
-        connection.type = DatabaseType(rawValue: Self.typeId)
+        connection.type = DatabaseType(rawValue: registerType())
         var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
         session.status = .connected
         session.browseDatabase = "app"
@@ -85,23 +63,23 @@ struct DatabaseSwitchLeaseOrderingTests {
         return connection
     }
 
-    private func cleanUp(_ connectionId: UUID) {
-        DatabaseManager.shared.removeSession(for: connectionId)
-        AppSettingsStorage.shared.saveLastDatabase(nil, for: connectionId)
-        AppSettingsStorage.shared.saveLastSchema(nil, for: connectionId)
-        PluginMetadataRegistry.shared.unregister(typeId: Self.typeId)
+    private func cleanUp(_ connection: DatabaseConnection) {
+        DatabaseManager.shared.removeSession(for: connection.id)
+        AppSettingsStorage.shared.saveLastDatabase(nil, for: connection.id)
+        AppSettingsStorage.shared.saveLastSchema(nil, for: connection.id)
+        PluginMetadataRegistry.shared.unregister(typeId: connection.type.rawValue)
     }
 
     /// Holds the connection's driver until `release` opens, and returns only once it holds it. A
     /// connection that keeps one driver per database takes its turns per database, so `database`
     /// names which one to hold.
-    private func holdDriver(_ connectionId: UUID, database: String? = nil, until release: Latch) async -> Task<Void, Error> {
-        let acquired = Latch()
+    private func holdDriver(_ connectionId: UUID, database: String? = nil, until release: AsyncGate) async -> Task<Void, Error> {
+        let acquired = AsyncGate()
         let holder = Task { @MainActor in
             try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(
                 SessionDriverGate.Key(connectionId: connectionId, database: database)
             ) {
-                acquired.open()
+                await acquired.open()
                 await release.wait()
             }
         }
@@ -109,21 +87,8 @@ struct DatabaseSwitchLeaseOrderingTests {
         return holder
     }
 
-    /// Waits for callers to queue behind the holder. The bound is there so a caller that never
-    /// queues, which is the regression these tests guard, fails the assertions after it rather than
-    /// hanging the suite.
-    private func waitForQueuedCallers(_ count: Int, on connectionId: UUID) async {
-        for _ in 0..<10_000 where DatabaseManager.shared.sessionDriverGate.waiterCount(for: connectionId) < count {
-            await Task.yield()
-        }
-    }
-
-    /// Waits for work running off the main actor to reach a point it reports. Bounded for the same
-    /// reason as `waitForQueuedCallers`.
-    private func waitUntil(_ condition: () -> Bool) async {
-        for _ in 0..<2_000 where !condition() {
-            try? await Task.sleep(for: .milliseconds(5))
-        }
+    private func waitForQueuedCallers(_ count: Int, on connectionId: UUID) async throws {
+        try await waitUntil { DatabaseManager.shared.sessionDriverGate.waiterCount(for: connectionId) >= count }
     }
 
     /// A session browsing `app`, with the connection's pooled connection to `app` seeded, so a read
@@ -156,15 +121,15 @@ struct DatabaseSwitchLeaseOrderingTests {
     @Test("A lease routed onto a switch's target never runs on the driver the switch is replacing")
     func leaseDuringASwitchNeverRunsOnTheReplacedDriver() async throws {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
         let original = try #require(DatabaseManager.shared.driver(for: connection.id) as? MockDatabaseDriver)
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let switchTask = Task { @MainActor in
             try await DatabaseManager.shared.switchDatabase(to: "orders", for: connection.id, persist: false)
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         #expect(DatabaseManager.shared.session(for: connection.id)?.browseDatabase == "app")
 
         let orders = DatabaseScope(connectionId: connection.id, database: "orders", schema: nil)
@@ -177,11 +142,11 @@ struct DatabaseSwitchLeaseOrderingTests {
                 driver.connection.database
             }
         }
-        await waitForQueuedCallers(2, on: connection.id)
+        try await waitForQueuedCallers(2, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 2)
         #expect(original.disconnectCallCount == 0)
 
-        release.open()
+        await release.open()
         try await holder.value
         _ = try? await switchTask.value
 
@@ -196,22 +161,22 @@ struct DatabaseSwitchLeaseOrderingTests {
     @Test("A database switch names nothing on the session while another operation holds the driver")
     func switchWaitsForTheDriver() async throws {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
         let original = try #require(DatabaseManager.shared.driver(for: connection.id) as? MockDatabaseDriver)
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let switchTask = Task { @MainActor in
             try await DatabaseManager.shared.switchDatabase(to: "orders", for: connection.id, persist: false)
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
 
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
         #expect(DatabaseManager.shared.session(for: connection.id)?.browseDatabase == "app")
         #expect(DatabaseManager.shared.session(for: connection.id)?.connection.database == "app")
         #expect(original.disconnectCallCount == 0)
 
-        release.open()
+        await release.open()
         try await holder.value
         _ = try? await switchTask.value
     }
@@ -219,8 +184,8 @@ struct DatabaseSwitchLeaseOrderingTests {
     @Test("A lease that waited behind a switch which left the driver dead is refused")
     func leaseQueuedBehindADeadDriverIsRefused() async throws {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
-        let release = Latch()
+        defer { cleanUp(connection) }
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let app = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
@@ -233,11 +198,11 @@ struct DatabaseSwitchLeaseOrderingTests {
                 driver.connection.database
             }
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
 
         DatabaseManager.shared.updateSession(connection.id) { $0.liveness = .unreachable(nil) }
-        release.open()
+        await release.open()
         try await holder.value
 
         await #expect {
@@ -251,20 +216,20 @@ struct DatabaseSwitchLeaseOrderingTests {
     @Test("A schema switch queued behind the driver runs on the driver installed when its turn comes")
     func schemaSwitchUsesTheDriverInstalledWhenItRuns() async throws {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
         let original = try #require(DatabaseManager.shared.driver(for: connection.id) as? MockDatabaseDriver)
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let schemaSwitch = Task { @MainActor in
             try await DatabaseManager.shared.switchSchema(to: "reporting", for: connection.id)
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
 
         let replacement = MockDatabaseDriver(connection: connection)
         DatabaseManager.shared.updateSession(connection.id) { $0.driver = replacement }
-        release.open()
+        await release.open()
         try await holder.value
         try await schemaSwitch.value
 
@@ -277,8 +242,8 @@ struct DatabaseSwitchLeaseOrderingTests {
     @Test("A switch queued behind the driver is dropped when the session it was asked on has gone")
     func queuedSwitchIsDroppedForAReplacedSession() async throws {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
-        let release = Latch()
+        defer { cleanUp(connection) }
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let switchTask = Task { @MainActor in
@@ -287,7 +252,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         let schemaTask = Task { @MainActor in
             try await DatabaseManager.shared.switchSchema(to: "reporting", for: connection.id)
         }
-        await waitForQueuedCallers(2, on: connection.id)
+        try await waitForQueuedCallers(2, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 2)
 
         DatabaseManager.shared.removeSession(for: connection.id)
@@ -297,7 +262,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         session.browseDatabase = "app"
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
-        release.open()
+        await release.open()
         try await holder.value
 
         await #expect(throws: CancellationError.self) {
@@ -317,8 +282,8 @@ struct DatabaseSwitchLeaseOrderingTests {
     @Test("A lease queued when its session ends never runs on the session opened after it")
     func queuedLeaseNeverRunsOnAReopenedSession() async throws {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
-        let release = Latch()
+        defer { cleanUp(connection) }
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let ran = LeaseRecord()
@@ -332,7 +297,7 @@ struct DatabaseSwitchLeaseOrderingTests {
                 await MainActor.run { ran.didRun = true }
             }
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
 
         DatabaseManager.shared.finalizeConnectionFailure(for: connection.id, cancelled: false)
@@ -341,7 +306,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         session.browseDatabase = "app"
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
-        release.open()
+        await release.open()
         try await holder.value
 
         await #expect(throws: CancellationError.self) {
@@ -360,7 +325,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         let (connection, pooled) = makeTableReadSession(type: .postgresql)
         defer { cleanUpTableRead(connection.id) }
         let app = appScope(connection)
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, database: "app", until: release)
 
         let read = Task { @MainActor in
@@ -368,11 +333,11 @@ struct DatabaseSwitchLeaseOrderingTests {
                 driver === pooled
             }
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
 
         DatabaseManager.shared.updateSession(connection.id) { $0.browseDatabase = "orders" }
-        release.open()
+        await release.open()
         try await holder.value
 
         #expect(try await read.value)
@@ -385,7 +350,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         let (connection, _) = makeTableReadSession(type: .postgresql)
         defer { cleanUpTableRead(connection.id) }
         let app = appScope(connection)
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, database: "app", until: release)
 
         let ran = LeaseRecord()
@@ -398,11 +363,11 @@ struct DatabaseSwitchLeaseOrderingTests {
                 await MainActor.run { ran.didRun = true }
             }
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
 
         DatabaseManager.shared.updateSession(connection.id) { $0.browseDatabase = "orders" }
-        release.open()
+        await release.open()
         try await holder.value
 
         await #expect {
@@ -419,11 +384,11 @@ struct DatabaseSwitchLeaseOrderingTests {
         let (connection, pooled) = makeTableReadSession(type: .postgresql)
         defer { cleanUpTableRead(connection.id) }
         let app = appScope(connection)
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, database: "app", until: release)
 
         let running = LeaseRecord()
-        let finish = Latch()
+        let finish = AsyncGate()
         let read = Task { @MainActor in
             try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead(DriverLeaseOwner())) { driver in
                 await MainActor.run { running.didRun = true }
@@ -431,11 +396,11 @@ struct DatabaseSwitchLeaseOrderingTests {
                 return driver === pooled
             }
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         DatabaseManager.shared.updateSession(connection.id) { $0.browseDatabase = "orders" }
-        release.open()
+        await release.open()
         try await holder.value
-        await waitUntil { running.didRun }
+        try await waitUntil { running.didRun }
         #expect(running.didRun)
 
         let probe = LeaseRecord()
@@ -446,11 +411,11 @@ struct DatabaseSwitchLeaseOrderingTests {
                 probe.didRun = true
             }
         }
-        await waitUntil { probe.didRun }
+        try await waitUntil { probe.didRun }
 
         #expect(probe.didRun)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 0)
-        finish.open()
+        await finish.open()
         try await prober.value
         #expect(try await read.value)
     }
@@ -462,7 +427,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         let (connection, _) = makeTableReadSession(type: .postgresql)
         defer { cleanUpTableRead(connection.id) }
         let app = appScope(connection)
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, database: "app", until: release)
 
         let ran = LeaseRecord()
@@ -471,14 +436,14 @@ struct DatabaseSwitchLeaseOrderingTests {
                 await MainActor.run { ran.didRun = true }
             }
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
 
         DatabaseManager.shared.updateSession(connection.id) { session in
             session.browseDatabase = "orders"
             session.liveness = .unreachable(nil)
         }
-        release.open()
+        await release.open()
         try await holder.value
 
         await #expect {
@@ -492,14 +457,14 @@ struct DatabaseSwitchLeaseOrderingTests {
 
     @Test("A table read left behind by a switch on an engine that cannot pool names its database")
     func tableReadWithNowhereToGoNamesItsDatabase() async throws {
-        registerTypeIfNeeded(Self.unpooledTypeId, pools: false)
-        let (connection, _) = makeTableReadSession(type: DatabaseType(rawValue: Self.unpooledTypeId))
+        let unpooledTypeId = registerType(pools: false)
+        let (connection, _) = makeTableReadSession(type: DatabaseType(rawValue: unpooledTypeId))
         defer {
             cleanUpTableRead(connection.id)
-            PluginMetadataRegistry.shared.unregister(typeId: Self.unpooledTypeId)
+            PluginMetadataRegistry.shared.unregister(typeId: unpooledTypeId)
         }
         let app = appScope(connection)
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let ran = LeaseRecord()
@@ -508,11 +473,11 @@ struct DatabaseSwitchLeaseOrderingTests {
                 await MainActor.run { ran.didRun = true }
             }
         }
-        await waitForQueuedCallers(1, on: connection.id)
+        try await waitForQueuedCallers(1, on: connection.id)
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
 
         DatabaseManager.shared.updateSession(connection.id) { $0.browseDatabase = "orders" }
-        release.open()
+        await release.open()
         try await holder.value
 
         await #expect {

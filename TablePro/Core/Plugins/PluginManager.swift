@@ -184,11 +184,14 @@ final class PluginManager: ObservableObject {
     // Until `loadPlugins()` runs, no load is in flight and a wait could only time out.
     private var hasStartedInitialLoad = false
 
+    private let initialLoadClock: any Clock<Duration>
+
     func waitForInitialLoad() async {
         guard hasStartedInitialLoad, !hasFinishedInitialLoad else { return }
         let waiterId = UUID()
+        let clock = initialLoadClock
         let timeoutTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(10))
+            try? await clock.sleep(for: .seconds(10))
             self?.resumeWaiter(id: waiterId)
         }
         defer { timeoutTask.cancel() }
@@ -246,10 +249,12 @@ final class PluginManager: ObservableObject {
     init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
-        userPluginsDir: URL = PluginManager.defaultUserPluginsDir()
+        userPluginsDir: URL = PluginManager.defaultUserPluginsDir(),
+        initialLoadClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
+        self.initialLoadClock = initialLoadClock
         Self.clearLegacyNeedsRestartKey(in: userDefaults)
     }
 

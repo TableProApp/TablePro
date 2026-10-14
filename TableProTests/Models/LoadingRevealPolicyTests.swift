@@ -1,89 +1,84 @@
+// The dwell half of the policy, which is the half that gets left out.
 //
-//  LoadingRevealPolicyTests.swift
-//  TableProTests
-//
-//  The dwell half of the policy, which is the half that gets left out.
-//
-//  A grace on its own trades one flicker for another: work that ends just past
-//  the grace shows a spinner for the handful of milliseconds between the two,
-//  which is worse than either showing it throughout or never showing it.
-//
+// A grace on its own trades one flicker for another: work that ends just past
+// the grace shows a spinner for the handful of milliseconds between the two,
+// which is worse than either showing it throughout or never showing it.
 
 @testable import TablePro
-import XCTest
+import Testing
 
-final class LoadingRevealPolicyTests: XCTestCase {
-    func testAnIndicatorRevealedAMomentAgoHasToStay() {
+struct LoadingRevealPolicyTests {
+    @Test func anIndicatorRevealedAMomentAgoHasToStay() {
         let revealedAt = ContinuousClock.now
         let remaining = LoadingRevealPolicy.remainingDwell(
             revealedAt: revealedAt,
             now: revealedAt.advanced(by: .milliseconds(10))
         )
 
-        XCTAssertEqual(remaining, .milliseconds(490), "10ms of spinner is a flash, not a report")
+        #expect(remaining == .milliseconds(490), "10ms of spinner is a flash, not a report")
     }
 
-    func testAnIndicatorThatHasServedItsDwellMayGoAtOnce() {
+    @Test func anIndicatorThatHasServedItsDwellMayGoAtOnce() {
         let revealedAt = ContinuousClock.now
         let remaining = LoadingRevealPolicy.remainingDwell(
             revealedAt: revealedAt,
             now: revealedAt.advanced(by: .seconds(4))
         )
 
-        XCTAssertEqual(remaining, .zero, "anything slow enough to show one has already earned it")
+        #expect(remaining == .zero, "anything slow enough to show one has already earned it")
     }
 
-    func testTheDwellEndsExactlyAtItsBoundary() {
+    @Test func theDwellEndsExactlyAtItsBoundary() {
         let revealedAt = ContinuousClock.now
         let remaining = LoadingRevealPolicy.remainingDwell(
             revealedAt: revealedAt,
             now: revealedAt.advanced(by: LoadingRevealPolicy.minimumDwell)
         )
 
-        XCTAssertEqual(remaining, .zero)
+        #expect(remaining == .zero)
     }
 
     /// A clock that has not moved is what a same-run-loop-turn reveal and hide look like, and the
     /// answer has to be the whole dwell rather than zero.
-    func testAnIndicatorRevealedAndFinishedInTheSameInstantStaysForTheWholeDwell() {
+    @Test func anIndicatorRevealedAndFinishedInTheSameInstantStaysForTheWholeDwell() {
         let revealedAt = ContinuousClock.now
         let remaining = LoadingRevealPolicy.remainingDwell(revealedAt: revealedAt, now: revealedAt)
 
-        XCTAssertEqual(remaining, LoadingRevealPolicy.minimumDwell)
+        #expect(remaining == LoadingRevealPolicy.minimumDwell)
     }
 
-    func testTheGraceStaysUnderTheSecondAtWhichAWaitStopsFeelingLikeOneGesture() {
-        XCTAssertLessThan(LoadingRevealPolicy.grace, .seconds(1))
+    @Test func theGraceStaysUnderTheSecondAtWhichAWaitStopsFeelingLikeOneGesture() {
+        #expect(LoadingRevealPolicy.grace < .seconds(1))
     }
 
-    func testWorkNobodySawStartWaitsTheWholeGrace() {
-        XCTAssertEqual(LoadingRevealPolicy.remainingGrace(activeSince: nil, now: .now), LoadingRevealPolicy.grace)
+    @Test func workNobodySawStartWaitsTheWholeGrace() {
+        #expect(LoadingRevealPolicy.remainingGrace(activeSince: nil, now: .now) == LoadingRevealPolicy.grace)
     }
 
-    func testTheGraceCountsFromWhenTheWorkStarted() {
+    @Test func theGraceCountsFromWhenTheWorkStarted() {
         let started = ContinuousClock.now
         let remaining = LoadingRevealPolicy.remainingGrace(
             activeSince: started,
             now: started.advanced(by: .milliseconds(200))
         )
 
-        XCTAssertEqual(remaining, .milliseconds(300))
+        #expect(remaining == .milliseconds(300))
     }
 
-    func testWorkAlreadyPastTheGraceRevealsAtOnce() {
+    @Test func workAlreadyPastTheGraceRevealsAtOnce() {
         let started = ContinuousClock.now
         let remaining = LoadingRevealPolicy.remainingGrace(
             activeSince: started,
             now: started.advanced(by: .seconds(2))
         )
 
-        XCTAssertEqual(remaining, .zero)
+        #expect(remaining == .zero)
     }
 
-    func testAStartAfterNowWaitsTheWholeGrace() {
+    @Test func aStartAfterNowWaitsTheWholeGrace() {
         let now = ContinuousClock.now
         let remaining = LoadingRevealPolicy.remainingGrace(activeSince: now.advanced(by: .seconds(1)), now: now)
 
-        XCTAssertEqual(remaining, LoadingRevealPolicy.grace)
+        #expect(remaining == LoadingRevealPolicy.grace)
     }
 }

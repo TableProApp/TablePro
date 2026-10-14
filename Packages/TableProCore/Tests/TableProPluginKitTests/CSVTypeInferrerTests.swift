@@ -1,77 +1,72 @@
+import Foundation
 @testable import TableProPluginKit
-import XCTest
+import Testing
 
-final class CSVTypeInferrerTests: XCTestCase {
-    func testInfersInteger() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["1", "-42", "0"]), .integer)
+struct CSVTypeInferrerTests {
+    @Test func testInfersInteger() {
+        #expect(CSVTypeInferrer.infer(column: ["1", "-42", "0"]) == .integer)
     }
 
-    func testInfersRealWhenNotEveryValueIsWhole() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["1", "2.5", "-0.25"]), .real)
+    @Test func testInfersRealWhenNotEveryValueIsWhole() {
+        #expect(CSVTypeInferrer.infer(column: ["1", "2.5", "-0.25"]) == .real)
     }
 
-    func testInfersBooleanFromEitherSpelling() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["true", "FALSE", "Yes", "n", "T"]), .boolean)
+    @Test func testInfersBooleanFromEitherSpelling() {
+        #expect(CSVTypeInferrer.infer(column: ["true", "FALSE", "Yes", "n", "T"]) == .boolean)
     }
 
-    func testInfersDateFromInternetDateTime() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2026-08-20T12:34:56Z"]), .date)
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2026-08-20T12:34:56+02:00"]), .date)
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2026-08-20T12:34:56-0700"]), .date)
+    @Test func testInfersDateFromInternetDateTime() {
+        #expect(CSVTypeInferrer.infer(column: ["2026-08-20T12:34:56Z"]) == .date)
+        #expect(CSVTypeInferrer.infer(column: ["2026-08-20T12:34:56+02:00"]) == .date)
+        #expect(CSVTypeInferrer.infer(column: ["2026-08-20T12:34:56-0700"]) == .date)
     }
 
-    func testInfersDateFromFractionalSeconds() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2026-08-20T12:34:56.123Z"]), .date)
+    @Test(arguments: ["2026-08-20T12:34:56.123Z", "2024-02-29"])
+    func testInfersDateFromFractionalSecondsAndLeapDay(_ value: String) {
+        #expect(CSVTypeInferrer.infer(column: [value]) == .date)
     }
 
-    func testInfersDateFromCalendarDay() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2026-08-20", "1999-01-01", "0001-01-01"]), .date)
+    @Test func testInfersDateFromCalendarDay() {
+        #expect(CSVTypeInferrer.infer(column: ["2026-08-20", "1999-01-01", "0001-01-01"]) == .date)
     }
 
-    func testInfersDateFromLeapDay() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2024-02-29"]), .date)
+    @Test func testInfersDateFromTheLenientFormsTheFormatterAccepts() {
+        #expect(CSVTypeInferrer.infer(column: ["  2026-08-20"]) == .date)
+        #expect(CSVTypeInferrer.infer(column: ["2026/08/20"]) == .date)
+        #expect(CSVTypeInferrer.infer(column: ["-0001-01-01"]) == .date)
+        #expect(CSVTypeInferrer.infer(column: ["2023-02-29"]) == .date)
     }
 
-    func testInfersDateFromTheLenientFormsTheFormatterAccepts() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["  2026-08-20"]), .date)
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2026/08/20"]), .date)
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["-0001-01-01"]), .date)
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2023-02-29"]), .date)
+    @Test func testRejectsImpossibleCalendarDay() {
+        #expect(CSVTypeInferrer.infer(column: ["2026-13-45"]) == .text)
     }
 
-    func testRejectsImpossibleCalendarDay() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2026-13-45"]), .text)
+    @Test func testRejectsBasicFormatDate() {
+        #expect(CSVTypeInferrer.infer(column: ["20260820"]) == .integer)
     }
 
-    func testRejectsBasicFormatDate() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["20260820"]), .integer)
+    @Test func testFallsBackToTextForMixedValues() {
+        #expect(CSVTypeInferrer.infer(column: ["2026-08-20", "not a date"]) == .text)
+        #expect(CSVTypeInferrer.infer(column: ["hello"]) == .text)
     }
 
-    func testFallsBackToTextForMixedValues() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["2026-08-20", "not a date"]), .text)
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["hello"]), .text)
+    @Test func testEmptyValuesAreSkippedAndAnEmptyColumnIsText() {
+        #expect(CSVTypeInferrer.infer(column: ["", "7", ""]) == .integer)
+        #expect(CSVTypeInferrer.infer(column: ["", ""]) == .text)
+        #expect(CSVTypeInferrer.infer(column: []) == .text)
     }
 
-    func testEmptyValuesAreSkippedAndAnEmptyColumnIsText() {
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["", "7", ""]), .integer)
-        XCTAssertEqual(CSVTypeInferrer.infer(column: ["", ""]), .text)
-        XCTAssertEqual(CSVTypeInferrer.infer(column: []), .text)
-    }
-
-    func testInferColumnsHandlesRaggedRows() {
+    @Test func testInferColumnsHandlesRaggedRows() {
         let rows = [
             ["1", "true", "2026-08-20"],
             ["2", "no"],
             ["3", "yes", "1999-01-01", "extra"]
         ]
-        XCTAssertEqual(
-            CSVTypeInferrer.inferColumns(rows: rows, columnCount: 3),
-            [.integer, .boolean, .date]
-        )
+        #expect(CSVTypeInferrer.inferColumns(rows: rows, columnCount: 3) == [.integer, .boolean, .date])
     }
 
-    func testOnlyTheFirstSampleSizeValuesAreRead() {
+    @Test func testOnlyTheFirstSampleSizeValuesAreRead() {
         let values = Array(repeating: "1", count: CSVTypeInferrer.sampleSize) + ["not a number"]
-        XCTAssertEqual(CSVTypeInferrer.infer(column: values), .integer)
+        #expect(CSVTypeInferrer.infer(column: values) == .integer)
     }
 }

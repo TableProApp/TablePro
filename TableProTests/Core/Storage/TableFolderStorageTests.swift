@@ -10,6 +10,8 @@ import Testing
 
 @MainActor
 struct TableFolderStorageTests {
+    private let pool = EphemeralDefaultsPool()
+
     private struct Harness {
         let storage: TableFolderStorage
         let metadata: SyncMetadataStorage
@@ -19,12 +21,8 @@ struct TableFolderStorageTests {
     }
 
     private func makeHarness() throws -> Harness {
-        let foldersSuite = "TableFolderStorageTests.folders.\(UUID().uuidString)"
-        let syncSuite = "TableFolderStorageTests.sync.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: foldersSuite))
-        let syncDefaults = try #require(UserDefaults(suiteName: syncSuite))
-        defaults.removePersistentDomain(forName: foldersSuite)
-        syncDefaults.removePersistentDomain(forName: syncSuite)
+        let defaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         let notifications = NotificationCenter()

@@ -1,26 +1,26 @@
 import Foundation
 @testable import TableProMCP
 import TableProMCPTestSupport
-import XCTest
+import Testing
 
-final class MCPProgressEmitterTests: XCTestCase {
-    func testEmitterWithoutATokenWritesNothing() async throws {
+struct MCPProgressEmitterTests {
+    @Test func testEmitterWithoutATokenWritesNothing() async throws {
         let sink = RecordingResponderSink()
         let emitter = MCPProgressEmitter(progressToken: nil, responder: MCPResponder(sink: sink, requestId: .number(1)))
 
         let hasToken = await emitter.hasProgressToken
-        XCTAssertFalse(hasToken)
+        #expect(!hasToken)
 
         await emitter.emit(progress: 0.5)
         await emitter.emit(progress: 1.0, total: 1.0, message: "done")
 
         let frames = await sink.sseFrames
         let heads = await sink.sseHeadCount
-        XCTAssertTrue(frames.isEmpty)
-        XCTAssertEqual(heads, 0)
+        #expect(frames.isEmpty)
+        #expect(heads == 0)
     }
 
-    func testEmitWritesAProgressNotificationThroughTheResponder() async throws {
+    @Test func testEmitWritesAProgressNotificationThroughTheResponder() async throws {
         let sink = RecordingResponderSink()
         let emitter = MCPProgressEmitter(
             progressToken: .string("progress-1"),
@@ -30,23 +30,23 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: 0.42)
 
         let heads = await sink.sseHeadCount
-        XCTAssertEqual(heads, 1)
+        #expect(heads == 1)
 
         let messages = try await sink.sseMessages()
-        XCTAssertEqual(messages.count, 1)
+        #expect(messages.count == 1)
 
         guard case .notification(let notification) = messages[0] else {
-            XCTFail("Expected a notification, got \(messages[0])")
+            Issue.record("Expected a notification, got \(messages[0])")
             return
         }
-        XCTAssertEqual(notification.method, "notifications/progress")
-        XCTAssertEqual(notification.params?["progressToken"]?.stringValue, "progress-1")
-        XCTAssertEqual(notification.params?["progress"]?.doubleValue, 0.42)
-        XCTAssertNil(notification.params?["total"])
-        XCTAssertNil(notification.params?["message"])
+        #expect(notification.method == "notifications/progress")
+        #expect(notification.params?["progressToken"]?.stringValue == "progress-1")
+        #expect(notification.params?["progress"]?.doubleValue == 0.42)
+        #expect(notification.params?["total"] == nil)
+        #expect(notification.params?["message"] == nil)
     }
 
-    func testAnIntegerProgressTokenIsEchoedAsAnInteger() async throws {
+    @Test func testAnIntegerProgressTokenIsEchoedAsAnInteger() async throws {
         let sink = RecordingResponderSink()
         let emitter = MCPProgressEmitter(
             progressToken: .number(17),
@@ -56,14 +56,14 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: 1)
 
         let messages = try await sink.sseMessages()
-        guard case .notification(let notification) = try XCTUnwrap(messages.first) else {
-            XCTFail("Expected a notification")
+        guard case .notification(let notification) = try #require(messages.first) else {
+            Issue.record("Expected a notification")
             return
         }
-        XCTAssertEqual(notification.params?["progressToken"]?.intValue, 17)
+        #expect(notification.params?["progressToken"]?.intValue == 17)
     }
 
-    func testTotalAndMessageAreCarriedWhenProvided() async throws {
+    @Test func testTotalAndMessageAreCarriedWhenProvided() async throws {
         let sink = RecordingResponderSink()
         let emitter = MCPProgressEmitter(
             progressToken: .string("token"),
@@ -73,16 +73,16 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: 3, total: 10, message: "reading rows")
 
         let messages = try await sink.sseMessages()
-        guard case .notification(let notification) = try XCTUnwrap(messages.first) else {
-            XCTFail("Expected a notification")
+        guard case .notification(let notification) = try #require(messages.first) else {
+            Issue.record("Expected a notification")
             return
         }
-        XCTAssertEqual(notification.params?["progress"]?.doubleValue, 3)
-        XCTAssertEqual(notification.params?["total"]?.doubleValue, 10)
-        XCTAssertEqual(notification.params?["message"]?.stringValue, "reading rows")
+        #expect(notification.params?["progress"]?.doubleValue == 3)
+        #expect(notification.params?["total"]?.doubleValue == 10)
+        #expect(notification.params?["message"]?.stringValue == "reading rows")
     }
 
-    func testAnEmptyMessageIsOmitted() async throws {
+    @Test func testAnEmptyMessageIsOmitted() async throws {
         let sink = RecordingResponderSink()
         let emitter = MCPProgressEmitter(
             progressToken: .string("token"),
@@ -92,14 +92,14 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: 1, total: nil, message: "")
 
         let messages = try await sink.sseMessages()
-        guard case .notification(let notification) = try XCTUnwrap(messages.first) else {
-            XCTFail("Expected a notification")
+        guard case .notification(let notification) = try #require(messages.first) else {
+            Issue.record("Expected a notification")
             return
         }
-        XCTAssertNil(notification.params?["message"])
+        #expect(notification.params?["message"] == nil)
     }
 
-    func testProgressThatDoesNotAdvanceIsDropped() async throws {
+    @Test func testProgressThatDoesNotAdvanceIsDropped() async throws {
         let sink = RecordingResponderSink()
         let emitter = MCPProgressEmitter(
             progressToken: .string("token"),
@@ -112,16 +112,16 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: 0.6)
 
         let messages = try await sink.sseMessages()
-        XCTAssertEqual(messages.count, 2)
+        #expect(messages.count == 2)
 
         let reported = messages.compactMap { message -> Double? in
             guard case .notification(let notification) = message else { return nil }
             return notification.params?["progress"]?.doubleValue
         }
-        XCTAssertEqual(reported, [0.5, 0.6])
+        #expect(reported == [0.5, 0.6])
     }
 
-    func testProgressThatIsNotFiniteIsDropped() async throws {
+    @Test func testProgressThatIsNotFiniteIsDropped() async throws {
         let sink = RecordingResponderSink()
         let emitter = MCPProgressEmitter(
             progressToken: .string("token"),
@@ -132,10 +132,10 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: .nan)
 
         let frames = await sink.sseFrames
-        XCTAssertTrue(frames.isEmpty)
+        #expect(frames.isEmpty)
     }
 
-    func testANonFiniteTotalIsOmitted() async throws {
+    @Test func testANonFiniteTotalIsOmitted() async throws {
         let sink = RecordingResponderSink()
         let emitter = MCPProgressEmitter(
             progressToken: .string("token"),
@@ -145,32 +145,32 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: 1, total: .infinity)
 
         let messages = try await sink.sseMessages()
-        guard case .notification(let notification) = try XCTUnwrap(messages.first) else {
-            XCTFail("Expected a notification")
+        guard case .notification(let notification) = try #require(messages.first) else {
+            Issue.record("Expected a notification")
             return
         }
-        XCTAssertNil(notification.params?["total"])
+        #expect(notification.params?["total"] == nil)
     }
 
-    func testTheEmitterTakesItsTokenFromTheRequestMeta() async throws {
+    @Test func testTheEmitterTakesItsTokenFromTheRequestMeta() async throws {
         let sink = RecordingResponderSink()
         let meta = MCPProtocolTestSupport.makeMeta(progressToken: .string("from-meta"))
         let emitter = MCPProgressEmitter(meta: meta, responder: MCPResponder(sink: sink, requestId: .number(1)))
 
         let hasToken = await emitter.hasProgressToken
-        XCTAssertTrue(hasToken)
+        #expect(hasToken)
 
         await emitter.emit(progress: 1)
 
         let messages = try await sink.sseMessages()
-        guard case .notification(let notification) = try XCTUnwrap(messages.first) else {
-            XCTFail("Expected a notification")
+        guard case .notification(let notification) = try #require(messages.first) else {
+            Issue.record("Expected a notification")
             return
         }
-        XCTAssertEqual(notification.params?["progressToken"]?.stringValue, "from-meta")
+        #expect(notification.params?["progressToken"]?.stringValue == "from-meta")
     }
 
-    func testARequestWithoutATokenInItsMetaEmitsNothing() async throws {
+    @Test func testARequestWithoutATokenInItsMetaEmitsNothing() async throws {
         let sink = RecordingResponderSink()
         let meta = MCPProtocolTestSupport.makeMeta()
         let emitter = MCPProgressEmitter(meta: meta, responder: MCPResponder(sink: sink, requestId: .number(1)))
@@ -178,10 +178,10 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: 1)
 
         let frames = await sink.sseFrames
-        XCTAssertTrue(frames.isEmpty)
+        #expect(frames.isEmpty)
     }
 
-    func testProgressIsNotEmittedAfterTheResponseIsComplete() async throws {
+    @Test func testProgressIsNotEmittedAfterTheResponseIsComplete() async throws {
         let sink = RecordingResponderSink()
         let responder = MCPResponder(sink: sink, requestId: .number(1))
         let emitter = MCPProgressEmitter(progressToken: .string("token"), responder: responder)
@@ -190,6 +190,6 @@ final class MCPProgressEmitterTests: XCTestCase {
         await emitter.emit(progress: 1)
 
         let frames = await sink.sseFrames
-        XCTAssertTrue(frames.isEmpty)
+        #expect(frames.isEmpty)
     }
 }

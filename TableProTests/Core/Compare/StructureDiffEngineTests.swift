@@ -4,11 +4,11 @@
 //
 
 import Foundation
-import XCTest
+import Testing
 
 @testable import TablePro
 
-final class StructureDiffEngineTests: XCTestCase {
+struct StructureDiffEngineTests {
     private func column(
         _ name: String,
         _ dataType: String = "int",
@@ -97,57 +97,63 @@ final class StructureDiffEngineTests: XCTestCase {
 
     // MARK: - Table presence
 
-    func testTableOnlyInSourceIsCreateAndDefaultsToSkip() {
+    @Test
+    func tableOnlyInSourceIsCreateAndDefaultsToSkip() {
         let engine = StructureDiffEngine()
         let report = engine.compare(
             source: [table("users", columns: [column("id")])],
             target: []
         )
 
-        XCTAssertEqual(report.results.count, 1)
-        XCTAssertEqual(report.results[0].status, .onlyInSource)
-        XCTAssertEqual(report.results[0].suggestedAction, .create)
+        #expect(report.results.count == 1)
+        #expect(report.results[0].status == .onlyInSource)
+        #expect(report.results[0].suggestedAction == .create)
     }
 
-    func testTableOnlyInTargetIsDrop() {
+    @Test
+    func tableOnlyInTargetIsDrop() {
         let engine = StructureDiffEngine()
         let report = engine.compare(
             source: [],
             target: [table("legacy", columns: [column("id")])]
         )
 
-        XCTAssertEqual(report.results[0].status, .onlyInTarget)
-        XCTAssertEqual(report.results[0].suggestedAction, .drop)
+        #expect(report.results[0].status == .onlyInTarget)
+        #expect(report.results[0].suggestedAction == .drop)
     }
 
-    func testIdenticalTablesReportIdentical() {
+    @Test
+    func identicalTablesReportIdentical() {
         let engine = StructureDiffEngine()
         let source = table("users", columns: [column("id"), column("name", "varchar(20)")])
         let target = table("users", columns: [column("id"), column("name", "varchar(20)")])
 
         let result = engine.compareTable(source: source, target: target)
 
-        XCTAssertEqual(result.status, .identical)
-        XCTAssertTrue(result.changes.isEmpty)
+        #expect(result.status == .identical)
+        #expect(result.changes.isEmpty)
     }
 
     // MARK: - Column changes, direction is target becomes source
 
-    func testMissingColumnInTargetProducesAddColumn() {
+    @Test
+    func missingColumnInTargetProducesAddColumn() {
         let engine = StructureDiffEngine()
         let result = engine.compareTable(
             source: table("users", columns: [column("id"), column("email", "varchar(255)")]),
             target: table("users", columns: [column("id")])
         )
 
-        XCTAssertEqual(result.status, .differs)
+        #expect(result.status == .differs)
         guard case .addColumn(let added) = result.changes.first else {
-            return XCTFail("Expected addColumn, got \(result.changes)")
+            Issue.record("Expected addColumn, got \(result.changes)")
+            return
         }
-        XCTAssertEqual(added.name, "email")
+        #expect(added.name == "email")
     }
 
-    func testExtraColumnInTargetProducesDeleteColumn() {
+    @Test
+    func extraColumnInTargetProducesDeleteColumn() {
         let engine = StructureDiffEngine()
         let result = engine.compareTable(
             source: table("users", columns: [column("id")]),
@@ -155,12 +161,14 @@ final class StructureDiffEngineTests: XCTestCase {
         )
 
         guard case .deleteColumn(let removed) = result.changes.first else {
-            return XCTFail("Expected deleteColumn, got \(result.changes)")
+            Issue.record("Expected deleteColumn, got \(result.changes)")
+            return
         }
-        XCTAssertEqual(removed.name, "obsolete")
+        #expect(removed.name == "obsolete")
     }
 
-    func testModifyColumnCarriesTargetAsOldAndSourceAsNew() {
+    @Test
+    func modifyColumnCarriesTargetAsOldAndSourceAsNew() {
         let engine = StructureDiffEngine()
         let result = engine.compareTable(
             source: table("users", columns: [column("id", "bigint")]),
@@ -168,35 +176,39 @@ final class StructureDiffEngineTests: XCTestCase {
         )
 
         guard case .modifyColumn(let old, let new) = result.changes.first else {
-            return XCTFail("Expected modifyColumn, got \(result.changes)")
+            Issue.record("Expected modifyColumn, got \(result.changes)")
+            return
         }
-        XCTAssertEqual(old.dataType, "int", "old must be the target's current state")
-        XCTAssertEqual(new.dataType, "bigint", "new must be the source's desired state")
+        #expect(old.dataType == "int", "old must be the target's current state")
+        #expect(new.dataType == "bigint", "new must be the source's desired state")
     }
 
-    func testNullabilityChangeIsDetected() {
+    @Test
+    func nullabilityChangeIsDetected() {
         let engine = StructureDiffEngine()
         let result = engine.compareTable(
             source: table("users", columns: [column("id", nullable: false)]),
             target: table("users", columns: [column("id", nullable: true)])
         )
 
-        XCTAssertEqual(result.status, .differs)
-        XCTAssertEqual(result.changes.count, 1)
+        #expect(result.status == .differs)
+        #expect(result.changes.count == 1)
     }
 
     // MARK: - Ignore options each kill a named false positive
 
-    func testIdentifierCaseOnlyDifferenceIsIgnoredByDefault() {
+    @Test
+    func identifierCaseOnlyDifferenceIsIgnoredByDefault() {
         let result = StructureDiffEngine().compareTable(
             source: table("Users", columns: [column("ID")]),
             target: table("users", columns: [column("id")])
         )
 
-        XCTAssertEqual(result.status, .identical)
+        #expect(result.status == .identical)
     }
 
-    func testIdentifierCaseDifferenceIsReportedWhenOptionOff() {
+    @Test
+    func identifierCaseDifferenceIsReportedWhenOptionOff() {
         var options = StructureCompareOptions()
         options.ignoreIdentifierCase = false
         let result = StructureDiffEngine(options: options).compareTable(
@@ -204,109 +216,113 @@ final class StructureDiffEngineTests: XCTestCase {
             target: table("users", columns: [column("id")])
         )
 
-        XCTAssertEqual(result.status, .differs)
+        #expect(result.status == .differs)
     }
 
-    func testAutoIncrementSeedOnlyDifferenceIsIgnoredByDefault() {
+    @Test
+    func autoIncrementSeedOnlyDifferenceIsIgnoredByDefault() {
         let result = StructureDiffEngine().compareTable(
             source: table("users", columns: [column("id", extra: "auto_increment=1522")]),
             target: table("users", columns: [column("id", extra: "auto_increment=184")])
         )
 
-        XCTAssertEqual(result.status, .identical, "AUTO_INCREMENT drift must not be a difference")
+        #expect(result.status == .identical, "AUTO_INCREMENT drift must not be a difference")
     }
 
-    func testWhitespaceOnlyDefaultDifferenceIsIgnoredByDefault() {
+    @Test
+    func whitespaceOnlyDefaultDifferenceIsIgnoredByDefault() {
         let result = StructureDiffEngine().compareTable(
             source: table("users", columns: [column("flag", defaultValue: "0")]),
             target: table("users", columns: [column("flag", defaultValue: "  0  ")])
         )
 
-        XCTAssertEqual(result.status, .identical)
+        #expect(result.status == .identical)
     }
 
-    func testNullDefaultOnANullableColumnMatchesNoDefault() {
+    @Test
+    func nullDefaultOnANullableColumnMatchesNoDefault() {
         let result = StructureDiffEngine().compareTable(
             source: table("users", columns: [column("nickname", defaultValue: "NULL")]),
             target: table("users", columns: [column("nickname")])
         )
 
-        XCTAssertEqual(result.status, .identical)
+        #expect(result.status == .identical)
     }
 
-    func testNullDefaultOnANotNullColumnIsStillADifference() {
+    @Test
+    func nullDefaultOnANotNullColumnIsStillADifference() {
         let result = StructureDiffEngine().compareTable(
             source: table("users", columns: [column("nickname", nullable: false, defaultValue: "NULL")]),
             target: table("users", columns: [column("nickname", nullable: false)])
         )
 
-        XCTAssertNotEqual(result.status, .identical)
+        #expect(result.status != .identical)
     }
 
-    func testCollationOnlyDifferenceIsIgnoredByDefaultAndReportedWhenOptionOff() {
+    @Test
+    func collationOnlyDifferenceIsIgnoredByDefaultAndReportedWhenOptionOff() {
         let source = table("users", columns: [column("name", "varchar(20)", collation: "utf8mb4_general_ci")])
         let target = table("users", columns: [column("name", "varchar(20)", collation: "utf8mb4_unicode_ci")])
 
-        XCTAssertEqual(StructureDiffEngine().compareTable(source: source, target: target).status, .identical)
+        #expect(StructureDiffEngine().compareTable(source: source, target: target).status == .identical)
 
         var options = StructureCompareOptions()
         options.ignoreCollationAndCharset = false
-        XCTAssertEqual(
-            StructureDiffEngine(options: options).compareTable(source: source, target: target).status,
-            .differs
-        )
+        #expect(StructureDiffEngine(options: options).compareTable(source: source, target: target).status == .differs)
     }
 
-    func testCommentOnlyDifferenceIsIgnoredByDefaultAndReportedWhenOptionOff() {
+    @Test
+    func commentOnlyDifferenceIsIgnoredByDefaultAndReportedWhenOptionOff() {
         let source = table("users", columns: [column("id", comment: "primary id")])
         let target = table("users", columns: [column("id", comment: nil)])
 
-        XCTAssertEqual(StructureDiffEngine().compareTable(source: source, target: target).status, .identical)
+        #expect(StructureDiffEngine().compareTable(source: source, target: target).status == .identical)
 
         var options = StructureCompareOptions()
         options.ignoreCommentsAndOwners = false
-        XCTAssertEqual(
-            StructureDiffEngine(options: options).compareTable(source: source, target: target).status,
-            .differs
-        )
+        #expect(StructureDiffEngine(options: options).compareTable(source: source, target: target).status == .differs)
     }
 
-    func testColumnOrderIsIgnoredByDefaultAndNotedWhenOptionOff() {
+    @Test
+    func columnOrderIsIgnoredByDefaultAndNotedWhenOptionOff() {
         let source = table("users", columns: [column("a"), column("b")])
         let target = table("users", columns: [column("b"), column("a")])
 
-        XCTAssertEqual(StructureDiffEngine().compareTable(source: source, target: target).status, .identical)
+        #expect(StructureDiffEngine().compareTable(source: source, target: target).status == .identical)
 
         var options = StructureCompareOptions()
         options.ignoreColumnOrder = false
         let result = StructureDiffEngine(options: options).compareTable(source: source, target: target)
-        XCTAssertEqual(result.status, .differs)
-        XCTAssertTrue(result.changes.isEmpty, "reordering emits no DDL")
-        XCTAssertEqual(result.notes.count, 1)
+        #expect(result.status == .differs)
+        #expect(result.changes.isEmpty, "reordering emits no DDL")
+        #expect(result.notes.count == 1)
     }
 
     // MARK: - Name-only differences never mark an object changed
 
-    func testIndexMatchedOnStructureDespiteGeneratedNameDifference() {
+    @Test
+    func indexMatchedOnStructureDespiteGeneratedNameDifference() {
         let result = StructureDiffEngine().compareTable(
             source: table("users", columns: [column("email")], indexes: [index("idx_a1b2", columns: ["email"])]),
             target: table("users", columns: [column("email")], indexes: [index("idx_c3d4", columns: ["email"])])
         )
 
-        XCTAssertTrue(result.changes.isEmpty, "a name-only index difference must emit no DDL")
-        XCTAssertEqual(result.notes.count, 1)
+        #expect(result.changes.isEmpty, "a name-only index difference must emit no DDL")
+        #expect(result.notes.count == 1)
     }
 
-    func testIndexColumnDifferenceIsARealChange() {
+    @Test
+    func indexColumnDifferenceIsARealChange() {
         let result = StructureDiffEngine().compareTable(
             source: table("users", columns: [column("a"), column("b")], indexes: [index("i", columns: ["a", "b"])]),
             target: table("users", columns: [column("a"), column("b")], indexes: [index("i", columns: ["a"])])
         )
 
-        XCTAssertEqual(result.changes.count, 2, "expected one add and one delete")
+        #expect(result.changes.count == 2, "expected one add and one delete")
     }
 
-    func testForeignKeyMatchedOnStructureDespiteNameDifference() {
+    @Test
+    func foreignKeyMatchedOnStructureDespiteNameDifference() {
         let source = table(
             "orders",
             columns: [column("user_id")],
@@ -320,13 +336,14 @@ final class StructureDiffEngineTests: XCTestCase {
 
         let result = StructureDiffEngine().compareTable(source: source, target: target)
 
-        XCTAssertTrue(result.changes.isEmpty)
-        XCTAssertEqual(result.notes.count, 1)
+        #expect(result.changes.isEmpty)
+        #expect(result.notes.count == 1)
     }
 
     // MARK: - Primary key
 
-    func testPrimaryKeyDifferenceProducesSingleModifyPrimaryKey() {
+    @Test
+    func primaryKeyDifferenceProducesSingleModifyPrimaryKey() {
         let source = table("users", columns: [column("id", primaryKey: true), column("tenant", primaryKey: true)])
         let target = table("users", columns: [column("id", primaryKey: true), column("tenant")])
 
@@ -336,15 +353,17 @@ final class StructureDiffEngineTests: XCTestCase {
             if case .modifyPrimaryKey = $0 { return true }
             return false
         }
-        XCTAssertEqual(primaryKeyChanges.count, 1)
+        #expect(primaryKeyChanges.count == 1)
         guard case .modifyPrimaryKey(let old, let new) = primaryKeyChanges[0] else {
-            return XCTFail("Expected modifyPrimaryKey")
+            Issue.record("Expected modifyPrimaryKey")
+            return
         }
-        XCTAssertEqual(old, ["id"])
-        XCTAssertEqual(new, ["id", "tenant"])
+        #expect(old == ["id"])
+        #expect(new == ["id", "tenant"])
     }
 
-    func testPrimaryKeyMembershipAloneDoesNotAlsoEmitModifyColumn() {
+    @Test
+    func primaryKeyMembershipAloneDoesNotAlsoEmitModifyColumn() {
         let source = table("users", columns: [column("id", primaryKey: true)])
         let target = table("users", columns: [column("id", primaryKey: false)])
 
@@ -354,12 +373,13 @@ final class StructureDiffEngineTests: XCTestCase {
             if case .modifyColumn = $0 { return true }
             return false
         }
-        XCTAssertTrue(columnChanges.isEmpty, "primary key membership is reported once, via modifyPrimaryKey")
+        #expect(columnChanges.isEmpty, "primary key membership is reported once, via modifyPrimaryKey")
     }
 
     // MARK: - Symmetry
 
-    func testComparisonIsSymmetricInTheObjectsItReports() {
+    @Test
+    func comparisonIsSymmetricInTheObjectsItReports() {
         let engine = StructureDiffEngine()
         let left = [table("a", columns: [column("id")]), table("b", columns: [column("id")])]
         let right = [table("b", columns: [column("id")]), table("c", columns: [column("id")])]
@@ -367,8 +387,8 @@ final class StructureDiffEngineTests: XCTestCase {
         let forward = engine.compare(source: left, target: right)
         let backward = engine.compare(source: right, target: left)
 
-        XCTAssertEqual(forward.count(of: .onlyInSource), backward.count(of: .onlyInTarget))
-        XCTAssertEqual(forward.count(of: .onlyInTarget), backward.count(of: .onlyInSource))
-        XCTAssertEqual(forward.count(of: .identical), backward.count(of: .identical))
+        #expect(forward.count(of: .onlyInSource) == backward.count(of: .onlyInTarget))
+        #expect(forward.count(of: .onlyInTarget) == backward.count(of: .onlyInSource))
+        #expect(forward.count(of: .identical) == backward.count(of: .identical))
     }
 }

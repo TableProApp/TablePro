@@ -24,7 +24,7 @@ final class TableChangeReloadUITests: UITestCase {
         XCTAssertTrue(openInNewTab.waitToExist(timeout: 15), "The object browser must offer Open in New Tab")
         openInNewTab.click()
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { self.tabsTitled("document", in: window).count == 2 },
+            waitForPredicate(timeout: 20) { self.editorTabs(titled: "document", in: window).count == 2 },
             "Open in New Tab must add a second tab on the same table"
         )
         XCTAssertTrue(
@@ -44,7 +44,7 @@ final class TableChangeReloadUITests: UITestCase {
             "Save must write the edit to the file"
         )
 
-        let firstTab = tabsTitled("document", in: window).element(boundBy: 0)
+        let firstTab = editorTabs(titled: "document", in: window).element(boundBy: 0)
         XCTAssertTrue(firstTab.waitToExist(timeout: 10), "The first tab must still be in the strip")
         clickAtCenter(firstTab)
         XCTAssertTrue(

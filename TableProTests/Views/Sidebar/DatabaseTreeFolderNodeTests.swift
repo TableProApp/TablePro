@@ -1,8 +1,3 @@
-//
-//  DatabaseTreeFolderNodeTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -75,9 +70,8 @@ struct DatabaseTreeFolderNodeTests {
 
     @Test("A folder the user closed stays closed after the window state is read back")
     func collapsedFoldersPersist() throws {
-        let suite = "DatabaseTreeFolderNodeTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let connectionId = UUID()
 
         let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)

@@ -22,7 +22,6 @@ private final class NoopRowIdentityPersister: ColumnLayoutPersisting {
 /// different row from then on. Measured: after `removeRows(at: [1])` the view at display row 1 still
 /// carried 2 and an insert left two views both claiming 0, which sent a double-click to the wrong
 /// row and had an accessibility cell speak one row's value under another row's number.
-@Suite("Data grid row identity", .serialized)
 @MainActor
 struct DataGridRowIdentityTests {
     private struct Grid {

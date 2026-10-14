@@ -44,13 +44,13 @@ struct JSONRowFilterTests {
         Issue.record("Whitespace should read as no filter")
     }
 
-    @Test("A key match keeps the key")
-    func matchesKeys() throws {
+    @Test("A key match keeps the key, and slashes make the query a regular expression", arguments: ["length", "/^len/"])
+    func matchesKeys(_ query: String) throws {
         let root = makeRoot()
         let visible = JSONRowFilter.visiblePaths(
             root: root,
             fetchedForeignKeys: [:],
-            matcher: try matcher("length")
+            matcher: try matcher(query)
         )
         #expect(visible.contains(try path(of: "length", in: root)))
         #expect(visible.contains(try path(of: "title", in: root)) == false)
@@ -77,18 +77,6 @@ struct JSONRowFilterTests {
         )
         #expect(visible.contains(root.path))
         #expect(visible.contains(try path(of: "special_features", in: root)))
-        #expect(visible.contains(try path(of: "title", in: root)) == false)
-    }
-
-    @Test("Slashes make the query a regular expression")
-    func readsRegex() throws {
-        let root = makeRoot()
-        let visible = JSONRowFilter.visiblePaths(
-            root: root,
-            fetchedForeignKeys: [:],
-            matcher: try matcher("/^len/")
-        )
-        #expect(visible.contains(try path(of: "length", in: root)))
         #expect(visible.contains(try path(of: "title", in: root)) == false)
     }
 

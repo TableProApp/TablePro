@@ -211,7 +211,6 @@ private func withTransportlessSession<T>(_ body: (OpaquePointer) throws -> T) th
     return try body(session)
 }
 
-@Suite("AgentAuthenticator failure reasons", .serialized)
 struct AgentAuthenticatorFailureTests {
     @Test("A socket path nothing is listening on reports the agent as unreachable (#2583)")
     func missingSocketReportsUnavailable() throws {

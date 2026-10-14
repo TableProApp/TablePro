@@ -4,12 +4,12 @@
 //
 
 import Foundation
-import XCTest
+import Testing
 
 @testable import TablePro
 import TableProPluginKit
 
-final class StructureChangeGuardTests: XCTestCase {
+struct StructureChangeGuardTests {
     private func column(
         _ name: String,
         _ dataType: String = "int",
@@ -63,70 +63,73 @@ final class StructureChangeGuardTests: XCTestCase {
 
     // MARK: - Alter
 
-    func testAnAlterWhoseChangesStillMatchIsAllowed() {
+    @Test
+    func anAlterWhoseChangesStillMatchIsAllowed() {
         let result = table(changes: [.addColumn(column("total"))])
 
-        XCTAssertNil(
-            StructureChangeGuard.refusal(
+        #expect(StructureChangeGuard.refusal(
                 expected: inputs([result], action: .alter),
                 actual: inputs([result], action: .alter)
-            )
-        )
+            ) == nil)
     }
 
-    func testAnAlterWhoseChangeListMovedIsRefused() {
+    @Test
+    func anAlterWhoseChangeListMovedIsRefused() {
         let expected = inputs([table(changes: [.addColumn(column("total"))])], action: .alter)
         let actual = inputs([table(changes: [.addColumn(column("total", "decimal(10,2)"))])], action: .alter)
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
     // MARK: - Create
 
     /// `SchemaSyncScriptBuilder` renders the snapshot raw, so the guard has to compare it raw. Two
     /// tables the comparison calls identical under its own options still produce different DDL.
-    func testACreateWhoseSnapshotDiffersOnlyByCollationIsRefused() {
+    @Test
+    func aCreateWhoseSnapshotDiffersOnlyByCollationIsRefused() {
         let result = table(status: .onlyInSource)
         let expected = inputs([result], action: .create, snapshot: snapshot(columns: [column("id")]))
         let actual = inputs(
             [result], action: .create, snapshot: snapshot(columns: [column("id")], collation: "utf8mb4_bin")
         )
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
-    func testACreateWhoseSnapshotDiffersOnlyByAColumnCommentIsRefused() {
+    @Test
+    func aCreateWhoseSnapshotDiffersOnlyByAColumnCommentIsRefused() {
         let result = table(status: .onlyInSource)
         let expected = inputs([result], action: .create, snapshot: snapshot(columns: [column("id")]))
         let actual = inputs(
             [result], action: .create, snapshot: snapshot(columns: [column("id", comment: "the key")])
         )
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
-    func testACreateWhoseSourceTableIsGoneIsRefused() {
+    @Test
+    func aCreateWhoseSourceTableIsGoneIsRefused() {
         let result = table(status: .onlyInSource)
         let expected = inputs([result], action: .create, snapshot: snapshot(columns: [column("id")]))
 
-        XCTAssertNotNil(
-            StructureChangeGuard.refusal(expected: expected, actual: inputs([result], action: .create))
-        )
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: inputs([result], action: .create)) != nil)
     }
 
     // MARK: - Drop
 
-    func testADropOfATableThatCameBackIsRefused() {
+    @Test
+    func aDropOfATableThatCameBackIsRefused() {
         let expected = inputs([table(status: .onlyInTarget)], action: .drop)
         let actual = inputs([table(status: .differs)], action: .drop)
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
-    func testADropOfATableThatIsNoLongerInTheReportIsRefused() {
+    @Test
+    func aDropOfATableThatIsNoLongerInTheReportIsRefused() {
         let expected = inputs([table(status: .onlyInTarget)], action: .drop)
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: [:]))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: [:]) != nil)
     }
 
     // MARK: - Source-defined objects
@@ -134,22 +137,22 @@ final class StructureChangeGuardTests: XCTestCase {
     /// `SourceObjectSyncBuilder` writes `sourceDefinition` verbatim, while the comparison reads it
     /// through a normalizer that lowercases the body. A guard built on the normalized text would
     /// pass a stale CREATE VIEW for an edit that only changed a literal's case.
-    func testAViewBodyDifferingOnlyInTheCaseOfALiteralIsRefused() {
+    @Test
+    func aViewBodyDifferingOnlyInTheCaseOfALiteralIsRefused() {
         let expected = inputs([view(definition: ["SELECT 'Paid' AS state"])], action: .create)
         let actual = inputs([view(definition: ["SELECT 'PAID' AS state"])], action: .create)
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
-    func testAnUnchangedViewIsAllowed() {
+    @Test
+    func anUnchangedViewIsAllowed() {
         let result = view(definition: ["SELECT 1"])
 
-        XCTAssertNil(
-            StructureChangeGuard.refusal(
+        #expect(StructureChangeGuard.refusal(
                 expected: inputs([result], action: .create),
                 actual: inputs([result], action: .create)
-            )
-        )
+            ) == nil)
     }
 
     // MARK: - A materialized view's indexes
@@ -175,7 +178,8 @@ final class StructureChangeGuardTests: XCTestCase {
         )
     }
 
-    func testTwoReadsOfAnUnchangedMaterializedViewAreAllowed() {
+    @Test
+    func twoReadsOfAnUnchangedMaterializedViewAreAllowed() {
         let read = {
             self.matview(
                 changes: [.addIndex(self.matviewIndex("totals_id_idx"))],
@@ -183,22 +187,24 @@ final class StructureChangeGuardTests: XCTestCase {
             )
         }
 
-        XCTAssertNil(StructureChangeGuard.refusal(
+        #expect(StructureChangeGuard.refusal(
             expected: inputs([read()], action: .alter), actual: inputs([read()], action: .alter)
-        ))
+        ) == nil)
     }
 
-    func testASourceIndexAddedAfterComparingRefusesTheScript() {
+    @Test
+    func aSourceIndexAddedAfterComparingRefusesTheScript() {
         let expected = inputs([matview(sourceIndexes: [matviewIndex("totals_id_idx")])], action: .create)
         let actual = inputs(
             [matview(sourceIndexes: [matviewIndex("totals_id_idx"), matviewIndex("totals_key", unique: true)])],
             action: .create
         )
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
-    func testATargetIndexChangedAfterComparingRefusesAnIndexOnlyAlter() {
+    @Test
+    func aTargetIndexChangedAfterComparingRefusesAnIndexOnlyAlter() {
         let expected = inputs(
             [matview(changes: [.deleteIndex(matviewIndex("totals_old_idx"))], sourceIndexes: [])], action: .alter
         )
@@ -206,16 +212,17 @@ final class StructureChangeGuardTests: XCTestCase {
             [matview(changes: [.deleteIndex(matviewIndex("totals_other_idx"))], sourceIndexes: [])], action: .alter
         )
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
     /// An index-only alter keeps the view and its rows, and a definition that moved since would
     /// turn it into a DROP and CREATE the user never reviewed.
-    func testADefinitionThatStoppedMatchingRefusesAnIndexOnlyAlter() {
+    @Test
+    func aDefinitionThatStoppedMatchingRefusesAnIndexOnlyAlter() {
         let expected = inputs([matview(sourceIndexes: [], definitionMatches: true)], action: .alter)
         let actual = inputs([matview(sourceIndexes: [], definitionMatches: false)], action: .alter)
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
     // MARK: - Two reads of the same tables
@@ -307,25 +314,25 @@ final class StructureChangeGuardTests: XCTestCase {
         )
     }
 
-    func testACreateFromTwoReadsOfAnUnchangedTableIsAllowed() {
+    @Test
+    func aCreateFromTwoReadsOfAnUnchangedTableIsAllowed() {
         let expected = inputs(comparing: [ordersRead()], with: [], action: .create)
         let actual = inputs(comparing: [ordersRead()], with: [], action: .create)
 
         let snapshot = expected.values.first?.sourceSnapshot
-        XCTAssertEqual(expected.count, 1)
-        XCTAssertEqual(snapshot?.columns.count, 5)
-        XCTAssertEqual(snapshot?.indexes.count, 2)
-        XCTAssertEqual(snapshot?.foreignKeys.first?.columns, ["region_id", "country"])
-        XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(expected.count == 1)
+        #expect(snapshot?.columns.count == 5)
+        #expect(snapshot?.indexes.count == 2)
+        #expect(snapshot?.foreignKeys.first?.columns == ["region_id", "country"])
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) == nil)
     }
 
-    func testAnAlterFromTwoReadsOfAnUnchangedPairIsAllowed() {
+    @Test
+    func anAlterFromTwoReadsOfAnUnchangedPairIsAllowed() {
         let expected = inputs(comparing: [ordersRead()], with: [legacyOrdersRead()], action: .alter)
         let actual = inputs(comparing: [ordersRead()], with: [legacyOrdersRead()], action: .alter)
 
-        XCTAssertEqual(
-            expected.values.first?.changes.map(\.description),
-            [
+        #expect(expected.values.first?.changes.map(\.description) == [
                 "Modify column 'total' to 'total'",
                 "Add column 'shape'",
                 "Delete column 'notes'",
@@ -333,12 +340,12 @@ final class StructureChangeGuardTests: XCTestCase {
                 "Delete index 'orders_total_idx'",
                 "Add foreign key 'orders_region_fkey'",
                 "Delete foreign key 'orders_owner_fkey'"
-            ]
-        )
-        XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+            ])
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) == nil)
     }
 
-    func testACreateWhoseSecondReadGainedAColumnIsRefused() {
+    @Test
+    func aCreateWhoseSecondReadGainedAColumnIsRefused() {
         let expected = inputs(comparing: [ordersRead()], with: [], action: .create)
         let actual = inputs(
             comparing: [ordersRead(extraColumns: [PluginColumnInfo(name: "discount", dataType: "int")])],
@@ -346,21 +353,23 @@ final class StructureChangeGuardTests: XCTestCase {
             action: .create
         )
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
     /// The catalog spelling is private state the snapshot carries into `CREATE TABLE`, so it has to
     /// be compared like every public field.
-    func testACreateWhoseSecondReadSpellsATypeDifferentlyIsRefused() {
+    @Test
+    func aCreateWhoseSecondReadSpellsATypeDifferentlyIsRefused() {
         let expected = inputs(comparing: [ordersRead()], with: [], action: .create)
         let actual = inputs(
             comparing: [ordersRead(shapeSpelling: "public.geometry(Point,3857)")], with: [], action: .create
         )
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
-    func testACreateWhoseSecondReadSpellsACollationDifferentlyIsRefused() {
+    @Test
+    func aCreateWhoseSecondReadSpellsACollationDifferentlyIsRefused() {
         let collatedRead = { (spelling: String) in
             self.ordersRead(extraColumns: [
                 PluginColumnInfo(
@@ -374,12 +383,13 @@ final class StructureChangeGuardTests: XCTestCase {
         let unchanged = inputs(comparing: [collatedRead(#"app."Case Insens""#)], with: [], action: .create)
         let respelled = inputs(comparing: [collatedRead(#"shared."Case Insens""#)], with: [], action: .create)
 
-        XCTAssertEqual(expected.values.first?.sourceSnapshot?.columns.last?.ddlCollation, #"app."Case Insens""#)
-        XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: unchanged))
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: respelled))
+        #expect(expected.values.first?.sourceSnapshot?.columns.last?.ddlCollation == #"app."Case Insens""#)
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: unchanged) == nil)
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: respelled) != nil)
     }
 
-    func testACreateWhoseSecondReadDescribesAnIndexDifferentlyIsRefused() {
+    @Test
+    func aCreateWhoseSecondReadDescribesAnIndexDifferentlyIsRefused() {
         let keys = "USING btree (lower((country)::text))"
         let predicate = "(total > (0)::numeric)"
         let expressions = ["lower(country)"]
@@ -408,18 +418,19 @@ final class StructureChangeGuardTests: XCTestCase {
         ]
 
         let index = expected.values.first?.sourceSnapshot?.indexes.last
-        XCTAssertEqual(index?.expressions, expressions)
-        XCTAssertEqual(index?.includedColumns, included)
-        XCTAssertEqual(index?.ddlMethodAndKeys, keys)
-        XCTAssertEqual(index?.ddlWhereClause, predicate)
-        XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: unchanged))
+        #expect(index?.expressions == expressions)
+        #expect(index?.includedColumns == included)
+        #expect(index?.ddlMethodAndKeys == keys)
+        #expect(index?.ddlWhereClause == predicate)
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: unchanged) == nil)
         for (label, read) in differingReads {
             let actual = inputs(comparing: [read], with: [], action: .create)
-            XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual), label)
+            #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil, Comment(rawValue: label))
         }
     }
 
-    func testASyncWhoseSecondReadReportsAnotherIndexTypeIsRefused() {
+    @Test
+    func aSyncWhoseSecondReadReportsAnotherIndexTypeIsRefused() {
         let typedRead = { (type: String) in
             self.ordersRead(extraIndexes: [
                 PluginIndexInfo(name: "orders_country_idx", columns: ["country"], type: type)
@@ -428,35 +439,37 @@ final class StructureChangeGuardTests: XCTestCase {
         let expectedCreate = inputs(comparing: [typedRead("hnsw")], with: [], action: .create)
         let expectedAlter = inputs(comparing: [typedRead("hnsw")], with: [typedRead("ivfflat")], action: .alter)
 
-        XCTAssertEqual(expectedCreate.values.first?.sourceSnapshot?.indexes.last?.type.rawValue, "HNSW")
-        XCTAssertNil(StructureChangeGuard.refusal(
+        #expect(expectedCreate.values.first?.sourceSnapshot?.indexes.last?.type.rawValue == "HNSW")
+        #expect(StructureChangeGuard.refusal(
             expected: expectedCreate,
             actual: inputs(comparing: [typedRead("HNSW")], with: [], action: .create)
-        ))
-        XCTAssertNotNil(StructureChangeGuard.refusal(
+        ) == nil)
+        #expect(StructureChangeGuard.refusal(
             expected: expectedCreate,
             actual: inputs(comparing: [typedRead("ivfflat")], with: [], action: .create)
-        ))
-        XCTAssertNil(StructureChangeGuard.refusal(
+        ) != nil)
+        #expect(StructureChangeGuard.refusal(
             expected: expectedAlter,
             actual: inputs(comparing: [typedRead("hnsw")], with: [typedRead("ivfflat")], action: .alter)
-        ))
-        XCTAssertNotNil(StructureChangeGuard.refusal(
+        ) == nil)
+        #expect(StructureChangeGuard.refusal(
             expected: expectedAlter,
             actual: inputs(comparing: [typedRead("hnsw")], with: [typedRead("bloom")], action: .alter)
-        ))
+        ) != nil)
     }
 
-    func testAnAlterWhoseTargetColumnMovedBetweenReadsIsRefused() {
+    @Test
+    func anAlterWhoseTargetColumnMovedBetweenReadsIsRefused() {
         let expected = inputs(comparing: [ordersRead()], with: [legacyOrdersRead()], action: .alter)
         let actual = inputs(
             comparing: [ordersRead()], with: [legacyOrdersRead(totalType: "decimal(9,2)")], action: .alter
         )
 
-        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) != nil)
     }
 
-    func testEveryKindOfChangeIsComparedWithoutTheIdentityItWasReadWith() {
+    @Test
+    func everyKindOfChangeIsComparedWithoutTheIdentityItWasReadWith() {
         let index = { (name: String) in
             EditableIndexDefinition(
                 id: UUID(), name: name, columns: ["total"], type: .btree, isUnique: false,
@@ -495,26 +508,28 @@ final class StructureChangeGuardTests: XCTestCase {
         for (label, make) in makers {
             let expected = inputs([table(changes: [make()])], action: .alter)
             let actual = inputs([table(changes: [make()])], action: .alter)
-            XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: actual), label)
+            #expect(StructureChangeGuard.refusal(expected: expected, actual: actual) == nil, Comment(rawValue: label))
         }
     }
 
     // MARK: - Scope of the check
 
-    func testAnObjectTheUserSkippedIsNotChecked() {
+    @Test
+    func anObjectTheUserSkippedIsNotChecked() {
         let expected = StructureChangeGuard.inputs(
             for: [table(changes: [.addColumn(column("total"))])],
             actions: { _ in .skip },
             sourceSnapshots: [:]
         )
 
-        XCTAssertTrue(expected.isEmpty)
-        XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: [:]))
+        #expect(expected.isEmpty)
+        #expect(StructureChangeGuard.refusal(expected: expected, actual: [:]) == nil)
     }
 
     /// Another table moving in the same schema is somebody else's work. Refusing on it would make a
     /// busy database impossible to sync.
-    func testAnObjectOutsideTheSelectionDoesNotRefuse() {
+    @Test
+    func anObjectOutsideTheSelectionDoesNotRefuse() {
         let selected = table(changes: [.addColumn(column("total"))])
         let other = CompareObjectResult(
             identity: CompareObjectIdentity(kind: .table, schema: "shop", name: "customers"),
@@ -524,25 +539,23 @@ final class StructureChangeGuardTests: XCTestCase {
         var actual = inputs([selected], action: .alter)
         actual.merge(inputs([other], action: .alter)) { first, _ in first }
 
-        XCTAssertNil(
-            StructureChangeGuard.refusal(expected: inputs([selected], action: .alter), actual: actual)
-        )
+        #expect(StructureChangeGuard.refusal(expected: inputs([selected], action: .alter), actual: actual) == nil)
     }
 
-    func testTheRefusalNamesTheObject() {
+    @Test
+    func theRefusalNamesTheObject() {
         let refusal = StructureChangeGuard.refusal(
             expected: inputs([table(changes: [.addColumn(column("total"))])], action: .alter),
             actual: [:]
         )
 
-        let message = try? XCTUnwrap(refusal?.errorDescription)
-        XCTAssertTrue(
-            message?.contains("shop.orders") ?? false,
-            "the message must name what changed, got \(message ?? "nil")"
-        )
+        let message = try? #require(refusal?.errorDescription)
+        #expect(message?.contains("shop.orders") ?? false,
+            "the message must name what changed, got \(message ?? "nil")")
     }
 
-    func testAnObjectThatCouldNotBeReadAgainIsRefusedWithItsReason() throws {
+    @Test
+    func anObjectThatCouldNotBeReadAgainIsRefusedWithItsReason() throws {
         let result = view(definition: ["CREATE VIEW recent_orders AS SELECT 1"])
         let reason = SourceDefinitionDefect.unreadable("SHOW VIEW command denied").reason(on: .source)
 
@@ -552,22 +565,21 @@ final class StructureChangeGuardTests: XCTestCase {
             unreadable: [result.id: reason]
         )
 
-        let message = try XCTUnwrap(refusal?.errorDescription)
-        XCTAssertTrue(message.contains("shop.recent_orders"), message)
-        XCTAssertTrue(message.contains(reason), message)
-        XCTAssertFalse(message.contains("changed after it was compared"), message)
+        let message = try #require(refusal?.errorDescription)
+        #expect(message.contains("shop.recent_orders"), Comment(rawValue: message))
+        #expect(message.contains(reason), Comment(rawValue: message))
+        #expect(!message.contains("changed after it was compared"), Comment(rawValue: message))
     }
 
-    func testAnUnreadableObjectOutsideTheSelectionDoesNotRefuse() {
+    @Test
+    func anUnreadableObjectOutsideTheSelectionDoesNotRefuse() {
         let selected = view(definition: ["CREATE VIEW recent_orders AS SELECT 1"])
         let expected = inputs([selected], action: .create)
 
-        XCTAssertNil(
-            StructureChangeGuard.refusal(
+        #expect(StructureChangeGuard.refusal(
                 expected: expected,
                 actual: expected,
                 unreadable: ["view|shop|other|": "denied"]
-            )
-        )
+            ) == nil)
     }
 }

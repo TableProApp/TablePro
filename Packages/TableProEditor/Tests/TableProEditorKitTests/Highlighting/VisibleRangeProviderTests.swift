@@ -1,9 +1,11 @@
+import AppKit
 @testable import TableProEditorKit
-import XCTest
+import Testing
 
-final class VisibleRangeProviderTests: XCTestCase {
+@MainActor
+struct VisibleRangeProviderTests {
     @MainActor
-    func test_updateOnScroll() {
+    @Test func test_updateOnScroll() {
         let (scrollView, textView) = Mock.scrollingTextView()
         textView.string = Array(repeating: "\n", count: 400).joined()
         textView.layout()
@@ -16,11 +18,11 @@ final class VisibleRangeProviderTests: XCTestCase {
         scrollView.layoutSubtreeIfNeeded()
         textView.layout()
 
-        XCTAssertNotEqual(originalSet, rangeProvider.visibleSet)
+        #expect(originalSet != rangeProvider.visibleSet)
     }
 
     @MainActor
-    func test_updateOnResize() {
+    @Test func test_updateOnResize() {
         let (scrollView, textView) = Mock.scrollingTextView()
         textView.string = Array(repeating: "\n", count: 400).joined()
         textView.layout()
@@ -33,11 +35,11 @@ final class VisibleRangeProviderTests: XCTestCase {
         scrollView.layoutSubtreeIfNeeded()
         textView.layout()
 
-        XCTAssertNotEqual(originalSet, rangeProvider.visibleSet)
+        #expect(originalSet != rangeProvider.visibleSet)
     }
 
     @MainActor
-    func test_noScrollViewMakesTheWholeDocumentVisible() {
+    @Test func test_noScrollViewMakesTheWholeDocumentVisible() {
         let textView = Mock.textView()
         textView.frame = NSRect(x: 0, y: 0, width: 100, height: 100)
         textView.string = Array(repeating: "\n", count: 400).joined()
@@ -46,11 +48,11 @@ final class VisibleRangeProviderTests: XCTestCase {
         let rangeProvider = VisibleRangeProvider(textView: textView)
         let wholeDocument = IndexSet(integersIn: rangeProvider.documentRange)
 
-        XCTAssertEqual(rangeProvider.visibleSet, wholeDocument)
+        #expect(rangeProvider.visibleSet == wholeDocument)
 
         textView.setFrameSize(NSSize(width: 350, height: 450))
         textView.layout()
 
-        XCTAssertEqual(rangeProvider.visibleSet, wholeDocument)
+        #expect(rangeProvider.visibleSet == wholeDocument)
     }
 }

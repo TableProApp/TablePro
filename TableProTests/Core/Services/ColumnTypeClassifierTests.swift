@@ -407,40 +407,16 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "BINARY(16)").isBlobType)
         }
 
-        @Test("DATETIME2 classifies as datetime")
-        func datetime2() {
-            #expect(isDatetime(classifier.classify(rawTypeName: "DATETIME2")))
+        @Test("Classifies as datetime", arguments: ["DATETIME2", "DATETIMEOFFSET", "SMALLDATETIME"])
+        func classifiesAsDatetime(_ value: String) {
+            #expect(isDatetime(classifier.classify(rawTypeName: value)))
         }
 
-        @Test("DATETIMEOFFSET classifies as datetime")
-        func datetimeoffset() {
-            #expect(isDatetime(classifier.classify(rawTypeName: "DATETIMEOFFSET")))
+        @Test("Classifies as text", arguments: ["NVARCHAR(MAX)", "NTEXT", "UNIQUEIDENTIFIER", "SQL_VARIANT"])
+        func classifiesAsText(_ value: String) {
+            #expect(isText(classifier.classify(rawTypeName: value)))
         }
 
-        @Test("SMALLDATETIME classifies as datetime")
-        func smalldatetime() {
-            #expect(isDatetime(classifier.classify(rawTypeName: "SMALLDATETIME")))
-        }
-
-        @Test("NVARCHAR(MAX) classifies as text")
-        func nvarcharMax() {
-            #expect(isText(classifier.classify(rawTypeName: "NVARCHAR(MAX)")))
-        }
-
-        @Test("NTEXT classifies as text")
-        func ntextType() {
-            #expect(isText(classifier.classify(rawTypeName: "NTEXT")))
-        }
-
-        @Test("UNIQUEIDENTIFIER classifies as text")
-        func uniqueidentifier() {
-            #expect(isText(classifier.classify(rawTypeName: "UNIQUEIDENTIFIER")))
-        }
-
-        @Test("SQL_VARIANT classifies as text")
-        func sqlVariant() {
-            #expect(isText(classifier.classify(rawTypeName: "SQL_VARIANT")))
-        }
     }
 
     // MARK: - ClickHouse Types
@@ -484,14 +460,9 @@ struct ColumnTypeClassifierTests {
             #expect(isDatetime(classifier.classify(rawTypeName: "DateTime64(3, 'UTC')")))
         }
 
-        @Test("Enum8('a' = 1, 'b' = 2) classifies as enum")
-        func enum8() {
-            #expect(classifier.classify(rawTypeName: "Enum8('a' = 1, 'b' = 2)").isEnumType)
-        }
-
-        @Test("Enum16('x' = 1) classifies as enum")
-        func enum16() {
-            #expect(classifier.classify(rawTypeName: "Enum16('x' = 1)").isEnumType)
+        @Test("Classifies as enum", arguments: ["Enum8('a' = 1, 'b' = 2)", "Enum16('x' = 1)"])
+        func classifiesAsEnum(_ value: String) {
+            #expect(classifier.classify(rawTypeName: value).isEnumType)
         }
 
         @Test("Float32 classifies as decimal")
@@ -509,64 +480,9 @@ struct ColumnTypeClassifierTests {
             #expect(isDecimal(classifier.classify(rawTypeName: "Decimal128(3)")))
         }
 
-        @Test("Int8 classifies as integer")
-        func int8() {
-            #expect(isInteger(classifier.classify(rawTypeName: "Int8")))
-        }
-
-        @Test("Int16 classifies as integer")
-        func int16() {
-            #expect(isInteger(classifier.classify(rawTypeName: "Int16")))
-        }
-
-        @Test("Int32 classifies as integer")
-        func int32() {
-            #expect(isInteger(classifier.classify(rawTypeName: "Int32")))
-        }
-
-        @Test("Int64 classifies as integer")
-        func int64() {
-            #expect(isInteger(classifier.classify(rawTypeName: "Int64")))
-        }
-
-        @Test("Int128 classifies as integer")
-        func int128() {
-            #expect(isInteger(classifier.classify(rawTypeName: "Int128")))
-        }
-
-        @Test("Int256 classifies as integer")
-        func int256() {
-            #expect(isInteger(classifier.classify(rawTypeName: "Int256")))
-        }
-
-        @Test("UInt8 classifies as integer")
-        func uint8() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UInt8")))
-        }
-
-        @Test("UInt16 classifies as integer")
-        func uint16() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UInt16")))
-        }
-
-        @Test("UInt32 classifies as integer")
-        func uint32() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UInt32")))
-        }
-
-        @Test("UInt64 classifies as integer")
-        func uint64() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UInt64")))
-        }
-
-        @Test("UInt128 classifies as integer")
-        func uint128() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UInt128")))
-        }
-
-        @Test("UInt256 classifies as integer")
-        func uint256() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UInt256")))
+        @Test("Classifies as integer", arguments: ["Int8", "Int16", "Int32", "Int64", "Int128", "Int256", "UInt8", "UInt16", "UInt32", "UInt64", "UInt128", "UInt256"])
+        func classifiesAsInteger(_ value: String) {
+            #expect(isInteger(classifier.classify(rawTypeName: value)))
         }
 
         @Test("Date32 classifies as date")
@@ -611,34 +527,9 @@ struct ColumnTypeClassifierTests {
             return false
         }
 
-        @Test("UTINYINT classifies as integer")
-        func utinyint() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UTINYINT")))
-        }
-
-        @Test("USMALLINT classifies as integer")
-        func usmallint() {
-            #expect(isInteger(classifier.classify(rawTypeName: "USMALLINT")))
-        }
-
-        @Test("UINTEGER classifies as integer")
-        func uinteger() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UINTEGER")))
-        }
-
-        @Test("UBIGINT classifies as integer")
-        func ubigint() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UBIGINT")))
-        }
-
-        @Test("HUGEINT classifies as integer")
-        func hugeint() {
-            #expect(isInteger(classifier.classify(rawTypeName: "HUGEINT")))
-        }
-
-        @Test("UHUGEINT classifies as integer")
-        func uhugeint() {
-            #expect(isInteger(classifier.classify(rawTypeName: "UHUGEINT")))
+        @Test("Classifies as integer", arguments: ["UTINYINT", "USMALLINT", "UINTEGER", "UBIGINT", "HUGEINT", "UHUGEINT"])
+        func classifiesAsIntegerCases(_ value: String) {
+            #expect(isInteger(classifier.classify(rawTypeName: value)))
         }
 
         @Test("ENUM classifies as enum")
@@ -656,19 +547,9 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "BLOB").isBlobType)
         }
 
-        @Test("TIMESTAMP_S classifies as timestamp")
-        func timestampS() {
-            #expect(isTimestamp(classifier.classify(rawTypeName: "TIMESTAMP_S")))
-        }
-
-        @Test("TIMESTAMP_MS classifies as timestamp")
-        func timestampMs() {
-            #expect(isTimestamp(classifier.classify(rawTypeName: "TIMESTAMP_MS")))
-        }
-
-        @Test("TIMESTAMP_NS classifies as timestamp")
-        func timestampNs() {
-            #expect(isTimestamp(classifier.classify(rawTypeName: "TIMESTAMP_NS")))
+        @Test("Classifies as timestamp", arguments: ["TIMESTAMP_S", "TIMESTAMP_MS", "TIMESTAMP_NS"])
+        func classifiesAsTimestamp(_ value: String) {
+            #expect(isTimestamp(classifier.classify(rawTypeName: value)))
         }
 
         @Test("TIMESTAMPTZ classifies as timestamp")

@@ -32,7 +32,6 @@ private final class DirectMetadataProvider: ScopedMetadataProviding {
     }
 }
 
-@Suite("SchemaRefreshService after a write", .serialized)
 @MainActor
 struct SchemaRefreshAfterWriteTests {
     private let orders = TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)
@@ -91,7 +90,8 @@ struct SchemaRefreshAfterWriteTests {
         let postWrite = Task { await service.refreshAfterWrite(connection: connection) }
         for await _ in paused.stream { break }
         let joined = Task { await service.refresh(connection: connection) }
-        await Task.yield()
+        // The main queue runs jobs in order, so the second refresh has joined before the fetch resumes.
+        await Task { @MainActor in }.value
         driver.resumeFetchTables()
         await postWrite.value
         await joined.value

@@ -11,17 +11,15 @@ import Testing
 
 @MainActor
 struct PaginationCoordinatorTests {
+    private let fixtures = CoordinatorFixtures()
+
     private func makeCoordinator(
         pagination: PaginationState,
         loadedRowCount: Int
     ) -> (MainContentCoordinator, QueryTabManager, UUID) {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let fixture = fixtures.make()
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table)
         tab.tableContext.tableName = "users"
         tab.pagination = pagination

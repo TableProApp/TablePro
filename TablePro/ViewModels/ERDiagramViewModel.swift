@@ -115,16 +115,24 @@ final class ERDiagramViewModel: ObservableObject {
     private var nodeIdToName: [UUID: String] = [:]
 
     private let services: AppServices
+    private let autoPanClock: any Clock<Duration>
     private var loadTask: Task<Void, Never>?
 
     // MARK: - Initialization
 
-    init(connectionId: UUID, databaseName: String, schemaKey: String, services: AppServices = .live) {
+    init(
+        connectionId: UUID,
+        databaseName: String,
+        schemaKey: String,
+        services: AppServices = .live,
+        autoPanClock: any Clock<Duration> = ContinuousClock()
+    ) {
         self.connectionId = connectionId
         self.databaseName = databaseName
         self.schemaKey = schemaKey
         self.schemaName = Self.resolveSchemaName(fromSchemaKey: schemaKey, databaseName: databaseName)
         self.services = services
+        self.autoPanClock = autoPanClock
     }
 
     deinit {
@@ -463,10 +471,10 @@ final class ERDiagramViewModel: ObservableObject {
 
         autoPanVelocity = velocity
         if velocity != .zero && autoPanTask == nil {
-            autoPanTask = Task { [weak self] in
+            autoPanTask = Task { [weak self, autoPanClock] in
                 while !Task.isCancelled {
                     self?.autoPanTick()
-                    try? await Task.sleep(for: .milliseconds(16))
+                    try? await autoPanClock.sleep(for: .milliseconds(16))
                 }
             }
         } else if velocity == .zero && autoPanTask != nil {

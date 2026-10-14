@@ -11,15 +11,17 @@ import Testing
 @MainActor
 struct CatalogEditSchemaFilterAdoptionTests {
     private let connection = TestFixtures.makeConnection(database: "shop", type: .postgresql)
+    private let suite: EphemeralDefaults
+    private let syncSuite: EphemeralDefaults
     private let databaseManager: DatabaseManager
     private let adoption: CatalogEditAdoption
 
     init() throws {
         let unique = UUID().uuidString
-        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.CatalogEditSchemaFilter.\(unique)"))
-        let metadata = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.CatalogEditSchemaFilter.sync.\(unique)"))
-        )
+        suite = try EphemeralDefaults()
+        syncSuite = try EphemeralDefaults()
+        let defaults = suite.defaults
+        let metadata = SyncMetadataStorage(userDefaults: syncSuite.defaults)
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         let connectionStorage = ConnectionStorage(
             fileURL: FileManager.default.temporaryDirectory

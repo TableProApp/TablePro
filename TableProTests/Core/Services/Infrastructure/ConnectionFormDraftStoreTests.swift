@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ConnectionFormDraftStore", .serialized)
 @MainActor
 struct ConnectionFormDraftStoreTests {
     private func parse(_ urlString: String) throws -> ParsedConnectionURL {

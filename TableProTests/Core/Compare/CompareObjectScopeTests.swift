@@ -6,50 +6,56 @@
 //  alongside tables, so a view reached the table paths and produced CREATE TABLE for a view.
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class CompareTableKindClassifierTests: XCTestCase {
+struct CompareTableKindClassifierTests {
     private func table(_ type: String) -> PluginTableInfo {
         PluginTableInfo(name: "orders", type: type, schema: "public", comment: nil)
     }
 
-    func testViewsAreRecognisedHoweverTheEngineSpellsThem() {
+    @Test
+    func viewsAreRecognisedHoweverTheEngineSpellsThem() {
         for spelling in ["VIEW", "view", "SYSTEM VIEW", "BASE VIEW"] {
-            XCTAssertEqual(CompareTableKindClassifier.kind(of: table(spelling)), .view, spelling)
+            #expect(CompareTableKindClassifier.kind(of: table(spelling)) == .view, Comment(rawValue: spelling))
         }
     }
 
-    func testMaterializedViewsAreTheirOwnKind() {
+    @Test
+    func materializedViewsAreTheirOwnKind() {
         for spelling in ["MATERIALIZED VIEW", "MATERIALIZED_VIEW", "materialized view"] {
-            XCTAssertEqual(CompareTableKindClassifier.kind(of: table(spelling)), .materializedView, spelling)
+            #expect(CompareTableKindClassifier.kind(of: table(spelling)) == .materializedView, Comment(rawValue: spelling))
         }
     }
 
     /// PostgreSQL reports PARTITIONED TABLE for an ordinary, directly queryable table. Matching the
     /// literal string TABLE would have silently dropped it from every comparison, which is why the
     /// rule is subtractive.
-    func testPartitionedAndForeignTablesStillCompareAsTables() {
+    @Test
+    func partitionedAndForeignTablesStillCompareAsTables() {
         for spelling in ["TABLE", "BASE TABLE", "PARTITIONED TABLE", "FOREIGN TABLE", "LOCAL TEMPORARY"] {
-            XCTAssertEqual(CompareTableKindClassifier.kind(of: table(spelling)), .table, spelling)
+            #expect(CompareTableKindClassifier.kind(of: table(spelling)) == .table, Comment(rawValue: spelling))
         }
     }
 
-    func testAForeignTableIsFlaggedSeparatelyFromItsKind() {
-        XCTAssertTrue(CompareTableKindClassifier.isForeign(table("FOREIGN TABLE")))
-        XCTAssertFalse(CompareTableKindClassifier.isForeign(table("BASE TABLE")))
+    @Test
+    func aForeignTableIsFlaggedSeparatelyFromItsKind() {
+        #expect(CompareTableKindClassifier.isForeign(table("FOREIGN TABLE")))
+        #expect(!(CompareTableKindClassifier.isForeign(table("BASE TABLE"))))
     }
 
-    func testOnlyATableCarriesRows() {
-        XCTAssertTrue(CompareObjectKind.table.carriesRows)
+    @Test
+    func onlyATableCarriesRows() {
+        #expect(CompareObjectKind.table.carriesRows)
         for kind in CompareObjectKind.allCases where kind != .table {
-            XCTAssertFalse(kind.carriesRows, "\(kind.rawValue) holds no rows a data compare can walk")
+            #expect(!kind.carriesRows, "\(kind.rawValue) holds no rows a data compare can walk")
         }
     }
 }
 
-final class DataComparePlanColumnTests: XCTestCase {
+struct DataComparePlanColumnTests {
     private func plan(
         generated: Set<String>,
         keys: [String] = ["id"],
@@ -75,51 +81,59 @@ final class DataComparePlanColumnTests: XCTestCase {
 
     /// MySQL rejects an explicit value for a generated column outright and PostgreSQL rejects it
     /// for a stored one, so it is read and compared but never written.
-    func testGeneratedColumnsAreReadButNotWritten() {
+    @Test
+    func generatedColumnsAreReadButNotWritten() {
         let plan = plan(generated: ["line_total"])
 
-        XCTAssertEqual(plan.columnNames, ["id", "total", "line_total"])
-        XCTAssertEqual(plan.writeColumns, ["id", "total"])
+        #expect(plan.columnNames == ["id", "total", "line_total"])
+        #expect(plan.writeColumns == ["id", "total"])
     }
 
     /// An identity column the target always generates takes its value on insert only through the
     /// engine's override, and never through an UPDATE.
-    func testAnAlwaysIdentityColumnIsInsertedButNeverUpdated() {
+    @Test
+    func anAlwaysIdentityColumnIsInsertedButNeverUpdated() {
         let plan = plan(generated: [], identity: ["id": .always])
 
-        XCTAssertEqual(plan.writeColumns, ["id", "total", "line_total"])
-        XCTAssertEqual(plan.updatableColumns, ["total", "line_total"])
-        XCTAssertTrue(plan.insertsIntoIdentityColumn)
+        #expect(plan.writeColumns == ["id", "total", "line_total"])
+        #expect(plan.updatableColumns == ["total", "line_total"])
+        #expect(plan.insertsIntoIdentityColumn)
     }
 
-    func testAByDefaultIdentityColumnNeedsNoOverride() {
-        XCTAssertFalse(plan(generated: [], identity: ["id": .byDefault]).insertsIntoIdentityColumn)
+    @Test
+    func aByDefaultIdentityColumnNeedsNoOverride() {
+        #expect(!(plan(generated: [], identity: ["id": .byDefault]).insertsIntoIdentityColumn))
     }
 
-    func testExcludedColumnsAreLeftOutOfTheComparisonOnlyForTheirOwnTable() {
+    @Test
+    func excludedColumnsAreLeftOutOfTheComparisonOnlyForTheirOwnTable() {
         var excluded = plan(generated: [])
         excluded.scope.setExcluded(true, column: "TOTAL")
 
-        XCTAssertEqual(excluded.comparedColumns, ["line_total"])
-        XCTAssertEqual(plan(generated: []).comparedColumns, ["total", "line_total"])
-        XCTAssertEqual(excluded.writeColumns, ["id", "total", "line_total"])
+        #expect(excluded.comparedColumns == ["line_total"])
+        #expect(plan(generated: []).comparedColumns == ["total", "line_total"])
+        #expect(excluded.writeColumns == ["id", "total", "line_total"])
     }
 
-    func testATableWhoseSharedColumnsAreAllGeneratedIsNotComparable() {
+    @Test
+    func aTableWhoseSharedColumnsAreAllGeneratedIsNotComparable() {
         let allGenerated = plan(generated: ["id", "total", "line_total"])
 
-        XCTAssertNotNil(DataComparePlan.unavailableReason(for: allGenerated))
+        #expect(DataComparePlan.unavailableReason(for: allGenerated) != nil)
     }
 
-    func testKeyDescriptorsCarryOnlyTheKeyColumns() {
-        XCTAssertEqual(plan(generated: []).keyDescriptors.map { $0.name }, ["id"])
+    @Test
+    func keyDescriptorsCarryOnlyTheKeyColumns() {
+        #expect(plan(generated: []).keyDescriptors.map { $0.name } == ["id"])
     }
 
-    func testATableWithNoKeyIsNotComparable() {
-        XCTAssertNotNil(DataComparePlan.unavailableReason(for: plan(generated: [], keys: [])))
+    @Test
+    func aTableWithNoKeyIsNotComparable() {
+        #expect(DataComparePlan.unavailableReason(for: plan(generated: [], keys: [])) != nil)
     }
 
-    func testAKeyMissingFromTheSharedColumnsIsNotComparable() {
-        XCTAssertNotNil(DataComparePlan.unavailableReason(for: plan(generated: [], keys: ["tenant_id"])))
+    @Test
+    func aKeyMissingFromTheSharedColumnsIsNotComparable() {
+        #expect(DataComparePlan.unavailableReason(for: plan(generated: [], keys: ["tenant_id"])) != nil)
     }
 }

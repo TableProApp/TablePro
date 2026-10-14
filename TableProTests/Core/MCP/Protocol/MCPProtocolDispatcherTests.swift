@@ -1,11 +1,11 @@
 import Foundation
+@testable import TablePro
 import TableProMCP
 import TableProMCPTestSupport
 import TableProPluginKit
-@testable import TablePro
-import XCTest
+import Testing
 
-final class MCPProtocolDispatcherTests: XCTestCase {
+struct MCPProtocolDispatcherTests {
     private let alice = MCPProtocolTestSupport.makePrincipal(
         fingerprint: "alice",
         tokenId: UUID(uuidString: "AAAAAAAA-0000-0000-0000-000000000001"),
@@ -17,28 +17,30 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         scopes: [.toolsRead, .toolsWrite]
     )
 
-    func testUnknownMethodIsMethodNotFoundWithHttpNotFound() async throws {
+    @Test
+    func unknownMethodIsMethodNotFoundWithHttpNotFound() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: "unknown/method"),
             handlers: [StubTestHandler()]
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.methodNotFound)
-        XCTAssertEqual(error.code, -32_601)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.methodNotFound)
+        #expect(error.code == -32_601)
 
         let status = await sink.firstJsonStatus()
-        XCTAssertEqual(status?.code, 404)
+        #expect(status?.code == 404)
 
         guard case .errorResponse(let envelope)? = try await sink.firstJsonMessage() else {
-            XCTFail("Expected an error response")
+            Issue.record("Expected an error response")
             return
         }
-        XCTAssertEqual(envelope.id, .number(1))
+        #expect(envelope.id == .number(1))
     }
 
-    func testARequestWithoutAPrincipalIsUnauthenticated() async throws {
+    @Test
+    func aRequestWithoutAPrincipalIsUnauthenticated() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
             handlers: [StubTestHandler()],
@@ -46,18 +48,19 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.unauthenticated)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.unauthenticated)
 
         let status = await sink.firstJsonStatus()
-        XCTAssertEqual(status?.code, 401)
+        #expect(status?.code == 401)
 
         let challenge = await sink.firstHeaderValue(named: "WWW-Authenticate")
-        XCTAssertNotNil(challenge)
-        XCTAssertTrue(challenge?.hasPrefix("Bearer") ?? false)
+        #expect(challenge != nil)
+        #expect(challenge?.hasPrefix("Bearer") ?? false)
     }
 
-    func testAMissingScopeIsRefusedWithAChallengeThatNamesTheScopes() async throws {
+    @Test
+    func aMissingScopeIsRefusedWithAChallengeThatNamesTheScopes() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubScopedHandler.method),
             handlers: [StubScopedHandler()],
@@ -65,22 +68,23 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.forbidden)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.forbidden)
 
         let status = await sink.firstJsonStatus()
-        XCTAssertEqual(status?.code, 403)
+        #expect(status?.code == 403)
 
         let challengeValue = await sink.firstHeaderValue(named: "WWW-Authenticate")
-        let challenge = try XCTUnwrap(challengeValue)
-        XCTAssertTrue(challenge.contains("error=\"insufficient_scope\""))
-        XCTAssertTrue(challenge.contains("scope=\"admin tools:write\""))
+        let challenge = try #require(challengeValue)
+        #expect(challenge.contains("error=\"insufficient_scope\""))
+        #expect(challenge.contains("scope=\"admin tools:write\""))
 
         let required = error.data?["requiredScopes"]?.arrayValue?.compactMap(\.stringValue)
-        XCTAssertEqual(required, ["admin", "tools:write"])
+        #expect(required == ["admin", "tools:write"])
     }
 
-    func testAPartiallyScopedPrincipalStillLearnsWhichScopeIsMissing() async throws {
+    @Test
+    func aPartiallyScopedPrincipalStillLearnsWhichScopeIsMissing() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubScopedHandler.method),
             handlers: [StubScopedHandler()],
@@ -88,11 +92,12 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let challengeValue = await sink.firstHeaderValue(named: "WWW-Authenticate")
-        let challenge = try XCTUnwrap(challengeValue)
-        XCTAssertTrue(challenge.contains("admin"))
+        let challenge = try #require(challengeValue)
+        #expect(challenge.contains("admin"))
     }
 
-    func testAHandlerThatFailsNeverLeaksTheConnectionDetailsItFailedOn() async throws {
+    @Test
+    func aHandlerThatFailsNeverLeaksTheConnectionDetailsItFailedOn() async throws {
         let secret = "postgres://root:hunter2@db.internal:5432/app"
         let handler = StubTestHandler(
             behavior: .failDriver(StubDriverError(detail: "FATAL: could not connect to \(secret)"))
@@ -103,16 +108,17 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.internalError)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.internalError)
 
         let body = await sink.firstJsonBodyText()
         for leak in ["db.internal", "5432", "root", "hunter2", "postgres://"] {
-            XCTAssertFalse(body.contains(leak), "response body leaked \(leak)")
+            #expect(!body.contains(leak), "response body leaked \(leak)")
         }
     }
 
-    func testAProtocolErrorFromAHandlerIsPassedThroughUnchanged() async throws {
+    @Test
+    func aProtocolErrorFromAHandlerIsPassedThroughUnchanged() async throws {
         let handler = StubTestHandler(behavior: .failProtocol(.invalidParams(detail: "table is required")))
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
@@ -120,14 +126,15 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
 
         let status = await sink.firstJsonStatus()
-        XCTAssertEqual(status?.code, 400)
+        #expect(status?.code == 400)
     }
 
-    func testTwoPrincipalsMayShareTheSameRequestIdWithoutCollapsing() async throws {
+    @Test
+    func twoPrincipalsMayShareTheSameRequestIdWithoutCollapsing() async throws {
         let handler = StubTestHandler(behavior: .waitForCancellation)
         let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
         let request = MCPProtocolTestSupport.makeModernRequest(id: .number(1), method: StubTestHandler.method)
@@ -138,38 +145,39 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         async let bobRun: Void = dispatcher.dispatch(bobExchange)
 
         let inflight = await waitForInflight(dispatcher, count: 2)
-        XCTAssertEqual(inflight, 2)
+        #expect(inflight == 2)
 
         let cancelledAlice = await dispatcher.cancel(
             requestId: .number(1),
             principal: alice,
             reason: .clientRequested("stop")
         )
-        XCTAssertTrue(cancelledAlice)
+        #expect(cancelledAlice)
         await aliceSink.waitForCompletion()
 
         let aliceErrorValue = try await aliceSink.errorEnvelope()
-        let aliceError = try XCTUnwrap(aliceErrorValue)
-        XCTAssertEqual(aliceError.code, JsonRpcErrorCode.requestCancelled)
+        let aliceError = try #require(aliceErrorValue)
+        #expect(aliceError.code == JsonRpcErrorCode.requestCancelled)
 
         let bobWrites = await bobSink.jsonWrites.count
-        XCTAssertEqual(bobWrites, 0)
+        #expect(bobWrites == 0)
 
         let stillInflight = await dispatcher.inflightCount()
-        XCTAssertEqual(stillInflight, 1)
+        #expect(stillInflight == 1)
 
         let cancelledBob = await dispatcher.cancel(
             requestId: .number(1),
             principal: bob,
             reason: .clientRequested(nil)
         )
-        XCTAssertTrue(cancelledBob)
+        #expect(cancelledBob)
         await bobSink.waitForCompletion()
         _ = await aliceRun
         _ = await bobRun
     }
 
-    func testAnInFlightEntryIsReleasedWhenTheHandlerReturns() async throws {
+    @Test
+    func anInFlightEntryIsReleasedWhenTheHandlerReturns() async throws {
         let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [StubTestHandler()])
         let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
             message: MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
@@ -180,41 +188,44 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         await sink.waitForCompletion()
 
         let inflight = await dispatcher.inflightCount()
-        XCTAssertEqual(inflight, 0)
+        #expect(inflight == 0)
     }
 
-    func testAModernResultDeclaresItsTypeAndTheServerIdentity() async throws {
+    @Test
+    func aModernResultDeclaresItsTypeAndTheServerIdentity() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
             handlers: [StubTestHandler()]
         )
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertEqual(result["resultType"]?.stringValue, "complete")
-        XCTAssertEqual(result["ok"]?.boolValue, true)
-        XCTAssertEqual(result["_meta"]?[MCPMetaKeys.serverInfo]?["name"]?.stringValue, "tablepro")
-        XCTAssertNil(result["serverInfo"])
+        let result = try #require(resultValue)
+        #expect(result["resultType"]?.stringValue == "complete")
+        #expect(result["ok"]?.boolValue == true)
+        #expect(result["_meta"]?[MCPMetaKeys.serverInfo]?["name"]?.stringValue == "tablepro")
+        #expect(result["serverInfo"] == nil)
 
         let status = await sink.firstJsonStatus()
-        XCTAssertEqual(status?.code, 200)
+        #expect(status?.code == 200)
     }
 
-    func testAModernRequestWithoutMetaIsInvalidParams() async throws {
+    @Test
+    func aModernRequestWithoutMetaIsInvalidParams() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeRequest(method: StubTestHandler.method, params: .object([:])),
             handlers: [StubTestHandler()]
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
 
         let status = await sink.firstJsonStatus()
-        XCTAssertEqual(status?.code, 400)
+        #expect(status?.code == 400)
     }
 
-    func testAnUnsupportedProtocolVersionIsRefusedBeforeTheHandlerRuns() async throws {
+    @Test
+    func anUnsupportedProtocolVersionIsRefusedBeforeTheHandlerRuns() async throws {
         let handler = StubTestHandler()
         let request = MCPProtocolTestSupport.makeModernRequest(
             method: StubTestHandler.method,
@@ -223,15 +234,16 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         let sink = try await dispatch(request, handlers: [handler])
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.unsupportedProtocolVersion)
-        XCTAssertEqual(error.data?["requested"]?.stringValue, "2025-03-26")
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.unsupportedProtocolVersion)
+        #expect(error.data?["requested"]?.stringValue == "2025-03-26")
 
         let started = await handler.started.value()
-        XCTAssertFalse(started)
+        #expect(!started)
     }
 
-    func testALegacyClientIsRefusedAModernOnlyMethod() async throws {
+    @Test
+    func aLegacyClientIsRefusedAModernOnlyMethod() async throws {
         let adapter = MCPLegacyEraAdapter()
         let sessionId = try await establishLegacySession(adapter: adapter, principal: alice)
         let sink = try await dispatch(
@@ -243,25 +255,27 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.methodNotFound)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.methodNotFound)
 
         let status = await sink.firstJsonStatus()
-        XCTAssertEqual(status?.code, 404)
+        #expect(status?.code == 404)
     }
 
-    func testAModernClientReachesAModernOnlyMethod() async throws {
+    @Test
+    func aModernClientReachesAModernOnlyMethod() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubModernOnlyHandler.method),
             handlers: [StubModernOnlyHandler()]
         )
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertEqual(result["resultType"]?.stringValue, "complete")
+        let result = try #require(resultValue)
+        #expect(result["resultType"]?.stringValue == "complete")
     }
 
-    func testALegacyResultCarriesNoModernEnvelopeFields() async throws {
+    @Test
+    func aLegacyResultCarriesNoModernEnvelopeFields() async throws {
         let adapter = MCPLegacyEraAdapter()
         let sessionId = try await establishLegacySession(adapter: adapter, principal: alice)
         let handler = StubToolsListHandler(
@@ -276,15 +290,16 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertNotNil(result["tools"])
-        XCTAssertNil(result["resultType"])
-        XCTAssertNil(result["ttlMs"])
-        XCTAssertNil(result["cacheScope"])
-        XCTAssertNil(result["_meta"])
+        let result = try #require(resultValue)
+        #expect(result["tools"] != nil)
+        #expect(result["resultType"] == nil)
+        #expect(result["ttlMs"] == nil)
+        #expect(result["cacheScope"] == nil)
+        #expect(result["_meta"] == nil)
     }
 
-    func testALegacyInitializeIsAnsweredWithoutAModernEnvelope() async throws {
+    @Test
+    func aLegacyInitializeIsAnsweredWithoutAModernEnvelope() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeRequest(
                 method: "initialize",
@@ -298,13 +313,14 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertEqual(result["protocolVersion"]?.stringValue, MCPProtocolVersion.v20251125.rawValue)
-        XCTAssertNotNil(result["serverInfo"])
-        XCTAssertNil(result["resultType"])
+        let result = try #require(resultValue)
+        #expect(result["protocolVersion"]?.stringValue == MCPProtocolVersion.v20251125.rawValue)
+        #expect(result["serverInfo"] != nil)
+        #expect(result["resultType"] == nil)
     }
 
-    func testALegacyInitializeForAModernVersionIsRefused() async throws {
+    @Test
+    func aLegacyInitializeForAModernVersionIsRefused() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeRequest(
                 method: "initialize",
@@ -314,11 +330,12 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.unsupportedProtocolVersion)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.unsupportedProtocolVersion)
     }
 
-    func testACacheableMethodWithoutAHintIsReportedAsImmediatelyStale() async throws {
+    @Test
+    func aCacheableMethodWithoutAHintIsReportedAsImmediatelyStale() async throws {
         let handler = StubToolsListHandler(behavior: .returning(.complete(["tools": .array([])])))
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubToolsListHandler.method),
@@ -326,12 +343,13 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertEqual(result["ttlMs"]?.intValue, 0)
-        XCTAssertEqual(result["cacheScope"]?.stringValue, "private")
+        let result = try #require(resultValue)
+        #expect(result["ttlMs"]?.intValue == 0)
+        #expect(result["cacheScope"]?.stringValue == "private")
     }
 
-    func testACacheableMethodKeepsTheHintItReturned() async throws {
+    @Test
+    func aCacheableMethodKeepsTheHintItReturned() async throws {
         let handler = StubToolsListHandler(
             behavior: .returning(.complete(["tools": .array([])], cacheHint: .publicFor(seconds: 300)))
         )
@@ -341,12 +359,13 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertEqual(result["ttlMs"]?.intValue, 300_000)
-        XCTAssertEqual(result["cacheScope"]?.stringValue, "public")
+        let result = try #require(resultValue)
+        #expect(result["ttlMs"]?.intValue == 300_000)
+        #expect(result["cacheScope"]?.stringValue == "public")
     }
 
-    func testAnUncacheableMethodNeverCarriesCacheFields() async throws {
+    @Test
+    func anUncacheableMethodNeverCarriesCacheFields() async throws {
         let handler = StubToolsCallHandler(
             behavior: .returning(.complete(["content": .array([])], cacheHint: .publicFor(seconds: 300)))
         )
@@ -356,13 +375,14 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertNil(result["ttlMs"])
-        XCTAssertNil(result["cacheScope"])
-        XCTAssertEqual(result["resultType"]?.stringValue, "complete")
+        let result = try #require(resultValue)
+        #expect(result["ttlMs"] == nil)
+        #expect(result["cacheScope"] == nil)
+        #expect(result["resultType"]?.stringValue == "complete")
     }
 
-    func testARetriedRequestCarryingInputResponsesIsNotCacheable() async throws {
+    @Test
+    func aRetriedRequestCarryingInputResponsesIsNotCacheable() async throws {
         let handler = StubResourcesReadHandler(
             behavior: .returning(.complete(["contents": .array([])], cacheHint: .privateFor(seconds: 60)))
         )
@@ -373,12 +393,13 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         let sink = try await dispatch(request, handlers: [handler])
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertEqual(result["ttlMs"]?.intValue, 0)
-        XCTAssertEqual(result["cacheScope"]?.stringValue, "private")
+        let result = try #require(resultValue)
+        #expect(result["ttlMs"]?.intValue == 0)
+        #expect(result["cacheScope"]?.stringValue == "private")
     }
 
-    func testAnInterimResultCarriesNoCacheHint() async throws {
+    @Test
+    func anInterimResultCarriesNoCacheHint() async throws {
         let interim = MCPResult(kind: .inputRequired, payload: ["inputRequests": .array([])])
         let handler = StubResourcesReadHandler(behavior: .returning(interim))
         let sink = try await dispatch(
@@ -387,13 +408,14 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertEqual(result["resultType"]?.stringValue, "input_required")
-        XCTAssertNil(result["ttlMs"])
-        XCTAssertNil(result["cacheScope"])
+        let result = try #require(resultValue)
+        #expect(result["resultType"]?.stringValue == "input_required")
+        #expect(result["ttlMs"] == nil)
+        #expect(result["cacheScope"] == nil)
     }
 
-    func testAMethodThatMayNotAskForInputCannotReturnAnInterimResult() async throws {
+    @Test
+    func aMethodThatMayNotAskForInputCannotReturnAnInterimResult() async throws {
         let interim = MCPResult(kind: .inputRequired, payload: [:])
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
@@ -401,11 +423,12 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.internalError)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.internalError)
     }
 
-    func testAHandlerThatOverrunsItsDeadlineIsTimedOut() async throws {
+    @Test
+    func aHandlerThatOverrunsItsDeadlineIsTimedOut() async throws {
         let gate = ReleaseGate()
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
@@ -416,12 +439,13 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         await gate.release()
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.requestTimeout)
-        XCTAssertEqual(error.code, -33_003)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.requestTimeout)
+        #expect(error.code == -33_003)
     }
 
-    func testClosingTheStreamCancelsTheRequest() async throws {
+    @Test
+    func closingTheStreamCancelsTheRequest() async throws {
         let gate = ReleaseGate()
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
@@ -433,12 +457,13 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         await gate.release()
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.requestCancelled)
-        XCTAssertEqual(error.code, -33_002)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.requestCancelled)
+        #expect(error.code == -33_002)
     }
 
-    func testAnUnknownNotificationIsAcknowledgedAndDropped() async throws {
+    @Test
+    func anUnknownNotificationIsAcknowledgedAndDropped() async throws {
         let sink = try await dispatch(
             MCPProtocolTestSupport.makeNotification(method: "notifications/initialized"),
             handlers: [StubTestHandler()]
@@ -446,19 +471,21 @@ final class MCPProtocolDispatcherTests: XCTestCase {
 
         let accepted = await sink.acceptedCount
         let writes = await sink.jsonWrites.count
-        XCTAssertEqual(accepted, 1)
-        XCTAssertEqual(writes, 0)
+        #expect(accepted == 1)
+        #expect(writes == 0)
     }
 
-    func testAResponseMessageIsIgnoredAndAcknowledged() async throws {
+    @Test
+    func aResponseMessageIsIgnoredAndAcknowledged() async throws {
         let response = JsonRpcMessage.successResponse(JsonRpcSuccessResponse(id: .number(1), result: .object([:])))
         let sink = try await dispatch(response, handlers: [StubTestHandler()])
 
         let accepted = await sink.acceptedCount
-        XCTAssertEqual(accepted, 1)
+        #expect(accepted == 1)
     }
 
-    func testACancellationNotificationCancelsTheMatchingRequest() async throws {
+    @Test
+    func aCancellationNotificationCancelsTheMatchingRequest() async throws {
         let handler = StubTestHandler(behavior: .waitForCancellation)
         let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
         let request = MCPProtocolTestSupport.makeModernRequest(id: .number(99), method: StubTestHandler.method)
@@ -478,15 +505,16 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         await sink.waitForCompletion()
 
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.requestCancelled)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.requestCancelled)
 
         let accepted = await cancelSink.acceptedCount
-        XCTAssertEqual(accepted, 1)
+        #expect(accepted == 1)
         _ = await run
     }
 
-    func testACancellationFromAnotherPrincipalIsIgnored() async throws {
+    @Test
+    func aCancellationFromAnotherPrincipalIsIgnored() async throws {
         let handler = StubTestHandler(behavior: .waitForCancellation)
         let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
         let request = MCPProtocolTestSupport.makeModernRequest(id: .number(5), method: StubTestHandler.method)
@@ -505,17 +533,18 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         await dispatcher.dispatch(cancelExchange)
 
         let stillInflight = await dispatcher.inflightCount()
-        XCTAssertEqual(stillInflight, 1)
+        #expect(stillInflight == 1)
 
         let writes = await sink.jsonWrites.count
-        XCTAssertEqual(writes, 0)
+        #expect(writes == 0)
 
         _ = await dispatcher.cancelAllInflight()
         await sink.waitForCompletion()
         _ = await run
     }
 
-    func testRevokingATokenCancelsItsInFlightRequests() async throws {
+    @Test
+    func revokingATokenCancelsItsInFlightRequests() async throws {
         let handler = StubTestHandler(behavior: .waitForCancellation)
         let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
         let request = MCPProtocolTestSupport.makeModernRequest(id: .number(11), method: StubTestHandler.method)
@@ -524,18 +553,19 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         async let run: Void = dispatcher.dispatch(exchange)
         _ = await waitForInflight(dispatcher, count: 1)
 
-        let tokenId = try XCTUnwrap(alice.tokenId)
+        let tokenId = try #require(alice.tokenId)
         let cancelled = await dispatcher.cancelInflight(matchingTokenId: tokenId)
-        XCTAssertEqual(cancelled, 1)
+        #expect(cancelled == 1)
 
         await sink.waitForCompletion()
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.requestCancelled)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.requestCancelled)
         _ = await run
     }
 
-    func testAnInputRequiredSignalReachesTheClientAsAnInputRequiredResult() async throws {
+    @Test
+    func anInputRequiredSignalReachesTheClientAsAnInputRequiredResult() async throws {
         let signal = MCPInputRequired(
             inputRequests: [
                 MCPElicitationRequest.approval(
@@ -552,13 +582,13 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         )
 
         let envelope = try await sink.errorEnvelope()
-        XCTAssertNil(envelope, "A consent question is not a failure")
+        #expect(envelope == nil, "A consent question is not a failure")
 
         let resultValue = try await sink.successResult()
-        let result = try XCTUnwrap(resultValue)
-        XCTAssertEqual(result["resultType"]?.stringValue, "input_required")
-        XCTAssertEqual(result["requestState"]?.stringValue, "sealed-state")
-        XCTAssertNotNil(result["inputRequests"]?["approve_connection"])
+        let result = try #require(resultValue)
+        #expect(result["resultType"]?.stringValue == "input_required")
+        #expect(result["requestState"]?.stringValue == "sealed-state")
+        #expect(result["inputRequests"]?["approve_connection"] != nil)
     }
 
     private func dispatch(
@@ -615,7 +645,7 @@ final class MCPProtocolDispatcherTests: XCTestCase {
     }
 }
 
-final class MCPCancelledNotificationFuzzTests: XCTestCase {
+struct MCPCancelledNotificationFuzzTests {
     private static let longIdentifier = String(repeating: "a", count: 8_192)
 
     private let principal = MCPProtocolTestSupport.makePrincipal(fingerprint: "fuzz")
@@ -636,17 +666,17 @@ final class MCPCancelledNotificationFuzzTests: XCTestCase {
         "false"
     ]
 
-    func testAHostileRequestIdIsRejectedInsteadOfTrapping() throws {
+    @Test
+    func aHostileRequestIdIsRejectedInsteadOfTrapping() throws {
         for raw in Self.hostileRequestIds {
             let params = try MCPProtocolTestSupport.jsonValue(fromJson: "{\"requestId\": \(raw)}")
-            XCTAssertNil(
-                MCPProtocolDispatcher.cancellationRequestId(in: params),
-                "requestId \(raw) should not resolve to an in-flight key"
-            )
+            #expect(MCPProtocolDispatcher.cancellationRequestId(in: params) == nil,
+                "requestId \(raw) should not resolve to an in-flight key")
         }
     }
 
-    func testAUsableRequestIdIsResolved() throws {
+    @Test
+    func aUsableRequestIdIsResolved() throws {
         let cases: [(String, JsonRpcId)] = [
             ("0", .number(0)),
             ("99", .number(99)),
@@ -658,19 +688,21 @@ final class MCPCancelledNotificationFuzzTests: XCTestCase {
 
         for (raw, expected) in cases {
             let params = try MCPProtocolTestSupport.jsonValue(fromJson: "{\"requestId\": \(raw)}")
-            XCTAssertEqual(MCPProtocolDispatcher.cancellationRequestId(in: params), expected, "requestId \(raw)")
+            #expect(MCPProtocolDispatcher.cancellationRequestId(in: params) == expected, "requestId \(raw)")
         }
     }
 
-    func testAMissingOrMalformedParamsObjectIsRejected() throws {
-        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: nil))
-        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: .object([:])))
-        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: .string("nope")))
-        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: .array([.int(1)])))
-        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: .object(["requestId": .null])))
+    @Test
+    func aMissingOrMalformedParamsObjectIsRejected() throws {
+        #expect(MCPProtocolDispatcher.cancellationRequestId(in: nil) == nil)
+        #expect(MCPProtocolDispatcher.cancellationRequestId(in: .object([:])) == nil)
+        #expect(MCPProtocolDispatcher.cancellationRequestId(in: .string("nope")) == nil)
+        #expect(MCPProtocolDispatcher.cancellationRequestId(in: .array([.int(1)])) == nil)
+        #expect(MCPProtocolDispatcher.cancellationRequestId(in: .object(["requestId": .null])) == nil)
     }
 
-    func testHostileCancellationsAreAcknowledgedAndLeaveTheRequestRunning() async throws {
+    @Test
+    func hostileCancellationsAreAcknowledgedAndLeaveTheRequestRunning() async throws {
         let handler = StubTestHandler(behavior: .waitForCancellation)
         let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
         let request = MCPProtocolTestSupport.makeModernRequest(
@@ -685,38 +717,39 @@ final class MCPCancelledNotificationFuzzTests: XCTestCase {
         for raw in Self.hostileRequestIds {
             let params = try MCPProtocolTestSupport.jsonValue(fromJson: "{\"requestId\": \(raw)}")
             let acknowledged = await sendCancellation(params: params, to: dispatcher)
-            XCTAssertEqual(acknowledged, 1, "cancellation with requestId \(raw) was not acknowledged")
+            #expect(acknowledged == 1, "cancellation with requestId \(raw) was not acknowledged")
 
             let inflight = await dispatcher.inflightCount()
-            XCTAssertEqual(inflight, 1, "cancellation with requestId \(raw) disturbed an unrelated request")
+            #expect(inflight == 1, "cancellation with requestId \(raw) disturbed an unrelated request")
         }
 
         let unmatched = await sendCancellation(
             params: .object(["requestId": .string("some-other-request")]),
             to: dispatcher
         )
-        XCTAssertEqual(unmatched, 1)
+        #expect(unmatched == 1)
 
         let writes = await sink.jsonWrites.count
-        XCTAssertEqual(writes, 0)
+        #expect(writes == 0)
 
         let acknowledged = await sendCancellation(
             params: .object(["requestId": .string(Self.longIdentifier), "reason": .string("user stopped")]),
             to: dispatcher
         )
-        XCTAssertEqual(acknowledged, 1)
+        #expect(acknowledged == 1)
 
         await sink.waitForCompletion()
         let errorValue = try await sink.errorEnvelope()
-        let error = try XCTUnwrap(errorValue)
-        XCTAssertEqual(error.code, JsonRpcErrorCode.requestCancelled)
+        let error = try #require(errorValue)
+        #expect(error.code == JsonRpcErrorCode.requestCancelled)
 
         let remaining = await dispatcher.inflightCount()
-        XCTAssertEqual(remaining, 0)
+        #expect(remaining == 0)
         _ = await run
     }
 
-    func testACancellationWithoutAPrincipalIsDroppedButStillAcknowledged() async throws {
+    @Test
+    func aCancellationWithoutAPrincipalIsDroppedButStillAcknowledged() async throws {
         let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [StubTestHandler()])
         let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
             message: MCPProtocolTestSupport.makeNotification(
@@ -729,7 +762,7 @@ final class MCPCancelledNotificationFuzzTests: XCTestCase {
         await dispatcher.dispatch(exchange)
 
         let accepted = await sink.acceptedCount
-        XCTAssertEqual(accepted, 1)
+        #expect(accepted == 1)
     }
 
     private func sendCancellation(params: JsonValue, to dispatcher: MCPProtocolDispatcher) async -> Int {

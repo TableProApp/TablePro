@@ -16,14 +16,11 @@ import Testing
 
 @MainActor
 struct RowEditingCoordinatorJsonModeTests {
+    private let fixture = CoordinatorFixture()
+
     private func makeCoordinator(mode: ResultsViewMode) -> MainContentCoordinator {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users")
         tab.execution.lastExecutedAt = Date()
         tab.display.resultsViewMode = mode

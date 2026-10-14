@@ -1,8 +1,3 @@
-//
-//  FavoritesExpansionStateTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
@@ -10,16 +5,19 @@ import Testing
 
 @MainActor
 struct FavoritesExpansionStateTests {
-    private func makeState() throws -> (FavoritesExpansionState, UserDefaults, String) {
-        let suite = "FavoritesExpansionStateTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        return (FavoritesExpansionState(defaults: defaults), defaults, suite)
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
+    private func makeState() throws -> (FavoritesExpansionState, UserDefaults) {
+        (FavoritesExpansionState(defaults: suite.defaults), suite.defaults)
     }
 
     @Test("A group is expanded until it is collapsed")
     func collapsingAGroup() throws {
-        let (state, _, _) = try makeState()
+        let (state, _) = try makeState()
         let connectionId = UUID()
 
         #expect(state.isDatabaseEnvironmentExpanded(.production, for: connectionId))
@@ -31,7 +29,7 @@ struct FavoritesExpansionStateTests {
 
     @Test("Collapsed groups survive a reload")
     func collapsedGroupsPersist() throws {
-        let (state, defaults, _) = try makeState()
+        let (state, defaults) = try makeState()
         let connectionId = UUID()
         state.setDatabaseEnvironmentExpanded(.development, expanded: false, for: connectionId)
 
@@ -78,7 +76,7 @@ struct FavoritesExpansionStateTests {
 
     @Test("Deleting a connection forgets its groups and leaves the others alone")
     func removeConnection() throws {
-        let (state, _, _) = try makeState()
+        let (state, _) = try makeState()
         let deleted = UUID()
         let kept = UUID()
         state.setDatabaseEnvironmentExpanded(.production, expanded: false, for: deleted)

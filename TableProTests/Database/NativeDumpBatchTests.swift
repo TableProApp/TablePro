@@ -69,7 +69,6 @@ private final class FakeDumpService: NativeDumpRunning {
     }
 }
 
-@Suite("Native dump batch", .serialized)
 @MainActor
 struct NativeDumpBatchTests {
     private let root = URL(fileURLWithPath: NSTemporaryDirectory())

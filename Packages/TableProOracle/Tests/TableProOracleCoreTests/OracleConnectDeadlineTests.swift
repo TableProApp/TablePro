@@ -1,26 +1,18 @@
 import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
-final class OracleConnectDeadlineTests: XCTestCase {
-    func testEverySetupPhaseReadsTheSameAbsoluteDeadline() {
+struct OracleConnectDeadlineTests {
+    @Test func testEverySetupPhaseReadsTheSameAbsoluteDeadline() {
         let started: ContinuousClock.Instant = .now
         let deadline = OracleConnectDeadline(seconds: 60, now: started)
 
-        XCTAssertEqual(deadline.remainingSeconds(at: started), 60, accuracy: 1e-6)
-        XCTAssertEqual(
-            deadline.remainingSeconds(at: started.advanced(by: .seconds(7))),
-            53,
-            accuracy: 1e-6
-        )
-        XCTAssertEqual(
-            deadline.remainingSeconds(at: started.advanced(by: .seconds(19))),
-            41,
-            accuracy: 1e-6
-        )
+        #expect(abs(deadline.remainingSeconds(at: started) - (60)) <= 1e-6)
+        #expect(abs((deadline.remainingSeconds(at: started.advanced(by: .seconds(7)))) - (53)) <= 1e-6)
+        #expect(abs((deadline.remainingSeconds(at: started.advanced(by: .seconds(19)))) - (41)) <= 1e-6)
     }
 
-    func testAnExpiredDeadlineRefusesToStartAnotherProbe() async {
+    @Test func testAnExpiredDeadlineRefusesToStartAnotherProbe() async {
         let started: ContinuousClock.Instant = .now
         let deadline = OracleConnectDeadline(seconds: 1, now: started)
         let probes = InvocationCounter()
@@ -39,11 +31,11 @@ final class OracleConnectDeadlineTests: XCTestCase {
                 probes.increment()
                 return "should not run"
             }
-            XCTFail("an expired connect deadline should refuse the next probe")
+            Issue.record("an expired connect deadline should refuse the next probe")
         } catch {
-            XCTAssertEqual(error as? OracleCoreError, .connectTimedOut)
+            #expect(error as? OracleCoreError == .connectTimedOut)
         }
-        XCTAssertEqual(probes.value, 0)
+        #expect(probes.value == 0)
     }
 }
 

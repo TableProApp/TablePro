@@ -1,18 +1,12 @@
-//
-//  QueryPlanThemeTests.swift
-//  TableProTests
-//
-//  The plan outline is a records table whose rows stay AppKit's own until a theme draws them, its
-//  detail pane and the diagram's steps sit on the grid's slots, and an export renders the scheme and
-//  the backdrop the canvas shows.
-//
+// The plan outline is a records table whose rows stay AppKit's own until a theme draws them, its
+// detail pane and the diagram's steps sit on the grid's slots, and an export renders the scheme and
+// the backdrop the canvas shows.
 
 import AppKit
 import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("The query plan follows the theme", .serialized)
 @MainActor
 struct QueryPlanThemeTests {
     private typealias Fixture = ThemeTestFixture
@@ -61,7 +55,8 @@ struct QueryPlanThemeTests {
         let coordinator: QueryPlanOutlineCoordinator
     }
 
-    /// Never ordered front and never closed: `close()` on a test window over-releases it.
+    /// Never ordered front and never closed: `close()` on a test window over-releases it. Mounted
+    /// without spinning the run loop, so no other main-actor work runs under a theme a case adopted.
     private func mountOutline() throws -> MountedOutline {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 240),
@@ -73,10 +68,7 @@ struct QueryPlanThemeTests {
         let host = NSHostingView(rootView: QueryPlanOutlineView(plan: plan(), metric: nil, selectedNodeId: .constant(nil)))
         host.sizingOptions = []
         window.contentView = host
-        for _ in 0 ..< 5 {
-            host.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
-        }
+        host.layoutSubtreeIfNeeded()
         let outline = try #require(outlineView(in: host))
         let coordinator = try #require(outline.delegate as? QueryPlanOutlineCoordinator)
         return MountedOutline(window: window, outline: outline, coordinator: coordinator)

@@ -321,7 +321,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
     }
 }
 
-private final class CountingMetadataDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class CountingMetadataDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var calls: [String: Int] = [:]
     private let bulk: Bool
@@ -423,20 +423,10 @@ private final class CountingMetadataDriver: PluginDatabaseDriver, @unchecked Sen
 
     // MARK: - Unused
 
-    func connect() async throws {}
-    func disconnect() {}
     var isConnected: Bool { true }
 
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchDatabases() async throws -> [String] { [] }
-
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {

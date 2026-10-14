@@ -238,10 +238,15 @@ struct JSONImportSkipTests {
     @Test("An import finishes while another reader in the process waits on a quiet pipe")
     func importIgnoresABlockedAsyncBytesReader() async throws {
         let pipe = Pipe()
+        let (reading, signalReading) = AsyncStream<Void>.makeStream()
         let blocker = Task {
-            for try await _ in pipe.fileHandleForReading.bytes {}
+            for try await _ in pipe.fileHandleForReading.bytes {
+                signalReading.yield()
+            }
         }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // Reading this byte puts the reader on the shared queue, and its next read parks there on the quiet pipe.
+        try pipe.fileHandleForWriting.write(contentsOf: Data([0x0A]))
+        for await _ in reading { break }
 
         let finished = await withTaskGroup(of: Bool.self) { group in
             group.addTask {

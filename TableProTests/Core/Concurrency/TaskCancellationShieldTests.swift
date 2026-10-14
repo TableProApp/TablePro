@@ -1,10 +1,6 @@
-//
-//  TaskCancellationShieldTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 struct TaskCancellationShieldTests {
@@ -14,24 +10,28 @@ struct TaskCancellationShieldTests {
     @Test("Work inside the shield never sees the cancellation of the task awaiting it")
     func shieldedWorkNeverSeesCancellation() async {
         let observed = Observation()
+        let started = AsyncGate()
+        let cancelIssued = AsyncGate()
         let task = Task {
             try await TaskCancellationShield.run {
                 await withTaskCancellationHandler {
-                    await observed.record(cancelled: Task.isCancelled)
-                    try? await Task.sleep(for: .milliseconds(30))
-                    await observed.record(cancelledAtEnd: Task.isCancelled)
+                    observed.record(cancelled: Task.isCancelled)
+                    await started.open()
+                    await cancelIssued.wait()
+                    observed.record(cancelledAtEnd: Task.isCancelled)
                 } onCancel: {
-                    Task { await observed.recordHandlerFired() }
+                    observed.recordHandlerFired()
                 }
             }
         }
-        try? await Task.sleep(for: .milliseconds(5))
+        await started.wait()
         task.cancel()
+        await cancelIssued.open()
         try? await task.value
 
-        #expect(await observed.sawCancellationAtStart == false)
-        #expect(await observed.sawCancellationAtEnd == false)
-        #expect(await observed.handlerFired == false)
+        #expect(observed.sawCancellationAtStart == false)
+        #expect(observed.sawCancellationAtEnd == false)
+        #expect(observed.handlerFired == false)
     }
 
     /// The same work without the shield, so the test proves the shield is what makes the
@@ -39,32 +39,36 @@ struct TaskCancellationShieldTests {
     @Test("The same work run structurally does see it")
     func structuredWorkSeesCancellation() async {
         let observed = Observation()
+        let started = AsyncGate()
         let task = Task {
             await withTaskCancellationHandler {
-                try? await Task.sleep(for: .milliseconds(30))
-                await observed.record(cancelledAtEnd: Task.isCancelled)
+                await started.open()
+                // Parks until the cancel arrives, which ends the sleep at once.
+                try? await Task.sleep(for: .seconds(60))
+                observed.record(cancelledAtEnd: Task.isCancelled)
             } onCancel: {
-                Task { await observed.recordHandlerFired() }
+                observed.recordHandlerFired()
             }
         }
-        try? await Task.sleep(for: .milliseconds(5))
+        await started.wait()
         task.cancel()
         await task.value
-        try? await Task.sleep(for: .milliseconds(20))
 
-        #expect(await observed.sawCancellationAtEnd)
-        #expect(await observed.handlerFired)
+        #expect(observed.sawCancellationAtEnd)
+        #expect(observed.handlerFired)
     }
 
     @Test("A cancelled caller still gets the value the shielded work produced")
     func shieldedWorkStillReturnsItsValue() async throws {
+        let cancelIssued = AsyncGate()
         let task = Task { () -> Int in
             try await TaskCancellationShield.run {
-                try? await Task.sleep(for: .milliseconds(20))
+                await cancelIssued.wait()
                 return 42
             }
         }
         task.cancel()
+        await cancelIssued.open()
         #expect(try await task.value == 42)
     }
 
@@ -80,20 +84,27 @@ private enum ProbeError: Error {
     case refused
 }
 
-private actor Observation {
-    private(set) var sawCancellationAtStart = false
-    private(set) var sawCancellationAtEnd = false
-    private(set) var handlerFired = false
+/// A cancellation handler runs synchronously inside `cancel()`, so it records under a lock rather
+/// than through a task that could land after the assertions.
+private final class Observation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelledAtStart = false
+    private var cancelledAtEnd = false
+    private var handlerRan = false
+
+    var sawCancellationAtStart: Bool { lock.withLock { cancelledAtStart } }
+    var sawCancellationAtEnd: Bool { lock.withLock { cancelledAtEnd } }
+    var handlerFired: Bool { lock.withLock { handlerRan } }
 
     func record(cancelled: Bool) {
-        sawCancellationAtStart = cancelled
+        lock.withLock { cancelledAtStart = cancelled }
     }
 
     func record(cancelledAtEnd: Bool) {
-        sawCancellationAtEnd = cancelledAtEnd
+        lock.withLock { self.cancelledAtEnd = cancelledAtEnd }
     }
 
     func recordHandlerFired() {
-        handlerFired = true
+        lock.withLock { handlerRan = true }
     }
 }

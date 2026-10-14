@@ -13,15 +13,23 @@ struct JavaScriptStatementScannerTests {
         #expect(texts("db.a.find(); db.b.find();") == ["db.a.find();", "db.b.find();"])
     }
 
-    @Test("A semicolon inside a function body is not a boundary")
-    func semicolonInsideFunction() {
-        let source = "db.a.find().forEach(function (d) { var x = d.n; print(x); });"
-        #expect(texts(source) == [source])
-    }
-
-    @Test("A for header's semicolons are not boundaries")
-    func forHeader() {
-        let source = "for (var i = 0; i < 3; i++) { print(i); }"
+    @Test("One statement is not split at a semicolon, brace or newline inside it", arguments: [
+        "db.a.find().forEach(function (d) { var x = d.n; print(x); });",
+        "for (var i = 0; i < 3; i++) { print(i); }",
+        "if (a) { print(1); } else { print(2); }",
+        "try { db.a.drop(); } catch (e) { print(e); } finally { print(\"done\"); }",
+        "db.orders.find({})\n    .sort({a: 1})\n    .limit(5)",
+        "var total = 1 +\n2",
+        "db.a.find({note: \"one; two\"});",
+        "var q = `one; ${a + 1}; two`;",
+        "db.a.find({name: /one;two/i});",
+        "var f = function () { return 1; } + 1;",
+        "if (ready)\n{\n  print(1);\n}\nelse\n{\n  print(2);\n}",
+        "for (var i = 0; i < 3; i++)\n{\n  print(i);\n}",
+        "try\n{\n  db.a.drop();\n}\ncatch (e)\n{\n  print(e);\n}",
+        "db.a.find({status: 1",
+    ])
+    func oneStatementIsNotSplit(_ source: String) {
         #expect(texts(source) == [source])
     }
 
@@ -34,45 +42,9 @@ struct JavaScriptStatementScannerTests {
         #expect(texts(source) == ["function add(a, b) { return a + b; }", "db.orders.find({})"])
     }
 
-    @Test("else keeps an if statement together")
-    func ifElseStaysOneStatement() {
-        let source = "if (a) { print(1); } else { print(2); }"
-        #expect(texts(source) == [source])
-    }
-
-    @Test("try/catch/finally stays one statement")
-    func tryCatchStaysOneStatement() {
-        let source = "try { db.a.drop(); } catch (e) { print(e); } finally { print(\"done\"); }"
-        #expect(texts(source) == [source])
-    }
-
     @Test("A newline splits when the next token cannot continue the expression")
     func newlineAsSemicolon() {
         #expect(texts("db.a.find()\ndb.b.find()") == ["db.a.find()", "db.b.find()"])
-    }
-
-    @Test("A newline before a leading dot does not split")
-    func newlineBeforeDotDoesNotSplit() {
-        let source = "db.orders.find({})\n    .sort({a: 1})\n    .limit(5)"
-        #expect(texts(source) == [source])
-    }
-
-    @Test("A newline after a trailing operator does not split")
-    func newlineAfterOperatorDoesNotSplit() {
-        let source = "var total = 1 +\n2"
-        #expect(texts(source) == [source])
-    }
-
-    @Test("A semicolon in a string literal is not a boundary")
-    func semicolonInString() {
-        let source = "db.a.find({note: \"one; two\"});"
-        #expect(texts(source) == [source])
-    }
-
-    @Test("A semicolon in a template literal is not a boundary")
-    func semicolonInTemplate() {
-        let source = "var q = `one; ${a + 1}; two`;"
-        #expect(texts(source) == [source])
     }
 
     @Test("A semicolon in a line comment is not a boundary")
@@ -87,12 +59,6 @@ struct JavaScriptStatementScannerTests {
     @Test("A semicolon in a block comment is not a boundary")
     func semicolonInBlockComment() {
         #expect(texts("db.a.find(/* one; two */ {});") == ["db.a.find(/* one; two */ {});"])
-    }
-
-    @Test("A regular expression containing a semicolon is not a boundary")
-    func semicolonInRegularExpression() {
-        let source = "db.a.find({name: /one;two/i});"
-        #expect(texts(source) == [source])
     }
 
     @Test("Division is not read as the start of a regular expression")
@@ -110,12 +76,6 @@ struct JavaScriptStatementScannerTests {
         #expect(texts(source) == ["function add(a, b) { return a + b; }", "db.orders.find({})"])
     }
 
-    @Test("A brace that closes a function expression does not end the assignment")
-    func braceInsideAssignmentDoesNotSplit() {
-        let source = "var f = function () { return 1; } + 1;"
-        #expect(texts(source) == [source])
-    }
-
     @Test("A function expression assigned to a variable stays with its assignment")
     func functionExpressionStaysWithAssignment() {
         let source = """
@@ -123,24 +83,6 @@ struct JavaScriptStatementScannerTests {
             db.a.find({})
             """
         #expect(texts(source) == ["var f = function () { return 1; }", "db.a.find({})"])
-    }
-
-    @Test("Allman bracing stays one statement")
-    func allmanBracing() {
-        let source = "if (ready)\n{\n  print(1);\n}\nelse\n{\n  print(2);\n}"
-        #expect(texts(source) == [source])
-    }
-
-    @Test("An Allman for loop stays one statement")
-    func allmanLoop() {
-        let source = "for (var i = 0; i < 3; i++)\n{\n  print(i);\n}"
-        #expect(texts(source) == [source])
-    }
-
-    @Test("An Allman try/catch stays one statement")
-    func allmanTryCatch() {
-        let source = "try\n{\n  db.a.drop();\n}\ncatch (e)\n{\n  print(e);\n}"
-        #expect(texts(source) == [source])
     }
 
     @Test("A trailing comment is not an executable statement")
@@ -174,11 +116,5 @@ struct JavaScriptStatementScannerTests {
     func emptyDocument() {
         #expect(texts("").isEmpty)
         #expect(texts("   \n  ").isEmpty)
-    }
-
-    @Test("An unterminated brace keeps the rest as one statement rather than splitting it")
-    func unterminatedBrace() {
-        let source = "db.a.find({status: 1"
-        #expect(texts(source) == [source])
     }
 }

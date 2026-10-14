@@ -8,23 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class FakeRewindKeychain: KeychainStoring, @unchecked Sendable {
-    private var values: [String: String] = [:]
-
-    func writeString(_ value: String, forKey key: String) -> Bool {
-        values[key] = value
-        return true
-    }
-
-    func readStringResult(forKey key: String) -> KeychainStringResult {
-        values[key].map { .found($0) } ?? .notFound
-    }
-
-    func delete(forKey key: String) {
-        values.removeValue(forKey: key)
-    }
-}
-
 struct RewindSnapshotStorageTests {
     private let connectionId = UUID()
 
@@ -68,7 +51,7 @@ struct RewindSnapshotStorageTests {
     @Test("A stored snapshot comes back with its rows intact")
     func roundTrip() async {
         let storage = makeStorage()
-        let cipher = RewindCipher(keychain: FakeRewindKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         let record = makeRecord()
 
         #expect(await storage.recordRewindSnapshot(record, cipher: cipher))
@@ -79,7 +62,7 @@ struct RewindSnapshotStorageTests {
     @Test("Snapshots come back newest first, and only for the table asked for")
     func listsByTargetNewestFirst() async {
         let storage = makeStorage()
-        let cipher = RewindCipher(keychain: FakeRewindKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         let older = makeRecord(capturedAt: Date(timeIntervalSince1970: 1_000))
         let newer = makeRecord(capturedAt: Date(timeIntervalSince1970: 2_000))
         let elsewhere = makeRecord(table: "orders")
@@ -97,7 +80,7 @@ struct RewindSnapshotStorageTests {
     @Test("A snapshot for another schema is not returned for the unqualified table")
     func schemaIsPartOfTheKey() async {
         let storage = makeStorage()
-        let cipher = RewindCipher(keychain: FakeRewindKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         await storage.recordRewindSnapshot(makeRecord(schema: "reporting"), cipher: cipher)
 
         let found = await storage.rewindSnapshots(
@@ -109,7 +92,7 @@ struct RewindSnapshotStorageTests {
     @Test("Snapshots older than the retention window are pruned")
     func agePruning() async {
         let storage = makeStorage()
-        let cipher = RewindCipher(keychain: FakeRewindKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         let now = Date(timeIntervalSince1970: 2_000_000)
         await storage.recordRewindSnapshot(
             makeRecord(capturedAt: now.addingTimeInterval(-8 * 24 * 60 * 60)), cipher: cipher
@@ -127,7 +110,7 @@ struct RewindSnapshotStorageTests {
     @Test("One table cannot hold more than the per-table depth")
     func perTablePruning() async {
         let storage = makeStorage()
-        let cipher = RewindCipher(keychain: FakeRewindKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         for offset in 0 ..< 6 {
             await storage.recordRewindSnapshot(
                 makeRecord(capturedAt: Date(timeIntervalSince1970: TimeInterval(1_000 + offset))), cipher: cipher
@@ -145,7 +128,7 @@ struct RewindSnapshotStorageTests {
     @Test("A single save larger than the whole byte budget is still kept")
     func oversizedSingleSnapshotSurvives() async {
         let storage = makeStorage()
-        let cipher = RewindCipher(keychain: FakeRewindKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         await storage.recordRewindSnapshot(makeRecord(), cipher: cipher)
 
         await storage.pruneRewindSnapshots(now: Date(timeIntervalSince1970: 1_700_000_100), byteLimit: 1)
@@ -159,7 +142,7 @@ struct RewindSnapshotStorageTests {
     @Test("Clearing removes every snapshot")
     func clearing() async {
         let storage = makeStorage()
-        let cipher = RewindCipher(keychain: FakeRewindKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         await storage.recordRewindSnapshot(makeRecord(), cipher: cipher)
 
         await storage.clearRewindSnapshots()

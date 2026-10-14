@@ -46,13 +46,20 @@ private final class UnreachableRegistryProtocol: URLProtocol, @unchecked Sendabl
 @Suite("Driver unavailability", .serialized)
 @MainActor
 struct DriverUnavailabilityTests {
+    private let managerSuite: EphemeralDefaults
+    private let registrySuite: EphemeralDefaults
+
+    init() throws {
+        managerSuite = try EphemeralDefaults()
+        registrySuite = try EphemeralDefaults()
+    }
+
     private func makeManager() throws -> (manager: PluginManager, root: URL) {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DriverUnavailability-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let defaults = try #require(UserDefaults(suiteName: "DriverUnavailability.\(UUID().uuidString)"))
         let manager = PluginManager(
-            userDefaults: defaults,
+            userDefaults: managerSuite.defaults,
             builtInPluginsURL: nil,
             userPluginsDir: root.appendingPathComponent("Plugins", isDirectory: true)
         )
@@ -95,9 +102,8 @@ struct DriverUnavailabilityTests {
         UnreachableRegistryProtocol.reset()
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [UnreachableRegistryProtocol.self]
-        let defaults = try #require(UserDefaults(suiteName: "DriverUnavailabilityRegistry.\(UUID().uuidString)"))
         return RegistryClient(
-            userDefaults: defaults,
+            userDefaults: registrySuite.defaults,
             session: URLSession(configuration: config),
             manifestCacheURL: root.appendingPathComponent("registry-manifest.json")
         )

@@ -13,11 +13,12 @@ import TableProSyncTransport
 import Testing
 
 struct SQLFavoriteDeletionSyncTests {
+    private let pool = EphemeralDefaultsPool()
     private let storage: SQLFavoriteStorage
     private let metadata: SyncMetadataStorage
     private let manager: SQLFavoriteManager
 
-    init() {
+    init() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("sql_favorites_sync_\(UUID().uuidString).db")
@@ -27,7 +28,7 @@ struct SQLFavoriteDeletionSyncTests {
         )
         storage = SQLFavoriteStorage(databaseURL: url, removeDatabaseOnDeinit: true)
         metadata = SyncMetadataStorage(
-            userDefaults: UserDefaults(suiteName: "tablepro-favorite-sync-\(UUID().uuidString)") ?? .standard,
+            userDefaults: try pool.make().defaults,
             prefix: "tests.\(UUID().uuidString)"
         )
         manager = SQLFavoriteManager(

@@ -2,9 +2,9 @@ import Foundation
 import TableProNumberFormatting
 @testable import TableProTabular
 import TableProTabularIO
-import XCTest
+import Testing
 
-final class TabularEditingTests: XCTestCase {
+struct TabularEditingTests {
     private func table(_ text: String) async throws -> TabularTable {
         TabularTable(source: try await TabularTableTests.delimitedSource(text), usesFirstRowAsHeader: true)
     }
@@ -21,7 +21,7 @@ final class TabularEditingTests: XCTestCase {
         return updated
     }
 
-    func testStatisticsCountDistinctEmptyAndNumbers() async throws {
+    @Test func testStatisticsCountDistinctEmptyAndNumbers() async throws {
         let table = try await table("n\n3\n1\n\n3\nx\n")
         let summary = try await TabularColumnStatistics.summarize(
             column: table.columns[0].id,
@@ -29,18 +29,18 @@ final class TabularEditingTests: XCTestCase {
             keys: table.rowOrder.keys,
             in: table
         )
-        XCTAssertEqual(summary.rowCount, 5)
-        XCTAssertEqual(summary.emptyCount, 1)
-        XCTAssertEqual(summary.distinctCount, 4)
-        XCTAssertEqual(summary.nonNumericCount, 1)
-        XCTAssertEqual(summary.numeric?.minimum, ExactNumber(decimal: 1))
-        XCTAssertEqual(summary.numeric?.maximum, ExactNumber(decimal: 3))
-        XCTAssertEqual(summary.numeric?.median, ExactNumber(decimal: 3))
-        XCTAssertEqual(summary.numeric?.sum, ExactNumber(decimal: 7))
-        XCTAssertEqual(summary.topValues.first, TabularValueCount(value: "3", isEmpty: false, count: 2))
+        #expect(summary.rowCount == 5)
+        #expect(summary.emptyCount == 1)
+        #expect(summary.distinctCount == 4)
+        #expect(summary.nonNumericCount == 1)
+        #expect(summary.numeric?.minimum == ExactNumber(decimal: 1))
+        #expect(summary.numeric?.maximum == ExactNumber(decimal: 3))
+        #expect(summary.numeric?.median == ExactNumber(decimal: 3))
+        #expect(summary.numeric?.sum == ExactNumber(decimal: 7))
+        #expect(summary.topValues.first == TabularValueCount(value: "3", isEmpty: false, count: 2))
     }
 
-    func testMedianMatchesASortedReference() {
+    @Test func testMedianMatchesASortedReference() {
         var generator = SystemRandomNumberGenerator()
         for count in [1, 2, 3, 4, 5, 10, 101, 1_000] {
             for _ in 0..<20 {
@@ -49,13 +49,13 @@ final class TabularEditingTests: XCTestCase {
                 let middle = count / 2
                 let expected = count.isMultiple(of: 2) ? (sorted[middle - 1], sorted[middle]) : (sorted[middle], sorted[middle])
                 let found = TabularColumnStatistics.middleValues(of: &numbers)
-                XCTAssertEqual(found.lower, expected.0, "\(sorted)")
-                XCTAssertEqual(found.upper, expected.1, "\(sorted)")
+                #expect(found.lower == expected.0, "\(sorted)")
+                #expect(found.upper == expected.1, "\(sorted)")
             }
         }
     }
 
-    func testTopValuesAcrossPartitionsMatchABruteForceRanking() async throws {
+    @Test func testTopValuesAcrossPartitionsMatchABruteForceRanking() async throws {
         var generator = SystemRandomNumberGenerator()
         let values = (0..<20_000).map { _ in "v\(Int.random(in: 0..<700, using: &generator))" }
         let table = try await table("v\n" + values.joined(separator: "\n") + "\n")
@@ -68,44 +68,44 @@ final class TabularEditingTests: XCTestCase {
         )
         var counts: [String: Int] = [:]
         for value in values { counts[value, default: 0] += 1 }
-        XCTAssertEqual(summary.distinctCount, counts.count)
-        XCTAssertEqual(summary.topValues.count, 25)
+        #expect(summary.distinctCount == counts.count)
+        #expect(summary.topValues.count == 25)
         let threshold = counts.values.sorted(by: >)[24]
         for entry in summary.topValues {
-            XCTAssertEqual(counts[entry.value], entry.count)
-            XCTAssertGreaterThanOrEqual(entry.count, threshold)
+            #expect(counts[entry.value] == entry.count)
+            #expect(entry.count >= threshold)
         }
-        XCTAssertEqual(summary.topValues.map(\.count), summary.topValues.map(\.count).sorted(by: >))
-        XCTAssertEqual(Set(summary.topValues.map(\.value)).count, 25)
+        #expect(summary.topValues.map(\.count) == summary.topValues.map(\.count).sorted(by: >))
+        #expect(Set(summary.topValues.map(\.value)).count == 25)
     }
 
-    func testFindHonoursCaseWholeWordsAndRegex() async throws {
+    @Test func testFindHonoursCaseWholeWordsAndRegex() async throws {
         let table = try await table("a,b\ncat,Category\nCAT,dog\nconcat,cat5\n")
         let all = table.rowOrder.keys
         let plain = try await TabularFinder.findAll(TabularFindQuery(text: "cat", columns: table.columnIDs), keys: all, in: table)
-        XCTAssertEqual(plain.count, 5)
+        #expect(plain.count == 5)
         let cased = try await TabularFinder.findAll(
             TabularFindQuery(text: "cat", matchesCase: true, columns: table.columnIDs),
             keys: all,
             in: table
         )
-        XCTAssertEqual(cased.count, 3)
+        #expect(cased.count == 3)
         let words = try await TabularFinder.findAll(
             TabularFindQuery(text: "cat", matchesWholeWords: true, columns: table.columnIDs),
             keys: all,
             in: table
         )
-        XCTAssertEqual(words.map(\.key), [1, 2])
+        #expect(words.map(\.key) == [1, 2])
         let regex = try await TabularFinder.findAll(
             TabularFindQuery(text: "^c.t\\d$", isRegularExpression: true, columns: table.columnIDs),
             keys: all,
             in: table
         )
-        XCTAssertEqual(regex, [TabularFindMatch(key: 3, column: table.columns[1].id)])
-        XCTAssertThrowsError(try TabularFindMatcher(TabularFindQuery(text: "(", isRegularExpression: true, columns: [])))
+        #expect(regex == [TabularFindMatch(key: 3, column: table.columns[1].id)])
+        #expect(throws: (any Error).self) { try TabularFindMatcher(TabularFindQuery(text: "(", isRegularExpression: true, columns: [])) }
     }
 
-    func testReplaceAllRewritesOnlyMatchingCellsAndKeepsEditsInScope() async throws {
+    @Test func testReplaceAllRewritesOnlyMatchingCellsAndKeepsEditsInScope() async throws {
         var table = try await table("a\nfoo bar\nbaz\nfoo\n")
         table.setCell(.text("foo edited"), row: 1, column: 0)
         let result = try await TabularFinder.replaceAll(
@@ -114,14 +114,14 @@ final class TabularEditingTests: XCTestCase {
             keys: table.rowOrder.keys,
             in: table
         )
-        XCTAssertEqual(result.changedCells, 3)
-        XCTAssertEqual(result.replacements, 3)
+        #expect(result.changedCells == 3)
+        #expect(result.replacements == 3)
         let updated = applying(result.values, to: table)
-        XCTAssertEqual(texts(updated, column: 0), ["fox bar", "fox edited", "fox"])
-        XCTAssertTrue(updated.columns[0].values.edits.isEmpty)
+        #expect(texts(updated, column: 0) == ["fox bar", "fox edited", "fox"])
+        #expect(updated.columns[0].values.edits.isEmpty)
     }
 
-    func testLiteralReplaceTreatsDollarSignsAsText() async throws {
+    @Test func testLiteralReplaceTreatsDollarSignsAsText() async throws {
         let table = try await table("a\nprice 5\n")
         let result = try await TabularFinder.replaceAll(
             TabularFindQuery(text: "5", columns: table.columnIDs),
@@ -129,54 +129,54 @@ final class TabularEditingTests: XCTestCase {
             keys: table.rowOrder.keys,
             in: table
         )
-        XCTAssertEqual(texts(applying(result.values, to: table), column: 0), ["price $1"])
+        #expect(texts(applying(result.values, to: table), column: 0) == ["price $1"])
     }
 
-    func testCleanupOperationsReportChangedCells() async throws {
+    @Test func testCleanupOperationsReportChangedCells() async throws {
         let table = try await table("a,b\n  x  ,1\ny,2\n\t z ,3\n")
         let all = table.rowOrder.keys
         let trimmed = try await TabularCleanup.apply(.trimWhitespace, columns: [table.columns[0].id], keys: all, in: table)
-        XCTAssertEqual(trimmed.changedCells, 2)
-        XCTAssertEqual(texts(applying(trimmed.values, to: table), column: 0), ["x", "y", "z"])
+        #expect(trimmed.changedCells == 2)
+        #expect(texts(applying(trimmed.values, to: table), column: 0) == ["x", "y", "z"])
 
         let upper = try await TabularCleanup.apply(.changeCase(.uppercase), columns: [table.columns[0].id], keys: [2], in: table)
-        XCTAssertEqual(texts(applying(upper.values, to: table), column: 0), ["  x  ", "Y", "\t z "])
+        #expect(texts(applying(upper.values, to: table), column: 0) == ["  x  ", "Y", "\t z "])
 
         let filled = try await TabularCleanup.apply(.fillDown, columns: [table.columns[1].id], keys: [1, 2, 3], in: table)
-        XCTAssertEqual(filled.changedCells, 2)
-        XCTAssertEqual(texts(applying(filled.values, to: table), column: 1), ["1", "1", "1"])
+        #expect(filled.changedCells == 2)
+        #expect(texts(applying(filled.values, to: table), column: 1) == ["1", "1", "1"])
 
         let everywhere = try await TabularCleanup.apply(.setValue("k"), columns: [table.columns[1].id], keys: all, in: table)
-        XCTAssertEqual(everywhere.changedCells, 3)
-        XCTAssertEqual(texts(applying(everywhere.values, to: table), column: 1), ["k", "k", "k"])
+        #expect(everywhere.changedCells == 3)
+        #expect(texts(applying(everywhere.values, to: table), column: 1) == ["k", "k", "k"])
     }
 
-    func testDuplicateRowsKeepTheFirstOccurrence() async throws {
+    @Test func testDuplicateRowsKeepTheFirstOccurrence() async throws {
         let table = try await table("a,b\nx,1\nX ,1\nx,1\ny,2\n")
         let all = table.rowOrder.keys
         let exact = try await TabularDuplicates.duplicateKeys(comparing: table.columnIDs, keys: all, in: table)
-        XCTAssertEqual(exact, [3])
+        #expect(exact == [3])
         let loose = try await TabularDuplicates.duplicateKeys(
             comparing: table.columnIDs,
             keys: all,
             in: table,
             options: TabularDuplicateOptions(ignoresCase: true, ignoresSurroundingWhitespace: true)
         )
-        XCTAssertEqual(loose, [2, 3])
+        #expect(loose == [2, 3])
     }
 
-    func testTypeInferenceIsStrict() {
-        XCTAssertEqual(TabularTypeInference.infer([(.text, "1"), (.text, "22")]), .integer)
-        XCTAssertEqual(TabularTypeInference.infer([(.text, "007"), (.text, "12")]), .text)
-        XCTAssertEqual(TabularTypeInference.infer([(.text, "1.5"), (.text, "2")]), .decimal)
-        XCTAssertEqual(TabularTypeInference.infer([(.text, "NaN"), (.text, "2")]), .text)
-        XCTAssertEqual(TabularTypeInference.infer([(.text, "0x1F")]), .text)
-        XCTAssertEqual(TabularTypeInference.infer([(.text, "yes"), (.text, "No")]), .boolean)
-        XCTAssertEqual(TabularTypeInference.infer([(.text, "2024-01-05"), (.text, "2024-02-10T10:00:00Z")]), .date)
-        XCTAssertEqual(TabularTypeInference.infer([(.text, "05/01/2024")]), .text)
+    @Test func testTypeInferenceIsStrict() {
+        #expect(TabularTypeInference.infer([(.text, "1"), (.text, "22")]) == .integer)
+        #expect(TabularTypeInference.infer([(.text, "007"), (.text, "12")]) == .text)
+        #expect(TabularTypeInference.infer([(.text, "1.5"), (.text, "2")]) == .decimal)
+        #expect(TabularTypeInference.infer([(.text, "NaN"), (.text, "2")]) == .text)
+        #expect(TabularTypeInference.infer([(.text, "0x1F")]) == .text)
+        #expect(TabularTypeInference.infer([(.text, "yes"), (.text, "No")]) == .boolean)
+        #expect(TabularTypeInference.infer([(.text, "2024-01-05"), (.text, "2024-02-10T10:00:00Z")]) == .date)
+        #expect(TabularTypeInference.infer([(.text, "05/01/2024")]) == .text)
     }
 
-    func testARunawayRegularExpressionStopsWhenItsTaskIsCancelled() async throws {
+    @Test func testARunawayRegularExpressionStopsWhenItsTaskIsCancelled() async throws {
         let expression = try NSRegularExpression(pattern: "(a+)+b")
         let text = String(repeating: "a", count: 64)
         let task = Task { TabularRegex.firstMatch(expression, in: text) != nil }
@@ -184,27 +184,27 @@ final class TabularEditingTests: XCTestCase {
         let cancelled = ContinuousClock.now
         task.cancel()
         let matched = await task.value
-        XCTAssertFalse(matched)
-        XCTAssertLessThan(ContinuousClock.now - cancelled, .seconds(2))
+        #expect(!matched)
+        #expect(ContinuousClock.now - cancelled < .seconds(2))
     }
 
-    func testRegularExpressionReplaceMatchesFoundationsOwnReplacement() throws {
+    @Test func testRegularExpressionReplaceMatchesFoundationsOwnReplacement() throws {
         let query = TabularFindQuery(text: "(\\w+)@(\\w+)", isRegularExpression: true, columns: [])
         let matcher = try TabularFindMatcher(query)
         let text = "ann@x, bob@y and café@z"
         let expected = try NSRegularExpression(pattern: "(\\w+)@(\\w+)")
             .stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "$2:$1")
         let replaced = matcher.replacing(in: text, with: "$2:$1")
-        XCTAssertEqual(replaced.text, expected)
-        XCTAssertEqual(replaced.replacements, 3)
+        #expect(replaced.text == expected)
+        #expect(replaced.replacements == 3)
     }
 
-    func testRegularExpressionReplaceThatChangesLengthReadsEachMatchsOwnGroups() throws {
+    @Test func testRegularExpressionReplaceThatChangesLengthReadsEachMatchsOwnGroups() throws {
         let query = TabularFindQuery(text: "(\\w+)_id", isRegularExpression: true, columns: [])
         let matcher = try TabularFindMatcher(query)
         let text = "user_id, order_id, item_id"
         let replaced = matcher.replacing(in: text, with: "$1Id")
-        XCTAssertEqual(replaced.text, "userId, orderId, itemId")
-        XCTAssertEqual(replaced.replacements, 3)
+        #expect(replaced.text == "userId, orderId, itemId")
+        #expect(replaced.replacements == 3)
     }
 }

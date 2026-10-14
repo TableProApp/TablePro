@@ -48,16 +48,8 @@ struct RedisWriteRoundTripTests {
         #expect(parsedValue(of: statements[0].statement) == Data("hello world".utf8))
     }
 
-    @Test("quotes, backslashes, and newlines round-trip")
-    func specialCharactersRoundTrip() throws {
-        let value = "a\"b\\c\nd"
-        let statements = try updateStatements(newValue: .text(value))
-        #expect(parsedValue(of: statements[0].statement) == Data(value.utf8))
-    }
-
-    @Test("non-ASCII text round-trips")
-    func unicodeRoundTrips() throws {
-        let value = "café ☕"
+    @Test("quotes, backslashes, newlines and non-ASCII text round-trip", arguments: ["a\"b\\c\nd", "café ☕"])
+    func textRoundTrips(_ value: String) throws {
         let statements = try updateStatements(newValue: .text(value))
         #expect(parsedValue(of: statements[0].statement) == Data(value.utf8))
     }

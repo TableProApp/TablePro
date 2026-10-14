@@ -61,6 +61,49 @@ struct CoordinatorQueryRoutingTests {
         #expect(tabManager.pendingFocusTabId == tabManager.tabs[1].id)
     }
 
+    /// Holds the first request it is asked about and refuses it, so the run stops at the gate with no
+    /// driver behind it.
+    private actor RunRecordingGate: ExecutionGate {
+        private var requests: [OperationRequest] = []
+        private var waiters: [CheckedContinuation<OperationRequest, Never>] = []
+
+        func authorize(_ request: OperationRequest) async -> OperationDecision {
+            requests.append(request)
+            let waiting = waiters
+            waiters = []
+            waiting.forEach { $0.resume(returning: request) }
+            return .denied(reason: "Recorded")
+        }
+
+        func firstRequest() async -> OperationRequest {
+            if let first = requests.first { return first }
+            return await withCheckedContinuation { waiters.append($0) }
+        }
+    }
+
+    @Test("Run in New Tab sends the query it opened to be run, not just loaded", .timeLimit(.minutes(1)))
+    @MainActor
+    func runInNewTabStartsTheRun() async {
+        let (coordinator, tabManager) = makeCoordinator()
+        defer { coordinator.teardown() }
+        let gate = RunRecordingGate()
+        coordinator.executionGate = gate
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: "testdb")
+
+        coordinator.openQuery(
+            "SELECT * FROM Genre",
+            on: coordinator.connectionId,
+            databaseName: "testdb",
+            intent: .runInNewTab
+        )
+
+        #expect(tabManager.tabs.count == 2)
+        #expect(tabManager.selectedTab?.content.query == "SELECT * FROM Genre")
+        let request = await gate.firstRequest()
+        #expect(request.sql == "SELECT * FROM Genre")
+        #expect(request.connectionId == coordinator.connectionId)
+    }
+
     /// The drawer lists other connections' queries once the scope widens, and running one of those
     /// against whatever is in front of the user is worse than the dead click this replaced.
     @Test("A query from another connection goes to that connection, never into this tab list")

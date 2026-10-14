@@ -1,4 +1,5 @@
 @testable import TableProEditorKit
+import TableProTestSupport
 import TableProTextEngine
 import XCTest
 
@@ -30,22 +31,13 @@ final class TreeSitterClientTests: XCTestCase {
         client.applyEdit(textView: textView, range: range, delta: delta, completion: completion)
     }
 
-    @MainActor 
-    func test_clientSetup() async {
+    @MainActor
+    func test_clientSetup() async throws {
         let client = Mock.treeSitterClient()
         let textView = Mock.textView()
         client.setUp(textView: textView, codeLanguage: .sql)
 
-        let expectation = XCTestExpectation(description: "Setup occurs")
-
-        Task.detached {
-            while client.state == nil {
-                try await Task.sleep(for: .seconds(0.5))
-            }
-            expectation.fulfill()
-        }
-
-        await fulfillment(of: [expectation], timeout: 5.0)
+        try await waitUntil(timeout: .seconds(5)) { client.state != nil }
 
         let primaryLanguage = client.state?.primaryLayer.id
         let layerCount = client.state?.layers.count
@@ -104,7 +96,7 @@ final class TreeSitterClientTests: XCTestCase {
     }
 
     @MainActor
-    func test_multipleSetupsCancelAllOperations() async {
+    func test_multipleSetupsCancelAllOperations() async throws {
         let client = Mock.treeSitterClient()
         let textView = Mock.textView()
 
@@ -134,16 +126,8 @@ final class TreeSitterClientTests: XCTestCase {
         // Second setup, which should cancel all previous operations
         client.setUp(textView: textView, codeLanguage: .sql)
 
-        let finalSetupExpectation = XCTestExpectation(description: "Final setup should complete successfully.")
-
-        Task.detached {
-            while client.state?.primaryLayer.id != .sql {
-                try await Task.sleep(for: .seconds(0.5))
-            }
-            finalSetupExpectation.fulfill()
-        }
-
-        await fulfillment(of: [cancelledQuery, cancelledEdit, finalSetupExpectation], timeout: 5.0)
+        try await waitUntil(timeout: .seconds(5)) { client.state?.primaryLayer.id == .sql }
+        await fulfillment(of: [cancelledQuery, cancelledEdit], timeout: 5.0)
 
         // Ensure only the final setup's language is active
         let primaryLanguage = client.state?.primaryLayer.id

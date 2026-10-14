@@ -10,6 +10,7 @@ import Testing
 
 @MainActor
 struct LoadableExtensionGateTests {
+    private let suite: EphemeralDefaults
     private let approvals: LoadableExtensionApprovalStore
     private let vec = LoadableExtension(path: "/opt/homebrew/lib/vec0.dylib")
     private let sqliteFields: [ConnectionField] = [.loadableExtensions()]
@@ -28,10 +29,8 @@ struct LoadableExtensionGateTests {
     ]
 
     init() throws {
-        let suite = "LoadableExtensionGateTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        approvals = LoadableExtensionApprovalStore(defaults: defaults)
+        suite = try EphemeralDefaults()
+        approvals = LoadableExtensionApprovalStore(defaults: suite.defaults)
     }
 
     private func connection(_ fields: [String: String], type: DatabaseType = .sqlite) -> DatabaseConnection {

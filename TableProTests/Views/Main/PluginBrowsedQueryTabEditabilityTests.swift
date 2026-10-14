@@ -9,7 +9,7 @@ import Testing
 
 @testable import TablePro
 
-private final class BrowseBuildingDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class BrowseBuildingDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
@@ -25,31 +25,15 @@ private final class BrowseBuildingDriver: PluginDatabaseDriver, @unchecked Senda
         "SELECT * FROM \(table)"
     }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 
 /// A query tab keeps the table name of whatever result it last showed, and an older build filled it from the
 /// query's text. On a SQL engine whose plugin writes its own browse, the app no longer reads that text, so a name
 /// left on the tab could point the grid's edits at a different table from the one the rows came from.
-@Suite(.serialized)
 @MainActor
 struct PluginBrowsedQueryTabEditabilityTests {
     private func withCoordinator(

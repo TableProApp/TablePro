@@ -151,40 +151,20 @@ struct StringHexDumpTests {
 
     // MARK: - Parse Hex
 
-    @Test("Parse space-separated hex")
+    @Test("Parse hex space-separated, continuous and with a 0x prefix", arguments: [
+        "48 65 6C 6C 6F", "48656C6C6F", "0x48656C6C6F",
+    ])
     @MainActor
-    func parseHexSpaceSeparated() {
-        #expect(BlobFormattingService.shared.parseHex("48 65 6C 6C 6F") == "Hello")
+    func parseHex(_ input: String) {
+        #expect(BlobFormattingService.shared.parseHex(input) == "Hello")
     }
 
-    @Test("Parse continuous hex")
+    @Test("Parse hex rejects odd-length input, invalid characters and an empty string", arguments: [
+        "486", "ZZZZ", "",
+    ])
     @MainActor
-    func parseHexContinuous() {
-        #expect(BlobFormattingService.shared.parseHex("48656C6C6F") == "Hello")
-    }
-
-    @Test("Parse hex with 0x prefix")
-    @MainActor
-    func parseHexWithPrefix() {
-        #expect(BlobFormattingService.shared.parseHex("0x48656C6C6F") == "Hello")
-    }
-
-    @Test("Parse hex rejects odd-length input")
-    @MainActor
-    func parseHexInvalidOddLength() {
-        #expect(BlobFormattingService.shared.parseHex("486") == nil)
-    }
-
-    @Test("Parse hex rejects invalid characters")
-    @MainActor
-    func parseHexInvalidChars() {
-        #expect(BlobFormattingService.shared.parseHex("ZZZZ") == nil)
-    }
-
-    @Test("Parse hex rejects empty string")
-    @MainActor
-    func parseHexEmpty() {
-        #expect(BlobFormattingService.shared.parseHex("") == nil)
+    func parseHexRejects(_ input: String) {
+        #expect(BlobFormattingService.shared.parseHex(input) == nil)
     }
 
     @Test("Round-trip: raw → editable hex → parse back to raw")

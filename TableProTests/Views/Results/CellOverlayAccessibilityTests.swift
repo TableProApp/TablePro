@@ -12,7 +12,6 @@ private final class OverlayAccessibilityLayoutPersister: ColumnLayoutPersisting 
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Cell overlay accessibility", .serialized)
 @MainActor
 struct CellOverlayAccessibilityTests {
     private struct Grid {

@@ -6,25 +6,19 @@
 //  count repetition, and cursor positioning rules.
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 @MainActor
-final class VimEnginePasteTests: XCTestCase {
+final class VimEnginePasteTests {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func keys(_ chars: String) {
@@ -39,145 +33,161 @@ final class VimEnginePasteTests: XCTestCase {
 
     // MARK: - p: Paste After (Characterwise)
 
-    func testPPastesCharacterwiseAfterCursor() {
+    @Test
+    func pPastesCharacterwiseAfterCursor() {
         // yw yanks "hello ", p pastes it after the cursor (i.e., starting at pos+1).
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("ywp")
-        XCTAssertEqual(buffer.text, "hhello ello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "hhello ello world\nsecond line\nthird line\n")
     }
 
-    func testPCursorLandsOnLastPastedChar() {
+    @Test
+    func pCursorLandsOnLastPastedChar() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yw") // register: "hello "
         keys("p")
         // Inserted at offset 1, length 6. Cursor on last pasted char = offset 6.
-        XCTAssertEqual(pos, 6, "After characterwise p, cursor sits on the last pasted character")
+        #expect(pos == 6, "After characterwise p, cursor sits on the last pasted character")
     }
 
-    func testPAtEndOfLineInsertsBeforeNewline() {
+    @Test
+    func pAtEndOfLineInsertsBeforeNewline() {
         // Delete a char to load register, then paste at end of line.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("x") // register: "h"
         // Now at offset 0 ('e'), move to end of line first
         keys("$")
         keys("p")
-        XCTAssertEqual(buffer.text, "ello worldh\nsecond line\nthird line\n",
+        #expect(buffer.text == "ello worldh\nsecond line\nthird line\n",
             "Characterwise p at end of line should insert just before the newline")
     }
 
     // MARK: - P: Paste Before (Characterwise)
 
-    func testCapitalPPastesCharacterwiseBeforeCursor() {
+    @Test
+    func capitalPPastesCharacterwiseBeforeCursor() {
         buffer.setSelectedRange(NSRange(location: 6, length: 0)) // 'w' in 'world'
         keys("x") // delete 'w', register: "w"
         key("P", shift: true)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "P should restore deleted char before cursor")
     }
 
-    func testCapitalPCursorLandsOnLastPastedChar() {
+    @Test
+    func capitalPCursorLandsOnLastPastedChar() {
         // Yank "hello", move to start of line 1, P should paste before and land on 'o'.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("ye") // yank "hello"
         keys("j0")
         key("P", shift: true)
-        XCTAssertEqual(buffer.text, "hello world\nhellosecond line\nthird line\n")
-        XCTAssertEqual(pos, 16, "After characterwise P, cursor sits on the last pasted char")
+        #expect(buffer.text == "hello world\nhellosecond line\nthird line\n")
+        #expect(pos == 16, "After characterwise P, cursor sits on the last pasted char")
     }
 
     // MARK: - p: Paste After (Linewise)
 
-    func testLinewisePPastesAsNewLineBelow() {
+    @Test
+    func linewisePPastesAsNewLineBelow() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yyp")
-        XCTAssertEqual(buffer.text, "hello world\nhello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "hello world\nhello world\nsecond line\nthird line\n")
     }
 
-    func testLinewisePCursorLandsOnFirstPastedLine() {
+    @Test
+    func linewisePCursorLandsOnFirstPastedLine() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yyp")
-        XCTAssertEqual(pos, 12, "Cursor should land at start of the pasted line")
+        #expect(pos == 12, "Cursor should land at start of the pasted line")
     }
 
-    func testLinewisePOnLastLineWithoutTrailingNewline() {
+    @Test
+    func linewisePOnLastLineWithoutTrailingNewline() {
         buffer = VimTextBufferMock(text: "one\ntwo")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yyp")
-        XCTAssertEqual(buffer.text, "one\none\ntwo")
+        #expect(buffer.text == "one\none\ntwo")
     }
 
     // MARK: - P: Paste Before (Linewise)
 
-    func testLinewiseCapitalPPastesAsNewLineAbove() {
+    @Test
+    func linewiseCapitalPPastesAsNewLineAbove() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0)) // start of line 1
         keys("yy")
         key("P", shift: true)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nsecond line\nthird line\n")
+        #expect(buffer.text == "hello world\nsecond line\nsecond line\nthird line\n")
     }
 
-    func testLinewiseCapitalPCursorLandsOnFirstPastedLine() {
+    @Test
+    func linewiseCapitalPCursorLandsOnFirstPastedLine() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0))
         keys("yy")
         key("P", shift: true)
-        XCTAssertEqual(pos, 12, "Cursor should land at start of the pasted line")
+        #expect(pos == 12, "Cursor should land at start of the pasted line")
     }
 
     // MARK: - Paste with Count
 
-    func testPasteWithCountRepeatsPaste() {
+    @Test
+    func pasteWithCountRepeatsPaste() {
         // yw to yank "hello ", 3p to paste 3 times.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yw")
         keys("3p")
-        XCTAssertEqual(buffer.text, "hhello hello hello ello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hhello hello hello ello world\nsecond line\nthird line\n",
             "3p should paste the register 3 times")
     }
 
-    func testLinewisePasteWithCount() {
+    @Test
+    func linewisePasteWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yy")
         keys("2p")
-        XCTAssertEqual(buffer.text, "hello world\nhello world\nhello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nhello world\nhello world\nsecond line\nthird line\n",
             "2p with linewise register should insert two copies after current line")
     }
 
     // MARK: - Empty Register
 
-    func testPasteWithEmptyRegisterIsNoOp() {
+    @Test
+    func pasteWithEmptyRegisterIsNoOp() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("p")
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "Pasting an empty register should not modify the buffer")
     }
 
     // MARK: - Cross-Operator Register Use
 
-    func testYankPasteThenDeletePasteOverwritesRegister() {
+    @Test
+    func yankPasteThenDeletePasteOverwritesRegister() {
         // yank line, paste it, then delete a line — the deleted line takes over as paste source.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yy")
         keys("j")
         keys("dd")
-        XCTAssertEqual(buffer.text, "hello world\nthird line\n",
+        #expect(buffer.text == "hello world\nthird line\n",
             "dd should delete the second line")
         keys("p")
-        XCTAssertEqual(buffer.text, "hello world\nthird line\nsecond line\n",
+        #expect(buffer.text == "hello world\nthird line\nsecond line\n",
             "After dd overwrites register, p should paste the deleted second line")
     }
 
-    func testXThenPasteRoundTrips() {
+    @Test
+    func xThenPasteRoundTrips() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("x") // delete 'h'
-        XCTAssertEqual(buffer.text, "ello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "ello world\nsecond line\nthird line\n")
         key("P", shift: true)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "x stores into the register; P should restore")
     }
 
     // MARK: - Visual Selection Paste Replaces Selection
 
-    func testPasteInVisualReplacesSelectionWithRegister() {
+    @Test
+    func pasteInVisualReplacesSelectionWithRegister() {
         // yw to yank "hello ", then v3l to select "wor" in "world", p to replace.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yw") // register: "hello "
@@ -185,8 +195,8 @@ final class VimEnginePasteTests: XCTestCase {
         keys("v")
         keys("ll")
         keys("p")
-        XCTAssertEqual(buffer.text, "hello hello ld\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello hello ld\nsecond line\nthird line\n",
             "Paste over a visual selection should replace the selection with the register")
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(engine.mode == .normal)
     }
 }

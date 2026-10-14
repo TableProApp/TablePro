@@ -1,10 +1,5 @@
-//
-//  StructureListGridSelectionTests.swift
-//  TableProTests
-//
-//  Driven through a real NSHostingView, because the reload that lost the selection runs in
-//  DataGridView.updateNSView, which only SwiftUI calls.
-//
+// Driven through a real NSHostingView, because the reload that lost the selection runs in
+// DataGridView.updateNSView, which only SwiftUI calls.
 
 import AppKit
 import Combine
@@ -18,7 +13,7 @@ private final class HostedList<Content: View> {
     private let window: NSWindow
     private let host: NSHostingView<Content>
 
-    init(_ content: Content) {
+    init(_ content: Content) async {
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 320),
             styleMask: [.titled],
@@ -28,24 +23,24 @@ private final class HostedList<Content: View> {
         window.isReleasedWhenClosed = false
         host = NSHostingView(rootView: content)
         window.contentView = host
-        settle()
+        await settle()
     }
 
-    func show(_ content: Content) {
+    func show(_ content: Content) async {
         host.rootView = content
-        settle()
+        await settle()
     }
 
     var tableView: KeyHandlingTableView? {
         Self.firstTableView(in: host)
     }
 
-    func click(row: Int) {
+    func click(row: Int) async {
         tableView?.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        settle()
+        await settle()
     }
 
-    func shiftDown() {
+    func shiftDown() async {
         guard let tableView,
               let scalar = UnicodeScalar(NSDownArrowFunctionKey),
               let event = NSEvent.keyEvent(
@@ -61,17 +56,21 @@ private final class HostedList<Content: View> {
                   keyCode: KeyCode.downArrow.rawValue
               ) else { return }
         tableView.keyDown(with: event)
-        settle()
+        await settle()
     }
 
     func width(ofColumnTitled title: String) -> CGFloat? {
         tableView?.tableColumns.first { !$0.isHidden && $0.headerCell.stringValue == title }?.width
     }
 
-    func settle() {
+    /// Each pass lays out, then waits for one main-queue turn: SwiftUI applies a change on a later
+    /// run-loop turn, and a main-actor task started by the reload runs before the turn comes back.
+    func settle() async {
         for _ in 0 ..< 10 {
             host.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
         }
     }
 
@@ -131,14 +130,14 @@ struct StructureListGridSelectionTests {
     }
 
     @Test("Reversing the sort after Shift+Down keeps both selected triggers")
-    func sortAfterExtendedSelectionKeepsTheTriggers() throws {
+    func sortAfterExtendedSelectionKeepsTheTriggers() async throws {
         let state = TriggerInspectorState()
-        let list = HostedList(TriggerListPane(triggers: triggers, databaseType: .mysql, state: state))
+        let list = await HostedList(TriggerListPane(triggers: triggers, databaseType: .mysql, state: state))
         let tableView = try #require(list.tableView)
         try #require(tableView.numberOfRows == 3)
 
-        list.click(row: 0)
-        list.shiftDown()
+        await list.click(row: 0)
+        await list.shiftDown()
         try #require(state.selectedIDs == [id("trg_a"), id("trg_b")])
 
         let reversed = SortState(
@@ -146,7 +145,7 @@ struct StructureListGridSelectionTests {
             source: .user
         )
         tableView.coordinator?.delegate?.dataGridSortStateChanged(reversed)
-        list.settle()
+        await list.settle()
         try #require(state.displayed(triggers).map(\.name) == ["trg_c", "trg_b", "trg_a"])
 
         #expect(state.selectedIDs == [id("trg_a"), id("trg_b")])
@@ -155,56 +154,56 @@ struct StructureListGridSelectionTests {
     }
 
     @Test("A filter that hides a selected trigger keeps it selected for when the filter clears")
-    func filterKeepsHiddenSelection() throws {
+    func filterKeepsHiddenSelection() async throws {
         let state = TriggerInspectorState()
-        let list = HostedList(TriggerListPane(triggers: triggers, databaseType: .mysql, state: state))
+        let list = await HostedList(TriggerListPane(triggers: triggers, databaseType: .mysql, state: state))
         let tableView = try #require(list.tableView)
-        list.click(row: 0)
-        list.shiftDown()
+        await list.click(row: 0)
+        await list.shiftDown()
         try #require(state.selectedIDs == [id("trg_a"), id("trg_b")])
 
         state.searchText = "trg_a"
-        list.settle()
+        await list.settle()
         try #require(tableView.numberOfRows == 1)
         #expect(state.selectedIDs == [id("trg_a"), id("trg_b")])
         #expect(state.actionTarget(triggers)?.name == "trg_a")
 
         state.searchText = ""
-        list.settle()
+        await list.settle()
         #expect(tableView.selectedRowIndexes == IndexSet([0, 1]))
         #expect(state.selectedIDs == [id("trg_a"), id("trg_b")])
     }
 
     @Test("A refresh that reorders the rows keeps a Shift+Down range by identity")
-    func refreshKeepsRangeByIdentity() throws {
+    func refreshKeepsRangeByIdentity() async throws {
         let state = ListState(rows: [
             StructureListRow(id: "a", values: ["alpha", "BEFORE"]),
             StructureListRow(id: "b", values: ["beta", "AFTER"]),
             StructureListRow(id: "c", values: ["gamma", "AFTER"]),
         ])
-        let list = HostedList(ListHarness(grid: StructureListGridModel<String>(), state: state))
+        let list = await HostedList(ListHarness(grid: StructureListGridModel<String>(), state: state))
         let tableView = try #require(list.tableView)
-        list.click(row: 0)
-        list.shiftDown()
+        await list.click(row: 0)
+        await list.shiftDown()
         try #require(state.selectedIDs == ["a", "b"])
 
         state.rows.reverse()
-        list.settle()
+        await list.settle()
 
         #expect(state.selectedIDs == ["a", "b"])
         #expect(tableView.selectedRowIndexes == IndexSet([1, 2]))
     }
 
     @Test("A refresh that replaces every row selects none of the new ones")
-    func refreshWithNewRowsSelectsNothing() throws {
+    func refreshWithNewRowsSelectsNothing() async throws {
         let state = ListState(rows: [
             StructureListRow(id: "a", values: ["alpha", "BEFORE"]),
             StructureListRow(id: "b", values: ["beta", "AFTER"]),
         ])
-        let list = HostedList(ListHarness(grid: StructureListGridModel<String>(), state: state))
+        let list = await HostedList(ListHarness(grid: StructureListGridModel<String>(), state: state))
         let tableView = try #require(list.tableView)
-        list.click(row: 0)
-        list.shiftDown()
+        await list.click(row: 0)
+        await list.shiftDown()
         try #require(state.selectedIDs == ["a", "b"])
 
         state.selectedIDs = []
@@ -212,15 +211,15 @@ struct StructureListGridSelectionTests {
             StructureListRow(id: "d", values: ["delta", "BEFORE"]),
             StructureListRow(id: "e", values: ["epsilon", "AFTER"]),
         ]
-        list.settle()
+        await list.settle()
 
         #expect(state.selectedIDs.isEmpty)
         #expect(tableView.selectedRowIndexes.isEmpty)
     }
 
     @Test("Trigger columns open at the widths the list has always given them")
-    func triggerColumnWidths() {
-        let withEnabled = HostedList(TriggerListPane(triggers: triggers, databaseType: .mysql, state: TriggerInspectorState()))
+    func triggerColumnWidths() async {
+        let withEnabled = await HostedList(TriggerListPane(triggers: triggers, databaseType: .mysql, state: TriggerInspectorState()))
         #expect(withEnabled.width(ofColumnTitled: String(localized: "Name")) == 220)
         #expect(withEnabled.width(ofColumnTitled: String(localized: "Timing")) == 90)
         #expect(withEnabled.width(ofColumnTitled: String(localized: "Event")) == 150)
@@ -229,7 +228,7 @@ struct StructureListGridSelectionTests {
         let unknownEnabled = triggers.map {
             TriggerInfo(name: $0.name, timing: $0.timing, event: $0.event, statement: "")
         }
-        let withoutEnabled = HostedList(TriggerListPane(
+        let withoutEnabled = await HostedList(TriggerListPane(
             triggers: unknownEnabled, databaseType: .mysql, state: TriggerInspectorState()
         ))
         #expect(withoutEnabled.width(ofColumnTitled: String(localized: "Name")) == 240)

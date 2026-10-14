@@ -1,15 +1,10 @@
+// A failed Run All makes an empty error result active and seeds the row buffer from it. The grid
+// skips its whole update while a cell editor or viewer is open, and only a full replace closes
+// them, so a seed that did not take that path left the previous result's headings, row and
+// selection under the error for as long as the viewer stayed up.
 //
-//  SeedBufferFromErrorResultTests.swift
-//  TableProTests
-//
-//  A failed Run All makes an empty error result active and seeds the row buffer from it. The grid
-//  skips its whole update while a cell editor or viewer is open, and only a full replace closes
-//  them, so a seed that did not take that path left the previous result's headings, row and
-//  selection under the error for as long as the viewer stayed up.
-//
-//  The grid is a real `DataGridView` in an `NSHostingView`, fed from the coordinator's buffer the
-//  way the editor feeds it, because the early return lived in `updateNSView`.
-//
+// The grid is a real `DataGridView` in an `NSHostingView`, fed from the coordinator's buffer the
+// way the editor feeds it, because the early return lived in `updateNSView`.
 
 import AppKit
 import Foundation
@@ -75,7 +70,7 @@ private final class SeedFixture {
         tabManager.tabs.first { $0.id == tabId }
     }
 
-    func mountGrid() {
+    func mountGrid() async {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 300),
             styleMask: [.titled],
@@ -87,13 +82,13 @@ private final class SeedFixture {
         window.contentView = host
         self.window = window
         self.host = host
-        settle()
+        await settle()
     }
 
     /// A new root value, the way the editor hands the grid one on every render of the tab.
-    func render() {
+    func render() async {
         host?.rootView = makeGrid()
-        settle()
+        await settle()
     }
 
     func openViewer(row: Int) -> Bool {
@@ -142,10 +137,14 @@ private final class SeedFixture {
         )
     }
 
-    private func settle() {
+    /// Each pass lays out, then waits for one main-queue turn: SwiftUI applies a new root on a later
+    /// run-loop turn, and a main-actor task started by the update runs before the turn comes back.
+    private func settle() async {
         for _ in 0 ..< 10 {
             host?.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
         }
     }
 }
@@ -159,15 +158,15 @@ struct SeedBufferFromErrorResultTests {
     )
 
     @Test("a failed run over an open cell viewer closes it and takes down the previous headings")
-    func failureOverAnOpenViewerReconcilesTheGrid() throws {
+    func failureOverAnOpenViewerReconcilesTheGrid() async throws {
         let fixture = SeedFixture(previous: Self.previous)
         defer { fixture.close() }
-        fixture.mountGrid()
+        await fixture.mountGrid()
         try #require(fixture.presentedHeadings == ["third_col"])
         try #require(fixture.openViewer(row: 0))
 
         fixture.failRun()
-        fixture.render()
+        await fixture.render()
 
         #expect(fixture.grid?.overlayViewer?.isActive != true)
         #expect(fixture.presentedHeadings.isEmpty, "got \(fixture.presentedHeadings)")

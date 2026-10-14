@@ -24,6 +24,7 @@ final class HistoryPanelViewModel: ObservableObject {
     private let history: QueryHistoryReading
     private let connectionDirectory: HistoryConnectionDirectory
     private let pageSize: Int
+    private let clock: any Clock<Duration>
 
     @Published private var entries: [QueryHistoryEntry] = []
     @Published private var nextCursor: QueryHistoryCursor?
@@ -37,12 +38,14 @@ final class HistoryPanelViewModel: ObservableObject {
         connectionId: UUID,
         history: QueryHistoryReading,
         connectionDirectory: HistoryConnectionDirectory = .live,
-        pageSize: Int = HistoryPanelViewModel.pageSize
+        pageSize: Int = HistoryPanelViewModel.pageSize,
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.connectionId = connectionId
         self.history = history
         self.connectionDirectory = connectionDirectory
         self.pageSize = pageSize
+        self.clock = clock
         self.state = HistoryPanelState.forConnection(connectionId)
     }
 
@@ -105,8 +108,9 @@ final class HistoryPanelViewModel: ObservableObject {
     /// single user action.
     private func scheduleLiveRefresh() {
         liveRefresh?.cancel()
+        let clock = clock
         liveRefresh = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(200))
+            try? await clock.sleep(for: .milliseconds(200))
             guard !Task.isCancelled, let self else { return }
             await reload(preservingLoadedWindow: true)
         }
@@ -169,8 +173,9 @@ final class HistoryPanelViewModel: ObservableObject {
 
     func scheduleSearchReload() {
         searchDebounce?.cancel()
+        let clock = clock
         searchDebounce = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(150))
+            try? await clock.sleep(for: .milliseconds(150))
             guard !Task.isCancelled, let self else { return }
             await reload()
         }

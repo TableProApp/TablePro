@@ -12,16 +12,17 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Query failure reporting", .serialized)
 @MainActor
 struct QueryFailureReportingTests {
+    private let fixtures = CoordinatorFixtures()
+
     private struct DriverFailure: LocalizedError {
         let errorDescription: String? = "relation \"stu\" does not exist"
     }
 
     @Test("A failed query reports the database's error on the tab")
     func failureSetsTheErrorMessage() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         let claim = coordinator.tabExecution.claim(tabId)
 
@@ -37,7 +38,7 @@ struct QueryFailureReportingTests {
     /// that says the query failed. Every success path opens it; the failure paths did not.
     @Test("A failure opens a collapsed results pane")
     func failureOpensCollapsedResults() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         tabManager.mutate(tabId: tabId) { $0.display.isResultsCollapsed = true }
         let claim = coordinator.tabExecution.claim(tabId)
@@ -52,7 +53,7 @@ struct QueryFailureReportingTests {
     /// showed the previous run's timing beside a red banner.
     @Test("A failure clears the duration left over from the last successful run")
     func failureClearsTheStaleDuration() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         coordinator.toolbarState.recordQueryTiming(PluginQueryTiming(total: 1.5), for: tabId)
         let claim = coordinator.tabExecution.claim(tabId)
@@ -65,7 +66,7 @@ struct QueryFailureReportingTests {
 
     @Test("Reporting a failure releases the tab so the next run is not blocked")
     func failureReleasesTheTab() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         let claim = coordinator.tabExecution.claim(tabId)
         #expect(coordinator.tabExecution.isExecuting(tabId))
@@ -77,7 +78,7 @@ struct QueryFailureReportingTests {
 
     @Test("A cancelled query is not reported as an error")
     func cancellationIsNotAnError() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         let claim = coordinator.tabExecution.claim(tabId)
 
@@ -90,7 +91,7 @@ struct QueryFailureReportingTests {
     /// take down the busy state belonging to the navigation that replaced it.
     @Test("A superseded failure writes nothing and leaves the successor running")
     func supersededFailureIsSilent() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         let stale = coordinator.tabExecution.claim(tabId)
         _ = coordinator.tabExecution.claim(tabId)
@@ -106,7 +107,7 @@ struct QueryFailureReportingTests {
     /// owner: taking the handle a successor installed leaves a live query with nothing to stop it.
     @Test("Retiring the task handle only works for the execution that installed it")
     func onlyTheInstallerRetiresTheTaskHandle() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         let stranger = coordinator.tabExecution.claim(tabId)
         let running = coordinator.tabExecution.claim(tabId)
@@ -132,7 +133,7 @@ struct QueryFailureReportingTests {
     /// with it, leaving a running query with no spinner and nothing for Stop to reach.
     @Test("Resetting after a cancel leaves a successor's task handle alone")
     func cancelResetRespectsTheHandleOwner() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         let otherTabId = Self.addQueryTab(to: tabManager, title: "Query 2")
         let cancelled = coordinator.tabExecution.claim(tabId)
@@ -154,7 +155,7 @@ struct QueryFailureReportingTests {
     /// window chrome around whatever the user is actually looking at.
     @Test("A background tab's failure leaves the toolbar describing the selected tab")
     func backgroundFailureLeavesTheToolbarAlone() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let backgroundTabId = Self.addQueryTab(to: tabManager)
         let selectedTabId = Self.addQueryTab(to: tabManager, title: "Query 2")
         tabManager.selectedTabId = selectedTabId
@@ -174,7 +175,7 @@ struct QueryFailureReportingTests {
     /// which is not the case for a navigation that superseded work that had already finished.
     @Test("Superseding a tab with no successor leaves the window reporting idle")
     func supersedeWithoutSuccessorLeavesTheWindowIdle() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
         _ = coordinator.tabExecution.claim(tabId)
         #expect(coordinator.tabExecution.isAnyExecuting)
@@ -189,7 +190,7 @@ struct QueryFailureReportingTests {
     /// completion on a different tab throws away edits and undo history the user can never get back.
     @Test("Clearing pending changes never reaches a tab the user has switched to")
     func pendingChangesOfAnotherTabSurvive() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let backgroundTabId = Self.addQueryTab(to: tabManager)
         let selectedTabId = Self.addQueryTab(to: tabManager, title: "Query 2")
         let claim = coordinator.tabExecution.claim(backgroundTabId)
@@ -229,14 +230,10 @@ struct QueryFailureReportingTests {
         )
     }
 
-    private static func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+    private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
+        let fixture = fixtures.make()
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         return (coordinator, tabManager)
     }
 

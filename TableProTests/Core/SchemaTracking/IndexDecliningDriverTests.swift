@@ -12,7 +12,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class IndexDecliningDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class IndexDecliningDriver: PluginDriverStub, @unchecked Sendable {
     func quoteIdentifier(_ name: String) -> String { "`\(name)`" }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? { nil }
@@ -26,23 +26,8 @@ private final class IndexDecliningDriver: PluginDatabaseDriver, @unchecked Senda
         return "CREATE TABLE \(quoteIdentifier(definition.tableName)) (\(columns.joined(separator: ", ")))"
     }
 
-    func connect() async throws {}
-    func disconnect() {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 

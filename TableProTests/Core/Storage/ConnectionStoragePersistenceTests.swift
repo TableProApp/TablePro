@@ -11,12 +11,13 @@ import Testing
 
 @MainActor
 struct ConnectionStoragePersistenceTests {
+    private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
     private let syncTracker: SyncChangeTracker
     private let fileURL: URL
     private let defaults: UserDefaults
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
         self.fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -25,12 +26,8 @@ struct ConnectionStoragePersistenceTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
-        guard let defaults = UserDefaults(suiteName: suiteName),
-              let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")
-        else {
-            fatalError("Failed to create isolated test user defaults")
-        }
+        let defaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
         self.defaults = defaults
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         self.syncTracker = SyncChangeTracker(metadataStorage: metadata)

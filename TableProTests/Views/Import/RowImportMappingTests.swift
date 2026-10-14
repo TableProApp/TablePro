@@ -1,8 +1,3 @@
-//
-//  RowImportMappingTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -11,12 +6,17 @@ import Testing
 
 @MainActor
 struct RowImportMappingTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private let columns = ["id", "full_name", "email"]
     private let people = TableScope(connectionId: UUID(), database: "shop", schema: nil, table: "people")
 
     private func makeStore() throws -> ImportColumnMappingStore {
-        let defaults = try #require(UserDefaults(suiteName: "RowImportMappingTests.\(UUID().uuidString)"))
-        return ImportColumnMappingStore(defaults: defaults)
+        ImportColumnMappingStore(defaults: suite.defaults)
     }
 
     private func fields(_ names: [String]) -> [PluginImportField] {

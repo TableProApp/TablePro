@@ -20,15 +20,9 @@ struct HttpQueryTimeoutTests {
         #expect(timeout.requestTimeoutInterval == TimeInterval(125))
     }
 
-    @Test("Zero server timeout falls back to the resource ceiling")
-    func zeroServerTimeoutUsesCeiling() {
-        let timeout = HttpQueryTimeout(serverTimeoutSeconds: 0)
-        #expect(timeout.requestTimeoutInterval == TimeInterval(HttpQueryTimeout.resourceCeilingSeconds))
-    }
-
-    @Test("Negative server timeout is treated as unlimited")
-    func negativeServerTimeoutUsesCeiling() {
-        let timeout = HttpQueryTimeout(serverTimeoutSeconds: -1)
+    @Test("A zero or negative server timeout is unlimited and falls back to the resource ceiling", arguments: [0, -1])
+    func unlimitedServerTimeoutUsesCeiling(_ seconds: Int) {
+        let timeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
         #expect(timeout.requestTimeoutInterval == TimeInterval(HttpQueryTimeout.resourceCeilingSeconds))
     }
 

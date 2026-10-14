@@ -1,8 +1,3 @@
-//
-//  ImportColumnMappingStoreTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
@@ -10,9 +5,14 @@ import Testing
 
 @MainActor
 struct ImportColumnMappingStoreTests {
-    private func makeStore() throws -> ImportColumnMappingStore {
-        let defaults = try #require(UserDefaults(suiteName: "ImportColumnMappingStoreTests.\(UUID().uuidString)"))
-        return ImportColumnMappingStore(defaults: defaults)
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
+    private func makeStore() -> ImportColumnMappingStore {
+        ImportColumnMappingStore(defaults: suite.defaults)
     }
 
     private func scope(
@@ -26,7 +26,7 @@ struct ImportColumnMappingStoreTests {
 
     @Test("Overrides remembered for a table come back for that table only")
     func rememberedOverridesRoundTrip() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let connectionId = UUID()
         let people = scope(connectionId: connectionId)
         store.remember(["Name": .column("full_name"), "id": .skip], forFields: ["id", "Name"], in: people)
@@ -39,7 +39,7 @@ struct ImportColumnMappingStoreTests {
 
     @Test("A later import that falls back to the name match for every field forgets the table")
     func importMatchingByNameClearsTheEntry() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let people = scope(connectionId: UUID())
         store.remember(["Name": .column("full_name")], forFields: ["Name"], in: people)
 
@@ -50,7 +50,7 @@ struct ImportColumnMappingStoreTests {
 
     @Test("A second file layout into the same table keeps the first layout's choices")
     func secondLayoutKeepsTheFirst() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let people = scope(connectionId: UUID())
         store.remember(["Name": .column("full_name")], forFields: ["Name"], in: people)
 
@@ -61,7 +61,7 @@ struct ImportColumnMappingStoreTests {
 
     @Test("Renaming a table carries its choices to the new name")
     func renameTableMovesTheEntry() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let connectionId = UUID()
         let old = scope(connectionId: connectionId, table: "people")
         let new = scope(connectionId: connectionId, table: "customers")
@@ -75,7 +75,7 @@ struct ImportColumnMappingStoreTests {
 
     @Test("Renaming a database carries every table's choices")
     func renameContainerMovesEveryTable() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let connectionId = UUID()
         let people = scope(connectionId: connectionId, database: "shop", table: "people")
         store.remember(["Name": .column("full_name")], forFields: ["Name"], in: people)
@@ -90,7 +90,7 @@ struct ImportColumnMappingStoreTests {
 
     @Test("Dropping a table forgets its choices and leaves its siblings alone")
     func dropTableForgetsOnlyThatTable() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let connectionId = UUID()
         let dropped = scope(connectionId: connectionId, table: "people")
         let kept = scope(connectionId: connectionId, table: "orders")
@@ -105,7 +105,7 @@ struct ImportColumnMappingStoreTests {
 
     @Test("Dropping a database forgets every table under it and nothing outside it")
     func dropContainerForgetsTheWholeDatabase() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let connectionId = UUID()
         let inside = scope(connectionId: connectionId, database: "shop")
         let outside = scope(connectionId: connectionId, database: "archive")
@@ -120,7 +120,7 @@ struct ImportColumnMappingStoreTests {
 
     @Test("Deleting a connection forgets its choices and nobody else's")
     func purgeForgetsOnlyThatConnection() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let deleted = scope(connectionId: UUID())
         let kept = scope(connectionId: UUID())
         store.remember(["Name": .column("full_name")], forFields: ["Name"], in: deleted)

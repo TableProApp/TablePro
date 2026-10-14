@@ -92,21 +92,12 @@ struct StatementAnchorTests {
     }
 
     /// A reader who wrote a comment above a statement has already named it better than its first clause could.
-    @Test("A leading comment is the statement's name")
-    func labelPrefersALeadingComment() {
-        let subject = StatementAnchor(
-            range: NSRange(location: 0, length: 8),
-            preview: "-- monthly totals\nSELECT count(*) FROM orders"
-        )
-        #expect(subject.label == "monthly totals")
-    }
-
-    @Test("Several comment lines above a statement all become its name")
-    func labelJoinsConsecutiveComments() {
-        let subject = StatementAnchor(
-            range: NSRange(location: 0, length: 8),
-            preview: "-- monthly\n-- totals\nSELECT count(*)"
-        )
+    @Test("A leading comment is the statement's name, joined across several comment lines", arguments: [
+        "-- monthly totals\nSELECT count(*) FROM orders",
+        "-- monthly\n-- totals\nSELECT count(*)",
+    ])
+    func labelPrefersALeadingComment(_ preview: String) {
+        let subject = StatementAnchor(range: NSRange(location: 0, length: 8), preview: preview)
         #expect(subject.label == "monthly totals")
     }
 

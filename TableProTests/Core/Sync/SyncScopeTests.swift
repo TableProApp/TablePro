@@ -19,7 +19,8 @@ struct SyncScopeTests {
 
     @Test("markDirty records a synced record type")
     func markDirtyRecordsSyncedType() throws {
-        let defaults = try #require(UserDefaults(suiteName: "syncscope-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: defaults))
         tracker.markDirty(.settings, id: "general")
         #expect(tracker.dirtyRecords(for: .settings).contains("general"))

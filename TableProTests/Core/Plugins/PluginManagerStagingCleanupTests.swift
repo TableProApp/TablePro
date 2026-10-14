@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("PluginManager staging directory cleanup", .serialized)
 struct PluginManagerStagingCleanupTests {
 
     private func makeTempPluginsDir() throws -> URL {

@@ -9,7 +9,6 @@ import TableProImport
 import Testing
 import UniformTypeIdentifiers
 
-@Suite("NavicatImporter", .serialized)
 struct NavicatImporterTests {
     private var tempDir: URL
     private var importer: NavicatImporter

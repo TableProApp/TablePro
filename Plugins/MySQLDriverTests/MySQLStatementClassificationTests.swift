@@ -7,14 +7,12 @@ import TableProPluginKit
 import Testing
 
 struct MySQLStatementClassificationTests {
-    @Test("SELECT is read-only")
-    func selectIsReadOnly() {
-        #expect(mysqlStatementIsReadOnly("SELECT * FROM users"))
-    }
-
-    @Test("Leading whitespace and lowercase are handled")
-    func whitespaceAndCase() {
-        #expect(mysqlStatementIsReadOnly("   \n select 1"))
+    @Test("SELECT is read-only, with leading whitespace and in lowercase too", arguments: [
+        "SELECT * FROM users",
+        "   \n select 1",
+    ])
+    func selectIsReadOnly(_ statement: String) {
+        #expect(mysqlStatementIsReadOnly(statement))
     }
 
     @Test("SHOW, DESCRIBE, and DESC are read-only")

@@ -20,7 +20,6 @@ private final class TrailingSpaceLayoutPersister: ColumnLayoutPersisting {
 /// AppKit sizes the table to its columns, so scrolled fully right the last column's divider sat on the
 /// viewport's last point, where a resizable window takes the press for its own edge resize. Revealing
 /// the last column from the keyboard, Find or Jump to Column put the divider back there.
-@Suite("Data grid trailing space", .serialized)
 @MainActor
 struct DataGridTrailingSpaceTests {
     @MainActor

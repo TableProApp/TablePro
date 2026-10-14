@@ -1,9 +1,4 @@
-//
-//  SQLCompletionAdapterFuzzyTests.swift
-//  TableProTests
-//
-//  Regression tests for fuzzy matching used by autocomplete.
-//
+// Regression tests for fuzzy matching used by autocomplete.
 
 import TableProPluginKit
 @testable import TablePro
@@ -59,14 +54,13 @@ struct SQLCompletionAdapterFuzzyTests {
 
     // MARK: - No Match
 
-    @Test("No matching characters returns false")
-    func noMatch() {
-        #expect(fuzzyMatch(pattern: "xyz", target: "select") == false)
-    }
-
-    @Test("Characters present but in wrong order returns false")
-    func wrongOrderReturnsFalse() {
-        #expect(fuzzyMatch(pattern: "tces", target: "select") == false)
+    /// No matching characters, the right characters in the wrong order, a pattern longer than the
+    /// target, a case that differs, and one character the target lacks.
+    @Test("A pattern that is not an in-order subsequence of the target does not match", arguments: [
+        "xyz", "tces", "selectfromwhere", "SELECT", "z",
+    ])
+    func patternOutsideTheTargetDoesNotMatch(pattern: String) {
+        #expect(fuzzyMatch(pattern: pattern, target: "select") == false)
     }
 
     // MARK: - Empty Pattern
@@ -81,19 +75,6 @@ struct SQLCompletionAdapterFuzzyTests {
         #expect(fuzzyMatch(pattern: "", target: "") == true)
     }
 
-    // MARK: - Pattern Longer Than Target
-
-    @Test("Pattern longer than target returns false")
-    func patternLongerThanTarget() {
-        #expect(fuzzyMatch(pattern: "selectfromwhere", target: "select") == false)
-    }
-
-    // MARK: - Case Sensitivity
-
-    @Test("Matching is case-sensitive by default")
-    func caseSensitive() {
-        #expect(fuzzyMatch(pattern: "SELECT", target: "select") == false)
-    }
 
     // MARK: - Unicode
 
@@ -132,10 +113,5 @@ struct SQLCompletionAdapterFuzzyTests {
     @Test("Single character present returns true")
     func singleCharPresent() {
         #expect(fuzzyMatch(pattern: "s", target: "select") == true)
-    }
-
-    @Test("Single character absent returns false")
-    func singleCharAbsent() {
-        #expect(fuzzyMatch(pattern: "z", target: "select") == false)
     }
 }

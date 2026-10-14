@@ -7,14 +7,9 @@ import TableProPluginKit
 import Testing
 
 struct MySQLGeneratedColumnClassificationTests {
-    @Test("STORED GENERATED is generated")
-    func storedGenerated() {
-        #expect(mysqlColumnIsGenerated(extra: "STORED GENERATED"))
-    }
-
-    @Test("VIRTUAL GENERATED is generated")
-    func virtualGenerated() {
-        #expect(mysqlColumnIsGenerated(extra: "VIRTUAL GENERATED"))
+    @Test("STORED GENERATED and VIRTUAL GENERATED are generated", arguments: ["STORED GENERATED", "VIRTUAL GENERATED"])
+    func generatedExtras(_ extra: String) {
+        #expect(mysqlColumnIsGenerated(extra: extra))
     }
 
     @Test("Lowercase variants are handled")

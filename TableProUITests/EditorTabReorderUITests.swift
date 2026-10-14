@@ -14,8 +14,8 @@ final class EditorTabReorderUITests: UITestCase {
             "The strip must restore a tab per table, got \(editorTabTitles(in: window))"
         )
         let origin = window.frame.origin
-        let dragged = editorTab(titled: "album", in: window)
-        let target = editorTab(titled: "genre", in: window)
+        let dragged = editorTabs(titled: "album", in: window).firstMatch
+        let target = editorTabs(titled: "genre", in: window).firstMatch
         XCTAssertTrue(waitUntilHittable(dragged, timeout: 20), "The dragged tab must be hittable")
         XCTAssertTrue(waitUntilHittable(target, timeout: 20), "The drop target tab must be hittable")
 

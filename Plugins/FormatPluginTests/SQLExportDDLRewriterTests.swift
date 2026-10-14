@@ -133,9 +133,11 @@ struct SQLExportDDLRewriterTests {
         #expect(Self.keeping.rewrite(Self.createView) == Self.createView)
     }
 
-    @Test("An unterminated quote is copied rather than parsed past")
-    func unterminatedQuoteIsCopied() {
-        let ddl = ") ENGINE=InnoDB COMMENT 'oops AUTO_INCREMENT=4"
+    @Test("An unterminated quote, and definer text outside a CREATE header, are copied rather than parsed past", arguments: [
+        ") ENGINE=InnoDB COMMENT 'oops AUTO_INCREMENT=4",
+        "ALTER TABLE t ADD COLUMN c int; UPDATE t SET definer = 'a'@'b'",
+    ])
+    func unparsedTextIsCopied(_ ddl: String) {
         #expect(Self.stripping.rewrite(ddl) == ddl)
     }
 
@@ -156,12 +158,6 @@ struct SQLExportDDLRewriterTests {
         let ddl = "CREATE DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW v AS select 1 where definer = CURRENT_USER"
         #expect(Self.stripping.rewrite(ddl)
             == "CREATE SQL SECURITY DEFINER VIEW v AS select 1 where definer = CURRENT_USER")
-    }
-
-    @Test("A statement that never opened a CREATE header keeps its definer text")
-    func definerOutsideAHeaderSurvives() {
-        let ddl = "ALTER TABLE t ADD COLUMN c int; UPDATE t SET definer = 'a'@'b'"
-        #expect(Self.stripping.rewrite(ddl) == ddl)
     }
 
     /// Under `ANSI_QUOTES` the server quotes identifiers with `"` instead of a backtick. It still

@@ -116,7 +116,7 @@ struct ExecuteUserQueryTests {
     }
 }
 
-private final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class StubPluginDriver: PluginDriverStub, @unchecked Sendable {
     private(set) var lastExecutedQuery: String?
     private(set) var lastParameters: [PluginCellValue]?
     private let rowsToReturn: [[PluginCellValue]]
@@ -126,9 +126,6 @@ private final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         self.rowsToReturn = rows.map { row in row.map(PluginCellValue.fromOptional) }
         self.statusMessage = statusMessage
     }
-
-    func connect() async throws {}
-    func disconnect() {}
 
     func execute(query: String) async throws -> PluginQueryResult {
         lastExecutedQuery = query
@@ -153,19 +150,5 @@ private final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             executionTime: 0.001,
             statusMessage: statusMessage
         )
-    }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }

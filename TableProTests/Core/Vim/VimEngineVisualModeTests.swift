@@ -6,14 +6,15 @@
 //  entry/exit, motions, operators (d/y/c/x/J/~), and the o swap-anchor command.
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 // swiftlint:disable file_length type_body_length
 
 @MainActor
-final class VimEngineVisualModeTests: XCTestCase {
+final class VimEngineVisualModeTests {
     // Standard test buffer:
     // Line 0: "hello world\n"   offsets 0..11   (length 12)
     // Line 1: "second line\n"   offsets 12..23  (length 12)
@@ -21,16 +22,9 @@ final class VimEngineVisualModeTests: XCTestCase {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func keys(_ chars: String) {
@@ -47,193 +41,217 @@ final class VimEngineVisualModeTests: XCTestCase {
 
     // MARK: - v: Enter Characterwise Visual
 
-    func testVEntersVisualMode() {
+    @Test
+    func vEntersVisualMode() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
-        XCTAssertEqual(engine.mode, .visual(linewise: false))
+        #expect(engine.mode == .visual(linewise: false))
     }
 
-    func testVSelectsSingleCharInitially() {
+    @Test
+    func vSelectsSingleCharInitially() {
         buffer.setSelectedRange(NSRange(location: 3, length: 0))
         keys("v")
-        XCTAssertEqual(sel.location, 3)
-        XCTAssertEqual(sel.length, 1, "Initial v selection should cover one character")
-        XCTAssertEqual(buffer.string(in: sel), "l")
+        #expect(sel.location == 3)
+        #expect(sel.length == 1, "Initial v selection should cover one character")
+        #expect(buffer.string(in: sel) == "l")
     }
 
-    func testVOnEmptyBuffer() {
+    @Test
+    func vOnEmptyBuffer() {
         buffer = VimTextBufferMock(text: "")
         engine = VimEngine(buffer: buffer)
         keys("v")
-        XCTAssertEqual(engine.mode, .visual(linewise: false))
-        XCTAssertEqual(sel.length, 0, "Empty buffer should yield zero-length selection on v")
+        #expect(engine.mode == .visual(linewise: false))
+        #expect(sel.length == 0, "Empty buffer should yield zero-length selection on v")
     }
 
     // MARK: - V: Enter Linewise Visual
 
-    func testCapitalVEntersLinewiseVisual() {
+    @Test
+    func capitalVEntersLinewiseVisual() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         key("V", shift: true)
-        XCTAssertEqual(engine.mode, .visual(linewise: true))
+        #expect(engine.mode == .visual(linewise: true))
     }
 
-    func testCapitalVSelectsEntireLine() {
+    @Test
+    func capitalVSelectsEntireLine() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         key("V", shift: true)
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(sel.length, 12, "V should select the entire line 0 ('hello world\\n')")
+        #expect(sel.location == 0)
+        #expect(sel.length == 12, "V should select the entire line 0 ('hello world\\n')")
     }
 
     // MARK: - Toggle: v <-> V <-> Normal
 
-    func testVTogglesOffToNormal() {
+    @Test
+    func vTogglesOffToNormal() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vv")
-        XCTAssertEqual(engine.mode, .normal)
-        XCTAssertEqual(sel.length, 0)
+        #expect(engine.mode == .normal)
+        #expect(sel.length == 0)
     }
 
-    func testCapitalVTogglesOffToNormal() {
+    @Test
+    func capitalVTogglesOffToNormal() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("V", shift: true)
         key("V", shift: true)
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(engine.mode == .normal)
     }
 
-    func testVThenCapitalVSwitchesToLinewise() {
+    @Test
+    func vThenCapitalVSwitchesToLinewise() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("v")
         key("V", shift: true)
-        XCTAssertEqual(engine.mode, .visual(linewise: true))
+        #expect(engine.mode == .visual(linewise: true))
     }
 
-    func testCapitalVThenVSwitchesToCharacterwise() {
+    @Test
+    func capitalVThenVSwitchesToCharacterwise() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         key("V", shift: true)
         keys("v")
-        XCTAssertEqual(engine.mode, .visual(linewise: false))
+        #expect(engine.mode == .visual(linewise: false))
     }
 
     // MARK: - Escape Exits Visual
 
-    func testEscapeExitsToNormal() {
+    @Test
+    func escapeExitsToNormal() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
         escape()
-        XCTAssertEqual(engine.mode, .normal)
-        XCTAssertEqual(sel.length, 0)
+        #expect(engine.mode == .normal)
+        #expect(sel.length == 0)
     }
 
     // MARK: - Motions Extend Selection
 
-    func testLExtendsRightInclusive() {
+    @Test
+    func lExtendsRightInclusive() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vl")
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(sel.length, 2)
-        XCTAssertEqual(buffer.string(in: sel), "he")
+        #expect(sel.location == 0)
+        #expect(sel.length == 2)
+        #expect(buffer.string(in: sel) == "he")
     }
 
-    func testHExtendsLeftInclusive() {
+    @Test
+    func hExtendsLeftInclusive() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("vh")
-        XCTAssertEqual(sel.location, 4)
-        XCTAssertEqual(sel.length, 2)
+        #expect(sel.location == 4)
+        #expect(sel.length == 2)
     }
 
-    func testWExtendsByWord() {
+    @Test
+    func wExtendsByWord() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vw")
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(buffer.string(in: sel), "hello w")
+        #expect(sel.location == 0)
+        #expect(buffer.string(in: sel) == "hello w")
     }
 
-    func testEExtendsToWordEnd() {
+    @Test
+    func eExtendsToWordEnd() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("ve")
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(sel.length, 5)
-        XCTAssertEqual(buffer.string(in: sel), "hello")
+        #expect(sel.location == 0)
+        #expect(sel.length == 5)
+        #expect(buffer.string(in: sel) == "hello")
     }
 
-    func testBExtendsBackwardByWord() {
+    @Test
+    func bExtendsBackwardByWord() {
         buffer.setSelectedRange(NSRange(location: 8, length: 0))
         keys("vb")
-        XCTAssertEqual(sel.location, 6)
-        XCTAssertEqual(buffer.string(in: sel), "wor")
+        #expect(sel.location == 6)
+        #expect(buffer.string(in: sel) == "wor")
     }
 
-    func testDollarExtendsToLineEnd() {
+    @Test
+    func dollarExtendsToLineEnd() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v$")
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(sel.length, 12, "v$ should extend through the line including newline")
+        #expect(sel.location == 0)
+        #expect(sel.length == 12, "v$ should extend through the line including newline")
     }
 
-    func testZeroExtendsToLineStart() {
+    @Test
+    func zeroExtendsToLineStart() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("v0")
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(sel.length, 6, "v0 should extend selection to the start of line")
+        #expect(sel.location == 0)
+        #expect(sel.length == 6, "v0 should extend selection to the start of line")
     }
 
-    func testCaretExtendsToFirstNonBlank() {
+    @Test
+    func caretExtendsToFirstNonBlank() {
         buffer = VimTextBufferMock(text: "   hello\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 7, length: 0))
         keys("v^")
-        XCTAssertEqual(sel.location, 3)
-        XCTAssertEqual(sel.length, 5)
+        #expect(sel.location == 3)
+        #expect(sel.length == 5)
     }
 
     // MARK: - Multi-line Motions
 
-    func testJExtendsToNextLine() {
+    @Test
+    func jExtendsToNextLine() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vj")
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(buffer.string(in: sel), "hello world\ns")
+        #expect(sel.location == 0)
+        #expect(buffer.string(in: sel) == "hello world\ns")
     }
 
-    func testKExtendsToPreviousLine() {
+    @Test
+    func kExtendsToPreviousLine() {
         buffer.setSelectedRange(NSRange(location: 15, length: 0))
         keys("vk")
-        XCTAssertEqual(sel.location, 3)
-        XCTAssertEqual(sel.length, 13)
+        #expect(sel.location == 3)
+        #expect(sel.length == 13)
     }
 
-    func testGGExtendsToBufferStart() {
+    @Test
+    func gGExtendsToBufferStart() {
         buffer.setSelectedRange(NSRange(location: 15, length: 0))
         keys("vgg")
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(sel.length, 16)
+        #expect(sel.location == 0)
+        #expect(sel.length == 16)
     }
 
-    func testCapitalGExtendsToBufferEnd() {
+    @Test
+    func capitalGExtendsToBufferEnd() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
         key("G", shift: true)
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(sel.location + sel.length, buffer.length)
+        #expect(sel.location == 0)
+        #expect(sel.location + sel.length == buffer.length)
     }
 
     // MARK: - o: Swap Anchor and Cursor
 
-    func testOSwapsAnchorAndCursor() {
+    @Test
+    func oSwapsAnchorAndCursor() {
         // v at 5 selects ' ' (5,1), l → (5,2), l → (5,3) — cursor at 7.
         // o swaps anchor/cursor — now anchor=7, cursor=5. Selection still (5,3).
         // Then h should shrink from the LEFT (cursor) end.
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("vll")
-        XCTAssertEqual(sel.location, 5)
-        XCTAssertEqual(sel.length, 3)
+        #expect(sel.location == 5)
+        #expect(sel.length == 3)
         keys("o")
         // After o, h moves the LEFT side outward (extend left).
         keys("h")
-        XCTAssertEqual(sel.location, 4, "After o, h should extend from the new cursor (left side)")
+        #expect(sel.location == 4, "After o, h should extend from the new cursor (left side)")
     }
 
-    func testOInLinewise() {
+    @Test
+    func oInLinewise() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0))
         key("V", shift: true)
         keys("j")
@@ -241,208 +259,231 @@ final class VimEngineVisualModeTests: XCTestCase {
         keys("o")
         // Now extending with k should grow upward from the new cursor.
         keys("k")
-        XCTAssertEqual(sel.location, 0, "After o in linewise mode, k should extend upward")
+        #expect(sel.location == 0, "After o in linewise mode, k should extend upward")
     }
 
     // MARK: - Anchor Stays Fixed
 
-    func testAnchorStaysFixedAcrossExtendingAndShrinking() {
+    @Test
+    func anchorStaysFixedAcrossExtendingAndShrinking() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("v")
         keys("lll") // extend right
-        XCTAssertEqual(sel.location, 5)
-        XCTAssertEqual(sel.length, 4)
+        #expect(sel.location == 5)
+        #expect(sel.length == 4)
         keys("hhh") // shrink back
-        XCTAssertEqual(sel.location, 5)
-        XCTAssertEqual(sel.length, 1)
+        #expect(sel.location == 5)
+        #expect(sel.length == 1)
     }
 
-    func testCursorCanCrossAnchorLeftward() {
+    @Test
+    func cursorCanCrossAnchorLeftward() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("vhhh")
         // anchor=5, cursor=2 → selection (2,4)
-        XCTAssertEqual(sel.location, 2)
-        XCTAssertEqual(sel.length, 4)
+        #expect(sel.location == 2)
+        #expect(sel.length == 4)
     }
 
     // MARK: - Operators in Visual Mode
 
-    func testDDeletesSelection() {
+    @Test
+    func dDeletesSelection() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vlld")
-        XCTAssertEqual(buffer.text, "lo world\nsecond line\nthird line\n")
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(buffer.text == "lo world\nsecond line\nthird line\n")
+        #expect(engine.mode == .normal)
     }
 
-    func testXIsAliasForDInVisual() {
+    @Test
+    func xIsAliasForDInVisual() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vllx")
-        XCTAssertEqual(buffer.text, "lo world\nsecond line\nthird line\n")
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(buffer.text == "lo world\nsecond line\nthird line\n")
+        #expect(engine.mode == .normal)
     }
 
-    func testYYanksSelectionWithoutModifyingBuffer() {
+    @Test
+    func yYanksSelectionWithoutModifyingBuffer() {
         let original = buffer.text
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vey")
-        XCTAssertEqual(buffer.text, original)
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(buffer.text == original)
+        #expect(engine.mode == .normal)
     }
 
-    func testYReturnsCursorToAnchor() {
+    @Test
+    func yReturnsCursorToAnchor() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vey")
-        XCTAssertEqual(sel.location, 0, "Yank should leave cursor at the start of the yanked region")
+        #expect(sel.location == 0, "Yank should leave cursor at the start of the yanked region")
     }
 
-    func testCChangesSelectionAndEntersInsert() {
+    @Test
+    func cChangesSelectionAndEntersInsert() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vlc")
-        XCTAssertEqual(engine.mode, .insert)
-        XCTAssertEqual(buffer.text, "llo world\nsecond line\nthird line\n")
+        #expect(engine.mode == .insert)
+        #expect(buffer.text == "llo world\nsecond line\nthird line\n")
     }
 
-    func testDeleteThenPasteRoundTrip() {
+    @Test
+    func deleteThenPasteRoundTrip() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vlld")
         // Selection was "hel" — should be in register.
         key("P", shift: true)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "Deleted selection should round-trip through P")
     }
 
     // MARK: - Linewise Operations
 
-    func testLinewiseDDeletesWholeLine() {
+    @Test
+    func linewiseDDeletesWholeLine() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         key("V", shift: true)
         keys("d")
-        XCTAssertEqual(buffer.text, "second line\nthird line\n")
+        #expect(buffer.text == "second line\nthird line\n")
     }
 
-    func testLinewiseDMultipleLines() {
+    @Test
+    func linewiseDMultipleLines() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("V", shift: true)
         keys("jd")
-        XCTAssertEqual(buffer.text, "third line\n")
+        #expect(buffer.text == "third line\n")
     }
 
-    func testLinewiseYThenP() {
+    @Test
+    func linewiseYThenP() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("V", shift: true)
         keys("yp")
-        XCTAssertEqual(buffer.text, "hello world\nhello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "hello world\nhello world\nsecond line\nthird line\n")
     }
 
-    func testLinewiseCDeletesContentEntersInsert() {
+    @Test
+    func linewiseCDeletesContentEntersInsert() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("V", shift: true)
         keys("c")
-        XCTAssertEqual(engine.mode, .insert)
-        XCTAssertEqual(buffer.text, "\nsecond line\nthird line\n",
+        #expect(engine.mode == .insert)
+        #expect(buffer.text == "\nsecond line\nthird line\n",
             "Linewise change should delete content but keep one newline")
     }
 
     // MARK: - ~ Toggle Case in Visual
 
-    func testTildeTogglesCaseInVisual() {
+    @Test
+    func tildeTogglesCaseInVisual() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("ve")
         keys("~")
-        XCTAssertEqual(buffer.text, "HELLO world\nsecond line\nthird line\n",
+        #expect(buffer.text == "HELLO world\nsecond line\nthird line\n",
             "~ in visual should toggle case of the selection and exit to normal")
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(engine.mode == .normal)
     }
 
-    func testGuLowercasesSelection() {
+    @Test
+    func guLowercasesSelection() {
         buffer = VimTextBufferMock(text: "Hello World\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v$")
         keys("u")
-        XCTAssertEqual(buffer.text, "hello world\n",
+        #expect(buffer.text == "hello world\n",
             "Selecting and pressing u in visual should lowercase the selection")
     }
 
-    func testGUUppercaseSelection() {
+    @Test
+    func gUUppercaseSelection() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
         keys("e")
         key("U", shift: true)
-        XCTAssertEqual(buffer.text, "HELLO world\nsecond line\nthird line\n",
+        #expect(buffer.text == "HELLO world\nsecond line\nthird line\n",
             "Selecting and pressing U in visual should uppercase the selection")
     }
 
     // MARK: - r in Visual
 
-    func testRReplacesSelectionWithSingleChar() {
+    @Test
+    func rReplacesSelectionWithSingleChar() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("ve")
         keys("rX")
-        XCTAssertEqual(buffer.text, "XXXXX world\nsecond line\nthird line\n",
+        #expect(buffer.text == "XXXXX world\nsecond line\nthird line\n",
             "r in visual should replace every char in selection with the given char")
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(engine.mode == .normal)
     }
 
     // MARK: - Edge Cases
 
-    func testVisualAtBufferStart() {
+    @Test
+    func visualAtBufferStart() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vh")
-        XCTAssertEqual(sel.location, 0)
-        XCTAssertEqual(sel.length, 1)
+        #expect(sel.location == 0)
+        #expect(sel.length == 1)
     }
 
-    func testVisualAtBufferEnd() {
+    @Test
+    func visualAtBufferEnd() {
         buffer.setSelectedRange(NSRange(location: 34, length: 0))
         keys("v")
-        XCTAssertEqual(sel.location, 34)
-        XCTAssertEqual(sel.length, 1)
+        #expect(sel.location == 34)
+        #expect(sel.length == 1)
         keys("l")
-        XCTAssertEqual(sel.location, 34, "l at buffer end should not extend past length")
+        #expect(sel.location == 34, "l at buffer end should not extend past length")
     }
 
-    func testVisualDeleteAllContent() {
+    @Test
+    func visualDeleteAllContent() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
         key("G", shift: true)
         keys("d")
-        XCTAssertEqual(buffer.text, "")
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(buffer.text == "")
+        #expect(engine.mode == .normal)
     }
 
     // MARK: - Unknown Keys
 
-    func testUnknownKeyConsumedInVisual() {
+    @Test
+    func unknownKeyConsumedInVisual() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
         let consumed = engine.process("z", shift: false)
-        XCTAssertTrue(consumed)
-        XCTAssertEqual(engine.mode, .visual(linewise: false),
+        #expect(consumed)
+        #expect(engine.mode == .visual(linewise: false),
             "Unknown keys in visual must be consumed but not exit visual mode")
     }
 
     // MARK: - Insert Mode From Visual
 
-    func testIInVisualBlockShouldInsertAtSelectionStart() {
+    @Test
+    func iInVisualBlockShouldInsertAtSelectionStart() {
         // This is more meaningful in block visual; in regular visual, I just enters insert
         // at the cursor position. We assert the engine does not crash and exits visual.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("ve")
         key("I", shift: true)
-        XCTAssertEqual(engine.mode, .insert)
+        #expect(engine.mode == .insert)
     }
 
     // MARK: - Mode Display
 
-    func testVisualDisplayLabel() {
+    @Test
+    func visualDisplayLabel() {
         keys("v")
-        XCTAssertEqual(engine.mode.displayLabel, "VISUAL")
+        #expect(engine.mode.displayLabel == "VISUAL")
     }
 
-    func testVisualLineDisplayLabel() {
+    @Test
+    func visualLineDisplayLabel() {
         key("V", shift: true)
-        XCTAssertEqual(engine.mode.displayLabel, "VISUAL LINE")
+        #expect(engine.mode.displayLabel == "VISUAL LINE")
     }
 }
 

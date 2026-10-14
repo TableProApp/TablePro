@@ -35,11 +35,14 @@ private final class LockedKeychain: KeychainStoring, @unchecked Sendable {
 
 @MainActor
 struct MCPServerStoreTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private func makeDefaults() -> UserDefaults {
-        let suite = "MCPServerStoreTests-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else { return .standard }
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
+        suite.defaults
     }
 
     private func endpoint(_ string: String = "https://runbooks.example/mcp") -> URL {

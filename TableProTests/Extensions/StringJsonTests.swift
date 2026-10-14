@@ -36,20 +36,9 @@ struct StringJsonTests {
         #expect(result == expected)
     }
 
-    @Test("Invalid JSON returns nil")
-    func invalidJson() {
-        let input = "not valid json at all"
-        let result = input.prettyPrintedAsJson()
-
-        #expect(result == nil)
-    }
-
-    @Test("Empty string returns nil")
-    func emptyString() {
-        let input = ""
-        let result = input.prettyPrintedAsJson()
-
-        #expect(result == nil)
+    @Test("Invalid JSON and an empty string return nil", arguments: ["not valid json at all", ""])
+    func notJson(_ input: String) {
+        #expect(input.prettyPrintedAsJson() == nil)
     }
 
     @Test("Nested objects are correctly indented")

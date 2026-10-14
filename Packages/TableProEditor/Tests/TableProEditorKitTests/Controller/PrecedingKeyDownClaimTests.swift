@@ -21,8 +21,7 @@ private final class RecordingCoordinator: TextViewCoordinator {
     }
 }
 
-/// Serialized because the claim is one static for every editor in the process.
-@Suite("The app-wide claim runs ahead of every editor link", .serialized)
+// Each case sets and clears the process-wide claim without suspending, so no other main-actor case can see it set.
 @MainActor
 internal struct PrecedingKeyDownClaimTests {
     @Test("A claimed key reaches neither the coordinators nor the text")

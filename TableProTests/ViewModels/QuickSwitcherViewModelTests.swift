@@ -1,21 +1,20 @@
-//
-//  QuickSwitcherViewModelTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 @testable import TableProUtilities
 import Testing
 
 @MainActor
 struct QuickSwitcherViewModelTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private func makeDefaults() -> UserDefaults {
-        guard let suite = UserDefaults(suiteName: "QuickSwitcherTests.\(UUID().uuidString)") else {
-            return .standard
-        }
-        return suite
+        suite.defaults
     }
 
     private func makeViewModel(
@@ -429,7 +428,7 @@ struct QuickSwitcherViewModelTests {
         vm.crossConnectionItems = [remote]
         vm.scope = .connections
         vm.searchText = "analytics"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
 
         #expect(vm.flatItems.first?.frecencyKey == "remote")
         #expect(vm.flatItems.first?.target == target)
@@ -457,7 +456,7 @@ struct QuickSwitcherViewModelTests {
         vm.selectedItemId = items[0].id
 
         vm.searchText = "track"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
 
         #expect(vm.flatItems.first?.name == "Track")
         #expect(vm.selectedItem()?.name == "Track")
@@ -490,7 +489,7 @@ struct QuickSwitcherViewModelTests {
         vm.selectedItemId = stale.id
 
         vm.searchText = "invoice"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
 
         #expect(vm.flatItems.contains { $0.id == stale.id })
         #expect(vm.flatItems.first?.name == "Invoice")
@@ -518,14 +517,14 @@ struct QuickSwitcherViewModelTests {
         )
         vm.scope = .connections
         vm.searchText = "invoice"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
 
         let chosen = try #require(vm.flatItems.first { $0.name == "InvoiceLine" })
         vm.selectedItemId = chosen.id
         vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(
             tables: tables, target: target, connectionSwitchesDatabases: true
         )
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
 
         #expect(vm.selectedItem()?.name == "InvoiceLine")
     }
@@ -628,7 +627,7 @@ struct QuickSwitcherViewModelTests {
         ])
 
         vm.searchText = "users'; DROP TABLE audit; --"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
 
         #expect(vm.flatItems.isEmpty)
         #expect(vm.allItems.map(\.name) == ["users"])
@@ -671,10 +670,23 @@ struct QuickSwitcherViewModelTests {
     func filteredGroupHasNoHeader() async throws {
         let vm = makeViewModel(items: sampleItems())
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.groups.count == 1)
         #expect(vm.groups.first?.header == nil)
         #expect(vm.flatItems.allSatisfy { $0.name.localizedCaseInsensitiveContains("u") })
+    }
+
+    // Every other case flushes, which cancels the debounced task; this one waits it out.
+    @Test("Typing alone filters once the debounce has passed")
+    func typingFiltersWithoutAFlush() async throws {
+        let vm = makeViewModel(items: sampleItems())
+        vm.searchText = "users"
+        try #require(vm.isFiltering)
+
+        try await waitUntil { !vm.isFiltering }
+
+        #expect(vm.flatItems.first?.name == "users")
+        #expect(!vm.flatItems.contains { $0.name == "orders" })
     }
 
     @Test("Saved query is found by its keyword")
@@ -689,7 +701,7 @@ struct QuickSwitcherViewModelTests {
         ))
         let vm = makeViewModel(items: items)
         vm.searchText = "rpt"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.contains { $0.id == "favorite_1" }, "Typing the keyword must surface the saved query")
     }
 
@@ -796,7 +808,7 @@ struct QuickSwitcherViewModelTests {
     func filteredResultsCarryMatchedIndices() async throws {
         let vm = makeViewModel(items: sampleItems())
         vm.searchText = "usr"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         let users = vm.flatItems.first { $0.id == "t1" }
         #expect(users?.matchedIndices == [0, 1, 3])
     }
@@ -811,14 +823,14 @@ struct QuickSwitcherViewModelTests {
         ]
         let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.first?.id == "ta")
 
         vm.recordSelection(items[1])
         let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
         vm2.allItems = items
         vm2.searchText = "users"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm2.flushPendingFilter()
         #expect(vm2.flatItems.first?.id == "tb")
     }
 
@@ -851,7 +863,7 @@ struct QuickSwitcherViewModelTests {
         )]
         let vm = makeViewModel(items: items)
         vm.searchText = "revenue"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.first?.payload == "SELECT SUM(total) FROM orders GROUP BY month;")
     }
 
@@ -871,7 +883,7 @@ struct QuickSwitcherViewModelTests {
         let vm = makeViewModel(items: sampleItems())
         vm.scope = .containers
         vm.searchText = "r"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.allSatisfy { [.database, .schema].contains($0.kind) })
         #expect(vm.flatItems.contains { $0.id == "d1" })
     }
@@ -884,7 +896,7 @@ struct QuickSwitcherViewModelTests {
         ]
         let vm = makeViewModel(items: items)
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.first?.id == "tb")
     }
 
@@ -892,7 +904,7 @@ struct QuickSwitcherViewModelTests {
     func subtitleMatchSurfacesItem() async throws {
         let vm = makeViewModel(items: sampleItems())
         vm.searchText = "mydb"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.contains { $0.id == "h1" })
         #expect(vm.flatItems.first { $0.id == "h1" }?.matchedIndices.isEmpty == true)
     }
@@ -902,7 +914,7 @@ struct QuickSwitcherViewModelTests {
         let vm = makeViewModel(items: sampleItems())
         vm.selectedItemId = "t1"
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.contains(where: { $0.id == "t1" }))
         #expect(vm.selectedItemId == "t1")
     }
@@ -912,7 +924,7 @@ struct QuickSwitcherViewModelTests {
         let vm = makeViewModel(items: sampleItems())
         vm.selectedItemId = "d1"
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.contains(where: { $0.id == "d1" }) == false)
         #expect(vm.selectedItemId == vm.flatItems.first?.id)
     }
@@ -928,7 +940,7 @@ struct QuickSwitcherViewModelTests {
     func listHeightSingleFilteredRow() async throws {
         let vm = makeViewModel(items: [QuickSwitcherItem(frecencyKey: "t1", name: "users", kind: .table, subtitle: "")])
         vm.searchText = "users"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.groups.first?.header == nil)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 30)
     }
@@ -941,7 +953,7 @@ struct QuickSwitcherViewModelTests {
         }
         let vm = makeViewModel(items: items)
         vm.searchText = "tbl"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.count == 9)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
     }
@@ -954,7 +966,7 @@ struct QuickSwitcherViewModelTests {
         }
         let vm = makeViewModel(items: items)
         vm.searchText = "tbl"
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.count == 20)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
     }

@@ -378,27 +378,16 @@ struct TableRowsInsertTests {
         #expect(table.rows[1].values == ["a", "b", "c"])
     }
 
-    @Test("insertInsertedRow with negative index returns Delta.none and does not mutate")
-    func insertInsertedRowNegativeIndexIsNoOp() {
+    @Test("insertInsertedRow at a negative index or past the end returns Delta.none and does not mutate", arguments: [
+        -1, 2,
+    ])
+    func insertInsertedRowOutOfRangeIsNoOp(_ index: Int) {
         var table = TableRows.from(
             queryRows: [["a"]],
             columns: ["c1"],
             columnTypes: [.text(rawType: nil)]
         )
-        let delta = table.insertInsertedRow(at: -1, values: ["z"])
-        #expect(delta == .none)
-        #expect(table.count == 1)
-        #expect(table.rows[0].values == ["a"])
-    }
-
-    @Test("insertInsertedRow past the end returns Delta.none and does not mutate")
-    func insertInsertedRowPastEndIsNoOp() {
-        var table = TableRows.from(
-            queryRows: [["a"]],
-            columns: ["c1"],
-            columnTypes: [.text(rawType: nil)]
-        )
-        let delta = table.insertInsertedRow(at: 2, values: ["z"])
+        let delta = table.insertInsertedRow(at: index, values: ["z"])
         #expect(delta == .none)
         #expect(table.count == 1)
         #expect(table.rows[0].values == ["a"])

@@ -1,12 +1,8 @@
-//
-//  InlineSuggestionManagerCompositionTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Carbon.HIToolbox
 @testable import TablePro
 import TableProEditorKit
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -76,27 +72,19 @@ internal struct InlineSuggestionManagerCompositionTests {
         return Harness(window: window, editor: editor, manager: manager, source: source)
     }
 
-    private func waitUntil(_ condition: () -> Bool) async {
-        var attempts = 0
-        while !condition(), attempts < 500 {
-            attempts += 1
-            await Task.yield()
-        }
-    }
-
-    private func drainMainActor() async {
-        for _ in 0..<50 {
-            await Task.yield()
-        }
+    /// The main queue runs its jobs in order, so a job queued now runs after the request task the
+    /// case started, or resumed, has run to its end.
+    private func runQueuedMainActorWork() async {
+        await Task { @MainActor in }.value
     }
 
     @Test("A settled line requests and shows a suggestion")
-    func settledLineShowsSuggestion() async {
+    func settledLineShowsSuggestion() async throws {
         let harness = makeHarness()
         defer { harness.manager.uninstall() }
 
         harness.manager.requestSuggestion()
-        await waitUntil { !harness.source.shown.isEmpty }
+        try await waitUntil { !harness.source.shown.isEmpty }
 
         #expect(harness.source.requests.count == 1)
         #expect(harness.source.shown.count == 1)
@@ -109,37 +97,37 @@ internal struct InlineSuggestionManagerCompositionTests {
         EditorControllerFixture.beginComposition("le", in: harness.editor.textView)
 
         harness.manager.requestSuggestion()
-        await drainMainActor()
+        await runQueuedMainActorWork()
 
         #expect(harness.source.requests.isEmpty)
         #expect(harness.source.shown.isEmpty)
     }
 
     @Test("A composition the input method empties no longer holds suggestions back")
-    func emptiedCompositionRequestsAgain() async {
+    func emptiedCompositionRequestsAgain() async throws {
         let harness = makeHarness()
         defer { harness.manager.uninstall() }
         EditorControllerFixture.beginComposition("le", in: harness.editor.textView)
         EditorControllerFixture.emptyComposition(in: harness.editor.textView)
 
         harness.manager.requestSuggestion()
-        await waitUntil { !harness.source.shown.isEmpty }
+        try await waitUntil { !harness.source.shown.isEmpty }
 
         #expect(harness.source.requests.count == 1)
         #expect(harness.source.shown.count == 1)
     }
 
     @Test("A reply that arrives after a composition begins is not shown")
-    func replyDuringCompositionIsDropped() async {
+    func replyDuringCompositionIsDropped() async throws {
         let harness = makeHarness()
         defer { harness.manager.uninstall() }
         harness.source.holdsReplies = true
 
         harness.manager.requestSuggestion()
-        await waitUntil { harness.source.heldReplyCount == 1 }
+        try await waitUntil { harness.source.heldReplyCount == 1 }
         EditorControllerFixture.beginComposition("le", in: harness.editor.textView)
         harness.source.releaseReplies()
-        await drainMainActor()
+        await runQueuedMainActorWork()
 
         #expect(harness.source.requests.count == 1)
         #expect(harness.source.shown.isEmpty)
@@ -150,7 +138,7 @@ internal struct InlineSuggestionManagerCompositionTests {
         let harness = makeHarness()
         defer { harness.manager.uninstall() }
         harness.manager.requestSuggestion()
-        await waitUntil { !harness.source.shown.isEmpty }
+        try await waitUntil { !harness.source.shown.isEmpty }
         try #require(harness.source.shown.count == 1)
 
         EditorControllerFixture.beginComposition("le", in: harness.editor.textView)
@@ -177,7 +165,7 @@ internal struct InlineSuggestionManagerCompositionTests {
             let harness = makeHarness()
             defer { harness.manager.uninstall() }
             harness.manager.requestSuggestion()
-            await waitUntil { !harness.source.shown.isEmpty }
+            try await waitUntil { !harness.source.shown.isEmpty }
             try #require(harness.source.shown.count == 1, "\(chord.name)")
             let event = try #require(harness.tab(modifiers: chord.modifiers))
 
@@ -192,7 +180,7 @@ internal struct InlineSuggestionManagerCompositionTests {
         let harness = makeHarness()
         defer { harness.manager.uninstall() }
         harness.manager.requestSuggestion()
-        await waitUntil { !harness.source.shown.isEmpty }
+        try await waitUntil { !harness.source.shown.isEmpty }
         try #require(harness.source.shown.count == 1)
         let tab = try #require(harness.tab())
 

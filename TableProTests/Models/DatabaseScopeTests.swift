@@ -61,7 +61,6 @@ struct DatabaseScopeTests {
     }
 }
 
-@Suite("DatabaseManager scope resolution", .serialized)
 @MainActor
 struct DatabaseManagerScopeResolutionTests {
     private static func makeSession(

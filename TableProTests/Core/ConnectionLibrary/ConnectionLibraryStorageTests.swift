@@ -12,7 +12,8 @@ import Testing
 
 @MainActor
 struct ConnectionLibraryStorageTests {
-    private let defaults: UserDefaults
+    private let suite: EphemeralDefaults
+    private var defaults: UserDefaults { suite.defaults }
     private let fileURL: URL
     private let appEvents: AppEvents
     private let storage: ConnectionStorage
@@ -23,7 +24,8 @@ struct ConnectionLibraryStorageTests {
 
     init() throws {
         let unique = UUID().uuidString
-        let suiteDefaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.ConnectionLibraryStorage.\(unique)"))
+        let ephemeral = try EphemeralDefaults()
+        let suiteDefaults = ephemeral.defaults
         let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suiteDefaults))
         let storeURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -42,7 +44,7 @@ struct ConnectionLibraryStorageTests {
             integrity: storeIntegrity
         )
         integrity = storeIntegrity
-        defaults = suiteDefaults
+        suite = ephemeral
         fileURL = storeURL
         appEvents = events
         storage = connectionStorage

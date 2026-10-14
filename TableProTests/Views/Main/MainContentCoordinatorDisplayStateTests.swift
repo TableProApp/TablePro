@@ -14,14 +14,12 @@ import Testing
 
 @MainActor
 struct MainContentCoordinatorDisplayStateTests {
+    private let fixtures = CoordinatorFixtures()
+
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let fixture = fixtures.make()
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         return (coordinator, tabManager)
     }
 

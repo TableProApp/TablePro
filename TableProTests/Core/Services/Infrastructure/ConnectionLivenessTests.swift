@@ -129,7 +129,6 @@ struct ConnectionLivenessReportingTests {
     }
 }
 
-@Suite("Reconnect degradation threshold", .serialized)
 @MainActor
 struct ReconnectDegradationTests {
     private func injectLiveSession() -> UUID {

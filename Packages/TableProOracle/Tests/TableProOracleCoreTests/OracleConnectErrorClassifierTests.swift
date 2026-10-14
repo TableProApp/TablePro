@@ -1,98 +1,93 @@
+import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
-final class OracleConnectErrorClassifierTests: XCTestCase {
-    func testVerifierPrefixIsClassifiedWithItsFlag() {
+struct OracleConnectErrorClassifierTests {
+    @Test func testVerifierPrefixIsClassifiedWithItsFlag() {
         let failure = OracleConnectErrorClassifier.classify("unsupportedVerifierType(0x12)")
-        XCTAssertEqual(failure, .verifierUnsupported(flag: "unsupportedVerifierType(0x12)"))
+        #expect(failure == .verifierUnsupported(flag: "unsupportedVerifierType(0x12)"))
     }
 
-    func testKnownCodesMapToTheirFailures() {
-        XCTAssertEqual(OracleConnectErrorClassifier.classify("uncleanShutdown"), .connectionDropped)
-        XCTAssertEqual(OracleConnectErrorClassifier.classify("serverVersionNotSupported"), .versionNotSupported)
-        XCTAssertEqual(OracleConnectErrorClassifier.classify("advancedNegotiationFailed"), .advancedNegotiationFailed)
-        XCTAssertEqual(
-            OracleConnectErrorClassifier.classify("advancedNegotiationRequired"),
-            .advancedNegotiationRequired
-        )
-        XCTAssertEqual(
-            OracleConnectErrorClassifier.classify("loginHandshakeTimedOut"),
-            .loginHandshakeTimedOut
-        )
+    @Test func testKnownCodesMapToTheirFailures() {
+        #expect(OracleConnectErrorClassifier.classify("uncleanShutdown") == .connectionDropped)
+        #expect(OracleConnectErrorClassifier.classify("serverVersionNotSupported") == .versionNotSupported)
+        #expect(OracleConnectErrorClassifier.classify("advancedNegotiationFailed") == .advancedNegotiationFailed)
+        #expect(OracleConnectErrorClassifier.classify("advancedNegotiationRequired") == .advancedNegotiationRequired)
+        #expect(OracleConnectErrorClassifier.classify("loginHandshakeTimedOut") == .loginHandshakeTimedOut)
     }
 
-    func testStalledLoginIsNotBlamedOnEncryption() {
-        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+    @Test func testStalledLoginIsNotBlamedOnEncryption() {
+        #expect(!OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .loginHandshakeTimedOut,
             nativeNetworkEncryptionEnabled: true,
             timedOut: true
         ))
     }
 
-    func testRequiredNegotiationIsAnEncryptionSignal() {
-        XCTAssertTrue(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+    @Test func testRequiredNegotiationIsAnEncryptionSignal() {
+        #expect(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .advancedNegotiationRequired,
             nativeNetworkEncryptionEnabled: true,
             timedOut: false
         ))
     }
 
-    func testUnknownCodeFallsBackToConnectionFailed() {
-        XCTAssertEqual(OracleConnectErrorClassifier.classify("somethingElse"), .connectionFailed)
+    @Test func testUnknownCodeFallsBackToConnectionFailed() {
+        #expect(OracleConnectErrorClassifier.classify("somethingElse") == .connectionFailed)
     }
 
-    func testAdvancedNegotiationIsAlwaysANativeEncryptionSignal() {
-        XCTAssertTrue(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+    @Test func testAdvancedNegotiationIsAlwaysANativeEncryptionSignal() {
+        #expect(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .advancedNegotiationFailed,
             nativeNetworkEncryptionEnabled: true,
             timedOut: false
         ))
     }
 
-    func testDroppedConnectionCountsOnlyWhenItTimedOut() {
-        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+    @Test func testDroppedConnectionCountsOnlyWhenItTimedOut() {
+        #expect(!OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .connectionDropped,
             nativeNetworkEncryptionEnabled: true,
             timedOut: false
         ))
-        XCTAssertTrue(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+        #expect(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .connectionDropped,
             nativeNetworkEncryptionEnabled: true,
             timedOut: true
         ))
     }
 
-    func testAuthFailuresAreNeverEncryptionFailures() {
-        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+    @Test func testAuthFailuresAreNeverEncryptionFailures() {
+        #expect(!OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .versionNotSupported,
             nativeNetworkEncryptionEnabled: true,
             timedOut: true
         ))
-        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+        #expect(!(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .verifierUnsupported(flag: "x"),
             nativeNetworkEncryptionEnabled: true,
             timedOut: true
-        ))
+        )))
     }
 
-    func testNothingCountsWhenEncryptionIsDisabled() {
-        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+    @Test func testNothingCountsWhenEncryptionIsDisabled() {
+        #expect(!OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: .advancedNegotiationFailed,
             nativeNetworkEncryptionEnabled: false,
             timedOut: true
         ))
     }
 
-    func testChannelFatalCodesResetTheConnection() {
-        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("connectionError"))
-        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("messageDecodingFailure"))
-        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("unexpectedBackendMessage"))
-        XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("statementError"))
+    @Test func testChannelFatalCodesResetTheConnection() {
+        #expect(OracleChannelFatalCode.isChannelFatal("connectionError"))
+        #expect(OracleChannelFatalCode.isChannelFatal("messageDecodingFailure"))
+        #expect(OracleChannelFatalCode.isChannelFatal("unexpectedBackendMessage"))
+        #expect(!OracleChannelFatalCode.isChannelFatal("statementError"))
     }
 
     /// The table mirrors OracleNIO's own `ConnectionStateMachine.shouldCloseConnection(reason:)`,
     /// which is internal and so cannot be called. Every case it names is pinned here.
-    func testChannelFatalTableMirrorsOracleNIO() {
+    @Test func testChannelFatalTableMirrorsOracleNIO() {
         for code in [
             "clientClosesConnection",
             "clientClosedConnection",
@@ -112,43 +107,40 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
             "loginHandshakeTimedOut",
             "nationalCharsetNotSupported"
         ] {
-            XCTAssertTrue(OracleChannelFatalCode.isChannelFatal(code), code)
+            #expect(OracleChannelFatalCode.isChannelFatal(code), "\(code)")
         }
 
         for code in ["statementCancelled", "missingStatement", "malformedStatement"] {
-            XCTAssertFalse(OracleChannelFatalCode.isChannelFatal(code), code)
+            #expect(!OracleChannelFatalCode.isChannelFatal(code), "\(code)")
         }
     }
 
     /// ORA-28 is the session being killed and ORA-600 an internal error; OracleNIO closes the
     /// channel on both and on no other server error.
-    func testServerErrorsAreFatalOnlyForKilledSessions() {
-        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 28))
-        XCTAssertTrue(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 600))
-        XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 942))
-        XCTAssertFalse(OracleChannelFatalCode.isChannelFatal("server"))
+    @Test func testServerErrorsAreFatalOnlyForKilledSessions() {
+        #expect(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 28))
+        #expect(OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 600))
+        #expect(!OracleChannelFatalCode.isChannelFatal("server", serverErrorNumber: 942))
+        #expect(!OracleChannelFatalCode.isChannelFatal("server"))
     }
 
     /// A lost socket must not be reported as the server sending something the driver could not
     /// read: `uncleanShutdown` and `connectionError` are the transport going away, and
     /// `OracleConnectErrorClassifier` already calls the first of them a dropped connection.
-    func testClosuresAreToldApartByWhatTookTheChannel() {
-        XCTAssertEqual(OracleChannelFatalCode.closureKind("clientClosedConnection"), .clientClose)
-        XCTAssertEqual(OracleChannelFatalCode.closureKind("clientClosesConnection"), .clientClose)
-        XCTAssertEqual(OracleChannelFatalCode.closureKind("uncleanShutdown"), .transportLoss)
-        XCTAssertEqual(OracleChannelFatalCode.closureKind("connectionError"), .transportLoss)
-        XCTAssertEqual(OracleChannelFatalCode.closureKind("messageDecodingFailure"), .protocolFailure)
-        XCTAssertEqual(OracleChannelFatalCode.closureKind("unexpectedBackendMessage"), .protocolFailure)
+    @Test func testClosuresAreToldApartByWhatTookTheChannel() {
+        #expect(OracleChannelFatalCode.closureKind("clientClosedConnection") == .clientClose)
+        #expect(OracleChannelFatalCode.closureKind("clientClosesConnection") == .clientClose)
+        #expect(OracleChannelFatalCode.closureKind("uncleanShutdown") == .transportLoss)
+        #expect(OracleChannelFatalCode.closureKind("connectionError") == .transportLoss)
+        #expect(OracleChannelFatalCode.closureKind("messageDecodingFailure") == .protocolFailure)
+        #expect(OracleChannelFatalCode.closureKind("unexpectedBackendMessage") == .protocolFailure)
     }
 
-    func testTLSClassifierRecognizesOracleWalletAndCipherErrors() {
-        XCTAssertEqual(OracleSSLClassifier.classifyTLSFailure("ORA-28759: failure to open file"), .clientCertRequired)
-        XCTAssertEqual(OracleSSLClassifier.classifyTLSFailure("ORA-29024: Certificate validation failure"), .cipherMismatch)
-        XCTAssertEqual(OracleSSLClassifier.classifyTLSFailure("ORA-28860: Fatal SSL error"), .cipherMismatch)
-        XCTAssertEqual(
-            OracleSSLClassifier.classifyTLSFailure("certificate verify failed: untrusted root"),
-            .untrustedCertificate
-        )
-        XCTAssertNil(OracleSSLClassifier.classifyTLSFailure("connection reset by peer"))
+    @Test func testTLSClassifierRecognizesOracleWalletAndCipherErrors() {
+        #expect(OracleSSLClassifier.classifyTLSFailure("ORA-28759: failure to open file") == .clientCertRequired)
+        #expect(OracleSSLClassifier.classifyTLSFailure("ORA-29024: Certificate validation failure") == .cipherMismatch)
+        #expect(OracleSSLClassifier.classifyTLSFailure("ORA-28860: Fatal SSL error") == .cipherMismatch)
+        #expect(OracleSSLClassifier.classifyTLSFailure("certificate verify failed: untrusted root") == .untrustedCertificate)
+        #expect(OracleSSLClassifier.classifyTLSFailure("connection reset by peer") == nil)
     }
 }

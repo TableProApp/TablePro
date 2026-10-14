@@ -80,7 +80,6 @@ private final class MockFilterDriver: DatabaseDriver, @unchecked Sendable {
     func rollbackTransaction() async throws {}
 }
 
-@Suite("Completion Engine Filter Completions", .serialized)
 @MainActor
 struct CompletionEngineFilterTests {
     private func makeEngine() async -> CompletionEngine {

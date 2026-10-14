@@ -9,9 +9,8 @@ import Foundation
 @testable import TablePro
 @testable import TableProAutocomplete
 import TableProPluginKit
+import TableProTestSupport
 import Testing
-
-// MARK: - Mock Driver
 
 final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sendable {
     let connection: DatabaseConnection
@@ -39,7 +38,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var disconnectCallCount = 0
     var pingCallCount = 0
     var pingError: Error?
-    var pingDelaySeconds: Double = 0
+    var pingGate: AsyncGate?
     var connectDelaySeconds: Double = 0
     var switchSchemaDelaySeconds: Double = 0
     var onSwitchSchema: (@Sendable () async -> Void)?
@@ -61,16 +60,18 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     var sessionTransactionStateToReturn: PluginSessionTransactionState = .unknown
-    var sessionTransactionStateDelaySeconds: Double = 0
+    var sessionTransactionStateGate: AsyncGate?
     var sessionTransactionStateReadWasCancelled = false
+    private(set) var finishedSessionTransactionStateReads = 0
     /// libpq reports no transaction state once a check has found the socket closed.
     var pingFailureForgetsTransactionState = false
 
     func sessionTransactionState() async -> PluginSessionTransactionState {
-        if sessionTransactionStateDelaySeconds > 0 {
-            try? await Task.sleep(nanoseconds: UInt64(sessionTransactionStateDelaySeconds * 1_000_000_000))
+        if let sessionTransactionStateGate {
+            await sessionTransactionStateGate.wait()
             if Task.isCancelled { sessionTransactionStateReadWasCancelled = true }
         }
+        finishedSessionTransactionStateReads += 1
         return sessionTransactionStateToReturn
     }
 
@@ -111,8 +112,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
     func ping() async throws {
         pingCallCount += 1
-        if pingDelaySeconds > 0 {
-            try? await Task.sleep(nanoseconds: UInt64(pingDelaySeconds * 1_000_000_000))
+        if let pingGate {
+            await pingGate.wait()
         }
         if let pingError {
             if pingFailureForgetsTransactionState {

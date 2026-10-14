@@ -5,25 +5,19 @@
 //  Specification tests for r{char} single-character replace and R overwrite mode.
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 @MainActor
-final class VimEngineReplaceTests: XCTestCase {
+final class VimEngineReplaceTests {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         buffer = VimTextBufferMock(text: "hello world\nsecond line\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func keys(_ chars: String) {
@@ -40,149 +34,166 @@ final class VimEngineReplaceTests: XCTestCase {
 
     // MARK: - r: Single Character Replace
 
-    func testRReplacesSingleCharacter() {
+    @Test
+    func rReplacesSingleCharacter() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("rH")
-        XCTAssertEqual(buffer.text, "Hello world\nsecond line\n",
+        #expect(buffer.text == "Hello world\nsecond line\n",
             "r should replace the char under the cursor")
     }
 
-    func testRStaysInNormalMode() {
+    @Test
+    func rStaysInNormalMode() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("rH")
-        XCTAssertEqual(engine.mode, .normal,
+        #expect(engine.mode == .normal,
             "r is a single-shot command; it must not enter insert mode")
     }
 
-    func testRDoesNotMoveCursor() {
+    @Test
+    func rDoesNotMoveCursor() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("rX")
-        XCTAssertEqual(pos, 5, "r should leave the cursor on the replaced char")
+        #expect(pos == 5, "r should leave the cursor on the replaced char")
     }
 
-    func testRWithCountReplacesMultipleChars() {
+    @Test
+    func rWithCountReplacesMultipleChars() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("3rX")
-        XCTAssertEqual(buffer.text, "XXXlo world\nsecond line\n",
+        #expect(buffer.text == "XXXlo world\nsecond line\n",
             "3rX should replace the next 3 chars with X")
     }
 
-    func testRWithCountCursorOnLastReplaced() {
+    @Test
+    func rWithCountCursorOnLastReplaced() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("3rX")
-        XCTAssertEqual(pos, 2, "Cursor should sit on the last replaced char")
+        #expect(pos == 2, "Cursor should sit on the last replaced char")
     }
 
-    func testRCountExceedingLineRemainderIsNoOp() {
+    @Test
+    func rCountExceedingLineRemainderIsNoOp() {
         // "hello world\n" — from offset 8 only 3 content chars remain ('rld'). 99rX must
         // not replace any chars (vim refuses to cross the newline).
         buffer.setSelectedRange(NSRange(location: 8, length: 0))
         keys("99rX")
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n",
+        #expect(buffer.text == "hello world\nsecond line\n",
             "r with count exceeding line content should be a no-op (must not overwrite newline)")
     }
 
-    func testRWithNewlineReplacesCharWithNewline() {
+    @Test
+    func rWithNewlineReplacesCharWithNewline() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("r")
         _ = engine.process("\r", shift: false)
-        XCTAssertEqual(buffer.text, "hello\nworld\nsecond line\n",
+        #expect(buffer.text == "hello\nworld\nsecond line\n",
             "r<Enter> should replace the char with a newline")
     }
 
-    func testREscapeCancelsReplace() {
+    @Test
+    func rEscapeCancelsReplace() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("r")
         escape()
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n",
+        #expect(buffer.text == "hello world\nsecond line\n",
             "Escape during r prompt should cancel without modifying buffer")
         // Cursor should remain at offset 0 and mode normal.
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(engine.mode == .normal)
     }
 
     // MARK: - R: Overwrite Mode
 
-    func testCapitalREntersReplaceMode() {
+    @Test
+    func capitalREntersReplaceMode() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("R", shift: true)
-        XCTAssertEqual(engine.mode, .replace,
+        #expect(engine.mode == .replace,
             "R should enter the dedicated .replace mode (overwrite, distinct from insert)")
     }
 
-    func testCapitalROverwritesCharactersAsTyped() {
+    @Test
+    func capitalROverwritesCharactersAsTyped() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("R", shift: true)
         _ = engine.process("X", shift: true)
         _ = engine.process("Y", shift: true)
-        XCTAssertEqual(buffer.text, "XYllo world\nsecond line\n",
+        #expect(buffer.text == "XYllo world\nsecond line\n",
             "Replace mode should overwrite chars at the cursor as the user types")
     }
 
-    func testCapitalREscapeReturnsToNormal() {
+    @Test
+    func capitalREscapeReturnsToNormal() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("R", shift: true)
         escape()
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(engine.mode == .normal)
     }
 
     // MARK: - Control characters never become text
 
     private let backspace: Character = "\u{7F}"
 
-    func testBackspaceInReplaceModeRestoresOverwrittenCharacters() {
+    @Test
+    func backspaceInReplaceModeRestoresOverwrittenCharacters() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("R", shift: true)
         _ = engine.process("X", shift: true)
         _ = engine.process("Y", shift: true)
         key(backspace)
-        XCTAssertEqual(buffer.text, "Xello world\nsecond line\n")
-        XCTAssertEqual(pos, 1)
+        #expect(buffer.text == "Xello world\nsecond line\n")
+        #expect(pos == 1)
         key(backspace)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
-        XCTAssertEqual(pos, 0)
+        #expect(buffer.text == "hello world\nsecond line\n")
+        #expect(pos == 0)
     }
 
-    func testBackspaceInReplaceModeRemovesAppendedCharacters() {
+    @Test
+    func backspaceInReplaceModeRemovesAppendedCharacters() {
         buffer.setSelectedRange(NSRange(location: 11, length: 0))
         key("R", shift: true)
         keys("!?")
-        XCTAssertEqual(buffer.text, "hello world!?\nsecond line\n")
+        #expect(buffer.text == "hello world!?\nsecond line\n")
         key(backspace)
         key(backspace)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
-        XCTAssertEqual(pos, 11)
+        #expect(buffer.text == "hello world\nsecond line\n")
+        #expect(pos == 11)
     }
 
-    func testBackspaceBeforeReplaceStartOnlyMovesLeft() {
+    @Test
+    func backspaceBeforeReplaceStartOnlyMovesLeft() {
         buffer.setSelectedRange(NSRange(location: 3, length: 0))
         key("R", shift: true)
         key(backspace)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
-        XCTAssertEqual(pos, 2)
+        #expect(buffer.text == "hello world\nsecond line\n")
+        #expect(pos == 2)
     }
 
-    func testReplaceModeNeverWritesAControlCharacter() {
+    @Test
+    func replaceModeNeverWritesAControlCharacter() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("R", shift: true)
         key("\u{03}")
         key("\u{1D}")
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+        #expect(buffer.text == "hello world\nsecond line\n")
     }
 
-    func testReplaceCharCancelsOnBackspace() {
+    @Test
+    func replaceCharCancelsOnBackspace() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("r")
         key(backspace)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(buffer.text == "hello world\nsecond line\n")
+        #expect(engine.mode == .normal)
         keys("rH")
-        XCTAssertEqual(buffer.text, "Hello world\nsecond line\n", "The cancelled r must not leave a pending replace")
+        #expect(buffer.text == "Hello world\nsecond line\n", "The cancelled r must not leave a pending replace")
     }
 
-    func testVisualReplaceCancelsOnBackspace() {
+    @Test
+    func visualReplaceCancelsOnBackspace() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vlr")
         key(backspace)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+        #expect(buffer.text == "hello world\nsecond line\n")
     }
 }

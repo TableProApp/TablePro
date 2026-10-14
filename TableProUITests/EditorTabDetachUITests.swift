@@ -13,7 +13,7 @@ final class EditorTabDetachUITests: UITestCase {
             waitForPredicate(timeout: 20) { self.editorTabTitles(in: window) == tables },
             "The strip must restore a tab per table, got \(editorTabTitles(in: window))"
         )
-        let moved = editorTab(titled: "genre", in: window)
+        let moved = editorTabs(titled: "genre", in: window).firstMatch
         XCTAssertTrue(waitUntilHittable(moved, timeout: 20), "The tab to move must be on screen")
         moved.rightClick()
         let command = contextMenuItem("Move Tab to New Window", in: app)

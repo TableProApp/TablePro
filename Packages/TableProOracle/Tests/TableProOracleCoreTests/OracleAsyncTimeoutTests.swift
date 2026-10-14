@@ -1,24 +1,25 @@
+import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
-final class OracleAsyncTimeoutTests: XCTestCase {
-    func testOperationCompletingBeforeDeadlineReturnsItsValue() async throws {
+struct OracleAsyncTimeoutTests {
+    @Test func testOperationCompletingBeforeDeadlineReturnsItsValue() async throws {
         let result = try await withOracleTimeout(seconds: 5) { "done" }
-        XCTAssertEqual(result, "done")
+        #expect(result == "done")
     }
 
-    func testOperationCompletingBeforeDeadlineNeverCallsOnTimeout() async throws {
+    @Test func testOperationCompletingBeforeDeadlineNeverCallsOnTimeout() async throws {
         let timeoutCount = Counter()
         let result = try await withOracleTimeout(
             seconds: 5,
             onTimeout: { timeoutCount.increment() },
             operation: { 42 }
         )
-        XCTAssertEqual(result, 42)
-        XCTAssertEqual(timeoutCount.value, 0)
+        #expect(result == 42)
+        #expect(timeoutCount.value == 0)
     }
 
-    func testOperationExceedingDeadlineThrowsTimeoutAndCallsOnTimeoutOnce() async {
+    @Test func testOperationExceedingDeadlineThrowsTimeoutAndCallsOnTimeoutOnce() async {
         let timeoutCount = Counter()
         do {
             _ = try await withOracleTimeout(
@@ -29,19 +30,19 @@ final class OracleAsyncTimeoutTests: XCTestCase {
                     return "never"
                 }
             )
-            XCTFail("expected the deadline to fire")
+            Issue.record("expected the deadline to fire")
         } catch let error as OracleTimeoutError {
-            XCTAssertEqual(error.seconds, 0.05)
+            #expect(error.seconds == 0.05)
         } catch {
-            XCTFail("expected OracleTimeoutError, got \(error)")
+            Issue.record("expected OracleTimeoutError, got \(error)")
         }
-        XCTAssertEqual(timeoutCount.value, 1)
+        #expect(timeoutCount.value == 1)
     }
 
     /// The task group waits for the operation child even after the deadline
     /// fires, so an `onTimeout` that does not force the operation to finish
     /// leaves the caller blocked past its own deadline.
-    func testOnTimeoutMustUnblockAnOperationThatIgnoresCancellation() async {
+    @Test func testOnTimeoutMustUnblockAnOperationThatIgnoresCancellation() async {
         let release = DispatchSemaphore(value: 0)
         let released = Counter()
 
@@ -61,16 +62,12 @@ final class OracleAsyncTimeoutTests: XCTestCase {
             }
         )
 
-        XCTAssertEqual(
-            released.value,
-            1,
-            "onTimeout must release an operation that ignores cancellation, or the task group never unwinds"
-        )
+        #expect(released.value == 1, "onTimeout must release an operation that ignores cancellation, or the task group never unwinds")
     }
 
     /// A login does not observe task cancellation, so it can finish after its caller gave up. That
     /// session reaches nobody, and only `onAbandoned` can close it.
-    func testValueArrivingAfterCancellationGoesToOnAbandoned() async {
+    @Test func testValueArrivingAfterCancellationGoesToOnAbandoned() async {
         let abandoned = Counter()
         let task = Task {
             try await withOracleTimeout(
@@ -88,14 +85,14 @@ final class OracleAsyncTimeoutTests: XCTestCase {
 
         switch await task.result {
         case .success:
-            XCTFail("a cancelled call must not return the late value")
+            Issue.record("a cancelled call must not return the late value")
         case .failure(let error):
-            XCTAssertTrue(error is CancellationError, "expected CancellationError, got \(error)")
+            #expect(error is CancellationError, "expected CancellationError, got \(error)")
         }
-        XCTAssertEqual(abandoned.value, 1)
+        #expect(abandoned.value == 1)
     }
 
-    func testValueArrivingAfterTheDeadlineGoesToOnAbandoned() async {
+    @Test func testValueArrivingAfterTheDeadlineGoesToOnAbandoned() async {
         let abandoned = Counter()
         do {
             _ = try await withOracleTimeout(
@@ -107,14 +104,14 @@ final class OracleAsyncTimeoutTests: XCTestCase {
                     return "late"
                 }
             )
-            XCTFail("expected the deadline to fire")
+            Issue.record("expected the deadline to fire")
         } catch {
-            XCTAssertTrue(error is OracleTimeoutError, "expected OracleTimeoutError, got \(error)")
+            #expect(error is OracleTimeoutError, "expected OracleTimeoutError, got \(error)")
         }
-        XCTAssertEqual(abandoned.value, 1)
+        #expect(abandoned.value == 1)
     }
 
-    func testValueReturnedInTimeIsNotAbandoned() async throws {
+    @Test func testValueReturnedInTimeIsNotAbandoned() async throws {
         let abandoned = Counter()
         let result = try await withOracleTimeout(
             seconds: 5,
@@ -122,8 +119,8 @@ final class OracleAsyncTimeoutTests: XCTestCase {
             onAbandoned: { _ in abandoned.increment() },
             operation: { "done" }
         )
-        XCTAssertEqual(result, "done")
-        XCTAssertEqual(abandoned.value, 0)
+        #expect(result == "done")
+        #expect(abandoned.value == 0)
     }
 }
 

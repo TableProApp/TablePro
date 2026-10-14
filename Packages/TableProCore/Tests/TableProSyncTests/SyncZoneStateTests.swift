@@ -40,7 +40,7 @@ struct SyncZoneStateTests {
     /// zone and uploaded into it without asking.
     @Test("A removed zone still waits for the person after a relaunch")
     func removedSurvivesRelaunch() throws {
-        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.zone.\(UUID().uuidString)"))
+        let defaults = try #require(ScratchDefaults.make())
         SyncMetadataStorage(userDefaults: defaults).zoneState = .removed
 
         let relaunched = SyncMetadataStorage(userDefaults: defaults)
@@ -54,11 +54,11 @@ struct SyncZoneStateTests {
     @Test("A device an earlier build synced reads its zone as confirmed; a new install does not")
     func legacyDevicesHaveSeenTheZone() throws {
         let synced = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.zone.\(UUID().uuidString)"))
+            userDefaults: try #require(ScratchDefaults.make())
         )
         synced.lastSyncDate = Date(timeIntervalSince1970: 1_000)
         let fresh = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.zone.\(UUID().uuidString)"))
+            userDefaults: try #require(ScratchDefaults.make())
         )
 
         #expect(synced.zoneState == .confirmed)
@@ -69,7 +69,7 @@ struct SyncZoneStateTests {
     /// zone stays known while the token it left behind is dropped.
     @Test("Adopting an account an earlier build never recorded keeps the zone it saw")
     func unrecordedAccountKeepsTheZone() throws {
-        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.zone.\(UUID().uuidString)"))
+        let defaults = try #require(ScratchDefaults.make())
         let storage = SyncMetadataStorage(userDefaults: defaults)
         storage.lastSyncDate = Date(timeIntervalSince1970: 1_000)
         defaults.set(Data([0x01]), forKey: "com.TablePro.sync.serverChangeToken")
@@ -82,7 +82,7 @@ struct SyncZoneStateTests {
 
     @Test("Another account forgets the zone")
     func accountSwitchForgetsTheZone() throws {
-        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.zone.\(UUID().uuidString)"))
+        let defaults = try #require(ScratchDefaults.make())
         let storage = SyncMetadataStorage(userDefaults: defaults)
         storage.adoptAccount("a")
         storage.zoneState = .removed

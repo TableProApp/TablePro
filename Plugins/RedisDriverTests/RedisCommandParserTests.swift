@@ -21,10 +21,16 @@ struct RedisCommandParserKeyCommandTests {
         #expect(key == "mykey")
     }
 
-    @Test("GET missing key throws")
-    func getMissingKey() {
+    @Test("A key command missing an argument, or given a non-integer where it needs one, throws", arguments: [
+        "GET",
+        "SET mykey",
+        "DEL",
+        "EXPIRE mykey abc",
+        "SCAN 0 COUNT abc",
+    ])
+    func malformedKeyCommandThrows(_ command: String) {
         #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("GET")
+            try RedisCommandParser.parse(command)
         }
     }
 
@@ -60,13 +66,6 @@ struct RedisCommandParserKeyCommandTests {
         #expect(options?.nx == true)
     }
 
-    @Test("SET missing value throws")
-    func setMissingValue() {
-        #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("SET mykey")
-        }
-    }
-
     @Test("DEL parses single key")
     func delSingleKey() throws {
         let op = try RedisCommandParser.parse("DEL mykey")
@@ -85,13 +84,6 @@ struct RedisCommandParserKeyCommandTests {
             return
         }
         #expect(keys == ["key1", "key2", "key3"])
-    }
-
-    @Test("DEL missing key throws")
-    func delMissingKey() {
-        #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("DEL")
-        }
     }
 
     @Test("KEYS parses pattern")
@@ -159,13 +151,6 @@ struct RedisCommandParserKeyCommandTests {
         }
         #expect(key == "mykey")
         #expect(seconds == 300)
-    }
-
-    @Test("EXPIRE with non-integer seconds throws")
-    func expireInvalidSeconds() {
-        #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("EXPIRE mykey abc")
-        }
     }
 
     @Test("RENAME parses key and newKey")
@@ -239,13 +224,6 @@ struct RedisCommandParserKeyCommandTests {
             return
         }
         #expect(cursor == "18446744073709551615")
-    }
-
-    @Test("A SCAN COUNT that is not an integer throws")
-    func scanWithInvalidCountThrows() {
-        #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("SCAN 0 COUNT abc")
-        }
     }
 
     @Test("SCAN carries its TYPE along with MATCH and COUNT")
@@ -474,10 +452,13 @@ struct RedisCommandParserSortedSetTests {
         #expect(flags == ["BYSCORE", "LIMIT", "0", "10", "WITHSCORES"])
     }
 
-    @Test("ZRANGE with a LIMIT missing its count throws")
-    func zrangeWithShortLimitThrows() {
+    @Test("ZRANGE with a LIMIT missing its count, and ZADD with a non-numeric score, throw", arguments: [
+        "ZRANGE z 0 -1 LIMIT 0",
+        "ZADD myzset notanumber member",
+    ])
+    func malformedSortedSetCommandThrows(_ command: String) {
         #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("ZRANGE z 0 -1 LIMIT 0")
+            try RedisCommandParser.parse(command)
         }
     }
 
@@ -509,13 +490,6 @@ struct RedisCommandParserSortedSetTests {
         #expect(scoreMembers[0].1 == Data("a".utf8))
         #expect(scoreMembers[1].0 == 2.0)
         #expect(scoreMembers[1].1 == Data("b".utf8))
-    }
-
-    @Test("ZADD with non-numeric score throws")
-    func zaddInvalidScore() {
-        #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("ZADD myzset notanumber member")
-        }
     }
 
     @Test("ZREM parses key and members")
@@ -717,17 +691,10 @@ struct RedisCommandParserServerTests {
 // MARK: - Error Cases
 
 struct RedisCommandParserErrorTests {
-    @Test("Empty input throws emptySyntax")
-    func emptyInput() {
+    @Test("Empty and whitespace-only input throw emptySyntax", arguments: ["", "   "])
+    func emptyInput(_ input: String) {
         #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("")
-        }
-    }
-
-    @Test("Whitespace-only input throws emptySyntax")
-    func whitespaceOnly() {
-        #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("   ")
+            try RedisCommandParser.parse(input)
         }
     }
 
@@ -746,20 +713,12 @@ struct RedisCommandParserErrorTests {
 // MARK: - Tokenizer
 
 struct RedisCommandParserTokenizerTests {
-    @Test("Double-quoted strings are parsed correctly")
-    func doubleQuotedString() throws {
-        let op = try RedisCommandParser.parse("SET mykey \"hello world\"")
-        guard case .set(let key, let value, _) = op else {
-            Issue.record("Expected .set")
-            return
-        }
-        #expect(key == "mykey")
-        #expect(value == Data("hello world".utf8))
-    }
-
-    @Test("Single-quoted strings are parsed correctly")
-    func singleQuotedString() throws {
-        let op = try RedisCommandParser.parse("SET mykey 'hello world'")
+    @Test("Double- and single-quoted strings are parsed correctly", arguments: [
+        "SET mykey \"hello world\"",
+        "SET mykey 'hello world'",
+    ])
+    func quotedString(_ command: String) throws {
+        let op = try RedisCommandParser.parse(command)
         guard case .set(let key, let value, _) = op else {
             Issue.record("Expected .set")
             return
@@ -809,17 +768,13 @@ struct RedisCommandParserTokenizerTests {
         #expect(value == Data("a\\b'c".utf8))
     }
 
-    @Test("Text right after a closing quote is refused, as redis-cli refuses it")
-    func textAfterClosingQuoteThrows() {
+    @Test("Text right after a closing quote, as redis-cli refuses it, and an unbalanced quote are refused", arguments: [
+        "SET k a\"b c\"d",
+        "SET k \"abc",
+    ])
+    func malformedQuotingThrows(_ command: String) {
         #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("SET k a\"b c\"d")
-        }
-    }
-
-    @Test("An unbalanced quote is refused")
-    func unbalancedQuoteThrows() {
-        #expect(throws: RedisParseError.self) {
-            try RedisCommandParser.parse("SET k \"abc")
+            try RedisCommandParser.parse(command)
         }
     }
 

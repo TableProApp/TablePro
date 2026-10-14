@@ -1,32 +1,26 @@
-//
-//  CatalogChangeWindowTests.swift
-//  TableProTests
-//
-//  What each window does with its connection's catalog changes: close the tabs on an object or a
-//  container that went, and follow a rename, matching by the object rather than a bare name.
-//
+// What each window does with its connection's catalog changes: close the tabs on an object or a
+// container that went, and follow a rename, matching by the object rather than a bare name.
 
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @Suite("Catalog changes in a window", .serialized)
 @MainActor
 struct CatalogChangeWindowTests {
-    private static func makeCoordinator(
+    private let fixtures = CoordinatorFixtures()
+
+    private func makeCoordinator(
         connection: DatabaseConnection
     ) -> (MainContentCoordinator, QueryTabManager) {
         var session = ConnectionSession(connection: connection)
         session.browseDatabase = "shop"
         DatabaseManager.shared.injectSession(session, for: connection.id)
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let fixture = fixtures.make(connection: connection)
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         return (coordinator, tabManager)
     }
 
@@ -80,7 +74,7 @@ struct CatalogChangeWindowTests {
     func droppedTableClosesOnlyItsOwnTabs() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let dropped = Self.tableTab("users", database: "shop", schema: "analytics")
         let survivor = Self.tableTab("users", database: "shop", schema: "public")
         let query = QueryTab(title: "Query", query: "DROP TABLE analytics.users", tabType: .query)
@@ -99,7 +93,7 @@ struct CatalogChangeWindowTests {
     func renamedTableRetitlesItsTabs() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let renamed = Self.tableTab("orders", database: "shop", schema: nil)
         let other = Self.tableTab("orders", database: "warehouse", schema: nil)
         tabManager.tabs = [renamed, other]
@@ -117,7 +111,7 @@ struct CatalogChangeWindowTests {
     func droppedDatabaseClosesItsTabs() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let inside = Self.tableTab("events", database: "staging", schema: nil)
         let outside = Self.tableTab("orders", database: "shop", schema: nil)
         tabManager.tabs = [inside, outside]
@@ -133,7 +127,7 @@ struct CatalogChangeWindowTests {
     func renamedSchemaRetargetsItsTabs() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let moved = Self.tableTab("invoices", database: "shop", schema: "billing")
         let untouched = Self.tableTab("orders", database: "shop", schema: "public")
         tabManager.tabs = [moved, untouched]
@@ -154,7 +148,7 @@ struct CatalogChangeWindowTests {
     func otherConnectionIsIgnored() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let tab = Self.tableTab("orders", database: "shop", schema: nil)
         tabManager.tabs = [tab]
 
@@ -169,7 +163,7 @@ struct CatalogChangeWindowTests {
     func rowsChangeMarksBackgroundTabsOnItsTable() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let loaded = Self.loadedTab("users", rowCount: 3, totalRowCount: 3, in: coordinator)
         let empty = Self.loadedTab("users", rowCount: 0, in: coordinator)
         let unrelated = Self.loadedTab("orders", rowCount: 2, totalRowCount: 42, in: coordinator)
@@ -195,7 +189,7 @@ struct CatalogChangeWindowTests {
     func rowsChangeReloadsACleanSelectedTab() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         tabManager.tabs = [selected]
         tabManager.selectedTabId = selected.id
@@ -209,7 +203,7 @@ struct CatalogChangeWindowTests {
     func rowsChangeLeavesASelectedTabWithEditsAlone() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         var selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         selected.pendingChanges.deletedRowIDs = [.existing(0)]
         tabManager.tabs = [selected]
@@ -226,7 +220,7 @@ struct CatalogChangeWindowTests {
     func rowsChangeSkipsItsOriginTab() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let origin = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         let duplicate = Self.loadedTab("users", rowCount: 3, in: coordinator)
         tabManager.tabs = [origin, duplicate]
@@ -245,7 +239,7 @@ struct CatalogChangeWindowTests {
     func rowsChangeReloadsBehindTheStructureView() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         var selected = Self.loadedTab("users", rowCount: 3, in: coordinator)
         selected.display.resultsViewMode = .structure
         tabManager.tabs = [selected]
@@ -260,7 +254,7 @@ struct CatalogChangeWindowTests {
     func structureChangeMarksStructureSessionsWithoutStagedEdits() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let clean = Self.loadedTab("users", rowCount: 1, in: coordinator)
         let editing = Self.loadedTab("users", rowCount: 1, in: coordinator)
         let unrelated = Self.loadedTab("orders", rowCount: 1, in: coordinator)
@@ -290,7 +284,7 @@ struct CatalogChangeWindowTests {
     func commentChangeMarksStructureSessions() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let clean = Self.loadedTab("users", rowCount: 1, in: coordinator)
         let editing = Self.loadedTab("users", rowCount: 1, in: coordinator)
         let unrelated = Self.loadedTab("orders", rowCount: 1, in: coordinator)
@@ -319,7 +313,7 @@ struct CatalogChangeWindowTests {
     func structureChangeForgetsCachedSchemaColumns() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let tab = Self.loadedTab("users", rowCount: 1, in: coordinator)
         tabManager.tabs = [tab]
         let key = coordinator.schemaColumnsKey("users", scope: coordinator.scope(for: tab))
@@ -358,7 +352,7 @@ struct CatalogChangeWindowTests {
     func structureChangeRetiresTheCachedDefinition() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let background = Self.tabWithCachedMetadata("users", in: coordinator)
         let unrelated = Self.tabWithCachedMetadata("orders", in: coordinator)
         var editing = Self.tabWithCachedMetadata("users", in: coordinator)
@@ -383,7 +377,7 @@ struct CatalogChangeWindowTests {
     func changeRestartsOnlyALoadThatStartedBeforeIt() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let selected = Self.loadedTab("users", rowCount: 3, in: coordinator)
         tabManager.tabs = [selected]
         tabManager.selectedTabId = selected.id
@@ -428,7 +422,7 @@ struct CatalogChangeWindowTests {
     func answeringReadRetiresALateTotal() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let background = Self.loadedTab("users", rowCount: 3, totalRowCount: 5_000_000, in: coordinator)
         let unrelated = Self.loadedTab("orders", rowCount: 2, in: coordinator)
         tabManager.tabs = [background, unrelated]
@@ -464,7 +458,7 @@ struct CatalogChangeWindowTests {
     func aPreChangeDefinitionStaysOutOfTheColumnCache() throws {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let background = Self.loadedTab("users", rowCount: 1, in: coordinator)
         tabManager.tabs = [background]
         let scope = try #require(coordinator.scope(for: background))
@@ -502,7 +496,7 @@ struct CatalogChangeWindowTests {
     func deferredChangeReloadsOnceTheEditsAreGone() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         var selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         selected.pendingChanges.deletedRowIDs = [.existing(0)]
         tabManager.tabs = [selected]
@@ -519,10 +513,20 @@ struct CatalogChangeWindowTests {
         #expect(Self.totalRowCount(of: selected.id, in: tabManager) == nil)
     }
 
-    /// Waits a few turns for a reload the change manager's cleared edits start on a later one.
+    /// Waits for a reload the change manager's cleared edits start on a later turn. A timeout
+    /// returns too, so the case's own expectation reports it.
     private static func waitForReload(of tabId: UUID, in tabManager: QueryTabManager) async throws {
-        for _ in 0..<50 where totalRowCount(of: tabId, in: tabManager) != nil {
-            try await Task.sleep(for: .milliseconds(10))
+        _ = try? await waitUntil { totalRowCount(of: tabId, in: tabManager) == nil }
+    }
+
+    /// The edits' state is heard through `RunLoop.main` and a reload starts as main-actor work, so a
+    /// reload that was not put off has started by the time a block queued behind both runs.
+    private static func afterQueuedMainWork() async {
+        await withCheckedContinuation { continuation in
+            RunLoop.main.perform { continuation.resume() }
+        }
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
         }
     }
 
@@ -533,7 +537,7 @@ struct CatalogChangeWindowTests {
     func deferredChangeReloadsOnceTheLastEditIsTakenBack() async throws {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         tabManager.tabs = [selected]
         tabManager.selectedTabId = selected.id
@@ -541,7 +545,7 @@ struct CatalogChangeWindowTests {
         coordinator.changeManager.recordRowDeletion(rowID: .existing(0), originalRow: [.text("0")])
 
         coordinator.applyObjectChange(Self.change(connection, name: "users", database: "shop", schema: nil, kind: .rows))
-        try await Task.sleep(for: .milliseconds(50))
+        await Self.afterQueuedMainWork()
         #expect(Self.totalRowCount(of: selected.id, in: tabManager) == 42)
 
         coordinator.changeManager.undoRowDeletion(rowID: .existing(0))
@@ -557,7 +561,7 @@ struct CatalogChangeWindowTests {
     func aTabShownAgainDropsItsSavedEditsOnceRestored() async throws {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let edited = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         let other = Self.loadedTab("orders", rowCount: 1, in: coordinator)
         tabManager.tabs = [edited, other]
@@ -573,7 +577,7 @@ struct CatalogChangeWindowTests {
         #expect(tabManager.tabs.first { $0.id == edited.id }?.pendingChanges.hasChanges == false)
 
         coordinator.applyObjectChange(Self.change(connection, name: "users", database: "shop", schema: nil, kind: .rows))
-        try await Task.sleep(for: .milliseconds(50))
+        await Self.afterQueuedMainWork()
         #expect(Self.totalRowCount(of: edited.id, in: tabManager) == 42)
 
         coordinator.changeManager.undoRowDeletion(rowID: .existing(0))
@@ -597,7 +601,7 @@ struct CatalogChangeWindowTests {
     func resumingDuringTeardownReloadsNothing() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         tabManager.tabs = [selected]
         tabManager.selectedTabId = selected.id
@@ -614,7 +618,7 @@ struct CatalogChangeWindowTests {
     func resumingAFreshTabReloadsNothing() {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         tabManager.tabs = [selected]
         tabManager.selectedTabId = selected.id

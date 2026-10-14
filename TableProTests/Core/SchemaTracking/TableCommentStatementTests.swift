@@ -15,7 +15,7 @@ private struct CommentRequest: Equatable {
     let comment: String?
 }
 
-private final class CommentDDLDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class CommentDDLDriver: PluginDriverStub, @unchecked Sendable {
     private let writesComments: Bool
     private(set) var commentRequests: [CommentRequest] = []
 
@@ -42,24 +42,9 @@ private final class CommentDDLDriver: PluginDatabaseDriver, @unchecked Sendable 
         "CREATE INDEX \(index.name) ON \(table)"
     }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 

@@ -13,7 +13,8 @@ extension DatabaseManager {
     /// bring its earlier work back to a commit.
     internal func databasesHoldingTransaction(
         for connectionId: UUID,
-        among databases: Set<String>? = nil
+        among databases: Set<String>? = nil,
+        clock: any Clock<Duration> = ContinuousClock()
     ) async -> [String] {
         guard let session = activeSessions[connectionId] else { return [] }
         var candidates: [(database: String, driver: DatabaseDriver)] = []
@@ -30,7 +31,10 @@ extension DatabaseManager {
         let reads = candidates
             .filter { databases?.contains($0.database) ?? true }
             .map { candidate in
-                (database: candidate.database, state: Task { await Self.boundedTransactionState(of: candidate.driver) })
+                (
+                    database: candidate.database,
+                    state: Task { await Self.boundedTransactionState(of: candidate.driver, clock: clock) }
+                )
             }
         var holding: [String] = []
         for read in reads {
@@ -45,14 +49,17 @@ extension DatabaseManager {
     /// A task group is no bound here: it waits for its child, and the read queues behind any
     /// statement on the connection's serial queue, which ignores cancellation. The late answer is
     /// dropped, never cancelled: a driver's cancel can stop the other work queued on the connection.
-    private static func boundedTransactionState(of driver: DatabaseDriver) async -> PluginSessionTransactionState {
+    private static func boundedTransactionState(
+        of driver: DatabaseDriver,
+        clock: any Clock<Duration>
+    ) async -> PluginSessionTransactionState {
         let gate = ConnectionSingleResumeGate<PluginSessionTransactionState>()
         Task {
             gate.resume(with: .success(await driver.heldSessionTransactionState()))
         }
         let deadline = Task.detached {
             do {
-                try await Task.sleep(for: .seconds(1))
+                try await clock.sleep(for: .seconds(1))
             } catch {
                 return
             }

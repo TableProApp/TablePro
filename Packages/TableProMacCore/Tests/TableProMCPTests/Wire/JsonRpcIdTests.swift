@@ -1,81 +1,72 @@
 import Foundation
 @testable import TableProMCP
-import XCTest
+import Testing
 
-final class JsonRpcIdTests: XCTestCase {
-    func testNullRoundTrip() throws {
+struct JsonRpcIdTests {
+    @Test func testNullRoundTrip() throws {
         let id: JsonRpcId = .null
         let data = try JSONEncoder().encode(id)
         let decoded = try JSONDecoder().decode(JsonRpcId.self, from: data)
-        XCTAssertEqual(decoded, .null)
+        #expect(decoded == .null)
     }
 
-    func testNullEncodesAsJsonNull() throws {
+    @Test func testNullEncodesAsJsonNull() throws {
         let id: JsonRpcId = .null
         let data = try JSONEncoder().encode(id)
-        XCTAssertEqual(String(data: data, encoding: .utf8), "null")
+        #expect(String(data: data, encoding: .utf8) == "null")
     }
 
-    func testStringRoundTrip() throws {
+    @Test func testStringRoundTrip() throws {
         let id: JsonRpcId = .string("abc-123")
         let data = try JSONEncoder().encode(id)
         let decoded = try JSONDecoder().decode(JsonRpcId.self, from: data)
-        XCTAssertEqual(decoded, .string("abc-123"))
+        #expect(decoded == .string("abc-123"))
     }
 
-    func testNumberRoundTrip() throws {
+    @Test func testNumberRoundTrip() throws {
         let id: JsonRpcId = .number(42)
         let data = try JSONEncoder().encode(id)
         let decoded = try JSONDecoder().decode(JsonRpcId.self, from: data)
-        XCTAssertEqual(decoded, .number(42))
+        #expect(decoded == .number(42))
     }
 
-    func testLargeNumberRoundTrip() throws {
+    @Test func testLargeNumberRoundTrip() throws {
         let id: JsonRpcId = .number(Int64.max)
         let data = try JSONEncoder().encode(id)
         let decoded = try JSONDecoder().decode(JsonRpcId.self, from: data)
-        XCTAssertEqual(decoded, .number(Int64.max))
+        #expect(decoded == .number(Int64.max))
     }
 
-    func testDecodeJsonNullProducesNullCase() throws {
+    @Test func testDecodeJsonNullProducesNullCase() throws {
         let raw = Data("null".utf8)
         let decoded = try JSONDecoder().decode(JsonRpcId.self, from: raw)
-        XCTAssertEqual(decoded, .null)
+        #expect(decoded == .null)
     }
 
-    func testDecodeBoolThrows() {
-        let raw = Data("true".utf8)
-        XCTAssertThrowsError(try JSONDecoder().decode(JsonRpcId.self, from: raw))
+    @Test(arguments: ["true", "[1,2]", "{}"])
+    func testDecodeBoolArrayOrObjectThrows(_ json: String) {
+        let raw = Data(json.utf8)
+        #expect(throws: (any Error).self) { try JSONDecoder().decode(JsonRpcId.self, from: raw) }
     }
 
-    func testDecodeArrayThrows() {
-        let raw = Data("[1,2]".utf8)
-        XCTAssertThrowsError(try JSONDecoder().decode(JsonRpcId.self, from: raw))
+    @Test func testAsJsonValueMapsEachCase() {
+        #expect(JsonRpcId.string("abc").asJsonValue == .string("abc"))
+        #expect(JsonRpcId.number(42).asJsonValue == .int(42))
+        #expect(JsonRpcId.null.asJsonValue == .null)
     }
 
-    func testDecodeObjectThrows() {
-        let raw = Data("{}".utf8)
-        XCTAssertThrowsError(try JSONDecoder().decode(JsonRpcId.self, from: raw))
+    @Test func testAsJsonValueClampsOversizedNumbers() {
+        #expect(JsonRpcId.number(Int64(Int.max)).asJsonValue == .int(Int.max))
+        #expect(JsonRpcId.number(Int64(Int.min)).asJsonValue == .int(Int.min))
     }
 
-    func testAsJsonValueMapsEachCase() {
-        XCTAssertEqual(JsonRpcId.string("abc").asJsonValue, .string("abc"))
-        XCTAssertEqual(JsonRpcId.number(42).asJsonValue, .int(42))
-        XCTAssertEqual(JsonRpcId.null.asJsonValue, .null)
+    @Test func testIdsHashAndCompareByCase() {
+        #expect(JsonRpcId.number(1) == .number(1))
+        #expect(JsonRpcId.number(1) != JsonRpcId.string("1"))
+        #expect(Set([JsonRpcId.number(1), .number(1), .string("1")]).count == 2)
     }
 
-    func testAsJsonValueClampsOversizedNumbers() {
-        XCTAssertEqual(JsonRpcId.number(Int64(Int.max)).asJsonValue, .int(Int.max))
-        XCTAssertEqual(JsonRpcId.number(Int64(Int.min)).asJsonValue, .int(Int.min))
-    }
-
-    func testIdsHashAndCompareByCase() {
-        XCTAssertEqual(JsonRpcId.number(1), JsonRpcId.number(1))
-        XCTAssertNotEqual(JsonRpcId.number(1), JsonRpcId.string("1"))
-        XCTAssertEqual(Set([JsonRpcId.number(1), .number(1), .string("1")]).count, 2)
-    }
-
-    func testDecodeDoubleThrows() {
-        XCTAssertThrowsError(try JSONDecoder().decode(JsonRpcId.self, from: Data("1.5".utf8)))
+    @Test func testDecodeDoubleThrows() {
+        #expect(throws: (any Error).self) { try JSONDecoder().decode(JsonRpcId.self, from: Data("1.5".utf8)) }
     }
 }

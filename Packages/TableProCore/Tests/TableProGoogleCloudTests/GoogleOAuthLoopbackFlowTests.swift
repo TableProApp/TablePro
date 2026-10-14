@@ -1,5 +1,6 @@
 import Foundation
 @testable import TableProGoogleCloud
+import TableProTestSupport
 import Testing
 
 private enum LoopbackBrowser {
@@ -30,17 +31,10 @@ private enum LoopbackBrowser {
 
     static func listenerStopped(for authorizationURL: URL) async -> Bool {
         let probe = callbackURL(for: authorizationURL, query: [(name: "probe", value: "1")])
-        for _ in 0..<20 {
-            if await status(of: probe) == nil {
-                return true
-            }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        return false
+        return (try? await waitUntil { await status(of: probe) == nil }) != nil
     }
 }
 
-@Suite("OAuth loopback flow", .serialized)
 struct GoogleOAuthLoopbackFlowTests {
     private let client = GoogleOAuthClient(clientId: "desktop.apps.googleusercontent.com", clientSecret: "desktop-secret")
     private let tokenJSON = #"{"access_token":"access","refresh_token":"1//refresh","expires_in":3600}"#
@@ -161,9 +155,7 @@ struct GoogleOAuthLoopbackFlowTests {
         }
 
         let task = Task { try await flow.run() }
-        for _ in 0..<250 where authorizationURL.value == nil {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        try await waitUntil { authorizationURL.value != nil }
         let url = try #require(authorizationURL.value)
         task.cancel()
 

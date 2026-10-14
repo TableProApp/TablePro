@@ -1,7 +1,9 @@
+import AppKit
 @testable import TableProTextEngine
-import XCTest
+import Testing
 
-final class TextSelectionManagerTests: XCTestCase {
+@MainActor
+final class TextSelectionManagerTests {
     var textStorage: NSTextStorage!
     var layoutManager: TextLayoutManager!
 
@@ -22,7 +24,7 @@ final class TextSelectionManagerTests: XCTestCase {
         )
     }
 
-    func test_updateSelectionLeft() {
+    @Test func test_updateSelectionLeft() {
         let selectionManager = selectionManager()
         let locations = [2, 0, 14, 14]
         let expectedRanges = [(1, 1), (0, 0), (12, 2), (12, 2)]
@@ -36,20 +38,12 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: decomposeCharacters[idx]
             )
 
-            XCTAssertEqual(
-                range.location,
-                expectedRanges[idx].0,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
-            XCTAssertEqual(
-                range.length,
-                expectedRanges[idx].1,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
+            #expect(range.location == expectedRanges[idx].0, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
+            #expect(range.length == expectedRanges[idx].1, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
         }
     }
 
-    func test_updateSelectionRight() {
+    @Test func test_updateSelectionRight() {
         let selectionManager = selectionManager()
         let locations = [2, 0, 14, 13, 12]
         let expectedRanges = [(2, 1), (0, 1), (14, 0), (12, 2), (12, 2)]
@@ -63,20 +57,12 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: decomposeCharacters[idx]
             )
 
-            XCTAssertEqual(
-                range.location,
-                expectedRanges[idx].0,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
-            XCTAssertEqual(
-                range.length,
-                expectedRanges[idx].1,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
+            #expect(range.location == expectedRanges[idx].0, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
+            #expect(range.length == expectedRanges[idx].1, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
         }
     }
 
-    func test_updateSelectionLeftWord() {
+    @Test func test_updateSelectionLeftWord() {
         let selectionManager = selectionManager()
         let locations = [2, 0, 12]
         let expectedRanges = [(0, 2), (0, 0), (6, 6)]
@@ -89,20 +75,12 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssertEqual(
-                range.location,
-                expectedRanges[idx].0,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
-            XCTAssertEqual(
-                range.length,
-                expectedRanges[idx].1,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
+            #expect(range.location == expectedRanges[idx].0, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
+            #expect(range.length == expectedRanges[idx].1, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
         }
     }
 
-    func test_updateSelectionRightWord() {
+    @Test func test_updateSelectionRightWord() {
         // "Loren Ipsum 💯"
         let selectionManager = selectionManager()
         let locations = [2, 0, 6]
@@ -116,20 +94,12 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssertEqual(
-                range.location,
-                expectedRanges[idx].0,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
-            XCTAssertEqual(
-                range.length,
-                expectedRanges[idx].1,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
+            #expect(range.location == expectedRanges[idx].0, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
+            #expect(range.length == expectedRanges[idx].1, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
         }
     }
 
-    func test_updateSelectionLeftLine() {
+    @Test func test_updateSelectionLeftLine() {
         // "Loren Ipsum 💯"
         let selectionManager = selectionManager()
         let locations = [2, 0, 14, 12]
@@ -143,20 +113,12 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssertEqual(
-                range.location,
-                expectedRanges[idx].0,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
-            XCTAssertEqual(
-                range.length,
-                expectedRanges[idx].1,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
+            #expect(range.location == expectedRanges[idx].0, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
+            #expect(range.length == expectedRanges[idx].1, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
         }
     }
 
-    func test_updateSelectionRightLine() {
+    @Test func test_updateSelectionRightLine() {
         let selectionManager = selectionManager("Loren Ipsum 💯\nHello World")
         let locations = [2, 0, 14, 12, 17]
         let expectedRanges = [(2, 12), (0, 14), (14, 0), (12, 2), (17, 9)]
@@ -169,20 +131,12 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssertEqual(
-                range.location,
-                expectedRanges[idx].0,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
-            XCTAssertEqual(
-                range.length,
-                expectedRanges[idx].1,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
+            #expect(range.location == expectedRanges[idx].0, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
+            #expect(range.length == expectedRanges[idx].1, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
         }
     }
 
-    func test_updateSelectionUpDocument() {
+    @Test func test_updateSelectionUpDocument() {
         let selectionManager = selectionManager("Loren Ipsum 💯\nHello World\n1\n2\n3\n")
         let locations = [0, 27, 30, 33]
         let expectedRanges = [(0, 0), (0, 27), (0, 30), (0, 33)]
@@ -195,20 +149,12 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssertEqual(
-                range.location,
-                expectedRanges[idx].0,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
-            XCTAssertEqual(
-                range.length,
-                expectedRanges[idx].1,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
+            #expect(range.location == expectedRanges[idx].0, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
+            #expect(range.length == expectedRanges[idx].1, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
         }
     }
 
-    func test_updateSelectionDownDocument() {
+    @Test func test_updateSelectionDownDocument() {
         let selectionManager = selectionManager("Loren Ipsum 💯\nHello World\n1\n2\n3\n")
         let locations = [0, 2, 27, 30, 33]
         let expectedRanges = [(0, 33), (2, 31), (27, 6), (30, 3), (33, 0)]
@@ -221,47 +167,39 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssertEqual(
-                range.location,
-                expectedRanges[idx].0,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
-            XCTAssertEqual(
-                range.length,
-                expectedRanges[idx].1,
-                "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
-            )
+            #expect(range.location == expectedRanges[idx].0, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
+            #expect(range.length == expectedRanges[idx].1, "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)")
         }
     }
 
-    func test_selectionEndOfDocumentHasXPos() {
+    @Test func test_selectionEndOfDocumentHasXPos() {
         let selectionManager = selectionManager("1\n2\n3\n")
         selectionManager.setSelectedRange(NSRange(location: 6, length: 0)) // Beyond text.length, end of doc
-        XCTAssertNotNil(selectionManager.textSelections.first?.suggestedXPos)
+        #expect(selectionManager.textSelections.first?.suggestedXPos != nil)
     }
 
-    func test_setSelectedRangesClampsBeyondStorageInsteadOfDropping() {
+    @Test func test_setSelectedRangesClampsBeyondStorageInsteadOfDropping() {
         let selectionManager = selectionManager("short")
 
         selectionManager.setSelectedRanges([NSRange(location: 50, length: 0)])
 
-        XCTAssertEqual(selectionManager.textSelections.count, 1)
-        XCTAssertEqual(selectionManager.textSelections.first?.range, NSRange(location: 5, length: 0))
+        #expect(selectionManager.textSelections.count == 1)
+        #expect(selectionManager.textSelections.first?.range == NSRange(location: 5, length: 0))
     }
 
-    func test_setSelectedRangesClampsAnOverlongRangeToTheStorage() {
+    @Test func test_setSelectedRangesClampsAnOverlongRangeToTheStorage() {
         let selectionManager = selectionManager("short")
 
         selectionManager.setSelectedRanges([NSRange(location: 2, length: 40)])
 
-        XCTAssertEqual(selectionManager.textSelections.first?.range, NSRange(location: 2, length: 3))
+        #expect(selectionManager.textSelections.first?.range == NSRange(location: 2, length: 3))
     }
 
-    func test_setSelectedRangeClampsBeyondStorage() {
+    @Test func test_setSelectedRangeClampsBeyondStorage() {
         let selectionManager = selectionManager("short")
 
         selectionManager.setSelectedRange(NSRange(location: 50, length: 10))
 
-        XCTAssertEqual(selectionManager.textSelections.first?.range, NSRange(location: 5, length: 0))
+        #expect(selectionManager.textSelections.first?.range == NSRange(location: 5, length: 0))
     }
 }

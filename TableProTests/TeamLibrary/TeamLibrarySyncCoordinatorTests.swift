@@ -1,14 +1,7 @@
-//
-//  TeamLibrarySyncCoordinatorTests.swift
-//  TablePro
-//
-//  Tests the team library coordinator against a mock client: gating, pull caching, the 7-day pull
-//  cadence, and that publishing sends the mapped content and refreshes.
-//
-
 import Combine
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -100,7 +93,12 @@ struct TeamLibrarySyncCoordinatorTests {
         licenseChanges.send()
         licenseChanges.send()
         try await waitUntil { coordinator.library.queries.count == 1 }
-        try await Task.sleep(for: .milliseconds(100))
+        // Each license change that starts a pull queues it on the main actor while `send()` runs,
+        // and the mock client answers before the pull first suspends. Every pull those sends
+        // started has called the client once this block runs.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
 
         #expect(coordinator.library.queries.map(\.name) == ["Q"])
         #expect(mock.pullCallCount == 1)
@@ -129,13 +127,6 @@ struct TeamLibrarySyncCoordinatorTests {
         #expect(mock.publishedRequests[0].queries.count == 1)
         #expect(mock.publishedRequests[0].queries[0].name == "Recent")
         #expect(mock.pullCallCount == 1)
-    }
-
-    private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(2)
-        while !condition(), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
     }
 }
 

@@ -1,16 +1,11 @@
-//
-//  CreateDatabaseFormRulesTests.swift
-//  TableProTests
-//
-//  The create-database form's own rules, now that two callers share them: the
-//  New Database sheet and Duplicate Database.
-//
+// The create-database form's own rules, now that two callers share them: the
+// New Database sheet and Duplicate Database.
 
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class CreateDatabaseFormRulesTests: XCTestCase {
+struct CreateDatabaseFormRulesTests {
     private func option(
         _ value: String,
         subtitle: String? = nil,
@@ -58,41 +53,41 @@ final class CreateDatabaseFormRulesTests: XCTestCase {
         ])
     }
 
-    func testTheDriversPreferredAnswerIsChosenFirst() {
+    @Test func testTheDriversPreferredAnswerIsChosenFirst() {
         let values = CreateDatabaseFormRules.initialValues(for: charsetSpec())
 
-        XCTAssertEqual(values["charset"], "utf8mb4")
-        XCTAssertEqual(values["collation"], "utf8mb4_general_ci")
+        #expect(values["charset"] == "utf8mb4")
+        #expect(values["collation"] == "utf8mb4_general_ci")
     }
 
-    func testAFieldWithNoPreferredAnswerTakesItsFirstOption() {
+    @Test func testAFieldWithNoPreferredAnswerTakesItsFirstOption() {
         let subject = spec(fields: [field("owner", options: [option("postgres")], defaultValue: nil)])
 
-        XCTAssertEqual(CreateDatabaseFormRules.initialValues(for: subject)["owner"], "postgres")
+        #expect(CreateDatabaseFormRules.initialValues(for: subject)["owner"] == "postgres")
     }
 
-    func testACollationIsOnlyOfferedForTheChosenCharacterSet() {
+    @Test func testACollationIsOnlyOfferedForTheChosenCharacterSet() {
         let offered = CreateDatabaseFormRules.filteredOptions(
             for: charsetSpec().fields[1], values: ["charset": "latin1"]
         )
 
-        XCTAssertEqual(offered.map(\.value), ["latin1_swedish_ci"])
+        #expect(offered.map(\.value) == ["latin1_swedish_ci"])
     }
 
     /// Leaving a collation from the character set the user just moved away from would submit a
     /// pair the server refuses.
-    func testChangingTheCharacterSetResetsTheCollation() {
+    @Test func testChangingTheCharacterSetResetsTheCollation() {
         let updated = CreateDatabaseFormRules.resettingGroupedFields(
             after: "charset",
             in: charsetSpec(),
             values: ["charset": "latin1", "collation": "utf8mb4_general_ci"]
         )
 
-        XCTAssertEqual(updated["collation"], "latin1_swedish_ci")
+        #expect(updated["collation"] == "latin1_swedish_ci")
     }
 
-    func testGroupSourcesAreTheFieldsOthersAreGroupedBy() {
-        XCTAssertEqual(CreateDatabaseFormRules.groupSourceFieldIds(in: charsetSpec()), ["charset"])
+    @Test func testGroupSourcesAreTheFieldsOthersAreGroupedBy() {
+        #expect(CreateDatabaseFormRules.groupSourceFieldIds(in: charsetSpec()) == ["charset"])
     }
 
     // MARK: - Visibility
@@ -109,34 +104,34 @@ final class CreateDatabaseFormRulesTests: XCTestCase {
         ])
     }
 
-    func testAHiddenFieldIsNotOffered() {
+    @Test func testAHiddenFieldIsNotOffered() {
         let visible = CreateDatabaseFormRules.visibleFields(
             in: conditionalSpec(), values: ["kind": "standard"]
         )
 
-        XCTAssertEqual(visible.map(\.id), ["kind"])
+        #expect(visible.map(\.id) == ["kind"])
     }
 
     /// A hidden field holds a stale answer rather than a chosen one.
-    func testAHiddenFieldIsNotSubmitted() {
+    @Test func testAHiddenFieldIsNotSubmitted() {
         let submitted = CreateDatabaseFormRules.submissionValues(
             from: ["kind": "standard", "source": "app"], spec: conditionalSpec()
         )
 
-        XCTAssertEqual(submitted, ["kind": "standard"])
+        #expect(submitted == ["kind": "standard"])
     }
 
-    func testAVisibleFieldIsSubmitted() {
+    @Test func testAVisibleFieldIsSubmitted() {
         let submitted = CreateDatabaseFormRules.submissionValues(
             from: ["kind": "clone", "source": "app"], spec: conditionalSpec()
         )
 
-        XCTAssertEqual(submitted, ["kind": "clone", "source": "app"])
+        #expect(submitted == ["kind": "clone", "source": "app"])
     }
 
     // MARK: - Required text
 
-    func testAnEmptyRequiredInputBlocksSubmission() {
+    @Test func testAnEmptyRequiredInputBlocksSubmission() {
         let subject = spec(
             fields: [],
             textInputs: [CreateDatabaseFormSpec.TextInput(
@@ -144,11 +139,11 @@ final class CreateDatabaseFormRulesTests: XCTestCase {
             )]
         )
 
-        XCTAssertTrue(CreateDatabaseFormRules.missingRequiredInput(in: subject, values: ["owner": "  "]))
-        XCTAssertFalse(CreateDatabaseFormRules.missingRequiredInput(in: subject, values: ["owner": "admin"]))
+        #expect(CreateDatabaseFormRules.missingRequiredInput(in: subject, values: ["owner": "  "]))
+        #expect(!CreateDatabaseFormRules.missingRequiredInput(in: subject, values: ["owner": "admin"]))
     }
 
-    func testAnOptionalInputDoesNotBlockSubmission() {
+    @Test func testAnOptionalInputDoesNotBlockSubmission() {
         let subject = spec(
             fields: [],
             textInputs: [CreateDatabaseFormSpec.TextInput(
@@ -156,17 +151,14 @@ final class CreateDatabaseFormRulesTests: XCTestCase {
             )]
         )
 
-        XCTAssertFalse(CreateDatabaseFormRules.missingRequiredInput(in: subject, values: [:]))
+        #expect(!CreateDatabaseFormRules.missingRequiredInput(in: subject, values: [:]))
     }
 
-    func testASubtitleIsAppendedToTheOptionLabel() {
-        XCTAssertEqual(
-            CreateDatabaseFormRules.displayLabel(for: option("utf8mb4", subtitle: "(default)")),
-            "utf8mb4 (default)"
-        )
+    @Test func testASubtitleIsAppendedToTheOptionLabel() {
+        #expect(CreateDatabaseFormRules.displayLabel(for: option("utf8mb4", subtitle: "(default)")) == "utf8mb4 (default)")
     }
 
-    func testAnOptionWithNoSubtitleKeepsItsLabel() {
-        XCTAssertEqual(CreateDatabaseFormRules.displayLabel(for: option("utf8mb4")), "utf8mb4")
+    @Test func testAnOptionWithNoSubtitleKeepsItsLabel() {
+        #expect(CreateDatabaseFormRules.displayLabel(for: option("utf8mb4")) == "utf8mb4")
     }
 }

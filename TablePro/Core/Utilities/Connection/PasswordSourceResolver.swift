@@ -68,12 +68,15 @@ enum PasswordSourceResolver {
         }
     }
 
-    static func resolve(_ source: PasswordSource) async throws -> String {
+    static func resolve(
+        _ source: PasswordSource,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) async throws -> String {
         switch source {
         case let .file(path):
             return try resolveFile(path: path)
         case let .env(variable):
-            return try resolveEnvironment(variable: variable)
+            return try resolveEnvironment(variable: variable, in: environment)
         case let .command(shell):
             return try await resolveCommand(shell: shell, timeoutSeconds: commandTimeoutSeconds)
         case .onePassword, .vault:
@@ -141,14 +144,18 @@ enum PasswordSourceResolver {
         return try nonEmpty(contents.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    private static func resolveEnvironment(variable: String) throws -> String {
-        guard let value = ProcessInfo.processInfo.environment[variable] else {
+    private static func resolveEnvironment(variable: String, in environment: [String: String]) throws -> String {
+        guard let value = environment[variable] else {
             throw ResolutionError.environmentVariableNotSet(name: variable)
         }
         return try nonEmpty(value.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    static func resolveCommand(shell: String, timeoutSeconds: UInt64) async throws -> String {
+    static func resolveCommand(
+        shell: String,
+        timeoutSeconds: UInt64,
+        clock: any Clock<Duration> = ContinuousClock()
+    ) async throws -> String {
         let output = try await Task.detached(priority: .userInitiated) { () async throws -> String in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -186,7 +193,7 @@ enum PasswordSourceResolver {
 
             let didTimeout = AtomicFlag()
             let timeoutTask = Task.detached {
-                try await Task.sleep(nanoseconds: timeoutSeconds * 1_000_000_000)
+                try await clock.sleep(for: .seconds(timeoutSeconds))
                 if process.isRunning {
                     didTimeout.set()
                     process.terminate()

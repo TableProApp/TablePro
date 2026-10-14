@@ -12,18 +12,11 @@ struct LibPQClassifierTests {
         }
     }
 
-    @Test("Classifies SSL-required as serverRequiresPlaintext")
-    func testSSLRequired() {
-        let msg = "FATAL: no pg_hba.conf entry for host \"1.2.3.4\", user \"u\", database \"d\", SSL on"
-        guard case .serverRequiresPlaintext = LibPQSSLClassifier.classifySSLError(msg) else {
-            Issue.record("Expected serverRequiresPlaintext")
-            return
-        }
-    }
-
-    @Test("Classifies server-no-ssl-support as serverRequiresPlaintext")
-    func testServerNoSSL() {
-        let msg = "server does not support SSL, but SSL was required"
+    @Test("Classifies SSL-required and server-no-ssl-support as serverRequiresPlaintext", arguments: [
+        "FATAL: no pg_hba.conf entry for host \"1.2.3.4\", user \"u\", database \"d\", SSL on",
+        "server does not support SSL, but SSL was required",
+    ])
+    func testServerRequiresPlaintext(_ msg: String) {
         guard case .serverRequiresPlaintext = LibPQSSLClassifier.classifySSLError(msg) else {
             Issue.record("Expected serverRequiresPlaintext")
             return

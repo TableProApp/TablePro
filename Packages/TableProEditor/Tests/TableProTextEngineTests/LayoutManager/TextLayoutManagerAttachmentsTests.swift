@@ -50,56 +50,27 @@ struct TextLayoutManagerAttachmentsTests {
 
     // MARK: - Determine Visible Line Tests
 
-    @Test
-    func determineVisibleLinesMovesForwards() throws {
-        // From middle of the first line, to middle of the third line
+    @Test(arguments: [0, 2])
+    func determineVisibleLinesMovesEitherWay(_ startLine: Int) throws {
         layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 2, end: 8))
 
-        // Start with the first line, should extend to the third line
-        let originalPosition = try #require(layoutManager.lineStorage.getLine(atIndex: 0)) // zero-indexed
+        let originalPosition = try #require(layoutManager.lineStorage.getLine(atIndex: startLine))
         let newPosition = try #require(layoutManager.determineVisiblePosition(for: originalPosition))
 
         #expect(newPosition.indexRange == 0...2)
-        #expect(newPosition.position.range == NSRange(start: 0, end: 9)) // Lines one -> three
+        #expect(newPosition.position.range == NSRange(start: 0, end: 9))
     }
 
-    @Test
-    func determineVisibleLinesMovesBackwards() throws {
-        // From middle of the first line, to middle of the third line
-        layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 2, end: 8))
-
-        // Start with the third line, should extend back to the first line
-        let originalPosition = try #require(layoutManager.lineStorage.getLine(atIndex: 2)) // zero-indexed
-        let newPosition = try #require(layoutManager.determineVisiblePosition(for: originalPosition))
-
-        #expect(newPosition.indexRange == 0...2)
-        #expect(newPosition.position.range == NSRange(start: 0, end: 9)) // Lines one -> three
-    }
-
-    @Test
-    func determineVisibleLinesMergesMultipleAttachments() throws {
-        // Two attachments, meeting at the third line. `determineVisiblePosition` should merge all four lines.
+    @Test(arguments: [7, 5])
+    func determineVisibleLinesMergesAttachmentsMeetingOrOverlapping(_ secondStart: Int) throws {
         layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 2, end: 7))
-        layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 7, end: 11))
+        layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: secondStart, end: 11))
 
-        let originalPosition = try #require(layoutManager.lineStorage.getLine(atIndex: 2)) // zero-indexed
+        let originalPosition = try #require(layoutManager.lineStorage.getLine(atIndex: 2))
         let newPosition = try #require(layoutManager.determineVisiblePosition(for: originalPosition))
 
         #expect(newPosition.indexRange == 0...3)
-        #expect(newPosition.position.range == NSRange(start: 0, end: 12)) // Lines one -> four
-    }
-
-    @Test
-    func determineVisibleLinesMergesOverlappingAttachments() throws {
-        // Two attachments, overlapping at the third line. `determineVisiblePosition` should merge all four lines.
-        layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 2, end: 7))
-        layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 5, end: 11))
-
-        let originalPosition = try #require(layoutManager.lineStorage.getLine(atIndex: 2)) // zero-indexed
-        let newPosition = try #require(layoutManager.determineVisiblePosition(for: originalPosition))
-
-        #expect(newPosition.indexRange == 0...3)
-        #expect(newPosition.position.range == NSRange(start: 0, end: 12)) // Lines one -> four
+        #expect(newPosition.position.range == NSRange(start: 0, end: 12))
     }
 
     // MARK: - Iterator Tests

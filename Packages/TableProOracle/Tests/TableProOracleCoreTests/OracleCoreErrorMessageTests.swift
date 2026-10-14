@@ -1,10 +1,11 @@
+import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
 /// OracleNIO documents its own errors as unfit to show: "These errors should not be forwareded to
 /// the end user, as they may leak sensitive information." One reached an alert as
 /// `OracleSQLError(code: clientClosedConnection, triggeredFromRequestInFile: ...)`.
-final class OracleCoreErrorMessageTests: XCTestCase {
+struct OracleCoreErrorMessageTests {
     private let cases: [OracleCoreError] = [
         .notConnected,
         .connectionFailed("listener refused the connection"),
@@ -27,30 +28,30 @@ final class OracleCoreErrorMessageTests: XCTestCase {
         .certificateAuthorityRequired
     ]
 
-    func testNoMessageLeaksTheDriversOwnErrorStruct() {
+    @Test func testNoMessageLeaksTheDriversOwnErrorStruct() {
         for error in cases {
             let message = error.errorDescription ?? ""
-            XCTAssertFalse(message.contains("OracleSQLError("), message)
-            XCTAssertFalse(message.contains("triggeredFromRequestInFile"), message)
-            XCTAssertFalse(message.isEmpty)
+            #expect(!(message.contains("OracleSQLError(")), "\(message)")
+            #expect(!message.contains("triggeredFromRequestInFile"), "\(message)")
+            #expect(!message.isEmpty)
         }
     }
 
-    func testAClosedChannelSaysSoAndSaysWhatToDo() {
+    @Test func testAClosedChannelSaysSoAndSaysWhatToDo() {
         let message = OracleCoreError.connectionClosed.errorDescription ?? ""
-        XCTAssertTrue(message.contains("closed"), message)
-        XCTAssertTrue(message.contains("again"), message)
+        #expect(message.contains("closed"), "\(message)")
+        #expect(message.contains("again"), "\(message)")
     }
 
-    func testTheMissingCARefusalNamesNoScreenOnlyOnePlatformHas() {
+    @Test func testTheMissingCARefusalNamesNoScreenOnlyOnePlatformHas() {
         let message = OracleCoreError.certificateAuthorityRequired.errorDescription ?? ""
-        XCTAssertTrue(message.contains("CA certificate"), message)
-        XCTAssertFalse(message.localizedCaseInsensitiveContains("tab"), message)
+        #expect(message.contains("CA certificate"), "\(message)")
+        #expect(!message.localizedCaseInsensitiveContains("tab"), "\(message)")
     }
 
-    func testADriverErrorWithNoServerMessageNamesItsCode() {
+    @Test func testADriverErrorWithNoServerMessageNamesItsCode() {
         let message = String(format: OracleCoreError.driverErrorFormat, "malformedStatement")
-        XCTAssertTrue(message.contains("malformedStatement"), message)
-        XCTAssertFalse(message.contains("OracleSQLError("), message)
+        #expect(message.contains("malformedStatement"), "\(message)")
+        #expect(!(message.contains("OracleSQLError(")), "\(message)")
     }
 }

@@ -105,15 +105,11 @@ struct DerivedTableParserTests {
         #expect(table(parser.parse(query), alias: "d")?.columns == ["avg_score"])
     }
 
-    @Test("Subquery in WHERE IN is not a derived table")
-    func subqueryInWhereIsNotDerived() {
-        let query = "SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)"
-        #expect(parser.parse(query).isEmpty)
-    }
-
-    @Test("Function call parentheses are not derived tables")
-    func functionCallNotDerived() {
-        let query = "SELECT COUNT(id), AVG(score) FROM users"
+    @Test("A subquery in WHERE IN and function call parentheses are not derived tables", arguments: [
+        "SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)",
+        "SELECT COUNT(id), AVG(score) FROM users",
+    ])
+    func parenthesesThatAreNotDerivedTables(_ query: String) {
         #expect(parser.parse(query).isEmpty)
     }
 

@@ -9,7 +9,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("A status bar drops its material only over a themed backdrop", .serialized)
 @MainActor
 struct StatusBarChromeTests {
     private static func host(_ view: some View) -> NSHostingView<AnyView> {

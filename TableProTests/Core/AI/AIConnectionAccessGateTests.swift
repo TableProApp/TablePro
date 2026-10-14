@@ -94,8 +94,10 @@ internal struct AIConnectionAccessGateTests {
 internal struct AIConnectionAccessGateSavedPolicyTests {
     private let storage: ConnectionStorage
     private let fileURL: URL
+    private let defaults: EphemeralDefaults
+    private let syncDefaults: EphemeralDefaults
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -104,16 +106,15 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        guard let defaults = UserDefaults(suiteName: "com.TablePro.tests.AIAccessGate.\(unique)"),
-              let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.AIAccessGate.Sync.\(unique)")
-        else {
-            fatalError("Failed to create isolated test user defaults")
-        }
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults))
+        let defaults = try EphemeralDefaults()
+        let syncDefaults = try EphemeralDefaults()
+        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults.defaults))
         self.fileURL = fileURL
+        self.defaults = defaults
+        self.syncDefaults = syncDefaults
         self.storage = ConnectionStorage(
             fileURL: fileURL,
-            userDefaults: defaults,
+            userDefaults: defaults.defaults,
             syncTracker: tracker,
             keychain: InMemoryKeychain()
         )

@@ -3,353 +3,277 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProSQLGrammar
-import XCTest
+import Testing
 
-final class SQLStatementScannerTests: XCTestCase {
+struct SQLStatementScannerTests {
     // MARK: - allStatements
 
-    func testEmptyInput() {
-        XCTAssertEqual(SQLStatementScanner.allStatements(in: ""), [])
+    @Test
+    func emptyInput() {
+        #expect(SQLStatementScanner.allStatements(in: "") == [])
     }
 
-    func testSingleStatement() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1"),
-            ["SELECT 1"]
-        )
+    @Test
+    func singleStatement() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1") == ["SELECT 1"])
     }
 
-    func testSingleStatementWithTrailingSemicolon() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1;"),
-            ["SELECT 1"]
-        )
+    @Test
+    func singleStatementWithTrailingSemicolon() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1;") == ["SELECT 1"])
     }
 
-    func testMultipleStatements() {
+    @Test
+    func multipleStatements() {
         let sql = "SELECT 1; SELECT 2; SELECT 3"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT 1", "SELECT 2", "SELECT 3"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 1", "SELECT 2", "SELECT 3"])
     }
 
-    func testSemicolonInsideSingleQuotes() {
+    @Test
+    func semicolonInsideSingleQuotes() {
         let sql = "SELECT 'a;b'; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT 'a;b'", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 'a;b'", "SELECT 2"])
     }
 
-    func testSemicolonInsideDoubleQuotes() {
+    @Test
+    func semicolonInsideDoubleQuotes() {
         let sql = "SELECT \"a;b\"; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT \"a;b\"", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT \"a;b\"", "SELECT 2"])
     }
 
-    func testSemicolonInsideBackticks() {
+    @Test
+    func semicolonInsideBackticks() {
         let sql = "SELECT `a;b`; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql),
-            ["SELECT `a;b`", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql) == ["SELECT `a;b`", "SELECT 2"])
     }
 
-    func testSemicolonInsideLineComment() {
+    @Test
+    func semicolonInsideLineComment() {
         let sql = "SELECT 1 -- comment; still comment\n; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT 1 -- comment; still comment", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 1 -- comment; still comment", "SELECT 2"])
     }
 
-    func testSemicolonInsideBlockComment() {
+    @Test
+    func semicolonInsideBlockComment() {
         let sql = "SELECT 1 /* comment; */ ; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT 1 /* comment; */", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 1 /* comment; */", "SELECT 2"])
     }
 
-    func testBackslashEscape() {
+    @Test
+    func backslashEscape() {
         let sql = "SELECT 'it\\'s'; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql),
-            ["SELECT 'it\\'s'", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql) == ["SELECT 'it\\'s'", "SELECT 2"])
     }
 
-    func testDoubledQuoteEscape() {
+    @Test
+    func doubledQuoteEscape() {
         let sql = "SELECT 'it''s'; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT 'it''s'", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 'it''s'", "SELECT 2"])
     }
 
-    func testWhitespaceOnlyStatements() {
+    @Test
+    func whitespaceOnlyStatements() {
         let sql = "SELECT 1;   ;  \n ; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT 1", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 1", "SELECT 2"])
     }
 
-    func testNestedBlockComment() {
+    @Test
+    func nestedBlockComment() {
         // SQL block comments don't nest — first */ closes
         let sql = "SELECT 1 /* outer /* inner */ ; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT 1 /* outer /* inner */", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 1 /* outer /* inner */", "SELECT 2"])
     }
 
     // MARK: - Comment-Only Segments
 
-    func testTrailingLineCommentAfterSemicolonIsDropped() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1; -- note"),
-            ["SELECT 1"]
-        )
+    @Test
+    func trailingLineCommentAfterSemicolonIsDropped() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1; -- note") == ["SELECT 1"])
     }
 
-    func testTrailingBlockCommentAfterSemicolonIsDropped() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1; /* note */"),
-            ["SELECT 1"]
-        )
+    @Test
+    func trailingBlockCommentAfterSemicolonIsDropped() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1; /* note */") == ["SELECT 1"])
     }
 
-    func testMiddleCommentOnlySegmentIsDropped() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1; /* x */; SELECT 2"),
-            ["SELECT 1", "SELECT 2"]
-        )
+    @Test
+    func middleCommentOnlySegmentIsDropped() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1; /* x */; SELECT 2") == ["SELECT 1", "SELECT 2"])
     }
 
-    func testCommentOnlyWholeInputReturnsNoStatements() {
-        XCTAssertEqual(SQLStatementScanner.allStatements(in: "-- note"), [])
-        XCTAssertEqual(SQLStatementScanner.allStatements(in: "/* note */"), [])
+    @Test
+    func commentOnlyWholeInputReturnsNoStatements() {
+        #expect(SQLStatementScanner.allStatements(in: "-- note") == [])
+        #expect(SQLStatementScanner.allStatements(in: "/* note */") == [])
     }
 
-    func testMixedCommentAndWhitespaceMultilineSegmentIsDropped() {
+    @Test
+    func mixedCommentAndWhitespaceMultilineSegmentIsDropped() {
         let sql = "SELECT 1;\n  -- first\n  /* second */  \n; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql),
-            ["SELECT 1", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 1", "SELECT 2"])
     }
 
-    func testConsecutiveSemicolonsStillDropped() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1;;"),
-            ["SELECT 1"]
-        )
+    @Test
+    func consecutiveSemicolonsStillDropped() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1;;") == ["SELECT 1"])
     }
 
-    func testUnclosedTrailingBlockCommentIsDropped() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1; /* note"),
-            ["SELECT 1"]
-        )
+    @Test
+    func unclosedTrailingBlockCommentIsDropped() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1; /* note") == ["SELECT 1"])
     }
 
-    func testLineCommentAtEndOfInputIsDropped() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1; --"),
-            ["SELECT 1"]
-        )
+    @Test
+    func lineCommentAtEndOfInputIsDropped() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1; --") == ["SELECT 1"])
     }
 
-    func testMySQLVersionedCommentSegmentIsKept() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */; SELECT 1", grammar: TestGrammar.mysql),
-            ["/*!40101 SET @OLD=1 */", "SELECT 1"]
-        )
+    @Test
+    func mySQLVersionedCommentSegmentIsKept() {
+        #expect(SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */; SELECT 1", grammar: TestGrammar.mysql) == ["/*!40101 SET @OLD=1 */", "SELECT 1"])
     }
 
     /// `/*! */` is SQL MySQL runs and a comment everywhere else, so what it is depends on the engine.
-    func testVersionedCommentRunsOnMySQLAndIsACommentElsewhere() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */;", grammar: TestGrammar.mysql),
-            ["/*!40101 SET @OLD=1 */"]
-        )
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */;", grammar: TestGrammar.standard),
-            []
-        )
+    @Test
+    func versionedCommentRunsOnMySQLAndIsACommentElsewhere() {
+        #expect(SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */;", grammar: TestGrammar.mysql) == ["/*!40101 SET @OLD=1 */"])
+        #expect(SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */;", grammar: TestGrammar.standard) == [])
     }
 
-    func testInStatementCommentsArePreserved() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: "SELECT 1 -- hint\n; SELECT 2 /* keep */"),
-            ["SELECT 1 -- hint", "SELECT 2 /* keep */"]
-        )
+    @Test
+    func inStatementCommentsArePreserved() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1 -- hint\n; SELECT 2 /* keep */") == ["SELECT 1 -- hint", "SELECT 2 /* keep */"])
     }
 
-    func testPreservingSemicolonsDropsCommentOnlySegment() {
-        XCTAssertEqual(
-            SQLStatementScanner.allStatementsPreservingSemicolons(in: "SELECT 1; -- note"),
-            ["SELECT 1;"]
-        )
+    @Test
+    func preservingSemicolonsDropsCommentOnlySegment() {
+        #expect(SQLStatementScanner.allStatementsPreservingSemicolons(in: "SELECT 1; -- note") == ["SELECT 1;"])
     }
 
     // MARK: - Dollar Quoting (PostgreSQL)
 
-    func testDollarQuotedDoBlockKeepsInternalSemicolons() {
+    @Test
+    func dollarQuotedDoBlockKeepsInternalSemicolons() {
         let sql = "DO $$ BEGIN PERFORM 1; PERFORM 2; END $$; SELECT 1;"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
-            ["DO $$ BEGIN PERFORM 1; PERFORM 2; END $$", "SELECT 1"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres) == ["DO $$ BEGIN PERFORM 1; PERFORM 2; END $$", "SELECT 1"])
     }
 
-    func testTaggedDollarQuoteKeepsInternalSemicolons() {
+    @Test
+    func taggedDollarQuoteKeepsInternalSemicolons() {
         let sql = "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END $body$ LANGUAGE plpgsql; SELECT f();"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
-            [
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres) == [
                 "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END $body$ LANGUAGE plpgsql",
                 "SELECT f()"
-            ]
-        )
+            ])
     }
 
-    func testNestedDifferentDollarTags() {
+    @Test
+    func nestedDifferentDollarTags() {
         let sql = "DO $outer$ SELECT $inner$ a;b $inner$; END $outer$; SELECT 1;"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
-            ["DO $outer$ SELECT $inner$ a;b $inner$; END $outer$", "SELECT 1"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres) == ["DO $outer$ SELECT $inner$ a;b $inner$; END $outer$", "SELECT 1"])
     }
 
-    func testPositionalParameterIsNotDollarQuote() {
+    @Test
+    func positionalParameterIsNotDollarQuote() {
         let sql = "SELECT $1; SELECT $2;"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
-            ["SELECT $1", "SELECT $2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres) == ["SELECT $1", "SELECT $2"])
     }
 
-    func testDollarPairInsideIdentifierIsNotOpener() {
+    @Test
+    func dollarPairInsideIdentifierIsNotOpener() {
         let sql = "SELECT 1 AS a$$; SELECT 2;"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres),
-            ["SELECT 1 AS a$$", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.postgres) == ["SELECT 1 AS a$$", "SELECT 2"])
     }
 
-    func testGenericDialectIgnoresDollarQuotes() {
+    @Test
+    func genericDialectIgnoresDollarQuotes() {
         let sql = "DO $$ SELECT 1; SELECT 2 $$;"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.standard),
-            ["DO $$ SELECT 1", "SELECT 2 $$"]
-        )
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.standard) == ["DO $$ SELECT 1", "SELECT 2 $$"])
     }
 
-    func testCursorInsideDollarBodyReturnsWholeStatement() {
+    @Test
+    func cursorInsideDollarBodyReturnsWholeStatement() {
         let sql = "DO $$ BEGIN PERFORM 1; END $$; SELECT 1;"
-        XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 20, grammar: TestGrammar.postgres),
-            "DO $$ BEGIN PERFORM 1; END $$"
-        )
+        #expect(SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 20, grammar: TestGrammar.postgres) == "DO $$ BEGIN PERFORM 1; END $$")
     }
 
     // MARK: - allStatementsPreservingSemicolons
 
-    func testPreservingSemicolons() {
+    @Test
+    func preservingSemicolons() {
         let sql = "SELECT 1; SELECT 2; SELECT 3"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatementsPreservingSemicolons(in: sql),
-            ["SELECT 1;", "SELECT 2;", "SELECT 3"]
-        )
+        #expect(SQLStatementScanner.allStatementsPreservingSemicolons(in: sql) == ["SELECT 1;", "SELECT 2;", "SELECT 3"])
     }
 
-    func testPreservingSemicolonsFiltersEmpty() {
+    @Test
+    func preservingSemicolonsFiltersEmpty() {
         let sql = "SELECT 1;   ;  \n ; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.allStatementsPreservingSemicolons(in: sql),
-            ["SELECT 1;", "SELECT 2"]
-        )
+        #expect(SQLStatementScanner.allStatementsPreservingSemicolons(in: sql) == ["SELECT 1;", "SELECT 2"])
     }
 
     // MARK: - statementAtCursor
 
-    func testCursorInFirstStatement() {
+    @Test
+    func cursorInFirstStatement() {
         let sql = "SELECT 1; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 3),
-            "SELECT 1"
-        )
+        #expect(SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 3) == "SELECT 1")
     }
 
-    func testCursorInSecondStatement() {
+    @Test
+    func cursorInSecondStatement() {
         let sql = "SELECT 1; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 10),
-            "SELECT 2"
-        )
+        #expect(SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 10) == "SELECT 2")
     }
 
-    func testCursorInLastStatementNoSemicolon() {
+    @Test
+    func cursorInLastStatementNoSemicolon() {
         let sql = "SELECT 1; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 15),
-            "SELECT 2"
-        )
+        #expect(SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 15) == "SELECT 2")
     }
 
-    func testCursorAtSemicolon() {
+    @Test
+    func cursorAtSemicolon() {
         let sql = "SELECT 1; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 8),
-            "SELECT 1"
-        )
+        #expect(SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 8) == "SELECT 1")
     }
 
-    func testCursorAtZero() {
+    @Test
+    func cursorAtZero() {
         let sql = "SELECT 1; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 0),
-            "SELECT 1"
-        )
+        #expect(SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 0) == "SELECT 1")
     }
 
-    func testCursorBeyondEnd() {
+    @Test
+    func cursorBeyondEnd() {
         let sql = "SELECT 1; SELECT 2"
-        XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 999),
-            "SELECT 2"
-        )
+        #expect(SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 999) == "SELECT 2")
     }
 
-    func testNoSemicolonsWholeInputIsOneStatement() {
+    @Test
+    func noSemicolonsWholeInputIsOneStatement() {
         let sql = "SELECT * FROM users"
-        XCTAssertEqual(
-            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 5),
-            "SELECT * FROM users"
-        )
+        #expect(SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 5) == "SELECT * FROM users")
     }
 
     // MARK: - locatedStatementAtCursor
 
-    func testLocatedStatementOffset() {
+    @Test
+    func locatedStatementOffset() {
         let sql = "SELECT 1; SELECT 2"
         let located = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 3)
-        XCTAssertEqual(located.sql, "SELECT 1;")
-        XCTAssertEqual(located.offset, 0)
+        #expect(located.sql == "SELECT 1;")
+        #expect(located.offset == 0)
     }
 
-    func testLocatedStatementOffsetSecondStatement() {
+    @Test
+    func locatedStatementOffsetSecondStatement() {
         let sql = "SELECT 1; SELECT 2"
         let located = SQLStatementScanner.locatedStatementAtCursor(in: sql, cursorPosition: 12)
-        XCTAssertEqual(located.sql, " SELECT 2")
-        XCTAssertEqual(located.offset, 9)
+        #expect(located.sql == " SELECT 2")
+        #expect(located.offset == 9)
     }
 }

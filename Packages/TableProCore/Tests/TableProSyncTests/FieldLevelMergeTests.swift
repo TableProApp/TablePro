@@ -292,7 +292,7 @@ struct SyncRecordCacheTests {
     /// has to go, or the domain stays over the CFPreferences limit and every write keeps failing.
     @Test("A cache written to UserDefaults by an older build moves to disk and frees the key")
     func legacyCacheMigratesOffUserDefaults() throws {
-        let suite = "com.TablePro.tests.\(UUID().uuidString)"
+        let suite = ScratchDefaults.suiteName()
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -326,7 +326,7 @@ struct SyncRecordCacheTests {
 
     @Test("Removing everything drops a legacy UserDefaults cache, and a later read never brings it back")
     func removeAllDropsLegacyCache() throws {
-        let suite = "com.TablePro.tests.\(UUID().uuidString)"
+        let suite = ScratchDefaults.suiteName()
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let record = makeRecord("Connection_Legacy")

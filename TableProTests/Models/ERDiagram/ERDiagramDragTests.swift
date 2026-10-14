@@ -1,21 +1,25 @@
-//
-//  ERDiagramDragTests.swift
-//  TableProTests
-//
-//  AppKit owns pan and zoom, so every point the view hands the view model is already in
-//  document space. These pin the hit testing, the node drag and the persisted coordinates.
-//
+// AppKit owns pan and zoom, so every point the view hands the view model is already in
+// document space. These pin the hit testing, the node drag and the persisted coordinates.
 
 import AppKit
 import CoreGraphics
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
 struct ERDiagramDragTests {
-    private func makeViewModel() -> ERDiagramViewModel {
-        ERDiagramViewModel(connectionId: UUID(), databaseName: "app", schemaKey: "app.default")
+    private func makeViewModel(autoPanClock: any Clock<Duration> = ContinuousClock()) -> ERDiagramViewModel {
+        ERDiagramViewModel(connectionId: UUID(), databaseName: "app", schemaKey: "app.default", autoPanClock: autoPanClock)
+    }
+
+    /// The loop ticks, then sleeps on the clock until it is advanced, so each advance is one more tick.
+    private func runAutoPan(_ clock: ManualClock, ticks: Int) async throws {
+        for tick in 0 ... ticks {
+            if tick > 0 { clock.advance(by: .milliseconds(16)) }
+            try #require(await BoundedCall.result { await clock.waitUntilSleeping() }, "The auto-pan loop stopped")
+        }
     }
 
     /// Registers the node in the graph as well as in the rect cache, because hit testing resolves
@@ -232,7 +236,8 @@ struct ERDiagramDragTests {
         .enabled(if: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     )
     func autoPanFollowsTheAppliedScroll() async throws {
-        let viewModel = makeViewModel()
+        let clock = ManualClock()
+        let viewModel = makeViewModel(autoPanClock: clock)
         let nodeId = placeNode(in: viewModel, at: CGPoint(x: 150, y: 330))
         let scrollView = attachViewport(to: viewModel)
         #expect(scrollView.contentView.bounds.origin == .zero)
@@ -241,7 +246,7 @@ struct ERDiagramDragTests {
         viewModel.updateDrag(translation: CGSize(width: -15, height: 50), currentPoint: CGPoint(x: 30, y: 380))
         #expect(viewModel.position(for: nodeId) == CGPoint(x: 135, y: 380))
 
-        try await Task.sleep(for: .milliseconds(150))
+        try await runAutoPan(clock, ticks: 9)
 
         let scrolled = scrollView.contentView.bounds.origin
         #expect(scrolled.x == 0)
@@ -258,7 +263,8 @@ struct ERDiagramDragTests {
         .enabled(if: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     )
     func autoPanGrowsTheCanvasAtLowZoom() async throws {
-        let viewModel = makeViewModel()
+        let clock = ManualClock()
+        let viewModel = makeViewModel(autoPanClock: clock)
         let nodeId = placeNode(in: viewModel, at: CGPoint(x: 2_300, y: 300))
         let scrollView = attachViewport(to: viewModel, magnification: 0.25)
         viewModel.viewport.scrollBy(CGSize(width: 10_000, height: 0))
@@ -269,7 +275,7 @@ struct ERDiagramDragTests {
         viewModel.updateDrag(translation: CGSize(width: -30, height: 0), currentPoint: CGPoint(x: 2_370, y: 300))
         let held = viewModel.position(for: nodeId)
 
-        try await Task.sleep(for: .milliseconds(150))
+        try await runAutoPan(clock, ticks: 9)
 
         let scrolled = scrollView.contentView.bounds.origin.x - edge
         #expect(scrolled > 0)

@@ -3,56 +3,62 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
 @MainActor
-final class LaunchTracerTests: XCTestCase {
-    func testMarksAreRecordedInOrderWithMonotonicOffsets() {
+final class LaunchTracerTests {
+    @Test
+    func marksAreRecordedInOrderWithMonotonicOffsets() {
         let tracer = LaunchTracer(processStart: Date())
 
         tracer.mark(.main)
         tracer.mark(.applicationCreated)
         tracer.mark(.didFinishLaunchingBegan)
 
-        XCTAssertEqual(tracer.recordedMarks.map(\.stage), [.main, .applicationCreated, .didFinishLaunchingBegan])
-        XCTAssertEqual(tracer.recordedMarks.map(\.offset), tracer.recordedMarks.map(\.offset).sorted())
+        #expect(tracer.recordedMarks.map(\.stage) == [.main, .applicationCreated, .didFinishLaunchingBegan])
+        #expect(tracer.recordedMarks.map(\.offset) == tracer.recordedMarks.map(\.offset).sorted())
     }
 
     /// Every offset is measured from process exec, so a tracer built with a start in the past
     /// reports that gap rather than starting its clock at first touch.
-    func testOffsetsAreMeasuredFromProcessStart() {
+    @Test
+    func offsetsAreMeasuredFromProcessStart() {
         let tracer = LaunchTracer(processStart: Date().addingTimeInterval(-2))
 
         tracer.mark(.main)
 
-        let offset = try? XCTUnwrap(tracer.recordedMarks.first?.offset)
-        XCTAssertGreaterThan(offset ?? 0, 1.9)
+        let offset = try? #require(tracer.recordedMarks.first?.offset)
+        #expect((offset ?? 0) > 1.9)
     }
 
-    func testTheFirstFrameEndsTheTraceSoLaterMarksAreIgnored() {
+    @Test
+    func theFirstFrameEndsTheTraceSoLaterMarksAreIgnored() {
         let tracer = LaunchTracer(processStart: Date())
 
         tracer.mark(.main)
         tracer.mark(.firstFramePresented)
         tracer.mark(.intentsRouted)
 
-        XCTAssertEqual(tracer.recordedMarks.map(\.stage), [.main, .firstFramePresented])
+        #expect(tracer.recordedMarks.map(\.stage) == [.main, .firstFramePresented])
     }
 
-    func testTheReportNamesEveryStageItRecorded() {
+    @Test
+    func theReportNamesEveryStageItRecorded() {
         let tracer = LaunchTracer(processStart: Date())
 
         tracer.mark(.main)
         tracer.mark(.menuInstalled)
 
         let report = tracer.report()
-        XCTAssertTrue(report.contains("main"))
-        XCTAssertTrue(report.contains("menuInstalled"))
-        XCTAssertFalse(report.contains("intentsRouted"))
+        #expect(report.contains("main"))
+        #expect(report.contains("menuInstalled"))
+        #expect(!report.contains("intentsRouted"))
     }
 
-    func testProcessStartIsInThePast() {
-        XCTAssertLessThan(LaunchTracer.processStartDate(), Date())
+    @Test
+    func processStartIsInThePast() {
+        #expect(LaunchTracer.processStartDate() < Date())
     }
 }

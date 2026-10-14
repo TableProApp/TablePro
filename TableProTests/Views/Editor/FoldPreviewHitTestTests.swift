@@ -1,8 +1,3 @@
-//
-//  FoldPreviewHitTestTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 @testable import TablePro
@@ -10,6 +5,7 @@ import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -46,10 +42,7 @@ struct FoldPreviewHitTestTests {
     }
 
     private func foldAndWait(_ controller: TextViewController) async throws {
-        for _ in 0..<40 {
-            if !controller.foldRanges.isEmpty { break }
-            try await Task.sleep(for: .milliseconds(50))
-        }
+        _ = try? await waitUntil { !controller.foldRanges.isEmpty }
         controller.foldAll()
         controller.textView.layoutManager.layoutLines()
     }

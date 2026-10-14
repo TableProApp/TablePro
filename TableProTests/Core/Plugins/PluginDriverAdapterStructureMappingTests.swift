@@ -10,7 +10,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubStructureDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class StubStructureDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { "public" }
@@ -45,18 +45,9 @@ private final class StubStructureDriver: PluginDatabaseDriver, @unchecked Sendab
         PluginStructureFixtures.tableMetadata.first { $0.tableName == table } ?? PluginTableMetadata(tableName: table)
     }
 
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 

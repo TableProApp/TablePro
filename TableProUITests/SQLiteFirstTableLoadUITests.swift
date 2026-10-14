@@ -18,7 +18,7 @@ final class SQLiteFirstTableLoadUITests: UITestCase {
 
         launch.app.typeShortcut(.closeTab)
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { self.tabsTitled("album", in: window).count == 0 && editor.exists },
+            waitForPredicate(timeout: 20) { self.editorTabs(titled: "album", in: window).count == 0 && editor.exists },
             "Command W must close the table tab and leave the query tab in front"
         )
         launch.app.typeShortcut(.closeTab)

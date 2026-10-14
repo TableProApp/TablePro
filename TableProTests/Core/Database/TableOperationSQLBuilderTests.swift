@@ -8,64 +8,30 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubDropDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class StubDropDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
     var serverVersion: String? { nil }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 
 /// A driver that answers the foreign-key questions, which `StubDropDriver` leaves at the protocol
 /// default of nil. The two together are what the builder's contract is: whatever the connected
 /// driver says, and nothing at all when it says nothing.
-private final class StubForeignKeyDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class StubForeignKeyDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
     var serverVersion: String? { nil }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 
     func foreignKeyDisableStatements() -> [String]? { ["SET FOREIGN_KEY_CHECKS=0"] }

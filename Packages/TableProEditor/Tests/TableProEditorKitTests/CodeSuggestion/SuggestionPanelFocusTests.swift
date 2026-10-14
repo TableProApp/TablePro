@@ -1,38 +1,40 @@
 import AppKit
 import SwiftUI
 @testable import TableProEditorKit
-import XCTest
+import TableProTestSupport
+import Testing
 
-final class SuggestionPanelFocusTests: XCTestCase {
+@MainActor
+struct SuggestionPanelFocusTests {
     @MainActor
-    func test_panel_neverAcceptsKeyOrMainStatus() throws {
+    @Test func test_panel_neverAcceptsKeyOrMainStatus() throws {
         let controller = SuggestionController()
-        let window = try XCTUnwrap(controller.window)
+        let window = try #require(controller.window)
 
-        XCTAssertFalse(window.canBecomeKey)
-        XCTAssertFalse(window.canBecomeMain)
-        XCTAssertTrue(window.styleMask.contains(.nonactivatingPanel))
-        XCTAssertEqual((window as? NSPanel)?.becomesKeyOnlyIfNeeded, true)
-        XCTAssertEqual(window.tabbingMode, .disallowed)
+        #expect(!window.canBecomeKey)
+        #expect(!window.canBecomeMain)
+        #expect(window.styleMask.contains(.nonactivatingPanel))
+        #expect((window as? NSPanel)?.becomesKeyOnlyIfNeeded == true)
+        #expect(window.tabbingMode == .disallowed)
     }
 
     @MainActor
-    func test_contentViewHierarchy_containsNoFocusableTableView() throws {
+    @Test func test_contentViewHierarchy_containsNoFocusableTableView() async throws {
         let controller = SuggestionController()
-        let window = try XCTUnwrap(controller.window)
+        let window = try #require(controller.window)
 
         controller.model.items = [PanelStubEntry(label: "SELECT"), PanelStubEntry(label: "SET")]
         window.setContentSize(NSSize(width: 300, height: 200))
         window.orderFrontRegardless()
         defer { window.close() }
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        try await waitUntilMounted(window)
 
-        let contentView = try XCTUnwrap(window.contentView)
-        XCTAssertNil(firstFocusableTableView(in: contentView))
+        let contentView = try #require(window.contentView)
+        #expect(firstFocusableTableView(in: contentView) == nil)
     }
 
     @MainActor
-    func test_showWindowAttachedTo_preservesParentFirstResponder() throws {
+    @Test func test_showWindowAttachedTo_preservesParentFirstResponder() async throws {
         let (parentWindow, textViewController) = Mock.windowedTextViewController(theme: Mock.theme())
         let controller = SuggestionController()
         defer {
@@ -41,22 +43,22 @@ final class SuggestionPanelFocusTests: XCTestCase {
         }
 
         parentWindow.orderFrontRegardless()
-        let textView = try XCTUnwrap(textViewController.textView)
-        XCTAssertTrue(parentWindow.makeFirstResponder(textView))
+        let textView = try #require(textViewController.textView)
+        #expect(parentWindow.makeFirstResponder(textView))
 
         controller.model.items = [PanelStubEntry(label: "SELECT")]
         controller.showWindow(attachedTo: parentWindow)
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        try await waitUntilMounted(try #require(controller.window))
 
-        XCTAssertIdentical(parentWindow.firstResponder, textView)
+        #expect(parentWindow.firstResponder === textView)
     }
 
     @MainActor
-    func test_showWindowAttachedTo_reattachesFromPreviousParent() throws {
+    @Test func test_showWindowAttachedTo_reattachesFromPreviousParent() throws {
         let (firstParent, _) = Mock.windowedTextViewController(theme: Mock.theme())
         let (secondParent, _) = Mock.windowedTextViewController(theme: Mock.theme())
         let controller = SuggestionController()
-        let window = try XCTUnwrap(controller.window)
+        let window = try #require(controller.window)
         defer {
             controller.close()
             firstParent.close()
@@ -64,36 +66,51 @@ final class SuggestionPanelFocusTests: XCTestCase {
         }
 
         controller.showWindow(attachedTo: firstParent)
-        XCTAssertIdentical(window.parent, firstParent)
+        #expect(window.parent === firstParent)
 
         controller.showWindow(attachedTo: secondParent)
-        XCTAssertIdentical(window.parent, secondParent)
-        XCTAssertFalse(firstParent.childWindows?.contains(window) ?? false)
+        #expect(window.parent === secondParent)
+        #expect(!(firstParent.childWindows?.contains(window) ?? false))
     }
 
     @MainActor
-    func test_close_detachesPanelFromParent() throws {
+    @Test func test_close_detachesPanelFromParent() throws {
         let (parentWindow, _) = Mock.windowedTextViewController(theme: Mock.theme())
         let controller = SuggestionController()
-        let window = try XCTUnwrap(controller.window)
+        let window = try #require(controller.window)
         defer { parentWindow.close() }
 
         controller.showWindow(attachedTo: parentWindow)
-        XCTAssertIdentical(window.parent, parentWindow)
+        #expect(window.parent === parentWindow)
 
         controller.close()
 
-        XCTAssertNil(window.parent)
-        XCTAssertFalse(parentWindow.childWindows?.contains(window) ?? false)
+        #expect(window.parent == nil)
+        #expect(!(parentWindow.childWindows?.contains(window) ?? false))
+    }
+
+    // The background mounts in the same SwiftUI pass as the rows, so its view proves the rows are in the hierarchy.
+    @MainActor
+    private func waitUntilMounted(_ window: NSWindow) async throws {
+        window.contentView?.layoutSubtreeIfNeeded()
+        try await waitUntil {
+            guard let contentView = window.contentView else { return false }
+            return firstView(of: NSVisualEffectView.self, in: contentView) != nil
+        }
     }
 
     @MainActor
     private func firstFocusableTableView(in view: NSView) -> NSTableView? {
-        if let tableView = view as? NSTableView {
-            return tableView
+        firstView(of: NSTableView.self, in: view)
+    }
+
+    @MainActor
+    private func firstView<View: NSView>(of type: View.Type, in view: NSView) -> View? {
+        if let match = view as? View {
+            return match
         }
         for subview in view.subviews {
-            if let found = firstFocusableTableView(in: subview) {
+            if let found = firstView(of: type, in: subview) {
                 return found
             }
         }

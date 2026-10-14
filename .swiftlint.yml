@@ -189,6 +189,15 @@ custom_rules:
     excluded: ".*/(AppStorageEnvironment|GeneralSettings|SoftwareUpdater|WorkspaceRailViewController|SplitViewAutosaveSweep)\\.swift"
     message: "Resolve preferences through AppStorageEnvironment.shared.defaults. Only a macOS-owned system preference reads the standard domain."
     severity: error
+  # Package code cannot reach AppStorageEnvironment and the iOS app has no sandbox, so `.standard` is
+  # their only default. ManagedPolicy reads MDM-managed keys, which live in the standard domain.
+  storage_environment_defaults_argument:
+    name: "Storage Environment Defaults Argument"
+    regex: '\bUserDefaults[?!]?\s*=\s*\.standard\b'
+    excluded: ['.*/(Packages|Plugins|TableProMobile)/', '.*/ManagedPolicy\.swift']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Default a UserDefaults parameter to AppStorageEnvironment.shared.defaults, or a sandboxed run writes the developer's own com.TablePro."
+    severity: error
   public_error_text_in_log:
     name: "Error Text In The System Log"
     regex: '(\.(localizedDescription|errorDescription|failureReason)(\.prefix\(\d+\))?(\s*\?\?\s*"[^"]*")?|String\(describing:\s*\w*[eE]rr(or)?\)|\\\((?!(has|is|did|was|should)[A-Z])(\w*[eE]rr(or)?|e)(\.(message|description|debugDescription))?)\s*,\s*privacy:\s*\.public'

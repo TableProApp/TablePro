@@ -1,75 +1,85 @@
 import Foundation
+@testable import TablePro
 import TableProMCP
 import TableProPluginKit
-@testable import TablePro
-import XCTest
+import Testing
 
-final class ResourcesListHandlerTests: XCTestCase {
-    func testMethodIsResourcesList() {
-        XCTAssertEqual(ResourcesListHandler.method, "resources/list")
+struct ResourcesListHandlerTests {
+    @Test
+    func methodIsResourcesList() {
+        #expect(ResourcesListHandler.method == "resources/list")
     }
 
-    func testRequiresResourcesReadScope() {
-        XCTAssertEqual(ResourcesListHandler.requiredScopes, [.resourcesRead])
+    @Test
+    func requiresResourcesReadScope() {
+        #expect(ResourcesListHandler.requiredScopes == [.resourcesRead])
     }
 
-    func testIsOfferedToLegacyClients() {
-        XCTAssertTrue(ResourcesListHandler.isAvailableToLegacyClients)
+    @Test
+    func isOfferedToLegacyClients() {
+        #expect(ResourcesListHandler.isAvailableToLegacyClients)
     }
 
-    func testListsTheSavedConnectionsResource() async throws {
+    @Test
+    func listsTheSavedConnectionsResource() async throws {
         let result = try await runList()
-        let resources = try XCTUnwrap(result.payload["resources"]?.arrayValue)
+        let resources = try #require(result.payload["resources"]?.arrayValue)
         let uris = resources.compactMap { $0["uri"]?.stringValue }
-        XCTAssertTrue(uris.contains("tablepro://connections"))
+        #expect(uris.contains("tablepro://connections"))
     }
 
-    func testEveryEntryDescribesItself() async throws {
+    @Test
+    func everyEntryDescribesItself() async throws {
         let result = try await runList()
-        let resources = try XCTUnwrap(result.payload["resources"]?.arrayValue)
-        XCTAssertFalse(resources.isEmpty)
+        let resources = try #require(result.payload["resources"]?.arrayValue)
+        #expect(!resources.isEmpty)
 
         for resource in resources {
-            XCTAssertFalse(resource["uri"]?.stringValue?.isEmpty ?? true)
-            XCTAssertFalse(resource["name"]?.stringValue?.isEmpty ?? true)
-            XCTAssertFalse(resource["title"]?.stringValue?.isEmpty ?? true)
-            XCTAssertFalse(resource["description"]?.stringValue?.isEmpty ?? true)
-            XCTAssertEqual(resource["mimeType"]?.stringValue, "application/json")
+            #expect(!(resource["uri"]?.stringValue?.isEmpty ?? true))
+            #expect(!(resource["name"]?.stringValue?.isEmpty ?? true))
+            #expect(!(resource["title"]?.stringValue?.isEmpty ?? true))
+            #expect(!(resource["description"]?.stringValue?.isEmpty ?? true))
+            #expect(resource["mimeType"]?.stringValue == "application/json")
         }
     }
 
-    func testResultIsCompleteAndCacheableForThisPrincipalOnly() async throws {
+    @Test
+    func resultIsCompleteAndCacheableForThisPrincipalOnly() async throws {
         let result = try await runList()
-        XCTAssertEqual(result.kind, .complete)
+        #expect(result.kind == .complete)
 
-        let hint = try XCTUnwrap(result.cacheHint)
-        XCTAssertEqual(hint.scope, .privateScope)
-        XCTAssertEqual(hint.ttlMilliseconds, 30_000)
-        XCTAssertTrue(MCPProtocolDispatcher.cacheableMethods.contains(ResourcesListHandler.method))
+        let hint = try #require(result.cacheHint)
+        #expect(hint.scope == .privateScope)
+        #expect(hint.ttlMilliseconds == 30_000)
+        #expect(MCPProtocolDispatcher.cacheableMethods.contains(ResourcesListHandler.method))
     }
 
-    func testShortListingCarriesNoCursor() async throws {
+    @Test
+    func shortListingCarriesNoCursor() async throws {
         let result = try await runList()
         let count = result.payload["resources"]?.arrayValue?.count ?? 0
-        XCTAssertLessThanOrEqual(count, MCPListPagination.defaultPageSize)
-        XCTAssertNil(result.payload["nextCursor"])
+        #expect(count <= MCPListPagination.defaultPageSize)
+        #expect(result.payload["nextCursor"] == nil)
     }
 
-    func testEmptyCursorIsRefused() async throws {
+    @Test
+    func emptyCursorIsRefused() async throws {
         let error = try await failure(params: .object(["cursor": .string("")]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testCursorFromAnotherMethodIsRefused() async throws {
+    @Test
+    func cursorFromAnotherMethodIsRefused() async throws {
         let cursor = MCPListPagination.encodeCursor(offset: 0, method: "tools/list")
         let error = try await failure(params: .object(["cursor": .string(cursor)]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testCursorPastTheEndIsRefused() async throws {
+    @Test
+    func cursorPastTheEndIsRefused() async throws {
         let cursor = MCPListPagination.encodeCursor(offset: 9_999, method: ResourcesListHandler.method)
         let error = try await failure(params: .object(["cursor": .string(cursor)]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
     private func runList(params: JsonValue? = nil) async throws -> MCPResult {
@@ -88,7 +98,7 @@ final class ResourcesListHandlerTests: XCTestCase {
         } catch let error as MCPProtocolError {
             return error
         }
-        XCTFail("Expected the handler to refuse the request")
+        Issue.record("Expected the handler to refuse the request")
         return .internalError(detail: "unreachable")
     }
 }

@@ -3,7 +3,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StreamRecordingDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class StreamRecordingDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var queries: [String] = []
 
@@ -17,22 +17,6 @@ private final class StreamRecordingDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
-    func connect() async throws {}
-    func disconnect() {}
-    func execute(query: String) async throws -> PluginQueryResult { .empty }
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
 struct ExportDataSourceAdapterRowLimitTests {

@@ -1,12 +1,6 @@
-//
-//  MainContentCoordinatorRefreshTests.swift
-//  TableProTests
-//
-//  Tests for handleRefresh, the entry point behind the Refresh toolbar
-//  button and Cmd+R. Regression coverage for #1637: a refresh issued while
-//  a query was in flight was silently dropped because the in-flight
-//  cancellation cleared isExecuting asynchronously.
-//
+// handleRefresh is the entry point behind the Refresh toolbar button and Cmd+R. A refresh issued
+// while a query was in flight was silently dropped, because the in-flight cancellation cleared
+// isExecuting asynchronously.
 
 import Combine
 import Foundation
@@ -16,6 +10,8 @@ import Testing
 
 @MainActor
 struct MainContentCoordinatorRefreshTests {
+    private let fixtures = CoordinatorFixtures()
+
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
         makeCoordinator(connection: TestFixtures.makeConnection())
     }
@@ -23,13 +19,9 @@ struct MainContentCoordinatorRefreshTests {
     private func makeCoordinator(
         connection: DatabaseConnection
     ) -> (MainContentCoordinator, QueryTabManager) {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let fixture = fixtures.make(connection: connection)
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         return (coordinator, tabManager)
     }
 
@@ -356,7 +348,7 @@ struct MainContentCoordinatorRefreshTests {
     }
 
     @Test("A single requestRefresh fires once and schedules no trailing refresh")
-    func singleRequestRefreshHasNoTrailing() async {
+    func singleRequestRefreshHasNoTrailing() async throws {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
@@ -369,7 +361,8 @@ struct MainContentCoordinatorRefreshTests {
         coordinator.requestRefresh(hasPendingTableOps: false, onDiscard: {})
         let epochAfterLeading = coordinator.tabExecution.contentEpoch(for: tabId)
 
-        try? await Task.sleep(for: .milliseconds(400))
+        let coalesceWindow = try #require(coordinator.refreshCoalesceTask)
+        await coalesceWindow.value
 
         #expect(coordinator.tabExecution.contentEpoch(for: tabId) == epochAfterLeading)
         #expect(coordinator.refreshPendingTrailing == false)

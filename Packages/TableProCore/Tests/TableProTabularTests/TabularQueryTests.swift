@@ -1,9 +1,9 @@
 import Foundation
 @testable import TableProTabular
 import TableProTabularIO
-import XCTest
+import Testing
 
-final class TabularQueryTests: XCTestCase {
+struct TabularQueryTests {
     private func table(_ text: String) async throws -> TabularTable {
         TabularTable(source: try await TabularTableTests.delimitedSource(text), usesFirstRowAsHeader: true)
     }
@@ -20,11 +20,10 @@ final class TabularQueryTests: XCTestCase {
         _ table: TabularTable,
         _ predicate: TabularRowPredicate,
         _ expected: [Int],
-        file: StaticString = #filePath,
-        line: UInt = #line
+        sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
         let actual = try await matches(table, predicate)
-        XCTAssertEqual(actual, expected, file: file, line: line)
+        #expect(actual == expected, sourceLocation: sourceLocation)
     }
 
     private func cell(
@@ -48,7 +47,7 @@ final class TabularQueryTests: XCTestCase {
         ))
     }
 
-    func testTextOperatorsFollowCaseSensitivity() async throws {
+    @Test func testTextOperatorsFollowCaseSensitivity() async throws {
         let table = try await table("name\nAlice\nalice\nBob\n")
         try await expect(table, cell(table, 0, .equal, "ALICE"), [0, 1])
         try await expect(table, cell(table, 0, .equal, "ALICE", caseSensitive: true), [])
@@ -58,7 +57,7 @@ final class TabularQueryTests: XCTestCase {
         try await expect(table, cell(table, 0, .endsWith, "CE"), [0, 1])
     }
 
-    func testNumericColumnsCompareAsNumbersAndFallBackToTextForOtherCells() async throws {
+    @Test func testNumericColumnsCompareAsNumbersAndFallBackToTextForOtherCells() async throws {
         let table = try await table("n\n5\n10\n5.0\nx\n\n")
         try await expect(table, cell(table, 0, .equal, "5", kind: .numeric), [0, 2])
         try await expect(table, cell(table, 0, .greaterThan, "6", kind: .numeric), [1, 3])
@@ -67,12 +66,12 @@ final class TabularQueryTests: XCTestCase {
         try await expect(table, cell(table, 0, .inList, "", kind: .numeric, list: ["10", "x"]), [1, 3])
     }
 
-    func testOrderingOnATextColumnPrefersNumbersWhenBothSidesParse() async throws {
+    @Test func testOrderingOnATextColumnPrefersNumbersWhenBothSidesParse() async throws {
         let table = try await table("v\n9\n10\nabc\n")
         try await expect(table, cell(table, 0, .greaterThan, "9"), [1, 2])
     }
 
-    func testRegexAndAnyOf() async throws {
+    @Test func testRegexAndAnyOf() async throws {
         let table = try await table("code,city\nA1,Paris\nB2,Rome\nC3,Oslo\n")
         try await expect(table, cell(table, 0, .regex, "^[AB]\\d$"), [0, 1])
         let either = TabularRowPredicate.any([cell(table, 1, .equal, "rome"), cell(table, 1, .equal, "oslo")])
@@ -81,45 +80,45 @@ final class TabularQueryTests: XCTestCase {
         try await expect(table, both, [1])
     }
 
-    func testQuickSearchIgnoresCaseAndDiacritics() async throws {
+    @Test func testQuickSearchIgnoresCaseAndDiacritics() async throws {
         let table = try await table("a,b\nCafé,1\nnothing,2\nx,CAFE\n")
         let search = TabularRowPredicate.search(TabularSearch(text: "cafe", columns: table.columnIDs))
         try await expect(table, search, [0, 2])
     }
 
-    func testCSVCellsAreNeverNull() async throws {
+    @Test func testCSVCellsAreNeverNull() async throws {
         let table = try await table("a\n\nNULL\n")
         try await expect(table, cell(table, 0, .isNull, ""), [])
         try await expect(table, cell(table, 0, .equal, "NULL"), [1])
     }
 
-    func testSortPutsBlanksLastAndSortsNaturally() async throws {
+    @Test func testSortPutsBlanksLastAndSortsNaturally() async throws {
         let table = try await table("name,n\nItem 10,3\nItem 2,\nitem 1,20\n,x\n")
         let byName = try await TabularSorter.sortedKeys(
             table.rowOrder.keys,
             in: table,
             by: [TabularSortKey(column: table.columns[0].id, ascending: true, numeric: false)]
         )
-        XCTAssertEqual(byName, [3, 2, 1, 4])
+        #expect(byName == [3, 2, 1, 4])
         let byNumberDescending = try await TabularSorter.sortedKeys(
             table.rowOrder.keys,
             in: table,
             by: [TabularSortKey(column: table.columns[1].id, ascending: false, numeric: true)]
         )
-        XCTAssertEqual(byNumberDescending, [3, 1, 4, 2])
+        #expect(byNumberDescending == [3, 1, 4, 2])
     }
 
-    func testSortIsStableForEqualKeys() async throws {
+    @Test func testSortIsStableForEqualKeys() async throws {
         let table = try await table("k,v\nb,1\na,2\nb,3\na,4\n")
         let sorted = try await TabularSorter.sortedKeys(
             table.rowOrder.keys,
             in: table,
             by: [TabularSortKey(column: table.columns[0].id, ascending: true, numeric: false)]
         )
-        XCTAssertEqual(sorted, [2, 4, 1, 3])
+        #expect(sorted == [2, 4, 1, 3])
     }
 
-    func testNaturalSortOrdersDigitRunsByMagnitudeAndIgnoresCase() async throws {
+    @Test func testNaturalSortOrdersDigitRunsByMagnitudeAndIgnoresCase() async throws {
         let values = [
             "Item 10", "Item 2", "Item 100", "Item 20", "file10.txt", "file9.txt",
             "v1.10.0", "v1.2.3", "ABC", "abc", "x007", "x7"
@@ -130,10 +129,10 @@ final class TabularQueryTests: XCTestCase {
             in: table,
             by: [TabularSortKey(column: table.columns[0].id, ascending: true, numeric: false)]
         )
-        XCTAssertEqual(sorted, [9, 10, 6, 5, 2, 1, 4, 3, 8, 7, 11, 12])
+        #expect(sorted == [9, 10, 6, 5, 2, 1, 4, 3, 8, 7, 11, 12])
     }
 
-    func testASortAcrossManyChunksMatchesAStableReferenceSort() async throws {
+    @Test func testASortAcrossManyChunksMatchesAStableReferenceSort() async throws {
         let count = TabularChunking.minimumChunkSize * 9 + 37
         var generator = SystemRandomNumberGenerator()
         let values = (0..<count).map { _ in Int.random(in: 0..<500, using: &generator) }
@@ -151,7 +150,7 @@ final class TabularQueryTests: XCTestCase {
                 return left != right ? left > right : lhs.offset < rhs.offset
             }
             .map(\.element)
-        XCTAssertEqual(byNumber, expectedByNumber)
+        #expect(byNumber == expectedByNumber)
         let byLabelThenNumber = try await TabularSorter.sortedKeys(
             table.rowOrder.keys,
             in: table,
@@ -167,6 +166,6 @@ final class TabularQueryTests: XCTestCase {
                 return left < right
             }
             .map(\.element)
-        XCTAssertEqual(byLabelThenNumber, expectedByLabel)
+        #expect(byLabelThenNumber == expectedByLabel)
     }
 }

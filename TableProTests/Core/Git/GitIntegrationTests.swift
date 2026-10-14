@@ -51,6 +51,14 @@ private struct ScratchRepository {
         return result
     }
 
+    /// An index older than the files it lists is one plain `git status` rewrites, so a write the
+    /// client failed to suppress changes the index's identity.
+    func backdateIndex() throws {
+        let index = url(".git/index").path
+        let written = try FileManager.default.attributesOfItem(atPath: index)[.modificationDate] as? Date ?? Date()
+        try FileManager.default.setAttributes([.modificationDate: written.addingTimeInterval(-2)], ofItemAtPath: index)
+    }
+
     func indexIdentity() throws -> [FileAttributeKey: Any] {
         let attributes = try FileManager.default.attributesOfItem(atPath: url(".git/index").path)
         return [
@@ -60,7 +68,7 @@ private struct ScratchRepository {
     }
 }
 
-@Suite("Git against a real repository", .enabled(if: GitClient.make() != nil), .serialized)
+@Suite("Git against a real repository", .enabled(if: GitClient.make() != nil))
 struct GitIntegrationTests {
     private let client: GitClient
 
@@ -80,7 +88,7 @@ struct GitIntegrationTests {
         try repo.write("SELECT 10;\n", to: "sql queries/a b.sql")
         try repo.write("new\n", to: "sql queries/日本.sql")
         try repo.write("elsewhere\n", to: "other/x.sql")
-        try await Task.sleep(for: .milliseconds(1_100))
+        try repo.backdateIndex()
         let before = try repo.indexIdentity()
 
         let folder = repo.url("sql queries")

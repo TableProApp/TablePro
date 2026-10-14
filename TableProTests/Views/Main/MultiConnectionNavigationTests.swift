@@ -1,11 +1,5 @@
-//
-//  MultiConnectionNavigationTests.swift
-//  TableProTests
-//
-//  Tests for multi-connection navigation — openTableTab paths not covered
-//  by OpenTableTabTests, SidebarNavigationResult in multi-database-type
-//  context, and coordinator connection scoping isolation.
-//
+// Multi-connection navigation: the openTableTab paths OpenTableTabTests does not cover,
+// SidebarNavigationResult across database types, and coordinator connection scoping.
 
 import Foundation
 import TableProPluginKit
@@ -173,32 +167,12 @@ struct MultiConnectionNavigationTests {
 
     // MARK: - SidebarNavigationResult: reuseActiveTab for all database types with no tabs
 
-    @Test("resolve returns reuseActiveTab for mysql with no existing tabs")
-    func resolveReuseActiveTabForMysqlNoTabs() {
+    @Test("resolve returns reuseActiveTab when there are no existing tabs", arguments: [
+        "users", "accounts", "items",
+    ])
+    func resolveReuseActiveTabWithNoTabs(tableName: String) {
         let result = SidebarNavigationResult.resolve(
-            clickedTableName: "users",
-            currentTabTableName: nil,
-            hasExistingTabs: false,
-            isActiveTabReusable: false
-        )
-        #expect(result == .reuseActiveTab)
-    }
-
-    @Test("resolve returns reuseActiveTab for postgresql with no existing tabs")
-    func resolveReuseActiveTabForPostgresqlNoTabs() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "accounts",
-            currentTabTableName: nil,
-            hasExistingTabs: false,
-            isActiveTabReusable: false
-        )
-        #expect(result == .reuseActiveTab)
-    }
-
-    @Test("resolve returns reuseActiveTab for sqlite with no existing tabs")
-    func resolveReuseActiveTabForSqliteNoTabs() {
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "items",
+            clickedTableName: tableName,
             currentTabTableName: nil,
             hasExistingTabs: false,
             isActiveTabReusable: false

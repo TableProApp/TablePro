@@ -12,6 +12,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 /// One-shot rendezvous so a test can wait for work to reach a known point instead
@@ -55,21 +56,16 @@ private final class BoolBox {
 
 private struct GateBodyError: Error, Equatable {}
 
-/// Lets queued work reach its next suspension point without sleeping.
+/// The main queue runs its jobs in order, so a job queued now runs after every caller the case
+/// started has reached its next suspension point.
 @MainActor
-private func drainMainActor(_ times: Int = 8) async {
-    for _ in 0..<times {
-        await Task.yield()
-    }
+private func runQueuedMainActorWork() async {
+    await Task { @MainActor in }.value
 }
 
-/// Waits for callers to queue. The bound is there so a caller that never queues fails the
-/// assertions after it rather than hanging the suite.
 @MainActor
-private func waitForWaiters(_ count: Int, on gate: SessionDriverGate, _ connectionId: UUID) async {
-    for _ in 0..<10_000 where gate.waiterCount(for: connectionId) < count {
-        await Task.yield()
-    }
+private func waitForWaiters(_ count: Int, on gate: SessionDriverGate, _ connectionId: UUID) async throws {
+    try await waitUntil { gate.waiterCount(for: connectionId) >= count }
 }
 
 @MainActor
@@ -97,7 +93,7 @@ struct SessionDriverGateTests {
                 log.record("second-start")
             }
         }
-        await drainMainActor()
+        await runQueuedMainActorWork()
 
         #expect(log.events == ["first-start"])
 
@@ -175,7 +171,7 @@ struct SessionDriverGateTests {
                 log.record("cancelled-waiter-ran")
             }
         }
-        await drainMainActor()
+        await runQueuedMainActorWork()
 
         waiter.cancel()
         await #expect(throws: CancellationError.self) {
@@ -214,7 +210,7 @@ struct SessionDriverGateTests {
                 log.record("drained-waiter-ran")
             }
         }
-        await drainMainActor()
+        await runQueuedMainActorWork()
 
         gate.drain(connectionId: connectionId)
 
@@ -263,7 +259,7 @@ struct SessionDriverGateTests {
                 log.record("queued-start")
             }
         }
-        await waitForWaiters(1, on: gate, connectionId)
+        try await waitForWaiters(1, on: gate, connectionId)
         #expect(gate.waiterCount(for: connectionId) == 1)
 
         releaseDrained.signal()
@@ -316,7 +312,7 @@ struct SessionDriverGateTests {
                 log.record("arriving-start")
             }
         }
-        await waitForWaiters(1, on: gate, connectionId)
+        try await waitForWaiters(1, on: gate, connectionId)
 
         #expect(gate.waiterCount(for: connectionId) == 1)
         #expect(log.events == ["later-start"])
@@ -352,7 +348,7 @@ struct SessionDriverGateTests {
                 log.record("handed-off-ran")
             }
         }
-        await waitForWaiters(1, on: gate, connectionId)
+        try await waitForWaiters(1, on: gate, connectionId)
         #expect(gate.waiterCount(for: connectionId) == 1)
 
         releaseHolder.signal()

@@ -1,5 +1,6 @@
 import AppKit
 @testable import TableProEditorKit
+import TableProTestSupport
 import XCTest
 
 final class SuggestionShowCompletionsGuardTests: XCTestCase {
@@ -12,7 +13,8 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(textView))
 
         let model = SuggestionViewModel()
-        let delegate = DelayedStubDelegate(items: [StubSuggestionEntry(label: "SELECT")])
+        let fetch = AsyncGate()
+        let delegate = DelayedStubDelegate(items: [StubSuggestionEntry(label: "SELECT")], fetch: fetch)
 
         var presentationCount = 0
         model.showCompletions(
@@ -23,7 +25,9 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
             presentationCount += 1
         }
 
+        await fetch.arrived(1)
         window.makeFirstResponder(nil)
+        await fetch.open()
         await model.itemsRequestTask?.value
 
         XCTAssertEqual(presentationCount, 0)
@@ -34,8 +38,7 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
         let (window, textViewController) = Mock.windowedTextViewController(theme: Mock.theme())
         defer { window.close() }
         window.makeKeyAndOrderFront(nil)
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-        guard window.isKeyWindow else {
+        guard (try? await waitUntil(timeout: .milliseconds(100)) { window.isKeyWindow }) != nil else {
             throw XCTSkip("Window cannot become key in this environment")
         }
 
@@ -43,7 +46,9 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(textView))
 
         let model = SuggestionViewModel()
-        let delegate = DelayedStubDelegate(items: [StubSuggestionEntry(label: "SELECT")])
+        let fetch = AsyncGate()
+        await fetch.open()
+        let delegate = DelayedStubDelegate(items: [StubSuggestionEntry(label: "SELECT")], fetch: fetch)
 
         var presentedWindows: [NSWindow] = []
         model.showCompletions(
@@ -64,9 +69,11 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
 @MainActor
 private final class DelayedStubDelegate: CodeSuggestionDelegate {
     let items: [CodeSuggestionEntry]
+    private let fetch: AsyncGate
 
-    init(items: [CodeSuggestionEntry]) {
+    init(items: [CodeSuggestionEntry], fetch: AsyncGate) {
         self.items = items
+        self.fetch = fetch
     }
 
     func completionSuggestionsRequested(
@@ -74,7 +81,7 @@ private final class DelayedStubDelegate: CodeSuggestionDelegate {
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
     ) async -> CodeSuggestionResponse? {
-        try? await Task.sleep(for: .milliseconds(50))
+        await fetch.wait()
         return .answeringAnEmptyPrefix(items, at: cursorPosition)
     }
 

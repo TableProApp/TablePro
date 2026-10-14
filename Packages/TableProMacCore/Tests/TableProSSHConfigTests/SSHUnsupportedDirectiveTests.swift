@@ -12,20 +12,15 @@ import Testing
 @testable import TableProSSHConfig
 
 struct SSHUnsupportedDirectiveTests {
-    @Test("ProxyCommand is reported")
-    func proxyCommandChangesRouting() {
-        #expect(SSHUnsupportedDirective.changesRouting(key: "ProxyCommand"))
+    @Test("ProxyCommand and ProxyUseFdpass are reported", arguments: ["ProxyCommand", "ProxyUseFdpass"])
+    func proxyDirectivesChangeRouting(_ key: String) {
+        #expect(SSHUnsupportedDirective.changesRouting(key: key))
     }
 
     @Test("The match ignores case, the way ssh_config keywords do")
     func matchIsCaseInsensitive() {
         #expect(SSHUnsupportedDirective.changesRouting(key: "proxycommand"))
         #expect(SSHUnsupportedDirective.changesRouting(key: "PROXYCOMMAND"))
-    }
-
-    @Test("ProxyUseFdpass is reported")
-    func proxyUseFdpassChangesRouting() {
-        #expect(SSHUnsupportedDirective.changesRouting(key: "ProxyUseFdpass"))
     }
 
     @Test("Directives TablePro honours are not reported")

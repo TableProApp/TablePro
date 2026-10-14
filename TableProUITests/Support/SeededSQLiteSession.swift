@@ -1,8 +1,3 @@
-//
-//  SeededSQLiteSession.swift
-//  TableProUITests
-//
-
 import SQLite3
 import XCTest
 
@@ -18,7 +13,7 @@ internal struct ConnectionSeed {
     internal var tabs: [SeededTab]
     internal var isOpen: Bool
 
-    /// `isOpen: false` saves the connection without restoring it, so it is reachable only from a list or the switcher.
+    // A seed that is not open is saved but never restored, so only a list or the switcher reaches it.
     internal init(
         name: String = UITestFixture.connectionName,
         databaseSQL: String = UITestFixture.sql,
@@ -40,7 +35,6 @@ internal struct SeededConnection {
     internal let database: URL
 }
 
-/// Writes the files the app reads to reopen its last session, so a launch restores these connections already connected.
 internal extension UITestCase {
     @discardableResult
     func seedSQLiteSession(_ seeds: [ConnectionSeed]) throws -> [SeededConnection] {
@@ -72,28 +66,6 @@ internal extension UITestCase {
         try writeJSON(payloads, to: supportDirectory.appendingPathComponent("connections.json"))
         try writeJSON(openIds, to: supportDirectory.appendingPathComponent("LastOpenConnections.json"))
         return seeded
-    }
-
-    /// Reads the file, not the grid, so an assertion sees what the database holds.
-    func sqliteStrings(_ sql: String, in databaseURL: URL) -> [String] {
-        var handle: OpaquePointer?
-        defer { sqlite3_close(handle) }
-        guard sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
-            XCTFail("Could not open \(databaseURL.path)")
-            return []
-        }
-        sqlite3_busy_timeout(handle, 5_000)
-        var statement: OpaquePointer?
-        defer { sqlite3_finalize(statement) }
-        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
-            XCTFail("Could not prepare \(sql): \(String(cString: sqlite3_errmsg(handle)))")
-            return []
-        }
-        var values: [String] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-            values.append(sqlite3_column_text(statement, 0).map { String(cString: $0) } ?? "")
-        }
-        return values
     }
 
     private func connectionPayload(

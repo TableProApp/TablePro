@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Principal change manager", .serialized)
 @MainActor
 struct PrincipalChangeManagerTests {
     private let alice = PluginPrincipalRef(name: "alice")

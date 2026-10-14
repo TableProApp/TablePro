@@ -95,20 +95,17 @@ final class TableDefinitionRendererTests: XCTestCase {
 
 @MainActor
 final class CompareSyncProfileStorageTests: XCTestCase {
-    private var defaults: UserDefaults!
+    private var suite: EphemeralDefaults!
     private var storage: CompareSyncProfileStorage!
-    private let suiteName = "CompareSyncProfileStorageTests"
 
-    override func setUp() {
-        super.setUp()
-        UserDefaults().removePersistentDomain(forName: suiteName)
-        defaults = UserDefaults(suiteName: suiteName)
-        storage = CompareSyncProfileStorage(defaults: defaults)
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        suite = try EphemeralDefaults()
+        storage = CompareSyncProfileStorage(defaults: suite.defaults)
     }
 
     override func tearDown() {
-        UserDefaults().removePersistentDomain(forName: suiteName)
-        defaults = nil
+        suite = nil
         storage = nil
         super.tearDown()
     }

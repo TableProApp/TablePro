@@ -94,14 +94,12 @@ struct RedisArgumentCodecGrammarTests {
         #expect(RedisArgumentCodec.split("   ")?.isEmpty == true)
     }
 
-    @Test("unbalanced quotes are rejected")
-    func unbalancedQuotesRejected() {
-        #expect(RedisArgumentCodec.split("SET k \"unterminated") == nil)
-    }
-
-    @Test("a closing quote must be followed by whitespace")
-    func trailingTextAfterQuoteRejected() {
-        #expect(RedisArgumentCodec.split("SET k \"ab\"cd") == nil)
+    @Test("unbalanced quotes, and text right after a closing quote, are rejected", arguments: [
+        "SET k \"unterminated",
+        "SET k \"ab\"cd",
+    ])
+    func malformedQuotingRejected(_ command: String) {
+        #expect(RedisArgumentCodec.split(command) == nil)
     }
 
     @Test("a value cannot break out into extra arguments")

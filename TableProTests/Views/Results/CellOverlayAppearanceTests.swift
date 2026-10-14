@@ -11,7 +11,6 @@ import Testing
 /// that from reaching a suite running in parallel is that the body is synchronous and `@MainActor`,
 /// so nothing else on the main actor can interleave before the `defer` restores it. `.serialized`
 /// only orders tests inside this suite. Adding an `await` would break it.
-@Suite("Cell overlay layer colours follow the appearance", .serialized)
 @MainActor
 struct CellOverlayAppearanceTests {
     private func makeContainer() -> CellOverlayContainerView {

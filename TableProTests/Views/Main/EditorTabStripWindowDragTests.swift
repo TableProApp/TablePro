@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Editor tab strip window drag", .serialized)
 @MainActor
 struct EditorTabStripWindowDragTests {
     private static let tabCount = 3

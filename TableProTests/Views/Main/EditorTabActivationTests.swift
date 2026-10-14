@@ -1,8 +1,3 @@
-//
-//  EditorTabActivationTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 import Testing
@@ -28,17 +23,20 @@ struct EditorTabActivationTests {
         #expect(Self.resolve(clickCount: 1) == .select)
     }
 
-    @Test("A second click on the same tab keeps it open")
-    func doubleClickKeepsTheTab() {
-        #expect(Self.resolve(clickCount: 2) == .selectAndKeep)
+    /// A double-click that follows a nearby click arrives as counts two and three, so refusing
+    /// the three would leave a genuine double-click doing nothing. Keeping is idempotent, so
+    /// acting on it costs nothing.
+    @Test("A second click on the same tab keeps it open, and so does a count above two", arguments: [2, 3])
+    func repeatedClickKeepsTheTab(clickCount: Int) {
+        #expect(Self.resolve(clickCount: clickCount) == .selectAndKeep)
     }
 
     /// Two clicks close enough in time and space arrive as one click of count two whichever view
     /// each of them hit, and tabs sit flush against each other. Without this the pair would keep a
     /// tab the user only meant to select.
-    @Test("A second click on a different tab only selects")
-    func doubleClickAcrossTabsOnlySelects() {
-        #expect(Self.resolve(clickCount: 2, sameTab: false) == .select)
+    @Test("A second click on a different tab only selects, and so does a count above two", arguments: [2, 3])
+    func repeatedClickAcrossTabsOnlySelects(clickCount: Int) {
+        #expect(Self.resolve(clickCount: clickCount, sameTab: false) == .select)
     }
 
     @Test("The first click of a session only selects")
@@ -55,19 +53,6 @@ struct EditorTabActivationTests {
     @Test("A modified click never keeps the tab")
     func modifiedClickOnlySelects() {
         #expect(Self.resolve(clickCount: 2, hasModifiers: true) == .select)
-    }
-
-    /// A double-click that follows a nearby click arrives as counts two and three, so refusing
-    /// the three would leave a genuine double-click doing nothing. Keeping is idempotent, so
-    /// acting on it costs nothing.
-    @Test("A count above two still keeps the tab")
-    func tripleClickStillKeepsTheTab() {
-        #expect(Self.resolve(clickCount: 3) == .selectAndKeep)
-    }
-
-    @Test("A count above two on a different tab still only selects")
-    func tripleClickAcrossTabsOnlySelects() {
-        #expect(Self.resolve(clickCount: 3, sameTab: false) == .select)
     }
 
     /// The keyboard and VoiceOver both activate the tab's button with no mouse event current.

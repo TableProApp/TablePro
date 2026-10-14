@@ -1,11 +1,11 @@
 import Foundation
 @testable import TableProTabularIO
-import XCTest
+import Testing
 
-final class XLSXWorkbookTests: XCTestCase {
+struct XLSXWorkbookTests {
     private let emptySheet = TestWorkbook.worksheet(rows: "")
 
-    func testSheetsFollowWorkbookOrderWithNamesHiddenStateAndParts() throws {
+    @Test func testSheetsFollowWorkbookOrderWithNamesHiddenStateAndParts() throws {
         var fixture = TestWorkbook()
         fixture.sheets = [
             TestWorkbook.Sheet(name: "Summary", partName: "sheet3.xml", body: emptySheet),
@@ -13,15 +13,15 @@ final class XLSXWorkbookTests: XCTestCase {
             TestWorkbook.Sheet(name: "Secret", state: "veryHidden", partName: "sheet2.xml", body: emptySheet)
         ]
         let workbook = try fixture.workbook()
-        XCTAssertEqual(workbook.sheets.map(\.name), ["Summary", "R&D", "Secret"])
-        XCTAssertEqual(workbook.sheets.map(\.visibility), [.visible, .hidden, .veryHidden])
-        XCTAssertEqual(workbook.sheets.map(\.partPath), ["xl/worksheets/sheet3.xml", "xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"])
-        XCTAssertEqual(workbook.sheets.map(\.index), [0, 1, 2])
-        XCTAssertEqual(workbook.visibleSheets.map(\.name), ["Summary"])
-        XCTAssertTrue(workbook.sheets[1].isHidden)
+        #expect(workbook.sheets.map(\.name) == ["Summary", "R&D", "Secret"])
+        #expect(workbook.sheets.map(\.visibility) == [.visible, .hidden, .veryHidden])
+        #expect(workbook.sheets.map(\.partPath) == ["xl/worksheets/sheet3.xml", "xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"])
+        #expect(workbook.sheets.map(\.index) == [0, 1, 2])
+        #expect(workbook.visibleSheets.map(\.name) == ["Summary"])
+        #expect(workbook.sheets[1].isHidden)
     }
 
-    func testChartsheetsAreNotListedAsTables() throws {
+    @Test func testChartsheetsAreNotListedAsTables() throws {
         var fixture = TestWorkbook()
         fixture.sheets = [TestWorkbook.Sheet(name: "Data", body: emptySheet)]
         var builder = fixture.zipBuilder()
@@ -40,25 +40,25 @@ final class XLSXWorkbookTests: XCTestCase {
         builder.add("xl/chartsheets/sheet1.xml", "<chartsheet/>")
         let archive = try ZipArchive(bytes: builder.build())
         let workbook = try XLSXWorkbook(archive: archive)
-        XCTAssertEqual(workbook.sheets.map(\.name), ["Data"])
+        #expect(workbook.sheets.map(\.name) == ["Data"])
     }
 
-    func testRelationshipTargetsResolveRelativeAndAbsolute() {
-        XCTAssertEqual(XLSXPackage.resolvePath("worksheets/sheet1.xml", relativeTo: "xl/workbook.xml"), "xl/worksheets/sheet1.xml")
-        XCTAssertEqual(XLSXPackage.resolvePath("/xl/worksheets/sheet1.xml", relativeTo: "xl/workbook.xml"), "xl/worksheets/sheet1.xml")
-        XCTAssertEqual(XLSXPackage.resolvePath("../xl/./sharedStrings.xml", relativeTo: "xl/workbook.xml"), "xl/sharedStrings.xml")
-        XCTAssertEqual(XLSXPackage.relationshipsPath(ofPart: "xl/workbook.xml"), "xl/_rels/workbook.xml.rels")
+    @Test func testRelationshipTargetsResolveRelativeAndAbsolute() {
+        #expect(XLSXPackage.resolvePath("worksheets/sheet1.xml", relativeTo: "xl/workbook.xml") == "xl/worksheets/sheet1.xml")
+        #expect(XLSXPackage.resolvePath("/xl/worksheets/sheet1.xml", relativeTo: "xl/workbook.xml") == "xl/worksheets/sheet1.xml")
+        #expect(XLSXPackage.resolvePath("../xl/./sharedStrings.xml", relativeTo: "xl/workbook.xml") == "xl/sharedStrings.xml")
+        #expect(XLSXPackage.relationshipsPath(ofPart: "xl/workbook.xml") == "xl/_rels/workbook.xml.rels")
     }
 
-    func testDateSystemIsReadFromWorkbookProperties() throws {
+    @Test func testDateSystemIsReadFromWorkbookProperties() throws {
         var fixture = TestWorkbook()
         fixture.sheets = [TestWorkbook.Sheet(name: "Data", body: emptySheet)]
-        XCTAssertEqual(try fixture.workbook().dateSystem, .base1900)
+        #expect(try fixture.workbook().dateSystem == .base1900)
         fixture.usesDate1904 = true
-        XCTAssertEqual(try fixture.workbook().dateSystem, .base1904)
+        #expect(try fixture.workbook().dateSystem == .base1904)
     }
 
-    func testSharedStringsJoinRichTextRunsAndSkipPhoneticGuides() throws {
+    @Test func testSharedStringsJoinRichTextRunsAndSkipPhoneticGuides() throws {
         var fixture = TestWorkbook()
         fixture.sheets = [TestWorkbook.Sheet(name: "Data", body: emptySheet)]
         fixture.sharedStrings = [
@@ -72,34 +72,34 @@ final class XLSXWorkbookTests: XCTestCase {
             "<si><t><![CDATA[<raw>]]></t></si>"
         ]
         let strings = try fixture.workbook().sharedStrings
-        XCTAssertEqual(strings.count, 8)
-        XCTAssertEqual((0..<strings.count).compactMap { strings.string(at: $0) }, [
+        #expect(strings.count == 8)
+        #expect((0..<strings.count).compactMap { strings.string(at: $0) } == [
             "Ada", "Grace Hopper", "東京", "Tom & Jerry <3 😀 A", "line\rbreak _x0041_", "", "", "<raw>"
         ])
-        XCTAssertNil(strings.string(at: 8))
+        #expect(strings.string(at: 8) == nil)
     }
 
-    func testSharedStringsSurviveAnyChunkBoundary() throws {
+    @Test func testSharedStringsSurviveAnyChunkBoundary() throws {
         var fixture = TestWorkbook()
         fixture.sheets = [TestWorkbook.Sheet(name: "Data", body: emptySheet)]
         let expected = (0..<300).map { "value \($0) & more" }
         fixture.sharedStrings = expected.map { "<si><r><t>\($0.replacingOccurrences(of: "&", with: "&amp;"))</t></r></si>" }
         for chunkSize in [1, 7, 64, 4_096] {
             let strings = try fixture.workbook(chunkSize: chunkSize).sharedStrings
-            XCTAssertEqual((0..<strings.count).compactMap { strings.string(at: $0) }, expected, "chunk \(chunkSize)")
+            #expect((0..<strings.count).compactMap { strings.string(at: $0) } == expected, "chunk \(chunkSize)")
         }
     }
 
-    func testMissingWorkbookPartIsNamed() throws {
+    @Test func testMissingWorkbookPartIsNamed() throws {
         var builder = TestZipBuilder()
         builder.add("docProps/app.xml", "<Properties/>")
         let archive = try ZipArchive(bytes: builder.build())
-        XCTAssertThrowsError(try XLSXWorkbook(archive: archive)) { error in
-            XCTAssertEqual(error as? ZipArchive.Failure, .entryNotFound("xl/workbook.xml"))
+        if let error = #expect(throws: (any Error).self, performing: { try XLSXWorkbook(archive: archive) }) {
+            #expect(error as? ZipArchive.Failure == .entryNotFound("xl/workbook.xml"))
         }
     }
 
-    func testWorkbookWithoutRelationshipsFallsBackToConventionalParts() throws {
+    @Test func testWorkbookWithoutRelationshipsFallsBackToConventionalParts() throws {
         var builder = TestZipBuilder()
         builder.add(
             "xl/workbook.xml",
@@ -108,26 +108,26 @@ final class XLSXWorkbookTests: XCTestCase {
         builder.add("xl/sharedStrings.xml", "<sst><si><t>hello</t></si></sst>")
         builder.add("xl/worksheets/sheet1.xml", TestWorkbook.worksheet(rows: "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c></row>"))
         let workbook = try XLSXWorkbook(archive: ZipArchive(bytes: builder.build()))
-        XCTAssertEqual(workbook.sheets.map(\.partPath), ["xl/worksheets/sheet1.xml"])
+        #expect(workbook.sheets.map(\.partPath) == ["xl/worksheets/sheet1.xml"])
         let source = try workbook.source(for: workbook.sheets[0])
-        XCTAssertEqual(source.cell(row: 0, column: 0), TabularCell(kind: .text, text: "hello"))
+        #expect(source.cell(row: 0, column: 0) == TabularCell(kind: .text, text: "hello"))
     }
 
-    func testCancellingWhileReadingSharedStringsThrows() throws {
+    @Test func testCancellingWhileReadingSharedStringsThrows() throws {
         var fixture = TestWorkbook()
         fixture.sheets = [TestWorkbook.Sheet(name: "Data", body: emptySheet)]
         fixture.sharedStrings = ["<si><t>a</t></si>"]
         let archive = try fixture.archive()
-        XCTAssertThrowsError(try XLSXWorkbook(archive: archive, isCancelled: { true })) { error in
-            XCTAssertTrue(error is TabularCancellation)
+        if let error = #expect(throws: (any Error).self, performing: { try XLSXWorkbook(archive: archive, isCancelled: { true }) }) {
+            #expect(error is TabularCancellation)
         }
     }
 
-    func testStoredWorkbookPartsReadLikeDeflatedOnes() throws {
+    @Test func testStoredWorkbookPartsReadLikeDeflatedOnes() throws {
         var fixture = TestWorkbook()
         fixture.method = .stored
         fixture.sharedStrings = ["<si><t>stored</t></si>"]
         fixture.sheets = [TestWorkbook.Sheet(name: "Data", body: TestWorkbook.worksheet(rows: "<row><c t=\"s\"><v>0</v></c></row>"))]
-        XCTAssertEqual(try fixture.source().cell(row: 0, column: 0).text, "stored")
+        #expect(try fixture.source().cell(row: 0, column: 0).text == "stored")
     }
 }

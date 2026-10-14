@@ -8,44 +8,25 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class PartitionUnawareDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class PartitionUnawareDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
     var serverVersion: String? { nil }
 
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 
 /// Answers the older requirement alone, the way every plugin built before `fetchPartitionDetails`
 /// existed does. The protocol default is what has to bridge it.
-private final class LegacyPartitionDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class LegacyPartitionDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
     var serverVersion: String? { nil }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
 
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
         [
@@ -56,24 +37,9 @@ private final class LegacyPartitionDriver: PluginDatabaseDriver, @unchecked Send
         ]
     }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 

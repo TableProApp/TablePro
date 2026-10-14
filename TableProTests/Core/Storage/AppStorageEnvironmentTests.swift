@@ -69,15 +69,13 @@ struct AppStorageEnvironmentTests {
 
     @Test("A new sandbox directory starts with an empty suite, and a relaunch into it keeps the suite")
     func newSandboxEmptiesTheSuite() throws {
-        let suiteName = "com.TablePro.tests.AppStorageEnvironmentTests"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
+        let suiteName = suite.suiteName
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("AppStorageEnvironmentTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-            try? FileManager.default.removeItem(at: directory)
-        }
+        defer { try? FileManager.default.removeItem(at: directory) }
 
         defaults.set("left by an earlier sandbox", forKey: "probe")
         AppStorageEnvironment.emptyDefaultsIfNewSandbox(defaults, suiteName: suiteName, supportDirectory: directory)

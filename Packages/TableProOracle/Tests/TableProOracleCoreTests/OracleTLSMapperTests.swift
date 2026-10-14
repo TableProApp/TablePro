@@ -1,113 +1,113 @@
+import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
-final class OracleTLSMapperTests: XCTestCase {
+struct OracleTLSMapperTests {
     private let missingPath = "/nonexistent/tablepro-oracle-tests/ca.pem"
 
-    func testDisabledModeNeverConsultsTheFilesystem() throws {
+    @Test func testDisabledModeNeverConsultsTheFilesystem() throws {
         let description = OracleTLSDescription(
             mode: .disabled,
             caCertificatePath: missingPath,
             clientCertificatePath: missingPath,
             clientKeyPath: missingPath
         )
-        XCTAssertNoThrow(try OracleTLSMapper.tls(for: description))
+        #expect(throws: Never.self) { try OracleTLSMapper.tls(for: description) }
     }
 
-    func testRequiredModeWithNoCertificatePathsUsesSystemTrustRoots() {
-        XCTAssertNoThrow(try OracleTLSMapper.tls(for: OracleTLSDescription(mode: .required)))
+    @Test func testRequiredModeWithNoCertificatePathsUsesSystemTrustRoots() {
+        #expect(throws: Never.self) { try OracleTLSMapper.tls(for: OracleTLSDescription(mode: .required)) }
     }
 
-    func testRequiredModeIgnoresCAPathBecauseItDoesNotVerify() {
+    @Test func testRequiredModeIgnoresCAPathBecauseItDoesNotVerify() {
         let description = OracleTLSDescription(mode: .required, caCertificatePath: missingPath)
-        XCTAssertNoThrow(try OracleTLSMapper.tls(for: description))
+        #expect(throws: Never.self) { try OracleTLSMapper.tls(for: description) }
     }
 
-    func testUnreadableCAPathThrowsCertificateUnavailable() {
+    @Test func testUnreadableCAPathThrowsCertificateUnavailable() {
         let description = OracleTLSDescription(mode: .verifyCA, caCertificatePath: missingPath)
         assertCertificateUnavailable(for: description, field: .certificateAuthority)
     }
 
-    func testUnreadableClientCertificateThrowsCertificateUnavailable() {
+    @Test func testUnreadableClientCertificateThrowsCertificateUnavailable() {
         let description = OracleTLSDescription(mode: .required, clientCertificatePath: missingPath)
         assertCertificateUnavailable(for: description, field: .clientCertificate)
     }
 
-    func testUnreadableClientKeyThrowsCertificateUnavailable() {
+    @Test func testUnreadableClientKeyThrowsCertificateUnavailable() {
         let description = OracleTLSDescription(mode: .required, clientKeyPath: missingPath)
         assertCertificateUnavailable(for: description, field: .clientKey)
     }
 
-    func testEmptyPathsAreTreatedAsAbsent() {
+    @Test func testEmptyPathsAreTreatedAsAbsent() {
         let description = OracleTLSDescription(
             mode: .verifyIdentity,
             caCertificatePath: "",
             clientCertificatePath: "",
             clientKeyPath: ""
         )
-        XCTAssertNil(description.caCertificatePath)
-        XCTAssertNil(description.clientCertificatePath)
-        XCTAssertNil(description.clientKeyPath)
-        XCTAssertNoThrow(try OracleTLSMapper.tls(for: description))
+        #expect(description.caCertificatePath == nil)
+        #expect(description.clientCertificatePath == nil)
+        #expect(description.clientKeyPath == nil)
+        #expect(throws: Never.self) { try OracleTLSMapper.tls(for: description) }
     }
 
-    func testVerifyCAWithNoCAPathThrowsCertificateAuthorityRequired() {
+    @Test func testVerifyCAWithNoCAPathThrowsCertificateAuthorityRequired() {
         for path in [nil, "", "   "] {
             let description = OracleTLSDescription(mode: .verifyCA, caCertificatePath: path)
-            XCTAssertThrowsError(try OracleTLSMapper.tls(for: description)) { error in
-                XCTAssertEqual(error as? OracleCoreError, .certificateAuthorityRequired)
+            if let error = #expect(throws: (any Error).self, performing: { try OracleTLSMapper.tls(for: description) }) {
+                #expect(error as? OracleCoreError == .certificateAuthorityRequired)
             }
         }
     }
 
-    func testVerifyCANoCARefusalWinsOverUnreadableClientMaterial() {
+    @Test func testVerifyCANoCARefusalWinsOverUnreadableClientMaterial() {
         let description = OracleTLSDescription(
             mode: .verifyCA,
             clientCertificatePath: missingPath,
             clientKeyPath: missingPath
         )
-        XCTAssertThrowsError(try OracleTLSMapper.tls(for: description)) { error in
-            XCTAssertEqual(error as? OracleCoreError, .certificateAuthorityRequired)
+        if let error = #expect(throws: (any Error).self, performing: { try OracleTLSMapper.tls(for: description) }) {
+            #expect(error as? OracleCoreError == .certificateAuthorityRequired)
         }
     }
 
-    func testVerifyIdentityWithNoCAPathStillConnectsOverTLS() throws {
+    @Test func testVerifyIdentityWithNoCAPathStillConnectsOverTLS() throws {
         let description = OracleTLSDescription(mode: .verifyIdentity)
-        XCTAssertNotNil(try OracleTLSMapper.tls(for: description).sslContext)
+        #expect(try OracleTLSMapper.tls(for: description).sslContext != nil)
     }
 
-    func testWhitespaceOnlyPathsAreTreatedAsAbsent() {
+    @Test func testWhitespaceOnlyPathsAreTreatedAsAbsent() {
         let description = OracleTLSDescription(
             mode: .verifyIdentity,
             caCertificatePath: "  ",
             clientCertificatePath: " ",
             clientKeyPath: "\t"
         )
-        XCTAssertNil(description.caCertificatePath)
-        XCTAssertNil(description.clientCertificatePath)
-        XCTAssertNil(description.clientKeyPath)
+        #expect(description.caCertificatePath == nil)
+        #expect(description.clientCertificatePath == nil)
+        #expect(description.clientKeyPath == nil)
     }
 
-    func testCertificateVerificationPerMode() {
-        XCTAssertEqual(OracleTLSMapper.certificateVerification(for: .verifyIdentity), .fullVerification)
-        XCTAssertEqual(OracleTLSMapper.certificateVerification(for: .verifyCA), .noHostnameVerification)
-        XCTAssertEqual(OracleTLSMapper.certificateVerification(for: .required), .none)
-        XCTAssertEqual(OracleTLSMapper.certificateVerification(for: .disabled), .none)
+    @Test func testCertificateVerificationPerMode() {
+        #expect(OracleTLSMapper.certificateVerification(for: .verifyIdentity) == .fullVerification)
+        #expect(OracleTLSMapper.certificateVerification(for: .verifyCA) == .noHostnameVerification)
+        #expect(OracleTLSMapper.certificateVerification(for: .required) == .none)
+        #expect(OracleTLSMapper.certificateVerification(for: .disabled) == .none)
     }
 
     private func assertCertificateUnavailable(
         for description: OracleTLSDescription,
         field: OracleCertificateField,
-        file: StaticString = #filePath,
-        line: UInt = #line
+        sourceLocation: SourceLocation = #_sourceLocation
     ) {
-        XCTAssertThrowsError(try OracleTLSMapper.tls(for: description), file: file, line: line) { error in
+        if let error = #expect(throws: (any Error).self, sourceLocation: sourceLocation, performing: { try OracleTLSMapper.tls(for: description) }) {
             guard case .certificateUnavailable(let thrownField, let path) = error as? OracleCoreError else {
-                XCTFail("expected certificateUnavailable, got \(error)", file: file, line: line)
+                Issue.record("expected certificateUnavailable, got \(error)", sourceLocation: sourceLocation)
                 return
             }
-            XCTAssertEqual(thrownField, field, file: file, line: line)
-            XCTAssertEqual(path, missingPath, file: file, line: line)
+            #expect(thrownField == field, sourceLocation: sourceLocation)
+            #expect(path == missingPath, sourceLocation: sourceLocation)
         }
     }
 }

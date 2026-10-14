@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("JetBrainsCredentialStore", .serialized)
 struct JetBrainsCredentialStoreTests {
     private let configDir: URL
 

@@ -1,93 +1,29 @@
-//
-//  StructureEditingSessionTests.swift
-//  TableProTests
-//
-//  A structure tab's staged edits, and the ability to apply them, belong to the tab. Two tabs on
-//  one table are two editors, and Save has to reach the work whether or not a structure view is on
-//  screen to hear it.
-//
+// A structure tab's staged edits, and the ability to apply them, belong to the tab. Two tabs on
+// one table are two editors, and Save has to reach the work whether or not a structure view is on
+// screen to hear it.
 
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
-private class StructureSessionBaseDriver {
+/// A save suspends first inside its composition, so a gate there holds it mid-save.
+private final class StructureSessionDriver: PluginDriverStub, @unchecked Sendable {
+    private(set) var executedQueries: [String] = []
+    var compositionGate: AsyncGate?
+
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
     var serverVersion: String? { nil }
-
-    func connect() async throws {}
-    func disconnect() {}
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
-}
-
-/// Holds a save inside its composition, the first place it suspends, until the test lets it go.
-private final class SaveGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var hasArrived = false
-    private var isOpen = false
-    private var arrival: CheckedContinuation<Void, Never>?
-    private var departures: [CheckedContinuation<Void, Never>] = []
-
-    func pass() async {
-        await withCheckedContinuation { continuation in
-            let (waiting, proceed) = lock.withLock { () -> (CheckedContinuation<Void, Never>?, Bool) in
-                hasArrived = true
-                defer { arrival = nil }
-                if !isOpen { departures.append(continuation) }
-                return (arrival, isOpen)
-            }
-            waiting?.resume()
-            if proceed { continuation.resume() }
-        }
-    }
-
-    func arrived() async {
-        await withCheckedContinuation { continuation in
-            let already = lock.withLock { () -> Bool in
-                if !hasArrived { arrival = continuation }
-                return hasArrived
-            }
-            if already { continuation.resume() }
-        }
-    }
-
-    func open() {
-        let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-            isOpen = true
-            defer { departures = [] }
-            return departures
-        }
-        waiting.forEach { $0.resume() }
-    }
-}
-
-private final class StructureSessionDriver: StructureSessionBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
-    private(set) var executedQueries: [String] = []
-    var compositionGate: SaveGate?
 
     func reviewSchemaChange(
         table: String,
         schema: String?,
         operations: [PluginSchemaOperation]
     ) async throws -> PluginSchemaChangeReview {
-        await compositionGate?.pass()
+        await compositionGate?.wait()
         return PluginSchemaChangeReview()
     }
 
@@ -339,7 +275,7 @@ struct StructureEditingSessionTests {
 
         let session = Self.makeSession(connection: connection)
         let pooledDriver = try await Self.seedPooledDriver(connection, scope: session.scope)
-        let gate = SaveGate()
+        let gate = AsyncGate()
         pooledDriver.compositionGate = gate
         defer {
             MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
@@ -354,7 +290,7 @@ struct StructureEditingSessionTests {
         /// the pool is gone would send it to an error alert with no window to hang on, which is a
         /// modal run loop the test host never leaves.
         let first = Task { await session.applyStagedChanges(coordinator: nil) }
-        await gate.arrived()
+        await gate.arrived(1)
 
         try #require(session.isApplying)
         try #require(manager.isHeldForSave)
@@ -369,7 +305,7 @@ struct StructureEditingSessionTests {
         manager.discardChanges()
         #expect(manager.getChangesArray() == pressed)
 
-        gate.open()
+        await gate.open()
         #expect(await first.value == .applied)
 
         #expect(pooledDriver.executedQueries.filter { $0.contains("ADD COLUMN") }.count == 1)

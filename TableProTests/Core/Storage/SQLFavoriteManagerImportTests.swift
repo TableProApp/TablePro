@@ -17,6 +17,7 @@ struct SQLFavoriteManagerImportTests {
     private let databasePath: String
     private let storage: SQLFavoriteStorage
     private let syncDefaults: DirtyWriteRecordingDefaults
+    private let syncSuite: EphemeralDefaults
     private let metadata: SyncMetadataStorage
     private let events: AppEvents
     private let manager: SQLFavoriteManager
@@ -32,9 +33,8 @@ struct SQLFavoriteManagerImportTests {
         )
         databasePath = url.path(percentEncoded: false)
         storage = SQLFavoriteStorage(databaseURL: url, removeDatabaseOnDeinit: true)
-        syncDefaults = try #require(
-            DirtyWriteRecordingDefaults(suiteName: "com.TablePro.tests.FavoriteImport.sync.\(unique)")
-        )
+        syncSuite = try EphemeralDefaults()
+        syncDefaults = try #require(DirtyWriteRecordingDefaults(suiteName: syncSuite.suiteName))
         metadata = SyncMetadataStorage(userDefaults: syncDefaults, prefix: "tests.\(unique)")
         let appEvents = AppEvents()
         events = appEvents

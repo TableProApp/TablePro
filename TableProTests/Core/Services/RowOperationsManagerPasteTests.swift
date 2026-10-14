@@ -4,25 +4,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class PasteMockClipboard: ClipboardProvider {
-    var textToRead: String?
-    var gridRowsToRead: GridRowsClipboardPayload?
-
-    func readText() -> String? { textToRead }
-    func readGridRows() -> GridRowsClipboardPayload? { gridRowsToRead }
-    func writeText(_ text: String) {}
-    func writeCsv(_ csv: String) {}
-
-    var copiedImages: [NSImage] = []
-
-    func writeImage(_ image: NSImage) {
-        copiedImages.append(image)
-    }
-    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {}
-    var hasText: Bool { textToRead != nil }
-    var hasGridRows: Bool { gridRowsToRead != nil }
-}
-
 @MainActor
 struct RowOperationsManagerPasteTests {
     private static let columns = ["id", "name", "email"]
@@ -44,7 +25,7 @@ struct RowOperationsManagerPasteTests {
         return TableRows.from(queryRows: [], columns: Self.columns, columnTypes: types)
     }
 
-    private func pasteRows(_ clipboard: PasteMockClipboard, manager: RowOperationsManager) -> [[PluginCellValue]] {
+    private func pasteRows(_ clipboard: RecordingClipboard, manager: RowOperationsManager) -> [[PluginCellValue]] {
         var rows = emptyRows()
         let result = manager.pasteRowsFromClipboard(
             columns: Self.columns,
@@ -55,14 +36,14 @@ struct RowOperationsManagerPasteTests {
         return result.pastedRows.map { $0.values }
     }
 
-    private func pasteValues(_ clipboard: PasteMockClipboard, manager: RowOperationsManager) -> [PluginCellValue] {
+    private func pasteValues(_ clipboard: RecordingClipboard, manager: RowOperationsManager) -> [PluginCellValue] {
         pasteRows(clipboard, manager: manager).first ?? []
     }
 
     @Test("Structured grid rows preserve comma-containing values")
     func structuredPreservesCommas() {
-        let clipboard = PasteMockClipboard()
-        clipboard.gridRowsToRead = GridRowsClipboardPayload(
+        let clipboard = RecordingClipboard()
+        clipboard.gridRows = GridRowsClipboardPayload(
             columns: Self.columns,
             rows: [[.text("7"), .text("Smith, John"), .text("a@test.com")]]
         )
@@ -77,8 +58,8 @@ struct RowOperationsManagerPasteTests {
 
     @Test("Structured grid rows distinguish a real NULL from the literal string NULL")
     func structuredDistinguishesNull() {
-        let clipboard = PasteMockClipboard()
-        clipboard.gridRowsToRead = GridRowsClipboardPayload(
+        let clipboard = RecordingClipboard()
+        clipboard.gridRows = GridRowsClipboardPayload(
             columns: Self.columns,
             rows: [[.text("7"), .text("NULL"), .null]]
         )
@@ -91,12 +72,12 @@ struct RowOperationsManagerPasteTests {
 
     @Test("Structured payload wins over plain text when both are present")
     func structuredPreferredOverText() {
-        let clipboard = PasteMockClipboard()
-        clipboard.gridRowsToRead = GridRowsClipboardPayload(
+        let clipboard = RecordingClipboard()
+        clipboard.gridRows = GridRowsClipboardPayload(
             columns: Self.columns,
             rows: [[.text("7"), .text("structured"), .text("x@test.com")]]
         )
-        clipboard.textToRead = "7\twrong\twrong@test.com"
+        clipboard.text = "7\twrong\twrong@test.com"
 
         let values = pasteValues(clipboard, manager: makeManager())
 
@@ -105,8 +86,8 @@ struct RowOperationsManagerPasteTests {
 
     @Test("Structured grid rows map source columns to destination by name when reordered")
     func structuredMapsByColumnName() {
-        let clipboard = PasteMockClipboard()
-        clipboard.gridRowsToRead = GridRowsClipboardPayload(
+        let clipboard = RecordingClipboard()
+        clipboard.gridRows = GridRowsClipboardPayload(
             columns: ["email", "id", "name"],
             rows: [[.text("e@x.com"), .text("9"), .text("Jo")]]
         )
@@ -120,8 +101,8 @@ struct RowOperationsManagerPasteTests {
 
     @Test("Destination columns absent from the source fill with NULL (e.g. a hidden column copy)")
     func structuredFillsMissingColumnsWithNull() {
-        let clipboard = PasteMockClipboard()
-        clipboard.gridRowsToRead = GridRowsClipboardPayload(
+        let clipboard = RecordingClipboard()
+        clipboard.gridRows = GridRowsClipboardPayload(
             columns: ["name", "email"],
             rows: [[.text("Jo"), .text("e@x.com")]]
         )
@@ -136,8 +117,8 @@ struct RowOperationsManagerPasteTests {
 
     @Test("Unrelated source columns fall back to positional mapping")
     func structuredFallsBackToPositional() {
-        let clipboard = PasteMockClipboard()
-        clipboard.gridRowsToRead = GridRowsClipboardPayload(
+        let clipboard = RecordingClipboard()
+        clipboard.gridRows = GridRowsClipboardPayload(
             columns: ["a", "b", "c"],
             rows: [[.text("1"), .text("2"), .text("3")]]
         )
@@ -151,8 +132,8 @@ struct RowOperationsManagerPasteTests {
 
     @Test("Structured payload pastes multiple rows")
     func structuredPastesMultipleRows() {
-        let clipboard = PasteMockClipboard()
-        clipboard.gridRowsToRead = GridRowsClipboardPayload(
+        let clipboard = RecordingClipboard()
+        clipboard.gridRows = GridRowsClipboardPayload(
             columns: Self.columns,
             rows: [
                 [.text("1"), .text("Alice"), .text("a@test.com")],
@@ -169,8 +150,8 @@ struct RowOperationsManagerPasteTests {
 
     @Test("Plain-text TSV with commas inside a value parses as TSV, not CSV")
     func textTSVWithCommasParsesAsTSV() {
-        let clipboard = PasteMockClipboard()
-        clipboard.textToRead = "7\tMozilla/5.0 (KHTML, like Gecko) Safari\ta@test.com"
+        let clipboard = RecordingClipboard()
+        clipboard.text = "7\tMozilla/5.0 (KHTML, like Gecko) Safari\ta@test.com"
 
         let values = pasteValues(clipboard, manager: makeManager())
 
@@ -221,8 +202,8 @@ struct RowOperationsManagerPasteServerOwnedTests {
         columnIdentity: [String: IdentityKind] = [:],
         generatedColumns: Set<String> = []
     ) -> [PluginCellValue] {
-        let clipboard = PasteMockClipboard()
-        clipboard.gridRowsToRead = payload
+        let clipboard = RecordingClipboard()
+        clipboard.gridRows = payload
         var rows = TableRows.from(
             queryRows: [],
             columns: Self.columns,

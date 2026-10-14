@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Protected write ping suppression", .serialized)
 @MainActor
 struct ProtectedWritePingSuppressionTests {
     private func seed(_ policy: DriverCancellationPolicy, for connectionId: UUID) {

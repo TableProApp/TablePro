@@ -1,84 +1,96 @@
 import Foundation
+@testable import TablePro
 import TableProMCP
 import TableProPluginKit
-@testable import TablePro
-import XCTest
+import Testing
 
-final class ResourcesReadHandlerTests: XCTestCase {
-    func testMethodIsResourcesRead() {
-        XCTAssertEqual(ResourcesReadHandler.method, "resources/read")
+struct ResourcesReadHandlerTests {
+    @Test
+    func methodIsResourcesRead() {
+        #expect(ResourcesReadHandler.method == "resources/read")
     }
 
-    func testRequiresResourcesReadScope() {
-        XCTAssertEqual(ResourcesReadHandler.requiredScopes, [.resourcesRead])
+    @Test
+    func requiresResourcesReadScope() {
+        #expect(ResourcesReadHandler.requiredScopes == [.resourcesRead])
     }
 
-    func testReadsTheConnectionsResource() async throws {
+    @Test
+    func readsTheConnectionsResource() async throws {
         let result = try await read(uri: "tablepro://connections")
-        XCTAssertEqual(result.kind, .complete)
+        #expect(result.kind == .complete)
 
-        let contents = try XCTUnwrap(result.payload["contents"]?.arrayValue)
-        XCTAssertEqual(contents.count, 1)
+        let contents = try #require(result.payload["contents"]?.arrayValue)
+        #expect(contents.count == 1)
 
-        let entry = try XCTUnwrap(contents.first)
-        XCTAssertEqual(entry["uri"]?.stringValue, "tablepro://connections")
-        XCTAssertEqual(entry["mimeType"]?.stringValue, "application/json")
+        let entry = try #require(contents.first)
+        #expect(entry["uri"]?.stringValue == "tablepro://connections")
+        #expect(entry["mimeType"]?.stringValue == "application/json")
 
-        let text = try XCTUnwrap(entry["text"]?.stringValue)
+        let text = try #require(entry["text"]?.stringValue)
         let decoded = try JSONDecoder().decode(JsonValue.self, from: Data(text.utf8))
-        XCTAssertNotNil(decoded["connections"]?.arrayValue)
+        #expect(decoded["connections"]?.arrayValue != nil)
     }
 
-    func testReadIsCacheableForThisPrincipalOnly() async throws {
+    @Test
+    func readIsCacheableForThisPrincipalOnly() async throws {
         let result = try await read(uri: "tablepro://connections")
-        let hint = try XCTUnwrap(result.cacheHint)
-        XCTAssertEqual(hint.scope, .privateScope)
-        XCTAssertEqual(hint.ttlMilliseconds, 15_000)
-        XCTAssertTrue(MCPProtocolDispatcher.cacheableMethods.contains(ResourcesReadHandler.method))
+        let hint = try #require(result.cacheHint)
+        #expect(hint.scope == .privateScope)
+        #expect(hint.ttlMilliseconds == 15_000)
+        #expect(MCPProtocolDispatcher.cacheableMethods.contains(ResourcesReadHandler.method))
     }
 
-    func testMissingUriIsInvalidParams() async throws {
+    @Test
+    func missingUriIsInvalidParams() async throws {
         let error = try await failure(params: .object([:]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
-        XCTAssertEqual(error.httpStatus, .badRequest)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
+        #expect(error.httpStatus == .badRequest)
     }
 
-    func testUriThatIsNotAStringIsInvalidParams() async throws {
+    @Test
+    func uriThatIsNotAStringIsInvalidParams() async throws {
         let error = try await failure(params: .object(["uri": .int(7)]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testNonTableproSchemeIsInvalidParams() async throws {
+    @Test
+    func nonTableproSchemeIsInvalidParams() async throws {
         let error = try await failure(params: .object(["uri": .string("https://example.com/foo")]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testUnknownResourceIsInvalidParamsNotResourceNotFound() async throws {
+    @Test
+    func unknownResourceIsInvalidParamsNotResourceNotFound() async throws {
         let error = try await failure(params: .object(["uri": .string("tablepro://unknown/resource")]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
-        XCTAssertEqual(error.code, -32_602)
-        XCTAssertNotEqual(error.code, JsonRpcErrorCode.methodNotFound)
-        XCTAssertNotEqual(error.code, -32_002)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
+        #expect(error.code == -32_602)
+        #expect(error.code != JsonRpcErrorCode.methodNotFound)
+        #expect(error.code != -32_002)
     }
 
-    func testConnectionIdThatIsNotAUuidIsInvalidParams() async throws {
+    @Test
+    func connectionIdThatIsNotAUuidIsInvalidParams() async throws {
         let error = try await failure(params: .object(["uri": .string("tablepro://connections/not-a-uuid/schema")]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testUnknownConnectionSubresourceIsInvalidParams() async throws {
+    @Test
+    func unknownConnectionSubresourceIsInvalidParams() async throws {
         let uri = "tablepro://connections/\(UUID().uuidString)/bogus"
         let error = try await failure(params: .object(["uri": .string(uri)]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testUnknownTableSubresourceIsInvalidParams() async throws {
+    @Test
+    func unknownTableSubresourceIsInvalidParams() async throws {
         let uri = "tablepro://connections/\(UUID().uuidString)/tables/users/statistics"
         let error = try await failure(params: .object(["uri": .string(uri)]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testCancelledRequestStopsBeforeReading() async throws {
+    @Test
+    func cancelledRequestStopsBeforeReading() async throws {
         let cancellation = MCPCancellationToken()
         await cancellation.cancel(reason: .clientDisconnected)
         let services = MCPProtocolHandlerTestSupport.makeToolServices()
@@ -93,7 +105,7 @@ final class ResourcesReadHandlerTests: XCTestCase {
                 params: .object(["uri": .string("tablepro://connections")]),
                 context: context
             )
-            XCTFail("Expected the read to stop")
+            Issue.record("Expected the read to stop")
         } catch is CancellationError {
             return
         }
@@ -119,7 +131,7 @@ final class ResourcesReadHandlerTests: XCTestCase {
         } catch let error as MCPProtocolError {
             return error
         }
-        XCTFail("Expected the handler to refuse the request")
+        Issue.record("Expected the handler to refuse the request")
         return .internalError(detail: "unreachable")
     }
 }

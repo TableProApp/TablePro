@@ -134,14 +134,4 @@ extension UITestCase {
         XCTAssertTrue(row.waitToExist(timeout: 20), "The object browser must list \(name)")
         row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).rightClick()
     }
-
-    internal func tabsTitled(_ title: String, in window: XCUIElement) -> XCUIElementQuery {
-        window.descendants(matching: .any)
-            .matching(identifier: "editor-tab")
-            .matching(NSPredicate(format: "label == %@", title))
-    }
-
-    internal func editorTabCount(in window: XCUIElement) -> Int {
-        window.descendants(matching: .any).matching(identifier: "editor-tab").count
-    }
 }

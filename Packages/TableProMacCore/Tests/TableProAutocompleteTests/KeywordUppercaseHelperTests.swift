@@ -5,19 +5,9 @@ import Testing
 struct KeywordUppercaseHelperTests {
     // MARK: - isWordBoundary
 
-    @Test("Space is a word boundary")
-    func spaceIsBoundary() {
-        #expect(KeywordUppercaseHelper.isWordBoundary(" "))
-    }
-
-    @Test("Tab is a word boundary")
-    func tabIsBoundary() {
-        #expect(KeywordUppercaseHelper.isWordBoundary("\t"))
-    }
-
-    @Test("Newline is a word boundary")
-    func newlineIsBoundary() {
-        #expect(KeywordUppercaseHelper.isWordBoundary("\n"))
+    @Test("Space, tab and newline are word boundaries", arguments: [" ", "\t", "\n"])
+    func whitespaceIsBoundary(_ string: String) {
+        #expect(KeywordUppercaseHelper.isWordBoundary(string))
     }
 
     @Test("Parentheses are word boundaries")
@@ -44,14 +34,9 @@ struct KeywordUppercaseHelperTests {
         #expect(!KeywordUppercaseHelper.isWordBoundary("ab"))
     }
 
-    @Test("Empty string is not a word boundary")
-    func emptyNotBoundary() {
-        #expect(!KeywordUppercaseHelper.isWordBoundary(""))
-    }
-
-    @Test("Digits are not word boundaries")
-    func digitsNotBoundary() {
-        #expect(!KeywordUppercaseHelper.isWordBoundary("5"))
+    @Test("The empty string and digits are not word boundaries", arguments: ["", "5"])
+    func notBoundary(_ string: String) {
+        #expect(!KeywordUppercaseHelper.isWordBoundary(string))
     }
 
     // MARK: - isWordCharacter

@@ -25,30 +25,28 @@ struct AgentModeWindowTests {
     /// lives exactly as long as the browse tree's identity does. A rebuild makes a new one.
     @Test("Toggling Agent mode on and off keeps the browse pane and the tree in it")
     func toggleKeepsTheBrowseTree() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            let detail = harness.selected.panes.detail
-            let accessor = try #require(
-                harness.settle { detail.view.firstDescendant(of: WindowAccessorView.self) },
-                "The browse content never mounted, so the case proves nothing"
-            )
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let detail = harness.selected.panes.detail
+        let accessor = try #require(
+            harness.settle { detail.view.firstDescendant(of: WindowAccessorView.self) },
+            "The browse content never mounted, so the case proves nothing"
+        )
 
-            harness.controller.setContentMode(.agent)
+        harness.controller.setContentMode(.agent)
 
-            #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
-            #expect(harness.controller.shownSidebarPane === harness.selected.panes.agentRail)
-            #expect(detail.view.superview == nil, "The browse pane is unparented, not rebuilt in place")
-            harness.drain()
+        #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
+        #expect(harness.controller.shownSidebarPane === harness.selected.panes.agentRail)
+        #expect(detail.view.superview == nil, "The browse pane is unparented, not rebuilt in place")
+        harness.drain()
 
-            harness.controller.setContentMode(.browse)
+        harness.controller.setContentMode(.browse)
 
-            #expect(harness.controller.detailPaneHost.shown === detail)
-            #expect(harness.controller.shownSidebarPane === harness.selected.panes.sidebar)
-            let remounted = harness.settle { detail.view.firstDescendant(of: WindowAccessorView.self) }
-            #expect(remounted === accessor, "The browse tree was rebuilt, and everything only it held went with it")
-        }
+        #expect(harness.controller.detailPaneHost.shown === detail)
+        #expect(harness.controller.shownSidebarPane === harness.selected.panes.sidebar)
+        let remounted = harness.settle { detail.view.firstDescendant(of: WindowAccessorView.self) }
+        #expect(remounted === accessor, "The browse tree was rebuilt, and everything only it held went with it")
     }
 
     // MARK: - Agent mode's panes are built once
@@ -57,51 +55,47 @@ struct AgentModeWindowTests {
     /// long as the rail's identity does.
     @Test("Agent mode's panes are built once and kept across toggles")
     func agentPanesAreReused() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            let rail = harness.selected.panes.agentRail
-            let conversation = harness.selected.panes.agentConversation
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let rail = harness.selected.panes.agentRail
+        let conversation = harness.selected.panes.agentConversation
 
-            harness.controller.setContentMode(.agent)
-            #expect(harness.controller.shownSidebarPane === rail)
-            #expect(harness.controller.detailPaneHost.shown === conversation)
-            let list = try #require(
-                harness.settle { rail.view.firstDescendant(of: NSTableView.self) },
-                "The session rail never listed its session"
-            )
+        harness.controller.setContentMode(.agent)
+        #expect(harness.controller.shownSidebarPane === rail)
+        #expect(harness.controller.detailPaneHost.shown === conversation)
+        let list = try #require(
+            harness.settle { rail.view.firstDescendant(of: NSTableView.self) },
+            "The session rail never listed its session"
+        )
 
-            harness.controller.setContentMode(.browse)
-            #expect(rail.view.superview == nil)
-            #expect(conversation.view.superview == nil)
-            harness.drain()
+        harness.controller.setContentMode(.browse)
+        #expect(rail.view.superview == nil)
+        #expect(conversation.view.superview == nil)
+        harness.drain()
 
-            harness.controller.setContentMode(.agent)
-            #expect(harness.controller.shownSidebarPane === rail)
-            #expect(harness.controller.detailPaneHost.shown === conversation)
-            #expect(harness.settle { rail.view.firstDescendant(of: NSTableView.self) } === list)
-        }
+        harness.controller.setContentMode(.agent)
+        #expect(harness.controller.shownSidebarPane === rail)
+        #expect(harness.controller.detailPaneHost.shown === conversation)
+        #expect(harness.settle { rail.view.firstDescendant(of: NSTableView.self) } === list)
     }
 
     /// A session already exists, so a rail built while browsing would list it. The pane is mounted
     /// in a window of its own to look, because an unmounted pane shows nothing whatever it holds.
     @Test("Browsing builds nothing of Agent mode")
     func browsingBuildsNoAgentContent() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness(startsAgentSession: true)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            let rail = harness.selected.panes.agentRail
+        let harness = try Harness(startsAgentSession: true)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let rail = harness.selected.panes.agentRail
 
-            let probe = PaneProbeWindow(showing: rail.view)
-            probe.settle()
-            #expect(rail.view.firstDescendant(of: NSTableView.self) == nil, "The rail was built for a mode nobody entered")
-            probe.close()
+        let probe = PaneProbeWindow(showing: rail.view)
+        probe.settle()
+        #expect(rail.view.firstDescendant(of: NSTableView.self) == nil, "The rail was built for a mode nobody entered")
+        probe.close()
 
-            harness.controller.setContentMode(.agent)
-            #expect(harness.settle { rail.view.firstDescendant(of: NSTableView.self) } != nil)
-        }
+        harness.controller.setContentMode(.agent)
+        #expect(harness.settle { rail.view.firstDescendant(of: NSTableView.self) } != nil)
     }
 
     // MARK: - A background connection
@@ -110,71 +104,65 @@ struct AgentModeWindowTests {
     /// screen or not, and parented only when it is selected.
     @Test("A connection put into Agent mode in the background shows its conversation once selected")
     func backgroundAgentModeIsParentedOnSelection() throws {
-        try AIFeatureScope.enabled {
-            let harness = TwoConnectionHarness()
-            defer { harness.tearDown() }
-            harness.controller.transition(to: .connecting, for: harness.background.connectionId)
-            try #require(harness.background.resolvedPane == .connecting)
+        let harness = TwoConnectionHarness()
+        defer { harness.tearDown() }
+        harness.controller.transition(to: .connecting, for: harness.background.connectionId)
+        try #require(harness.background.resolvedPane == .connecting)
 
-            harness.controller.setContentMode(.agent, for: harness.background.connectionId)
+        harness.controller.setContentMode(.agent, for: harness.background.connectionId)
 
-            #expect(harness.background.panes.renderedKey?.contentMode == .agent)
-            #expect(harness.controller.detailPaneHost.shown === harness.foreground.panes.detail)
-            #expect(harness.background.panes.agentConversation.parent == nil)
+        #expect(harness.background.panes.renderedKey?.contentMode == .agent)
+        #expect(harness.controller.detailPaneHost.shown === harness.foreground.panes.detail)
+        #expect(harness.background.panes.agentConversation.parent == nil)
 
-            harness.controller.workspaces.select(harness.background.connectionId)
+        harness.controller.workspaces.select(harness.background.connectionId)
 
-            #expect(harness.controller.detailPaneHost.shown === harness.background.panes.agentConversation)
-            #expect(harness.controller.shownSidebarPane === harness.background.panes.agentRail)
-            #expect(harness.controller.inspectorPaneHost.shown === harness.background.panes.agentResult)
-        }
+        #expect(harness.controller.detailPaneHost.shown === harness.background.panes.agentConversation)
+        #expect(harness.controller.shownSidebarPane === harness.background.panes.agentRail)
+        #expect(harness.controller.inspectorPaneHost.shown === harness.background.panes.agentResult)
     }
 
     // MARK: - The window describes what it draws
 
     @Test("Agent mode takes the tab strip down and names the window after the session")
     func agentModeDropsTheTabStripAndRenamesTheWindow() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            let tabManager = try #require(harness.selected.sessionState?.tabManager)
-            tabManager.addTab(initialQuery: "SELECT 1")
-            tabManager.addTab(initialQuery: "SELECT 2")
-            harness.controller.applyTabStripVisibility()
-            harness.controller.applyWindowTitle()
-            try #require(!harness.controller.tabStripAccessory.isHidden, "Two tabs over browse content show the strip")
-            let browseTitle = harness.controller.windowTitle
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let tabManager = try #require(harness.selected.sessionState?.tabManager)
+        tabManager.addTab(initialQuery: "SELECT 1")
+        tabManager.addTab(initialQuery: "SELECT 2")
+        harness.controller.applyTabStripVisibility()
+        harness.controller.applyWindowTitle()
+        try #require(!harness.controller.tabStripAccessory.isHidden, "Two tabs over browse content show the strip")
+        let browseTitle = harness.controller.windowTitle
 
-            harness.controller.setContentMode(.agent)
+        harness.controller.setContentMode(.agent)
 
-            #expect(harness.controller.tabStripAccessory.isHidden)
-            #expect(harness.controller.windowTitle == ConnectionWorkspaceContentMode.agent.localizedTitle)
-            #expect(harness.window.title == harness.controller.windowTitle)
+        #expect(harness.controller.tabStripAccessory.isHidden)
+        #expect(harness.controller.windowTitle == ConnectionWorkspaceContentMode.agent.localizedTitle)
+        #expect(harness.window.title == harness.controller.windowTitle)
 
-            harness.controller.setContentMode(.browse)
+        harness.controller.setContentMode(.browse)
 
-            #expect(!harness.controller.tabStripAccessory.isHidden)
-            #expect(harness.controller.windowTitle == browseTitle)
-        }
+        #expect(!harness.controller.tabStripAccessory.isHidden)
+        #expect(harness.controller.windowTitle == browseTitle)
     }
 
     /// A session names itself from its first question or reply, which lands after the mode came on.
     @Test("The window follows the session as it gets a name")
     func titleFollowsTheSession() async throws {
-        try await AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.setContentMode(.agent)
-            let session = try #require(harness.selected.displayedAgentSession)
-            #expect(harness.controller.windowTitle == ConnectionWorkspaceContentMode.agent.localizedTitle)
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.setContentMode(.agent)
+        let session = try #require(harness.selected.displayedAgentSession)
+        #expect(harness.controller.windowTitle == ConnectionWorkspaceContentMode.agent.localizedTitle)
 
-            session.viewModel.messages.append(ChatTurn(role: .user, blocks: [.text("Which orders shipped late?")]))
+        session.viewModel.messages.append(ChatTurn(role: .user, blocks: [.text("Which orders shipped late?")]))
 
-            #expect(await harness.suspend { harness.controller.windowTitle == "Which orders shipped late?" })
-            #expect(harness.window.title == "Which orders shipped late?")
-        }
+        #expect(await harness.suspend { harness.controller.windowTitle == "Which orders shipped late?" })
+        #expect(harness.window.title == "Which orders shipped late?")
     }
 
     /// The proxy icon is the rest of what the titlebar says. The browse content wrote it straight to
@@ -182,81 +170,75 @@ struct AgentModeWindowTests {
     /// session's name.
     @Test("Agent mode takes a file's proxy icon down and browsing puts it back")
     func agentModeDropsTheProxyIcon() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            let file = FileManager.default.temporaryDirectory
-                .appendingPathComponent("AgentModeWindowTests-\(UUID().uuidString).sql")
-            try Data("SELECT 1".utf8).write(to: file)
-            defer { try? FileManager.default.removeItem(at: file) }
-            let tabManager = try #require(harness.selected.sessionState?.tabManager)
-            tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: file)
-            harness.controller.applyWindowTitle()
-            try #require(
-                harness.window.representedURL == file,
-                "The file's tab never set the icon, so the case proves nothing"
-            )
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentModeWindowTests-\(UUID().uuidString).sql")
+        try Data("SELECT 1".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let tabManager = try #require(harness.selected.sessionState?.tabManager)
+        tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: file)
+        harness.controller.applyWindowTitle()
+        try #require(
+            harness.window.representedURL == file,
+            "The file's tab never set the icon, so the case proves nothing"
+        )
 
-            harness.controller.setContentMode(.agent)
-            #expect(harness.window.representedURL == nil)
-            harness.drain()
-            #expect(harness.window.representedURL == nil, "The browse tree behind the conversation put its file back")
+        harness.controller.setContentMode(.agent)
+        #expect(harness.window.representedURL == nil)
+        harness.drain()
+        #expect(harness.window.representedURL == nil, "The browse tree behind the conversation put its file back")
 
-            harness.controller.setContentMode(.browse)
-            #expect(harness.window.representedURL == file)
-        }
+        harness.controller.setContentMode(.browse)
+        #expect(harness.window.representedURL == file)
     }
 
     @Test("A Users & Roles tab behind the conversation does not set the detail column's floor")
     func agentModeKeepsTheDefaultDetailFloor() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            let tabManager = try #require(harness.selected.sessionState?.tabManager)
-            tabManager.adoptTab(QueryTab(id: UUID(), title: "Users & Roles", query: "", tabType: .usersRoles))
-            harness.controller.updateDetailMinimumThickness(for: .usersRoles, connectionId: harness.connection.id)
-            try #require(harness.detailItem.minimumThickness == UsersRolesLayoutMetrics.tabMinimumWidth)
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let tabManager = try #require(harness.selected.sessionState?.tabManager)
+        tabManager.adoptTab(QueryTab(id: UUID(), title: "Users & Roles", query: "", tabType: .usersRoles))
+        harness.controller.updateDetailMinimumThickness(for: .usersRoles, connectionId: harness.connection.id)
+        try #require(harness.detailItem.minimumThickness == UsersRolesLayoutMetrics.tabMinimumWidth)
 
-            harness.controller.setContentMode(.agent)
-            #expect(harness.detailItem.minimumThickness == MainSplitViewController.defaultDetailMinThickness)
+        harness.controller.setContentMode(.agent)
+        #expect(harness.detailItem.minimumThickness == MainSplitViewController.defaultDetailMinThickness)
 
-            harness.controller.updateDetailMinimumThickness(for: .usersRoles, connectionId: harness.connection.id)
-            #expect(
-                harness.detailItem.minimumThickness == MainSplitViewController.defaultDetailMinThickness,
-                "The browse tree reporting its tab from behind the conversation raised it again"
-            )
+        harness.controller.updateDetailMinimumThickness(for: .usersRoles, connectionId: harness.connection.id)
+        #expect(
+            harness.detailItem.minimumThickness == MainSplitViewController.defaultDetailMinThickness,
+            "The browse tree reporting its tab from behind the conversation raised it again"
+        )
 
-            harness.controller.setContentMode(.browse)
-            #expect(harness.detailItem.minimumThickness == UsersRolesLayoutMetrics.tabMinimumWidth)
-        }
+        harness.controller.setContentMode(.browse)
+        #expect(harness.detailItem.minimumThickness == UsersRolesLayoutMetrics.tabMinimumWidth)
     }
 
     /// The error, Retry and Manage Connections live on the browse side's unavailable screen, and a
     /// composer with none of them is a dead end. A reconnect hands the column back.
     @Test("A connection that drops in Agent mode shows the unavailable screen, and a reconnect the conversation")
     func droppedConnectionHandsTheColumnBack() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.setContentMode(.agent)
-            #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.setContentMode(.agent)
+        #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
 
-            DatabaseManager.shared.removeSession(for: harness.connection.id)
-            harness.controller.refreshFromActiveSessions()
+        DatabaseManager.shared.removeSession(for: harness.connection.id)
+        harness.controller.refreshFromActiveSessions()
 
-            #expect(!harness.controller.currentPane.hasContent)
-            #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.detail)
-            #expect(harness.controller.windowTitle == harness.connection.name)
+        #expect(!harness.controller.currentPane.hasContent)
+        #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.detail)
+        #expect(harness.controller.windowTitle == harness.connection.name)
 
-            harness.inject(status: .connected)
-            harness.controller.refreshFromActiveSessions()
+        harness.inject(status: .connected)
+        harness.controller.refreshFromActiveSessions()
 
-            #expect(harness.controller.currentPane == .content)
-            #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
-        }
+        #expect(harness.controller.currentPane == .content)
+        #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
     }
 
     /// The conversation stays built, detached, behind the unavailable screen of a connection that
@@ -264,30 +246,28 @@ struct AgentModeWindowTests {
     /// enabled and moved focus off Retry and onto the window.
     @Test("Focus Assistant is dimmed once the conversation has left the detail column")
     func focusAssistantFollowsTheConversationOffScreen() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.setContentMode(.agent)
-            /// Stands in for the composer the conversation draws once a session has a provider to
-            /// answer it, which a unit test has no way to configure.
-            let composer = ChatComposerNSTextView.make()
-            harness.selected.panes.agentConversation.view.addSubview(composer)
-            let item = Self.menuItem(#selector(MainSplitViewController.focusAssistant(_:)))
-            try #require(
-                harness.controller.validateMenuItem(item),
-                "The composer on screen was not reachable, so the case proves nothing"
-            )
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.setContentMode(.agent)
+        /// Stands in for the composer the conversation draws once a session has a provider to
+        /// answer it, which a unit test has no way to configure.
+        let composer = ChatComposerNSTextView.make()
+        harness.selected.panes.agentConversation.view.addSubview(composer)
+        let item = Self.menuItem(#selector(MainSplitViewController.focusAssistant(_:)))
+        try #require(
+            harness.controller.validateMenuItem(item),
+            "The composer on screen was not reachable, so the case proves nothing"
+        )
 
-            DatabaseManager.shared.removeSession(for: harness.connection.id)
-            harness.controller.refreshFromActiveSessions()
-            try #require(harness.controller.detailPaneHost.shown === harness.selected.panes.detail)
-            try #require(composer.superview != nil, "The conversation was torn down rather than kept")
+        DatabaseManager.shared.removeSession(for: harness.connection.id)
+        harness.controller.refreshFromActiveSessions()
+        try #require(harness.controller.detailPaneHost.shown === harness.selected.panes.detail)
+        try #require(composer.superview != nil, "The conversation was torn down rather than kept")
 
-            #expect(!harness.controller.validateMenuItem(item))
-            #expect(!harness.controller.focusAssistantPane())
-            #expect(harness.window.firstResponder !== composer)
-        }
+        #expect(!harness.controller.validateMenuItem(item))
+        #expect(!harness.controller.focusAssistantPane())
+        #expect(harness.window.firstResponder !== composer)
     }
 
     // MARK: - One registry
@@ -297,16 +277,14 @@ struct AgentModeWindowTests {
     /// workspace had been handed, so the two could name different sessions for one connection.
     @Test("The trailing pane state the window builds shares the workspace's registry")
     func builtPaneStateSharesTheWorkspaceRegistry() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness(prebuildsPaneState: false)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            let paneState = try #require(harness.selected.trailingPaneState, "The window built no pane state")
+        let harness = try Harness(prebuildsPaneState: false)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let paneState = try #require(harness.selected.trailingPaneState, "The window built no pane state")
 
-            let session = harness.agentSessions.startSession(for: harness.connection.id)
+        let session = harness.agentSessions.startSession(for: harness.connection.id)
 
-            #expect(paneState.assistant.session === session)
-        }
+        #expect(paneState.assistant.session === session)
     }
 
     /// Every toggle re-runs the conversation's tasks on the same view. A prompt held for the connect
@@ -316,34 +294,32 @@ struct AgentModeWindowTests {
     /// case knows the toggle really re-ran it rather than passing because nothing ran at all.
     @Test("A toggle during the connect neither sends the held prompt nor starts a second session")
     func toggleDuringTheConnectKeepsTheHeldPrompt() async throws {
-        try await AIFeatureScope.enabled {
-            let harness = try Harness(sessionStatus: .connecting)
-            defer { harness.tearDown() }
-            try #require(harness.controller.currentPane == .connecting)
-            let session = harness.agentSessions.startSession(for: harness.connection.id)
-            session.pendingPrompt = "Which orders shipped late?"
+        let harness = try Harness(sessionStatus: .connecting)
+        defer { harness.tearDown() }
+        try #require(harness.controller.currentPane == .connecting)
+        let session = harness.agentSessions.startSession(for: harness.connection.id)
+        session.pendingPrompt = "Which orders shipped late?"
 
-            harness.controller.setContentMode(.agent)
-            #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
-            try #require(
-                await harness.suspend { session.viewModel.isAwaitingConnection },
-                "The conversation never ran its flush"
-            )
+        harness.controller.setContentMode(.agent)
+        #expect(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
+        try #require(
+            await harness.suspend { session.viewModel.isAwaitingConnection },
+            "The conversation never ran its flush"
+        )
 
-            harness.controller.setContentMode(.browse)
-            await harness.pause()
-            session.viewModel.isAwaitingConnection = false
-            harness.controller.setContentMode(.agent)
-            try #require(
-                await harness.suspend { session.viewModel.isAwaitingConnection },
-                "Coming back did not run the flush again, so the case proves nothing"
-            )
+        harness.controller.setContentMode(.browse)
+        await harness.pause()
+        session.viewModel.isAwaitingConnection = false
+        harness.controller.setContentMode(.agent)
+        try #require(
+            await harness.suspend { session.viewModel.isAwaitingConnection },
+            "Coming back did not run the flush again, so the case proves nothing"
+        )
 
-            #expect(session.pendingPrompt == "Which orders shipped late?")
-            #expect(session.viewModel.messages.isEmpty)
-            #expect(session.viewModel.activeConversationID == nil)
-            #expect(harness.agentSessions.sessions(for: harness.connection.id).map(\.id) == [session.id])
-        }
+        #expect(session.pendingPrompt == "Which orders shipped late?")
+        #expect(session.viewModel.messages.isEmpty)
+        #expect(session.viewModel.activeConversationID == nil)
+        #expect(harness.agentSessions.sessions(for: harness.connection.id).map(\.id) == [session.id])
     }
 
     // MARK: - Safe Mode
@@ -373,24 +349,22 @@ struct AgentModeWindowTests {
     /// The list had no checkmark and no entry in it did anything.
     @Test("The Safe Mode list works in a window opened straight into Agent mode")
     func safeModeWorksWithoutTheBrowseContent() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness(contentMode: .agent)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            try #require(
-                harness.controller.commandActions == nil,
-                "The browse content mounted, so this is not the window the welcome route opens"
-            )
-            let status = try #require(harness.controller.safeModeStatus, "The list had no level to check")
-            let pick = try #require(status.offeredLevels.first { status.accepts($0) })
-            let item = Self.safeModeItem(pick)
-            #expect(harness.controller.validateMenuItem(item))
+        let harness = try Harness(contentMode: .agent)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        try #require(
+            harness.controller.commandActions == nil,
+            "The browse content mounted, so this is not the window the welcome route opens"
+        )
+        let status = try #require(harness.controller.safeModeStatus, "The list had no level to check")
+        let pick = try #require(status.offeredLevels.first { status.accepts($0) })
+        let item = Self.safeModeItem(pick)
+        #expect(harness.controller.validateMenuItem(item))
 
-            harness.controller.setSafeModeLevel(item)
+        harness.controller.setSafeModeLevel(item)
 
-            #expect(DatabaseManager.shared.session(for: harness.connection.id)?.safeModeLevel == pick)
-            #expect(harness.controller.safeModeStatus?.level == pick)
-        }
+        #expect(DatabaseManager.shared.session(for: harness.connection.id)?.safeModeLevel == pick)
+        #expect(harness.controller.safeModeStatus?.level == pick)
     }
 
     // MARK: - Session commands
@@ -399,158 +373,146 @@ struct AgentModeWindowTests {
     /// no pane: the conversation column went on drawing it, with a composer that still took messages.
     @Test("Close Session stops the session and takes it off the window")
     func closeSessionTakesTheSessionOffTheWindow() async throws {
-        try await AIFeatureScope.enabled {
-            let harness = try Harness(startsAgentSession: true)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.setContentMode(.agent)
-            let session = try #require(harness.selected.displayedAgentSession)
-            let asked = ConfirmationRecorder()
-            harness.controller.confirmAgentSessionCommand = asked.answer(true)
+        let harness = try Harness(startsAgentSession: true)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.setContentMode(.agent)
+        let session = try #require(harness.selected.displayedAgentSession)
+        let asked = ConfirmationRecorder()
+        harness.controller.confirmAgentSessionCommand = asked.answer(true)
 
-            harness.controller.closeAgentSession(Self.sessionItem(Self.closeSession, session: session.id))
+        harness.controller.closeAgentSession(Self.sessionItem(Self.closeSession, session: session.id))
 
-            #expect(await harness.suspend { harness.selected.displayedAgentSession == nil })
-            #expect(session.status == .stopped)
-            #expect(asked.confirmations.isEmpty, "An idle session loses nothing by stopping, so nothing is asked")
-            #expect(
-                harness.agentSessions.sessions(for: harness.connection.id).count == 1,
-                "Closing keeps the transcript, so the session stays in the rail"
-            )
-            #expect(
-                harness.selected.panes.renderedKey?.agentSessionId == nil,
-                "The panes were not rebuilt for a window with no session open"
-            )
-        }
+        #expect(await harness.suspend { harness.selected.displayedAgentSession == nil })
+        #expect(session.status == .stopped)
+        #expect(asked.confirmations.isEmpty, "An idle session loses nothing by stopping, so nothing is asked")
+        #expect(
+            harness.agentSessions.sessions(for: harness.connection.id).count == 1,
+            "Closing keeps the transcript, so the session stays in the rail"
+        )
+        #expect(
+            harness.selected.panes.renderedKey?.agentSessionId == nil,
+            "The panes were not rebuilt for a window with no session open"
+        )
     }
 
     @Test("Delete Session asks first, and discards the session once it is answered")
     func deleteSessionAsksAndDiscards() async throws {
-        try await AIFeatureScope.enabled {
-            let harness = try Harness(startsAgentSession: true)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.setContentMode(.agent)
-            let session = try #require(harness.selected.displayedAgentSession)
-            let asked = ConfirmationRecorder()
-            harness.controller.confirmAgentSessionCommand = asked.answer(true)
+        let harness = try Harness(startsAgentSession: true)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.setContentMode(.agent)
+        let session = try #require(harness.selected.displayedAgentSession)
+        let asked = ConfirmationRecorder()
+        harness.controller.confirmAgentSessionCommand = asked.answer(true)
 
-            harness.controller.deleteAgentSession(Self.sessionItem(Self.deleteSession, session: session.id))
+        harness.controller.deleteAgentSession(Self.sessionItem(Self.deleteSession, session: session.id))
 
-            #expect(await harness.suspend { harness.agentSessions.session(id: session.id) == nil })
-            #expect(asked.confirmations.count == 1)
-            #expect(asked.confirmations.first?.isDestructive == true)
-            #expect(asked.confirmations.first?.title.contains(session.displayTitle) == true)
-            #expect(harness.selected.displayedAgentSession == nil)
-        }
+        #expect(await harness.suspend { harness.agentSessions.session(id: session.id) == nil })
+        #expect(asked.confirmations.count == 1)
+        #expect(asked.confirmations.first?.isDestructive == true)
+        #expect(asked.confirmations.first?.title.contains(session.displayTitle) == true)
+        #expect(harness.selected.displayedAgentSession == nil)
     }
 
     @Test("A refused question leaves the session where it was")
     func deleteSessionRefused() async throws {
-        try await AIFeatureScope.enabled {
-            let harness = try Harness(startsAgentSession: true)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.setContentMode(.agent)
-            let session = try #require(harness.selected.displayedAgentSession)
-            let asked = ConfirmationRecorder()
-            harness.controller.confirmAgentSessionCommand = asked.answer(false)
+        let harness = try Harness(startsAgentSession: true)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.setContentMode(.agent)
+        let session = try #require(harness.selected.displayedAgentSession)
+        let asked = ConfirmationRecorder()
+        harness.controller.confirmAgentSessionCommand = asked.answer(false)
 
-            harness.controller.deleteAgentSession(Self.sessionItem(Self.deleteSession, session: session.id))
+        harness.controller.deleteAgentSession(Self.sessionItem(Self.deleteSession, session: session.id))
 
-            #expect(await harness.suspend { asked.confirmations.count == 1 })
-            #expect(harness.agentSessions.session(id: session.id) === session)
-            #expect(harness.selected.displayedAgentSession === session)
-        }
+        #expect(await harness.suspend { asked.confirmations.count == 1 })
+        #expect(harness.agentSessions.session(id: session.id) === session)
+        #expect(harness.selected.displayedAgentSession === session)
     }
 
     @Test("New Session starts one and puts it on screen")
     func newSessionStartsAndShowsIt() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness(startsAgentSession: true)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.setContentMode(.agent)
-            let first = try #require(harness.selected.displayedAgentSession)
+        let harness = try Harness(startsAgentSession: true)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.setContentMode(.agent)
+        let first = try #require(harness.selected.displayedAgentSession)
 
-            harness.controller.newAgentSession(nil)
+        harness.controller.newAgentSession(nil)
 
-            let started = try #require(harness.selected.displayedAgentSession)
-            #expect(started !== first)
-            #expect(harness.agentSessions.sessions(for: harness.connection.id).count == 2)
-            #expect(harness.selected.panes.renderedKey?.agentSessionId == started.id)
-        }
+        let started = try #require(harness.selected.displayedAgentSession)
+        #expect(started !== first)
+        #expect(harness.agentSessions.sessions(for: harness.connection.id).count == 2)
+        #expect(harness.selected.panes.renderedKey?.agentSessionId == started.id)
     }
 
     /// A menu that lists sessions names one in each item; every other route acts on the rail's
     /// highlight, which is the window's rather than the rail view's for exactly this reason.
     @Test("Open Session takes its session from the item, and from the rail when the item names none")
     func openSessionResolvesItsTarget() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness(startsAgentSession: true)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.setContentMode(.agent)
-            let first = try #require(harness.selected.displayedAgentSession)
-            harness.controller.newAgentSession(nil)
-            let second = try #require(harness.selected.displayedAgentSession)
+        let harness = try Harness(startsAgentSession: true)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.setContentMode(.agent)
+        let first = try #require(harness.selected.displayedAgentSession)
+        harness.controller.newAgentSession(nil)
+        let second = try #require(harness.selected.displayedAgentSession)
 
-            harness.controller.openAgentSession(Self.sessionItem(Self.openSession, session: first.id))
-            #expect(harness.selected.displayedAgentSession === first)
+        harness.controller.openAgentSession(Self.sessionItem(Self.openSession, session: first.id))
+        #expect(harness.selected.displayedAgentSession === first)
 
-            harness.selected.agentRail.highlightedSessionId = second.id
-            harness.controller.openAgentSession(nil)
-            #expect(harness.selected.displayedAgentSession === second)
-        }
+        harness.selected.agentRail.highlightedSessionId = second.id
+        harness.controller.openAgentSession(nil)
+        #expect(harness.selected.displayedAgentSession === second)
     }
 
     @Test("The session commands follow the mode and the session they would act on")
     func sessionCommandsValidateAgainstTheirTarget() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness(startsAgentSession: true)
-            defer { harness.tearDown() }
-            try harness.requireContent()
+        let harness = try Harness(startsAgentSession: true)
+        defer { harness.tearDown() }
+        try harness.requireContent()
 
-            for selector in [Self.newSession, Self.openSession, Self.closeSession, Self.deleteSession] {
-                #expect(
-                    !harness.controller.validateMenuItem(Self.menuItem(selector)),
-                    "Browsing draws no rail, so \(selector) has nothing to act on"
-                )
-            }
-
-            harness.controller.setContentMode(.agent)
-            let session = try #require(harness.selected.displayedAgentSession)
-            #expect(harness.controller.validateMenuItem(Self.menuItem(Self.newSession)))
-
-            /// The rail highlights the session on screen as it appears, so a rail with nothing
-            /// highlighted is asked for here rather than waited for.
-            harness.selected.agentRail.highlightedSessionId = nil
-            for selector in [Self.openSession, Self.closeSession, Self.deleteSession] {
-                #expect(
-                    !harness.controller.validateMenuItem(Self.menuItem(selector)),
-                    "With no row highlighted there is no session for \(selector)"
-                )
-            }
-
-            harness.selected.agentRail.highlightedSessionId = session.id
-            for selector in [Self.openSession, Self.closeSession, Self.deleteSession] {
-                #expect(harness.controller.validateMenuItem(Self.menuItem(selector)), "\(selector)")
-            }
+        for selector in [Self.newSession, Self.openSession, Self.closeSession, Self.deleteSession] {
             #expect(
-                !harness.controller.validateMenuItem(Self.sessionItem(Self.openSession, session: UUID())),
-                "An item naming a session that is gone is answered by the item, not by the highlight"
-            )
-
-            harness.agentSessions.stopSession(id: session.id)
-            #expect(
-                !harness.controller.validateMenuItem(Self.menuItem(Self.closeSession)),
-                "A session that has already ended cannot be closed again"
-            )
-            #expect(
-                harness.controller.validateMenuItem(Self.menuItem(Self.deleteSession)),
-                "A stopped session keeps its transcript, so it is still there to delete"
+                !harness.controller.validateMenuItem(Self.menuItem(selector)),
+                "Browsing draws no rail, so \(selector) has nothing to act on"
             )
         }
+
+        harness.controller.setContentMode(.agent)
+        let session = try #require(harness.selected.displayedAgentSession)
+        #expect(harness.controller.validateMenuItem(Self.menuItem(Self.newSession)))
+
+        /// The rail highlights the session on screen as it appears, so a rail with nothing
+        /// highlighted is asked for here rather than waited for.
+        harness.selected.agentRail.highlightedSessionId = nil
+        for selector in [Self.openSession, Self.closeSession, Self.deleteSession] {
+            #expect(
+                !harness.controller.validateMenuItem(Self.menuItem(selector)),
+                "With no row highlighted there is no session for \(selector)"
+            )
+        }
+
+        harness.selected.agentRail.highlightedSessionId = session.id
+        for selector in [Self.openSession, Self.closeSession, Self.deleteSession] {
+            #expect(harness.controller.validateMenuItem(Self.menuItem(selector)), "\(selector)")
+        }
+        #expect(
+            !harness.controller.validateMenuItem(Self.sessionItem(Self.openSession, session: UUID())),
+            "An item naming a session that is gone is answered by the item, not by the highlight"
+        )
+
+        harness.agentSessions.stopSession(id: session.id)
+        #expect(
+            !harness.controller.validateMenuItem(Self.menuItem(Self.closeSession)),
+            "A session that has already ended cannot be closed again"
+        )
+        #expect(
+            harness.controller.validateMenuItem(Self.menuItem(Self.deleteSession)),
+            "A stopped session keeps its transcript, so it is still there to delete"
+        )
     }
 
     private static let newSession = #selector(MainSplitViewController.newAgentSession(_:))
@@ -601,8 +563,7 @@ struct AgentModeWindowTests {
         let agentSessions: AgentSessionRegistry
         let window: NSWindow
         let connection: DatabaseConnection
-        private let defaults: UserDefaults
-        private let suiteName: String
+        private let suite: EphemeralDefaults
         private let registryDirectory: URL
 
         var detailItem: NSSplitViewItem {
@@ -622,8 +583,8 @@ struct AgentModeWindowTests {
             prebuildsPaneState: Bool = true
         ) throws {
             connection = TestFixtures.makeConnection(name: "Agent window", type: type)
-            suiteName = "AgentModeWindowTests.\(UUID().uuidString)"
-            defaults = try #require(UserDefaults(suiteName: suiteName))
+            suite = try EphemeralDefaults()
+            let defaults = suite.defaults
             registryDirectory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("AgentModeWindowTests-\(UUID().uuidString)", isDirectory: true)
             agentSessions = AgentSessionRegistry(store: AgentSessionStore(directory: registryDirectory))
@@ -740,7 +701,7 @@ struct AgentModeWindowTests {
             window.contentViewController = nil
             selected.teardown()
             DatabaseManager.shared.removeSession(for: connection.id)
-            defaults.removePersistentDomain(forName: suiteName)
+            suite.defaults.removePersistentDomain(forName: suite.suiteName)
             try? FileManager.default.removeItem(at: registryDirectory)
         }
     }

@@ -2,6 +2,7 @@ import CloudKit
 import Foundation
 @testable import TablePro
 import TableProSyncTransport
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -432,10 +433,7 @@ struct SyncCoordinatorEchoTests {
         #expect(acknowledged)
         #expect(connections.loadConnection(id: localOnly.id)?.name == "Kept")
         #expect(connections.loadConnection(id: synced.id) == nil)
-        let deadline = ContinuousClock.now + .seconds(5)
-        while await favorites.fetchFavorite(id: removedQuery.id) != nil, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(5))
-        }
+        try await waitUntil(timeout: .seconds(5)) { await favorites.fetchFavorite(id: removedQuery.id) == nil }
         #expect(await favorites.fetchFavorite(id: removedQuery.id) == nil)
         #expect(await favorites.fetchFavorite(id: keptQuery.id) != nil)
     }

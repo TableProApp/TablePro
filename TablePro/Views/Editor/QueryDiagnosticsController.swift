@@ -23,11 +23,13 @@ final class QueryDiagnosticsController {
     }
 
     private static let debounce: Duration = .milliseconds(500)
+    private let clock: any Clock<Duration>
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QueryDiagnostics")
 
-    init(databaseType: DatabaseType?) {
+    init(databaseType: DatabaseType?, clock: any Clock<Duration> = ContinuousClock()) {
         self.producer = QueryDiagnosticsFactory.make(for: databaseType)
+        self.clock = clock
     }
 
     func configure(databaseType: DatabaseType?) {
@@ -55,9 +57,10 @@ final class QueryDiagnosticsController {
             return
         }
 
+        let clock = clock
         pendingTask = Task { [weak self, weak controller] in
             do {
-                try await Task.sleep(for: Self.debounce)
+                try await clock.sleep(for: Self.debounce)
             } catch {
                 return
             }

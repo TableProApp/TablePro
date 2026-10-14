@@ -1,8 +1,3 @@
-//
-//  CloudSQLProxyManagerTests.swift
-//  TableProTests
-//
-
 import CryptoKit
 import Darwin
 import Foundation
@@ -139,18 +134,6 @@ struct CloudSQLProxyManagerTests {
         CloudSQLProxyConfiguration(instanceConnectionName: instance, localPort: localPort, binaryPath: "/bin/echo")
     }
 
-    private func waitUntil(
-        timeout: Duration = .seconds(2),
-        _ condition: @escaping @Sendable () -> Bool
-    ) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while ContinuousClock.now < deadline {
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        return condition()
-    }
-
     /// The managed binary is ad-hoc signed and sits in a user-writable directory, so the launch
     /// path has to obtain it through the checksum-verifying accessor rather than by checking that
     /// a file exists. It did the latter, which left the pinned checksum unread before exec.
@@ -274,7 +257,7 @@ struct CloudSQLProxyManagerTests {
             fake.stop()
         }
 
-        try #require(await waitUntil { fake.startCallCount > 0 })
+        try await waitUntil { fake.startCallCount > 0 }
         let result = try #require(await BoundedCall.result(within: .seconds(2)) {
             await creation.result
         })

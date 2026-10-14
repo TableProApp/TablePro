@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("DBeaverImporter", .serialized)
 struct DBeaverImporterTests {
     private var tempDir: URL
     private var projectDir: URL

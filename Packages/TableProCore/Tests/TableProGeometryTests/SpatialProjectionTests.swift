@@ -1,143 +1,118 @@
+import Foundation
 @testable import TableProGeometry
-import XCTest
+import Testing
 
-final class SpatialProjectionTests: XCTestCase {
+struct SpatialProjectionTests {
     private let sanFrancisco = SpatialPoint(x: -122.4194, y: 37.7749)
 
-    func testGeographicSRIDsDrawDirectly() {
+    @Test func testGeographicSRIDsDrawDirectly() {
         for srid: Int32 in [4_326, 4_269, 4_979] {
-            XCTAssertEqual(
-                SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)),
-                .geographic,
-                "SRID \(srid) should draw directly"
-            )
+            #expect(SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)) == .geographic, "SRID \(srid) should draw directly")
         }
     }
 
     /// ETRS89, GDA94, GDA2020, CGCS2000, SIRGAS 2000, NAD83(2011) and JGD2011: degrees on a datum
     /// within a few metres of WGS84, so they draw as they are stored.
-    func testRegionalGeographicDatumsDrawDirectly() {
+    @Test func testRegionalGeographicDatumsDrawDirectly() {
         for srid: Int32 in [4_258, 4_283, 7_844, 4_490, 4_674, 6_318, 6_668] {
-            XCTAssertEqual(
-                SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)),
-                .geographic,
-                "SRID \(srid) should draw directly"
-            )
+            #expect(SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)) == .geographic, "SRID \(srid) should draw directly")
         }
     }
 
-    func testRegionalGeographicDatumReadsThroughEWKT() {
+    @Test func testRegionalGeographicDatumReadsThroughEWKT() {
         guard case .success(let value) = WKTGeometryReader.read("SRID=4258;POINT(10.5 52.3)") else {
-            return XCTFail("expected a geometry")
+            Issue.record("expected a geometry")
+            return
         }
         let projectability = SpatialProjection.projectability(srid: value.srid, geometry: value.geometry)
-        XCTAssertEqual(projectability, .geographic)
-        XCTAssertEqual(
-            SpatialProjection.project(SpatialPoint(x: 10.5, y: 52.3), using: projectability),
-            GeographicCoordinate(longitude: 10.5, latitude: 52.3)
-        )
+        #expect(projectability == .geographic)
+        #expect(SpatialProjection.project(SpatialPoint(x: 10.5, y: 52.3), using: projectability) == GeographicCoordinate(longitude: 10.5, latitude: 52.3))
     }
 
-    func testWebMercatorAliases() {
+    @Test func testWebMercatorAliases() {
         for srid: Int32 in [3_857, 900_913, 102_100, 102_113, 3_785] {
-            XCTAssertEqual(
-                SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)),
-                .webMercator,
-                "SRID \(srid) should invert as spherical Mercator"
-            )
+            #expect(SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)) == .webMercator, "SRID \(srid) should invert as spherical Mercator")
         }
     }
 
     /// Verified against PROJ 9.8.1 and re-derived independently: the closed form round-trips to
     /// zero error at double precision, so no projection library is needed for this family.
-    func testWebMercatorInverseMatchesPROJ() {
+    @Test func testWebMercatorInverseMatchesPROJ() {
         let projected = SpatialPoint(x: -13_627_665.271218073, y: 4_547_675.354340557)
         guard let coordinate = SpatialProjection.project(projected, using: .webMercator) else {
-            return XCTFail("expected a coordinate")
+            Issue.record("expected a coordinate")
+            return
         }
-        XCTAssertEqual(coordinate.longitude, -122.4194, accuracy: 1e-9)
-        XCTAssertEqual(coordinate.latitude, 37.7749, accuracy: 1e-9)
+        #expect(abs(coordinate.longitude - (-122.4194)) <= 1e-9)
+        #expect(abs(coordinate.latitude - (37.7749)) <= 1e-9)
     }
 
-    func testWebMercatorOriginIsNullIsland() {
+    @Test func testWebMercatorOriginIsNullIsland() {
         guard let coordinate = SpatialProjection.project(
             SpatialPoint(x: 0, y: 0),
             using: .webMercator
         ) else {
-            return XCTFail("expected a coordinate")
+            Issue.record("expected a coordinate")
+            return
         }
-        XCTAssertEqual(coordinate.longitude, 0, accuracy: 1e-12)
-        XCTAssertEqual(coordinate.latitude, 0, accuracy: 1e-12)
+        #expect(abs(coordinate.longitude - (0)) <= 1e-12)
+        #expect(abs(coordinate.latitude - (0)) <= 1e-12)
     }
 
     /// PostGIS writes no prefix for SRID 0 and MySQL stores a literal 0. Degrees are the common
     /// case for such a column, so values inside the envelope are drawn and the pane says so.
-    func testAbsentSRIDInsideTheEnvelopeIsAssumedGeographic() {
-        XCTAssertEqual(
-            SpatialProjection.projectability(srid: nil, geometry: .point(sanFrancisco)),
-            .assumedGeographic
-        )
+    @Test func testAbsentSRIDInsideTheEnvelopeIsAssumedGeographic() {
+        #expect(SpatialProjection.projectability(srid: nil, geometry: .point(sanFrancisco)) == .assumedGeographic)
     }
 
-    func testAbsentSRIDOutsideTheEnvelopeIsRefused() {
+    @Test func testAbsentSRIDOutsideTheEnvelopeIsRefused() {
         let projectedMetres = SpatialPoint(x: -13_627_665.27, y: 4_547_675.35)
-        XCTAssertEqual(
-            SpatialProjection.projectability(srid: nil, geometry: .point(projectedMetres)),
-            .unsupported(srid: nil)
-        )
+        #expect(SpatialProjection.projectability(srid: nil, geometry: .point(projectedMetres)) == .unsupported(srid: nil))
     }
 
     /// One coordinate outside the envelope disqualifies the whole geometry: half a shape drawn in
     /// the wrong place is worse than a shape reported as undrawable.
-    func testOneStrayCoordinateDisqualifiesTheGeometry() {
+    @Test func testOneStrayCoordinateDisqualifiesTheGeometry() {
         let ring = [
             SpatialPoint(x: 0, y: 0),
             SpatialPoint(x: 1, y: 1),
             SpatialPoint(x: 500_000, y: 1),
         ]
-        XCTAssertEqual(
-            SpatialProjection.projectability(srid: nil, geometry: .lineString(ring)),
-            .unsupported(srid: nil)
-        )
+        #expect(SpatialProjection.projectability(srid: nil, geometry: .lineString(ring)) == .unsupported(srid: nil))
     }
 
-    func testEmptyGeometryIsNotAssumedGeographic() {
-        XCTAssertEqual(
-            SpatialProjection.projectability(srid: nil, geometry: .empty),
-            .unsupported(srid: nil)
-        )
+    @Test func testEmptyGeometryIsNotAssumedGeographic() {
+        #expect(SpatialProjection.projectability(srid: nil, geometry: .empty) == .unsupported(srid: nil))
     }
 
-    func testProjectedSRIDIsRefusedByNumber() {
-        XCTAssertEqual(
-            SpatialProjection.projectability(srid: 32_633, geometry: .point(sanFrancisco)),
-            .unsupported(srid: 32_633)
-        )
-        XCTAssertNil(SpatialProjection.project(sanFrancisco, using: .unsupported(srid: 32_633)))
+    @Test func testProjectedSRIDIsRefusedByNumber() {
+        #expect(SpatialProjection.projectability(srid: 32_633, geometry: .point(sanFrancisco)) == .unsupported(srid: 32_633))
+        #expect(SpatialProjection.project(sanFrancisco, using: .unsupported(srid: 32_633)) == nil)
     }
 
     /// Outside the valid range `MKMapPoint(coordinate)` returns the sentinel (-1, -1) rather than
     /// wrapping, which is garbage outside `MKMapRectWorld` and destroys an extent fold. Nothing
     /// invalid may reach a shape.
-    func testOutOfRangeCoordinatesAreRejectedBeforeAShapeIsBuilt() {
-        XCTAssertNil(SpatialProjection.project(SpatialPoint(x: 180.0000001, y: 0), using: .geographic))
-        XCTAssertNil(SpatialProjection.project(SpatialPoint(x: 0, y: 91), using: .geographic))
-        XCTAssertNil(SpatialProjection.project(SpatialPoint(x: -181, y: 0), using: .geographic))
-        XCTAssertNil(SpatialProjection.project(SpatialPoint(x: .nan, y: 0), using: .geographic))
-        XCTAssertNil(SpatialProjection.project(SpatialPoint(x: .infinity, y: 0), using: .geographic))
+    @Test func testOutOfRangeCoordinatesAreRejectedBeforeAShapeIsBuilt() {
+        #expect(SpatialProjection.project(SpatialPoint(x: 180.0000001, y: 0), using: .geographic) == nil)
+        #expect(SpatialProjection.project(SpatialPoint(x: 0, y: 91), using: .geographic) == nil)
+        #expect(SpatialProjection.project(SpatialPoint(x: -181, y: 0), using: .geographic) == nil)
+        #expect(SpatialProjection.project(SpatialPoint(x: .nan, y: 0), using: .geographic) == nil)
+        #expect(SpatialProjection.project(SpatialPoint(x: .infinity, y: 0), using: .geographic) == nil)
     }
 
-    func testExactEnvelopeEdgesAreValid() {
-        XCTAssertNotNil(SpatialProjection.project(SpatialPoint(x: 180, y: 90), using: .geographic))
-        XCTAssertNotNil(SpatialProjection.project(SpatialPoint(x: -180, y: -90), using: .geographic))
+    @Test func testExactEnvelopeEdgesAreValid() {
+        #expect(SpatialProjection.project(SpatialPoint(x: 180, y: 90), using: .geographic) != nil)
+        #expect(SpatialProjection.project(SpatialPoint(x: -180, y: -90), using: .geographic) != nil)
     }
 
     /// The stored order is (x, y) = (longitude, latitude) for every dialect the app reads.
-    func testProjectionKeepsLongitudeInX() {
+    @Test func testProjectionKeepsLongitudeInX() {
         guard let coordinate = SpatialProjection.project(sanFrancisco, using: .geographic) else {
-            return XCTFail("expected a coordinate")
+            Issue.record("expected a coordinate")
+            return
         }
-        XCTAssertEqual(coordinate.longitude, -122.4194)
-        XCTAssertEqual(coordinate.latitude, 37.7749)
+        #expect(coordinate.longitude == -122.4194)
+        #expect(coordinate.latitude == 37.7749)
     }
 }

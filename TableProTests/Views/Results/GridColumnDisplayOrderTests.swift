@@ -99,109 +99,114 @@ private struct ReorderableGrid {
     }
 }
 
-@MainActor
-struct GridColumnDisplayOrderTests {
-    @Test("a display position resolves to the data index of the column drawn there")
-    func displayPositionFollowsTheDrawnOrder() {
-        let grid = ReorderableGrid()
-        #expect(grid.presentedNames == ["id", "notes", "email"])
+extension GlobalStateSuites {
+    @Suite(.recordingClipboard)
+    @MainActor
+    struct GridColumnDisplayOrderTests {
+        @Test("a display position resolves to the data index of the column drawn there")
+        func displayPositionFollowsTheDrawnOrder() {
+            let grid = ReorderableGrid()
+            #expect(grid.presentedNames == ["id", "notes", "email"])
 
-        grid.moveColumn(named: "email", toDisplayPosition: 0)
+            grid.moveColumn(named: "email", toDisplayPosition: 0)
 
-        #expect(grid.presentedNames == ["email", "id", "notes"])
-        #expect(grid.coordinator.dataColumnIndex(atDisplayPosition: 0) == 2)
-        #expect(grid.coordinator.displayPosition(ofDataColumnIndex: 2) == 0)
-    }
+            #expect(grid.presentedNames == ["email", "id", "notes"])
+            #expect(grid.coordinator.dataColumnIndex(atDisplayPosition: 0) == 2)
+            #expect(grid.coordinator.displayPosition(ofDataColumnIndex: 2) == 0)
+        }
 
-    @Test("a swept block names the columns it crossed, not the slots between them")
-    func sweptBlockNamesTheColumnsCrossed() {
-        let grid = ReorderableGrid()
-        grid.moveColumn(named: "email", toDisplayPosition: 0)
+        @Test("a swept block names the columns it crossed, not the slots between them")
+        func sweptBlockNamesTheColumnsCrossed() {
+            let grid = ReorderableGrid()
+            grid.moveColumn(named: "email", toDisplayPosition: 0)
 
-        /// The two leftmost columns on screen are now email and id.
-        let rect = GridRect(rows: 0...0, columns: 0...1)
-        let names = grid.coordinator.dataColumnIndices(in: rect.columns.reduce(into: IndexSet()) { $0.insert($1) })
-            .map { grid.columns[$0] }
+            let rect = GridRect(rows: 0...0, columns: 0...1)
+            let names = grid.coordinator.dataColumnIndices(in: rect.columns.reduce(into: IndexSet()) { $0.insert($1) })
+                .map { grid.columns[$0] }
 
-        #expect(names == ["email", "id"])
-        #expect(!names.contains("notes"))
-    }
+            #expect(names == ["email", "id"])
+            #expect(!names.contains("notes"))
+        }
 
-    @Test("the presented count is the run on screen, not every slot the result carries")
-    func presentedCountIsTheRunOnScreen() {
-        let grid = ReorderableGrid()
+        @Test("the presented count is the run on screen, not every slot the result carries")
+        func presentedCountIsTheRunOnScreen() {
+            let grid = ReorderableGrid()
 
-        #expect(grid.coordinator.presentedColumnCount == 3)
-        #expect(grid.coordinator.presentedColumnCount == grid.coordinator.identitySchema.totalDataColumns)
-    }
+            #expect(grid.coordinator.presentedColumnCount == 3)
+            #expect(grid.coordinator.presentedColumnCount == grid.coordinator.identitySchema.totalDataColumns)
+        }
 
-    @Test("a copy of a swept block writes the columns in the order they are drawn")
-    func copyWritesDisplayOrder() {
-        let grid = ReorderableGrid()
-        grid.moveColumn(named: "email", toDisplayPosition: 0)
+        @Test("a copy of a swept block writes the columns in the order they are drawn")
+        func copyWritesDisplayOrder() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let grid = ReorderableGrid()
+            grid.moveColumn(named: "email", toDisplayPosition: 0)
 
-        grid.coordinator.selectionController.update(
-            .single(
-                GridRect(rows: 0...1, columns: 0...1),
-                anchor: GridCoord(row: 0, displayColumn: 0),
-                active: GridCoord(row: 1, displayColumn: 1)
+            grid.coordinator.selectionController.update(
+                .single(
+                    GridRect(rows: 0...1, columns: 0...1),
+                    anchor: GridCoord(row: 0, displayColumn: 0),
+                    active: GridCoord(row: 1, displayColumn: 1)
+                )
             )
-        )
-        grid.coordinator.copyGridSelection(grid.coordinator.selectionController.selection)
+            grid.coordinator.copyGridSelection(grid.coordinator.selectionController.selection)
 
-        let copied = ClipboardService.shared.readText() ?? ""
-        let firstRow = copied.components(separatedBy: "\n").first ?? ""
-        let fields = firstRow.components(separatedBy: "\t")
+            let copied = clipboard.readText() ?? ""
+            let firstRow = copied.components(separatedBy: "\n").first ?? ""
+            let fields = firstRow.components(separatedBy: "\t")
 
-        #expect(fields.count == 2)
-        #expect(fields.first == "email0")
-        #expect(fields.last == "id0")
-        #expect(!copied.contains("notes"))
-    }
+            #expect(fields.count == 2)
+            #expect(fields.first == "email0")
+            #expect(fields.last == "id0")
+            #expect(!copied.contains("notes"))
+        }
 
-    @Test("a hidden column drops out of the display run and out of a copy")
-    func hiddenColumnDropsOutOfTheRun() {
-        let grid = ReorderableGrid()
-        grid.hideColumn(named: "notes")
+        @Test("a hidden column drops out of the display run and out of a copy")
+        func hiddenColumnDropsOutOfTheRun() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let grid = ReorderableGrid()
+            grid.hideColumn(named: "notes")
 
-        #expect(grid.presentedNames == ["id", "email"])
-        #expect(grid.coordinator.presentedColumnCount == 2)
-        #expect(grid.coordinator.dataColumnIndex(atDisplayPosition: 1) == 2)
-        #expect(grid.coordinator.displayPosition(ofDataColumnIndex: 1) == nil)
+            #expect(grid.presentedNames == ["id", "email"])
+            #expect(grid.coordinator.presentedColumnCount == 2)
+            #expect(grid.coordinator.dataColumnIndex(atDisplayPosition: 1) == 2)
+            #expect(grid.coordinator.displayPosition(ofDataColumnIndex: 1) == nil)
 
-        grid.coordinator.selectionController.update(
-            .single(
-                GridRect(rows: 0...0, columns: 0...1),
-                anchor: GridCoord(row: 0, displayColumn: 0),
-                active: GridCoord(row: 0, displayColumn: 1)
+            grid.coordinator.selectionController.update(
+                .single(
+                    GridRect(rows: 0...0, columns: 0...1),
+                    anchor: GridCoord(row: 0, displayColumn: 0),
+                    active: GridCoord(row: 0, displayColumn: 1)
+                )
             )
-        )
-        grid.coordinator.copyGridSelection(grid.coordinator.selectionController.selection)
+            grid.coordinator.copyGridSelection(grid.coordinator.selectionController.selection)
 
-        let copied = ClipboardService.shared.readText() ?? ""
-        #expect(copied.components(separatedBy: "\t").count == 2)
-        #expect(!copied.contains("notes"))
-    }
+            let copied = clipboard.readText() ?? ""
+            #expect(copied.components(separatedBy: "\t").count == 2)
+            #expect(!copied.contains("notes"))
+        }
 
-    @Test("a paste fills the columns beside the anchor on screen")
-    func pasteFillsTheColumnsOnScreen() {
-        let grid = ReorderableGrid()
-        grid.moveColumn(named: "email", toDisplayPosition: 0)
-        #expect(grid.presentedNames == ["email", "id", "notes"])
-        ClipboardService.shared.writeText("x\ty")
+        @Test("a paste fills the columns beside the anchor on screen")
+        func pasteFillsTheColumnsOnScreen() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let grid = ReorderableGrid()
+            grid.moveColumn(named: "email", toDisplayPosition: 0)
+            #expect(grid.presentedNames == ["email", "id", "notes"])
+            clipboard.writeText("x\ty")
 
-        let emailDataIndex = 2
-        let pasted = grid.coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: emailDataIndex)
+            let emailDataIndex = 2
+            let pasted = grid.coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: emailDataIndex)
 
-        #expect(pasted)
-        /// email is the anchor and id is the column beside it on screen. Walking data indices
-        /// instead would have written email then run off the end of the result and dropped `y`.
-        let written = grid.coordinator.changeManager.rowChanges
-            .flatMap(\.cellChanges)
-            .map { ($0.columnName, $0.newValue.asText ?? "") }
-        #expect(written.count == 2)
-        #expect(written.contains { $0.0 == "email" && $0.1 == "x" })
-        #expect(written.contains { $0.0 == "id" && $0.1 == "y" })
-        #expect(!written.contains { $0.0 == "notes" })
+            #expect(pasted)
+            /// email is the anchor and id is the column beside it on screen. Walking data indices
+            /// instead would have written email then run off the end of the result and dropped `y`.
+            let written = grid.coordinator.changeManager.rowChanges
+                .flatMap(\.cellChanges)
+                .map { ($0.columnName, $0.newValue.asText ?? "") }
+            #expect(written.count == 2)
+            #expect(written.contains { $0.0 == "email" && $0.1 == "x" })
+            #expect(written.contains { $0.0 == "id" && $0.1 == "y" })
+            #expect(!written.contains { $0.0 == "notes" })
+        }
     }
 }

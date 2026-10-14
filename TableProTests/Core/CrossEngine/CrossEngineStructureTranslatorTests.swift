@@ -3,11 +3,12 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class CrossEngineStructureTranslatorTests: XCTestCase {
+struct CrossEngineStructureTranslatorTests {
     private func column(
         _ name: String,
         _ type: String,
@@ -87,34 +88,36 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
 
     /// The one guarantee that lets a change this wide be trusted: a copy that already worked runs
     /// the path it always ran, byte for byte.
-    func testASameEngineCopyIsUntouched() {
+    @Test
+    func aSameEngineCopyIsUntouched() {
         let source = snapshot(columns: [column("id", "INT", autoIncrement: true, isPrimaryKey: true)])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mysql)
-        XCTAssertFalse(result.translated)
-        XCTAssertTrue(result.notes.isEmpty)
-        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["INT"])
-        XCTAssertEqual(result.snapshot.engine, "InnoDB")
-        XCTAssertEqual(result.snapshot.charset, "utf8mb4")
+        #expect(!result.translated)
+        #expect(result.notes.isEmpty)
+        #expect(result.snapshot.columns.map(\.dataType) == ["INT"])
+        #expect(result.snapshot.engine == "InnoDB")
+        #expect(result.snapshot.charset == "utf8mb4")
     }
 
-    func testTwoEnginesOfOneFamilyAreUntouched() {
+    @Test
+    func twoEnginesOfOneFamilyAreUntouched() {
         let source = snapshot(columns: [column("id", "INT")])
-        XCTAssertFalse(
-            CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mariadb).translated
-        )
+        #expect(!(CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mariadb).translated))
     }
 
-    func testASameFamilyCopyKeepsTheServersTypeSpelling() {
+    @Test
+    func aSameFamilyCopyKeepsTheServersTypeSpelling() {
         let shape = column("shape", "geometry", ddlSpelling: "public.geometry(Point,4326)")
         let result = CrossEngineStructureTranslator.translate(
             snapshot(columns: [shape]), from: .postgresql, to: .postgresql
         )
-        XCTAssertEqual(result.snapshot.columns.map(\.ddlSpelling), ["public.geometry(Point,4326)"])
+        #expect(result.snapshot.columns.map(\.ddlSpelling) == ["public.geometry(Point,4326)"])
     }
 
     /// `DATE` renders as `DATE` on MySQL, so a spelling cleared only by a changed `dataType` would
     /// have carried PostgreSQL's text into a MySQL table.
-    func testATranslatedColumnCarriesNoSourceSpellings() {
+    @Test
+    func aTranslatedColumnCarriesNoSourceSpellings() {
         let made = column("made", "DATE", defaultValue: "CURRENT_DATE", ddlSpelling: "date", ddlDefault: "CURRENT_DATE")
         let shape = column(
             "shape",
@@ -126,15 +129,16 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         let result = CrossEngineStructureTranslator.translate(
             snapshot(columns: [made, shape]), from: .postgresql, to: .mysql
         )
-        XCTAssertTrue(result.translated)
-        XCTAssertEqual(result.snapshot.columns.map(\.ddlSpelling), [nil, nil])
-        XCTAssertEqual(result.snapshot.columns.map(\.ddlDefault), [nil, nil])
-        XCTAssertEqual(result.snapshot.columns.map(\.ddlGenerationExpression), [nil, nil])
+        #expect(result.translated)
+        #expect(result.snapshot.columns.map(\.ddlSpelling) == [nil, nil])
+        #expect(result.snapshot.columns.map(\.ddlDefault) == [nil, nil])
+        #expect(result.snapshot.columns.map(\.ddlGenerationExpression) == [nil, nil])
     }
 
     // MARK: - Types
 
-    func testTypesAreSaidInTheTargetsOwnWords() {
+    @Test
+    func typesAreSaidInTheTargetsOwnWords() {
         let source = snapshot(columns: [
             column("id", "INT", autoIncrement: true, isPrimaryKey: true),
             column("flag", "TINYINT(1)"),
@@ -142,41 +146,40 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
             column("made", "DATETIME(6)")
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
-        XCTAssertTrue(result.translated)
-        XCTAssertEqual(
-            result.snapshot.columns.map(\.dataType),
-            ["INTEGER", "BOOLEAN", "TEXT", "TIMESTAMP(6)"]
-        )
+        #expect(result.translated)
+        #expect(result.snapshot.columns.map(\.dataType) == ["INTEGER", "BOOLEAN", "TEXT", "TIMESTAMP(6)"])
     }
 
     /// All three name something on the source's side and are rejected outright by every other
     /// engine's `CREATE TABLE`.
-    func testMySQLOnlyAttributesAreDropped() {
+    @Test
+    func mySQLOnlyAttributesAreDropped() {
         let source = snapshot(columns: [
             column("made", "TIMESTAMP", onUpdate: "CURRENT_TIMESTAMP", extra: "on update CURRENT_TIMESTAMP"),
             column("name", "VARCHAR(20)", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci")
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
-        XCTAssertNil(result.snapshot.columns[0].onUpdate)
-        XCTAssertNil(result.snapshot.columns[0].extra)
-        XCTAssertNil(result.snapshot.columns[1].charset)
-        XCTAssertNil(result.snapshot.columns[1].collation)
-        XCTAssertNil(result.snapshot.engine)
-        XCTAssertNil(result.snapshot.charset)
-        XCTAssertNil(result.snapshot.collation)
+        #expect(result.snapshot.columns[0].onUpdate == nil)
+        #expect(result.snapshot.columns[0].extra == nil)
+        #expect(result.snapshot.columns[1].charset == nil)
+        #expect(result.snapshot.columns[1].collation == nil)
+        #expect(result.snapshot.engine == nil)
+        #expect(result.snapshot.charset == nil)
+        #expect(result.snapshot.collation == nil)
     }
 
     /// `UNSIGNED` is written by the MySQL driver from the attribute, so it survives into a MySQL
     /// target and is dropped for every other one, where it would be a syntax error.
-    func testUnsignedFollowsTheTarget() {
+    @Test
+    func unsignedFollowsTheTarget() {
         let source = snapshot(columns: [column("count", "INT UNSIGNED", unsigned: true)])
         let toPostgres = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
-        XCTAssertFalse(toPostgres.snapshot.columns[0].unsigned)
-        XCTAssertEqual(toPostgres.snapshot.columns[0].dataType, "BIGINT")
+        #expect(!(toPostgres.snapshot.columns[0].unsigned))
+        #expect(toPostgres.snapshot.columns[0].dataType == "BIGINT")
 
         let fromPostgres = snapshot(columns: [column("count", "bigint")])
         let toMySQL = CrossEngineStructureTranslator.translate(fromPostgres, from: .postgresql, to: .mysql)
-        XCTAssertFalse(toMySQL.snapshot.columns[0].unsigned)
+        #expect(!(toMySQL.snapshot.columns[0].unsigned))
     }
 
     // MARK: - Defaults
@@ -184,200 +187,214 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
     /// A `SERIAL` is an integer whose default calls a sequence written in PostgreSQL's own DDL.
     /// Carried over as text the target either rejects it or stores the literal string; carried as
     /// the target's own generated key it means what the source meant.
-    func testASequenceDefaultBecomesAutoIncrement() {
+    @Test
+    func aSequenceDefaultBecomesAutoIncrement() {
         let source = snapshot(columns: [
             column("id", "integer", defaultValue: "nextval('orders_id_seq'::regclass)", isPrimaryKey: true)
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertTrue(result.snapshot.columns[0].autoIncrement)
-        XCTAssertNil(result.snapshot.columns[0].defaultValue)
+        #expect(result.snapshot.columns[0].autoIncrement)
+        #expect(result.snapshot.columns[0].defaultValue == nil)
     }
 
-    func testTheCurrentTimestampDefaultSurvives() {
+    @Test
+    func theCurrentTimestampDefaultSurvives() {
         let source = snapshot(columns: [column("made", "timestamp", defaultValue: "now()")])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertEqual(result.snapshot.columns[0].defaultValue, "CURRENT_TIMESTAMP")
+        #expect(result.snapshot.columns[0].defaultValue == "CURRENT_TIMESTAMP")
     }
 
     /// Every writer emits the default verbatim, so a default this cannot translate reaches the
     /// server in the source's own dialect and breaks the CREATE TABLE.
-    func testAnUntranslatableDefaultIsDroppedWithAReason() {
+    @Test
+    func anUntranslatableDefaultIsDroppedWithAReason() {
         let source = snapshot(columns: [column("id", "uuid", defaultValue: "uuid_generate_v4()")])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertNil(result.snapshot.columns[0].defaultValue)
-        XCTAssertTrue(result.notes.contains { $0.subject == "id" && $0.isLossy })
+        #expect(result.snapshot.columns[0].defaultValue == nil)
+        #expect(result.notes.contains { $0.subject == "id" && $0.isLossy })
     }
 
     /// A bare word used to be kept, on the premise that the target's writer would quote it. Every
     /// writer now emits verbatim, so `session_user` reached MySQL as a column reference and the
     /// CREATE TABLE failed, taking that table's rows out of the copy with it.
-    func testABareKeywordDefaultIsDroppedRatherThanKept() {
+    @Test
+    func aBareKeywordDefaultIsDroppedRatherThanKept() {
         for keyword in ["session_user", "CURRENT_USER", "current_role", "current_schema", "USER"] {
             let source = snapshot(columns: [column("owner", "character varying(50)", defaultValue: keyword)])
             let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-            XCTAssertNil(result.snapshot.columns[0].defaultValue, keyword)
-            XCTAssertTrue(result.notes.contains { $0.subject == "owner" && $0.isLossy }, keyword)
+            #expect(result.snapshot.columns[0].defaultValue == nil, Comment(rawValue: keyword))
+            #expect(result.notes.contains { $0.subject == "owner" && $0.isLossy }, Comment(rawValue: keyword))
         }
     }
 
     /// A MySQL or MariaDB nullable column reads back with a NULL default. Carried across, SQL Server
     /// turns it into a named default constraint on every such column, and a later DROP COLUMN on the
     /// target then fails on each one. No default means the same thing on every engine.
-    func testANullDefaultIsNotCarriedAcross() {
+    @Test
+    func aNullDefaultIsNotCarriedAcross() {
         let source = snapshot(columns: [column("nickname", "VARCHAR(50)", defaultValue: "NULL")])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mssql)
-        XCTAssertNil(result.snapshot.columns[0].defaultValue)
-        XCTAssertFalse(result.notes.contains { $0.subject == "nickname" })
+        #expect(result.snapshot.columns[0].defaultValue == nil)
+        #expect(!(result.notes.contains { $0.subject == "nickname" }))
     }
 
-    func testAPostgresCastIsStrippedFromALiteralDefault() {
+    @Test
+    func aPostgresCastIsStrippedFromALiteralDefault() {
         let source = snapshot(columns: [column("state", "character varying(10)", defaultValue: "'new'::character varying")])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertEqual(result.snapshot.columns[0].defaultValue, "'new'")
+        #expect(result.snapshot.columns[0].defaultValue == "'new'")
     }
 
-    func testABooleanDefaultFollowsTheTargetsSpelling() {
+    @Test
+    func aBooleanDefaultFollowsTheTargetsSpelling() {
         let source = snapshot(columns: [column("live", "boolean", defaultValue: "false")])
-        XCTAssertEqual(
-            CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-                .snapshot.columns[0].defaultValue,
-            "0"
-        )
+        #expect(CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
+                .snapshot.columns[0].defaultValue == "0")
         let mysqlSource = snapshot(columns: [column("live", "TINYINT(1)", defaultValue: "1")])
-        XCTAssertEqual(
-            CrossEngineStructureTranslator.translate(mysqlSource, from: .mysql, to: .postgresql)
-                .snapshot.columns[0].defaultValue,
-            "TRUE"
-        )
+        #expect(CrossEngineStructureTranslator.translate(mysqlSource, from: .mysql, to: .postgresql)
+                .snapshot.columns[0].defaultValue == "TRUE")
     }
 
     // MARK: - Generated columns
 
     /// The expression is the source's own SQL and nothing parses it, so the column is created as
     /// an ordinary one. That is what lets its values be copied instead of arriving empty.
-    func testAComputedColumnBecomesAnOrdinaryOne() {
+    @Test
+    func aComputedColumnBecomesAnOrdinaryOne() {
         let source = snapshot(columns: [
             column("total", "DECIMAL(10,2)", generation: "price * quantity")
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
-        XCTAssertNil(result.snapshot.columns[0].generationExpression)
-        XCTAssertNil(result.snapshot.columns[0].generationKind)
-        XCTAssertTrue(result.notes.contains { $0.subject == "total" })
+        #expect(result.snapshot.columns[0].generationExpression == nil)
+        #expect(result.snapshot.columns[0].generationKind == nil)
+        #expect(result.notes.contains { $0.subject == "total" })
     }
 
     /// The review keeps a type change to one line, cut in the middle, because a spelling such as an
     /// `ENUM` value list has no space to wrap at. A note written as a sentence still wraps.
-    func testATypeChangeIsMarkedApartFromASentence() throws {
+    @Test
+    func aTypeChangeIsMarkedApartFromASentence() throws {
         let source = snapshot(columns: [
             column("status", "enum('pending','paid','shipped','delivered','cancelled','refunded')"),
             column("total", "DECIMAL(10,2)", generation: "price * quantity")
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .mariadb, to: .postgresql)
-        let status = try XCTUnwrap(result.notes.first { $0.subject == "status" })
-        XCTAssertTrue(status.isTypeChange)
-        XCTAssertTrue(status.summary.hasSuffix("→ VARCHAR(9)"))
-        let total = try XCTUnwrap(result.notes.first { $0.subject == "total" })
-        XCTAssertFalse(total.isTypeChange)
+        let status = try #require(result.notes.first { $0.subject == "status" })
+        #expect(status.isTypeChange)
+        #expect(status.summary.hasSuffix("→ VARCHAR(9)"))
+        let total = try #require(result.notes.first { $0.subject == "total" })
+        #expect(!total.isTypeChange)
     }
 
     // MARK: - Keys and indexes
 
     /// MySQL refuses a `PRIMARY KEY` on a `LONGTEXT` outright, and the whole `CREATE TABLE` fails
     /// with it rather than the copy losing anything.
-    func testAKeyColumnIsBoundedWhereTheEngineNeedsIt() {
+    @Test
+    func aKeyColumnIsBoundedWhereTheEngineNeedsIt() {
         let source = snapshot(columns: [column("code", "text", isPrimaryKey: true)])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertEqual(result.snapshot.columns[0].dataType, "VARCHAR(255)")
-        XCTAssertTrue(result.notes.contains { $0.subject == "code" })
+        #expect(result.snapshot.columns[0].dataType == "VARCHAR(255)")
+        #expect(result.notes.contains { $0.subject == "code" })
     }
 
-    func testAKeyColumnIsLeftUnboundedWhereTheEngineAllowsIt() {
+    @Test
+    func aKeyColumnIsLeftUnboundedWhereTheEngineAllowsIt() {
         let source = snapshot(columns: [column("code", "LONGTEXT", isPrimaryKey: true)])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
-        XCTAssertEqual(result.snapshot.columns[0].dataType, "TEXT")
+        #expect(result.snapshot.columns[0].dataType == "TEXT")
     }
 
     /// A `GIN` index reaches MySQL as a plain `INDEX` over a column that is now `JSON`, and MySQL
     /// refuses the whole table for it.
-    func testAnIndexTheTargetCannotBuildIsLeftOut() {
+    @Test
+    func anIndexTheTargetCannotBuildIsLeftOut() {
         let source = snapshot(
             columns: [column("doc", "jsonb")],
             indexes: [index("doc_gin", ["doc"], type: .gin)]
         )
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertTrue(result.snapshot.indexes.isEmpty)
-        XCTAssertTrue(result.notes.contains { $0.subject == "doc_gin" })
+        #expect(result.snapshot.indexes.isEmpty)
+        #expect(result.notes.contains { $0.subject == "doc_gin" })
     }
 
     /// MySQL indexes an unbounded text column only with a key length, and refuses it without one.
-    func testAnIndexOnUnboundedTextGetsAKeyPrefixOnMySQL() {
+    @Test
+    func anIndexOnUnboundedTextGetsAKeyPrefixOnMySQL() {
         let source = snapshot(
             columns: [column("body", "text")],
             indexes: [index("body_idx", ["body"])]
         )
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertEqual(result.snapshot.indexes.first?.columnPrefixes["body"], 255)
+        #expect(result.snapshot.indexes.first?.columnPrefixes["body"] == 255)
     }
 
-    func testAPartialIndexLosesItsClauseWhereTheEngineHasNone() {
+    @Test
+    func aPartialIndexLosesItsClauseWhereTheEngineHasNone() {
         let source = snapshot(
             columns: [column("state", "text")],
             indexes: [index("live_idx", ["state"], whereClause: "state = 'live'")]
         )
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertNil(result.snapshot.indexes.first?.whereClause)
-        XCTAssertTrue(result.notes.contains { $0.subject == "live_idx" })
+        #expect(result.snapshot.indexes.first?.whereClause == nil)
+        #expect(result.notes.contains { $0.subject == "live_idx" })
     }
 
-    func testThePrimaryKeyIndexIsKeptForTheTargetToWrite() {
+    @Test
+    func thePrimaryKeyIndexIsKeptForTheTargetToWrite() {
         let source = snapshot(
             columns: [column("id", "INT", isPrimaryKey: true)],
             indexes: [index("PRIMARY", ["id"], unique: true, primary: true)]
         )
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
-        XCTAssertEqual(result.snapshot.primaryKeyColumns, ["id"])
+        #expect(result.snapshot.primaryKeyColumns == ["id"])
     }
 
     // MARK: - Value kinds
 
-    func testAJSONColumnCopiedToAPostgresServerWithoutJSONArrivesAsTextWithANote() {
+    @Test
+    func aJSONColumnCopiedToAPostgresServerWithoutJSONArrivesAsTextWithANote() {
         let source = snapshot(columns: [column("payload", "JSON")])
         let result = CrossEngineStructureTranslator.translate(
             source, from: .mysql, to: .postgresql, targetServerVersion: "9.1.24"
         )
-        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["TEXT"])
-        XCTAssertTrue(result.notes.contains { $0.subject == "payload" })
+        #expect(result.snapshot.columns.map(\.dataType) == ["TEXT"])
+        #expect(result.notes.contains { $0.subject == "payload" })
     }
 
-    func testAJSONColumnCopiedToAPostgresServerWithoutJSONBArrivesAsJSON() {
+    @Test
+    func aJSONColumnCopiedToAPostgresServerWithoutJSONBArrivesAsJSON() {
         let source = snapshot(columns: [column("payload", "JSON")])
         let result = CrossEngineStructureTranslator.translate(
             source, from: .mysql, to: .postgresql, targetServerVersion: "9.3.25"
         )
-        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["JSON"])
-        XCTAssertTrue(result.notes.isEmpty)
+        #expect(result.snapshot.columns.map(\.dataType) == ["JSON"])
+        #expect(result.notes.isEmpty)
     }
 
-    func testAJSONColumnCopiedIntoRedshiftKeepsJSONBWhateverVersionItReports() {
+    @Test
+    func aJSONColumnCopiedIntoRedshiftKeepsJSONBWhateverVersionItReports() {
         let source = snapshot(columns: [column("payload", "JSON")])
         let result = CrossEngineStructureTranslator.translate(
             source, from: .mysql, to: .redshift, targetServerVersion: "8.0.2"
         )
-        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["JSONB"])
+        #expect(result.snapshot.columns.map(\.dataType) == ["JSONB"])
     }
 
-    func testTheTargetKindsDescribeEveryColumn() {
+    @Test
+    func theTargetKindsDescribeEveryColumn() {
         let source = snapshot(columns: [column("flag", "TINYINT(1)"), column("made", "DATETIME")])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
-        XCTAssertEqual(result.targetKinds["flag"], .boolean)
-        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: 6, hasTimeZone: false))
+        #expect(result.targetKinds["flag"] == .boolean)
+        #expect(result.targetKinds["made"] == .timestamp(precision: 6, hasTimeZone: false))
     }
 
     /// The kinds describe what was written, not what was read. Carrying the source's answer over
     /// told the coercer a MySQL `DATETIME` still had the time zone its PostgreSQL source declared,
     /// so the offset it exists to strip was left on every value, and an array bound for a `JSON`
     /// column was not recognised as needing conversion at all.
-    func testTheTargetKindsFollowWhatTheRendererWroteRatherThanTheSource() {
+    @Test
+    func theTargetKindsFollowWhatTheRendererWroteRatherThanTheSource() {
         let source = snapshot(columns: [
             column("made", "timestamptz"),
             column("tags", "integer[]"),
@@ -385,33 +402,35 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
 
-        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["DATETIME(6)", "JSON", "TINYINT(1)"])
-        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: 6, hasTimeZone: false))
-        XCTAssertEqual(result.targetKinds["tags"], .json)
-        XCTAssertEqual(result.targetKinds["live"], .boolean)
+        #expect(result.snapshot.columns.map(\.dataType) == ["DATETIME(6)", "JSON", "TINYINT(1)"])
+        #expect(result.targetKinds["made"] == .timestamp(precision: 6, hasTimeZone: false))
+        #expect(result.targetKinds["tags"] == .json)
+        #expect(result.targetKinds["live"] == .boolean)
 
-        XCTAssertEqual(result.sourceKinds["made"], .timestamp(precision: 6, hasTimeZone: true))
-        XCTAssertEqual(result.sourceKinds["tags"], .array(element: .integer(bytes: 4)))
-        XCTAssertEqual(result.sourceKinds["live"], .boolean)
+        #expect(result.sourceKinds["made"] == .timestamp(precision: 6, hasTimeZone: true))
+        #expect(result.sourceKinds["tags"] == .array(element: .integer(bytes: 4)))
+        #expect(result.sourceKinds["live"] == .boolean)
     }
 
     /// A cut precision loses digits, so it is a conversion the review step has to name.
-    func testAClampedDecimalPrecisionIsReported() {
+    @Test
+    func aClampedDecimalPrecisionIsReported() {
         let source = snapshot(columns: [column("amount", "DECIMAL(65,30)")])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mssql)
-        XCTAssertEqual(result.snapshot.columns[0].dataType, "DECIMAL(38, 30)")
-        XCTAssertTrue(result.notes.contains { $0.subject == "amount" && $0.isLossy })
+        #expect(result.snapshot.columns[0].dataType == "DECIMAL(38, 30)")
+        #expect(result.notes.contains { $0.subject == "amount" && $0.isLossy })
     }
 
     /// A prefix on a unique index is a weaker constraint than the source had, and the copy fails on
     /// the first pair of rows that agree for 255 characters.
-    func testAUniqueIndexCutToAPrefixIsReported() {
+    @Test
+    func aUniqueIndexCutToAPrefixIsReported() {
         let source = snapshot(
             columns: [column("body", "text")],
             indexes: [index("body_unique", ["body"], unique: true)]
         )
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
-        XCTAssertEqual(result.snapshot.indexes.first?.columnPrefixes["body"], 255)
-        XCTAssertTrue(result.notes.contains { $0.subject == "body_unique" && $0.isLossy })
+        #expect(result.snapshot.indexes.first?.columnPrefixes["body"] == 255)
+        #expect(result.notes.contains { $0.subject == "body_unique" && $0.isLossy })
     }
 }

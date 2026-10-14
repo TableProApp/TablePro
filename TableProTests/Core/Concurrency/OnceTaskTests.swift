@@ -1,14 +1,9 @@
-//
-//  OnceTaskTests.swift
-//  TableProTests
-//
-
 import Foundation
-import TableProPluginKit
 @testable import TablePro
-import XCTest
+import TableProTestSupport
+import Testing
 
-final class OnceTaskTests: XCTestCase {
+struct OnceTaskTests {
     actor Counter {
         private(set) var value: Int = 0
 
@@ -21,66 +16,49 @@ final class OnceTaskTests: XCTestCase {
         let tag: String
     }
 
-    /// Work that ignores cancellation, standing in for a driver blocked in a C call.
-    actor Gate {
-        private var continuation: CheckedContinuation<Void, Never>?
-        private var isOpen = false
-
-        func wait() async {
-            guard !isOpen else { return }
-            await withCheckedContinuation { continuation in
-                self.continuation = continuation
-            }
-        }
-
-        func open() {
-            isOpen = true
-            continuation?.resume()
-            continuation = nil
-        }
-    }
-
-    func testRerunDoesNotAdoptAbandonedNonCooperativeWork() async throws {
+    @Test
+    func rerunDoesNotAdoptAbandonedNonCooperativeWork() async throws {
         let dedup = OnceTask<String, Int>()
-        let gate = Gate()
-        let started = expectation(description: "abandoned work started")
-        started.assertForOverFulfill = false
+        let started = AsyncGate()
+        // Ignores cancellation, standing in for a driver blocked in a C call.
+        let release = AsyncGate()
 
         let abandoned = Task {
             try await dedup.execute(key: "k") {
-                started.fulfill()
-                await gate.wait()
+                await started.open()
+                await release.wait()
                 return 1
             }
         }
 
-        await fulfillment(of: [started], timeout: 2.0)
+        await started.wait()
         await dedup.cancel(key: "k")
 
         let rerunValue = try await dedup.execute(key: "k") { 2 }
-        XCTAssertEqual(rerunValue, 2, "A rerun must run fresh work, not adopt the abandoned attempt")
+        #expect(rerunValue == 2, "A rerun must run fresh work, not adopt the abandoned attempt")
 
-        await gate.open()
+        await release.open()
         let abandonedValue = try await abandoned.value
-        XCTAssertEqual(abandonedValue, 1, "The abandoned attempt still completes; its result belongs to no one")
+        #expect(abandonedValue == 1, "The abandoned attempt still completes; its result belongs to no one")
     }
 
-    func testConcurrentSameKeyRunsWorkOnce() async throws {
+    @Test
+    func concurrentSameKeyRunsWorkOnce() async throws {
         let dedup = OnceTask<String, Int>()
         let counter = Counter()
-        let firstRegistered = expectation(description: "first work started")
-        firstRegistered.assertForOverFulfill = false
+        let firstRegistered = AsyncGate()
 
         let firstTask = Task {
             try await dedup.execute(key: "k") {
                 await counter.increment()
-                firstRegistered.fulfill()
+                await firstRegistered.open()
+                // Keeps the first call in flight while the second arrives; nothing marks that arrival.
                 try await Task.sleep(for: .milliseconds(200))
                 return 42
             }
         }
 
-        await fulfillment(of: [firstRegistered], timeout: 2.0)
+        await firstRegistered.wait()
 
         let second = try await dedup.execute(key: "k") {
             await counter.increment()
@@ -89,23 +67,29 @@ final class OnceTaskTests: XCTestCase {
         let first = try await firstTask.value
         let invocations = await counter.value
 
-        XCTAssertEqual(invocations, 1, "Work block must run exactly once for concurrent same-key callers")
-        XCTAssertEqual(first, second, "Concurrent callers must observe the same value")
-        XCTAssertEqual(first, 42, "Both callers must receive the value produced by the first work block")
+        #expect(invocations == 1, "Work block must run exactly once for concurrent same-key callers")
+        #expect(first == second, "Concurrent callers must observe the same value")
+        #expect(first == 42, "Both callers must receive the value produced by the first work block")
     }
 
-    func testConcurrentDifferentKeysRunWorkSeparately() async throws {
+    /// Each block finishes only once the other has started, so both are in flight together.
+    @Test(.timeLimit(.minutes(1)))
+    func concurrentDifferentKeysRunWorkSeparately() async throws {
         let dedup = OnceTask<String, String>()
         let counter = Counter()
+        let alphaStarted = AsyncGate()
+        let betaStarted = AsyncGate()
 
         async let alpha = dedup.execute(key: "alpha") {
             await counter.increment()
-            try await Task.sleep(for: .milliseconds(20))
+            await alphaStarted.open()
+            await betaStarted.wait()
             return "alpha-value"
         }
         async let beta = dedup.execute(key: "beta") {
             await counter.increment()
-            try await Task.sleep(for: .milliseconds(20))
+            await betaStarted.open()
+            await alphaStarted.wait()
             return "beta-value"
         }
 
@@ -113,12 +97,13 @@ final class OnceTaskTests: XCTestCase {
         let betaValue = try await beta
         let invocations = await counter.value
 
-        XCTAssertEqual(invocations, 2, "Distinct keys must each run their own work block")
-        XCTAssertEqual(alphaValue, "alpha-value")
-        XCTAssertEqual(betaValue, "beta-value")
+        #expect(invocations == 2, "Distinct keys must each run their own work block")
+        #expect(alphaValue == "alpha-value")
+        #expect(betaValue == "beta-value")
     }
 
-    func testThrowingWorkPropagatesAndClearsInFlight() async throws {
+    @Test
+    func throwingWorkPropagatesAndClearsInFlight() async throws {
         let dedup = OnceTask<String, Int>()
         let counter = Counter()
 
@@ -127,9 +112,9 @@ final class OnceTaskTests: XCTestCase {
                 await counter.increment()
                 throw TestError(tag: "first")
             }
-            XCTFail("Expected throw from first execute")
+            Issue.record("Expected throw from first execute")
         } catch let error as TestError {
-            XCTAssertEqual(error.tag, "first")
+            #expect(error.tag == "first")
         }
 
         let secondValue = try await dedup.execute(key: "k") {
@@ -137,36 +122,32 @@ final class OnceTaskTests: XCTestCase {
             return 7
         }
 
-        XCTAssertEqual(secondValue, 7, "After a throw, the next execute must rerun the work")
+        #expect(secondValue == 7, "After a throw, the next execute must rerun the work")
         let invocations = await counter.value
-        XCTAssertEqual(invocations, 2, "Both work blocks must have run (throw cleared the in-flight slot)")
+        #expect(invocations == 2, "Both work blocks must have run (throw cleared the in-flight slot)")
     }
 
-    func testCancelKeyClearsInFlightAndAllowsRerun() async throws {
+    @Test
+    func cancelKeyClearsInFlightAndAllowsRerun() async throws {
         let dedup = OnceTask<String, Int>()
         let counter = Counter()
-        let started = expectation(description: "work started")
-        started.assertForOverFulfill = false
+        let started = AsyncGate()
 
         let inFlight = Task {
             try await dedup.execute(key: "k") {
                 await counter.increment()
-                started.fulfill()
+                await started.open()
+                // Parks until the cancel ends the sleep.
                 try await Task.sleep(for: .seconds(5))
                 return 1
             }
         }
 
-        await fulfillment(of: [started], timeout: 2.0)
+        await started.wait()
         await dedup.cancel(key: "k")
 
-        do {
-            _ = try await inFlight.value
-            XCTFail("Expected CancellationError from cancelled in-flight call")
-        } catch is CancellationError {
-            // expected
-        } catch {
-            XCTFail("Expected CancellationError, got \(error)")
+        await #expect(throws: CancellationError.self, "Expected CancellationError from cancelled in-flight call") {
+            try await inFlight.value
         }
 
         let rerunValue = try await dedup.execute(key: "k") {
@@ -174,12 +155,13 @@ final class OnceTaskTests: XCTestCase {
             return 11
         }
 
-        XCTAssertEqual(rerunValue, 11, "After cancel, a fresh execute must run the work again")
+        #expect(rerunValue == 11, "After cancel, a fresh execute must run the work again")
         let invocations = await counter.value
-        XCTAssertEqual(invocations, 2)
+        #expect(invocations == 2)
     }
 
-    func testSequentialSameKeyRunsWorkAgain() async throws {
+    @Test
+    func sequentialSameKeyRunsWorkAgain() async throws {
         let dedup = OnceTask<String, Int>()
         let counter = Counter()
 
@@ -192,45 +174,40 @@ final class OnceTaskTests: XCTestCase {
             return 2
         }
 
-        XCTAssertEqual(first, 1)
-        XCTAssertEqual(second, 2)
+        #expect(first == 1)
+        #expect(second == 2)
         let invocations = await counter.value
-        XCTAssertEqual(invocations, 2, "Sequential calls (after first completes) must each run the work")
+        #expect(invocations == 2, "Sequential calls (after first completes) must each run the work")
     }
 
-    func testCancelAllCancelsEveryInFlight() async throws {
+    @Test
+    func cancelAllCancelsEveryInFlight() async throws {
         let dedup = OnceTask<String, Int>()
-        let firstStarted = expectation(description: "first started")
-        let secondStarted = expectation(description: "second started")
-        firstStarted.assertForOverFulfill = false
-        secondStarted.assertForOverFulfill = false
+        let firstStarted = AsyncGate()
+        let secondStarted = AsyncGate()
 
         let firstTask = Task {
             try await dedup.execute(key: "a") {
-                firstStarted.fulfill()
+                await firstStarted.open()
                 try await Task.sleep(for: .seconds(5))
                 return 1
             }
         }
         let secondTask = Task {
             try await dedup.execute(key: "b") {
-                secondStarted.fulfill()
+                await secondStarted.open()
                 try await Task.sleep(for: .seconds(5))
                 return 2
             }
         }
 
-        await fulfillment(of: [firstStarted, secondStarted], timeout: 2.0)
+        await firstStarted.wait()
+        await secondStarted.wait()
         await dedup.cancelAll()
 
         for task in [firstTask, secondTask] {
-            do {
-                _ = try await task.value
-                XCTFail("Expected CancellationError from cancelAll")
-            } catch is CancellationError {
-                // expected
-            } catch {
-                XCTFail("Expected CancellationError, got \(error)")
+            await #expect(throws: CancellationError.self, "Expected CancellationError from cancelAll") {
+                try await task.value
             }
         }
     }

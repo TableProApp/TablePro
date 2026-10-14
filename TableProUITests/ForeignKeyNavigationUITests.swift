@@ -7,7 +7,7 @@ final class ForeignKeyNavigationUITests: UITestCase {
         let window = launch.window
         let app = launch.app
         let grid = openFromObjectBrowser("album", in: launch)
-        let tabsBefore = editorTabCount(in: window)
+        let tabsBefore = editorTabs(in: window).count
 
         grid.clickCell(row: 1, column: 2)
         app.typeKey(.rightArrow, modifierFlags: [])
@@ -23,16 +23,16 @@ final class ForeignKeyNavigationUITests: UITestCase {
         clickAtCenter(openArtist)
 
         XCTAssertTrue(
-            waitForPredicate(timeout: 30) { self.tabsTitled("artist", in: window).firstMatch.exists },
+            waitForPredicate(timeout: 30) { self.editorTabs(titled: "artist", in: window).firstMatch.exists },
             "Following the reference must open artist in a tab"
         )
         XCTAssertGreaterThan(
-            editorTabCount(in: window),
+            editorTabs(in: window).count,
             tabsBefore,
             "Following the reference must add a tab rather than retarget the one it came from"
         )
         XCTAssertTrue(
-            tabsTitled("album", in: window).firstMatch.exists,
+            editorTabs(titled: "album", in: window).firstMatch.exists,
             "The album tab must still be in the strip"
         )
     }

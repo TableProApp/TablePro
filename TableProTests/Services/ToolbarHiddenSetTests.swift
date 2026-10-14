@@ -1,11 +1,7 @@
-//
-//  ToolbarHiddenSetTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -50,35 +46,20 @@ struct ToolbarHiddenSetTests {
     }
 
     /// Lets what a case's setup asked for arrive before the case starts counting: the pass the
-    /// toolbar's own inserts asked for, and the observer callbacks a repoint queued.
-    ///
-    /// Wall-clock time, not main-actor hops. Measured in the test host, an insert's announcement
-    /// reaches the delegate only once the run loop turns, and five main-actor hops after building
-    /// the toolbar had not yet run the pass its six inserts asked for.
-    private func settle() async {
-        try? await Task.sleep(for: .milliseconds(250))
+    /// toolbar's own inserts asked for, and the observer callbacks a repoint queued. A toolbar with
+    /// no window announces an insert only once its items are next read, and an announcement reaches
+    /// the delegate only once the run loop turns, so the wait reads the items and turns it.
+    private func settle(_ toolbar: CountingToolbar) async throws {
+        try await waitUntil { toolbar.items.count >= Self.placed.count && toolbar.validationCount > 0 }
+        await runLoopTurn()
     }
 
-    /// Waits until the condition holds, bounded at two seconds. A sleep hands the main thread back
-    /// to the run loop, which is what delivers both an insert's announcement and every observer
-    /// that receives on `RunLoop.main`. A chain of main-actor hops can drain inside one pass of the
-    /// main queue without the run loop ever turning, and a spun run loop runs no main-actor job at
-    /// all, because the test is itself one.
-    private func waitForRunLoop(until condition: () -> Bool) async -> Bool {
-        for _ in 0..<200 {
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(10))
+    /// `RunLoop.main.perform` runs blocks in the order they were queued, so this returns after every
+    /// observer callback queued before it, and the case resumes behind the pass each one queued.
+    private func runLoopTurn() async {
+        await withCheckedContinuation { continuation in
+            RunLoop.main.perform { continuation.resume() }
         }
-        return condition()
-    }
-
-    private func makeCoordinator() -> MainContentCoordinator {
-        MainContentCoordinator(
-            connection: TestFixtures.makeConnection(database: "db_a"),
-            tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
     }
 
     @available(macOS 15.0, *)
@@ -165,7 +146,7 @@ struct ToolbarHiddenSetTests {
     @Test("An item put back from the palette takes the context on the next turn")
     func droppedItemTakesTheContextNextTurn() async throws {
         let (owner, toolbar) = makeOwner()
-        await settle()
+        try await settle(toolbar)
         owner.apply(ToolbarVisibility(hidden: [MainWindowToolbar.refresh]))
         let index = try #require(toolbar.items.firstIndex { $0.itemIdentifier == MainWindowToolbar.refresh })
         toolbar.removeItem(at: index)
@@ -174,15 +155,15 @@ struct ToolbarHiddenSetTests {
         let dropped = try #require(item(MainWindowToolbar.refresh, in: toolbar))
         #expect(dropped.isHidden == false, "A fresh item arrives visible, and the pass is not run in the notification")
 
-        #expect(await waitForRunLoop { dropped.isHidden })
+        try await waitUntil { dropped.isHidden }
     }
 
     /// A Customize Toolbar drop of several items announces each one, and each announcement asks for
     /// a pass. They coalesce into one, because every pass validates every visible item.
     ///
     /// The pass the toolbar's own inserts asked for is let through first, and the count is read
-    /// again after a quiet interval rather than the moment it first moves, so a second pass that
-    /// arrived late would still be counted.
+    /// again after the run loop has turned past the first pass rather than the moment it moves, so
+    /// a second pass queued behind it would still be counted.
     ///
     /// Every wait reads `NSToolbar.items`. Measured in the test host, a toolbar with no window
     /// announces an insert to its delegate only once its items are next read: a wait on the pass
@@ -193,17 +174,14 @@ struct ToolbarHiddenSetTests {
     @Test("Two items put back in one turn cost exactly one pass")
     func aBurstOfDropsIsOnePass() async throws {
         let (owner, toolbar) = makeOwner()
-        #expect(
-            await waitForRunLoop { toolbar.items.count == Self.placed.count && toolbar.validationCount > 0 },
-            "Building the toolbar asked for no pass"
-        )
-        await settle()
+        try await settle(toolbar)
         owner.apply(ToolbarVisibility(hidden: [MainWindowToolbar.refresh, MainWindowToolbar.saveChanges]))
         for identifier in [MainWindowToolbar.saveChanges, MainWindowToolbar.refresh] {
             let index = try #require(toolbar.items.firstIndex { $0.itemIdentifier == identifier })
             toolbar.removeItem(at: index)
         }
-        await settle()
+        _ = toolbar.items
+        await runLoopTurn()
 
         let beforeDrops = toolbar.validationCount
         toolbar.insertItem(withItemIdentifier: MainWindowToolbar.refresh, at: 2)
@@ -211,11 +189,9 @@ struct ToolbarHiddenSetTests {
         let afterDrops = toolbar.validationCount
         #expect(afterDrops == beforeDrops, "The pass must not run inside the announcement")
 
-        #expect(
-            await waitForRunLoop { toolbar.items.count == Self.placed.count && toolbar.validationCount > afterDrops },
-            "No pass ran for the drops at all"
-        )
-        await settle()
+        try await waitUntil { toolbar.items.count == Self.placed.count && toolbar.validationCount > afterDrops }
+        _ = toolbar.items
+        await runLoopTurn()
         #expect(toolbar.validationCount == afterDrops + 1)
         #expect(item(MainWindowToolbar.refresh, in: toolbar)?.isHidden == true)
         #expect(item(MainWindowToolbar.saveChanges, in: toolbar)?.isHidden == true)
@@ -230,19 +206,19 @@ struct ToolbarHiddenSetTests {
     @Test("Staging a change under a live commit control leaves its label alone")
     func stagingLeavesTheLabelAlone() async throws {
         let (owner, toolbar) = makeOwner()
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
-        coordinator.tabManager.addTab()
-        owner.repoint(to: coordinator)
-        await settle()
+        let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "db_a"))
+        fixture.tabManager.addTab()
+        owner.repoint(to: fixture.coordinator)
+        try await settle(toolbar)
         let commit = try #require(item(MainWindowToolbar.saveChanges, in: toolbar))
         #expect(commit.label == String(localized: "Save Changes"))
 
         for staged in [PendingChangeKind.createTable, .principals, nil] {
             let before = toolbar.validationCount
-            coordinator.toolbarState.pendingChange = staged
+            fixture.coordinator.toolbarState.pendingChange = staged
+            await runLoopTurn()
             #expect(
-                await waitForRunLoop { toolbar.validationCount > before },
+                toolbar.validationCount > before,
                 "The toolbar-state observer never ran, so the label check below proves nothing"
             )
             #expect(commit.label == String(localized: "Save Changes"), "\(String(describing: staged))")
@@ -255,18 +231,17 @@ struct ToolbarHiddenSetTests {
     @Test("Switching to another kind of tab relabels the live commit control")
     func tabSwitchRelabelsTheCommitControl() async throws {
         let (owner, toolbar) = makeOwner()
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
-        coordinator.tabManager.addTab()
-        owner.repoint(to: coordinator)
+        let fixture = CoordinatorFixture(connection: TestFixtures.makeConnection(database: "db_a"))
+        fixture.tabManager.addTab()
+        owner.repoint(to: fixture.coordinator)
         let commit = try #require(item(MainWindowToolbar.saveChanges, in: toolbar))
         #expect(commit.label == String(localized: "Save Changes"))
 
-        coordinator.tabManager.addCreateTableTab()
-        #expect(await waitForRunLoop { commit.label == String(localized: "Create Table") })
+        fixture.tabManager.addCreateTableTab()
+        try await waitUntil { commit.label == String(localized: "Create Table") }
         #expect(commit.menuFormRepresentation?.title == String(localized: "Create Table"))
 
-        coordinator.tabManager.selectTab(at: 0)
-        #expect(await waitForRunLoop { commit.label == String(localized: "Save Changes") })
+        fixture.tabManager.selectTab(at: 0)
+        try await waitUntil { commit.label == String(localized: "Save Changes") }
     }
 }

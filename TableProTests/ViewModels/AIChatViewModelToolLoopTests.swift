@@ -1,15 +1,9 @@
-//
-//  AIChatViewModelToolLoopTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProMCP
 import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("AIChatViewModel tool roundtrip loop", .serialized)
 @MainActor
 struct AIChatViewModelToolLoopTests {
     private static let testLimit = 5
@@ -240,8 +234,8 @@ struct AIChatViewModelToolLoopTests {
         let viewModel = AIChatViewModel()
         viewModel.messages.append(ChatTurn(role: .user, blocks: [.text("typed first")]))
 
-        for _ in 0..<10 {
-            await Task.yield()
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
         }
 
         #expect(viewModel.messages.count == 1)

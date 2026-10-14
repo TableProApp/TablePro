@@ -25,7 +25,7 @@ internal final class TabPersistenceCoordinator: ObservableObject {
     nonisolated internal static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
     let connectionId: UUID
 
-    private var saveTask: Task<Void, Never>?
+    private(set) var saveTask: Task<Void, Never>?
 
     /// Whether this window has ever had a tab of its own. Only a window that held tabs can report
     /// that the user closed them all; one that never saw any is not evidence of anything. A window

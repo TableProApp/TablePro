@@ -7,6 +7,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -156,14 +157,6 @@ struct MetadataConnectionPoolTransportReplacementTests {
         return (connection, DatabaseScope(connectionId: connection.id, database: "shop", schema: nil))
     }
 
-    /// Bounded, so a caller that never reaches the point being waited for fails the assertions after
-    /// it rather than hanging the suite.
-    private func waitUntil(_ condition: () -> Bool) async {
-        for _ in 0..<2_000 where !condition() {
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-    }
-
     @Test("A lease waiting on an open the replacement withdrew takes a new connection once it ends")
     func withdrawnOpenIsRetriedAfterTheReplacement() async throws {
         let (connection, scope) = makeSession()
@@ -175,11 +168,11 @@ struct MetadataConnectionPoolTransportReplacementTests {
         let lease = Task { @MainActor in
             try await pool.withDriver(scope: scope) { driver in ObjectIdentifier(driver) }
         }
-        await waitUntil { opener.opened.count == 1 }
+        try await waitUntil { opener.opened.count == 1 }
         #expect(opener.opened.count == 1)
 
         pool.beginTransportReplacement(connectionId: connection.id)
-        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        try await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
         #expect(pool.transportWaiterCount(for: connection.id) == 1)
         #expect(opener.opened.count == 1)
 
@@ -204,7 +197,7 @@ struct MetadataConnectionPoolTransportReplacementTests {
         let lease = Task { @MainActor in
             try await pool.withDriver(scope: scope) { _ in }
         }
-        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        try await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
         #expect(pool.transportWaiterCount(for: connection.id) == 1)
         #expect(opener.opened.isEmpty)
 
@@ -227,7 +220,7 @@ struct MetadataConnectionPoolTransportReplacementTests {
         let lease = Task { @MainActor in
             try await pool.withDriver(scope: scope) { _ in }
         }
-        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        try await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
 
         pool.endTransportReplacement(connectionId: connection.id)
         #expect(pool.transportWaiterCount(for: connection.id) == 1)
@@ -253,7 +246,7 @@ struct MetadataConnectionPoolTransportReplacementTests {
         let lease = Task { @MainActor in
             try await pool.withDriver(scope: scope) { _ in }
         }
-        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        try await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
         #expect(pool.transportWaiterCount(for: connection.id) == 1)
 
         lease.cancel()
@@ -278,7 +271,7 @@ struct MetadataConnectionPoolTransportReplacementTests {
         let lease = Task { @MainActor in
             try await pool.withDriver(scope: scope) { _ in }
         }
-        await waitUntil { opener.opened.count == 1 }
+        try await waitUntil { opener.opened.count == 1 }
         #expect(opener.opened.count == 1)
 
         pool.closeAll(connectionId: connection.id, database: "shop")
@@ -303,7 +296,7 @@ struct MetadataConnectionPoolTransportReplacementTests {
         let lease = Task { @MainActor in
             try await pool.withDriver(scope: scope) { _ in }
         }
-        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        try await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
         #expect(pool.transportWaiterCount(for: connection.id) == 1)
 
         pool.closeAll(connectionId: connection.id)
@@ -332,7 +325,7 @@ struct MetadataConnectionPoolTransportReplacementTests {
         let reportsLease = Task { @MainActor in
             try await pool.withDriver(scope: reports) { _ in }
         }
-        await waitUntil { pool.transportWaiterCount(for: connection.id) == 2 }
+        try await waitUntil { pool.transportWaiterCount(for: connection.id) == 2 }
         #expect(pool.transportWaiterCount(for: connection.id) == 2)
 
         pool.closeAll(connectionId: connection.id, database: "shop")
@@ -347,7 +340,6 @@ struct MetadataConnectionPoolTransportReplacementTests {
     }
 }
 
-@Suite("MetadataConnectionPool idle eviction", .serialized)
 @MainActor
 struct MetadataConnectionPoolIdleEvictionTests {
     private func scope(_ connectionId: UUID, database: String) -> DatabaseScope {

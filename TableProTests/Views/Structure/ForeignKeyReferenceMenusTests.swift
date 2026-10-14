@@ -1,13 +1,9 @@
-//
-//  ForeignKeyReferenceMenusTests.swift
-//  TableProTests
-//
-//  The Ref Columns menu's read: which container it asks, and what it does with a read that failed.
-//
+// The Ref Columns menu's read: which container it asks, and what it does with a read that failed.
 
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -50,11 +46,28 @@ private final class ScriptedColumnProvider: ScopedMetadataProviding {
 }
 
 @MainActor
+private final class FinishedLoads {
+    var count = 0
+}
+
+@MainActor
 struct ForeignKeyReferenceMenusTests {
     private static let connectionId = UUID(uuidString: "00000000-0000-0000-0000-0000000000CD") ?? UUID()
+    private let finished = FinishedLoads()
 
-    private func settle() async {
-        for _ in 0..<8 { await Task.yield() }
+    /// Every read reports through `onListsChanged` once it lands or fails, so this waits for the
+    /// count of reads the case has started so far. A timeout returns, and the case's expectations
+    /// report what is missing.
+    private func settle(untilLoadsFinished expected: Int) async {
+        _ = try? await waitUntil { finished.count >= expected }
+    }
+
+    /// A read starts as a main-actor task that asks the provider before its first suspension, so one
+    /// main-queue turn is enough to see a read that should not have started.
+    private func afterQueuedMainWork() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 
     private func menus(
@@ -72,6 +85,7 @@ struct ForeignKeyReferenceMenusTests {
             resolveSlot: { _ in slot }
         )
         menus.origin = origin
+        menus.onListsChanged = { [finished] in finished.count += 1 }
         return menus
     }
 
@@ -113,7 +127,7 @@ struct ForeignKeyReferenceMenusTests {
         let provider = ScriptedColumnProvider()
         let menus = menus(provider: provider)
         _ = refColumnOptions(menus)
-        await settle()
+        await settle(untilLoadsFinished: 1)
 
         #expect(provider.requestedScopes.first?.database == "tab_db")
         #expect(provider.requestedScopes.allSatisfy { $0.database != "sidebar_db" })
@@ -126,7 +140,7 @@ struct ForeignKeyReferenceMenusTests {
         let provider = ScriptedColumnProvider()
         let menus = menus(provider: provider)
         _ = refColumnOptions(menus, referencedSchema: "crm")
-        await settle()
+        await settle(untilLoadsFinished: 1)
 
         #expect(provider.requestedScopes.first?.database == "crm")
         #expect(provider.requestedScopes.first?.schema == nil)
@@ -141,11 +155,11 @@ struct ForeignKeyReferenceMenusTests {
         let menus = menus(provider: provider)
 
         _ = refColumnOptions(menus)
-        await settle()
+        await settle(untilLoadsFinished: 1)
 
         let afterFailure = titles(refColumnOptions(menus))
         #expect(afterFailure.contains { $0.contains("Couldn't read") })
-        await settle()
+        await settle(untilLoadsFinished: 2)
 
         let afterRetry = titles(refColumnOptions(menus))
         #expect(afterRetry.contains("display_name"))
@@ -160,7 +174,7 @@ struct ForeignKeyReferenceMenusTests {
         let provider = ScriptedColumnProvider()
         let menus = menus(provider: provider)
         _ = refTableOptions(menus, referencedSchema: "crm")
-        await settle()
+        await settle(untilLoadsFinished: 1)
 
         let names = titles(refTableOptions(menus, referencedSchema: "crm"))
         #expect(names.contains("customers"))
@@ -177,7 +191,7 @@ struct ForeignKeyReferenceMenusTests {
         let menus = menus(provider: provider)
         _ = refTableOptions(menus)
         _ = refColumnOptions(menus)
-        await settle()
+        await settle(untilLoadsFinished: 2)
 
         let tables = titles(refTableOptions(menus))
         let columns = titles(refColumnOptions(menus))
@@ -192,11 +206,11 @@ struct ForeignKeyReferenceMenusTests {
         let provider = ScriptedColumnProvider()
         let menus = menus(provider: provider)
         _ = refColumnOptions(menus)
-        await settle()
+        await settle(untilLoadsFinished: 1)
         let requestsAfterFirstLoad = provider.requestedScopes.count
 
         _ = refColumnOptions(menus)
-        await settle()
+        await afterQueuedMainWork()
 
         #expect(provider.requestedScopes.count == requestsAfterFirstLoad)
     }
@@ -209,14 +223,14 @@ struct ForeignKeyReferenceMenusTests {
         let provider = ScriptedColumnProvider()
         let first = menus(provider: provider)
         _ = refColumnOptions(first)
-        await settle()
+        await settle(untilLoadsFinished: 1)
 
         let second = menus(
             provider: provider,
             origin: DatabaseScope(connectionId: Self.connectionId, database: "other_db", schema: nil)
         )
         _ = refColumnOptions(second)
-        await settle()
+        await settle(untilLoadsFinished: 2)
 
         #expect(provider.requestedScopes.map(\.database).contains("tab_db"))
         #expect(provider.requestedScopes.map(\.database).contains("other_db"))

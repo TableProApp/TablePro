@@ -542,44 +542,22 @@ struct SQLContextAnalyzerTests {
 
     // MARK: - P1: HP-1 - New Clause Types
 
-    @Test("RETURNING detected after INSERT VALUES")
-    func testReturningAfterInsertValues() {
-        let query = "INSERT INTO users (name) VALUES ('test') RETURNING "
+    @Test("RETURNING is detected after INSERT VALUES, DELETE and UPDATE", arguments: [
+        "INSERT INTO users (name) VALUES ('test') RETURNING ",
+        "DELETE FROM users WHERE id = 1 RETURNING ",
+        "UPDATE users SET name = 'x' RETURNING ",
+    ])
+    func testReturningDetected(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .returning)
     }
 
-    @Test("RETURNING detected after DELETE")
-    func testReturningAfterDelete() {
-        let query = "DELETE FROM users WHERE id = 1 RETURNING "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .returning)
-    }
-
-    @Test("RETURNING detected after UPDATE")
-    func testReturningAfterUpdate() {
-        let query = "UPDATE users SET name = 'x' RETURNING "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .returning)
-    }
-
-    @Test("UNION ALL detected as union clause")
-    func testUnionAllClause() {
-        let query = "SELECT id FROM users UNION ALL "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .union)
-    }
-
-    @Test("INTERSECT detected as union clause")
-    func testIntersectDetected() {
-        let query = "SELECT id FROM users INTERSECT "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .union)
-    }
-
-    @Test("EXCEPT detected as union clause")
-    func testExceptDetected() {
-        let query = "SELECT id FROM users EXCEPT "
+    @Test("UNION ALL, INTERSECT and EXCEPT are detected as the union clause", arguments: [
+        "SELECT id FROM users UNION ALL ",
+        "SELECT id FROM users INTERSECT ",
+        "SELECT id FROM users EXCEPT ",
+    ])
+    func testSetOperatorsDetectedAsUnion(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .union)
     }
@@ -591,93 +569,43 @@ struct SQLContextAnalyzerTests {
         #expect(context.clauseType == .using)
     }
 
-    @Test("OVER clause detected for window function")
-    func testOverClause() {
-        let query = "SELECT ROW_NUMBER() OVER ("
+    @Test("OVER and PARTITION BY are detected as the window clause", arguments: [
+        "SELECT ROW_NUMBER() OVER (",
+        "SELECT ROW_NUMBER() OVER (PARTITION BY ",
+    ])
+    func testWindowClause(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .window)
     }
 
-    @Test("PARTITION BY detected as window clause")
-    func testPartitionBy() {
-        let query = "SELECT ROW_NUMBER() OVER (PARTITION BY "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .window)
-    }
-
-    @Test("DROP TABLE detected as dropObject")
-    func testDropTableDropObject() {
-        let query = "DROP TABLE "
+    @Test("DROP TABLE, VIEW, INDEX and TABLE IF EXISTS are detected as dropObject", arguments: [
+        "DROP TABLE ",
+        "DROP VIEW ",
+        "DROP INDEX ",
+        "DROP TABLE IF EXISTS ",
+    ])
+    func testDropDetectedAsDropObject(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .dropObject)
     }
 
-    @Test("DROP VIEW detected as dropObject")
-    func testDropViewDropObject() {
-        let query = "DROP VIEW "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .dropObject)
-    }
-
-    @Test("DROP INDEX detected as dropObject")
-    func testDropIndexDropObject() {
-        let query = "DROP INDEX "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .dropObject)
-    }
-
-    @Test("DROP TABLE IF EXISTS detected")
-    func testDropTableIfExists() {
-        let query = "DROP TABLE IF EXISTS "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .dropObject)
-    }
-
-    @Test("CREATE INDEX name detected")
-    func testCreateIndexName() {
-        let query = "CREATE INDEX "
+    @Test("CREATE INDEX, CREATE UNIQUE INDEX and the column list inside ON table parens are detected", arguments: [
+        "CREATE INDEX ",
+        "CREATE UNIQUE INDEX ",
+        "CREATE INDEX idx ON users (",
+    ])
+    func testCreateIndexDetected(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .createIndex)
     }
 
-    @Test("CREATE UNIQUE INDEX detected")
-    func testCreateUniqueIndex() {
-        let query = "CREATE UNIQUE INDEX "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .createIndex)
-    }
-
-    @Test("CREATE INDEX ON table inside parens detected")
-    func testCreateIndexOnTableParens() {
-        let query = "CREATE INDEX idx ON users ("
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .createIndex)
-    }
-
-    @Test("CREATE VIEW detected")
-    func testCreateView() {
-        let query = "CREATE VIEW "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .createView)
-    }
-
-    @Test("CREATE OR REPLACE VIEW detected")
-    func testCreateOrReplaceView() {
-        let query = "CREATE OR REPLACE VIEW "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .createView)
-    }
-
-    @Test("CREATE VIEW AS detected")
-    func testCreateViewAs() {
-        let query = "CREATE VIEW my_view AS "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .createView)
-    }
-
-    @Test("CREATE MATERIALIZED VIEW detected")
-    func testCreateMaterializedView() {
-        let query = "CREATE MATERIALIZED VIEW "
+    @Test("CREATE VIEW, OR REPLACE, AS and MATERIALIZED VIEW are detected", arguments: [
+        "CREATE VIEW ",
+        "CREATE OR REPLACE VIEW ",
+        "CREATE VIEW my_view AS ",
+        "CREATE MATERIALIZED VIEW ",
+    ])
+    func testCreateViewDetected(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .createView)
     }
@@ -740,16 +668,11 @@ struct SQLContextAnalyzerTests {
         #expect(context.clauseType != .functionArg)
     }
 
-    @Test("VALUES after closed parens still detected as values")
-    func testValuesAfterClosedParens() {
-        let query = "INSERT INTO users (name) VALUES ('test') "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .values)
-    }
-
-    @Test("VALUES with multiple tuples after closed parens")
-    func testValuesMultipleTuplesAfterClosed() {
-        let query = "INSERT INTO users (name) VALUES ('a'), ('b') "
+    @Test("VALUES after closed parens, with one or several tuples, is still detected as values", arguments: [
+        "INSERT INTO users (name) VALUES ('test') ",
+        "INSERT INTO users (name) VALUES ('a'), ('b') ",
+    ])
+    func testValuesAfterClosedParens(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .values)
     }
@@ -844,9 +767,12 @@ struct SQLContextAnalyzerTests {
 
     // MARK: - P3: LP-6 - Subquery Context Detection
 
-    @Test("Subquery in WHERE IN - clause type is select inside subquery")
-    func testSubqueryInWhereIn() {
-        let query = "SELECT * FROM users WHERE id IN (SELECT "
+    @Test("A subquery in WHERE IN, in FROM and in EXISTS is a nested select", arguments: [
+        "SELECT * FROM users WHERE id IN (SELECT ",
+        "SELECT * FROM (SELECT ",
+        "SELECT * FROM users WHERE EXISTS (SELECT ",
+    ])
+    func testSubqueryIsNestedSelect(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .select)
         #expect(context.nestingLevel > 0)
@@ -857,14 +783,6 @@ struct SQLContextAnalyzerTests {
         let query = "SELECT * FROM users WHERE id IN (SELECT user_id FROM orders WHERE "
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .where_)
-        #expect(context.nestingLevel > 0)
-    }
-
-    @Test("Subquery in FROM - detected as select")
-    func testSubqueryInFrom() {
-        let query = "SELECT * FROM (SELECT "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .select)
         #expect(context.nestingLevel > 0)
     }
 
@@ -890,14 +808,6 @@ struct SQLContextAnalyzerTests {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .and)
         #expect(context.nestingLevel == 0)
-    }
-
-    @Test("EXISTS subquery detected")
-    func testExistsSubquery() {
-        let query = "SELECT * FROM users WHERE EXISTS (SELECT "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .select)
-        #expect(context.nestingLevel > 0)
     }
 
     // MARK: - Schema-Qualified Table Name Tests
@@ -1019,24 +929,21 @@ struct SQLContextAnalyzerTests {
 
     // MARK: - Nearest-Clause Detection (multi-clause statements)
 
-    @Test("JOIN after an ON condition detects JOIN, not the earlier ON")
-    func testJoinAfterOnDetectsJoin() {
-        let query = "SELECT * FROM a JOIN b ON a.id = b.id INNER JOIN "
+    @Test("JOIN after an ON condition, or right after the keyword, detects JOIN and expects an object name", arguments: [
+        "SELECT * FROM a JOIN b ON a.id = b.id INNER JOIN ",
+        "SELECT * FROM users JOIN ",
+    ])
+    func testJoinExpectsObjectName(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .join)
         #expect(context.expectsObjectName)
     }
 
-    @Test("LEFT JOIN after an ON condition detects JOIN")
-    func testLeftJoinAfterOnDetectsJoin() {
-        let query = "SELECT * FROM a LEFT JOIN b ON a.x = b.x RIGHT JOIN "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .join)
-    }
-
-    @Test("Third JOIN in a chain detects JOIN, not the earlier ON")
-    func testThirdJoinInChainDetectsJoin() {
-        let query = "SELECT * FROM a JOIN b ON a.id = b.id JOIN c ON b.id = c.id INNER JOIN "
+    @Test("A LEFT JOIN, or a third JOIN in a chain, after an ON condition detects JOIN", arguments: [
+        "SELECT * FROM a LEFT JOIN b ON a.x = b.x RIGHT JOIN ",
+        "SELECT * FROM a JOIN b ON a.id = b.id JOIN c ON b.id = c.id INNER JOIN ",
+    ])
+    func testLaterJoinDetectsJoin(_ query: String) {
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .join)
     }
@@ -1063,14 +970,6 @@ struct SQLContextAnalyzerTests {
     }
 
     // MARK: - Table-Operand Slot Detection
-
-    @Test("Cursor right after JOIN keyword expects an object name")
-    func testJoinKeywordExpectsObjectName() {
-        let query = "SELECT * FROM users JOIN "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .join)
-        #expect(context.expectsObjectName)
-    }
 
     @Test("Cursor after a complete FROM table does not expect an object name")
     func testFromAfterTableDoesNotExpectObjectName() {

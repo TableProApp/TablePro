@@ -1,11 +1,7 @@
-//
-//  FavoritesSidebarViewModelTests.swift
-//  TableProTests
-//
-
 import Combine
 import Foundation
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -292,15 +288,13 @@ struct FavoriteNodeTests {
     }
 }
 
-/// Issue #3016. The view model publishes the Favorites tab's whole Queries tree, but that tree
+/// The view model publishes the Favorites tab's whole Queries tree, but that tree
 /// lives in a cache of its own, and SwiftUI hears only the object a property wrapper names.
 @MainActor
 struct FavoritesSidebarCacheObservationTests {
-    private func waitForEmission(from counter: EmissionCounter, timeout: TimeInterval = 5) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while counter.emissions.isEmpty, Date() < deadline {
-            try? await Task.sleep(nanoseconds: 5_000_000)
-        }
+    /// Returns on a timeout too, so the case's own expectation reports the missing signal.
+    private func waitForEmission(from counter: EmissionCounter) async {
+        _ = try? await waitUntil(timeout: .seconds(5)) { !counter.emissions.isEmpty }
     }
 
     @MainActor
@@ -357,7 +351,7 @@ struct FavoritesSidebarCacheObservationTests {
         #expect(viewModel.nodes.isEmpty)
     }
 
-    /// Issue #3045. A connection fetches its own folders plus every global one, so a folder
+    /// A connection fetches its own folders plus every global one, so a folder
     /// belonging to another connection never arrives. The global query inside it does, and used to
     /// be drawn at no level at all: present in storage, in the Quick Switcher and in AI chat, and
     /// missing from the sidebar.

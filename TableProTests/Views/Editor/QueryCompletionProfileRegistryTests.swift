@@ -1,6 +1,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -33,26 +34,6 @@ struct QueryCompletionProfileRegistryTests {
 
         func increment() {
             value += 1
-        }
-    }
-
-    /// Lets one resolution announce that the registry has already recorded it as in flight,
-    /// so the joining call is made against a known state instead of racing `async let` ordering.
-    actor Signal {
-        private var isRaised = false
-        private var waiters: [CheckedContinuation<Void, Never>] = []
-
-        func raise() {
-            isRaised = true
-            for waiter in waiters {
-                waiter.resume()
-            }
-            waiters = []
-        }
-
-        func wait() async {
-            guard !isRaised else { return }
-            await withCheckedContinuation { waiters.append($0) }
         }
     }
 
@@ -169,12 +150,12 @@ struct QueryCompletionProfileRegistryTests {
         let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: nil)
         let resolutions = Counter()
 
-        let didStart = Signal()
-        let mayFinish = Signal()
+        let didStart = AsyncGate()
+        let mayFinish = AsyncGate()
 
         async let first = registry.resolve(scope: scope, databaseType: .mysql, base: Self.base()) {
             await resolutions.increment()
-            await didStart.raise()
+            await didStart.open()
             await mayFinish.wait()
             return Self.base(revision: "resolved")
         }
@@ -183,7 +164,7 @@ struct QueryCompletionProfileRegistryTests {
             await resolutions.increment()
             return Self.base(revision: "duplicate")
         }
-        await mayFinish.raise()
+        await mayFinish.open()
 
         let revisions = await [first.revision, second.revision]
         #expect(await resolutions.value == 1)
@@ -194,20 +175,27 @@ struct QueryCompletionProfileRegistryTests {
     /// early, measured, so a superseded resolution always runs its tail to the commit. Refusing to
     /// cache is only half the guard: the stale value must not reach the caller either, because the
     /// caller configures the editor with whatever it is handed.
-    @Test("invalidation prevents an old resolution from replacing or being returned by the next generation")
+    @Test(
+        "invalidation prevents an old resolution from replacing or being returned by the next generation",
+        .timeLimit(.minutes(1))
+    )
     func invalidationFencesOldResolution() async {
         let registry = QueryCompletionProfileRegistry()
         let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: nil)
+        let didStart = AsyncGate()
+        let mayFinish = AsyncGate()
 
         async let old = registry.resolve(scope: scope, databaseType: .mysql, base: Self.base()) {
-            try? await Task.sleep(nanoseconds: 10_000_000)
+            await didStart.open()
+            await mayFinish.wait()
             return Self.base(revision: "old")
         }
-        await Task.yield()
+        await didStart.wait()
         registry.invalidate(scope: scope)
         let current = await registry.resolve(scope: scope, databaseType: .mysql, base: Self.base()) {
             Self.base(revision: "current")
         }
+        await mayFinish.open()
         let fenced = await old
         let cached = await registry.resolve(scope: scope, databaseType: .mysql, base: Self.base()) {
             Self.base(revision: "unexpected")
@@ -261,17 +249,17 @@ struct QueryCompletionProfileRegistryTests {
         let connectionId = UUID()
         let scope = DatabaseScope(connectionId: connectionId, database: "shop", schema: nil)
 
-        let didStart = Signal()
-        let mayFinish = Signal()
+        let didStart = AsyncGate()
+        let mayFinish = AsyncGate()
 
         async let inFlight = registry.resolve(scope: scope, databaseType: .mysql, base: Self.base()) {
-            await didStart.raise()
+            await didStart.open()
             await mayFinish.wait()
             return Self.base(revision: "from-the-closed-session")
         }
         await didStart.wait()
         registry.clear(connectionId: connectionId)
-        await mayFinish.raise()
+        await mayFinish.open()
         _ = await inFlight
 
         let afterReconnect = await registry.resolve(scope: scope, databaseType: .mysql, base: Self.base()) {

@@ -10,7 +10,6 @@ import Testing
 
 // MARK: - DatabaseManager Multi-Session Isolation
 
-@Suite("DatabaseManager Multi-Session Isolation", .serialized)
 @MainActor
 struct DatabaseManagerMultiSessionTests {
     @Test("Multiple sessions coexist independently")

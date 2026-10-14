@@ -1,39 +1,40 @@
+import Foundation
 @testable import TableProPluginKit
-import XCTest
+import Testing
 
-final class AsyncTimeoutTests: XCTestCase {
-    func testReturnsValueWhenOperationFinishesBeforeTimeout() async throws {
+struct AsyncTimeoutTests {
+    @Test func testReturnsValueWhenOperationFinishesBeforeTimeout() async throws {
         let value = try await withTimeout(seconds: 5) { 42 }
-        XCTAssertEqual(value, 42)
+        #expect(value == 42)
     }
 
-    func testThrowsTimeoutWhenOperationStalls() async {
+    @Test func testThrowsTimeoutWhenOperationStalls() async {
         do {
             _ = try await withTimeout(seconds: 0.05) { () -> Int in
                 try await Task.sleep(nanoseconds: 5_000_000_000)
                 return 1
             }
-            XCTFail("Expected TimeoutError")
+            Issue.record("Expected TimeoutError")
         } catch let error as TimeoutError {
-            XCTAssertEqual(error.seconds, 0.05)
+            #expect(error.seconds == 0.05)
         } catch {
-            XCTFail("Expected TimeoutError, got \(error)")
+            Issue.record("Expected TimeoutError, got \(error)")
         }
     }
 
-    func testPropagatesOperationError() async {
+    @Test func testPropagatesOperationError() async {
         struct Boom: Error {}
         do {
             _ = try await withTimeout(seconds: 5) { () -> Int in throw Boom() }
-            XCTFail("Expected Boom")
+            Issue.record("Expected Boom")
         } catch is Boom {
             // expected
         } catch {
-            XCTFail("Expected Boom, got \(error)")
+            Issue.record("Expected Boom, got \(error)")
         }
     }
 
-    func testOnTimeoutUnblocksCancellationDeafOperation() async {
+    @Test func testOnTimeoutUnblocksCancellationDeafOperation() async {
         final class Latch: @unchecked Sendable {
             var continuation: CheckedContinuation<Void, Never>?
         }
@@ -51,7 +52,7 @@ final class AsyncTimeoutTests: XCTestCase {
                 await withCheckedContinuation { latch.continuation = $0 }
                 throw Closed()
             }
-            XCTFail("Expected an error")
+            Issue.record("Expected an error")
         } catch {
             // TimeoutError or Closed both prove onTimeout unblocked the operation.
             // Without it this test hangs: the continuation ignores task
@@ -59,7 +60,7 @@ final class AsyncTimeoutTests: XCTestCase {
         }
     }
 
-    func testOnTimeoutNotInvokedWhenOperationWins() async throws {
+    @Test func testOnTimeoutNotInvokedWhenOperationWins() async throws {
         final class Flag: @unchecked Sendable {
             var value = false
         }
@@ -67,7 +68,7 @@ final class AsyncTimeoutTests: XCTestCase {
 
         let value = try await withTimeout(seconds: 5, onTimeout: { flag.value = true }) { 42 }
 
-        XCTAssertEqual(value, 42)
-        XCTAssertFalse(flag.value)
+        #expect(value == 42)
+        #expect(!flag.value)
     }
 }

@@ -90,18 +90,11 @@ struct RedisClusterRedirectRejectionTests {
         #expect(RedisClusterRedirect.parse(message, fallbackHost: "h") == nil)
     }
 
-    @Test("A MOVED without an endpoint is rejected rather than half-parsed")
-    func rejectsMissingEndpoint() {
-        #expect(RedisClusterRedirect.parse("MOVED 12182", fallbackHost: "h") == nil)
-    }
-
-    @Test("A non-numeric slot is rejected")
-    func rejectsBadSlot() {
-        #expect(RedisClusterRedirect.parse("MOVED abc 127.0.0.1:7103", fallbackHost: "h") == nil)
-    }
-
-    @Test("A port outside the legal range is rejected")
-    func rejectsBadPort() {
-        #expect(RedisClusterRedirect.parse("MOVED 1 127.0.0.1:70000", fallbackHost: "h") == nil)
+    @Test(
+        "A MOVED without an endpoint, with a non-numeric slot or with a port out of range is rejected",
+        arguments: ["MOVED 12182", "MOVED abc 127.0.0.1:7103", "MOVED 1 127.0.0.1:70000"]
+    )
+    func rejectsMalformedRedirect(_ message: String) {
+        #expect(RedisClusterRedirect.parse(message, fallbackHost: "h") == nil)
     }
 }

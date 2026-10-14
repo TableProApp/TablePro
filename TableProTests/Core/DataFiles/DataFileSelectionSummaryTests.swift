@@ -13,13 +13,6 @@ import TableProTabular
 import Testing
 
 @MainActor
-private final class DataFileSummaryLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
-@MainActor
 struct DataFileSelectionSummaryTests {
     /// The coordinator holds its delegate and its table view weakly, so the test holds them.
     @MainActor
@@ -54,7 +47,7 @@ struct DataFileSelectionSummaryTests {
             changeManager: controller.anyChangeManager,
             isEditable: controller.isEditable,
             delegate: delegate,
-            layoutPersister: DataFileSummaryLayoutPersister(),
+            layoutPersister: InMemoryColumnLayoutStore(),
             selectedRowIndices: .constant([]),
             sortState: .constant(SortState()),
             columnLayout: .constant(ColumnLayoutState()),

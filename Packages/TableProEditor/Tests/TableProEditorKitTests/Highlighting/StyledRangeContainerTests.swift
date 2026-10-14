@@ -1,24 +1,23 @@
+import Foundation
 @testable import TableProEditorKit
-import XCTest
+import Testing
 
-final class StyledRangeContainerTests: XCTestCase {
+@MainActor
+struct StyledRangeContainerTests {
     typealias Run = RangeStoreRun<StyledRangeContainer.StyleElement>
 
     @MainActor
-    func test_init() {
+    @Test func test_init() {
         let providers = [0, 1]
         let store = StyledRangeContainer(documentLength: 100, providers: providers)
 
         // Have to do string conversion due to missing Comparable conformance pre-macOS 14
-        XCTAssertEqual(store.providerStores.keys.sorted(), providers)
-        XCTAssert(
-            store.providerStores.values.allSatisfy({ $0.store.length == 100 }),
-            "One or more providers have incorrect length"
-        )
+        #expect(store.providerStores.keys.sorted() == providers)
+        #expect(store.providerStores.values.allSatisfy({ $0.store.length == 100 }), "One or more providers have incorrect length")
     }
 
     @MainActor
-    func test_setHighlights() throws {
+    @Test func test_setHighlights() throws {
         let providers = [0, 1]
         let store = StyledRangeContainer(documentLength: 100, providers: providers)
 
@@ -28,26 +27,23 @@ final class StyledRangeContainerTests: XCTestCase {
             rangeToHighlight: NSRange(location: 0, length: 100)
         )
 
-        let storage = try XCTUnwrap(store.providerStores[providers[0]])
-        XCTAssertEqual(storage.store.runCount, 3)
+        let storage = try #require(store.providerStores[providers[0]])
+        #expect(storage.store.runCount == 3)
 
         let runs = storage.store.runs(in: 0..<100)
-        XCTAssertNil(runs[0].value?.capture)
-        XCTAssertEqual(runs[1].value?.capture, .comment)
-        XCTAssertNil(runs[2].value?.capture)
+        #expect(runs[0].value?.capture == nil)
+        #expect(runs[1].value?.capture == .comment)
+        #expect(runs[2].value?.capture == nil)
 
-        XCTAssertEqual(
-            store.runsIn(range: NSRange(location: 0, length: 100)),
-            [
-                Run(length: 40, value: nil),
-                Run(length: 10, value: .init(capture: .comment, modifiers: [])),
-                Run(length: 50, value: nil)
-            ]
-        )
+        #expect(store.runsIn(range: NSRange(location: 0, length: 100)) == [
+            Run(length: 40, value: nil),
+            Run(length: 10, value: .init(capture: .comment, modifiers: [])),
+            Run(length: 50, value: nil)
+        ])
     }
 
     @MainActor
-    func test_overlappingRuns() {
+    @Test func test_overlappingRuns() {
         let providers = [0, 1]
         let store = StyledRangeContainer(documentLength: 100, providers: providers)
 
@@ -65,19 +61,16 @@ final class StyledRangeContainerTests: XCTestCase {
             rangeToHighlight: NSRange(location: 0, length: 100)
         )
 
-        XCTAssertEqual(
-            store.runsIn(range: NSRange(location: 0, length: 100)),
-            [
-                Run(length: 40, value: nil),
-                Run(length: 5, value: .init(capture: .comment, modifiers: [])),
-                Run(length: 5, value: .init(capture: .comment, modifiers: [.declaration])),
-                Run(length: 50, value: nil)
-            ]
-        )
+        #expect(store.runsIn(range: NSRange(location: 0, length: 100)) == [
+            Run(length: 40, value: nil),
+            Run(length: 5, value: .init(capture: .comment, modifiers: [])),
+            Run(length: 5, value: .init(capture: .comment, modifiers: [.declaration])),
+            Run(length: 50, value: nil)
+        ])
     }
 
     @MainActor
-    func test_overlappingRunsWithMoreProviders() {
+    @Test func test_overlappingRunsWithMoreProviders() {
         let providers = [0, 1, 2]
         let store = StyledRangeContainer(documentLength: 200, providers: providers)
 
@@ -110,18 +103,18 @@ final class StyledRangeContainerTests: XCTestCase {
 
         let runs = store.runsIn(range: NSRange(location: 0, length: 200))
 
-        XCTAssertEqual(runs.reduce(0, { $0 + $1.length}), 200)
+        #expect(runs.reduce(0, { $0 + $1.length}) == 200)
 
-        XCTAssertEqual(runs[0], Run(length: 30, value: nil))
-        XCTAssertEqual(runs[1], Run(length: 5, value: .init(capture: .comment, modifiers: [])))
-        XCTAssertEqual(runs[2], Run(length: 5, value: .init(capture: .comment, modifiers: [.declaration])))
-        XCTAssertEqual(runs[3], Run(length: 5, value: .init(capture: .comment, modifiers: [.abstract, .declaration])))
-        XCTAssertEqual(runs[4], Run(length: 5, value: .init(capture: .comment, modifiers: [])))
-        XCTAssertEqual(runs[5], Run(length: 30, value: nil))
-        XCTAssertEqual(runs[6], Run(length: 10, value: .init(capture: .string, modifiers: [])))
-        XCTAssertEqual(runs[7], Run(length: 10, value: .init(capture: .string, modifiers: [.static])))
-        XCTAssertEqual(runs[8], Run(length: 5, value: .init(capture: .string, modifiers: [.static, .modification])))
-        XCTAssertEqual(runs[9], Run(length: 5, value: .init(capture: .string, modifiers: [.modification])))
-        XCTAssertEqual(runs[10], Run(length: 90, value: nil))
+        #expect(runs[0] == Run(length: 30, value: nil))
+        #expect(runs[1] == Run(length: 5, value: .init(capture: .comment, modifiers: [])))
+        #expect(runs[2] == Run(length: 5, value: .init(capture: .comment, modifiers: [.declaration])))
+        #expect(runs[3] == Run(length: 5, value: .init(capture: .comment, modifiers: [.abstract, .declaration])))
+        #expect(runs[4] == Run(length: 5, value: .init(capture: .comment, modifiers: [])))
+        #expect(runs[5] == Run(length: 30, value: nil))
+        #expect(runs[6] == Run(length: 10, value: .init(capture: .string, modifiers: [])))
+        #expect(runs[7] == Run(length: 10, value: .init(capture: .string, modifiers: [.static])))
+        #expect(runs[8] == Run(length: 5, value: .init(capture: .string, modifiers: [.static, .modification])))
+        #expect(runs[9] == Run(length: 5, value: .init(capture: .string, modifiers: [.modification])))
+        #expect(runs[10] == Run(length: 90, value: nil))
     }
 }

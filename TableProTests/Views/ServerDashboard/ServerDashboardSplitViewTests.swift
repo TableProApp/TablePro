@@ -1,15 +1,11 @@
-//
-//  ServerDashboardSplitViewTests.swift
-//  TableProTests
-//
-//  The metrics and slow query panes are hosting controllers inside an `NSSplitViewController`, so
-//  they only see a refresh when SwiftUI calls `updateNSViewController`. Holding the view model as a
-//  plain reference made the representable compare equal on every refresh and skip that call, which
-//  left Server Metrics on its spinner for as long as the tab stayed open.
-//
+// The metrics and slow query panes are hosting controllers inside an `NSSplitViewController`, so
+// they only see a refresh when SwiftUI calls `updateNSViewController`. Holding the view model as a
+// plain reference made the representable compare equal on every refresh and skip that call, which
+// left Server Metrics on its spinner for as long as the tab stayed open.
 
 import AppKit
 import SwiftUI
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -104,12 +100,11 @@ struct ServerDashboardSplitViewTests {
     }
 
     private func settle(_ window: NSWindow, until condition: () -> Bool) async -> Bool {
-        for _ in 0 ..< 100 {
+        let met: Void? = try? await waitUntil {
             window.contentView?.layoutSubtreeIfNeeded()
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(20))
+            return condition()
         }
-        return condition()
+        return met != nil
     }
 
     private func splitViewController(in view: NSView?) -> NSSplitViewController? {
