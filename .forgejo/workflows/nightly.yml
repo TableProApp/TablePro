@@ -75,7 +75,9 @@ jobs:
             python3 scripts/cleanup-testcontainers.py "$TABLEPRO_TEST_RUN_ID"
           }
           trap cleanup_testcontainers EXIT
-          cargo llvm-cov --no-report --locked -p "tablepro-driver-${{ matrix.driver }}" --lib --tests -- --include-ignored --test-threads=1
+          targets=(--lib --tests)
+          [ "${{ matrix.driver }}" = postgres ] && targets=(--lib --test integration)
+          cargo llvm-cov --no-report --locked -p "tablepro-driver-${{ matrix.driver }}" "${targets[@]}" -- --include-ignored --test-threads=1
           cargo llvm-cov report --json --summary-only --output-path /tmp/coverage-${{ matrix.driver }}.json
           python3 scripts/check-crate-coverage-floors.py /tmp/coverage-${{ matrix.driver }}.json --only "crates/drivers/${{ matrix.driver }}"
 
@@ -126,7 +128,9 @@ jobs:
                    --file crates/drivers/postgres/src/temporal.rs --file crates/drivers/postgres/src/decode.rs)
           fi
           status=0
-          cargo mutants "${args[@]}" -- --lib || status=$?
+          test_args=(--lib)
+          [ "${{ matrix.package }}" = tablepro-agentd ] && test_args+=(--bins)
+          cargo mutants "${args[@]}" -- "${test_args[@]}" || status=$?
           partial=()
           [ "${{ matrix.shard }}" = 0/1 ] || partial=(--partial)
           python3 scripts/check-mutants-baseline.py "${{ matrix.package }}" "/tmp/mutants-${{ matrix.label }}" "$status" "${partial[@]}"

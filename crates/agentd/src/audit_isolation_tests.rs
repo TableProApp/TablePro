@@ -321,3 +321,28 @@ async fn a_session_whose_driver_panicked_is_not_reused_even_though_its_ping_is_h
     );
     assert!(provider.sessions.lock().expect("sessions").get(&saved.id).is_none());
 }
+
+#[test]
+fn a_session_is_current_only_for_its_own_key_and_connection() {
+    let provider = provider();
+    let saved = local_connection();
+    let (current, _) = install_session(&provider, &saved, false, None);
+    let key = SessionKey::from_saved(&saved, [0; 32]);
+    let other_key = SessionKey::from_saved(&saved, [1; 32]);
+    let (stale, _) = install_session(&provider, &local_connection(), false, None);
+
+    assert!(provider.session_is_current(saved.id, &key, &current).unwrap());
+    assert!(!provider.session_is_current(saved.id, &other_key, &current).unwrap());
+    assert!(!provider.session_is_current(saved.id, &key, &stale).unwrap());
+    assert!(!provider.session_is_current(Uuid::new_v4(), &key, &current).unwrap());
+
+    provider.remove_session(saved.id, &other_key, &current).unwrap();
+    provider.remove_session(saved.id, &key, &stale).unwrap();
+    assert!(
+        provider.session_is_current(saved.id, &key, &current).unwrap(),
+        "a stale handle must not evict the current session"
+    );
+
+    provider.remove_session(saved.id, &key, &current).unwrap();
+    assert!(!provider.session_is_current(saved.id, &key, &current).unwrap());
+}
