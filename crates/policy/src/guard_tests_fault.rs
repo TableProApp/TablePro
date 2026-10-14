@@ -57,7 +57,7 @@ async fn a_panicking_write_reports_the_connection_unusable() {
 #[tokio::test]
 async fn a_disconnected_read_reports_the_connection_unusable() {
     let fault = Arc::new(RecordingFault::default());
-    let guard = guard_with_fault(Arc::new(DisconnectedConn), fault.clone());
+    let guard = guard_with_fault(Arc::new(DisconnectedConn::default()), fault.clone());
 
     let error = guard.list_tables().await.expect_err("disconnected is surfaced");
 
