@@ -453,3 +453,43 @@ fn redis_stream_commands_are_refused() {
         assert!(!is_redis_stream_command(&args), "{args:?}");
     }
 }
+
+#[test]
+fn a_certificate_authority_path_is_read_only_when_the_connection_verifies() {
+    let missing = std::env::temp_dir().join(format!("redis-missing-ca-{}.pem", std::process::id()));
+    let config = tablepro_core::TlsConfig {
+        root_cert: Some(missing.clone()),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        root_certificate(&config, false).unwrap(),
+        None,
+        "an encrypt-only session ignores the path"
+    );
+    let error = root_certificate(&config, true).expect_err("a verifying session needs the file");
+    assert!(
+        matches!(&error, DriverError::Tls(message) if message.contains(&missing.display().to_string())),
+        "{error:?}"
+    );
+    assert_eq!(
+        root_certificate(&tablepro_core::TlsConfig::default(), true).unwrap(),
+        None,
+        "no path means the system roots"
+    );
+}
+
+#[test]
+fn a_named_certificate_authority_is_read_when_the_connection_verifies() {
+    let path = std::env::temp_dir().join(format!("redis-present-ca-{}.pem", std::process::id()));
+    std::fs::write(&path, b"-----BEGIN CERTIFICATE-----\n").unwrap();
+    let config = tablepro_core::TlsConfig {
+        root_cert: Some(path.clone()),
+        ..Default::default()
+    };
+
+    let bytes = root_certificate(&config, true).unwrap();
+    std::fs::remove_file(&path).unwrap();
+
+    assert_eq!(bytes, Some(b"-----BEGIN CERTIFICATE-----\n".to_vec()));
+}
