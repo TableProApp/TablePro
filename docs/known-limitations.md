@@ -1,6 +1,6 @@
 # Known limitations of BookiE 0.2
 
-What the application does not do, or does differently from what you might expect, and the bugs we know about. Each entry names its ledger row. Reviewed 2026-10-14; an entry is removed when the limitation no longer applies.
+What the application does not do, or does differently from what you might expect, and the bugs we know about. Entries link to their owning issue, decision or evidence when one exists. Reviewed 2026-10-14.
 
 ## Data and values
 

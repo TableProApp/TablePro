@@ -20,18 +20,14 @@ The merged baseline is the current `linux` branch. Use `git log` for landed chan
 
 Order for 0.2.0: **B3/B4 correctness blockers → installed Arch/Omarchy/Hyprland Wayland → B7 qualification**. Debian/GNOME desktop acceptance follows in 0.2.x. Review may overlap reserved fixtures; a lane pass does not close a milestone. The tip is not release-qualified. Limitations that 0.2.0 accepts stay in [known limitations](known-limitations.md); fixes after 0.2.0 stay in the [backlog](backlog.md).
 
-### Retest indicators (do not drop)
+### Current acceptance signals
 
-These failed or incomplete runs stay open until re-proven on a current SHA:
+Historical run results remain in the archive. These environment-specific acceptance items are still open:
 
 | Signal | Owner | Note |
 | --- | --- | --- |
-| Forgejo run 101: two PostgreSQL driver failures | B3 | Run 127 re-proves these fixes; the current `linux` head still needs its exact-head gate. See the [archived B3 retest record](archive/type-contract-strategy-pre-project-migration-2026-10-12.md#retest-indicators) |
-| AUD-9 named outer alias and #461 plan behavior | B4 / AUD-9 | Outer-alias leak is fixed in #537 and has a dedicated native test; plan output remains redacted by #461. The frozen-candidate PostgreSQL release layer remains the acceptance gate |
-| Forgejo run 88 GTK waits: `open_editor`, `audit_failure_denies` | UX | Cause unclassified; run 88 predates #451/#452 |
 | TEST-28 native Ubuntu AT-SPI grid / Columns UI | UX | The Debian 13 and Ubuntu 24.04 containers expose and activate the grid menu (a menu-reachability scenario passes on both once it clicks the cell by its extents, [#646](https://github.com/cozyGarage/BookiE/pull/646)); the native Ubuntu host remains ([#560](https://github.com/cozyGarage/BookiE/issues/560)) |
 | TEST-31 intermittent Forgejo GTK / distro-floor failures | UX / lab | The startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). The issue remains open for intermittent failures and the required consecutive full-run evidence; inspect its latest updates before qualifying a candidate ([#556](https://github.com/cozyGarage/BookiE/issues/556)) |
-| Build Linux on `c2f3f78b9`: Docker Hub `toomanyrequests` | lab | Auth wired (#476); treat as infra retest if anonymous pull returns |
 
 
 Feature gaps against other clients are in [the feature comparison](0.2-feature-comparison.md); none is a 0.2 blocker unless the maintainer adds it.
@@ -56,8 +52,8 @@ Plans and case evidence apply these decisions; they do not define another conver
 | A1–A4 | Prior correctness, drafts/planning, Jump to Column and BookiE branding implemented | Historical 0.1.x proof does not qualify 0.2; A5 installed candidate work folds into B7 |
 | B1 platform/build | Rust 1.98, GNOME 50, SQLx/system SQLite, resources and dev profiles integrated | Installed Arch then Debian/GNOME qualification; full Flatpak qualification separate |
 | B2 runtime/storage | Owned tasks/stores, migrations, GSettings mirrors and coalesced writers implemented | Installed upgrade/rollback and shutdown acceptance in B7 |
-| B3 type/value contracts | Focused native and consumer cases are recorded across the existing engines. SQLite STRICT `ANY` computed `iif()` now has native storage-class and typed CSV coverage (#331); declared BOOLEAN/temporal decoding, BLOB-affinity runtime classes, malformed temporal text fallback, and enum-like NUMERIC-affinity grid/CSV parsing have focused tests (#333, #335, #359). PostgreSQL domain-over-enum metadata/query coverage now reaches 302 and 512 layers, including arrays (#338, #340, #342, #344); PostgreSQL, MySQL, Redis, ClickHouse and SQL Server have committed-write lost-ack contracts (#315, #345, #354, #355); MongoDB now covers a dropped post-commit update acknowledgement with a native row oracle and `system.profile` replay oracle (`a_committed_update_with_a_lost_ack_is_not_replayed_after_reconnect`). U2 identity-copy behavior is implemented and covered for PostgreSQL, SQL Server and MySQL policy; PostgreSQL enum parameter inference has restricted-role coverage, and PR #249 adds a keyed grid-edit case under shadowed transaction-local `search_path`. The broader engine/type/consumer/configuration matrix, mutation triage, remaining TEST-15 paths and installed grid acceptance remain open. | [Type/consumer board](type-contract-strategy.md), [B3 findings](archive/b3-review-2026-10-01.md), [value evidence index](value-contracts.md) |
-| B4 transport/sessions | SSH audit, rollback-failure, Kerberos, GTK trust-flow, prompt-timeout, cross-engine DML regressions and B4-11 failed-batch INSERT/UPDATE/DELETE coverage (#337, #353) are merged. | [Current B4 board](b4-task-board.md): frozen-candidate and hosted/installed acceptance remains open for the listed rows; B4-11 broader engine/effect coverage, B4-21 Windows AD interoperability, and UI-1b chain editing remain. B4-12's scoped frozen-source rollback acceptance is complete; full-candidate and package qualification remain separate |
+| B3 type/value contracts | Native and consumer coverage spans the supported engines. The broader engine/type/consumer/configuration matrix, mutation triage, remaining TEST-15 paths and installed grid acceptance remain open. | [Type/consumer board](type-contract-strategy.md) and [value evidence index](value-contracts.md) |
+| B4 transport/sessions | Policy, transport, rollback and audit fixes are merged; the full B4 lane is not yet accepted. | The [current B4 board](b4-task-board.md) and Project #3 own the remaining acceptance. B4-12's scoped rollback acceptance is complete; other rows still need their listed candidate or installed proof |
 | B5 editor/files | Open/Save/Save As, changed-on-disk detection and file relinking implemented | Installed file-dialog/recovery/dirty-close flows |
 | B6 PostgreSQL catalog | Guarded read-only catalog/types implemented | Restricted-role, stale-owner and installed catalog flows |
 | B7 qualification | Open | Frozen SHA, affected automated gates, both installed desktop targets and retry-free soak; publication separate |
