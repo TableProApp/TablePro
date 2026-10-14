@@ -1,6 +1,6 @@
 # Manual connection fixture
 
-This Compose project starts one disposable service per network database driver. Every published port is bound to `127.0.0.1`; the credentials below are fixed local-fixture values, not production credentials.
+This Compose project starts one disposable service per network database driver. Every published port is bound to `127.0.0.1`. Its Compose and initialization files define the test passwords; do not reuse them elsewhere.
 
 SQLite and DuckDB are embedded file databases. They do not run as network services and are listed separately below.
 
@@ -38,12 +38,12 @@ Set TLS to **Disabled** for every network connection. Each service has a `people
 
 | Driver | Host | Port | Database | Read-write user | Read-only user |
 |---|---:|---:|---|---|---|
-| PostgreSQL | `127.0.0.1` | `15432` | `tablepro_lab` | `tablepro_rw` / `tablepro_rw_password` | `tablepro_ro` / `tablepro_ro_password` |
-| MySQL | `127.0.0.1` | `13306` | `tablepro_lab` | `tablepro_rw` / `tablepro_rw_password` | `tablepro_ro` / `tablepro_ro_password` |
-| SQL Server | `127.0.0.1` | `11433` | `tablepro_lab` | `tablepro_rw` / `TableProRw!123` | `tablepro_ro` / `TableProRo!123` |
-| ClickHouse | `127.0.0.1` | `18123` | `tablepro_lab` | `tablepro_rw` / `tablepro_rw_password` | `tablepro_ro` / `tablepro_ro_password` |
-| MongoDB | `127.0.0.1` | `27017` | `tablepro_lab` | `tablepro_rw` / `tablepro_rw_password` | `tablepro_ro` / `tablepro_ro_password` |
-| Redis | `127.0.0.1` | `16379` | `0` | `tablepro_rw` / `tablepro_rw_password` | `tablepro_ro` / `tablepro_ro_password` |
+| PostgreSQL | `127.0.0.1` | `15432` | `tablepro_lab` | `tablepro_rw` | `tablepro_ro` |
+| MySQL | `127.0.0.1` | `13306` | `tablepro_lab` | `tablepro_rw` | `tablepro_ro` |
+| SQL Server | `127.0.0.1` | `11433` | `tablepro_lab` | `tablepro_rw` | `tablepro_ro` |
+| ClickHouse | `127.0.0.1` | `18123` | `tablepro_lab` | `tablepro_rw` | `tablepro_ro` |
+| MongoDB | `127.0.0.1` | `27017` | `tablepro_lab` | `tablepro_rw` | `tablepro_ro` |
+| Redis | `127.0.0.1` | `16379` | `0` | `tablepro_rw` | `tablepro_ro` |
 
 The PostgreSQL and MySQL read-write accounts also own or can access `tablepro_extra`, so use that database to verify switching databases. Redis database `1` is also available for database-switch testing.
 
@@ -68,5 +68,3 @@ Use the file path as the connection endpoint. DuckDB requires an app build with 
 3. Switch PostgreSQL, MySQL, and Redis between the documented databases and confirm that the app retains the selected database.
 4. For MongoDB, query `people` with `find({})`, insert a document, and delete it.
 5. For Redis, set, read, and delete a key in both database `0` and database `1`.
-
-Do not use these fixed credentials outside this local disposable fixture.
