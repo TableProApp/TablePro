@@ -36,6 +36,7 @@ Click a table in the sidebar. It opens as a preview tab, marked with an icon, an
 Ctrl+E opens a SQL editor tab for the current connection.
 
 Click a sortable result column header to order the rows already loaded in that result. This is a local view change and does not run the SQL again, including for write statements that return rows. SQL NULL values stay last; columns with mixed or undecodable values cannot be sorted. Text uses local value ordering, which can differ from the database collation.
+Right-click a result cell and choose **Filter by This Value** to filter the loaded rows in that result. This also works on pinned results, shows visible and loaded row counts, and does not run the SQL again.
 Use **Split** in the editor toolbar to show the same query in a second side-by-side pane. Edits and the caret are shared; each pane keeps its own scroll position.
 
 To collapse a multiline SQL block, place the cursor inside it and press **Ctrl+Shift+[**. Click its gutter marker to unfold it, or choose **Unfold all** in the toolbar. **Ctrl+Shift+]** also unfolds every block. Folding hides lines in the editor without changing the SQL that runs. Editing the query clears folds so hidden text cannot be mistaken for the current query.
