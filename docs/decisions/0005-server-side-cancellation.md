@@ -35,7 +35,7 @@ The current workspace uses Tiberius 0.13, which exposes [`Client::cancel_query`]
 
 PostgreSQL's implementation was already release-verified through the fixture, so it is the reference rather than a new design. Extracting it into `core` and re-verifying it against the fixture and the container suite means the remaining drivers adopt a proven sequence instead of four independent ones.
 
-Engines differ in mechanism but not in shape. PostgreSQL has an out-of-band cancel request; MySQL, ClickHouse and SQL Server need a second session to issue `KILL QUERY` or its equivalent; SQLite interrupts in-process. All of them need the same before/after ordering, and all of them need the same rule about what counts as confirmation.
+Engines use different cancellation mechanisms. PostgreSQL sends `pg_cancel_backend` through a separate single-connection control pool. MySQL uses `KILL QUERY` through a separate single-connection pool. ClickHouse tags the request with a unique query id and sends `KILL QUERY` through its client. SQLite calls `sqlite3_interrupt` in-process. SQL Server's Tiberius cancellation API is not integrated, and Redis, MongoDB and DuckDB do not report confirmed server cancellation. The shared coordinator still enforces the same ordering and confirmation rule.
 
 `SLEEP()` is not a valid probe on MySQL. It returns 1 when interrupted and the statement succeeds, so a test built on it passes without proving anything. The integration tests use an interruptible cross join instead, and check the server's own process list before and after the interruption rather than trusting the client's error.
 
@@ -43,7 +43,7 @@ Engines differ in mechanism but not in shape. PostgreSQL has an out-of-band canc
 
 Accepted:
 
-- Each driver holds a second single-connection pool for cancellation requests, so a killed session cannot block the request that kills it.
+- PostgreSQL and MySQL use a separate single-connection pool for cancellation requests, so a busy query cannot block the request that stops it. ClickHouse uses its client to send a second request; SQLite interrupts its active connection in-process.
 - Server cancellation is best-effort. An engine that refuses the request, or a statement that ignores it, still yields `OperationOutcomeUnknown` and still poisons governed writes. That is the honest outcome, not a regression.
 - Verifying a driver needs a real server. These paths cannot be proven by unit tests.
 
