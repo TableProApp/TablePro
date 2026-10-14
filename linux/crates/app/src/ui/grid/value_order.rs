@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::str::FromStr;
 
@@ -157,7 +158,7 @@ fn numeric_order(a: &Value, b: &Value) -> Ordering {
         return a.cmp(&b);
     }
     match (decimal_of(a), decimal_of(b)) {
-        (Some(a), Some(b)) => a.cmp_numeric(&b),
+        (Some(a), Some(b)) => a.cmp_numeric(b.as_ref()),
         _ => Ordering::Equal,
     }
 }
@@ -189,28 +190,30 @@ fn integer_of(value: &Value) -> Option<i128> {
 }
 
 /// The value as an exact decimal, for comparing numbers of different
-/// kinds. A float is taken at the decimal its shortest form spells.
-fn decimal_of(value: &Value) -> Option<SqlDecimal> {
-    match value {
-        Value::Decimal(decimal) => Some(decimal.clone()),
+/// kinds. A float is taken at the decimal its shortest form spells. A
+/// decimal is borrowed, since a sort compares each one many times.
+fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
+    let owned = match value {
+        Value::Decimal(decimal) => return Some(Cow::Borrowed(decimal)),
         Value::Float32(_) | Value::Float64(_) => {
             let float = float_of(value)?;
             if float.is_nan() {
-                Some(SqlDecimal::nan())
+                SqlDecimal::nan()
             } else if float.is_infinite() {
-                Some(SqlDecimal::infinity(float < 0.0))
+                SqlDecimal::infinity(float < 0.0)
             } else {
-                SqlDecimal::from_str(&format_float(value)).ok()
+                SqlDecimal::from_str(&format_float(value)).ok()?
             }
         }
         _ => match integer_of(value) {
-            Some(int) => Some(SqlDecimal::from_scaled_i128(int, 0)),
+            Some(int) => SqlDecimal::from_scaled_i128(int, 0),
             None => match value {
-                Value::WideInt(wide) => SqlDecimal::from_str(&wide.to_string()).ok(),
-                _ => None,
+                Value::WideInt(wide) => SqlDecimal::from_str(&wide.to_string()).ok()?,
+                _ => return None,
             },
         },
-    }
+    };
+    Some(Cow::Owned(owned))
 }
 
 /// A float's shortest decimal spelling at its own width, so `0.1f32`
