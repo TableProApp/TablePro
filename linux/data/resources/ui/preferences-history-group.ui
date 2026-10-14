@@ -3,10 +3,10 @@
   <requires lib="gtk" version="4.22"/>
   <requires lib="libadwaita" version="1.9"/>
   <template class="TableProHistoryGroup" parent="AdwPreferencesGroup">
-    <property name="title" translatable="yes">Query history</property>
+    <property name="title" translatable="yes">Query History</property>
     <child>
       <object class="AdwSwitchRow" id="save_history_row">
-        <property name="title" translatable="yes">Save query history</property>
+        <property name="title" translatable="yes">Save Query History</property>
         <property name="subtitle" translatable="yes">Keep a searchable record of the SQL you run. Statements that contain passwords or connection secrets are never saved.</property>
       </object>
     </child>

@@ -348,13 +348,13 @@ impl WorkspaceModel {
         // A refetch replaces the rows and with them every pending edit,
         // so F5 mid-edit asks first, as closing a dirty tab does.
         let dialog = adw::AlertDialog::new(
-            Some(&crate::i18n::gettext("Discard pending changes?")),
+            Some(&crate::i18n::gettext("Discard Pending Changes?")),
             Some(&crate::i18n::gettext(
                 "Refreshing reloads the table from the database and drops every unsaved edit on this tab.",
             )),
         );
         dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
-        dialog.add_response("discard", &crate::i18n::gettext("Discard and refresh"));
+        dialog.add_response("discard", &crate::i18n::gettext("Discard and Refresh"));
         dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");

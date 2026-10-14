@@ -14,7 +14,7 @@
             <child type="start">
               <object class="GtkButton" id="test_button">
                 <property name="label" translatable="yes">Test</property>
-                <property name="tooltip-text" translatable="yes">Connect once to check the settings, then disconnect</property>
+                <property name="tooltip-text" translatable="yes">Connect Once to Check the Settings</property>
               </object>
             </child>
             <child type="end">
@@ -106,7 +106,7 @@
                     </child>
                     <child>
                       <object class="AdwSwitchRow" id="remember_row">
-                        <property name="title" translatable="yes">Remember password</property>
+                        <property name="title" translatable="yes">Remember Password</property>
                         <property name="subtitle" translatable="yes">Keep it in the keyring; otherwise it is asked for at each connect</property>
                         <property name="active">true</property>
                       </object>
@@ -124,7 +124,7 @@
                     <property name="title" translatable="yes">Options</property>
                     <child>
                       <object class="AdwSwitchRow" id="read_only_row">
-                        <property name="title" translatable="yes">Read-only mode</property>
+                        <property name="title" translatable="yes">Read-Only Mode</property>
                       </object>
                     </child>
                   </object>

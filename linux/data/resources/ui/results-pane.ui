@@ -24,13 +24,13 @@
                 <property name="margin-end">6</property>
                 <child>
                   <object class="GtkToggleButton" id="sidebar_toggle">
-                    <property name="tooltip-text" translatable="yes">Show results list</property>
+                    <property name="tooltip-text" translatable="yes">Show Results List</property>
                     <property name="visible">false</property>
                     <style>
                       <class name="flat"/>
                     </style>
                     <accessibility>
-                      <property name="label" translatable="yes">Show results list</property>
+                      <property name="label" translatable="yes">Show Results List</property>
                     </accessibility>
                   </object>
                 </child>

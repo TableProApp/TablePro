@@ -128,7 +128,7 @@ impl Component for ImportCsvDialog {
             ]))
             .build();
         let header_row = adw::SwitchRow::builder()
-            .title(crate::i18n::gettext("First row is a header"))
+            .title(crate::i18n::gettext("First Row Is a Header"))
             .subtitle(crate::i18n::gettext(
                 "Its values name the fields instead of being imported.",
             ))

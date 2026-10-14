@@ -272,14 +272,14 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     page.add(&format_group);
 
     let csv_group = adw::PreferencesGroup::builder()
-        .title(crate::i18n::gettext("CSV options"))
+        .title(crate::i18n::gettext("CSV Options"))
         .build();
     let rows = Rc::new(CsvRows {
-        null_to_empty: switch_row(&crate::i18n::gettext("Convert NULL to empty"), None),
-        line_break_to_space: switch_row(&crate::i18n::gettext("Convert line breaks to spaces"), None),
-        header_row: switch_row(&crate::i18n::gettext("Put field names in the first row"), None),
+        null_to_empty: switch_row(&crate::i18n::gettext("Convert NULL to Empty"), None),
+        line_break_to_space: switch_row(&crate::i18n::gettext("Convert Line Breaks to Spaces"), None),
+        header_row: switch_row(&crate::i18n::gettext("Put Field Names in the First Row"), None),
         sanitize_formulas: switch_row(
-            &crate::i18n::gettext("Sanitize formula-like values"),
+            &crate::i18n::gettext("Sanitize Formula-Like Values"),
             Some(&crate::i18n::gettext(
                 "Prefix values starting with =, +, - or @ so spreadsheets do not run them",
             )),

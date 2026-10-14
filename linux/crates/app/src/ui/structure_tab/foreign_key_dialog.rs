@@ -91,7 +91,7 @@ impl ForeignKeyDialog {
 
         let tables = gio::ListStore::new::<TableChoiceObject>();
         let table_row = adw::ComboRow::builder()
-            .title(crate::i18n::gettext("Referenced Table"))
+            .title(crate::i18n::gettext("Referenced table"))
             .model(&tables)
             .enable_search(true)
             .sensitive(false)
@@ -133,11 +133,11 @@ impl ForeignKeyDialog {
         let labels = action_labels(actions);
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         let on_delete_row = adw::ComboRow::builder()
-            .title(crate::i18n::gettext("On Delete"))
+            .title(crate::i18n::gettext("On delete"))
             .model(&gtk::StringList::new(&labels))
             .build();
         let on_update_row = adw::ComboRow::builder()
-            .title(crate::i18n::gettext("On Update"))
+            .title(crate::i18n::gettext("On update"))
             .model(&gtk::StringList::new(&labels))
             .build();
         let actions_group = adw::PreferencesGroup::builder()

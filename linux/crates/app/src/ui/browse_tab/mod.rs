@@ -1387,7 +1387,7 @@ impl BrowseModel {
         self.actions.insert_row.set_enabled(has_columns && has_pk);
         if has_columns && !has_pk {
             self.insert_button.set_tooltip_text(Some(&crate::i18n::gettext(
-                "This table has no primary key. Inline editing is disabled.",
+                "This table has no primary key, so editing is turned off.",
             )));
         } else {
             self.insert_button
@@ -1402,13 +1402,13 @@ impl BrowseModel {
             self.filter_badge.set_visible(false);
             self.filter_badge.set_label("");
             self.filter_button
-                .set_tooltip_text(Some(&crate::i18n::gettext("Filter rows")));
+                .set_tooltip_text(Some(&crate::i18n::gettext("Filter Rows")));
         } else {
             self.filter_badge.set_label(&n.to_string());
             self.filter_badge.set_visible(true);
             self.filter_button.set_tooltip_text(Some(&crate::i18n::ngettext_f(
-                "{n} filter rule active. Click to edit",
-                "{n} filter rules active. Click to edit",
+                "{n} Filter Rule Active",
+                "{n} Filter Rules Active",
                 u32::try_from(n).unwrap_or(u32::MAX),
                 &[("n", &n.to_string())],
             )));
@@ -1749,7 +1749,7 @@ impl BrowseModel {
             BrowseTabInput::SaveFailed(message) => {
                 self.show_saving(false);
                 fx.output(BrowseTabOutput::ShowSelectionAlert {
-                    title: crate::i18n::gettext("Save failed"),
+                    title: crate::i18n::gettext("Save Failed"),
                     body: message,
                 });
             }
@@ -1819,8 +1819,8 @@ impl BrowseModel {
     fn confirm_delete(&mut self, deletion: RowDeletion) {
         let count = deletion.len();
         let title = crate::i18n::ngettext_f(
-            "Delete {n} row?",
-            "Delete {n} rows?",
+            "Delete {n} Row?",
+            "Delete {n} Rows?",
             u32::try_from(count).unwrap_or(u32::MAX),
             &[("n", &count.to_string())],
         );

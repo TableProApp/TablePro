@@ -598,9 +598,9 @@ mod tests {
             accel(&menu_item("Set to NULL", "cell.set-null")).as_deref(),
             Some("<Primary>BackSpace")
         );
-        assert_eq!(accel(&menu_item("Edit cell", "cell.edit")).as_deref(), Some("F2"));
+        assert_eq!(accel(&menu_item("Edit Cell", "cell.edit")).as_deref(), Some("F2"));
         assert_eq!(
-            accel(&menu_item("New window", "app.new-window")),
+            accel(&menu_item("New Window", "app.new-window")),
             None,
             "GTK shows its own"
         );

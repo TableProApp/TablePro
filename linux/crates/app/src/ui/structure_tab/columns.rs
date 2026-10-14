@@ -205,14 +205,14 @@ pub(super) fn build_column_row(
     row.add_row(&default_row);
 
     let pk_row = adw::SwitchRow::builder()
-        .title(crate::i18n::gettext("Primary key"))
+        .title(crate::i18n::gettext("Primary Key"))
         .active(draft.primary_key)
         .build();
     pk_row.set_widget_name("col-pk");
     gate(&pk_row, &permissions.alter_primary_key);
 
     let auto_row = adw::SwitchRow::builder()
-        .title(crate::i18n::gettext("Auto increment"))
+        .title(crate::i18n::gettext("Auto Increment"))
         .active(draft.auto_increment)
         .build();
     auto_row.set_widget_name("col-auto");

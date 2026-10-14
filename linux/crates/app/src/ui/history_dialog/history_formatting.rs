@@ -16,7 +16,7 @@ pub(super) fn preview_title(query: &str) -> String {
         .find(|line| !line.is_empty() && !line.starts_with("--"))
         .unwrap_or("");
     if first_line.is_empty() {
-        return gettext("Empty query");
+        return gettext("Empty Query");
     }
     truncated(first_line, TITLE_CHARS)
 }
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn a_query_of_only_comments_is_called_empty() {
-        assert_eq!(preview_title("-- nothing\n\n"), "Empty query");
+        assert_eq!(preview_title("-- nothing\n\n"), "Empty Query");
     }
 
     #[test]

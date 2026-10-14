@@ -130,7 +130,7 @@ mod tests {
         assert_eq!(
             row_titles(&page),
             [
-                "Use the system monospace font",
+                "Use the System Monospace Font",
                 "Editor font",
                 "Query timeout (seconds)"
             ]

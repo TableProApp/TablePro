@@ -108,7 +108,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
         edit_section.append_item(&item);
     };
     if shape.edit_cell {
-        hidden_while_disabled(crate::i18n::gettext("Edit cell"), "cell.edit");
+        hidden_while_disabled(crate::i18n::gettext("Edit Cell"), "cell.edit");
     }
     if shape.set_value {
         // Each is offered only where the column can hold it, so a menu
@@ -130,7 +130,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     copy_as.append(Some(&crate::i18n::gettext("JSON")), Some("cell.copy-json"));
     copy_as.append(Some(&crate::i18n::gettext("CSV")), Some("cell.copy-csv"));
     copy_as.append(
-        Some(&crate::i18n::gettext("CSV with Headers")),
+        Some(&crate::i18n::gettext("CSV With Headers")),
         Some("cell.copy-csv-headers"),
     );
     copy_as.append(Some(&crate::i18n::gettext("Markdown")), Some("cell.copy-markdown"));
@@ -145,9 +145,9 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     }
     let copy_section = gio::Menu::new();
     copy_section.append(Some(&crate::i18n::gettext("Copy")), Some("cell.copy"));
-    copy_section.append_submenu(Some(&crate::i18n::gettext("Copy as")), &copy_as);
+    copy_section.append_submenu(Some(&crate::i18n::gettext("Copy As")), &copy_as);
     copy_section.append(
-        Some(&crate::i18n::gettext("Copy column name")),
+        Some(&crate::i18n::gettext("Copy Column Name")),
         Some("cell.copy-column-name"),
     );
     menu.append_section(None, &copy_section);
@@ -162,7 +162,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     let action_section = gio::Menu::new();
     action_section.append(Some(&crate::i18n::gettext("Export…")), Some("cell.export"));
     if shape.row_ops {
-        action_section.append(Some(&crate::i18n::gettext("Insert row")), Some("cell.insert-row"));
+        action_section.append(Some(&crate::i18n::gettext("Insert Row")), Some("cell.insert-row"));
         action_section.append(Some(&crate::i18n::gettext("Duplicate")), Some("cell.duplicate-row"));
         action_section.append(Some(&crate::i18n::gettext("Delete")), Some("cell.delete-row"));
     }
@@ -419,7 +419,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
 
     if editable {
         let empty_menu = gio::Menu::new();
-        empty_menu.append(Some(&crate::i18n::gettext("Insert row")), Some("cell.insert-row"));
+        empty_menu.append(Some(&crate::i18n::gettext("Insert Row")), Some("cell.insert-row"));
         let empty_popover = gtk::PopoverMenu::from_model_full(&empty_menu, gtk::PopoverMenuFlags::NESTED);
         empty_popover.set_has_arrow(true);
         empty_popover.set_parent(column_view);

@@ -722,7 +722,7 @@ impl ConnectDialog {
         imp.testing.set(true);
         imp.test_button.set_label(&crate::i18n::gettext("Stop"));
         imp.test_button
-            .set_tooltip_text(Some(&crate::i18n::gettext("Stop the test")));
+            .set_tooltip_text(Some(&crate::i18n::gettext("Stop the Test")));
         self.refresh();
 
         // A test entry is never saved, so it gets an id of its own.
@@ -779,9 +779,8 @@ impl ConnectDialog {
             return;
         }
         imp.test_button.set_label(&crate::i18n::gettext("Test"));
-        imp.test_button.set_tooltip_text(Some(&crate::i18n::gettext(
-            "Connect once to check the settings, then disconnect",
-        )));
+        imp.test_button
+            .set_tooltip_text(Some(&crate::i18n::gettext("Connect Once to Check the Settings")));
         self.refresh();
     }
 
