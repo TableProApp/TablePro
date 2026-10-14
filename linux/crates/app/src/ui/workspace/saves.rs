@@ -89,6 +89,7 @@ impl WorkspaceModel {
                 // keeps the confirmation from outstaying the moment.
                 let toast = adw::Toast::builder()
                     .title(crate::i18n::gettext("Saved"))
+                    .use_markup(false)
                     .timeout(4)
                     .build();
                 self.toast_overlay.add_toast(toast);

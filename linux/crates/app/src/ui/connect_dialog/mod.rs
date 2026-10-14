@@ -621,7 +621,7 @@ impl ConnectDialog {
     }
 
     fn show_toast(&self, message: &str, remedy: Option<TlsRemedy>) {
-        let toast = adw::Toast::new(message);
+        let toast = crate::ui::plain_toast(message);
         if let Some(remedy) = remedy {
             toast.set_button_label(Some(&remedy.label()));
             let weak = self.downgrade();

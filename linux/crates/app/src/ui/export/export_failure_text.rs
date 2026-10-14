@@ -149,13 +149,13 @@ impl ExportReporter {
     pub(crate) fn report(&self, file: &gio::File, name: &str, outcome: &ExportOutcome) {
         match outcome {
             ExportOutcome::Exported { rows } => {
-                let toast = adw::Toast::new(&exported_text(*rows, name));
+                let toast = crate::ui::plain_toast(&exported_text(*rows, name));
                 toast.set_button_label(Some(&gettext("Show in Files")));
                 let (file, parent) = (file.clone(), self.parent.clone());
                 toast.connect_button_clicked(move |_| show_in_files(&file, &parent));
                 self.toast(toast);
             }
-            ExportOutcome::Stopped(left) => self.toast(adw::Toast::new(&stopped_text(*left, name))),
+            ExportOutcome::Stopped(left) => self.toast(crate::ui::plain_toast(&stopped_text(*left, name))),
             ExportOutcome::Failed { failure, file: left } => {
                 tracing::warn!(%failure, "an export failed");
                 let Some(parent) = self.parent.upgrade() else {

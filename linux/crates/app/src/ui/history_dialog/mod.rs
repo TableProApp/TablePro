@@ -638,13 +638,12 @@ impl HistoryDialog {
         }
 
         let count = entries.len() as u64;
-        let toast = adw::Toast::new(&ngettext_f(
+        let toast = crate::ui::plain_toast(&ngettext_f(
             "{count} query deleted",
             "{count} queries deleted",
             plural_count(count),
             &[("count", &count.to_string())],
         ));
-        toast.set_use_markup(false);
         toast.set_button_label(Some(&gettext("_Undo")));
         let dialog = self.downgrade();
         toast.connect_button_clicked(move |_| {
@@ -1000,9 +999,7 @@ impl HistoryDialog {
     }
 
     fn add_toast(&self, message: &str) {
-        let toast = adw::Toast::new(message);
-        toast.set_use_markup(false);
-        self.imp().toast_overlay.add_toast(toast);
+        self.imp().toast_overlay.add_toast(crate::ui::plain_toast(message));
     }
 }
 

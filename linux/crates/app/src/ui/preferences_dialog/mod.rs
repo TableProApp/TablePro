@@ -157,7 +157,7 @@ impl PreferencesDialog {
                             crate::i18n::gettext("The query history could not be cleared.")
                         }
                     };
-                    dialog.add_toast(adw::Toast::new(&message));
+                    dialog.add_toast(crate::ui::plain_toast(&message));
                 });
             });
             alert.present(Some(&dialog));

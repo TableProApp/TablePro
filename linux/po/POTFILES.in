@@ -300,6 +300,7 @@ crates/app/src/ui/picker/connection_row.rs
 crates/app/src/ui/picker/mod.rs
 crates/app/src/ui/picker/picker_actions.rs
 crates/app/src/ui/picker/tests.rs
+crates/app/src/ui/plain_toast.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mod.rs
 crates/app/src/ui/result_pane/mod.rs

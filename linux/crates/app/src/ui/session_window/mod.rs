@@ -362,7 +362,7 @@ impl SessionWindow {
     }
 
     fn show_toast(&self, message: &str) {
-        self.add_toast(adw::Toast::new(message));
+        self.add_toast(crate::ui::plain_toast(message));
     }
 
     /// On the page on screen: a toast for a page left behind would never
