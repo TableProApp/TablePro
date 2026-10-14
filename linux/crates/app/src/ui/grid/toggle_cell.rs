@@ -1,10 +1,10 @@
 use gtk4::prelude::*;
 use gtk4::{self as gtk};
 use tablepro_core::Value;
-use tablepro_core::column::{BoolStorage, ColumnKind};
+use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
 use tablepro_core::edit::CellInput;
 
-use super::display_text::value_to_display_text;
+use super::display_text::display_text;
 use super::edit_commit::{commit_input, send_commit};
 use super::{EditSnapshot, GridCell};
 
@@ -56,24 +56,24 @@ impl ToggleCell {
     }
 }
 
-pub fn toggle_state(input: &CellInput, storage: BoolStorage) -> ToggleState {
-    let neither = |tooltip: String| ToggleState {
+/// `default` is a draft's cell left to the server.
+pub fn toggle_state(value: &Value, default: bool, column: &ColumnType, storage: BoolStorage) -> ToggleState {
+    let neither = |tooltip: &str| ToggleState {
         active: false,
         inconsistent: true,
-        tooltip: Some(tooltip),
+        tooltip: Some(tooltip.to_owned()),
     };
     let shown = |active| ToggleState {
         active,
         inconsistent: false,
         tooltip: None,
     };
-    match (input, storage) {
-        (CellInput::Default, _) => neither("DEFAULT".to_owned()),
-        (CellInput::Value(Value::Null), _) => neither("NULL".to_owned()),
-        (CellInput::Value(Value::Bool(flag)), _) => shown(*flag),
-        (CellInput::Value(Value::Int(0)), BoolStorage::Integer) => shown(false),
-        (CellInput::Value(Value::Int(1)), BoolStorage::Integer) => shown(true),
-        (CellInput::Value(other), _) => neither(value_to_display_text(other)),
+    match (default, value, storage) {
+        (true, ..) => neither("DEFAULT"),
+        (false, Value::Bool(flag), _) => shown(*flag),
+        (false, Value::Int(0), BoolStorage::Integer) => shown(false),
+        (false, Value::Int(1), BoolStorage::Integer) => shown(true),
+        (false, other, _) => neither(display_text(other, column, &mut String::new()).text),
     }
 }
 
@@ -107,8 +107,7 @@ fn commit_toggle(cell: &GridCell, active: bool) {
 #[cfg(test)]
 mod tests {
     use tablepro_core::Value;
-    use tablepro_core::column::BoolStorage;
-    use tablepro_core::edit::CellInput;
+    use tablepro_core::column::{BoolStorage, ColumnType};
 
     use super::{ToggleState, toggle_state, toggled_value};
 
@@ -122,30 +121,22 @@ mod tests {
 
     #[test]
     fn a_toggle_shows_only_true_and_false_as_checked_or_not() {
-        let value = |value| CellInput::Value(value);
+        let column = ColumnType::untyped_text("boolean");
+        let value = |value: Value, storage| toggle_state(&value, false, &column, storage);
 
+        assert_eq!(value(Value::Bool(true), BoolStorage::Native), state(true, false, None));
+        assert_eq!(value(Value::Int(1), BoolStorage::Integer), state(true, false, None));
+        assert_eq!(value(Value::Int(0), BoolStorage::Integer), state(false, false, None));
         assert_eq!(
-            toggle_state(&value(Value::Bool(true)), BoolStorage::Native),
-            state(true, false, None)
-        );
-        assert_eq!(
-            toggle_state(&value(Value::Int(1)), BoolStorage::Integer),
-            state(true, false, None)
-        );
-        assert_eq!(
-            toggle_state(&value(Value::Int(0)), BoolStorage::Integer),
-            state(false, false, None)
-        );
-        assert_eq!(
-            toggle_state(&value(Value::Int(2)), BoolStorage::Integer),
+            value(Value::Int(2), BoolStorage::Integer),
             state(false, true, Some("2"))
         );
         assert_eq!(
-            toggle_state(&value(Value::Null), BoolStorage::Native),
+            value(Value::Null, BoolStorage::Native),
             state(false, true, Some("NULL"))
         );
         assert_eq!(
-            toggle_state(&CellInput::Default, BoolStorage::Integer),
+            toggle_state(&Value::Null, true, &column, BoolStorage::Integer),
             state(false, true, Some("DEFAULT"))
         );
     }

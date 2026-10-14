@@ -131,11 +131,11 @@ fn set_null(cell: &GridCell, sink: &GridSink) -> glib::Propagation {
 mod tests {
     use gtk4::prelude::*;
     use gtk4::{self as gtk, gdk};
-    use tablepro_core::{ColumnInfo, QueryResult, Value};
+    use tablepro_core::Value;
 
     use crate::application::APP_ACCELS;
     use crate::test_support::{descendants, wait_until};
-    use crate::ui::grid::test_grid::{Grid, WAIT, edited_rows, key, named, recorder, text, two_text_rows};
+    use crate::ui::grid::test_grid::{Grid, WAIT, content, edited_rows, key, named, recorder, text, two_text_rows};
     use crate::ui::grid::{CellPreset, GridCell, GridMsg, RowObject, TabGridContext, begin_edit, build_column_view};
 
     type Accel = (gdk::Key, gdk::ModifierType);
@@ -444,15 +444,9 @@ mod tests {
     #[gtk4::test]
     fn a_result_grid_opens_its_read_only_menu_from_the_keyboard() {
         let columns = [named("id", "integer", true)];
-        let rows = vec![vec![Value::Int(7)]];
-        let result = QueryResult::new(
-            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
-            rows.clone(),
-        );
         let (sink, _messages) = recorder();
         let (view, _selection) = build_column_view(
-            &result,
-            rows.iter().map(|cells| RowObject::result(cells.clone().into())),
+            content(&columns, vec![RowObject::result(vec![Value::Int(7)].into())]),
             &[],
             sink,
             None,

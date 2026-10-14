@@ -7,9 +7,9 @@ use gtk4::{self as gtk, gio};
 
 use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
-use tablepro_core::{ColumnInfo, QueryResult, Value};
+use tablepro_core::{ColumnInfo, Value};
 
-use super::{GridCell, GridMsg, GridSink, RowObject, TabGridContext, begin_edit, build_column_view};
+use super::{GridCell, GridContent, GridMsg, GridSink, RowObject, TabGridContext, begin_edit, build_column_view};
 use crate::services::change_tracker::RowKey;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -80,6 +80,15 @@ pub(super) fn persisted(rows: &[Vec<Value>]) -> Vec<RowObject> {
         .collect()
 }
 
+/// `rows` under the result columns of `columns`.
+pub(super) fn content(columns: &[ColumnInfo], rows: Vec<RowObject>) -> GridContent {
+    GridContent {
+        columns: columns.iter().map(ColumnInfo::result_column).collect(),
+        rows,
+        truncated: false,
+    }
+}
+
 pub(super) fn recorder() -> (GridSink, Rc<RefCell<Vec<GridMsg>>>) {
     let messages = Rc::new(RefCell::new(Vec::new()));
     let log = messages.clone();
@@ -98,15 +107,10 @@ pub(super) struct Grid {
 impl Grid {
     /// `rows` keyed by their first cell, in a grid that edits them.
     pub(super) fn open(columns: Vec<ColumnInfo>, rows: Vec<Vec<Value>>) -> Self {
-        let result = QueryResult::new(
-            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
-            rows.clone(),
-        );
         let tracker = TabTrackerHandle::default();
         let (sink, messages) = recorder();
         let (view, selection) = build_column_view(
-            &result,
-            persisted(&rows),
+            content(&columns, persisted(&rows)),
             &columns,
             sink,
             None,

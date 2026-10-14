@@ -8,6 +8,7 @@ mod editor_session_slot;
 mod format_plan;
 mod imp;
 mod result_item;
+mod result_rows;
 mod result_widgets;
 mod results_pane;
 mod run_history;

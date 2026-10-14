@@ -4,6 +4,7 @@ use std::rc::Rc;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
+use tablepro_core::Value;
 use tablepro_core::edit::CellInput;
 
 use super::cell_accessibility::cell_description;
@@ -13,6 +14,9 @@ use super::column_drawing::ColumnDrawing;
 use super::grid_columns::GridColumns;
 use super::inline_editor::InlineEditor;
 use super::{CellLock, EditSnapshot, GridSink, RowObject};
+
+/// Enough for any number, date or short text.
+const SCRATCH_KEPT_BYTES: usize = 256;
 
 mod imp {
     use super::*;
@@ -39,6 +43,9 @@ mod imp {
         pub sink: OnceCell<GridSink>,
         pub(super) columns: OnceCell<Rc<GridColumns>>,
         pub binding: RefCell<Option<CellBinding>>,
+        /// Where a value that is not text is written to draw it, kept
+        /// from one bind to the next.
+        pub scratch: RefCell<String>,
         #[cfg(test)]
         pub renders: Cell<u32>,
     }
@@ -256,13 +263,25 @@ impl GridCell {
         self.imp().edit.take()
     }
 
-    /// The value the open edit started from.
-    pub(super) fn edit_original(&self) -> Option<CellInput> {
-        self.imp()
-            .edit
-            .borrow()
-            .as_ref()
-            .map(|snapshot| snapshot.original.clone())
+    /// Whether an open edit started from another value than `value`.
+    /// `default` is a draft's cell left to the server.
+    pub(super) fn edit_left_behind(&self, value: &Value, default: bool) -> bool {
+        match self.imp().edit.borrow().as_ref().map(|snapshot| &snapshot.original) {
+            None => false,
+            Some(CellInput::Default) => !default,
+            Some(CellInput::Value(original)) => default || original != value,
+        }
+    }
+
+    /// The cell's text buffer. One grown past a short value is let go,
+    /// so a page of long values does not keep a long buffer per cell.
+    pub(super) fn with_scratch<R>(&self, f: impl FnOnce(&mut String) -> R) -> R {
+        let mut scratch = self.imp().scratch.borrow_mut();
+        let drawn = f(&mut scratch);
+        if scratch.capacity() > SCRATCH_KEPT_BYTES {
+            *scratch = String::new();
+        }
+        drawn
     }
 
     pub(super) fn set_inline(&self, editor: InlineEditor) {

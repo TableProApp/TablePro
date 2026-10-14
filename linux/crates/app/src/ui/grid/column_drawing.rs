@@ -1,12 +1,14 @@
+use std::rc::Rc;
+
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
-use tablepro_core::column::{BoolStorage, ColumnKind};
-use tablepro_core::edit::CellInput;
+use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
 use tablepro_core::{ColumnInfo, Value};
 
-use super::display_text::{auto_filled_sentinel, editable_null_sentinel, value_to_display_text};
-use super::tab_grid_context::BoundCell;
+use super::cell_tooltip::cell_tooltip;
+use super::display_text::{DisplayText, display_text};
+use super::grid_attributes::GridAttributes;
 use super::toggle_cell::{ToggleCell, toggle_state};
 use super::{CellLock, GridCell, GridRowId, RowObject, TabGridContext, cell_editability};
 use crate::services::change_tracker::CellState;
@@ -18,20 +20,20 @@ const PENDING_CSS_CLASSES: &[&str] = &[
     "tp-row-leftmost-error-flash",
 ];
 
-/// Shorter text fits a typical 200 px column, so its ellipsized display
-/// needs no tooltip.
-const TOOLTIP_MIN_CHARS: usize = 40;
-
 /// What a column's cells read to draw a row. The column makes one and
 /// every cell it builds shares it.
 #[derive(Debug)]
 pub struct ColumnDrawing {
     /// `None` for a column the grid knows only from the result set.
     pub catalog: Option<ColumnInfo>,
+    /// The type the result set gives the column, which a value is
+    /// written out in.
+    pub column_type: ColumnType,
     pub tab_ctx: TabGridContext,
     /// The server fills these in, so a new row shows a placeholder
     /// rather than an empty cell the user should type in.
     pub auto_filled: bool,
+    pub attributes: Rc<GridAttributes>,
 }
 
 impl ColumnDrawing {
@@ -43,54 +45,71 @@ impl ColumnDrawing {
     }
 
     pub fn draw(&self, cell: &GridCell, row: &RowObject) -> CellState {
-        let BoundCell {
-            input,
-            classes: pending_classes,
-            state,
-        } = self.tab_ctx.bind_state(row, cell.column());
-        // An edit opened on a value the row no longer has would, once it
-        // ended, send that value back. An edit on the same value keeps
-        // what was typed.
-        if cell.edit_original().is_some_and(|original| original != input) {
-            cell.cancel_edit();
-        }
-        let Some(content) = cell.content() else {
-            return state;
-        };
-        apply_pending_classes(content, &pending_classes);
-        let pending_delete = pending_classes.contains(&"tp-row-pending-delete");
-        if let Some(check) = content.downcast_ref::<gtk::CheckButton>() {
-            let storage = match self.catalog.as_ref().map(|column| &column.column_type.kind) {
-                Some(ColumnKind::Bool(storage)) => *storage,
-                _ => BoolStorage::Native,
+        let column = cell.column();
+        let (pending_classes, state) = self.tab_ctx.pending_marks(row, column);
+        self.tab_ctx.with_effective_value(row, column, |value, default| {
+            // An edit opened on a value the row no longer has would, once
+            // it ended, send that value back. An edit on the same value
+            // keeps what was typed.
+            if cell.edit_left_behind(value, default) {
+                cell.cancel_edit();
+            }
+            let Some(content) = cell.content() else {
+                return;
             };
-            ToggleCell::draw(cell, check, &toggle_state(&input, storage));
-            check.set_sensitive(cell.lock().is_none());
-            // A check box has no strikethrough, so a pending delete dims it.
-            check.set_opacity(if pending_delete { 0.5 } else { 1.0 });
-        } else if let Some(display) = content.downcast_ref::<gtk::Inscription>() {
-            self.draw_text(display, &input, cell.lock().is_none(), pending_delete);
-        }
+            apply_pending_classes(content, &pending_classes);
+            let pending_delete = pending_classes.contains(&"tp-row-pending-delete");
+            if let Some(check) = content.downcast_ref::<gtk::CheckButton>() {
+                let storage = match self.catalog.as_ref().map(|column| &column.column_type.kind) {
+                    Some(ColumnKind::Bool(storage)) => *storage,
+                    _ => BoolStorage::Native,
+                };
+                ToggleCell::draw(cell, check, &toggle_state(value, default, &self.column_type, storage));
+                check.set_sensitive(cell.lock().is_none());
+                // A check box has no strikethrough, so a pending delete dims it.
+                check.set_opacity(if pending_delete { 0.5 } else { 1.0 });
+            } else if let Some(display) = content.downcast_ref::<gtk::Inscription>() {
+                let shown = CellText {
+                    value,
+                    default,
+                    editable: cell.lock().is_none(),
+                    pending_delete,
+                };
+                cell.with_scratch(|scratch| self.draw_text(display, &shown, scratch));
+            }
+        });
         state
     }
 
     /// An editable cell shows NULL as `<NULL>`, so it reads differently
     /// from an empty string, and a locked one dims a plain NULL.
-    fn draw_text(&self, display: &gtk::Inscription, input: &CellInput, editable: bool, pending_delete: bool) {
-        let (text, placeholder) = match input {
-            CellInput::Default if self.auto_filled => (auto_filled_sentinel(), true),
-            CellInput::Default => ("DEFAULT".to_owned(), true),
-            CellInput::Value(Value::Null) if editable => (editable_null_sentinel(), true),
-            CellInput::Value(value) => (value_to_display_text(value), false),
+    fn draw_text(&self, display: &gtk::Inscription, cell: &CellText<'_>, scratch: &mut String) {
+        let attributes = &self.attributes;
+        let shown = match (cell.default, cell.value) {
+            (true, _) if self.auto_filled => DisplayText::placeholder(&attributes.auto_filled),
+            (true, _) => DisplayText::placeholder("DEFAULT"),
+            (false, Value::Null) if cell.editable => DisplayText::placeholder(&attributes.editable_null),
+            (false, value) => display_text(value, &self.column_type, scratch),
         };
-        let is_null = matches!(input, CellInput::Value(Value::Null));
-        display.set_text(Some(&text));
+        display.set_text(Some(shown.text));
         let widget = display.upcast_ref::<gtk::Widget>();
-        apply_cell_tooltip(widget, &text, placeholder || is_null);
-        set_class(widget, "dim-label", is_null && !editable);
-        set_class(widget, "tp-null-sentinel", placeholder);
-        display.set_attributes(pending_delete.then(strikethrough).as_ref());
+        widget.set_tooltip_text(cell_tooltip(shown.text, shown.truncated_bytes, shown.placeholder).as_deref());
+        set_class(
+            widget,
+            "dimmed",
+            !cell.default && cell.value.is_null() && !cell.editable,
+        );
+        display.set_attributes(attributes.for_text(cell.pending_delete, shown.placeholder));
     }
+}
+
+/// One cell's value and the state it is drawn in.
+struct CellText<'a> {
+    value: &'a Value,
+    /// A draft's cell left to the server.
+    default: bool,
+    editable: bool,
+    pending_delete: bool,
 }
 
 fn set_class(widget: &gtk::Widget, class: &str, on: bool) {
@@ -105,20 +124,4 @@ fn apply_pending_classes(widget: &gtk::Widget, pending_classes: &[&'static str])
     for class in PENDING_CSS_CLASSES {
         set_class(widget, class, pending_classes.contains(class));
     }
-}
-
-fn apply_cell_tooltip(widget: &gtk::Widget, text: &str, stands_in: bool) {
-    if stands_in || text.chars().take(TOOLTIP_MIN_CHARS + 1).count() <= TOOLTIP_MIN_CHARS {
-        widget.set_tooltip_text(None);
-    } else {
-        widget.set_tooltip_text(Some(text));
-    }
-}
-
-/// A Pango attribute, because CSS `text-decoration` does not cascade
-/// reliably into a cell's text.
-fn strikethrough() -> gtk::pango::AttrList {
-    let attrs = gtk::pango::AttrList::new();
-    attrs.insert(gtk::pango::AttrInt::new_strikethrough(true));
-    attrs
 }
