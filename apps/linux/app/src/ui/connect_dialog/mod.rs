@@ -6,10 +6,7 @@ use relm4::{adw, gtk};
 use secrecy::{ExposeSecret, SecretString};
 use uuid::Uuid;
 
-use tablepro_core::{
-    AuthMode, ConnectOptions, Connection, DriverMaturity, DriverRegistry, Environment, TlsMode,
-    connection_form_defaults,
-};
+use tablepro_core::{AuthMode, ConnectOptions, Connection, DriverMaturity, DriverRegistry, Environment, TlsMode};
 use tablepro_storage::{
     SavedConnection, delete_password, save_connections, store_password, store_ssh_passphrase, store_ssh_password,
 };
@@ -683,16 +680,12 @@ impl Component for ConnectDialog {
 
 impl ConnectDialog {
     fn apply_selected_driver(&mut self, idx: u32, root: &adw::Dialog) {
-        self.applied_driver = Some(idx);
         let Some(entry) = self.drivers.get(idx as usize).cloned() else {
+            self.applied_driver = Some(idx);
             return;
         };
-        if let Some(driver) = self.registry.get(&entry.id) {
+        if let Some(driver) = form::apply_driver_values(self, idx) {
             self.apply_driver_form_visibility(driver.as_ref());
-            let defaults = connection_form_defaults(driver.as_ref());
-            self.port.set_value(defaults.port as f64);
-            self.database.set_text(defaults.database);
-            self.username.set_text(defaults.username);
         }
         self.refresh_driver_maturity_subtitle();
         let title = crate::tr!("Connect to {name}").replace("{name}", &entry.display_name);
