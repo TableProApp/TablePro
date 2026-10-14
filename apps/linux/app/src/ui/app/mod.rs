@@ -1026,7 +1026,10 @@ impl SimpleComponent for App {
             AppMsg::ImportBundleConfirmed(choice) => self.on_import_bundle_confirmed(choice, sender),
             AppMsg::ImportBundleFinished(imported, planned) => self.on_import_bundle_finished(imported, planned),
             AppMsg::BundleFailed(message) => self.on_bundle_failed(&message),
-            AppMsg::DuplicateConnectionSucceeded(name) => self.on_duplicate_connection_succeeded(&name),
+            AppMsg::DuplicateConnectionSucceeded {
+                copy,
+                prompt_for_password,
+            } => self.on_duplicate_connection_succeeded(copy, prompt_for_password, sender),
             AppMsg::DuplicateConnectionFailed => self.on_duplicate_connection_failed(),
             AppMsg::ConnectionOrganizationLoaded(index) => self.on_connection_organization_loaded(index),
             AppMsg::ToggleConnectionFavorite(id) => self.on_toggle_connection_favorite(id, sender),

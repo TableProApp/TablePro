@@ -1,6 +1,5 @@
 use relm4::adw::prelude::*;
 use relm4::{Component, ComponentController, ComponentSender, adw};
-
 use tablepro_storage::SavedConnection;
 use uuid::Uuid;
 
@@ -30,6 +29,15 @@ impl App {
     }
 
     pub(super) fn on_edit_connection(&self, saved: tablepro_storage::SavedConnection, sender: ComponentSender<Self>) {
+        self.load_connection_for_edit(saved, false, sender);
+    }
+
+    fn load_connection_for_edit(
+        &self,
+        saved: tablepro_storage::SavedConnection,
+        prompt_for_password: bool,
+        sender: ComponentSender<Self>,
+    ) {
         if crate::ui::connect_dialog::has_jump_chain(&saved) {
             self.show_toast(&crate::tr!(
                 "This connection uses an SSH jump chain, which the form cannot edit yet. Edit ssh.jump in the saved connection file."
@@ -40,7 +48,8 @@ impl App {
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    let prefill = crate::ui::connect_dialog::load_prefill(saved).await;
+                    let mut prefill = crate::ui::connect_dialog::load_prefill(saved).await;
+                    prefill.prompt_for_password = prompt_for_password;
                     reply.input(AppMsg::EditConnectionLoaded(Box::new(prefill)));
                 })
                 .drop_on_shutdown()
@@ -752,13 +761,43 @@ impl App {
     /// reusing another connection's stored password would hide which
     /// record a credential really belongs to.
     pub(super) fn on_duplicate_connection(&self, id: Uuid, sender: ComponentSender<Self>) {
+        let source = self.saved_connections.iter().find(|saved| saved.id == id).cloned();
+        let registry = self.registry.clone();
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
+                    let prompt_for_password = match source {
+                        Some(source) => {
+                            let file_based = registry
+                                .get(&source.driver_id)
+                                .is_some_and(|driver| driver.is_file_based());
+                            let eligible = duplicate_connection_prompt_eligible(
+                                source.auth_mode,
+                                file_based,
+                                crate::ui::connect_dialog::has_jump_chain(&source),
+                            );
+                            if !eligible {
+                                false
+                            } else {
+                                tablepro_storage::load_password(source.id)
+                                    .await
+                                    .ok()
+                                    .flatten()
+                                    .is_some_and(|password| {
+                                        use secrecy::ExposeSecret;
+                                        !password.expose_secret().is_empty()
+                                    })
+                            }
+                        }
+                        None => false,
+                    };
                     match tablepro_storage::duplicate_connection(id).await {
                         Ok(copy) => {
-                            sender_clone.input(AppMsg::DuplicateConnectionSucceeded(copy.name));
+                            sender_clone.input(AppMsg::DuplicateConnectionSucceeded {
+                                copy,
+                                prompt_for_password,
+                            });
                             sender_clone.input(AppMsg::ReloadConnections);
                         }
                         Err(error) => {
@@ -771,8 +810,16 @@ impl App {
         });
     }
 
-    pub(super) fn on_duplicate_connection_succeeded(&self, name: &str) {
-        self.show_toast(&duplicate_connection_message(name));
+    pub(super) fn on_duplicate_connection_succeeded(
+        &self,
+        copy: SavedConnection,
+        prompt_for_password: bool,
+        sender: ComponentSender<Self>,
+    ) {
+        self.show_toast(&duplicate_connection_message(&copy.name));
+        if prompt_for_password {
+            self.load_connection_for_edit(copy, true, sender);
+        }
     }
 
     pub(super) fn on_duplicate_connection_failed(&self) {
@@ -785,6 +832,14 @@ impl App {
 /// fail at connect time.
 fn duplicate_connection_message(name: &str) -> String {
     crate::tr!("Created “{name}”. Enter its password the first time you connect.").replace("{name}", name)
+}
+
+fn duplicate_connection_prompt_eligible(
+    auth_mode: tablepro_core::AuthMode,
+    file_based: bool,
+    has_jump_chain: bool,
+) -> bool {
+    auth_mode == tablepro_core::AuthMode::Password && !file_based && !has_jump_chain
 }
 
 /// Performs the actual disk + keyring teardown for a saved connection.
@@ -838,13 +893,37 @@ fn execute_delete_connection(
 
 #[cfg(test)]
 mod tests {
-    use super::duplicate_connection_message;
+    use super::{duplicate_connection_message, duplicate_connection_prompt_eligible};
 
     #[test]
     fn the_duplicate_toast_says_the_copy_has_no_saved_password() {
         let message = duplicate_connection_message("Sales (copy)");
         assert!(message.contains("Sales (copy)"));
         assert!(message.to_lowercase().contains("password"));
+    }
+
+    #[test]
+    fn duplicate_prompts_only_for_editable_password_authenticated_connections() {
+        assert!(duplicate_connection_prompt_eligible(
+            tablepro_core::AuthMode::Password,
+            false,
+            false
+        ));
+        assert!(!duplicate_connection_prompt_eligible(
+            tablepro_core::AuthMode::Kerberos,
+            false,
+            false
+        ));
+        assert!(!duplicate_connection_prompt_eligible(
+            tablepro_core::AuthMode::Password,
+            true,
+            false
+        ));
+        assert!(!duplicate_connection_prompt_eligible(
+            tablepro_core::AuthMode::Password,
+            false,
+            true
+        ));
     }
 }
 
