@@ -307,7 +307,7 @@ mod tests {
     use super::build_column_view;
     use crate::services::change_tracker::RowKey;
     use crate::services::tab_tracker_handle::TabTrackerHandle;
-    use crate::services::tracker_delta::{TrackerDelta, VisualChange};
+    use crate::services::tracker_delta::TrackerDelta;
     use crate::services::tracker_edit::TrackerEdit;
     use crate::test_support::{descendants, drain_main_context, wait_until};
     use crate::ui::grid::cell_editability::column_takes_edits;
@@ -452,7 +452,7 @@ mod tests {
             let delta = self.tracker.apply(TrackerEdit::Insert {
                 values: vec![Value::Null, Value::Null],
             });
-            let Some(VisualChange::InsertDraft { draft_id }) = delta.visual.into_iter().next() else {
+            let Some(draft_id) = delta.inserted_drafts.into_iter().next() else {
                 panic!("an insert adds a draft row");
             };
             self.store.insert(0, &RowObject::draft(draft_id));
@@ -475,7 +475,7 @@ mod tests {
         fn redraw(&self, delta: &TrackerDelta) {
             for position in 0..self.store.n_items() {
                 if let Some(row) = self.store.item(position).and_downcast::<RowObject>()
-                    && row.id().tracker_key().is_some_and(|key| delta.rows.contains(&key))
+                    && row.id().tracker_key().is_some_and(|key| delta.changed.contains(&key))
                 {
                     row.bump_revision();
                 }

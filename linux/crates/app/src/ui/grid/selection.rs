@@ -1,8 +1,8 @@
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
+use tablepro_core::QueryResult;
 use tablepro_core::column::ResultColumn;
-use tablepro_core::{QueryResult, Value};
 
 use super::{RowObject, TabGridContext};
 
@@ -20,7 +20,7 @@ pub(super) fn row_at(column_view: &gtk::ColumnView, position: u32) -> Option<Row
     column_view.model()?.item(position)?.downcast::<RowObject>().ok()
 }
 
-fn selection_of(column_view: &gtk::ColumnView) -> Option<gtk::MultiSelection> {
+pub(super) fn selection_of(column_view: &gtk::ColumnView) -> Option<gtk::MultiSelection> {
     column_view.model()?.downcast::<gtk::MultiSelection>().ok()
 }
 
@@ -35,25 +35,6 @@ pub(super) fn select_row_for_menu(column_view: &gtk::ColumnView, position: u32) 
         return;
     }
     selection.select_item(position, true);
-}
-
-/// The selection when it holds the clicked row, else the clicked row
-/// alone, so rows that moved since the click never stand in for it.
-pub(super) fn rows_for_menu(
-    column_view: &gtk::ColumnView,
-    ctx: &TabGridContext,
-    clicked: &RowObject,
-) -> Vec<Vec<Value>> {
-    let selected: Vec<RowObject> = selection_of(column_view)
-        .map(|selection| selected_positions(&selection))
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|position| row_at(column_view, position))
-        .collect();
-    if !selected.contains(clicked) {
-        return vec![ctx.effective_cells(clicked)];
-    }
-    selected.iter().map(|row| ctx.effective_cells(row)).collect()
 }
 
 /// The paginator's Export button and the menu's Export Results both

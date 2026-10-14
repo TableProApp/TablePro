@@ -3,6 +3,7 @@ use gtk4::{self as gtk, glib};
 
 use super::GridCell;
 use super::grid_menus::GridMenus;
+use super::menu_rows::menu_rows_of;
 use super::selection::select_row_for_menu;
 
 /// The cell a menu was opened on. The cell holds the menu through its
@@ -42,10 +43,10 @@ pub(super) fn attach_cell_gesture(
         let menus = menus.clone();
         move |cell: &GridCell, column_view: &gtk::ColumnView| -> gtk::PopoverMenu {
             menus.context.set(cell);
-            menus.actions.arm(&target);
             if let Some(position) = cell.position() {
                 select_row_for_menu(column_view, position);
             }
+            menus.actions.arm(&target, &menu_rows_of(column_view, cell));
             match cell.lock() {
                 None => menus.editable_popover.clone(),
                 Some(_) => menus.readonly_popover.clone(),

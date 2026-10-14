@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tablepro_core::Value;
 
 use super::change_tracker::RowKey;
@@ -19,22 +21,26 @@ pub enum TrackerEdit {
     Insert {
         values: Vec<Value>,
     },
-    Delete {
-        row_key: RowKey,
-        original_values: Vec<Value>,
-    },
-    DiscardDraft {
-        draft_id: u64,
+    /// One Delete: the saved rows are marked, each with the row as it
+    /// was read, and the drafts are dropped.
+    DeleteRows {
+        persisted: Vec<(RowKey, Arc<[Value]>)>,
+        drafts: Vec<u64>,
     },
 }
 
 impl TrackerEdit {
-    /// The row the edit changes. An insert makes a new one.
-    pub fn row_key(&self) -> Option<RowKey> {
+    /// The rows the edit changes. An insert makes a new one.
+    pub fn row_keys(&self) -> Vec<RowKey> {
         match self {
-            Self::Cell { row_key, .. } | Self::Delete { row_key, .. } => Some(row_key.clone()),
-            Self::DraftCell { draft_id, .. } | Self::DiscardDraft { draft_id } => Some(RowKey::Draft(*draft_id)),
-            Self::Insert { .. } => None,
+            Self::Cell { row_key, .. } => vec![row_key.clone()],
+            Self::DraftCell { draft_id, .. } => vec![RowKey::Draft(*draft_id)],
+            Self::DeleteRows { persisted, drafts } => persisted
+                .iter()
+                .map(|(row_key, _)| row_key.clone())
+                .chain(drafts.iter().map(|draft_id| RowKey::Draft(*draft_id)))
+                .collect(),
+            Self::Insert { .. } => Vec::new(),
         }
     }
 }

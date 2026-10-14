@@ -5,14 +5,10 @@ use super::change_tracker::RowKey;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TrackerDelta {
     /// Rows whose pending state changed and need a redraw.
-    pub rows: Vec<RowKey>,
-    /// Draft rows the list store has to gain or lose.
-    pub visual: Vec<VisualChange>,
+    pub changed: Vec<RowKey>,
+    /// Draft rows the list store gains, oldest first.
+    pub inserted_drafts: Vec<u64>,
+    /// Draft rows the list store loses.
+    pub removed_drafts: Vec<u64>,
     pub pending_count: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum VisualChange {
-    RemoveDraft { draft_id: u64 },
-    InsertDraft { draft_id: u64 },
 }

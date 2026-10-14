@@ -34,6 +34,8 @@ pub struct BrowseTab {
     #[template_child]
     pub insert_button: TemplateChild<gtk::Button>,
     #[template_child]
+    pub delete_button: TemplateChild<gtk::Button>,
+    #[template_child]
     pub first_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub prev_button: TemplateChild<gtk::Button>,
@@ -106,11 +108,6 @@ fn install_bindings(klass: &mut <BrowseTab as ObjectSubclass>::Class) {
         gdk::Key::Escape,
         none,
         send(|| BrowseTabInput::ClearSelection, glib::Propagation::Proceed),
-    );
-    klass.add_binding(
-        gdk::Key::Delete,
-        none,
-        send(|| BrowseTabInput::DeleteSelectedRow, glib::Propagation::Stop),
     );
     klass.add_binding(
         gdk::Key::n,

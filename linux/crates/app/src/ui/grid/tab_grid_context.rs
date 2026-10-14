@@ -88,7 +88,6 @@ mod tests {
     use super::{RowObject, TabGridContext};
     use crate::services::change_tracker::RowKey;
     use crate::services::tab_tracker_handle::TabTrackerHandle;
-    use crate::services::tracker_delta::VisualChange;
     use crate::services::tracker_edit::TrackerEdit;
 
     fn context(tracker: &TabTrackerHandle) -> TabGridContext {
@@ -100,7 +99,7 @@ mod tests {
 
     fn insert_draft(tracker: &TabTrackerHandle, values: Vec<Value>) -> u64 {
         let delta = tracker.apply(TrackerEdit::Insert { values });
-        let Some(VisualChange::InsertDraft { draft_id }) = delta.visual.into_iter().next() else {
+        let Some(draft_id) = delta.inserted_drafts.into_iter().next() else {
             panic!("an insert adds a draft row");
         };
         draft_id

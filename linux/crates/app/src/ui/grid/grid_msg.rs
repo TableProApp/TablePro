@@ -20,8 +20,8 @@ pub enum GridMsg {
     },
     CopyToClipboard(String),
     ShowToast(String),
-    CopyRowAsInsert {
-        row: RowObject,
+    CopyRowsAsInsert {
+        rows: Vec<RowObject>,
     },
     /// An intent, not a `Value`: the grid does not know the column's
     /// declared type, and `Text("")` in an `int` or a `date` column is an
@@ -32,11 +32,11 @@ pub enum GridMsg {
         preset: CellPreset,
     },
     ExportResults(QueryResult),
-    DeleteRowAt {
-        row: RowObject,
+    DeleteRows {
+        rows: Vec<RowObject>,
     },
     InsertRow,
-    DuplicateRow {
-        row: RowObject,
+    DuplicateRows {
+        rows: Vec<RowObject>,
     },
 }

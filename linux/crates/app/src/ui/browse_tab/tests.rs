@@ -11,13 +11,14 @@ use tablepro_session::Session;
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
+use super::row_deletion::RowDeletion;
 use super::{
-    BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_visual_change, format_thousands, parse_input_for_column,
+    BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes, format_thousands, parse_input_for_column,
     persisted_key,
 };
 use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
-use crate::services::tracker_delta::{TrackerDelta, VisualChange};
+use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{FakeSession, drain_main_context, wait_until};
 use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
@@ -262,16 +263,24 @@ fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
 }
 
 #[test]
-fn visual_changes_add_and_remove_draft_rows() {
+fn draft_changes_add_and_remove_draft_rows() {
     let store = gtk4::gio::ListStore::new::<RowObject>();
     store.append(&RowObject::persisted(None, vec![Value::Int(1)].into()));
     let mut index = GridRowIndex::default();
+    let inserted = TrackerDelta {
+        inserted_drafts: vec![4],
+        ..TrackerDelta::default()
+    };
+    let removed = TrackerDelta {
+        removed_drafts: vec![4],
+        ..TrackerDelta::default()
+    };
 
-    apply_visual_change(&store, &mut index, &VisualChange::InsertDraft { draft_id: 4 });
+    apply_draft_changes(&store, &mut index, &inserted);
     assert_eq!(row_at(&store, 0).draft_id(), Some(4));
     assert_eq!(index.get(&RowKey::Draft(4)), Some(row_at(&store, 0)));
 
-    apply_visual_change(&store, &mut index, &VisualChange::RemoveDraft { draft_id: 4 });
+    apply_draft_changes(&store, &mut index, &removed);
     assert_eq!(store.n_items(), 1);
     assert_eq!(row_at(&store, 0).draft_id(), None);
     assert_eq!(index.get(&RowKey::Draft(4)), None);
@@ -862,10 +871,10 @@ fn an_edit_held_for_the_running_save_says_so_once() {
     let _saving = tracker.begin_save().expect("a save").expect("the drafts");
     let drafts: Vec<u64> = tracker.drafts().iter().map(|draft| draft.draft_id).collect();
 
-    harness.tab().send(BrowseTabInput::MarkRowsDeleted {
-        rows: Vec::new(),
+    harness.tab().send(BrowseTabInput::MarkRowsDeleted(RowDeletion {
         drafts,
-    });
+        ..RowDeletion::default()
+    }));
 
     assert_eq!(tracker.drafts().len(), 2, "a draft the save holds was dropped");
     assert_eq!(toasts.borrow().len(), 1, "{:?}", toasts.borrow());
@@ -910,7 +919,7 @@ fn duplicate_row_copies_pending_edits_of_persisted_row() {
         column: 1,
         input: "Ada Lovelace".to_owned(),
     });
-    harness.tab().send(BrowseTabInput::DuplicateRow { row: ada });
+    harness.tab().send(BrowseTabInput::DuplicateRows(vec![ada]));
 
     let drafts = harness.tracker.drafts();
     assert_eq!(drafts.len(), 1, "{drafts:?}");
@@ -942,7 +951,7 @@ fn copy_row_as_insert_uses_row_below_draft() {
     let below_draft = harness.grid_row(1);
     harness
         .tab()
-        .send(BrowseTabInput::GridCopyRowAsInsert { row: below_draft });
+        .send(BrowseTabInput::GridCopyRowsAsInsert(vec![below_draft]));
 
     assert_eq!(
         *copied.borrow(),
@@ -1201,7 +1210,7 @@ fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
         column: 1,
         input: "x".to_owned(),
     });
-    harness.tab().send(BrowseTabInput::GridCopyRowAsInsert { row: draft });
+    harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(vec![draft]));
 
     assert_eq!(
         *copied.borrow(),
@@ -1361,4 +1370,250 @@ fn a_grid_built_for_columns_the_table_lost_takes_no_edits() {
         "an edit in the old grid landed on another column"
     );
     assert_eq!(harness.visible_page().as_deref(), Some("loading"));
+}
+
+fn delete_action(tab: &BrowseTab) -> gtk4::gio::SimpleAction {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    tab.imp()
+        .model
+        .borrow()
+        .as_ref()
+        .map(|model| model.delete_action.clone())
+        .expect("the tab has a model")
+}
+
+fn delete_rows(tab: &BrowseTab) {
+    tab.activate_action("tab.delete-rows", None)
+        .expect("the tab has a delete action");
+}
+
+fn draft_rows(store: &gtk4::gio::ListStore) -> usize {
+    (0..store.n_items())
+        .filter(|position| row_at(store, *position).draft_id().is_some())
+        .count()
+}
+
+fn pending_bar_shown(tab: &BrowseTab) -> bool {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    tab.imp().pending_revealer.reveals_child()
+}
+
+#[gtk4::test]
+fn deleting_a_draft_removes_its_row() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let store = harness.store();
+    assert_eq!(store.n_items(), 3);
+    harness.selection().select_item(0, true);
+    assert!(
+        delete_action(harness.tab()).is_enabled(),
+        "a draft could not be deleted"
+    );
+
+    delete_rows(harness.tab());
+
+    assert_eq!(store.n_items(), 2, "the dropped draft stayed in the grid");
+    assert_eq!(draft_rows(&store), 0);
+    assert_eq!(harness.tracker.pending_count(), 0);
+    assert!(
+        !pending_bar_shown(harness.tab()),
+        "the footer still counts the dropped draft"
+    );
+}
+
+#[gtk4::test]
+fn the_delete_key_names_the_tab_action() {
+    let harness = Harness::open(serving_table(), []);
+    let controllers = harness.tab().observe_controllers();
+    let named: Vec<String> = (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index).and_downcast::<gtk4::ShortcutController>())
+        .flat_map(|controller| {
+            (0..controller.n_items())
+                .filter_map(move |index| controller.item(index).and_downcast::<gtk4::Shortcut>())
+                .collect::<Vec<_>>()
+        })
+        .filter(|shortcut| {
+            shortcut
+                .trigger()
+                .and_downcast::<gtk4::KeyvalTrigger>()
+                .is_some_and(|trigger| trigger.keyval() == gtk4::gdk::Key::Delete)
+        })
+        .filter_map(|shortcut| shortcut.action().and_downcast::<gtk4::NamedAction>())
+        .map(|action| action.action_name().to_string())
+        .collect();
+
+    assert_eq!(named, ["tab.delete-rows"]);
+}
+
+#[gtk4::test]
+fn deleting_mixed_selection_removes_drafts_and_marks_persisted() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    harness.tab().send(BrowseTabInput::InsertRow);
+    harness.selection().select_range(0, 2, true);
+
+    delete_rows(harness.tab());
+
+    let store = harness.store();
+    assert_eq!(store.n_items(), 2);
+    assert_eq!(draft_rows(&store), 0);
+    assert_eq!(
+        harness.tracker.row_state(&key(0)),
+        crate::services::change_tracker::RowState::PendingDelete
+    );
+    assert_eq!(
+        harness.tracker.row_state(&key(1)),
+        crate::services::change_tracker::RowState::Clean
+    );
+    assert_eq!(harness.tracker.pending_count(), 1);
+    assert!(
+        crate::ui::grid::selected_positions(&harness.selection()).is_empty(),
+        "the delete kept the selection it acted on"
+    );
+}
+
+fn menu_gesture(cell: &GridCell) -> gtk4::GestureClick {
+    let controllers = cell.observe_controllers();
+    (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index).and_downcast::<gtk4::GestureClick>())
+        .find(|gesture| gesture.button() == 3)
+        .expect("a cell answers a right-click")
+}
+
+fn column_view(tab: &BrowseTab) -> gtk4::ColumnView {
+    crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(tab).expect("the grid")
+}
+
+#[gtk4::test]
+fn menu_delete_inside_selection_marks_whole_selection() {
+    let names: Vec<String> = (0..20).map(|n| format!("user {n}")).collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&names)));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 20).expect("the first page");
+    use libadwaita::prelude::{AdwDialogExt, AdwWindowExt};
+    let window = libadwaita::Window::new();
+    window.set_default_size(600, 400);
+    window.set_content(Some(harness.tab()));
+    window.present();
+    harness.selection().select_all();
+    let cell = grid_cell_of(harness.tab(), 2, 1);
+
+    menu_gesture(&cell).emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
+    column_view(harness.tab())
+        .activate_action("cell.delete-row", None)
+        .expect("the menu's Delete");
+    let mut dialog = None;
+    wait_until(WAIT, || {
+        dialog = window.visible_dialog().and_downcast::<libadwaita::AlertDialog>();
+        dialog.is_some()
+    })
+    .expect("a delete of 20 rows was not confirmed first");
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "the rows were marked before the answer"
+    );
+    let dialog = dialog.expect("the confirmation");
+    dialog.emit_by_name::<()>("response", &[&"delete"]);
+
+    wait_until(WAIT, || harness.tracker.pending_count() == 20).expect("the whole selection was not marked");
+    dialog.force_close();
+    window.set_content(None::<&gtk4::Widget>);
+    window.destroy();
+}
+
+#[gtk4::test]
+fn undo_insert_removes_draft_row() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let store = harness.store();
+    assert_eq!(store.n_items(), 3);
+
+    harness.tab().send(BrowseTabInput::Undo);
+
+    assert_eq!(store.n_items(), 2, "the undone draft stayed in the grid");
+    assert_eq!(draft_rows(&store), 0);
+    assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+#[gtk4::test]
+fn redo_insert_restores_draft_row_once() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    harness.tab().send(BrowseTabInput::InsertRow);
+    harness.tab().send(BrowseTabInput::Undo);
+
+    harness.tab().send(BrowseTabInput::Redo);
+
+    let store = harness.store();
+    assert_eq!(store.n_items(), 3);
+    assert_eq!(draft_rows(&store), 1, "the redone draft is in the grid more than once");
+    assert!(row_at(&store, 0).draft_id().is_some(), "the redone draft is not on top");
+}
+
+#[gtk4::test]
+fn delete_action_disabled_for_unkeyed_selection() {
+    let columns = [column("id", false), column("name", false)];
+    let mut script = serving_table();
+    script.fetch_columns.always(FakeReply::ok(columns.to_vec()));
+    script.query_bound.always(FakeReply::ok(QueryResult::new(
+        columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+        vec![
+            vec![Value::Int(0), Value::Text("Ada".into())],
+            vec![Value::Int(1), Value::Text("Grace".into())],
+        ],
+    )));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let action = delete_action(harness.tab());
+
+    harness.selection().select_item(0, true);
+
+    assert!(!action.is_enabled(), "Delete was offered for a row with no key");
+    let button = {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        harness.tab().imp().delete_button.get()
+    };
+    assert_eq!(
+        button.tooltip_text().as_deref(),
+        Some("Rows without a primary key or unique key can't be deleted here")
+    );
+    let view = column_view(harness.tab());
+    let mut cell = None;
+    wait_until(WAIT, || {
+        cell = crate::test_support::descendants(&view)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<GridCell>().ok())
+            .find(|cell| cell.column() == 1 && cell.position() == Some(0));
+        cell.is_some()
+    })
+    .expect("the row's cell is drawn");
+    menu_gesture(&cell.expect("a cell")).emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
+    // A menu item is a model button bound to the action's enabled state,
+    // with the item's label as its text.
+    let items: Vec<gtk4::Widget> = crate::test_support::descendants(&view)
+        .into_iter()
+        .filter(|widget| widget.type_().name() == "GtkModelButton")
+        .filter(|widget| widget.property::<Option<String>>("text").as_deref() == Some("Delete"))
+        .collect();
+    assert!(!items.is_empty(), "the menu has no Delete item");
+    wait_until(WAIT, || items.iter().all(|item| !item.is_sensitive()))
+        .expect("the menu offered Delete for a row with no key");
+    view.activate_action("cell.delete-row", None)
+        .expect("the menu's Delete");
+    delete_rows(harness.tab());
+    assert_eq!(harness.tracker.pending_count(), 0);
 }

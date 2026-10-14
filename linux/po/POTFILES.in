@@ -72,6 +72,7 @@ crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/imp.rs
 crates/app/src/ui/browse_tab/mod.rs
 crates/app/src/ui/browse_tab/page_reply.rs
+crates/app/src/ui/browse_tab/row_deletion.rs
 crates/app/src/ui/browse_tab/tests.rs
 crates/app/src/ui/connect_dialog/connect_form.rs
 crates/app/src/ui/connect_dialog/connect_submission.rs
@@ -146,6 +147,7 @@ crates/app/src/ui/grid/column_drawing.rs
 crates/app/src/ui/grid/column_factory.rs
 crates/app/src/ui/grid/column_width_binding.rs
 crates/app/src/ui/grid/context_menu.rs
+crates/app/src/ui/grid/delete_availability.rs
 crates/app/src/ui/grid/display_text.rs
 crates/app/src/ui/grid/edit_snapshot.rs
 crates/app/src/ui/grid/grid_cell.rs
@@ -154,6 +156,7 @@ crates/app/src/ui/grid/grid_msg.rs
 crates/app/src/ui/grid/grid_row_id.rs
 crates/app/src/ui/grid/grid_row_index.rs
 crates/app/src/ui/grid/inline_edit.rs
+crates/app/src/ui/grid/menu_rows.rs
 crates/app/src/ui/grid/mod.rs
 crates/app/src/ui/grid/row_json_dialog.rs
 crates/app/src/ui/grid/row_object.rs

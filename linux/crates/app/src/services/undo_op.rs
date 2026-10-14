@@ -29,11 +29,19 @@ pub enum UndoOp {
     Insert {
         draft: DraftRow,
     },
+    /// One Delete over every saved row it marked, so one undo brings
+    /// them all back.
     Delete {
-        row_key: RowKey,
-        before: Option<DeleteMark>,
-        after: DeleteMark,
+        steps: Vec<DeleteStep>,
     },
+}
+
+/// One row's delete mark on both sides of a Delete.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeleteStep {
+    pub row_key: RowKey,
+    pub before: Option<DeleteMark>,
+    pub after: DeleteMark,
 }
 
 impl UndoOp {
@@ -87,14 +95,19 @@ impl UndoOp {
                     ..draft.clone()
                 },
             }),
-            UndoOp::Delete { row_key, before, after } => {
-                layout.key(row_key).ok()?;
-                Some(UndoOp::Delete {
-                    row_key: row_key.clone(),
-                    before: before.as_ref().map(delete_mark),
-                    after: delete_mark(after),
-                })
-            }
+            UndoOp::Delete { steps } => Some(UndoOp::Delete {
+                steps: steps
+                    .iter()
+                    .map(|step| {
+                        layout.key(&step.row_key).ok()?;
+                        Some(DeleteStep {
+                            row_key: step.row_key.clone(),
+                            before: step.before.as_ref().map(delete_mark),
+                            after: delete_mark(&step.after),
+                        })
+                    })
+                    .collect::<Option<_>>()?,
+            }),
         }
     }
 
@@ -102,7 +115,8 @@ impl UndoOp {
         match self {
             UndoOp::Insert { draft } => draft.draft_id == draft_id,
             UndoOp::DraftCell { draft_id: id, .. } => *id == draft_id,
-            UndoOp::CellEdit { row_key, .. } | UndoOp::Delete { row_key, .. } => *row_key == RowKey::Draft(draft_id),
+            UndoOp::CellEdit { row_key, .. } => *row_key == RowKey::Draft(draft_id),
+            UndoOp::Delete { steps } => steps.iter().any(|step| step.row_key == RowKey::Draft(draft_id)),
         }
     }
 }

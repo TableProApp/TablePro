@@ -14,6 +14,7 @@ pub const GO_LAST: &str = "go-last-symbolic";
 pub const GO_NEXT: &str = "go-next-symbolic";
 pub const GO_PREVIOUS: &str = "go-previous-symbolic";
 pub const LIST_ADD: &str = "list-add-symbolic";
+pub const LIST_REMOVE: &str = "list-remove-symbolic";
 pub const MEDIA_PLAYBACK_STOP: &str = "media-playback-stop-symbolic";
 pub const NETWORK_SERVER: &str = "network-server-symbolic";
 pub const OPEN_MENU: &str = "open-menu-symbolic";
@@ -59,6 +60,7 @@ pub const ALL: &[&str] = &[
     GO_NEXT,
     GO_PREVIOUS,
     LIST_ADD,
+    LIST_REMOVE,
     MEDIA_PLAYBACK_STOP,
     NETWORK_SERVER,
     OPEN_MENU,

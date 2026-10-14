@@ -108,7 +108,6 @@ mod tests {
     use tablepro_core::meta::TableRef;
 
     use super::*;
-    use crate::services::tracker_delta::VisualChange;
     use crate::workspace::{RollbackCause, UnknownCause};
 
     fn row(id: i64) -> RowKey {
@@ -205,7 +204,7 @@ mod tests {
         let delta = tracker.settle_save(&SaveOutcome::Committed { rows: Some(2) }, batch.snapshot);
 
         assert_eq!(delta.pending_count, 2);
-        assert!(matches!(delta.visual.as_slice(), [VisualChange::RemoveDraft { .. }]));
+        assert_eq!(delta.removed_drafts.len(), 1);
         assert!(tracker.drafts().is_empty(), "the inserted draft stayed pending");
         assert_eq!(tracker.pending_state(), PendingState::Unsaved);
         assert_eq!(tracker.cell_overlay(&row(1), 1, &Value::Int(0)).value, Value::Int(3));
@@ -218,8 +217,8 @@ mod tests {
         let inserted = tracker.apply(TrackerEdit::Insert {
             values: vec![Value::Int(9), Value::Int(9)],
         });
-        let draft_id = match inserted.visual.as_slice() {
-            [VisualChange::InsertDraft { draft_id, .. }] => *draft_id,
+        let draft_id = match inserted.inserted_drafts.as_slice() {
+            [draft_id] => *draft_id,
             other => panic!("an insert adds one draft row: {other:?}"),
         };
         let batch = tracker.begin_save().expect("a save").expect("changes to save");
@@ -231,11 +230,18 @@ mod tests {
         };
         assert!(tracker.refuses(&typed));
         let held = tracker.apply(typed);
-        let _ = tracker.apply(TrackerEdit::DiscardDraft { draft_id });
+        let _ = tracker.apply(TrackerEdit::DeleteRows {
+            persisted: Vec::new(),
+            drafts: vec![draft_id],
+        });
         assert!(tracker.undo().is_none(), "undo ran while a save was in flight");
 
-        assert_eq!(held.rows, [RowKey::Draft(draft_id)], "the typed value stayed on screen");
-        assert!(held.visual.is_empty());
+        assert_eq!(
+            held.changed,
+            [RowKey::Draft(draft_id)],
+            "the typed value stayed on screen"
+        );
+        assert!(held.inserted_drafts.is_empty() && held.removed_drafts.is_empty());
 
         assert_eq!(tracker.drafts()[0].values[1], Value::Int(9));
         let _ = tracker.settle_save(&rolled_back(), batch.snapshot);
@@ -256,11 +262,11 @@ mod tests {
             values: vec![Value::Null, Value::Text("c".into())],
         });
 
-        assert_eq!(edited.rows, vec![row(1)]);
+        assert_eq!(edited.changed, vec![row(1)]);
         assert_eq!(edited.pending_count, 1);
         assert_eq!(inserted.pending_count, 2);
-        let [VisualChange::InsertDraft { draft_id }] = inserted.visual.as_slice() else {
-            panic!("an insert adds one draft row: {:?}", inserted.visual);
+        let [draft_id] = inserted.inserted_drafts.as_slice() else {
+            panic!("an insert adds one draft row: {:?}", inserted.inserted_drafts);
         };
         assert_eq!(
             tracker.draft_values(*draft_id),
@@ -284,7 +290,7 @@ mod tests {
 
         let undone = tracker.undo().expect("an edit to undo");
 
-        assert_eq!(undone.rows, vec![row(1)]);
+        assert_eq!(undone.changed, vec![row(1)]);
         assert_eq!(undone.pending_count, 1);
         assert_eq!(
             tracker.cell_overlay(&row(1), 1, &fetched).value,
@@ -297,9 +303,9 @@ mod tests {
         let tracker = TabTrackerHandle::default();
         let grid_copy = tracker.clone();
 
-        let _ = tracker.apply(TrackerEdit::Delete {
-            row_key: row(4),
-            original_values: vec![Value::Int(4)],
+        let _ = tracker.apply(TrackerEdit::DeleteRows {
+            persisted: vec![(row(4), vec![Value::Int(4)].into())],
+            drafts: Vec::new(),
         });
 
         assert_eq!(grid_copy.row_state(&row(4)), RowState::PendingDelete);
@@ -315,10 +321,10 @@ mod tests {
             value: Value::Int(2),
         });
 
-        for key in &delta.rows {
-            let _ = tracker.apply(TrackerEdit::Delete {
-                row_key: key.clone(),
-                original_values: vec![Value::Int(1)],
+        for key in &delta.changed {
+            let _ = tracker.apply(TrackerEdit::DeleteRows {
+                persisted: vec![(key.clone(), vec![Value::Int(1)].into())],
+                drafts: Vec::new(),
             });
             assert_eq!(tracker.cell_overlay(key, 0, &Value::Int(1)).value, Value::Int(2));
         }

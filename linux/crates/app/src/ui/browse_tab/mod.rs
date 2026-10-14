@@ -10,6 +10,7 @@ mod browse_request_kind;
 mod fetch;
 mod imp;
 mod page_reply;
+mod row_deletion;
 #[cfg(test)]
 mod tests;
 
@@ -19,9 +20,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::dialect::SqlDialect;
@@ -35,15 +36,16 @@ use tablepro_session::{LinkGeneration, Session};
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
 pub(crate) use self::page_reply::PageReply;
+use self::row_deletion::{RowDeletion, plan_row_deletion};
 use super::grid::{
-    CellPreset, ColumnWidthBinding, GridCell, GridMsg, GridRowId, GridRowIndex, GridSink, RowObject, TabGridContext,
-    build_column_view, cell_editability,
+    CellPreset, ColumnWidthBinding, DeleteAvailability, GridCell, GridMsg, GridRowId, GridRowIndex, GridSink,
+    RowObject, TabGridContext, build_column_view, cell_editability, delete_availability,
 };
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, StatementSource, pk_identity};
 use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
-use crate::services::tracker_delta::{TrackerDelta, VisualChange};
+use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
@@ -106,6 +108,7 @@ impl BrowseTab {
         )));
         imp.inner_stack.set_visible_child_name("loading");
         imp.read_only_banner.set_revealed(init.read_only);
+        imp.delete_button.set_icon_name(crate::ui::icons::LIST_REMOVE);
 
         let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS.iter().map(|n| format_thousands(*n)).collect();
         let page_size_strs: Vec<&str> = page_size_labels.iter().map(String::as_str).collect();
@@ -138,6 +141,7 @@ impl BrowseTab {
         imp.toolbar.add_top_bar(&filter_strip.widget);
         tab.collapse_top_bars_with(&filter_strip.widget);
         tab.connect_widgets();
+        let delete_action = tab.install_delete_action();
 
         // Handled at once: a tracked change redraws the cells bound to its
         // row in place, so the cell that sent it is still there for the
@@ -201,6 +205,8 @@ impl BrowseTab {
             filter_badge: imp.filter_badge.get(),
             filter_strip: Some(filter_strip),
             insert_button: imp.insert_button.get(),
+            delete_button: imp.delete_button.get(),
+            delete_action,
             pending_revealer: imp.pending_revealer.get(),
             save_button: imp.save_button.get(),
             discard_button: imp.discard_button.get(),
@@ -444,6 +450,32 @@ impl BrowseTab {
         });
     }
 
+    /// `tab.delete-rows`, which the Delete key and the Delete button
+    /// both name. While it is disabled the key goes on to the window.
+    fn install_delete_action(&self) -> gio::SimpleAction {
+        let action = gio::SimpleAction::new("delete-rows", None);
+        action.set_enabled(false);
+        let tab = self.downgrade();
+        action.connect_activate(move |_, _| {
+            let Some(tab) = tab.upgrade() else {
+                return;
+            };
+            let rows = tab.read(BrowseModel::selected_rows).unwrap_or_default();
+            tab.send(BrowseTabInput::DeleteRows(rows));
+        });
+        let group = gio::SimpleActionGroup::new();
+        group.add_action(&action);
+        self.insert_action_group("tab", Some(&group));
+
+        let shortcuts = gtk::ShortcutController::new();
+        shortcuts.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(gdk::Key::Delete, gdk::ModifierType::empty())),
+            Some(gtk::NamedAction::new("tab.delete-rows")),
+        ));
+        self.add_controller(shortcuts);
+        action
+    }
+
     /// Set the focused cell to NULL, for Ctrl+Shift+N. A locked cell
     /// lets the key go on.
     fn set_focused_cell_null(&self) -> glib::Propagation {
@@ -474,12 +506,12 @@ impl From<GridMsg> for BrowseTabInput {
             GridMsg::CellEdited { row, column, input } => Self::GridCellEdited { row, column, input },
             GridMsg::CopyToClipboard(text) => Self::GridCopyToClipboard(text),
             GridMsg::ShowToast(text) => Self::GridShowToast(text),
-            GridMsg::CopyRowAsInsert { row } => Self::GridCopyRowAsInsert { row },
+            GridMsg::CopyRowsAsInsert { rows } => Self::GridCopyRowsAsInsert(rows),
             GridMsg::SetCellValue { row, column, preset } => Self::GridSetCellValue { row, column, preset },
             GridMsg::ExportResults(result) => Self::GridExportResults(result),
-            GridMsg::DeleteRowAt { row } => Self::GridDeleteRowAt { row },
+            GridMsg::DeleteRows { rows } => Self::DeleteRows(rows),
             GridMsg::InsertRow => Self::InsertRow,
-            GridMsg::DuplicateRow { row } => Self::DuplicateRow { row },
+            GridMsg::DuplicateRows { rows } => Self::DuplicateRows(rows),
         }
     }
 }
@@ -588,6 +620,9 @@ pub(crate) struct BrowseModel {
     filter_badge: gtk::Label,
     filter_strip: Option<crate::ui::filter_strip::FilterStrip>,
     insert_button: gtk::Button,
+    delete_button: gtk::Button,
+    /// `tab.delete-rows`, enabled while the selection can be deleted.
+    delete_action: gio::SimpleAction,
     pending_revealer: gtk::Revealer,
     save_button: gtk::Button,
     discard_button: gtk::Button,
@@ -632,7 +667,8 @@ pub(crate) enum BrowseTabInput {
     /// Queued after an insert, so the focus lands on the column view
     /// as it is once the insert is drawn.
     FocusInsertedDraft,
-    DeleteSelectedRow,
+    /// Delete over these rows, from the key, the button or the menu.
+    DeleteRows(Vec<RowObject>),
     GridCellEdited {
         row: RowObject,
         column: usize,
@@ -650,15 +686,8 @@ pub(crate) enum BrowseTabInput {
     GridShowToast(String),
     GridExportResults(QueryResult),
     ExportCurrentPage,
-    GridDeleteRowAt {
-        row: RowObject,
-    },
-    GridCopyRowAsInsert {
-        row: RowObject,
-    },
-    DuplicateRow {
-        row: RowObject,
-    },
+    GridCopyRowsAsInsert(Vec<RowObject>),
+    DuplicateRows(Vec<RowObject>),
     GridCopyToClipboard(String),
     Undo,
     Redo,
@@ -670,10 +699,7 @@ pub(crate) enum BrowseTabInput {
     DiscardAndRefresh,
     /// A delete the user confirmed, or one small enough to need no
     /// confirmation.
-    MarkRowsDeleted {
-        rows: Vec<(RowKey, Vec<Value>)>,
-        drafts: Vec<u64>,
-    },
+    MarkRowsDeleted(RowDeletion),
     /// The save landed. Edits made while it ran stay pending.
     SaveCommitted,
     /// The pending changes stay, so the user can fix the cause and
@@ -855,16 +881,30 @@ impl BrowseModel {
     /// row keeps its object, so the selection and the focus stay on it.
     fn apply_tracker_delta(&mut self, delta: &TrackerDelta, fx: &mut Effects) {
         if let Some(store) = self.list_store() {
-            for change in &delta.visual {
-                apply_visual_change(&store, &mut self.row_index, change);
-            }
+            apply_draft_changes(&store, &mut self.row_index, delta);
         }
-        for key in &delta.rows {
+        for key in &delta.changed {
             if let Some(row) = self.row_index.get(key) {
                 row.bump_revision();
             }
         }
         self.sync_pending_chrome(delta.pending_count, fx);
+        self.sync_delete_action();
+    }
+
+    fn selected_rows(&self) -> Vec<RowObject> {
+        self.current_selection.as_ref().map(selected_rows).unwrap_or_default()
+    }
+
+    /// The rows on screen can change under the selection without it
+    /// changing, so this runs on every delta and page as well.
+    fn sync_delete_action(&self) {
+        show_delete_availability(
+            &self.delete_action,
+            &self.delete_button,
+            &self.selected_rows(),
+            self.read_only,
+        );
     }
 
     /// The footer and the tab's dirty flag, which App turns into the
@@ -1108,12 +1148,20 @@ impl BrowseModel {
         self.rendered_columns = self.current_columns.clone();
 
         // The selection model is new per rebuild, so the previous
-        // handler goes with the old one.
-        let selection_label_for_signal = self.selection_label.clone();
+        // handler goes with the old one. The tab holds the selection, so
+        // the handler holds the tab's widgets weakly.
         if let Some(sel) = self.current_selection.as_ref() {
+            let label = self.selection_label.downgrade();
+            let button = self.delete_button.downgrade();
+            let action = self.delete_action.clone();
+            let read_only = self.read_only;
             sel.connect_selection_changed(move |sel, _, _| {
+                let (Some(label), Some(button)) = (label.upgrade(), button.upgrade()) else {
+                    return;
+                };
                 let n = u32::try_from(sel.selection().size()).unwrap_or(u32::MAX);
-                update_selection_chrome(&selection_label_for_signal, n);
+                update_selection_chrome(&label, n);
+                show_delete_availability(&action, &button, &selected_rows(sel), read_only);
             });
             update_selection_chrome(&self.selection_label, 0);
         }
@@ -1122,6 +1170,7 @@ impl BrowseModel {
         // the tracker holds them, and the rebuilt store would not.
         self.reprepend_drafts();
         self.reindex_rows();
+        self.sync_delete_action();
 
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&column_view)
@@ -1159,6 +1208,7 @@ impl BrowseModel {
         self.rendered_columns.clear();
         self.row_index = GridRowIndex::default();
         update_selection_chrome(&self.selection_label, 0);
+        self.sync_delete_action();
         self.show_loading();
     }
 
@@ -1171,6 +1221,7 @@ impl BrowseModel {
         }
         self.reprepend_drafts();
         self.reindex_rows();
+        self.sync_delete_action();
     }
 
     fn reindex_rows(&mut self) {
@@ -1519,28 +1570,31 @@ impl BrowseModel {
                 self.fetch(BrowseRequestKind::Page, fx);
                 fx.output(BrowseTabOutput::StateChanged);
             }
-            BrowseTabInput::DuplicateRow { row } => {
-                if self.current_columns.is_empty() || self.grid_is_stale() {
+            BrowseTabInput::DuplicateRows(rows) => {
+                if self.current_columns.is_empty() || self.grid_is_stale() || rows.is_empty() {
                     return;
                 }
-                // With its pending edits, since the copy is of the row the
-                // user is looking at.
-                let source_cells = self.grid_context().effective_cells(&row);
-                // The duplicate is a new row, so values the database owns
-                // (key, identity, generated) are left to it.
-                let values: Vec<Value> = self
-                    .current_columns
-                    .iter()
-                    .enumerate()
-                    .map(|(i, col)| {
-                        if col.primary_key || col.is_auto_increment || col.is_generated {
-                            Value::Null
-                        } else {
-                            source_cells.get(i).cloned().unwrap_or(Value::Null)
-                        }
-                    })
-                    .collect();
-                self.apply_edit(TrackerEdit::Insert { values }, fx);
+                let ctx = self.grid_context();
+                for row in &rows {
+                    // With its pending edits, since the copy is of the row
+                    // the user is looking at.
+                    let source_cells = ctx.effective_cells(row);
+                    // The duplicate is a new row, so values the database
+                    // owns (key, identity, generated) are left to it.
+                    let values: Vec<Value> = self
+                        .current_columns
+                        .iter()
+                        .enumerate()
+                        .map(|(i, col)| {
+                            if col.primary_key || col.is_auto_increment || col.is_generated {
+                                Value::Null
+                            } else {
+                                source_cells.get(i).cloned().unwrap_or(Value::Null)
+                            }
+                        })
+                        .collect();
+                    self.apply_edit(TrackerEdit::Insert { values }, fx);
+                }
                 self.refresh_inner_stack_visibility();
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
@@ -1553,7 +1607,7 @@ impl BrowseModel {
                 self.refresh_inner_stack_visibility();
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
-            BrowseTabInput::DeleteSelectedRow => self.delete_selected_rows(fx),
+            BrowseTabInput::DeleteRows(rows) => self.delete_rows(&rows, fx),
             BrowseTabInput::GridCellEdited { row, column, input } => {
                 // The cell shows what was typed until its row is drawn again.
                 if self.refuses_edit(&row, column) {
@@ -1618,24 +1672,9 @@ impl BrowseModel {
                     target: Some(self.sql_target()),
                 }));
             }
-            BrowseTabInput::GridDeleteRowAt { row } => {
-                if self.grid_is_stale() {
-                    return;
-                }
-                let (Some(row_key), Some(cells)) = (row.key(), row.cells()) else {
-                    return;
-                };
-                self.apply_edit(
-                    TrackerEdit::Delete {
-                        row_key: row_key.clone(),
-                        original_values: cells.to_vec(),
-                    },
-                    fx,
-                );
-            }
-            BrowseTabInput::GridCopyRowAsInsert { row } => {
+            BrowseTabInput::GridCopyRowsAsInsert(rows) => {
                 if !self.grid_is_stale() {
-                    self.copy_row_as_insert(&row, fx);
+                    self.copy_rows_as_insert(&rows, fx);
                 }
             }
             BrowseTabInput::GridCopyToClipboard(text) => {
@@ -1664,19 +1703,14 @@ impl BrowseModel {
                 self.apply_tracker_delta(&delta, fx);
                 self.fetch(BrowseRequestKind::Page, fx);
             }
-            BrowseTabInput::MarkRowsDeleted { rows, drafts } => {
-                for (row_key, original_values) in rows {
-                    self.apply_edit(
-                        TrackerEdit::Delete {
-                            row_key,
-                            original_values,
-                        },
-                        fx,
-                    );
-                }
-                for draft_id in drafts {
-                    self.apply_edit(TrackerEdit::DiscardDraft { draft_id }, fx);
-                }
+            BrowseTabInput::MarkRowsDeleted(deletion) => {
+                self.apply_edit(
+                    TrackerEdit::DeleteRows {
+                        persisted: deletion.persisted,
+                        drafts: deletion.drafts,
+                    },
+                    fx,
+                );
                 // A bulk action ends the selection it acted on.
                 if let Some(selection) = self.current_selection.as_ref() {
                     selection.unselect_all();
@@ -1742,50 +1776,34 @@ impl BrowseModel {
         );
     }
 
-    /// Mark the selected rows for deletion: persisted rows go to the
-    /// tracker, drafts are dropped. Nothing leaves the tab until Save.
-    fn delete_selected_rows(&self, fx: &mut Effects) {
-        let Some(selection) = self.current_selection.as_ref() else {
-            return;
-        };
-        let positions = super::grid::selected_positions(selection);
-        if positions.is_empty() {
+    /// Mark saved rows for deletion and drop drafts. Nothing leaves the
+    /// tab until Save. The action is off for rows this cannot delete, so
+    /// such rows reaching here is a bug, which changes nothing.
+    fn delete_rows(&self, rows: &[RowObject], fx: &mut Effects) {
+        if self.grid_is_stale() {
             return;
         }
-        let mut snapshot: Vec<(RowKey, Vec<Value>)> = Vec::new();
-        let mut draft_ids: Vec<u64> = Vec::new();
-        let mut had_unkeyed_row = false;
-        for row in positions
-            .iter()
-            .filter_map(|position| selection.item(*position).and_downcast::<RowObject>())
-        {
-            match row.id() {
-                GridRowId::Draft(draft_id) => draft_ids.push(*draft_id),
-                GridRowId::Persisted(key) => {
-                    snapshot.push((key.clone(), row.cells().map(|cells| cells.to_vec()).unwrap_or_default()));
-                }
-                GridRowId::Unkeyed | GridRowId::Result => had_unkeyed_row = true,
-            }
-        }
-        // A selection of drafts only needs no key.
-        if had_unkeyed_row {
-            fx.output(BrowseTabOutput::ShowSelectionAlert {
-                title: crate::i18n::gettext("Cannot delete"),
-                body: crate::i18n::gettext("This table has no primary key, so editing is disabled."),
-            });
+        if self.read_only {
+            tracing::error!("Delete reached a read-only tab");
             return;
         }
-        if snapshot.is_empty() && draft_ids.is_empty() {
+        let deletion = plan_row_deletion(rows);
+        if deletion.unkeyed > 0 {
+            tracing::error!(unkeyed = deletion.unkeyed, "Delete reached rows with no key");
             return;
         }
-        let count = snapshot.len() + draft_ids.len();
-        if count < BULK_DELETE_CONFIRM_THRESHOLD {
-            fx.input(BrowseTabInput::MarkRowsDeleted {
-                rows: snapshot,
-                drafts: draft_ids,
-            });
+        if deletion.is_empty() {
             return;
         }
+        if deletion.len() < BULK_DELETE_CONFIRM_THRESHOLD {
+            fx.input(BrowseTabInput::MarkRowsDeleted(deletion));
+            return;
+        }
+        self.confirm_delete(deletion);
+    }
+
+    fn confirm_delete(&self, deletion: RowDeletion) {
+        let count = deletion.len();
         let title = crate::i18n::ngettext_f(
             "Delete {n} row?",
             "Delete {n} rows?",
@@ -1800,54 +1818,57 @@ impl BrowseModel {
         dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
-        let pending = RefCell::new(Some((snapshot, draft_ids)));
         let tab = self.this.clone();
-        dialog.connect_response(None, move |dlg, response| {
-            dlg.close();
+        let parent = self.inner_stack.clone();
+        glib::spawn_future_local(async move {
+            let response = dialog.choose_future(Some(&parent)).await;
             if response == "delete"
-                && let Some((rows, drafts)) = pending.borrow_mut().take()
                 && let Some(tab) = tab.upgrade()
             {
-                tab.send(BrowseTabInput::MarkRowsDeleted { rows, drafts });
+                tab.send(BrowseTabInput::MarkRowsDeleted(deletion));
             }
         });
-        dialog.present(Some(&self.inner_stack));
     }
 
-    /// One row as an INSERT for the server the tab is connected to,
+    /// Each row as an INSERT for the server the tab is connected to,
     /// pending edits included. A draft's is the INSERT its save would
     /// run, so the columns the server fills stay out of it.
-    fn copy_row_as_insert(&self, row: &RowObject, fx: &mut Effects) {
+    fn copy_rows_as_insert(&self, rows: &[RowObject], fx: &mut Effects) {
         let Some(dialect) = self.session.current_dialect() else {
             fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
                 "Connect to a database first.",
             )));
             return;
         };
-        let cells = match row.id() {
-            GridRowId::Draft(draft_id) => self
-                .tracker
-                .draft_cells(*draft_id, &self.current_columns)
-                .unwrap_or_default(),
-            _ => self
-                .grid_context()
-                .effective_cells(row)
-                .into_iter()
-                .map(CellInput::Value)
-                .collect(),
-        };
-        match tablepro_core::export::render_insert(&*dialect, &self.table_ref(), &self.current_columns, &cells) {
-            Ok(sql) => fx.output(BrowseTabOutput::CopyToClipboard(sql)),
-            Err(error) => {
-                tracing::debug!(%error, "a row could not be written as an INSERT");
-                let message = match error {
-                    RenderInsertError::Literal(_) => {
-                        crate::i18n::gettext("This row has a value that can't be written as SQL")
-                    }
-                    RenderInsertError::NoValues => crate::i18n::gettext("This row has no value to put in an INSERT"),
-                };
-                fx.output(BrowseTabOutput::ShowToast(message));
+        let ctx = self.grid_context();
+        let mut statements = Vec::with_capacity(rows.len());
+        for row in rows {
+            let cells = match row.id() {
+                GridRowId::Draft(draft_id) => self
+                    .tracker
+                    .draft_cells(*draft_id, &self.current_columns)
+                    .unwrap_or_default(),
+                _ => ctx.effective_cells(row).into_iter().map(CellInput::Value).collect(),
+            };
+            match tablepro_core::export::render_insert(&*dialect, &self.table_ref(), &self.current_columns, &cells) {
+                Ok(sql) => statements.push(sql),
+                Err(error) => {
+                    tracing::debug!(%error, "a row could not be written as an INSERT");
+                    let message = match error {
+                        RenderInsertError::Literal(_) => {
+                            crate::i18n::gettext("This row has a value that can't be written as SQL")
+                        }
+                        RenderInsertError::NoValues => {
+                            crate::i18n::gettext("This row has no value to put in an INSERT")
+                        }
+                    };
+                    fx.output(BrowseTabOutput::ShowToast(message));
+                    return;
+                }
             }
+        }
+        if !statements.is_empty() {
+            fx.output(BrowseTabOutput::CopyToClipboard(statements.join("\n")));
         }
     }
 
@@ -1887,21 +1908,40 @@ fn qualified(schema: Option<&str>, table: &str) -> String {
     }
 }
 
-fn apply_visual_change(store: &gtk::gio::ListStore, index: &mut GridRowIndex, change: &VisualChange) {
-    match change {
-        VisualChange::InsertDraft { draft_id } => {
-            let row = RowObject::draft(*draft_id);
-            store.insert(0, &row);
-            index.insert(&row);
+/// The one place the store gains or loses draft rows.
+fn apply_draft_changes(store: &gtk::gio::ListStore, index: &mut GridRowIndex, delta: &TrackerDelta) {
+    for draft_id in &delta.removed_drafts {
+        let key = RowKey::Draft(*draft_id);
+        if let Some(position) = index.position_in(store, &key) {
+            store.remove(position);
         }
-        VisualChange::RemoveDraft { draft_id } => {
-            let key = RowKey::Draft(*draft_id);
-            if let Some(position) = index.position_in(store, &key) {
-                store.remove(position);
-            }
-            index.remove(&key);
-        }
+        index.remove(&key);
     }
+    for draft_id in &delta.inserted_drafts {
+        let row = RowObject::draft(*draft_id);
+        store.insert(0, &row);
+        index.insert(&row);
+    }
+}
+
+fn selected_rows(selection: &gtk::MultiSelection) -> Vec<RowObject> {
+    super::grid::selected_positions(selection)
+        .into_iter()
+        .filter_map(|position| selection.item(position).and_downcast::<RowObject>())
+        .collect()
+}
+
+/// The Delete key and button follow the action; the button's tooltip
+/// says why it is off.
+fn show_delete_availability(action: &gio::SimpleAction, button: &gtk::Button, rows: &[RowObject], read_only: bool) {
+    let availability = delete_availability(rows.iter().map(RowObject::id), read_only);
+    action.set_enabled(availability == DeleteAvailability::Available);
+    let explanation = match availability {
+        DeleteAvailability::Unavailable(block) => block.explanation(),
+        DeleteAvailability::Available => None,
+    };
+    let tooltip = explanation.unwrap_or_else(|| crate::i18n::gettext("Delete selected rows (Delete)"));
+    button.set_tooltip_text(Some(&tooltip));
 }
 
 fn clear_box(b: &gtk::Box) {

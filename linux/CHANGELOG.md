@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save Changes dialog on close that lists every tab with unsaved changes and saves only the ones left checked.
 - Logout waits while there are unsaved changes, and logout and suspend wait while a save is running.
 - Auto-increment on and off for PostgreSQL columns in the Structure tab, numbering on from the largest existing value.
+- Delete button in the table grid, with the reason in its tooltip when the selected rows can't be deleted.
 
 ### Changed
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show CREATE TABLE gives the server's own statement on MySQL, ClickHouse and SQLite.
 - Structure tab sets a column NOT NULL when it joins the primary key, and gives its nullability back when it leaves.
 - Auto increment in the Structure tab no longer needs the primary key on PostgreSQL and SQL Server.
+- Delete, Duplicate and Copy as in a grid cell's menu act on every selected row when the clicked row is selected.
 
 ### Fixed
 
@@ -47,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse DateTime values showed as UTC text when the server profile or session set ISO output.
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
 - A new row removed with Delete stayed in the grid while the save left it out.
+- Undoing a delete of many rows took one Ctrl+Z per row and could not bring back more than 50.
 - An edit, Set Value or row action in the table grid could land on another row once a row above it came or went.
 - Editing, undoing or deleting a row in the table grid dropped it from a selection of several rows.
 - Copy as INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.

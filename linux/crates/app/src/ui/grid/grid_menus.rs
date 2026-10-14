@@ -7,26 +7,36 @@ use tablepro_core::column::ResultColumn;
 
 use super::context_menu::{CellContext, CellMenuTarget};
 use super::inline_edit::enter_edit_mode;
+use super::menu_rows::menu_rows_of;
 use super::row_json_dialog::show_row_json_dialog;
-use super::selection::{export_snapshot, rows_for_menu};
-use super::{CellPreset, GridMsg, GridSink, TabGridContext};
+use super::selection::export_snapshot;
+use super::{CellPreset, DeleteAvailability, GridMsg, GridSink, RowObject, TabGridContext, delete_availability};
 
-/// Enabled per right-clicked cell. Their items are hidden while
-/// disabled, so a cell they do not apply to shows no dead entry. `None`
-/// on a read-only grid, which registers neither.
+/// Enabled per right-clicked cell. `None` on a read-only grid, which
+/// registers none of them.
 #[derive(Clone, Default)]
 pub(super) struct CellActions {
+    /// Hidden while disabled, so a cell they do not apply to shows no
+    /// dead entry.
     edit: Option<gio::SimpleAction>,
     set_empty: Option<gio::SimpleAction>,
+    /// Shown insensitive while disabled, since a menu item cannot carry
+    /// a tooltip to say why.
+    delete_row: Option<gio::SimpleAction>,
 }
 
 impl CellActions {
-    pub(super) fn arm(&self, target: &CellMenuTarget) {
+    /// `rows` is what the menu acts on, read when it opens.
+    pub(super) fn arm(&self, target: &CellMenuTarget, rows: &[RowObject]) {
         if let Some(edit) = &self.edit {
             edit.set_enabled(target.text_editable);
         }
         if let Some(set_empty) = &self.set_empty {
             set_empty.set_enabled(target.accepts_empty);
+        }
+        if let Some(delete_row) = &self.delete_row {
+            let availability = delete_availability(rows.iter().map(RowObject::id), false);
+            delete_row.set_enabled(availability == DeleteAvailability::Available);
         }
     }
 }
@@ -187,14 +197,24 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             )),
         }
     }
+    // The rows each item acts on are read when it is chosen, from the
+    // row the cell shows then.
+    macro_rules! rows_action {
+        ($name:literal, |$cell:ident, $rows:ident| $body:expr) => {{
+            let view = view.clone();
+            cell_action!($name, |$cell, _row| {
+                let Some(cv) = view.upgrade() else { return };
+                let $rows = menu_rows_of(&cv, $cell);
+                $body;
+            })
+        }};
+    }
     macro_rules! copy_action {
         ($name:literal, |$rows:ident| $message:expr) => {{
             let s = sink.clone();
-            let view = view.clone();
             let tab = tab.clone();
-            cell_action!($name, |_cell, row| {
-                let Some(cv) = view.upgrade() else { return };
-                let $rows = rows_for_menu(&cv, &tab, &row);
+            rows_action!($name, |_cell, rows| {
+                let $rows: Vec<_> = rows.iter().map(|row| tab.effective_cells(row)).collect();
                 s($message);
             })
         }};
@@ -213,12 +233,10 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     // at the 10k display cap.
     let copy_action = {
         let s = sink.clone();
-        let view = view.clone();
         let tab = tab.clone();
         let cols = columns.clone();
-        cell_action!("copy", |cell, row| {
-            let Some(cv) = view.upgrade() else { return };
-            let rows = rows_for_menu(&cv, &tab, &row);
+        rows_action!("copy", |cell, rows| {
+            let rows: Vec<_> = rows.iter().map(|row| tab.effective_cells(row)).collect();
             let column = cell.column();
             let message = match rows.as_slice() {
                 [row] => GridMsg::CopyToClipboard(
@@ -277,11 +295,9 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     // shorter list that quietly selects different rows.
     let copy_in_clause_action = {
         let s = sink.clone();
-        let view = view.clone();
         let tab = tab.clone();
-        cell_action!("copy-in-clause", |cell, row| {
-            let Some(cv) = view.upgrade() else { return };
-            let rows = rows_for_menu(&cv, &tab, &row);
+        rows_action!("copy-in-clause", |cell, rows| {
+            let rows: Vec<_> = rows.iter().map(|row| tab.effective_cells(row)).collect();
             let clause = tablepro_core::export::render_in_clause(&rows, cell.column());
             if clause.sql.is_empty() {
                 s(GridMsg::ShowToast(crate::i18n::gettext(
@@ -306,7 +322,10 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
                 .unwrap_or_default()
         ))
     };
-    let copy_row_insert_action = send_action!("copy-row-insert", |_cell, row| GridMsg::CopyRowAsInsert { row });
+    let copy_row_insert_action = {
+        let s = sink.clone();
+        rows_action!("copy-row-insert", |_cell, rows| s(GridMsg::CopyRowsAsInsert { rows }))
+    };
     let show_row_json_action = {
         let cols = columns.clone();
         let view = view.clone();
@@ -345,8 +364,14 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             .activate(move |_, _, _| s(GridMsg::InsertRow))
             .build()
     };
-    let delete_row_action = send_action!("delete-row", |_cell, row| GridMsg::DeleteRowAt { row });
-    let duplicate_row_action = send_action!("duplicate-row", |_cell, row| GridMsg::DuplicateRow { row });
+    let delete_row_action = {
+        let s = sink.clone();
+        rows_action!("delete-row", |_cell, rows| s(GridMsg::DeleteRows { rows }))
+    };
+    let duplicate_row_action = {
+        let s = sink.clone();
+        rows_action!("duplicate-row", |_cell, rows| s(GridMsg::DuplicateRows { rows }))
+    };
 
     let mut entries = vec![
         copy_action,
@@ -381,6 +406,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     let actions = CellActions {
         edit: editable.then(|| simple_action(&group, "edit")).flatten(),
         set_empty: editable.then(|| simple_action(&group, "set-empty")).flatten(),
+        delete_row: editable.then(|| simple_action(&group, "delete-row")).flatten(),
     };
 
     // Popovers are parented eagerly so each PopoverMenu's action muxer
