@@ -1779,6 +1779,126 @@ fn picking_a_day_commits_it() {
     assert!(!cell.is_editing());
 }
 
+/// The middle of the first of the calendar's labels that `matches`,
+/// once the popover has laid it out.
+fn calendar_label(calendar: &gtk4::Calendar, matches: impl Fn(&gtk4::Widget) -> bool) -> (f64, f64) {
+    let mut found = None;
+    wait_until(WAIT, || {
+        found = crate::test_support::descendants(calendar)
+            .into_iter()
+            .find(|widget| widget.width() > 0 && matches(widget));
+        found.is_some()
+    })
+    .expect("the label is drawn");
+    let label = found.expect("a label");
+    let middle = gtk4::graphene::Point::new(label.width() as f32 / 2.0, label.height() as f32 / 2.0);
+    let point = label
+        .compute_point(calendar, &middle)
+        .expect("the label is inside the calendar");
+    (f64::from(point.x()), f64::from(point.y()))
+}
+
+fn selected_day(calendar: &gtk4::Calendar) -> (f64, f64) {
+    calendar_label(calendar, |label| {
+        label.has_css_class("day-number") && label.state_flags().contains(gtk4::StateFlags::SELECTED)
+    })
+}
+
+/// What the calendar hears when a primary click at `(x, y)` ends.
+fn release_on(calendar: &gtk4::Calendar, (x, y): (f64, f64)) {
+    let controllers = calendar.observe_controllers();
+    for gesture in
+        (0..controllers.n_items()).filter_map(|index| controllers.item(index).and_downcast::<gtk4::GestureClick>())
+    {
+        gesture.emit_by_name::<()>("released", &[&1i32, &x, &y]);
+    }
+}
+
+fn release_space(calendar: &gtk4::Calendar) {
+    use gtk4::glib::translate::IntoGlib;
+    let controllers = calendar.observe_controllers();
+    for keys in (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index).and_downcast::<gtk4::EventControllerKey>())
+    {
+        keys.emit_by_name::<()>(
+            "key-released",
+            &[
+                &gtk4::gdk::Key::space.into_glib(),
+                &0u32,
+                &gtk4::gdk::ModifierType::empty(),
+            ],
+        );
+    }
+}
+
+/// Open the cell's calendar until its popover shows. Test processes
+/// share one X display, where another test's window can close an
+/// autohide popover before it maps.
+fn open_calendar(cell: &GridCell) -> gtk4::Calendar {
+    for _ in 0..5 {
+        crate::ui::grid::begin_edit(cell);
+        if let Some(calendar) = calendar_of(cell)
+            && wait_until(Duration::from_secs(2), || calendar.is_mapped() && calendar.width() > 0).is_ok()
+        {
+            return calendar;
+        }
+        cell.cancel_edit();
+        drain_main_context();
+    }
+    panic!("the calendar never showed");
+}
+
+fn shown_day(calendar: &gtk4::Calendar) -> Value {
+    let (year, month, day) = calendar.date().ymd();
+    a_date(year, u32::try_from(month).unwrap(), u32::try_from(day).unwrap())
+}
+
+#[gtk4::test]
+fn clicking_today_on_a_null_date_commits_it() {
+    let (harness, _shown) = one_cell(named_col("day", "date", true), Value::Null);
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+    let calendar = open_calendar(&cell);
+    let today = shown_day(&calendar);
+
+    release_on(
+        &calendar,
+        calendar_label(&calendar, |label| label.has_css_class("day-name")),
+    );
+    assert!(cell.is_editing(), "a click on a weekday name picked a day");
+    release_on(&calendar, selected_day(&calendar));
+
+    assert_eq!(pending_value(&harness, &Value::Null), today);
+    assert!(!cell.is_editing());
+}
+
+#[gtk4::test]
+fn picking_the_same_day_in_another_month_commits_it() {
+    let fetched = a_date(2024, 3, 15);
+    let (harness, _shown) = one_cell(named_col("day", "date", true), fetched.clone());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+    let calendar = open_calendar(&cell);
+
+    // As the next-month arrow does, this moves the date without a
+    // day-selected.
+    calendar.set_date(&gtk4::glib::DateTime::from_utc(2024, 4, 15, 0, 0, 0.0).expect("a day"));
+    assert!(cell.is_editing(), "a month change picked a day");
+    release_on(&calendar, selected_day(&calendar));
+
+    assert_eq!(pending_value(&harness, &fetched), a_date(2024, 4, 15));
+}
+
+#[gtk4::test]
+fn space_on_the_selected_day_commits_it() {
+    let (harness, _shown) = one_cell(named_col("day", "date", true), Value::Null);
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+    let calendar = open_calendar(&cell);
+    let today = shown_day(&calendar);
+
+    release_space(&calendar);
+
+    assert_eq!(pending_value(&harness, &Value::Null), today);
+}
+
 #[gtk4::test]
 fn opening_calendar_on_existing_date_records_no_edit() {
     let (harness, _shown) = one_cell(named_col("day", "date", true), a_date(2024, 2, 29));

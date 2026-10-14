@@ -54,12 +54,44 @@ impl CalendarEditor {
 
         let weak_cell = cell.downgrade();
         calendar.connect_day_selected(move |calendar| {
-            let Some(cell) = weak_cell.upgrade() else {
+            if let Some(cell) = weak_cell.upgrade() {
+                pick(&cell, calendar);
+            }
+        });
+        // day-selected fires only when the date changes, so a click or
+        // Space on the day already selected, today on a NULL or the same
+        // day after a month change, would pick nothing.
+        let click = gtk::GestureClick::new();
+        let weak_cell = cell.downgrade();
+        click.connect_released(move |gesture, _, x, y| {
+            let Some(calendar) = gesture.widget().and_downcast::<gtk::Calendar>() else {
                 return;
             };
-            let (year, month, day) = calendar.date().ymd();
-            pick(&cell, &format!("{year:04}-{month:02}-{day:02}"));
+            let on_a_day = calendar
+                .pick(x, y, gtk::PickFlags::DEFAULT)
+                .is_some_and(|label| label.has_css_class("day-number"));
+            if !on_a_day {
+                return;
+            }
+            if let Some(cell) = weak_cell.upgrade() {
+                pick(&cell, &calendar);
+            }
         });
+        calendar.add_controller(click);
+        let keys = gtk::EventControllerKey::new();
+        let weak_cell = cell.downgrade();
+        keys.connect_key_released(move |controller, keyval, _, _| {
+            if !matches!(keyval, gtk::gdk::Key::space | gtk::gdk::Key::KP_Space) {
+                return;
+            }
+            let Some(calendar) = controller.widget().and_downcast::<gtk::Calendar>() else {
+                return;
+            };
+            if let Some(cell) = weak_cell.upgrade() {
+                pick(&cell, &calendar);
+            }
+        });
+        calendar.add_controller(keys);
         let weak_cell = cell.downgrade();
         type_value.connect_clicked(move |_| {
             let Some(cell) = weak_cell.upgrade() else {
@@ -81,11 +113,13 @@ impl CalendarEditor {
 }
 
 /// The popover closes before the tab hears of the day, as every editor's
-/// does.
-fn pick(cell: &GridCell, day: &str) {
+/// does. A second pick of the same click finds the edit taken.
+fn pick(cell: &GridCell, calendar: &gtk::Calendar) {
     let Some(snapshot) = cell.take_edit() else {
         return;
     };
+    let (year, month, day) = calendar.date().ymd();
+    let day = format!("{year:04}-{month:02}-{day:02}");
     if let Some(popover) = cell.take_popover() {
         popover.popdown();
     }
@@ -95,7 +129,7 @@ fn pick(cell: &GridCell, day: &str) {
     let Some(column) = drawing.catalog.as_ref() else {
         return;
     };
-    let result = commit_edit(column, &snapshot, day);
+    let result = commit_edit(column, &snapshot, &day);
     send_commit(cell, snapshot, result);
 }
 
