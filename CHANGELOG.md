@@ -38,7 +38,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Previewed grid cells no longer keep a second full value in each cell widget.
 - Materialized result-grid rows share their source values, reducing duplicate memory for long cells while preserving pending edits on replacement.
 - Overlapping View Value requests discard stale replies so an older fetch cannot replace the latest requested cell.
-- ClickHouse long text refetch now has a guarded 12,000-byte contract with composite-key and native-value checks.
+- Long ClickHouse cell values can be opened in View Value up to 12,000 bytes.
 - DuckDB BLOB values support guarded exact refetch of the full value from the database.
 - MySQL and MariaDB CHAR results preserve `PAD_CHAR_TO_FULL_LENGTH` padding, including VARCHAR, empty values and NULL.
 - MySQL and MariaDB CSV imports preserve impossible calendar dates accepted by `ALLOW_INVALID_DATES`.
@@ -52,18 +52,14 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A failed statement in the SQL editor offers a Copy error button.
 - Selecting several rows and opening the selection badge shows each numeric column's count, sum, average, min and max, with NULLs skipped and a Copy summary button.
 - A connection's colour tag now also paints a strip above its workspace tabs, so a window shows which connection it belongs to.
-- PostgreSQL's six built-in scalar range types now have native text/JSON/wire refusal checks; empty ranges remain distinct from SQL NULL, and refused literals and bindings preserve target and sibling rows.
-- MongoDB and Redis unfiltered, unsorted table pages now use native fetches even when metadata finds a primary key; a native MongoDB GTK scenario checks cursor values remain visible until refresh and an approved post-refresh edit preserves sibling fields.
+- PostgreSQL shows unsupported built-in ranges explicitly; supported empty ranges stay distinct from SQL NULL.
+- MongoDB and Redis browse pages use native fetches when available; MongoDB cursor values remain visible until refresh, and approved edits preserve sibling fields.
 - Result column headers show the column type and mark primary-key and foreign-key columns.
 - Redis key browsing preserves arbitrary-byte keys and non-UTF-8 string values, and fills requested pages across partial SCAN batches.
-- MongoDB nested null filters now compare JSON-filter and MQL results against native queries, distinguishing missing paths, explicit BSON null, and ordinary values.
+- MongoDB filters distinguish missing fields, explicit BSON null, and ordinary values.
 - SQL Server query batches now preserve ordered result sets through the policy guard, editor, MCP query responses, and JSON export; MCP shares its row cap across sets, and CSV export refuses multi-set results rather than dropping data.
-- ClickHouse Enum8/Enum16 values now cover signed endpoints and zero (`-128`, `0`, `127` for Enum8; `-32768`, `0`, `32767` for Enum16) through native casts, parameter writes, CSV import and SQL-literal replay; undeclared labels for both enum widths are refused without changing stored rows. Nullable Enum16 also preserves SQL NULL, the literal `NULL`, and labels through these consumers.
-- ClickHouse Enum8/Enum16 consumers now distinguish an empty-string enum label from SQL NULL through native reads, parameter writes, CSV import and Copy as SQL replay; nullable Enum8 is included.
-- ClickHouse `Array(Nullable(Enum8))` results now keep SQL NULL array elements distinct from the literal `NULL` enum label, with the native `toJSONString` result checked through JSON/CSV/XLSX exports and explicit write refusal.
-- ClickHouse Map values now cover Enum8 apostrophe/Unicode/literal-`NULL` labels and nullable Enum16 empty/NULL distinctions through native JSON, JSON/CSV/XLSX exports, and explicit lossy-write refusal with stored-row preservation.
-- PostgreSQL name[] typed CSV import now checks NULL/empty distinctions, escaped and Unicode labels, the 63-byte UTF-8 boundary, and exact native array wire preservation.
-- PostgreSQL custom enum-array slicing now checks native lower-bound normalization, multidimensional shape, SQL NULL versus empty arrays, literal NULL/Unicode labels, and typed rebind wire equality.
+- ClickHouse Enum8/Enum16 values, arrays and maps preserve declared labels, empty strings and SQL NULL through supported reads and exports; writes refuse undeclared or lossy values.
+- PostgreSQL custom enum arrays preserve labels, NULLs, dimensions and bounds through results, parameters and typed CSV import.
 - Copy-as-INSERT and SQL exports now let PostgreSQL and SQL Server generate fresh identity values; MySQL continues to preserve explicit auto-increment values.
 - Table tabs have a Row inspector pane that shows every column of the selected row with its type and full value.
 - The SQL editor shades the statement under the cursor so you can see what Run Statement at Cursor will send.
@@ -74,24 +70,16 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Preferences has an opt-in Vim keys setting for the SQL editor, applied to editors opened afterwards.
 - A table remembers the column order you drag it to, per connection.
 - Find in Loaded Rows (Ctrl+Alt+F or the grid menu) lists the loaded rows that contain a text and selects the one you pick.
-- Holding Ctrl and pressing Tab repeatedly walks deeper through the recently used tabs; releasing Ctrl keeps the chosen tab.
+- Holding Ctrl and pressing Tab cycles through recently used tabs; releasing Ctrl opens the selected tab.
 - Preferences has an Editor font family setting; an empty value keeps the system monospace font.
-- PostgreSQL `bit[]` and `varbit[]` preserve values through results, typed parameters, CSV import, and keyed grid edits, including empty bit strings, SQL NULL, non-default bounds, and refusal of invalid edits without changing sibling rows.
-- PostgreSQL `citext[]` preserves exact elements, SQL NULL, empty arrays, multidimensional shape, zero lower bounds and case-insensitive comparisons through results, typed parameters, keyed grid edits and CSV round-trips; malformed values are refused without changing target or sibling rows.
-- PostgreSQL custom enum arrays preserve three-dimensional shape and the six-dimensional limit, non-default bounds, SQL NULL, empty and escaped labels through result decoding and typed parameter rebinding, with native type, JSON and wire-byte comparisons.
+- PostgreSQL `bit[]`, `varbit[]`, `citext[]`, `pg_lsn[]`, `macaddr[]`, `macaddr8[]`, `inet[]` and `cidr[]` preserve values and SQL NULL through typed results, bindings, keyed edits and CSV import.
 - The result grid's cell menu also opens with Shift+F10, and the editor find fields have accessible names.
 - Sidebar table search and saved-filter naming fields have accessible names, and connection colours can be chosen with an accessible button and palette.
 - Result grids have a Columns… menu entry to hide and show columns; the choice is remembered per table and at least one column always stays visible.
 - Table browse refreshes omit hidden non-key columns while retaining keys; full-row copy and current-page export refuse incomplete rows.
-- PostgreSQL `pg_lsn[]` preserves all 64 LSN bits and SQL NULL through results, inferred typed bindings, keyed updates and typed CSV import; native type/text/JSON/wire checks cover malformed-input refusal and sibling preservation.
-- PostgreSQL `macaddr[]` preserves canonical six-octet values and SQL NULL through results, inferred typed bindings, keyed updates and typed CSV import; native type/text/JSON/wire checks cover malformed-input refusal and sibling preservation.
-- PostgreSQL `macaddr8[]` preserves canonical eight-octet EUI-64 values and SQL NULL through results, inferred typed bindings, keyed updates and typed CSV import; native type/text/JSON/wire checks cover malformed-input refusal and sibling preservation.
-- PostgreSQL `inet[]` and `cidr[]` preserve IPv4/IPv6 addresses, prefixes, SQL NULL and array bounds through results, inferred typed bindings, keyed updates and typed CSV import; invalid prefixes and non-network CIDR host bits are refused without changing target or sibling rows.
-- PostgreSQL `xml[]` preserves XML fragments, SQL NULL, native array text and wire bytes through results, inferred bindings, keyed grid edits, typed CSV restore and JSON/CSV/XML/HTML/Markdown/XLSX/SQL file exports; malformed XML retains native `2200N` refusal without changing target or sibling rows.
-- PostgreSQL custom enum identifiers preserve metadata, keyed edits, and typed filters when a mixed-case quoted schema/type collides with lowercase names earlier in session or transaction-local `search_path`; native catalog and shadow-row checks verify the selected type, and shadow-only labels retain native `22P02` refusal.
-- PostgreSQL enum reads, bound value and SQL NULL filters, and bound enum updates work for a restricted role without enum `USAGE`; invalid labels retain native `22P02` refusal and sibling rows remain unchanged.
-- PostgreSQL custom composite arrays and unlisted built-in `money[]` and `point[]` arrays report explicit unsupported results and refuse literal/bound writes without changing target or sibling rows.
-- PostgreSQL custom enum metadata and keyed edits preserve schema and type identifiers at PostgreSQL's 63-byte catalog limit, including a multibyte UTF-8 character at the final type-name boundary.
+- PostgreSQL `xml[]` preserves values through query results, keyed edits and supported file exports.
+- PostgreSQL enum and domain values keep their schema and declared type when names are shadowed or the role has restricted privileges; enum CSV imports distinguish blank cells from NULL.
+- PostgreSQL composite arrays, `money[]` and `point[]` remain explicitly unsupported and cannot be written lossily.
 - Result grids have View Value…, which opens the whole cell in a read-only window: pretty-printed JSON, a hex dump for binary data, and a Copy value button.
 - A saved connection that is still connecting can be cancelled from the progress notice.
 - Starting BookiE while it is already running now brings the existing window forward instead of exiting silently.
@@ -99,21 +87,9 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - The connection form starts on PostgreSQL, offers file pickers for SQLite and DuckDB files and for the TLS certificate authority, and a TLS failure now says to check the TLS setting.
 - A failed connection from the saved list now offers Try Again and Edit Connection instead of only Close.
 - Saved connections can be edited from the welcome list, including their password, TLS, timeouts and single-hop SSH settings.
-- PostgreSQL enum results and browse filters preserve the literal label `NULL` separately from SQL NULL across scalar and array projections and typed comparisons.
-- PostgreSQL UUID-domain arrays preserve their values through result decoding, bound writes, and keyed edits.
-- PostgreSQL domains over arrays preserve declared type metadata and non-default bounds through results and keyed edits, with native JSON/wire checks and domain CHECK refusal.
-- PostgreSQL CSV imports cast custom enum labels to their catalog type and refuse ambiguous blank enum cells unless an explicit NULL marker is set.
-- PostgreSQL scalar enum CSV export and typed restore preserve leading and trailing label spaces.
-- PostgreSQL grid edits preserve wide `NUMERIC` values that are stored as exact text.
-- PostgreSQL enum parameter inference stays bound to a qualified target type after `SET ROLE` when a same-named shadow enum leads `search_path` and the target schema is absent; target-only values and native invalid-label refusal are covered.
-- PostgreSQL enum parameter inference also stays bound to a qualified target when a login role's configured default `search_path` places a same-named shadow enum first and omits the target schema; target-only/NULL values and native invalid-label refusal are covered.
-- PostgreSQL keyed enum edits and inferred query parameters stay bound to a mixed-case quoted target when a restricted role's `search_path` leads with a lowercase shadow and omits the target schema; shadow-only labels retain native `22P02` refusal.
-- SQLite STRICT `ANY` results from `quote()` remain TEXT through CSV restore, preserving numeric, empty, Unicode, escaped-apostrophe, BLOB, formula-shaped and SQL NULL literal forms.
-- SQLite `instr()` results over STRICT `ANY` preserve INTEGER versus SQL NULL and text, Unicode, and byte-oriented BLOB search positions through typed CSV restore.
-- SQLite `length()` results over STRICT `ANY` preserve INTEGER versus SQL NULL through typed CSV restore, including Unicode character counts and BLOB byte counts with embedded NUL.
-- SQLite attached-schema STRICT `ANY` results preserve INTEGER, REAL, TEXT, BLOB and SQL NULL storage classes through app-level typed CSV restore.
-- SQLite JSON aggregates over STRICT `ANY` preserve `json_group_array()` null/empty semantics and `json_group_object()` duplicate-key, NULL-key omission, and NULL-value semantics through typed CSV; JSON export retains exact result strings, and XLSX keeps object aggregates in text cells.
-- DuckDB `TIME_NS` and `TIMESTAMP_NS` preserve all nine fractional digits on parameterized INSERT and UPDATE, including SQL NULL and untouched sibling values.
+- PostgreSQL enum results, filters, edits and CSV workflows preserve literal `NULL`, empty labels and SQL NULL. UUID-domain and array-domain values retain their declared types, and wide `NUMERIC` grid edits remain exact.
+- SQLite STRICT `ANY` values retain their storage classes and SQL NULL through function results and typed CSV restore; JSON aggregate output remains exact in JSON, CSV and XLSX exports.
+- DuckDB `TIME_NS` and `TIMESTAMP_NS` preserve all nine fractional digits on parameterized inserts and updates.
 - The editor find bar has Match case and Regular expression toggles.
 - A Switch database button in the window header lists the databases the account can open on PostgreSQL, MySQL, SQL Server, ClickHouse and MongoDB, reconnects to the one you pick and remembers it for that saved connection.
 - The Connect button in the connection form becomes Cancel while it is reaching the server, so a slow or unreachable host no longer has to be waited out.
@@ -128,9 +104,8 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - The Debian package installs its programs without debug symbols, which makes the installed files about a quarter smaller.
 - The time shown for a statement no longer includes the wait for your approval on a guarded connection.
 - MongoDB browse pages now use a bounded schema sample and stable `_id` paging instead of scanning the full collection for every page.
-- Ctrl+Tab switches to the most recently used tab, and back again, instead of the next tab in the strip.
 - Create table from CSV now explains that ClickHouse, MongoDB and Redis connections cannot do it, and DuckDB gets its own JSON type name.
-- The app builds and runs its tests on Ubuntu 24.04 and Debian 13 (GTK 4.14, libadwaita 1.5 or newer); the shortcuts window uses the standard GTK layout.
+- The Keyboard Shortcuts window groups actions clearly and uses the standard GTK layout.
 - Large results use about 45% less memory in the grid because rows are built only when they scroll into view.
 - Browse results share their in-memory query result; GTK row objects are created when the view requests them. This avoids eager per-row GObject creation but does not page database rows or bound result memory.
 - Grid context-menu CSV copies encode SQL NULL with a collision-free marker, keeping it distinct from empty text and enum labels; formula sanitization remains enabled.
@@ -163,7 +138,6 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A busy connection pool is reported as busy rather than as a disconnected connection.
 - Corrupt saved window or column sizes are clamped, and invalid geometry no longer overwrites the last valid layout.
 - Exporting query results no longer duplicates the selected file extension when the file chooser adds it automatically.
-- Connection colour tags now paint the workspace tab bar and update when the tag changes.
 - Screen readers can activate the connection form's Driver, Endpoint and TLS selectors and identify its port and timeout inputs.
 - The docked query history panel rebuilds each time it opens, so its connection filter lists connections added, renamed or deleted since it was last shown.
 - PostgreSQL browse pages for tables without a primary key now use the row locator as a stable ordering tie-breaker, preventing duplicates and gaps between static pages.
@@ -208,7 +182,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Closing a table tab, paging, or disconnecting now stops the slow read it started on the server instead of letting it run to the timeout.
 - PostgreSQL optimistic grid edits cast both new and previously read custom enum, enum-array, and domain values to qualified native types, so stale-row comparisons work across those columns.
 - A PostgreSQL query that returns more rows than the result cap now returns the capped rows promptly and stops the server query, instead of waiting for the server to finish or timing out.
-- Connection-list rebuilds no longer remove a nested row list from the wrong GTK parent; GTK safety runs now fail on criticals.
+- Rebuilding the connection list no longer triggers GTK errors that could abort the app.
 - Saving an edited cell or deleting a row in a PostgreSQL, MySQL, SQL Server, SQLite or DuckDB table no longer asks for a manual write approval every time; the write is already limited to one row per statement.
 - MongoDB stale grid deletes now compare the document's full top-level field set as well as materialized values, so a field added after the read prevents deleting that changed document.
 
