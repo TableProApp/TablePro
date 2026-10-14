@@ -39,6 +39,12 @@ pub(super) enum RestoreState {
     /// The record is being read, and the windows open once it is.
     Loading,
     Done,
+    /// An approved quit is writing the record. A launch meanwhile asks
+    /// for it to be restored once written: read earlier, it would race
+    /// the write, and the quit then empties the list it restored into.
+    Quitting {
+        relaunched: bool,
+    },
 }
 
 #[glib::object_subclass]
@@ -89,6 +95,7 @@ impl ApplicationImpl for TableProApplication {
         match self.restore.get() {
             RestoreState::NotAttempted => app.restore_session(),
             RestoreState::Loading => {}
+            RestoreState::Quitting { .. } => self.restore.set(RestoreState::Quitting { relaunched: true }),
             RestoreState::Done => {
                 app.open_window(WindowLaunch::Picker);
             }
@@ -108,6 +115,10 @@ impl ApplicationImpl for TableProApplication {
                 self.obj().restore_session();
             }
             RestoreState::Loading => self.pending_files.borrow_mut().extend_from_slice(files),
+            RestoreState::Quitting { .. } => {
+                self.pending_files.borrow_mut().extend_from_slice(files);
+                self.restore.set(RestoreState::Quitting { relaunched: true });
+            }
         }
     }
 

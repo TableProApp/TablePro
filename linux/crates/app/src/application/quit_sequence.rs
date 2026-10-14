@@ -23,7 +23,8 @@ use crate::workspace::{CloseDecision, CloseReason};
 ///
 /// An approved quit can leave the process running with no window while
 /// a session closes, and a second launch then activates it. That
-/// activate restores the record as a new process would.
+/// activate restores the record as a new process would, after the
+/// record is written if it lands while the quit writes it.
 pub struct QuitSequence;
 
 impl QuitSequence {
@@ -49,11 +50,19 @@ impl QuitSequence {
         if let Some(services) = &services {
             match decision {
                 CloseDecision::Approved => {
+                    let restore = &app.imp().restore;
+                    let restorable = restore.get() == RestoreState::Done;
+                    if restorable {
+                        restore.set(RestoreState::Quitting { relaunched: false });
+                    }
                     services.open_sessions().flush().await;
                     services.open_sessions().end_quit();
-                    let restore = &app.imp().restore;
-                    if restore.get() == RestoreState::Done {
+                    if restorable {
+                        let relaunched = restore.get() == RestoreState::Quitting { relaunched: true };
                         restore.set(RestoreState::NotAttempted);
+                        if relaunched {
+                            app.restore_session();
+                        }
                     }
                 }
                 CloseDecision::Cancelled => services.open_sessions().thaw(|key| {
