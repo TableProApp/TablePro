@@ -1838,14 +1838,13 @@ impl BrowseModel {
         let ticket = self.next_confirmation;
         self.next_confirmation += 1;
         let tab = self.this.clone();
-        dialog.connect_response(None, move |dlg, response| {
+        dialog.connect_response(None, move |_, response| {
             if let Some(tab) = tab.upgrade() {
                 tab.send(BrowseTabInput::BulkDeleteAnswered {
                     ticket,
                     confirmed: response == "delete",
                 });
             }
-            dlg.close();
         });
         dialog.present(Some(&self.inner_stack));
         self.confirming_delete = Some(ConfirmingDelete {
@@ -1877,7 +1876,12 @@ impl BrowseModel {
             .deletion
             .persisted
             .iter()
-            .map(|(key, values)| layout.key(key).ok().map(|()| (key.clone(), layout.fetched(values).into())))
+            .map(|(key, values)| {
+                layout
+                    .key(key)
+                    .ok()
+                    .map(|()| (key.clone(), layout.fetched(values).into()))
+            })
             .collect();
         match moved {
             Some(rows) => {

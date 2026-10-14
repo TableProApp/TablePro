@@ -1994,7 +1994,7 @@ fn change_schema(harness: &Harness, done: impl Fn(&[ColumnInfo]) -> bool) {
     wait_until(WAIT, || done(&harness.tab().columns())).expect("the new columns");
 }
 
-/// Answering closes the dialog, which answers again with its close
+/// Closing the dialog after the answer answers again with its close
 /// response, and the rows stay marked.
 #[gtk4::test]
 fn a_confirmed_bulk_delete_marks_every_selected_row() {
@@ -2005,6 +2005,8 @@ fn a_confirmed_bulk_delete_marks_every_selected_row() {
     let dialog = ask_to_delete_every_row(&harness);
 
     answer_delete(&dialog);
+    libadwaita::prelude::AdwDialogExt::force_close(&dialog);
+    drain_main_context();
 
     assert_eq!(harness.tracker.pending_count(), DOZEN.len());
     assert!(confirming(harness.tab()).is_none());
