@@ -63,7 +63,10 @@ impl ConnectFailedPage {
         let page: Self = glib::Object::new();
         let imp = page.imp();
         imp.header_bar.pack_end(&crate::ui::shell::primary_menu_button(app));
-        imp.status_page.set_description(Some(message));
+        // The description is markup, and the reason quotes server text,
+        // file paths and host names.
+        imp.status_page
+            .set_description(Some(&glib::markup_escape_text(message)));
         if let Some(label) = edit {
             imp.edit_button.set_label(label);
             imp.edit_button.set_visible(true);
@@ -82,9 +85,10 @@ impl ConnectFailedPage {
         self.imp().toast_overlay.get()
     }
 
+    /// The reason as the page shows it.
     #[cfg(test)]
     pub fn message(&self) -> Option<String> {
-        self.imp().status_page.description().map(|text| text.to_string())
+        crate::test_support::status_page_description(&self.imp().status_page)
     }
 
     /// The button that types a refused secret again, while it shows.

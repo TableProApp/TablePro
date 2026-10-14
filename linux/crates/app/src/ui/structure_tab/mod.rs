@@ -159,16 +159,25 @@ impl StructureTab {
         // Saves the user clicking into the preview, selecting all and
         // copying every time they want the DDL in another tool.
         let buffer_for_copy = sql_buffer.downgrade();
+        let tab_for_copy = tab.downgrade();
         imp.copy_sql_button.connect_clicked(move |button| {
             if let Some(buffer) = buffer_for_copy.upgrade() {
                 let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                button.clipboard().set_text(text.as_str());
+                crate::ui::clipboard::copy_text(button, text.to_string(), |message| {
+                    if let Some(tab) = tab_for_copy.upgrade() {
+                        tab.emit_output(StructureTabOutput::ShowToast(message.to_owned()));
+                    }
+                });
             }
         });
 
         imp.name_entry.set_text(&init.table);
         imp.name_row.set_visible(matches!(init.mode, StructureMode::New));
-        imp.drop_button.set_visible(matches!(init.mode, StructureMode::Edit));
+        // A read-only connection is offered nothing that writes, as the
+        // sidebar's table menu offers no Drop Table on one.
+        let read_only = init.session.read_only();
+        imp.drop_button
+            .set_visible(matches!(init.mode, StructureMode::Edit) && !read_only);
         imp.inner_stack.set_visible_child_name(match init.mode {
             StructureMode::New => "editor",
             StructureMode::Edit => "loading",
@@ -232,6 +241,7 @@ impl StructureTab {
             save_button: imp.save_button.get(),
             discard_button: imp.discard_button.get(),
             drop_button: imp.drop_button.get(),
+            read_only,
             saving_spinner: imp.saving_spinner.get(),
             stop_button: imp.stop_button.get(),
             saving: false,
@@ -583,6 +593,8 @@ pub(crate) struct StructureModel {
     save_button: gtk::Button,
     discard_button: gtk::Button,
     drop_button: gtk::Button,
+    /// The connection refuses writes, so Drop is not offered.
+    read_only: bool,
     saving_spinner: adw::Spinner,
     stop_button: gtk::Button,
     /// A save of the tab is running, so Save and Discard stay off.
@@ -1078,6 +1090,10 @@ impl StructureModel {
                 self.recompute_dirty_state(fx);
             }
             StructureTabInput::DropTableRequested => {
+                if self.read_only {
+                    tracing::error!("Drop reached a structure tab on a read-only connection");
+                    return;
+                }
                 let table = match &self.context.borrow().definition {
                     Some(definition) => definition.table.clone(),
                     None => self.table.clone(),
@@ -1248,7 +1264,7 @@ impl StructureModel {
             self.context.borrow_mut().mode = StructureMode::Edit;
             self.table.name = name;
             self.show_table_name();
-            self.drop_button.set_visible(true);
+            self.drop_button.set_visible(!self.read_only);
             self.name_row.set_visible(false);
         }
         if self.mode() != StructureMode::Edit {

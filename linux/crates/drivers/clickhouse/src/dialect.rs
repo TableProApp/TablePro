@@ -514,6 +514,21 @@ mod tests {
         assert_eq!(placeholder.sql, "{p4:String}");
     }
 
+    /// ClickHouse reads a backslash in a string as an escape, so a value
+    /// that ends in one would close the string early.
+    #[test]
+    fn an_in_clause_keeps_a_backslash_inside_its_value() {
+        let values = [
+            Value::Text("\\') OR 1=1 -- ".to_owned()),
+            Value::Text("plain".to_owned()),
+        ];
+
+        let clause = tablepro_core::export::render_in_clause(&dialect(), &ColumnType::untyped_text("String"), &values)
+            .expect("the list");
+
+        assert_eq!(clause.sql, r"('\\\') OR 1=1 -- ', 'plain')");
+    }
+
     #[test]
     fn literals_escape_and_fall_back_to_hex() {
         assert_eq!(

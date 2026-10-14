@@ -448,7 +448,7 @@ impl HistoryDialog {
 
     fn copy_query(&self, id: i64) {
         if let Some(query) = self.entry_by_id(id).and_then(|entry| entry.query()) {
-            self.clipboard().set_text(&query);
+            crate::ui::clipboard::copy_text(self, query, |message| self.add_toast(message));
         }
     }
 
@@ -638,13 +638,12 @@ impl HistoryDialog {
         }
 
         let count = entries.len() as u64;
-        let toast = adw::Toast::new(&ngettext_f(
+        let toast = crate::ui::plain_toast(&ngettext_f(
             "{count} query deleted",
             "{count} queries deleted",
             plural_count(count),
             &[("count", &count.to_string())],
         ));
-        toast.set_use_markup(false);
         toast.set_button_label(Some(&gettext("_Undo")));
         let dialog = self.downgrade();
         toast.connect_button_clicked(move |_| {
@@ -1000,9 +999,7 @@ impl HistoryDialog {
     }
 
     fn add_toast(&self, message: &str) {
-        let toast = adw::Toast::new(message);
-        toast.set_use_markup(false);
-        self.imp().toast_overlay.add_toast(toast);
+        self.imp().toast_overlay.add_toast(crate::ui::plain_toast(message));
     }
 }
 

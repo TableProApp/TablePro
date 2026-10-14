@@ -3541,6 +3541,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34f2d2cda7223168a14fb86bc7411dbc3379bd7d49749ecc53b91ed98585b6b0"
 dependencies = [
  "chrono",
+ "tempfile",
  "zip",
 ]
 
@@ -4487,6 +4488,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uuid",
+ "zip",
 ]
 
 [[package]]

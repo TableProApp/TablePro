@@ -805,3 +805,23 @@ fn deleting_a_connections_last_query_drops_it_from_the_filter() {
     })
     .expect("the empty history, not an empty search");
 }
+
+#[gtk4::test]
+fn copy_query_puts_it_on_the_clipboard_and_says_so() {
+    let harness = Harness::new();
+    let id = harness.record("SELECT copied");
+    let dialog = harness.presented_dialog();
+    wait_until(WAIT, || entries(&dialog).len() == 1).expect("the entry");
+
+    dialog
+        .activate_action("history.copy", Some(&id.to_variant()))
+        .expect("the action");
+
+    let text = dialog
+        .clipboard()
+        .content()
+        .and_then(|content| content.value(String::static_type()).ok())
+        .and_then(|value| value.get::<String>().ok());
+    assert_eq!(text.as_deref(), Some("SELECT copied"));
+    wait_until(WAIT, || has_label(harness.window.upcast_ref(), "Copied to clipboard")).expect("a toast");
+}

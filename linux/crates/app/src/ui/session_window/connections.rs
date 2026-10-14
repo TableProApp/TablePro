@@ -505,7 +505,7 @@ impl SessionWindow {
         let Some(input) = self.input() else {
             return;
         };
-        let toast = adw::Toast::new(&crate::i18n::gettext(
+        let toast = crate::ui::plain_toast(&crate::i18n::gettext(
             "The stored passwords could not be deleted, so the connection was kept.",
         ));
         toast.set_button_label(Some(&crate::i18n::gettext("Retry")));
@@ -556,16 +556,16 @@ impl SessionWindow {
             let error = match reset {
                 Ok(Ok(moved)) => {
                     banner.set_revealed(false);
-                    toasts.add_toast(adw::Toast::new(&crate::ui::connection_list_banner::reset_toast_text(
-                        &moved,
-                    )));
+                    toasts.add_toast(crate::ui::plain_toast(
+                        &crate::ui::connection_list_banner::reset_toast_text(&moved),
+                    ));
                     return;
                 }
                 Ok(Err(error)) => error.to_string(),
                 Err(error) => error.to_string(),
             };
             tracing::warn!(%error, "could not reset the saved connections");
-            toasts.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
+            toasts.add_toast(crate::ui::plain_toast(&crate::i18n::gettext_f(
                 "Could not reset the saved connections: {error}",
                 &[("error", &error)],
             )));

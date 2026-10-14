@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use super::{CellPreset, RowJsonRequest, RowObject};
 use crate::services::tracker_edit::TrackerEdit;
-use crate::ui::clipboard::CopyRequest;
+use crate::ui::clipboard::{CopyRequest, InClauseRows};
 use crate::ui::export::ExportSource;
 
 /// Where a grid sends its events. The owner holds the grid, so the
@@ -27,6 +27,8 @@ pub enum GridMsg {
     CopyRowsAsInsert {
         rows: Vec<RowObject>,
     },
+    /// The owner knows the engine whose literals the list is written in.
+    CopyInClause(InClauseRows),
     /// An intent the tab resolves against the column, so the keyboard
     /// path and the menu reach the same value.
     SetCellValue {

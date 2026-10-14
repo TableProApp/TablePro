@@ -51,6 +51,22 @@ mod tests {
         assert_eq!(render_tsv(&columns, &rows, false).unwrap(), "\"say \"\"hi\"\"\"\n");
     }
 
+    /// A spreadsheet runs a pasted cell that starts like a formula.
+    #[test]
+    fn tsv_neutralises_a_formula_in_free_text() {
+        let columns = cols(&["=sum", "b", "c"]);
+        let rows = vec![vec![
+            Value::Text("=cmd|' /C calc'!A0".into()),
+            Value::Int(-5),
+            Value::Text("-5".into()),
+        ]];
+
+        assert_eq!(
+            render_tsv(&columns, &rows, true).unwrap(),
+            "'=sum\tb\tc\n'=cmd|' /C calc'!A0\t-5\t-5\n"
+        );
+    }
+
     #[test]
     fn tsv_leaves_ordinary_values_bare() {
         let columns = cols(&["a"]);

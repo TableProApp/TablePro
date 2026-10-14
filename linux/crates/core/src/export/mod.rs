@@ -33,7 +33,7 @@ pub use render_insert_error::RenderInsertError;
 pub use sql::{literal, render_insert, render_sql_insert};
 pub use tsv::{render_tsv, tsv_writer_builder};
 pub use value_text::{value_text, value_to_text};
-pub use xlsx::{XLSX_MAX_DATA_ROWS, render_xlsx};
+pub use xlsx::{XLSX_MAX_DATA_ROWS, XlsxSheetWriter, render_xlsx};
 pub use xml::render_xml;
 
 /// Why a whole document could not be rendered: a workbook past what a

@@ -131,6 +131,7 @@ impl WorkspaceModel {
     fn show_unreadable_workspace_toast(&self) {
         let toast = adw::Toast::builder()
             .title(crate::i18n::gettext("Saved tabs could not be read"))
+            .use_markup(false)
             .button_label(crate::i18n::gettext("Reset"))
             .action_name("win.reset-workspace-layout")
             .build();

@@ -116,10 +116,27 @@ fn file_made_by_export_whose_close_failed_is_removed() {
     std::fs::write(&path, "partial").expect("a partial file");
     let file = gio::File::for_path(&path);
 
-    let outcome = run(async move { left_behind(&file, &Strategy::Created).await });
+    let outcome = run(async move {
+        let made = FileIdentity::at_path(&file).await;
+        assert!(made.is_some(), "a local file has an inode");
+        left_behind(&file, &Strategy::Created { made }).await
+    });
 
     assert_eq!(outcome, AbortOutcome::Removed);
     assert!(entries(dir.path()).is_empty(), "{:?}", entries(dir.path()));
+}
+
+#[gtk4::test]
+fn file_whose_identity_is_unknown_is_kept() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+    std::fs::write(&path, "partial").expect("a partial file");
+    let file = gio::File::for_path(&path);
+
+    let outcome = run(async move { left_behind(&file, &Strategy::Created { made: None }).await });
+
+    assert_eq!(outcome, AbortOutcome::Incomplete);
+    assert_eq!(entries(dir.path()), ["export.csv"]);
 }
 
 #[gtk4::test]
@@ -182,5 +199,98 @@ fn writer_error_on_missing_directory_reports_glib_error() {
 
     let error = run(async move { ReplaceFileWriter::open(&file).await.map(drop) }).expect_err("nowhere to write");
 
-    assert!(error.matches(gio::IOErrorEnum::NotFound), "{error}");
+    assert!(
+        matches!(&error, OpenError::File(error) if error.matches(gio::IOErrorEnum::NotFound)),
+        "{error}"
+    );
+}
+
+/// GLib's replace renames its temporary file over the path, as another
+/// program's save does. The export's own file is gone then, and the
+/// one at the path is not its to remove.
+#[gtk4::test]
+fn abort_after_create_keeps_a_file_put_at_the_path_since() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+    let writer = write(open(&path), &["partial"]);
+    let theirs = dir.path().join("theirs.tmp");
+    std::fs::write(&theirs, "finished elsewhere").expect("their file");
+    std::fs::rename(&theirs, &path).expect("their file renamed over the export");
+
+    let outcome = run(async move { writer.abort().await });
+
+    assert_eq!(outcome, AbortOutcome::Removed);
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("their file"),
+        "finished elsewhere"
+    );
+}
+
+#[gtk4::test]
+fn a_second_writer_to_a_file_being_written_is_refused() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+    let first = write(open(&path), &["first"]);
+    let try_open = || {
+        let file = gio::File::for_path(&path);
+        run(async move { ReplaceFileWriter::open(&file).await.map(drop) })
+    };
+
+    let refused = try_open();
+    let refused_again = try_open();
+    run(async move { first.finish().await }).expect("closed");
+
+    assert!(matches!(refused, Err(OpenError::InUse)), "{refused:?}");
+    assert!(
+        matches!(refused_again, Err(OpenError::InUse)),
+        "a refused open let go of the first writer's claim: {refused_again:?}"
+    );
+    assert_eq!(std::fs::read_to_string(&path).expect("read back"), "first");
+    let again = write(open(&path), &["again"]);
+    run(async move { again.finish().await }).expect("the file is free once the first closed");
+    assert_eq!(std::fs::read_to_string(&path).expect("read back"), "again");
+}
+
+#[gtk4::test]
+fn a_dropped_writer_frees_its_file_once_cleaned_up() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+
+    drop(write(open(&path), &["partial"]));
+    wait_until(WAIT, || entries(dir.path()).is_empty()).expect("the abandoned file to go");
+    crate::test_support::drain_main_context();
+
+    let writer = write(open(&path), &["next"]);
+    run(async move { writer.finish().await }).expect("closed");
+    assert_eq!(std::fs::read_to_string(&path).expect("read back"), "next");
+}
+
+#[gtk4::test]
+fn a_new_file_is_readable_by_its_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+
+    let writer = write(open(&path), &["a,b\n"]);
+    run(async move { writer.finish().await }).expect("closed");
+
+    let mode = std::fs::metadata(&path).expect("the file").permissions().mode();
+    assert_eq!(mode & 0o777, 0o600, "{mode:o}");
+}
+
+#[gtk4::test]
+fn a_replaced_file_keeps_its_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+    seed(&path, "old");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).expect("a mode");
+
+    let writer = write(open(&path), &["new"]);
+    run(async move { writer.finish().await }).expect("closed");
+
+    let mode = std::fs::metadata(&path).expect("the file").permissions().mode();
+    assert_eq!(mode & 0o777, 0o640, "{mode:o}");
 }

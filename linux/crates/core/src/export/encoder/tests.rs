@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::super::csv::{csv_cell, csv_header, csv_writer_builder};
+use super::super::csv::{csv_cell, csv_header, csv_writer_builder, neutralise_formula};
 use super::super::csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 use super::super::test_columns::{cols, typed};
 use super::super::tsv::tsv_writer_builder;
@@ -166,13 +166,18 @@ fn tsv_encoder_matches_render_tsv() {
         let mut writer = tsv_writer_builder().from_writer(Vec::new());
         if with_headers {
             writer
-                .write_record(columns.iter().map(|column| column.name.as_str()))
+                .write_record(
+                    columns
+                        .iter()
+                        .map(|column| neutralise_formula(&Value::Null, column.name.clone(), true)),
+                )
                 .expect("the header");
         }
         for row in &rows {
             writer
                 .write_record(row.iter().enumerate().map(|(index, value)| {
-                    value_text(value, column_type(&columns, index)).unwrap_or_else(|| "NULL".to_owned())
+                    value_text(value, column_type(&columns, index))
+                        .map_or_else(|| "NULL".to_owned(), |text| neutralise_formula(value, text, false))
                 }))
                 .expect("the row");
         }

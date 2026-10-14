@@ -13,7 +13,7 @@ pub(crate) use clipboard_payload::ClipboardPayload;
 pub(crate) use clipboard_writer::ClipboardError;
 #[cfg(test)]
 use copy_renderer::render;
-pub(crate) use copy_renderer::{CopyError, CopyKind, CopyRequest, InsertCopy, InsertRow, render_copy};
+pub(crate) use copy_renderer::{CopyError, CopyKind, CopyRequest, InClauseRows, InsertCopy, InsertRow, render_copy};
 
 #[cfg(test)]
 mod tests;

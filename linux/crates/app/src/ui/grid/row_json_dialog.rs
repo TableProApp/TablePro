@@ -126,7 +126,7 @@ fn row_json_dialog(json: RowJson) -> adw::Dialog {
         let shown_on = shown_on.clone();
         crate::ui::clipboard::copy_payload(button, payload.clone(), move |message| {
             if let Some(toasts) = shown_on.upgrade() {
-                toasts.add_toast(adw::Toast::new(message));
+                toasts.add_toast(crate::ui::plain_toast(message));
             }
         });
     });

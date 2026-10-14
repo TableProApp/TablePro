@@ -133,6 +133,43 @@ fn copy_insert_uses_visible_columns_only() {
     assert_eq!(payload.rows, 2);
 }
 
+/// MySQL reads a backslash in a string as an escape, so a value ending
+/// in one would close the string and run the rest as SQL.
+#[test]
+fn an_in_clause_copy_is_written_in_the_engines_literals() {
+    let dialect = Arc::new(drivers_mysql::MySqlDialect::new(
+        drivers_mysql::MySqlFlavour::MySql,
+        &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
+    ));
+    let injected = "\\') OR 1=1 -- ";
+    let rows = vec![
+        vec![Value::Int(1), Value::Text(injected.into())],
+        vec![Value::Int(2), Value::Null],
+    ];
+
+    let payload = render(CopyRequest::InClause {
+        dialect,
+        values: InClauseRows {
+            columns: columns(&["id", "name"]),
+            rows: snapshots(&rows),
+            column: 1,
+        },
+    })
+    .expect("the copy");
+
+    assert_eq!(
+        payload.text,
+        format!(
+            "(_utf8mb4 X'{}')",
+            tablepro_core::hex::encode_lower(injected.as_bytes())
+        )
+    );
+    assert_eq!(
+        (payload.format, payload.rows, payload.skipped),
+        (ClipboardFormat::Sql, 1, 1)
+    );
+}
+
 #[test]
 fn a_copy_holding_a_nul_is_refused_off_the_gtk_thread() {
     let rows = vec![vec![Value::Int(1), Value::Text("a\0b".into())]];
@@ -154,16 +191,12 @@ fn a_slower_earlier_copy_gives_way_to_a_later_one() {
             sink.borrow_mut().push(text.to_owned());
         })
     };
-    let many: Vec<Vec<Value>> = (0..100_000)
-        .map(|row| vec![Value::Int(row), Value::Text(format!("name {row}"))])
-        .collect();
-
-    let slow = copy(rows_request(&many, CopyKind::Json));
+    let slow = copy(rows_request(&many_rows(), CopyKind::Json));
     let fast = copy(rows_request(&people()[..1], CopyKind::Rows));
     finish_on_main(WAIT, fast)
         .expect("the later copy to end")
         .expect("the later copy");
-    assert_eq!(local_text(&clipboard).as_deref(), Some("-5\t=cmd\n"));
+    assert_eq!(local_text(&clipboard).as_deref(), Some("-5\t'=cmd\n"));
     let landed = clipboard.content();
     finish_on_main(WAIT, slow)
         .expect("the earlier copy to end")
@@ -176,6 +209,79 @@ fn a_slower_earlier_copy_gives_way_to_a_later_one() {
     assert!(
         now.is_none() || now == landed,
         "the earlier copy replaced the later one"
+    );
+    runtime.shutdown();
+}
+
+fn many_rows() -> Vec<Vec<Value>> {
+    (0..100_000)
+        .map(|row| vec![Value::Int(row), Value::Text(format!("name {row}"))])
+        .collect()
+}
+
+/// A copy written at once, as Copy Query in the history does, while a
+/// large copy still renders.
+#[gtk4::test]
+fn a_copy_still_rendering_gives_way_to_one_written_at_once() {
+    let widget = gtk::Label::new(None);
+    let clipboard = widget.clipboard();
+    let runtime = test_runtime();
+    let toasts = Rc::new(RefCell::new(Vec::new()));
+    let sink = toasts.clone();
+
+    let slow = copy_rows(
+        &widget,
+        &runtime.tasks(),
+        rows_request(&many_rows(), CopyKind::Json),
+        move |text| sink.borrow_mut().push(text.to_owned()),
+    );
+    copy_text(&widget, "SELECT 1".to_owned(), |text| {
+        toasts.borrow_mut().push(text.to_owned())
+    });
+    let landed = clipboard.content();
+    finish_on_main(WAIT, slow)
+        .expect("the earlier copy to end")
+        .expect("the earlier copy");
+
+    assert_eq!(toasts.take(), ["Copied to clipboard"]);
+    let now = clipboard.content();
+    assert!(
+        now.is_none() || now == landed,
+        "the earlier copy replaced the later one"
+    );
+    runtime.shutdown();
+}
+
+/// A text field copies through GTK, past every ticket.
+#[gtk4::test]
+fn a_copy_still_rendering_gives_way_to_a_text_field_copy() {
+    let widget = gtk::Label::new(None);
+    let clipboard = widget.clipboard();
+    let runtime = test_runtime();
+    let toasts = Rc::new(RefCell::new(Vec::new()));
+    let sink = toasts.clone();
+    let field = gtk::Text::new();
+    field.set_text("typed");
+    field.select_region(0, -1);
+
+    let slow = copy_rows(
+        &widget,
+        &runtime.tasks(),
+        rows_request(&many_rows(), CopyKind::Json),
+        move |text| sink.borrow_mut().push(text.to_owned()),
+    );
+    field.emit_by_name::<()>("copy-clipboard", &[]);
+    assert_eq!(local_text(&clipboard).as_deref(), Some("typed"));
+    let landed = clipboard.content();
+    finish_on_main(WAIT, slow)
+        .expect("the earlier copy to end")
+        .expect("the earlier copy");
+
+    assert!(toasts.borrow().is_empty(), "{:?}", toasts.borrow());
+    let now = clipboard.content();
+    assert!(
+        now.is_none() || now == landed,
+        "the earlier copy replaced the text field's"
     );
     runtime.shutdown();
 }
@@ -206,7 +312,7 @@ fn copy_rows_offers_tab_separated_values() {
     );
     assert_eq!(
         local_text(&clipboard).as_deref(),
-        Some("-5\t=cmd\n7\t\"Ada, \"\"the first\"\"\"\n")
+        Some("-5\t'=cmd\n7\t\"Ada, \"\"the first\"\"\"\n")
     );
     assert_eq!(toasts, ["Copied 2 rows"]);
 }

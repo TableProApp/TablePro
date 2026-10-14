@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 
 use super::{RenderError, cell_text};
@@ -12,53 +14,110 @@ const MAX_COLUMNS: usize = 16_384;
 /// The rows a sheet holds under its header row.
 pub const XLSX_MAX_DATA_ROWS: usize = MAX_ROWS - 1;
 
+/// A whole result as one workbook.
+pub fn render_xlsx(columns: &[ResultColumn], rows: &[Vec<Value>], sheet_name: &str) -> Result<Vec<u8>, RenderError> {
+    if rows.len() > XLSX_MAX_DATA_ROWS {
+        return Err(RenderError::TooManyRows {
+            got: rows.len(),
+            limit: XLSX_MAX_DATA_ROWS,
+        });
+    }
+    let mut writer = XlsxSheetWriter::new(columns.into(), sheet_name)?;
+    writer.write_rows(rows)?;
+    writer.finish()
+}
+
+/// A one-sheet workbook written a batch of rows at a time.
+///
+/// The sheet is in rust_xlsxwriter's constant memory mode: it keeps the
+/// row it is writing and spills the rows before it to a temporary file,
+/// so an export of a million rows holds none of them. Only the finished
+/// workbook, compressed, is held at the end, since a zip archive is
+/// written whole.
+///
 /// The whole point of XLSX over CSV is that a number arrives as a
 /// number, so each value is written in the type Excel has for it and
 /// dates carry a display format rather than a serial number.
 ///
 /// A string cell is never read as a formula, whatever it starts with,
 /// so unlike CSV this needs no formula neutralising.
-pub fn render_xlsx(columns: &[ResultColumn], rows: &[Vec<Value>], sheet_name: &str) -> Result<Vec<u8>, RenderError> {
-    // The header takes a row, so the data has one fewer to fill.
-    if rows.len() + 1 > MAX_ROWS {
-        return Err(RenderError::TooManyRows {
-            got: rows.len(),
-            limit: XLSX_MAX_DATA_ROWS,
-        });
-    }
-    if columns.len() > MAX_COLUMNS {
-        return Err(RenderError::TooManyColumns {
-            got: columns.len(),
-            limit: MAX_COLUMNS,
-        });
-    }
+pub struct XlsxSheetWriter {
+    workbook: Workbook,
+    columns: Arc<[ResultColumn]>,
+    rows: usize,
+    date: Format,
+    timestamp: Format,
+}
 
-    let mut workbook = Workbook::new();
-    let sheet = workbook.add_worksheet();
-    sheet.set_name(sheet_title(sheet_name)).map_err(xlsx_error)?;
-
-    let header = Format::new().set_bold();
-    for (index, column) in columns.iter().enumerate() {
-        sheet
-            .write_string_with_format(0, index as u16, &column.name, &header)
-            .map_err(xlsx_error)?;
-    }
-    // A header that scrolls away is a sheet of unlabelled numbers.
-    sheet.set_freeze_panes(1, 0).map_err(xlsx_error)?;
-
-    let date = Format::new().set_num_format("yyyy-mm-dd");
-    let timestamp = Format::new().set_num_format("yyyy-mm-dd hh:mm:ss");
-    for (row_index, row) in rows.iter().enumerate() {
-        let sheet_row = (row_index + 1) as u32;
-        for (column_index, value) in row.iter().enumerate() {
-            if column_index >= MAX_COLUMNS {
-                break;
-            }
-            write_cell(sheet, sheet_row, column_index as u16, columns, value, &date, &timestamp)?;
+impl XlsxSheetWriter {
+    pub fn new(columns: Arc<[ResultColumn]>, sheet_name: &str) -> Result<Self, RenderError> {
+        if columns.len() > MAX_COLUMNS {
+            return Err(RenderError::TooManyColumns {
+                got: columns.len(),
+                limit: MAX_COLUMNS,
+            });
         }
+        let mut workbook = Workbook::new();
+        let sheet = workbook.add_worksheet_with_constant_memory();
+        sheet.set_name(sheet_title(sheet_name)).map_err(xlsx_error)?;
+        let header = Format::new().set_bold();
+        for (index, column) in columns.iter().enumerate() {
+            sheet
+                .write_string_with_format(0, index as u16, &column.name, &header)
+                .map_err(xlsx_error)?;
+        }
+        // A header that scrolls away is a sheet of unlabelled numbers.
+        sheet.set_freeze_panes(1, 0).map_err(xlsx_error)?;
+        Ok(Self {
+            workbook,
+            columns,
+            rows: 0,
+            date: Format::new().set_num_format("yyyy-mm-dd"),
+            timestamp: Format::new().set_num_format("yyyy-mm-dd hh:mm:ss"),
+        })
     }
 
-    workbook.save_to_buffer().map_err(xlsx_error)
+    /// The data rows written so far.
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    /// Write `rows` under the ones already written. A sheet past its
+    /// last row cannot be opened, so the batch that would fill it past
+    /// that is refused whole.
+    pub fn write_rows(&mut self, rows: &[Vec<Value>]) -> Result<(), RenderError> {
+        let got = self.rows + rows.len();
+        if got > XLSX_MAX_DATA_ROWS {
+            return Err(RenderError::TooManyRows {
+                got,
+                limit: XLSX_MAX_DATA_ROWS,
+            });
+        }
+        let Self {
+            workbook,
+            columns,
+            rows: written,
+            date,
+            timestamp,
+        } = self;
+        let sheet = workbook.worksheet_from_index(0).map_err(xlsx_error)?;
+        for row in rows {
+            // The header takes the first row.
+            let sheet_row = (*written + 1) as u32;
+            for (column_index, value) in row.iter().enumerate() {
+                if column_index >= MAX_COLUMNS {
+                    break;
+                }
+                write_cell(sheet, sheet_row, column_index as u16, columns, value, date, timestamp)?;
+            }
+            *written += 1;
+        }
+        Ok(())
+    }
+
+    pub fn finish(mut self) -> Result<Vec<u8>, RenderError> {
+        self.workbook.save_to_buffer().map_err(xlsx_error)
+    }
 }
 
 fn write_cell(
@@ -280,6 +339,53 @@ mod tests {
         let error = render_xlsx(&columns, &[], "Results").expect_err("too wide");
 
         assert!(matches!(error, RenderError::TooManyColumns { .. }), "{error:?}");
+    }
+
+    fn sheet_xml(bytes: &[u8]) -> String {
+        use std::io::Read;
+
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("a zip archive");
+        let mut sheet = archive.by_name("xl/worksheets/sheet1.xml").expect("the sheet");
+        let mut xml = String::new();
+        sheet.read_to_string(&mut xml).expect("the sheet's XML");
+        xml
+    }
+
+    /// Rows go into the sheet a batch at a time, as an export reads
+    /// them, and every one of them lands under the header.
+    #[test]
+    fn a_sheet_written_in_batches_holds_every_row() {
+        let columns: Arc<[ResultColumn]> = cols(&["id", "name"]).into();
+        let batch = |first: i64| -> Vec<Vec<Value>> {
+            (first..first + 1_000)
+                .map(|id| vec![Value::Int(id), Value::Text(format!("name {id}"))])
+                .collect()
+        };
+        let mut writer = XlsxSheetWriter::new(columns, "Results").expect("the writer");
+
+        writer.write_rows(&batch(0)).expect("the first batch");
+        writer.write_rows(&batch(1_000)).expect("the second batch");
+        assert_eq!(writer.rows(), 2_000);
+        let xml = sheet_xml(&writer.finish().expect("the workbook"));
+
+        assert_eq!(xml.matches("<row ").count(), 2_001, "the header and every row");
+        assert!(
+            xml.contains("name 0<") && xml.contains("name 1999<"),
+            "a row is missing"
+        );
+    }
+
+    #[test]
+    fn a_batch_past_the_last_row_is_refused() {
+        let mut writer = XlsxSheetWriter::new(cols(&["a"]).into(), "Results").expect("the writer");
+        writer.rows = XLSX_MAX_DATA_ROWS - 1;
+
+        let refused = writer.write_rows(&[vec![Value::Int(1)], vec![Value::Int(2)]]);
+
+        assert!(
+            matches!(refused, Err(RenderError::TooManyRows { got, .. }) if got == XLSX_MAX_DATA_ROWS + 1),
+            "{refused:?}"
+        );
     }
 
     #[test]

@@ -74,23 +74,25 @@ pub(super) fn save_export(parent: &adw::Dialog, kind: ExportKind, content: Strin
 /// fails and what it left of the file.
 pub(super) async fn write_history_export(parent: &gtk::Widget, file: &gio::File, content: String) {
     let written = async {
-        let writer = ReplaceFileWriter::open(file).await.map_err(|error| (error, None))?;
+        let writer = ReplaceFileWriter::open(file)
+            .await
+            .map_err(|error| (ExportFailure::from(error), None))?;
         if let Err(error) = writer.write(content.into_bytes()).await {
-            return Err((error, Some(writer.abort().await)));
+            return Err((error.into(), Some(writer.abort().await)));
         }
         writer
             .finish()
             .await
-            .map_err(|FinishError { error, file }| (error, Some(file)))
+            .map_err(|FinishError { error, file }| (error.into(), Some(file)))
     }
     .await;
-    if let Err((error, left)) = written {
-        tracing::warn!(%error, path = %file.parse_name(), "history export write failed");
+    if let Err((failure, left)) = written {
+        tracing::warn!(%failure, path = %file.parse_name(), "history export write failed");
         let name = file.basename().map_or_else(
             || file.parse_name().to_string(),
             |name| name.to_string_lossy().into_owned(),
         );
-        show_export_failure(parent, &failure_text(&ExportFailure::File(error), left, &name));
+        show_export_failure(parent, &failure_text(&failure, left, &name));
     }
 }
 

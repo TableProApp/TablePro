@@ -33,7 +33,7 @@ pub use outcome::Outcome;
 pub use prune_report::PruneReport;
 pub use status_filter::StatusFilter;
 
-use export::{history_csv, outcome_summary};
+use export::{history_csv, history_sql};
 use history_query::TermMatch;
 use search_fold::fold;
 
@@ -412,33 +412,7 @@ impl QueryHistory {
 
     pub async fn export_sql(&self, ids: &[i64]) -> Result<String, StorageError> {
         let entries = self.fetch_by_ids(ids).await?;
-        let mut out = String::new();
-        out.push_str("-- TablePro query history export\n");
-        out.push_str(&format!("-- Generated at {}\n", chrono::Utc::now().to_rfc3339()));
-        out.push_str(&format!("-- Entries: {}\n\n", entries.len()));
-        for entry in &entries {
-            let when = chrono::DateTime::<chrono::Utc>::from(entry.executed_at).to_rfc3339();
-            out.push_str(&format!(
-                "-- [{}] {} · {} · {}\n",
-                when,
-                entry.connection_name,
-                entry.driver_id,
-                outcome_summary(entry),
-            ));
-            if let Some(err) = &entry.error {
-                for line in err.lines() {
-                    out.push_str("-- error: ");
-                    out.push_str(line);
-                    out.push('\n');
-                }
-            }
-            out.push_str(entry.query.trim_end());
-            if !entry.query.trim_end().ends_with(';') {
-                out.push(';');
-            }
-            out.push_str("\n\n");
-        }
-        Ok(out)
+        Ok(history_sql(&entries, chrono::Utc::now()))
     }
 
     pub async fn export_csv(&self, ids: &[i64]) -> Result<String, StorageError> {

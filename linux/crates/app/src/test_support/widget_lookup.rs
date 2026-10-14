@@ -24,6 +24,17 @@ pub(crate) fn find_by_action_name(root: &impl IsA<gtk4::Widget>, name: &str) -> 
     })
 }
 
+/// The description a status page shows, as text rather than the markup
+/// it was given: markup that does not parse shows nothing.
+pub(crate) fn status_page_description(page: &libadwaita::StatusPage) -> Option<String> {
+    let markup = page.description()?;
+    descendants(page)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Label>().ok())
+        .find(|label| label.label() == markup)
+        .map(|label| label.text().to_string())
+}
+
 pub(crate) fn first_descendant_of_type<T: IsA<gtk4::Widget>>(root: &impl IsA<gtk4::Widget>) -> Option<T> {
     descendants(root)
         .into_iter()

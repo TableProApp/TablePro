@@ -23,6 +23,7 @@ mod host_key_review;
 pub(crate) mod icons;
 mod import_dialog;
 mod picker;
+mod plain_toast;
 mod preferences_dialog;
 mod result_pane;
 mod saved_queries_dialog;
@@ -38,6 +39,7 @@ mod welcome_view;
 mod window_geometry;
 mod workspace;
 
+pub(crate) use plain_toast::plain_toast;
 pub(crate) use preferences_dialog::PreferencesDialog;
 pub(crate) use session_window::{SessionWindow, SessionWindowInit, SessionWindowInput};
 pub(crate) use structure_tab::review_dialog;

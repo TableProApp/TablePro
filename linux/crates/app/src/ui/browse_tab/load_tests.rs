@@ -10,8 +10,8 @@ use tablepro_test_support::{CallCounters, FakeReply};
 
 use super::BrowseTabInput;
 use super::tests::{
-    Harness, Shown, WAIT, after_next_frame, column, column_view, delete_action, header_titles, key, not_null_name,
-    rows, serving_table, text, toasts,
+    Harness, Shown, WAIT, after_next_frame, column, column_view, delete_action, full_page, header_titles, key,
+    not_null_name, rows, serving_table, text, toasts,
 };
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::grid::GridCell;
@@ -359,6 +359,47 @@ fn the_rows_behind_the_error_page_take_no_action() {
     assert_eq!(harness.tab().imp().paginator_label.label(), "");
 }
 
+/// Next moved the pager before its read failed, so the way back goes
+/// from where the pager is, and the key for it with the button.
+#[gtk4::test]
+fn a_failed_next_page_leaves_the_way_back_open() {
+    let mut script = serving_table();
+    // A count below the second page would clamp the pager back to the
+    // first before the failed read lands.
+    script.count_rows.always(FakeReply::ok(1_000));
+    script
+        .query_bound
+        .once(FakeReply::ok(full_page(0)))
+        .once(FakeReply::err(DriverError::server("denied")))
+        .always(FakeReply::ok(full_page(0)));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let imp = harness.tab().imp();
+    assert!(!imp.prev_button.is_sensitive());
+
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
+
+    assert_eq!(harness.tab().current_offset(), 100);
+    assert!(imp.first_button.is_sensitive(), "First stayed off past the first page");
+    assert!(
+        imp.prev_button.is_sensitive(),
+        "Previous stayed off past the first page"
+    );
+    assert!(
+        !imp.next_button.is_sensitive(),
+        "Next stayed on past a page that was not read"
+    );
+    harness
+        .tab()
+        .activate_action("browse.previous-page", None)
+        .expect("the action");
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("grid")).expect("the first page again");
+    assert_eq!(harness.tab().current_offset(), 0);
+    assert!(!imp.prev_button.is_sensitive());
+    assert!(imp.next_button.is_sensitive());
+}
+
 fn renamed_page() -> QueryResult {
     let renamed = [column("id", true), column("full_name", false)];
     QueryResult::new(
@@ -441,4 +482,37 @@ fn copy_rows_action(tab: &super::BrowseTab) -> gtk4::gio::SimpleAction {
         .as_ref()
         .map(|model| model.actions.copy_rows.clone())
         .expect("the tab has a model")
+}
+
+/// The status page reads its description as markup, where the `&`
+/// would leave it empty.
+#[gtk4::test]
+fn the_loading_page_names_a_table_with_an_ampersand() {
+    libadwaita::init().expect("libadwaita initialises under the test backend");
+    crate::register_test_resources();
+    let runtime = crate::test_support::test_runtime();
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::Late {
+        after: Duration::from_secs(5),
+        outcome: Ok(rows(&["late"])),
+    });
+    let fake = crate::test_support::FakeSession::start(script, [], runtime.tasks());
+    let root = tempfile::tempdir().expect("tempdir");
+    let tab = super::tests::table_tab(
+        &fake.session,
+        &runtime,
+        &root,
+        "R&D",
+        Default::default(),
+        Default::default(),
+        false,
+    );
+    let shown = || crate::test_support::status_page_description(&tab.imp().loading_page);
+
+    assert_eq!(shown().as_deref(), Some("Fetching rows from R&D"));
+    wait_until(WAIT, || tab.is_loading()).expect("the read to start");
+    assert_eq!(shown().as_deref(), Some("Fetching rows from R&D"));
+
+    drop(tab);
+    runtime.shutdown();
 }

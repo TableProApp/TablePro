@@ -28,6 +28,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+zip.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 [lints]
