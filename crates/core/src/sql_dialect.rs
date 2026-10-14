@@ -11,7 +11,9 @@ mod inserts;
 mod pg_native_text;
 #[path = "sql_dialect/updates.rs"]
 mod updates;
-pub(crate) use pg_native_text::{postgres_array_cast_type, postgres_native_text_cast_type, text_cast_placeholder};
+pub(crate) use pg_native_text::{
+    postgres_array_cast_type, postgres_native_text_cast_type, postgres_temporal_cast_type, text_cast_placeholder,
+};
 
 pub use error::BuildSqlError;
 pub use inserts::{build_insert_from_draft, build_insert_from_draft_touched};
@@ -275,18 +277,6 @@ pub(crate) fn postgres_numeric_cast_type(data_type: &str) -> Option<&'static str
         }
     }
     Some("pg_catalog.numeric")
-}
-
-pub(crate) fn postgres_temporal_cast_type(data_type: &str) -> Option<&'static str> {
-    let lowered = data_type.trim().to_ascii_lowercase();
-    Some(match lowered.as_str() {
-        "date" => "pg_catalog.date",
-        "time" | "time without time zone" => "pg_catalog.time",
-        "timetz" | "time with time zone" => "pg_catalog.timetz",
-        "timestamp" | "timestamp without time zone" => "pg_catalog.timestamp",
-        "timestamptz" | "timestamp with time zone" => "pg_catalog.timestamptz",
-        _ => return None,
-    })
 }
 
 pub fn build_keyed_delete(
@@ -895,6 +885,9 @@ mod tests {
 
     #[path = "postgres_domain_cast_tests.rs"]
     mod postgres_domain_cast_tests;
+
+    #[path = "postgres_temporal_cast_tests.rs"]
+    mod postgres_temporal_cast_tests;
 
     #[test]
     fn postgres_typed_numeric_updates_keep_the_native_placeholder() {

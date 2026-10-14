@@ -82,3 +82,29 @@ pub(crate) fn postgres_array_cast_type(data_type: &str) -> Option<&'static str> 
         _ => return None,
     })
 }
+
+fn without_typmod(lowered: &str) -> String {
+    let mut out = String::with_capacity(lowered.len());
+    let mut depth = 0;
+    for c in lowered.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' if depth > 0 => depth -= 1,
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub(crate) fn postgres_temporal_cast_type(data_type: &str) -> Option<&'static str> {
+    let lowered = without_typmod(&data_type.trim().to_ascii_lowercase());
+    Some(match lowered.as_str() {
+        "date" => "pg_catalog.date",
+        "time" | "time without time zone" => "pg_catalog.time",
+        "timetz" | "time with time zone" => "pg_catalog.timetz",
+        "timestamp" | "timestamp without time zone" => "pg_catalog.timestamp",
+        "timestamptz" | "timestamp with time zone" => "pg_catalog.timestamptz",
+        _ => return None,
+    })
+}
