@@ -12,6 +12,7 @@ use tablepro_core::value::Value;
 use tablepro_session::runtime::{TaskResult, Tasks};
 use thiserror::Error;
 
+use super::clipboard_writer::holds_nul;
 use super::{ClipboardFormat, ClipboardPayload};
 use crate::ui::grid::RowSnapshot;
 
@@ -41,15 +42,22 @@ pub enum CopyKind {
     InClause(usize),
 }
 
-/// Rows as INSERT statements for the server the tab reads. A draft's
-/// cells come as its save would write them, so the columns the server
-/// fills stay out of its statement.
+/// Rows as INSERT statements for the server the tab reads.
 #[derive(Debug)]
 pub struct InsertCopy {
     pub dialect: Arc<dyn SqlDialect>,
     pub table: TableRef,
     pub columns: Arc<[ColumnInfo]>,
-    pub rows: Vec<Vec<CellInput>>,
+    pub rows: Vec<InsertRow>,
+}
+
+#[derive(Debug)]
+pub enum InsertRow {
+    /// A row the table holds, with its pending edits.
+    Saved(RowSnapshot),
+    /// A draft's cells as its save would write them, so the columns the
+    /// server fills stay out of its statement.
+    Draft(Vec<CellInput>),
 }
 
 #[derive(Debug, Error)]
@@ -61,6 +69,8 @@ pub(crate) enum CopyError {
     /// Every value was NULL or binary, and `()` is not SQL anywhere.
     #[error("no value can go in an IN list")]
     EmptyInClause,
+    #[error("the text holds a NUL character")]
+    ContainsNul,
 }
 
 /// Render `request` on the blocking pool: a copy of every row can take
@@ -70,10 +80,14 @@ pub(crate) fn render_copy(tasks: &Tasks, request: CopyRequest) -> TaskResult<Res
 }
 
 pub(crate) fn render(request: CopyRequest) -> Result<ClipboardPayload, CopyError> {
-    match request {
+    let payload = match request {
         CopyRequest::Rows { columns, rows, kind } => render_rows(columns, &rows, kind),
         CopyRequest::Insert(insert) => render_insert(insert),
+    }?;
+    if holds_nul(&payload.text) {
+        return Err(CopyError::ContainsNul);
     }
+    Ok(payload)
 }
 
 fn render_rows(
@@ -156,15 +170,33 @@ fn encode(
 }
 
 fn render_insert(insert: InsertCopy) -> Result<ClipboardPayload, CopyError> {
-    let statements = insert
-        .rows
+    let InsertCopy {
+        dialect,
+        table,
+        columns,
+        rows,
+    } = insert;
+    let statements = rows
         .iter()
-        .map(|cells| export::render_insert(&*insert.dialect, &insert.table, &insert.columns, cells))
+        .map(|row| match row {
+            InsertRow::Saved(snapshot) => {
+                // A row id read after the columns has no place in the
+                // statement, so it is not copied.
+                let cells: Vec<CellInput> = snapshot
+                    .values()
+                    .take(columns.len())
+                    .cloned()
+                    .map(CellInput::Value)
+                    .collect();
+                export::render_insert(&*dialect, &table, &columns, &cells)
+            }
+            InsertRow::Draft(cells) => export::render_insert(&*dialect, &table, &columns, cells),
+        })
         .collect::<Result<Vec<String>, _>>()?;
     Ok(ClipboardPayload {
         text: statements.join("\n"),
         format: ClipboardFormat::Sql,
-        rows: insert.rows.len(),
+        rows: rows.len(),
         skipped: 0,
     })
 }

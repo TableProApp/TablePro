@@ -14,7 +14,7 @@ use tablepro_core::meta::TableRef;
 use tablepro_test_support::FakeDialect;
 
 use super::*;
-use crate::test_support::{test_runtime, wait_until};
+use crate::test_support::{finish_on_main, test_runtime, wait_until};
 use crate::ui::grid::RowSnapshot;
 
 const WAIT: Duration = Duration::from_secs(30);
@@ -112,21 +112,72 @@ fn copy_insert_uses_visible_columns_only() {
         dialect: Arc::new(FakeDialect),
         table: TableRef::new(None, "users"),
         columns: vec![column_info("id", true), column_info("name", false)].into(),
-        // A row read with its engine row id after the visible cells.
-        rows: vec![vec![
-            CellInput::Value(Value::Int(1)),
-            CellInput::Value(Value::Text("Ada".into())),
-            CellInput::Value(Value::Text("(0,1)".into())),
-        ]],
+        rows: vec![
+            // A row read with its engine row id after the visible cells.
+            InsertRow::Saved(RowSnapshot::new(
+                vec![Value::Int(1), Value::Text("Ada".into()), Value::Text("(0,1)".into())].into(),
+                Vec::new(),
+            )),
+            InsertRow::Draft(vec![CellInput::Default, CellInput::Value(Value::Text("Grace".into()))]),
+        ],
     });
 
     let payload = render(request).expect("the copy");
 
     assert_eq!(
         payload.text,
-        "INSERT INTO \"users\" (\"id\", \"name\") VALUES (1, 'Ada');"
+        "INSERT INTO \"users\" (\"id\", \"name\") VALUES (1, 'Ada');\n\
+         INSERT INTO \"users\" (\"name\") VALUES ('Grace');"
     );
     assert_eq!(payload.format, ClipboardFormat::Sql);
+    assert_eq!(payload.rows, 2);
+}
+
+#[test]
+fn a_copy_holding_a_nul_is_refused_off_the_gtk_thread() {
+    let rows = vec![vec![Value::Int(1), Value::Text("a\0b".into())]];
+
+    let refused = render(rows_request(&rows, CopyKind::Rows)).expect_err("a NUL");
+
+    assert!(matches!(refused, CopyError::ContainsNul), "{refused:?}");
+}
+
+#[gtk4::test]
+fn a_slower_earlier_copy_gives_way_to_a_later_one() {
+    let widget = gtk::Label::new(None);
+    let clipboard = widget.clipboard();
+    let runtime = test_runtime();
+    let toasts = Rc::new(RefCell::new(Vec::new()));
+    let copy = |request| {
+        let sink = toasts.clone();
+        copy_rows(&widget, &runtime.tasks(), request, move |text| {
+            sink.borrow_mut().push(text.to_owned());
+        })
+    };
+    let many: Vec<Vec<Value>> = (0..100_000)
+        .map(|row| vec![Value::Int(row), Value::Text(format!("name {row}"))])
+        .collect();
+
+    let slow = copy(rows_request(&many, CopyKind::Json));
+    let fast = copy(rows_request(&people()[..1], CopyKind::Rows));
+    finish_on_main(WAIT, fast)
+        .expect("the later copy to end")
+        .expect("the later copy");
+    assert_eq!(local_text(&clipboard).as_deref(), Some("-5\t=cmd\n"));
+    let landed = clipboard.content();
+    finish_on_main(WAIT, slow)
+        .expect("the earlier copy to end")
+        .expect("the earlier copy");
+
+    assert_eq!(toasts.take(), ["Copied 1 row"]);
+    // Other test processes share the X server and can take the
+    // clipboard meanwhile, which leaves it with no local content.
+    let now = clipboard.content();
+    assert!(
+        now.is_none() || now == landed,
+        "the earlier copy replaced the later one"
+    );
+    runtime.shutdown();
 }
 
 #[gtk4::test]

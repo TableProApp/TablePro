@@ -119,10 +119,16 @@ fn row_json_dialog(json: RowJson) -> adw::Dialog {
         rows: 1,
         skipped: 0,
     };
+    let toasts = adw::ToastOverlay::new();
+    toasts.set_child(Some(&scrolled));
+    let shown_on = toasts.downgrade();
     copy_button.connect_clicked(move |button| {
-        if let Err(error) = crate::ui::clipboard::write(&button.clipboard(), &payload) {
-            tracing::warn!(%error, "the row's JSON was not copied");
-        }
+        let shown_on = shown_on.clone();
+        crate::ui::clipboard::copy_payload(button, payload.clone(), move |message| {
+            if let Some(toasts) = shown_on.upgrade() {
+                toasts.add_toast(adw::Toast::new(message));
+            }
+        });
     });
     let header = adw::HeaderBar::new();
     header.pack_end(&copy_button);
@@ -133,7 +139,7 @@ fn row_json_dialog(json: RowJson) -> adw::Dialog {
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
     toolbar.add_top_bar(&banner);
-    toolbar.set_content(Some(&scrolled));
+    toolbar.set_content(Some(&toasts));
 
     adw::Dialog::builder()
         .title(crate::i18n::gettext("Row as JSON"))
@@ -198,6 +204,13 @@ mod tests {
             .expect("the copy button");
         copy.emit_clicked();
 
+        assert!(
+            descendants(&dialog)
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk::Label>())
+                .any(|label| label.label() == "Copied to clipboard"),
+            "no toast said the copy landed"
+        );
         let clipboard = copy.clipboard();
         assert!(clipboard.formats().contain_mime_type("application/json"));
         let copied = local_text(&clipboard).expect("the copied text");

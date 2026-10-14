@@ -52,7 +52,7 @@ use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
-use crate::ui::clipboard::{CopyKind, CopyRequest, InsertCopy};
+use crate::ui::clipboard::{CopyKind, CopyRequest, InsertCopy, InsertRow};
 use crate::ui::count_text::format_thousands;
 use crate::ui::export::ExportSource;
 
@@ -1857,23 +1857,28 @@ impl BrowseModel {
             )));
             return;
         };
-        let ctx = self.grid_context();
-        let rows = rows
-            .iter()
-            .map(|row| match row.id() {
-                GridRowId::Draft(draft_id) => self
-                    .tracker
-                    .draft_cells(*draft_id, &self.current_columns)
-                    .unwrap_or_default(),
-                _ => ctx.snapshot(row).values().cloned().map(CellInput::Value).collect(),
-            })
-            .collect();
         fx.output(BrowseTabOutput::Copy(CopyRequest::Insert(InsertCopy {
             dialect,
             table: self.table_ref(),
             columns: self.current_columns.iter().cloned().collect(),
-            rows,
+            rows: self.insert_rows(rows),
         })));
+    }
+
+    /// The rows an INSERT copy renders off the GTK thread. A saved row
+    /// shares the page's cells; only a draft's are copied here.
+    fn insert_rows(&self, rows: &[RowObject]) -> Vec<InsertRow> {
+        let ctx = self.grid_context();
+        rows.iter()
+            .map(|row| match row.id() {
+                GridRowId::Draft(draft_id) => InsertRow::Draft(
+                    self.tracker
+                        .draft_cells(*draft_id, &self.current_columns)
+                        .unwrap_or_default(),
+                ),
+                _ => InsertRow::Saved(ctx.snapshot(row)),
+            })
+            .collect()
     }
 
     /// Same request as the context menu's Copy as > Rows: one selection

@@ -44,6 +44,11 @@ impl RowSnapshot {
     pub fn to_values(&self) -> Vec<Value> {
         self.values().cloned().collect()
     }
+
+    #[cfg(test)]
+    pub(crate) fn shares_cells_with(&self, cells: &Arc<[Value]>) -> bool {
+        Arc::ptr_eq(&self.cells, cells)
+    }
 }
 
 #[cfg(test)]

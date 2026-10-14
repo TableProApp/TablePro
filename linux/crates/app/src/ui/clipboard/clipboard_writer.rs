@@ -6,8 +6,6 @@ use super::ClipboardPayload;
 
 #[derive(Debug, Error)]
 pub(crate) enum ClipboardError {
-    /// The text type is a C string, so a NUL would cut the copy short,
-    /// and a cut copy pasted back would change the value without a word.
     #[error("the text holds a NUL character")]
     ContainsNul,
     #[error("the clipboard refused the copy: {0}")]
@@ -23,21 +21,25 @@ impl ClipboardError {
     }
 }
 
+/// The text type is a C string, so a NUL would cut the copy short, and
+/// a cut copy pasted back would change the value without a word.
+pub(super) fn holds_nul(text: &str) -> bool {
+    text.contains('\0')
+}
+
 /// Put `payload` on the clipboard as its own type and as plain text, so
 /// an application that knows the type takes it, and any other gets the
-/// text.
-pub(crate) fn write(clipboard: &gdk::Clipboard, payload: &ClipboardPayload) -> Result<(), ClipboardError> {
-    if payload.text.contains('\0') {
-        return Err(ClipboardError::ContainsNul);
-    }
+/// text. The caller has already refused text that `holds_nul`.
+pub(super) fn write(clipboard: &gdk::Clipboard, payload: ClipboardPayload) -> Result<(), ClipboardError> {
     let Some(mime_type) = payload.format.mime_type() else {
         clipboard.set_text(&payload.text);
         return Ok(());
     };
-    let bytes = glib::Bytes::from_owned(payload.text.clone().into_bytes());
+    let text = payload.text.to_value();
+    let bytes = glib::Bytes::from_owned(payload.text.into_bytes());
     let provider = gdk::ContentProvider::new_union(&[
         gdk::ContentProvider::for_bytes(mime_type, &bytes),
-        gdk::ContentProvider::for_value(&payload.text.to_value()),
+        gdk::ContentProvider::for_value(&text),
     ]);
     clipboard.set_content(Some(&provider)).map_err(|error| {
         tracing::warn!(%error, "the clipboard refused a copy");
@@ -66,22 +68,11 @@ mod tests {
             skipped: 0,
         };
 
-        write(&clipboard, &payload).expect("written");
+        write(&clipboard, payload).expect("written");
 
         let formats = clipboard.formats();
         assert!(formats.contain_mime_type("text/csv"), "{}", formats.to_str());
         assert!(formats.contains_type(String::static_type()), "{}", formats.to_str());
         assert_eq!(local_text(&clipboard).as_deref(), Some("a,b\n1,2\n"));
-    }
-
-    #[gtk4::test]
-    fn text_with_a_nul_is_refused_and_the_clipboard_kept() {
-        let clipboard = gtk::Label::new(None).clipboard();
-        clipboard.set_text("before");
-
-        let error = write(&clipboard, &ClipboardPayload::plain("a\0b".to_owned())).expect_err("a NUL");
-
-        assert!(matches!(error, ClipboardError::ContainsNul));
-        assert_eq!(local_text(&clipboard).as_deref(), Some("before"));
     }
 }

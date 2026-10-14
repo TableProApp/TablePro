@@ -1,12 +1,33 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use tablepro_core::export::{EncodeError, RenderInsertError};
 use tablepro_session::runtime::Tasks;
 
-use super::{ClipboardPayload, CopyError, CopyKind, CopyRequest, render_copy, write};
+use super::clipboard_writer::{holds_nul, write};
+use super::{ClipboardError, ClipboardPayload, CopyError, CopyKind, CopyRequest, render_copy};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::ui::count_text::{format_thousands, plural_count};
+
+/// The copy asked for last, in the whole process: every window copies
+/// to the same display clipboard, and a large copy renders long enough
+/// for a later, smaller one to land first.
+static LATEST_COPY: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, Clone, Copy)]
+struct CopyTicket(u64);
+
+impl CopyTicket {
+    fn take() -> Self {
+        Self(LATEST_COPY.fetch_add(1, Ordering::Relaxed) + 1)
+    }
+
+    fn is_latest(self) -> bool {
+        LATEST_COPY.load(Ordering::Relaxed) == self.0
+    }
+}
 
 /// What the toast after a copy counts.
 #[derive(Debug, Clone, Copy)]
@@ -31,8 +52,8 @@ impl Copied {
         }
     }
 
-    fn text(self, payload: &ClipboardPayload) -> String {
-        let n = payload.rows as u64;
+    fn text(self, rows: usize) -> String {
+        let n = rows as u64;
         match self {
             Self::Value => gettext("Copied to clipboard"),
             Self::Rows => ngettext_f(
@@ -52,18 +73,26 @@ impl Copied {
 }
 
 /// Render `request` off the GTK thread and put it on `widget`'s
-/// clipboard, then tell `report` how it went.
+/// clipboard, then tell `report` how it went. A copy asked for after
+/// this one wins, and this one then ends without a word. The handle
+/// resolves once the copy has landed or given way.
 pub(crate) fn copy_rows(
     widget: &impl IsA<gtk::Widget>,
     tasks: &Tasks,
     request: CopyRequest,
     report: impl Fn(&str) + 'static,
-) {
+) -> glib::JoinHandle<()> {
+    let ticket = CopyTicket::take();
     let clipboard = widget.as_ref().clipboard();
     let copied = Copied::of(&request);
     let rendering = render_copy(tasks, request);
     glib::spawn_future_local(async move {
-        let payload = match rendering.await {
+        let rendered = rendering.await;
+        if !ticket.is_latest() {
+            tracing::debug!("a copy finished after a later one and was dropped");
+            return;
+        }
+        let payload = match rendered {
             Ok(Ok(payload)) => payload,
             Ok(Err(error)) => return report(&copy_error_text(&error)),
             Err(failure) => {
@@ -71,25 +100,37 @@ pub(crate) fn copy_rows(
                 return report(&gettext("Couldn't copy the selection"));
             }
         };
-        if let Err(error) = write(&clipboard, &payload) {
+        let (rows, skipped) = (payload.rows, payload.skipped);
+        if let Err(error) = write(&clipboard, payload) {
             return report(&error.message());
         }
-        report(&copied.text(&payload));
+        report(&copied.text(rows));
         // NULL and binary values have no place in an IN list, so the
         // copy says how many it left out instead of handing back a
         // shorter list that quietly selects different rows.
-        if payload.skipped > 0 {
+        if skipped > 0 {
             report(&gettext_f(
                 "{n} NULL or binary values left out of the IN clause",
-                &[("n", &payload.skipped.to_string())],
+                &[("n", &skipped.to_string())],
             ));
         }
-    });
+    })
 }
 
 /// Put `text` on `widget`'s clipboard as it is, and tell `report`.
 pub(crate) fn copy_text(widget: &impl IsA<gtk::Widget>, text: String, report: impl Fn(&str)) {
-    match write(&widget.as_ref().clipboard(), &ClipboardPayload::plain(text)) {
+    copy_payload(widget, ClipboardPayload::plain(text), report);
+}
+
+/// Put a payload rendered already on `widget`'s clipboard, and tell
+/// `report`.
+pub(crate) fn copy_payload(widget: &impl IsA<gtk::Widget>, payload: ClipboardPayload, report: impl Fn(&str)) {
+    // A copy still rendering gives way to this one.
+    CopyTicket::take();
+    if holds_nul(&payload.text) {
+        return report(&ClipboardError::ContainsNul.message());
+    }
+    match write(&widget.as_ref().clipboard(), payload) {
         Ok(()) => report(&gettext("Copied to clipboard")),
         Err(error) => report(&error.message()),
     }
@@ -106,5 +147,6 @@ fn copy_error_text(error: &CopyError) -> String {
         }
         CopyError::Insert(RenderInsertError::NoValues) => gettext("This row has no value to put in an INSERT"),
         CopyError::EmptyInClause => gettext("Nothing to copy: an IN clause can't carry NULL or binary values"),
+        CopyError::ContainsNul => ClipboardError::ContainsNul.message(),
     }
 }

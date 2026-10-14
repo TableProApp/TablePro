@@ -19,6 +19,7 @@ use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{FakeSession, drain_main_context, wait_until};
+use crate::ui::clipboard::InsertRow;
 use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
 
 const WAIT: Duration = Duration::from_secs(10);
@@ -971,6 +972,30 @@ fn copy_as_insert_and_duplicate_contain_no_hidden_columns() {
             "a duplicate carried hidden cells: {:?}",
             draft.cells
         );
+    }
+}
+
+#[gtk4::test]
+fn copy_as_insert_shares_saved_rows_and_copies_only_drafts() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let saved = harness.saved_rows();
+    let mut rows = vec![harness.grid_row(0)];
+    rows.extend(saved.iter().cloned());
+
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let model = harness.tab().imp().model.borrow();
+    let insert_rows = model.as_ref().expect("the model").insert_rows(&rows);
+
+    let [InsertRow::Draft(_), InsertRow::Saved(first), InsertRow::Saved(second)] = insert_rows.as_slice() else {
+        panic!("{insert_rows:?}");
+    };
+    for (snapshot, row) in [first, second].into_iter().zip(&saved) {
+        let cells = row.shared_cells().expect("a saved row's cells");
+        assert!(snapshot.shares_cells_with(cells), "a saved row's cells were copied");
     }
 }
 

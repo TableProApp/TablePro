@@ -7,15 +7,13 @@ mod clipboard_payload;
 mod clipboard_writer;
 mod copy_renderer;
 
-pub(crate) use clipboard_copy::{copy_rows, copy_text};
+pub(crate) use clipboard_copy::{copy_payload, copy_rows, copy_text};
 pub(crate) use clipboard_format::ClipboardFormat;
 pub(crate) use clipboard_payload::ClipboardPayload;
-#[cfg(test)]
 pub(crate) use clipboard_writer::ClipboardError;
-pub(crate) use clipboard_writer::write;
 #[cfg(test)]
 use copy_renderer::render;
-pub(crate) use copy_renderer::{CopyError, CopyKind, CopyRequest, InsertCopy, render_copy};
+pub(crate) use copy_renderer::{CopyError, CopyKind, CopyRequest, InsertCopy, InsertRow, render_copy};
 
 #[cfg(test)]
 mod tests;
