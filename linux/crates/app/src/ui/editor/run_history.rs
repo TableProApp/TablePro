@@ -97,5 +97,12 @@ mod tests {
             history_entry(String::new(), &metadata, SystemTime::now(), &stopped).outcome,
             Outcome::Cancelled
         );
+        let mut never_sent = RunLog::new(vec![tablepro_core::UserSql::new("SELECT 2")], Vec::new());
+        never_sent.apply(RunEvent::Finished);
+        assert_eq!(
+            history_entry(String::new(), &metadata, SystemTime::now(), &never_sent).outcome,
+            Outcome::Cancelled,
+            "a run stopped before it began is remembered as a success"
+        );
     }
 }

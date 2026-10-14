@@ -349,10 +349,13 @@ impl RunLog {
         })
     }
 
+    /// Whether the run was stopped: a statement says so, or one was
+    /// never sent with no failure ahead of it, as when Stop comes before
+    /// the first statement goes.
     pub fn was_stopped(&self) -> bool {
-        self.entries
-            .iter()
-            .any(|entry| matches!(entry.kind, EntryKind::Cancelled))
+        let kinds = || self.entries.iter().map(|entry| &entry.kind);
+        kinds().any(|kind| matches!(kind, EntryKind::Cancelled))
+            || (kinds().any(|kind| matches!(kind, EntryKind::NotRun)) && !kinds().any(EntryKind::is_failure))
     }
 
     pub fn timed_out(&self) -> bool {
@@ -554,6 +557,15 @@ mod tests {
             Some(4),
             "rows a statement changed are what history records"
         );
+    }
+
+    #[test]
+    fn a_run_stopped_before_its_first_statement_was_stopped() {
+        let mut log = RunLog::new(vec![UserSql::new("SELECT 1"), UserSql::new("SELECT 2")], Vec::new());
+
+        log.apply(RunEvent::Finished);
+
+        assert!(log.was_stopped());
     }
 
     #[test]
